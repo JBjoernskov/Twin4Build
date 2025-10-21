@@ -287,22 +287,38 @@ def load_data():
     print(f"✓ Columns: {list(df.columns)}\n")
     
     # Plot the data
-    tb.plot.plot(
+    fig, axes = tb.plot.plot(
         time=df.index,
         entries=[
             tb.plot.Entry(data=df['T_a_measured'].values, 
-                         label="Room A Temp", color=tb.plot.Colors.blue, fmt="-", axis=1),
+                         label=r"$T_a$", color=tb.plot.Colors.blue, fmt="-", axis=1),
             tb.plot.Entry(data=df['T_b_measured'].values, 
-                         label="Room B Temp", color=tb.plot.Colors.red, fmt="--", axis=1),
+                         label=r"$T_b$", color=tb.plot.Colors.red, fmt="--", axis=1),
             tb.plot.Entry(data=df['Q_h'].values/1000, 
-                         label="Heating", color=tb.plot.Colors.orange, fmt="-", axis=2),
+                         label=r"$\dot{Q}_h$", color=tb.plot.Colors.orange, fmt="-", axis=2),
         ],
-        ylabel_1axis="Temperature [°C]",
+        ylabel_1axis=r"Temperature $[^\circ$ C$]$",
         ylabel_2axis="Power [kW]",
-        title="Building Measurements",
-        show=True,
+        show=False,
         nticks=11
     )
+    fig.savefig("bems_room_measurements.png", dpi=300)
+    # Plot the data
+    fig, axes = tb.plot.plot(
+        time=df.index,
+        entries=[
+            tb.plot.Entry(data=df['T_out'].values, 
+                         label=r"$T_{out}$", color=tb.plot.Colors.blue, fmt="-", axis=1),
+            tb.plot.Entry(data=df['Q_r'].values/1000, 
+                         label=r"$\dot{Q}_r$", color=tb.plot.Colors.orange, fmt="-", axis=2),
+        ],
+        ylabel_1axis=r"Temperature $[^\circ$ C$]$",
+        ylabel_2axis="Solar Gains [kW]",
+        show=False,
+        align_zero=False,
+        nticks=11
+    )
+    fig.savefig("bems_outdoor_measurements.png", dpi=300)
     
     return df
 
@@ -350,8 +366,8 @@ def estimate_parameters(df):
 
     # Extract results
     thermal_sys = model.components["ThermalSystem"]
-    estimated_T_a = thermal_sys.ss_model.output["y"].history[:,0].detach().numpy()
-    estimated_T_b = thermal_sys.ss_model.output["y"].history[:,3].detach().numpy()
+    estimated_T_a = thermal_sys.ss_model.output["y"].history[0,:,0].detach().numpy()
+    estimated_T_b = thermal_sys.ss_model.output["y"].history[0,:,3].detach().numpy()
     
     measured_T_a = df['T_a_measured'].values
     measured_T_b = df['T_b_measured'].values
@@ -361,7 +377,7 @@ def estimate_parameters(df):
     print(f"Before calibration RMSE Room B: {rmse_b:.3f} °C")
 
     # Plot comparison
-    tb.plot.plot(
+    fig, axes = tb.plot.plot(
         time=df.index,
         entries=[
             tb.plot.Entry(data=measured_T_a, label=r"Measured $T_a$", 
@@ -373,12 +389,12 @@ def estimate_parameters(df):
             tb.plot.Entry(data=estimated_T_b, label=r"Estimated $T_b$", 
                          color=tb.plot.Colors.orange, fmt="-", axis=1),
         ],
-        ylabel_1axis=r"Temperature $[^\circ C]$",
+        ylabel_1axis=r"Temperature $[^\circ$ C$]$",
         title="Before calibration: Measured vs Estimated",
         show=False,
         nticks=11
     )
-
+    fig.savefig("before_calibration_measured_vs_estimated.png", dpi=300)
 
 
     
@@ -463,8 +479,8 @@ def validate_model(df, model):
     
     # Extract results
     thermal_sys = model.components["ThermalSystem"]
-    estimated_T_a = thermal_sys.ss_model.output["y"].history[:,0].detach().numpy()
-    estimated_T_b = thermal_sys.ss_model.output["y"].history[:,3].detach().numpy()
+    estimated_T_a = thermal_sys.ss_model.output["y"].history[0,:,0].detach().numpy()
+    estimated_T_b = thermal_sys.ss_model.output["y"].history[0,:,3].detach().numpy()
     
     # Calculate accuracy
     measured_T_a = df['T_a_measured'].values
@@ -476,7 +492,7 @@ def validate_model(df, model):
     print(f"After calibration RMSE Room B: {rmse_b:.3f} °C")
     
     # Plot comparison
-    tb.plot.plot(
+    fig, axes = tb.plot.plot(
         time=df.index,
         entries=[
             tb.plot.Entry(data=measured_T_a, label=r"Measured $T_a$", 
@@ -488,11 +504,12 @@ def validate_model(df, model):
             tb.plot.Entry(data=estimated_T_b, label=r"Estimated $T_b$", 
                          color=tb.plot.Colors.orange, fmt="-", axis=1),
         ],
-        ylabel_1axis=r"Temperature $[^\circ C]$",
+        ylabel_1axis=r"Temperature $[^\circ$ C$]$",
         title="After calibration: Measured vs Estimated",
-        show=True,
+        show=False,
         nticks=11
     )
+    fig.savefig("after_calibration_measured_vs_estimated.png", dpi=300)
 
 
 # ============================================================================
@@ -516,8 +533,8 @@ def optimize_control(df, model):
     )
     
     thermal_sys = model.components["ThermalSystem"]
-    baseline_T = thermal_sys.ss_model.output["y"].history[:,0].detach().numpy()
-    baseline_Q = model.components["RadiatorInput"].output["value"].history.detach().numpy()
+    baseline_T = thermal_sys.ss_model.output["y"].history[0,:,0].detach().numpy()
+    baseline_Q = model.components["RadiatorInput"].output["value"].history[0,:].detach().numpy()
     baseline_energy = np.sum(baseline_Q) * 600 / 3600 / 1000  # kWh
     
     print(f"✓ Baseline energy: {baseline_energy:.2f} kWh")
@@ -590,8 +607,8 @@ def optimize_control(df, model):
     )
     
     # Extract results
-    optimized_T = thermal_sys.ss_model.output["y"].history[:,0].detach().numpy()
-    optimized_Q = schedule.output["scheduleValue"].history.detach().numpy()
+    optimized_T = thermal_sys.ss_model.output["y"].history[0,:,0].detach().numpy()
+    optimized_Q = schedule.output["scheduleValue"].history[0,:].detach().numpy()
     optimized_energy = np.sum(optimized_Q) * 600 / 3600 / 1000  # kWh
     savings = (baseline_energy - optimized_energy) / baseline_energy * 100
     
@@ -600,8 +617,8 @@ def optimize_control(df, model):
     
     # Plot results
     time_index = pd.date_range(start=df.index[0], periods=len(baseline_T), freq='10min')
-    heating_sp_vals = heating_sp.output["scheduleValue"].history.detach().numpy()
-    cooling_sp_vals = cooling_sp.output["scheduleValue"].history.detach().numpy()
+    heating_sp_vals = heating_sp.output["scheduleValue"].history[0,:].detach().numpy()
+    cooling_sp_vals = cooling_sp.output["scheduleValue"].history[0,:].detach().numpy()
     
     tb.plot.plot(
         time=time_index,
@@ -619,7 +636,7 @@ def optimize_control(df, model):
             tb.plot.Entry(data=optimized_Q/1000, label="Optimized Heating", 
                          color=tb.plot.Colors.purple, fmt="-", axis=2),
         ],
-        ylabel_1axis="Temperature [°C]",
+        ylabel_1axis=r"Temperature $[^\circ$ C$]$",
         ylabel_2axis="Heating [kW]",
         title=f"Optimal Control (Savings: {savings:.1f}%)",
         show=True,

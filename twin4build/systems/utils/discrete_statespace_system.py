@@ -469,12 +469,13 @@ class DiscreteStatespaceSystem(core.System):
 
             self.discretize_system()
             self._prev_u = u.clone()
+        # self.Bd.reshape((1, self.n_states, self.n_inputs)) # TODO: Do this more efficiently
         # State update
-        x_new = self.Ad @ x + self.Bd @ u
-        self.x = x_new
+        x_new = self.Ad @ x.unsqueeze(-1) + self.Bd @ u.unsqueeze(-1)
+        self.x = x_new.squeeze(-1)
         # Output
-        y = self.Cd @ self.x + self.Dd @ u
-        self.output["y"].set(y, stepIndex)
+        y = self.Cd @ self.x.unsqueeze(-1) + self.Dd @ u.unsqueeze(-1)
+        self.output["y"].set(y.squeeze(-1), stepIndex)
 
     @classmethod
     def from_matrices(cls, A, B, C, D=None, sample_time=1.0, **kwargs):

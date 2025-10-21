@@ -51,6 +51,7 @@ class Vector:
     def __init__(
         self,
         tensor: Optional[torch.Tensor] = None,
+        batch_size: int = 1,
         size: Optional[int] = None,
         log_history: bool = True,
         is_leaf: bool = False,
@@ -62,6 +63,7 @@ class Vector:
         self.id_map_reverse = {}
         self.sorted_id_indices = None
         self.tensor = None
+        self._batch_size = batch_size
         self._init_tensor = tensor
         self._init_id_map_reverse = self.id_map_reverse
         self._init_id_map = self.id_map
@@ -199,28 +201,31 @@ class Vector:
 
         ### Vector stufff
         if self._init_tensor is None:
-            self.tensor = torch.zeros(self.size, dtype=torch.float64)
+            self.tensor = torch.zeros(self._batch_size, self.size, dtype=torch.float64)
         else:
             self.tensor = self._init_tensor.clone()
         self.current_idx = 0
         
 
         ### Vector stufff
-        assert isinstance(
-            values, (list, torch.Tensor, np.ndarray, type(None))
-        ), "values must be a list or torch.Tensor"
-        if isinstance(values, torch.Tensor):
-            assert values.ndim == 1, "values must be a 1D torch.Tensor"
+        # assert isinstance(
+        #     values, (list, torch.Tensor, np.ndarray, type(None))
+        # ), "values must be a list or torch.Tensor"
+        # if isinstance(values, torch.Tensor):
+        #     assert values.ndim == 1, "values must be a 1D torch.Tensor"
 
-        elif isinstance(values, np.ndarray):
-            assert values.ndim == 1, "values must be a 1D numpy array"
-            values = torch.tensor(values, dtype=torch.float64)
+        # elif isinstance(values, np.ndarray):
+        #     assert values.ndim == 1, "values must be a 1D numpy array"
+        #     values = torch.tensor(values, dtype=torch.float64)
 
-        elif isinstance(values, list):
-            values = torch.tensor(values, dtype=torch.float64)
-            assert (
-                values.ndim == 1
-            ), "if a list is provided, it must convert to a 1D torch.Tensor"
+        # elif isinstance(values, list):
+        #     values = torch.tensor(values, dtype=torch.float64)
+        #     assert (
+        #         values.ndim == 1
+        #     ), "if a list is provided, it must convert to a 1D torch.Tensor"
+
+        if values is not None:
+            values = _convert_to_3D_tensor(values)
 
         # We return early if this scalar has requires_grad=True.
         # This is the case when used in the optimizer.
@@ -235,10 +240,11 @@ class Vector:
 
         if self._is_leaf:
             assert values is not None, "Values must be provided for leaf scalars"
-            assert values.shape[0] == len(
+            assert values.shape[0] == self._batch_size, "Values must be the same length as the batch size"
+            assert values.shape[1] == len(
                 simulator.dateTimeSteps
             ), "Values must be the same length as the number of dateTimeSteps"
-            assert values.shape[1] == self.size, "Values must be the same length as the vector size"
+            assert values.shape[2] == self.size, "Values must be the same length as the vector size"
             # Pre-allocate the history tensor with the correct size
             self._history = values
             self._history_is_populated = True
@@ -247,7 +253,7 @@ class Vector:
 
         else:
             self._history = torch.zeros(
-                len(simulator.dateTimeSteps), self.size, dtype=torch.float64, requires_grad=False
+                self._batch_size, len(simulator.dateTimeSteps), self.size, dtype=torch.float64, requires_grad=False
             )
             self._history_is_populated = False
 
@@ -262,17 +268,17 @@ class Vector:
             v (float): Value to set at current index.
         """
         v = _convert_to_2D_tensor(v)
-        self[index] = v
+        self.tensor[:,index] = v
 
         if self._log_history:
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
-                if v.numel()>1:
-                    self._history[stepIndex, :] = v
+                if v.shape[1]>1:
+                    self._history[:,stepIndex, :] = v
                 else:
-                    self._history[stepIndex, index] = v
+                    self._history[:,stepIndex, index] = v
 
-            if stepIndex == self._history.shape[0] - 1:
+            if stepIndex == self._history.shape[1] - 1:
                 self._history_is_populated = True
             else:
                 self._history_is_populated = False
@@ -290,7 +296,7 @@ class Vector:
             torch.Tensor: Tensor of values sorted by group ID.
         """
         if index is not None:
-            out = self.tensor[index]
+            out = self.tensor[:,index]
         else:
             out = self.tensor
         return out
@@ -336,6 +342,7 @@ class Scalar:
     def __init__(
         self,
         scalar: Optional[Union[float, int, torch.Tensor]] = None,
+        batch_size: int = 1,
         log_history: bool = True,
         is_leaf: bool = False,
         do_normalization: bool = False,
@@ -366,6 +373,7 @@ class Scalar:
             scalar = torch.tensor([scalar], dtype=torch.float64, requires_grad=False)
 
         self._scalar = scalar
+        self._batch_size = batch_size
         self._init_scalar = scalar
         self._history = None
         self._normalized_history = None
@@ -452,21 +460,24 @@ class Scalar:
         values: Optional[List[float]] = None,
         force: bool = False,
     ):
-        assert isinstance(
-            values, (list, torch.Tensor, np.ndarray, type(None))
-        ), "values must be a list or torch.Tensor"
-        if isinstance(values, torch.Tensor):
-            assert values.ndim == 1, "values must be a 1D torch.Tensor"
+        # assert isinstance(
+        #     values, (list, torch.Tensor, np.ndarray, type(None))
+        # ), "values must be a list or torch.Tensor"
+        # if isinstance(values, torch.Tensor):
+        #     assert values.dim() == 1, "values must be a 1D torch.Tensor"
 
-        elif isinstance(values, np.ndarray):
-            assert values.ndim == 1, "values must be a 1D numpy array"
-            values = torch.tensor(values, dtype=torch.float64)
+        # elif isinstance(values, np.ndarray):
+        #     assert values.ndim == 1, "values must be a 1D numpy array"
+        #     values = torch.tensor(values, dtype=torch.float64)
 
-        elif isinstance(values, list):
-            values = torch.tensor(values, dtype=torch.float64)
-            assert (
-                values.ndim == 1
-            ), "if a list is provided, it must convert to a 1D torch.Tensor"
+        # elif isinstance(values, list):
+        #     values = torch.tensor(values, dtype=torch.float64)
+        #     assert (
+        #         values.dim() == 1
+        #     ), "if a list is provided, it must convert to a 1D torch.Tensor"
+
+        if values is not None:
+            values = _convert_to_2D_tensor(values)
 
         # We return early if this scalar has requires_grad=True.
         # This is the case when used in the optimizer.
@@ -481,7 +492,7 @@ class Scalar:
 
         if self._is_leaf:
             assert values is not None, "Values must be provided for leaf scalars"
-            assert values.shape[0] == len(
+            assert values.shape[1] == len(
                 simulator.dateTimeSteps
             ), "Values must be the same length as the number of dateTimeSteps"
             # Pre-allocate the history tensor with the correct size
@@ -492,7 +503,7 @@ class Scalar:
 
         else:
             self._history = torch.zeros(
-                len(simulator.dateTimeSteps), dtype=torch.float64, requires_grad=False
+                self._batch_size, len(simulator.dateTimeSteps), dtype=torch.float64, requires_grad=False
             )
             self._history_is_populated = False
 
@@ -516,10 +527,10 @@ class Scalar:
                 v is None
             ), "Values cannot be set for leaf scalars. Use scalar.set(stepIndex=step_index) to set value based on history"
             if self._do_normalization:
-                v = self._normalized_history[stepIndex]
+                v = self._normalized_history[:,stepIndex]
                 v = self.denormalize(v)
             else:
-                v = self._history[stepIndex]
+                v = self._history[:,stepIndex]
         else:
             v = _convert_to_2D_scalar_tensor(v)
 
@@ -530,9 +541,9 @@ class Scalar:
         if self._log_history:
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
-                self._history[stepIndex] = v
+                self._history[:,stepIndex] = v
 
-            if stepIndex == self._history.shape[0] - 1:
+            if stepIndex == self._history.shape[1] - 1:
                 self._history_is_populated = True
             else:
                 self._history_is_populated = False
@@ -562,17 +573,18 @@ class Scalar:
         if self._min_history is None:
             # with torch.no_grad():
             self._min_history = torch.min(
-                self._history.detach()
-            ).item()  # Store as Python float
+                self._history.detach(), dim=1
+            ).values  # Store as numpy float
         if self._max_history is None:
             # with torch.no_grad():
             self._max_history = torch.max(
-                self._history.detach()
-            ).item()  # Store as Python float
+                self._history.detach(), dim=1 #TODO: .numpy() maybe? We used .item() before
+            ).values  # Store as Python float
 
         # Convert cached floats to tensors when needed
         min_val = torch.tensor(self._min_history, dtype=torch.float64)
         max_val = torch.tensor(self._max_history, dtype=torch.float64)
+
 
         if torch.allclose(min_val, max_val):
             min_val = torch.tensor(0, dtype=torch.float64)
@@ -600,9 +612,6 @@ class Scalar:
             float: Scalar value.
         """
         return self._scalar.item()
-
-    def update(self, group_id: Optional[int] = None):
-        pass
 
     def reset(self):
         if self._init_scalar is not None:
@@ -847,6 +856,39 @@ class TensorParameter:
         self.tensor = value
 
 
+
+def _convert_to_3D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
+    """
+    Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (batch_size, 1)
+
+    3 cases of tensor dimensions are handled:
+    1. 2D tensor -> do nothing
+    2. 1D tensor -> reshape to batch dimension of 1 (1, n)
+    3. 0D tensor -> reshape to batch dimension of 1 (1, 1)
+
+    """
+    if isinstance(v, list):
+        v = torch.Tensor(v)
+
+    if isinstance(v, Scalar):
+        v = v.get()
+    elif isinstance(v, (float, int)):
+        v = torch.tensor([[[v]]], dtype=torch.float64)
+    elif isinstance(v, torch.Tensor):
+        assert (
+            v.dim() <= 3
+        ), f"Value must have less that or equal to 2 dimensions, got {v.dim()} dimensions"
+        if v.dim() == 2:
+            v = v.reshape((1, v.shape[0], v.shape[1]))
+        elif v.dim() == 1:
+            v = v.reshape((1, 1, v.shape[0]))
+        elif v.dim() == 0:
+            v = v.reshape((1, 1, 1))
+    else:
+        raise TypeError(f"Unsupported type: {type(v)}")
+    return v
+
+
 def _convert_to_2D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     """
     Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (batch_size, 1)
@@ -878,6 +920,10 @@ def _convert_to_2D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     3. 0D tensor -> reshape to batch dimension of 1 (1, 1)
 
     """
+    if isinstance(v, (list, np.ndarray)):
+        v = torch.Tensor(v)
+
+
     if isinstance(v, Scalar):
         v = v.get()
     elif isinstance(v, (float, int)):

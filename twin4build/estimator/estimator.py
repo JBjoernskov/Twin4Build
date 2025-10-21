@@ -1726,9 +1726,9 @@ class Estimator:
 
             # Extract and normalize measurements
             for measuring_device, sd in self._measurements:
-                y_model = measuring_device.input["measuredValue"].history[
+                y_model = measuring_device.input["measuredValue"].history[0,
                     self._n_init_steps :
-                ]
+                ] # TODO: Assume batch dimension is always 1. This might not be the case in the future. 
                 y_actual = torch.tensor(
                     self.actual_readings[measuring_device.id], dtype=torch.float64
                 )[self._n_init_steps :]

@@ -1060,10 +1060,10 @@ class Optimizer:
                 component.output[output_name].set_requires_grad(True)
                 if component.output[output_name].do_normalization:
                     x0.append(
-                        component.output[output_name].normalized_history[t].item()
+                        component.output[output_name].normalized_history[0,t].item() # TODO: Assume batch dimension is always 1. This might not be the case in the future. 
                     )
                 else:
-                    x0.append(component.output[output_name].history[t].item())
+                    x0.append(component.output[output_name].history[0,t].item())  # TODO: Assume batch dimension is always 1. This might not be the case in the future. 
 
                 # Set bounds (same for all timesteps for each actuator)
                 if len(bounds) >= 2:
