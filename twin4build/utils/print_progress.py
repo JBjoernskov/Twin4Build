@@ -174,6 +174,9 @@ class PrintProgress:
         self._is_active = True
 
     def print_lines(self):
+        if self.verbose==0:
+            return
+            
         f = self.get_log()
         
         # Initialize curses if needed and we're not logging to file
