@@ -3,6 +3,7 @@ import datetime
 import random
 from random import randrange
 from typing import Optional
+import numpy as np
 
 # Local application imports
 import twin4build.core as core
@@ -150,7 +151,6 @@ class ScheduleSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         self.noise = 0
         self.bias = 0
@@ -239,12 +239,11 @@ class ScheduleSystem(core.System):
                 name=self.name,
                 dbconfig=self.dbconfig,
             )
-            time_series_input.initialize(start_time, end_time, step_size, simulator)
+            time_series_input.initialize(start_time, end_time, step_size)
             self.output["scheduleValue"].initialize(
                 start_time=start_time,
                 end_time=end_time,
                 step_size=step_size,
-                simulator=simulator,
                 values=time_series_input.df.values,
             )
         else:
@@ -283,16 +282,20 @@ class ScheduleSystem(core.System):
                         if key not in rulesetDict:
                             rulesetDict[key] = [0] * len_key
 
+
+            second_time_steps, date_time_steps, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+            values = np.empty((len(start_time), n_timesteps))
+            values.fill(np.nan)
+            for batch_index, date_time_steps_ in enumerate(date_time_steps):
+                size = len(date_time_steps_)
+                values[batch_index,:size] = [self.get_schedule_value(date_time) for date_time in date_time_steps_]
+            
+
             self.output["scheduleValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
-                values=[
-                    self.get_schedule_value(date_time)
-                    for date_time in simulator.date_time_steps
-                ],
-            )
+                    n_timesteps,
+                    batch_size=len(start_time),
+                    values=values,
+                )
 
     def get_schedule_value(self, date_time):
         if (
