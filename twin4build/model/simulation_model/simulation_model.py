@@ -1142,9 +1142,9 @@ class SimulationModel:
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
         simulator: "core.Simulator",
     ) -> None:
         """
@@ -1159,20 +1159,20 @@ class SimulationModel:
         assert (
             self._is_loaded
         ), "The model is not loaded and cannot be simulated. Please call the load method first."
+
+
+        
+
+        assert isinstance(simulator, core.Simulator), "simulator must be a core.Simulator object"
+
         # self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self._flat_execution_order:
-            # component.clear_results()
-            # component.initialize(start_time=start_time,
-            #                     end_time=end_time,
-            #                     step_size=step_size,
-            #                     simulator=simulator)
+            # for v in component.input.values():
+            #     v.reset()
 
-            for v in component.input.values():
-                v.reset()
-
-            for v in component.output.values():
-                v.reset()
+            # for v in component.output.values():
+            #     v.reset()
 
             # Make the inputs and outputs aware of the execution order.
             # This is important to ensure that input tps.Vectors have the same order, allowing for instance element-wise operations.
@@ -1234,15 +1234,10 @@ class SimulationModel:
                     for index, connection in zip(hash_array, connection_point.connects_system_through):
                         connection_point.set_input_port_index(connection, index)
 
-
-
-                        # else: # We rely on that the order of components during simultion doesnt change
-                            # component.input[connection_point.inputPort].update(connection_point.input_port_index[connection])
             component.initialize(
                 start_time=start_time,
                 end_time=end_time,
                 step_size=step_size,
-                simulator=simulator,
             )
 
     def validate(self) -> None:

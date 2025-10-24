@@ -586,13 +586,13 @@ class Estimator:
             )
 
         # Set up time periods
-        self._n_init_steps = n_warmup
+        self._n_wamup = n_warmup
         if not isinstance(start_time, list):
             start_time = [start_time]
         if not isinstance(end_time, list):
             end_time = [end_time]
         if not isinstance(step_size, list):
-            step_size = [step_size]
+            step_size = [step_size]*len(start_time)
 
         # Validate time periods
         for startTime_, endTime_, stepSize_ in zip(start_time, end_time, step_size):
@@ -610,32 +610,14 @@ class Estimator:
         self._mse_scaled = None
         self._n_timesteps = 0
 
-        # Load actual measurements
-        for i, (startTime_, endTime_, stepSize_) in enumerate(
-            zip(self._start_time, self._end_time, self._stepSize)
-        ):
-            second_time_steps, date_time_steps = core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
-            self._n_timesteps += (
-                len(second_time_steps) - self._n_init_steps
-            )
-            actual_readings = self.simulator.get_actual_readings(
-                start_time=startTime_, end_time=endTime_, step_size=stepSize_
-            )
-            if i == 0:
-                self.actual_readings = {}
-                for measuring_device, sd in self._measurements:
-                    self.actual_readings[measuring_device.id] = actual_readings[
-                        measuring_device.id
-                    ].to_numpy()
-            else:
-                for measuring_device, sd in self._measurements:
-                    self.actual_readings[measuring_device.id] = np.concatenate(
-                        (
-                            self.actual_readings[measuring_device.id],
-                            actual_readings[measuring_device.id].to_numpy(),
-                        ),
-                        axis=0,
-                    )
+        self.actual_readings = {}
+        for measuring_device, sd in self._measurements:
+            df = measuring_device.get_physical_readings(start_time, end_time, step_size)
+            self.actual_readings[measuring_device.id] = df # list of 
+            
+        for df_ in df:
+            self._n_timesteps += len(df_.index)
+
 
         # Validate bounds
         assert np.all(
@@ -1516,13 +1498,10 @@ class Estimator:
         assert len(self._flat_parameters) > 0, "No parameters to optimize"
 
         # Initialize simulator
-        second_time_steps, date_time_steps = core.Simulator.get_simulation_timesteps(
-            self._start_time[0], self._end_time[0], self._stepSize[0]
-        )
         self.simulator.model.initialize(
-            start_time=self._start_time[0],
-            end_time=self._end_time[0],
-            step_size=self._stepSize[0],
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
             simulator=self.simulator,
         )
 
@@ -1702,7 +1681,8 @@ class Estimator:
             overwrite=True,
         )
 
-        n_time_prev = 0
+        # 
+
         simulation_readings = {
             com.id: torch.zeros((self._n_timesteps), dtype=torch.float64)
             for com, sd in self._measurements
@@ -1712,37 +1692,40 @@ class Estimator:
             for com, sd in self._measurements
         }
 
-        # Run simulations for all time periods
-        for startTime_, endTime_, stepSize_ in zip(
+        # Run parallelized simulation for all time periods
+        self.simulator.simulate(
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
+            show_progress_bar=False,
+        )
+
+        # Extract and concatenate measurements from all periods
+        n_time_prev = 0
+        for batch_idx, (startTime_, endTime_, stepSize_) in enumerate(zip(
             self._start_time, self._end_time, self._stepSize
-        ):
-            self.simulator.simulate(
-                step_size=stepSize_,
-                start_time=startTime_,
-                end_time=endTime_,
-                show_progress_bar=False,
-            )
-            n_time = len(self.simulator.date_time_steps) - self._n_init_steps
+        )):
+            second_time_steps, date_time_steps, n_timesteps = core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
+            n_time = n_timesteps - self._n_wamup
 
-            # Extract and normalize measurements
+            # Extract measurements for this period
             for measuring_device, sd in self._measurements:
-                y_model = measuring_device.input["measuredValue"].history[0,
-                    self._n_init_steps :
-                ] # TODO: Assume batch dimension is always 1. This might not be the case in the future. 
-                y_actual = torch.tensor(
-                    self.actual_readings[measuring_device.id], dtype=torch.float64
-                )[self._n_init_steps :]
-                # y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
-                # y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
-                y_model_norm = y_model
-                y_actual_norm = y_actual
+                # Get simulation results for this period (batch dimension = period_idx)
+                y_model_period = measuring_device.input["measuredValue"].history[batch_idx, self._n_wamup:n_timesteps]
+                
+                # Filter out NaN values (padding) for shorter periods
+                # valid_mask = ~torch.isnan(y_model_period)
+                # y_model_valid = y_model_period[valid_mask]
 
-                simulation_readings[measuring_device.id][
-                    n_time_prev : n_time_prev + n_time
-                ] = y_model_norm
-                actual_readings[measuring_device.id][
-                    n_time_prev : n_time_prev + n_time
-                ] = y_actual_norm
+                y_actual_period = self.actual_readings[measuring_device.id][batch_idx]
+                y_actual_period = y_actual_period.to_numpy()[:,0]
+                y_actual_period = y_actual_period[self._n_wamup:]
+                y_actual_period = torch.tensor(y_actual_period, dtype=torch.float64)
+                
+                # Store in concatenated arrays
+                end_idx = n_time_prev + len(y_model_period)
+                simulation_readings[measuring_device.id][n_time_prev:end_idx] = y_model_period
+                actual_readings[measuring_device.id][n_time_prev:end_idx] = y_actual_period
 
             n_time_prev += n_time
 

@@ -391,6 +391,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             step_size (int): Simulation step size.
             simulator (core.Simulator): Reference to the simulation model.
         """
+        batch_size = len(start_time)
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
@@ -398,6 +399,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 end_time=end_time,
                 step_size=step_size,
                 simulator=simulator,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
@@ -405,6 +407,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 end_time=end_time,
                 step_size=step_size,
                 simulator=simulator,
+                batch_size=batch_size,
             )
 
         if not self.INITIALIZED:
@@ -666,6 +669,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 self.input["heatGain"].get(),
             ]
         ).squeeze()
+
+        
 
         if self.n_boundary_temperature == 1:
             u = torch.cat([u, self.input["boundaryTemperature"].get()])

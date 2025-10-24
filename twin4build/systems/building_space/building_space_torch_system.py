@@ -149,6 +149,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         simulator: core.Simulator,
     ) -> None:
         """Initialize the system and its submodels."""
+        batch_size = len(start_time)
         # Initialize I/O for the combined system
         for input in self.input.values():
             input.initialize(
@@ -156,6 +157,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
                 end_time=end_time,
                 step_size=step_size,
                 simulator=simulator,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
@@ -163,6 +165,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
                 end_time=end_time,
                 step_size=step_size,
                 simulator=simulator,
+                batch_size=batch_size,
             )
 
         # Find if boundary temperature is set as input

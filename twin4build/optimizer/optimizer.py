@@ -13,6 +13,7 @@ from scipy.optimize import Bounds, least_squares, minimize
 import twin4build.core as core
 import twin4build.systems as systems
 from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.validate_period import validate_period
 
 
 def _min_max_normalize(x, min_val=None, max_val=None):
@@ -374,11 +375,12 @@ class Optimizer:
             eq_term = 0
             for constraint in self._eq_cons:
                 component, output_name, desired_value = constraint
-                y = component.output[output_name].history
+                y = component.output[output_name].history  # Shape: [n_periods, n_timesteps]
                 desired_tensor = self.equality_constraint_values[component, output_name]
                 y = component.output[output_name].normalize(y)
                 desired_tensor = component.output[output_name].normalize(desired_tensor)
 
+                # Aggregate loss across all periods
                 eq_term += torch.mean(torch.abs(y - desired_tensor))
             self.loss += eq_term
 
@@ -388,7 +390,7 @@ class Optimizer:
             ineq_lower_term = 0
             for constraint in self._ineq_cons:
                 component, output_name, constraint_type, desired_value = constraint
-                y = component.output[output_name].history
+                y = component.output[output_name].history  # Shape: [n_periods, n_timesteps]
                 desired_tensor = self.inequality_constraint_values[
                     (component, output_name, constraint_type)
                 ]
@@ -416,10 +418,11 @@ class Optimizer:
             min_term = 0
             for minimize_obj in self._objectives:
                 component, output_name = minimize_obj
-                y = component.output[output_name].history
+                y = component.output[output_name].history  # Shape: [n_periods, n_timesteps]
                 y_norm = component.output[output_name].normalize(y)
                 # print(f"NORMALIZED MINIMIZE OBJECTIVE BETWEEN: {component.output[output_name]._min_history} and {component.output[output_name]._max_history}")
 
+                # Aggregate loss across all periods
                 min_term += torch.mean(y_norm)
             self.loss += min_term  # Minimize the mean value
 
@@ -537,6 +540,9 @@ class Optimizer:
         self._objectives = objectives or []
         self._eq_cons = eq_cons or []
         self._ineq_cons = ineq_cons or []
+        
+        start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
+            
         self._start_time = start_time
         self._end_time = end_time
         self._stepSize = step_size
@@ -547,6 +553,8 @@ class Optimizer:
         assert start_time is not None, "start_time must be provided"
         assert end_time is not None, "end_time must be provided"
         assert step_size is not None, "step_size must be provided"
+
+        self.second_time_steps, self.date_time_steps, self.n_timesteps = core.Simulator.get_simulation_timesteps(self._start_time, self._end_time, self._stepSize)
 
         # Check that we have something to optimize
         assert (
@@ -1038,9 +1046,6 @@ class Optimizer:
         for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
-        second_time_steps, date_time_steps = core.Simulator.get_simulation_timesteps(
-            self._start_time, self._end_time, self._stepSize
-        )
         self.simulator.model.initialize(
             start_time=self._start_time,
             end_time=self._end_time,
@@ -1052,20 +1057,39 @@ class Optimizer:
         x0 = []
         bounds_list = []
 
-        n_timesteps = len(date_time_steps)
+        n_periods = len(self._start_time)
 
-        # Create flattened vector of size N*M
-        for t in range(n_timesteps):
-            for component, output_name, *bounds in self._variables:
-                component.output[output_name].set_requires_grad(True)
-                if component.output[output_name].do_normalization:
-                    x0.append(
-                        component.output[output_name].normalized_history[0,t].item() # TODO: Assume batch dimension is always 1. This might not be the case in the future. 
-                    )
-                else:
-                    x0.append(component.output[output_name].history[0,t].item())  # TODO: Assume batch dimension is always 1. This might not be the case in the future. 
-
-                # Set bounds (same for all timesteps for each actuator)
+        # Create flattened vector using vectorized operations, excluding padded values
+        x0_tensors = []
+        
+        # Calculate actual timesteps per period (excluding padding)
+        actual_timesteps_per_period = []
+        for period_idx in range(n_periods):
+            actual_timesteps_per_period.append(len(self.date_time_steps[period_idx]))
+        
+        for component, output_name, *bounds in self._variables:
+            component.output[output_name].set_requires_grad(True)
+            
+            # Get the full history tensor for this component
+            if component.output[output_name].do_normalization:
+                history_tensor = component.output[output_name].normalized_history.detach()
+            else:
+                history_tensor = component.output[output_name].history.detach()
+            
+            # Extract only actual timesteps (no padding) for each period
+            period_tensors = []
+            for period_idx in range(n_periods):
+                actual_timesteps = actual_timesteps_per_period[period_idx]
+                period_data = history_tensor[period_idx, :actual_timesteps]
+                period_tensors.append(period_data)
+            
+            # Concatenate all periods for this variable
+            flattened_history = torch.cat(period_tensors, dim=0)
+            x0_tensors.append(flattened_history)
+            
+            # Set bounds for actual timesteps only
+            total_actual_elements = flattened_history.numel()
+            for _ in range(total_actual_elements):
                 if len(bounds) >= 2:
                     lower, upper = bounds[0], bounds[1]
                     if component.output[output_name].do_normalization:
@@ -1082,8 +1106,19 @@ class Optimizer:
                     bounds_list.append((lower, upper))
                 else:
                     bounds_list.append((None, None))
+        
+        # Store the actual timesteps info for use in __obj_ad
+        self._actual_timesteps_per_period = actual_timesteps_per_period
+        
+        # Interleave the tensors: [var1_t0, var2_t0, var1_t1, var2_t1, ...]
+        # This matches the expected structure for the theta vector
+        if x0_tensors:
+            # Stack tensors and transpose to interleave
+            stacked = torch.stack(x0_tensors, dim=1)  # Shape: (total_actual_timesteps, n_variables)
+            x0 = stacked.flatten().detach().numpy()  # Flatten to get interleaved structure
+        else:
+            x0 = np.array([])
 
-        x0 = np.array(x0)
 
         # Create bounds object for SciPy
         if all(b[0] is not None and b[1] is not None for b in bounds_list):
@@ -1103,7 +1138,6 @@ class Optimizer:
                     start_time=self._start_time,
                     end_time=self._end_time,
                     step_size=self._stepSize,
-                    simulator=self.simulator,
                 )
                 return component_or_value.output["scheduleValue"].history
             elif isinstance(component_or_value, torch.Tensor):
@@ -1181,27 +1215,48 @@ class Optimizer:
         Objective function for automatic differentiation.
 
         Args:
-            theta (torch.Tensor): Flattened parameter vector of size N*M where
-                                 N = number of timesteps, M = number of actuators.
+            theta (torch.Tensor): Flattened parameter vector containing values for all periods,
+                                 timesteps, and actuators.
 
         Returns:
             torch.Tensor: Objective value.
         """
-        # Reshape theta from flattened vector (N*M) to matrix (N, M)
-        n_timesteps = len(self.simulator.date_time_steps)
+        # Reshape theta using vectorized operations
         n_actuators = len(self._variables)
-        theta_matrix = theta.reshape(n_timesteps, n_actuators)
-        # Update decision variables for each timestep using proper initialization
+        n_periods = len(self._start_time)
+        
+        # Reshape theta from interleaved format [var1_t0, var2_t0, var1_t1, var2_t1, ...]
+        # to (total_actual_timesteps, n_variables) format
+        total_actual_timesteps = int(len(theta) / n_actuators)
+        theta_matrix = theta.reshape(total_actual_timesteps, n_actuators)
+        
+        # Update decision variables for each actuator
         for i, (component, output_name, *bounds) in enumerate(self._variables):
-            # Extract values for this actuator across all timesteps
-            values = component.output[output_name].denormalize(theta_matrix[:, i])
-            # Initialize with the new values
-
+            # Extract values for this actuator across all actual timesteps
+            actuator_values = theta_matrix[:, i]
+            
+            # Reconstruct the full padded tensor shape (n_periods, max_timesteps_per_period)
+            original_shape = component.output[output_name].history.shape
+            reconstructed_tensor = torch.full(original_shape, float('nan'), dtype=torch.float64)
+            
+            # Fill in the actual values period by period
+            value_idx = 0
+            for period_idx in range(n_periods):
+                actual_timesteps = self._actual_timesteps_per_period[period_idx]
+                period_values = actuator_values[value_idx:value_idx + actual_timesteps]
+                reconstructed_tensor[period_idx, :actual_timesteps] = period_values
+                value_idx += actual_timesteps
+            
+            # Denormalize if needed
+            if component.output[output_name].do_normalization:
+                values = component.output[output_name].denormalize(reconstructed_tensor)
+            else:
+                values = reconstructed_tensor
+            
+            # Initialize with the new values (including padding)
             component.output[output_name].initialize(
-                start_time=self._start_time,
-                end_time=self._end_time,
-                step_size=self._stepSize,
-                simulator=self.simulator,
+                n_timesteps=self.n_timesteps,
+                batch_size=len(self._start_time),
                 values=values,
                 force=True,
             )

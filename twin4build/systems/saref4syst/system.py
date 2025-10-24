@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 import datetime
-from typing import Union
+from typing import Union, List
 
 # Third party imports
 # from twin4build.utils.plot.simulation_result import SimulationResult
@@ -214,18 +214,18 @@ class System:
 
     def do_step(
         self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
+        second_time: List[float],
+        date_time: List[datetime.datetime],
+        step_size: List[int],
         step_index: int,
     ) -> None:
         """
         Do a single step of the system.
 
         Args:
-            second_time (float): The current time in seconds.
-            date_time (datetime.datetime): The current date and time.
-            step_size (int): The step size of the simulation in seconds.
+            second_time (List[float]): The current time in seconds.
+            date_time (List[datetime.datetime]): The current date and time.
+            step_size (List[int]): The step size of the simulation in seconds.
             step_index (int): The current step index.
         """
         pass

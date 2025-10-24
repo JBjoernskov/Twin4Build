@@ -24,6 +24,7 @@ import torch
 import numpy as np
 import pandas as pd
 import datetime
+import time
 from dateutil import tz
 
 
@@ -355,19 +356,18 @@ def estimate_parameters(df):
     # Create estimator
     simulator = tb.Simulator(model)
 
-
-
     # Run initial simulation
     simulator.simulate(
         step_size=600,
         start_time=df.index[0],
         end_time=df.index[-1] + pd.Timedelta(seconds=600)
     )
-
     # Extract results
     thermal_sys = model.components["ThermalSystem"]
-    estimated_T_a = thermal_sys.ss_model.output["y"].history[0,:,0].detach().numpy()
-    estimated_T_b = thermal_sys.ss_model.output["y"].history[0,:,3].detach().numpy()
+    estimated_T_a = thermal_sys.ss_model.output["y"].history[:,:,0].detach().numpy()
+    estimated_T_b = thermal_sys.ss_model.output["y"].history[:,:,3].detach().numpy()
+    estimated_T_a = estimated_T_a.reshape((estimated_T_a.shape[0]*estimated_T_a.shape[1]))
+    estimated_T_b = estimated_T_b.reshape((estimated_T_b.shape[0]*estimated_T_b.shape[1]))
     
     measured_T_a = df['T_a_measured'].values
     measured_T_b = df['T_b_measured'].values
@@ -422,18 +422,36 @@ def estimate_parameters(df):
     measurements = [(temp_a_sensor, 0.05), (temp_b_sensor, 0.05)]
     
     print("\nRunning estimation (this may take a few minutes)...")
+
+    # Parallel simulation
+    start_time = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc) # [datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 3, tzinfo=datetime.timezone.utc)]
+    end_time = datetime.datetime(2024, 1, 4, tzinfo=datetime.timezone.utc) # [datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 3, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 4, tzinfo=datetime.timezone.utc)]
+    step_size = 600
+    
+    # 🕐 TIMING: Parameter estimation with 3 parallel periods
+    print(f"\n🕐 Starting parameter estimation...")
+    print(f"   Method: ('scipy', 'SLSQP', 'ad')")
+    print(f"   Parameters to estimate: {len(parameters)}")
+    
+    start_time_estimation = time.time()
     
     # Run estimation
-    estimator.estimate(
-        start_time=df.index[0],
-        end_time=df.index[-1] + pd.Timedelta(seconds=600),
-        step_size=600,
+    result = estimator.estimate(
+        start_time=start_time,
+        end_time=end_time,
+        step_size=step_size,
         parameters=parameters,
         measurements=measurements,
         n_warmup=20,
         method=("scipy", "SLSQP", "ad"),
-        options={"maxiter": 100, "ftol": 1e-6}
+        options={"maxiter": 500, "ftol": 1e-10}
     )
+    
+    end_time_estimation = time.time()
+    estimation_duration = end_time_estimation - start_time_estimation
+    
+    print(f"\n✅ Parameter estimation completed!")
+    print(f"   Total time: {estimation_duration:.2f} seconds ({estimation_duration/60:.2f} minutes)")
     
     # Extract results
     estimated = ThermalParameters(
@@ -451,10 +469,44 @@ def estimate_parameters(df):
     )
     
     print("✓ Estimation complete!")
-    print(f"\nEstimated parameters:")
-    print(f"  R_wa = {estimated.R_wa:.3e} K/W")
-    print(f"  C_a  = {estimated.C_a:.3e} J/K")
-    print("  ... (improved accuracy)")
+    
+    # True values (from ThermalParameters default constructor)
+    true = ThermalParameters()  # Uses default true values
+    
+    # Create comparison table
+    print(f"\n{'='*80}")
+    print("PARAMETER ESTIMATION RESULTS")
+    print(f"{'='*80}")
+    print(f"{'Parameter':<12} {'Unit':<8} {'True Value':<12} {'Initial Guess':<14} {'Estimated':<12} {'Error (%)':<10}")
+    print(f"{'-'*80}")
+    
+    # Thermal resistances
+    params = [
+        ('R_wa', 'K/W', true.R_wa, initial.R_wa, estimated.R_wa),
+        ('R_ia', 'K/W', true.R_ia, initial.R_ia, estimated.R_ia),
+        ('R_wao', 'K/W', true.R_wao, initial.R_wao, estimated.R_wao),
+        ('R_ib', 'K/W', true.R_ib, initial.R_ib, estimated.R_ib),
+        ('R_wb', 'K/W', true.R_wb, initial.R_wb, estimated.R_wb),
+        ('R_wbo', 'K/W', true.R_wbo, initial.R_wbo, estimated.R_wbo),
+        ('C_a', 'J/K', true.C_a, initial.C_a, estimated.C_a),
+        ('C_wa', 'J/K', true.C_wa, initial.C_wa, estimated.C_wa),
+        ('C_i', 'J/K', true.C_i, initial.C_i, estimated.C_i),
+        ('C_b', 'J/K', true.C_b, initial.C_b, estimated.C_b),
+        ('C_wb', 'J/K', true.C_wb, initial.C_wb, estimated.C_wb),
+    ]
+    
+    for param_name, unit, true_val, initial_val, estimated_val in params:
+        error_pct = abs((estimated_val - true_val) / true_val) * 100
+        print(f"{param_name:<12} {unit:<8} {true_val:<12.3e} {initial_val:<14.3e} {estimated_val:<12.3e} {error_pct:<10.1f}")
+    
+    print(f"{'-'*80}")
+    
+    # Summary statistics
+    errors = [abs((est - true) / true) * 100 for _, _, true, _, est in params]
+    print(f"Mean absolute error: {np.mean(errors):.1f}%")
+    print(f"Max error: {np.max(errors):.1f}%")
+    print(f"Parameters within 10% error: {sum(1 for e in errors if e <= 10)}/{len(errors)}")
+    print(f"{'='*80}")
     
     return estimated, model
 
@@ -515,6 +567,121 @@ def validate_model(df, model):
 # ============================================================================
 # STEP 4: OPTIMAL CONTROL
 # ============================================================================
+
+def compare_timing_strategies(df, model):
+    """Compare timing: 1 long period (3 days) vs 3 short periods (1 day each)"""
+    print("\n" + "="*60)
+    print("TIMING COMPARISON: LONG vs SHORT PERIODS")
+    print("="*60)
+    print("Comparing parameter estimation performance:\n")
+
+
+    initial = ThermalParameters(
+        R_wa=0.01, R_ia=0.002, R_wao=0.01,
+        R_ib=0.002, R_wb=0.01, R_wbo=0.01,
+        C_a=1e6, C_wa=5e5, C_i=1e6, C_b=1e6, C_wb=5e5
+    )
+    
+    # Setup common parameters
+    thermal_sys = model.components["ThermalSystem"]
+    parameters = [
+        (thermal_sys, "R_wa_param", initial.R_wa, 0.001, 0.1),
+        (thermal_sys, "R_ia_param", initial.R_ia, 0.001, 0.1),
+        (thermal_sys, "R_wao_param", initial.R_wao, 0.001, 0.1),
+        (thermal_sys, "R_ib_param", initial.R_ib, 0.001, 0.1),
+        (thermal_sys, "R_wb_param", initial.R_wb, 0.001, 0.1),
+        (thermal_sys, "R_wbo_param", initial.R_wbo, 0.001, 0.1),
+        (thermal_sys, "C_a_param", initial.C_a, 1e5, 5e6),
+        (thermal_sys, "C_wa_param", initial.C_wa, 1e5, 2e6),
+        (thermal_sys, "C_i_param", initial.C_i, 1e5, 5e6),
+        (thermal_sys, "C_b_param", initial.C_b, 1e5, 5e6),
+        (thermal_sys, "C_wb_param", initial.C_wb, 1e5, 2e6),
+    ]
+    
+    temp_a_sensor = model.components["TempASensor"]
+    temp_b_sensor = model.components["TempBSensor"]
+    measurements = [(temp_a_sensor, 0.05), (temp_b_sensor, 0.05)]
+    
+    # Strategy 1: One long period (3 days)
+    print("📊 STRATEGY 1: Single long period (3 days)")
+    estimator1 = tb.Estimator(tb.Simulator(model))
+    
+    start_time_long = [datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)]
+    end_time_long = [datetime.datetime(2024, 1, 4, tzinfo=datetime.timezone.utc)]
+    step_size = 600
+    
+    print(f"   Periods: {len(start_time_long)}")
+    print(f"   Duration per period: 3 days")
+    print(f"   Total duration: 3 days")
+    
+    start_time_est1 = time.time()
+    result1 = estimator1.estimate(
+        start_time=start_time_long,
+        end_time=end_time_long,
+        step_size=step_size,
+        parameters=parameters,
+        measurements=measurements,
+        n_warmup=20,
+        method=("scipy", "SLSQP", "ad"),
+        options={"maxiter": 100, "ftol": 1e-8}  # Reduced iterations for comparison
+    )
+    duration1 = time.time() - start_time_est1
+    
+    print(f"   ✅ Completed in: {duration1:.2f} seconds ({duration1/60:.2f} minutes)")
+    if hasattr(result1, 'nfev'):
+        print(f"   Function evaluations: {result1.nfev}")
+    
+    # Strategy 2: Three short periods (1 day each)
+    print(f"\n📊 STRATEGY 2: Multiple short periods (3 × 1 day)")
+    estimator2 = tb.Estimator(tb.Simulator(model))
+    
+    start_time_short = [
+        datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+        datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+        datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
+    ]
+    end_time_short = [
+        datetime.datetime(2024, 1, 4, tzinfo=datetime.timezone.utc),
+        datetime.datetime(2024, 1, 4, tzinfo=datetime.timezone.utc),
+        datetime.datetime(2024, 1, 4, tzinfo=datetime.timezone.utc)
+    ]
+    
+    print(f"   Periods: {len(start_time_short)}")
+    print(f"   Duration per period: 1 day")
+    print(f"   Total duration: 3 days")
+    
+    start_time_est2 = time.time()
+    result2 = estimator2.estimate(
+        start_time=start_time_short,
+        end_time=end_time_short,
+        step_size=step_size,
+        parameters=parameters,
+        measurements=measurements,
+        n_warmup=20,
+        method=("scipy", "SLSQP", "ad"),
+        options={"maxiter": 100, "ftol": 1e-8}  # Reduced iterations for comparison
+    )
+    duration2 = time.time() - start_time_est2
+    
+    print(f"   ✅ Completed in: {duration2:.2f} seconds ({duration2/60:.2f} minutes)")
+    if hasattr(result2, 'nfev'):
+        print(f"   Function evaluations: {result2.nfev}")
+    
+    # Comparison
+    print(f"\n📈 PERFORMANCE COMPARISON:")
+    print(f"   Strategy 1 (1×3 days): {duration1:.2f}s")
+    print(f"   Strategy 2 (3×1 day):  {duration2:.2f}s")
+    
+    if duration1 > duration2:
+        speedup = duration1 / duration2
+        print(f"   🚀 Strategy 2 is {speedup:.2f}x FASTER")
+    else:
+        slowdown = duration2 / duration1
+        print(f"   🐌 Strategy 2 is {slowdown:.2f}x slower")
+    
+    print(f"   Time difference: {abs(duration1 - duration2):.2f} seconds")
+    print(f"   Relative difference: {abs(duration1 - duration2)/max(duration1, duration2)*100:.1f}%")
+
 
 def optimize_control(df, model):
     """Optimize heating schedule for energy savings"""
@@ -585,30 +752,53 @@ def optimize_control(df, model):
     radiator_input = model.components["RadiatorInput"]
     model.remove_connection(radiator_input, thermal_sys, "value", "u")
     model.add_connection(schedule, thermal_sys, "scheduleValue", "u", input_port_index=0)
-    model.load()
+    model.load(verbose=0)
     
     # Run optimization
     print("Running optimization...")
     optimizer = tb.Optimizer(tb.Simulator(model))
+
+    # Parallel simulation
+    start_time = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc) # [datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 3, tzinfo=datetime.timezone.utc)]
+    end_time = datetime.datetime(2024, 1, 4, tzinfo=datetime.timezone.utc) # [datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 3, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 4, tzinfo=datetime.timezone.utc)]
+    step_size = 600
     
+    # 🎯 TIMING: Optimization with 3 parallel periods
     temp_sensor = model.components["TempASensor"]
-    optimizer.optimize(
-        start_time=df.index[0],
-        end_time=df.index[-1] + pd.Timedelta(seconds=600),
-        step_size=600,
-        variables=[(schedule, "scheduleValue", 0, 2000)],
-        objectives=[(schedule, "scheduleValue", "min")],
-        ineq_cons=[
-            (temp_sensor, "measuredValue", "lower", heating_sp),
-            (temp_sensor, "measuredValue", "upper", cooling_sp)
-        ],
+    variables = [(schedule, "scheduleValue", 0, 2000)]
+    objectives = [(schedule, "scheduleValue", "min")]
+    ineq_cons = [
+        (temp_sensor, "measuredValue", "lower", heating_sp),
+        (temp_sensor, "measuredValue", "upper", cooling_sp)
+    ]
+    
+    print(f"\n🎯 Starting optimization...")
+    print(f"   Variables to optimize: {len(variables)}")
+    print(f"   Objectives: {len(objectives)}")
+    print(f"   Inequality constraints: {len(ineq_cons)}")
+    
+    start_time_optimization = time.time()
+    
+    opt_result = optimizer.optimize(
+        start_time=start_time,
+        end_time=end_time,
+        step_size=step_size,
+        variables=variables,
+        objectives=objectives,
+        ineq_cons=ineq_cons,
         method="scipy",
         options={"maxiter": 500, "disp": True}
     )
     
+    end_time_optimization = time.time()
+    optimization_duration = end_time_optimization - start_time_optimization
+    
+    print(f"\n✅ Optimization completed!")
+    print(f"   Total time: {optimization_duration:.2f} seconds ({optimization_duration/60:.2f} minutes)")
+    
     # Extract results
-    optimized_T = thermal_sys.ss_model.output["y"].history[0,:,0].detach().numpy()
-    optimized_Q = schedule.output["scheduleValue"].history[0,:].detach().numpy()
+    optimized_T = thermal_sys.ss_model.output["y"].history[:,:,0].detach().flatten().numpy()
+    optimized_Q = schedule.output["scheduleValue"].history[:,:].detach().flatten().numpy()
     optimized_energy = np.sum(optimized_Q) * 600 / 3600 / 1000  # kWh
     savings = (baseline_energy - optimized_energy) / baseline_energy * 100
     
@@ -617,8 +807,8 @@ def optimize_control(df, model):
     
     # Plot results
     time_index = pd.date_range(start=df.index[0], periods=len(baseline_T), freq='10min')
-    heating_sp_vals = heating_sp.output["scheduleValue"].history[0,:].detach().numpy()
-    cooling_sp_vals = cooling_sp.output["scheduleValue"].history[0,:].detach().numpy()
+    heating_sp_vals = heating_sp.output["scheduleValue"].history[:,:].detach().flatten().numpy()
+    cooling_sp_vals = cooling_sp.output["scheduleValue"].history[:,:].detach().flatten().numpy()
     
     tb.plot.plot(
         time=time_index,
@@ -718,18 +908,23 @@ def _build_model(df, params):
         def config(self):
             return self._config
         
-        def initialize(self, start_time, end_time, step_size, simulator):
+        def initialize(self, start_time, end_time, step_size):
+            _, _, n_timesteps = tb.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+            batch_size = len(start_time)
             for port in self.input.values():
-                port.initialize(start_time, end_time, step_size, simulator)
+                port.initialize(n_timesteps, batch_size=batch_size)
             for port in self.output.values():
-                port.initialize(start_time, end_time, step_size, simulator)
+                port.initialize(n_timesteps, batch_size=batch_size)
             
             self._create_ss()
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
             self.INITIALIZED = True
         
         def do_step(self, second_time=None, date_time=None, step_size=None, step_index=None):
             self.ss_model.input["u"].set(self.input["u"].get(), step_index=step_index)
+            # print("u.shape", self.ss_model.input["u"].tensor.shape)
+            # print("u", self.ss_model.input["u"].tensor)
+            # aa
             self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
             self.output["y"].set(self.ss_model.output["y"].get(), step_index)
     
@@ -763,10 +958,48 @@ def _build_model(df, params):
         model.add_connection(thermal_sys, temp_a_sensor, "y", "measuredValue", output_port_index=0)
         model.add_connection(thermal_sys, temp_b_sensor, "y", "measuredValue", output_port_index=3)
         
-        model.load()
+        model.load(verbose=0)
         return model
 
 
+
+def sim():
+    # Initial guess (deliberately inaccurate)
+    initial = ThermalParameters(
+        R_wa=0.01, R_ia=0.002, R_wao=0.01,
+        R_ib=0.002, R_wb=0.01, R_wbo=0.01,
+        C_a=1e6, C_wa=5e5, C_i=1e6, C_b=1e6, C_wb=5e5
+    )
+
+    # R_wa=0.014, R_ia=0.005, R_wao=0.016,
+    #              R_ib=0.004, R_wb=0.014, R_wbo=0.018,
+    #              C_a=5e5, C_wa=15e5, C_i=1e5, C_b=1e5, C_wb=3e5):
+    
+    print("Initial parameter guess:")
+    print(f"  R_wa = {initial.R_wa:.3e} K/W")
+    print(f"  C_a  = {initial.C_a:.3e} J/K")
+    print("  ... (11 parameters total)")
+    
+
+    df = load_data()
+
+
+    # Build model
+    model = _build_model(df, initial)
+    
+    # Create estimator
+    simulator = tb.Simulator(model)
+
+    start_time = [datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc)]
+    end_time = [datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 3, tzinfo=datetime.timezone.utc)]
+    step_size = 600
+
+    # Run initial simulation
+    simulator.simulate(
+        start_time=start_time,
+        end_time=end_time,
+        step_size=step_size,
+    )
 # ============================================================================
 # MAIN PROGRAM
 # ============================================================================
@@ -797,6 +1030,9 @@ def main():
     # Step 3: Validate the calibrated model
     validate_model(df, model)
     
+    # Step 3.5: Compare timing strategies (optional)
+    # compare_timing_strategies(df, model)
+    
     # Step 4: Optimize heating control
     optimize_control(df, model)
     
@@ -823,3 +1059,4 @@ if __name__ == "__main__":
     
     # Run the workflow
     main()
+    # sim()

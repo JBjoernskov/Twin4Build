@@ -194,6 +194,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         simulator: core.Simulator,
     ) -> None:
         """Initialize the mass balance model by setting up the state-space representation."""
+        batch_size = len(start_time)
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
@@ -201,6 +202,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
                 end_time=end_time,
                 step_size=step_size,
                 simulator=simulator,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
@@ -208,6 +210,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
                 end_time=end_time,
                 step_size=step_size,
                 simulator=simulator,
+                batch_size=batch_size,
             )
 
         if not self.INITIALIZED:

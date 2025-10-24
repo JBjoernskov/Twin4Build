@@ -15,11 +15,11 @@ from twin4build.utils.mkdir_in_root import mkdir_in_root
 def parseDateStr(s):
     if s != "":
         try:
-            return np.date_time64(parse(s))
+            return np.datetime64(parse(s))
         except ValueError:
-            return np.date_time64("NaT")
+            return np.datetime64("NaT")
     else:
-        return np.date_time64("NaT")
+        return np.datetime64("NaT")
 
 
 def sample_from_df(
@@ -115,14 +115,14 @@ def sample_from_df(
                 df[column], errors="coerce"
             )  # Remove string entries
 
-    df["date_time"] = pd.to_date_time(df["date_time"])  # ), format=format)
+    df["date_time"] = pd.to_datetime(df["date_time"])  # ), format=format)
     if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
         has_tz = True
         df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
     else:
         has_tz = False
 
-    df = df.set_index(pd.date_timeIndex(df["date_time"]))
+    df = df.set_index(pd.DatetimeIndex(df["date_time"]))
     df = df.drop(columns=["date_time"])
 
     if preserve_order and has_tz == False:
