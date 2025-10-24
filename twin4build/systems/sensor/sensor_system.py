@@ -680,10 +680,9 @@ class SensorSystem(core.System):
 
     def initialize(
         self,
-        start_time: Optional[datetime.datetime] = None,
-        end_time: Optional[datetime.datetime] = None,
-        step_size: Optional[float] = None,
-        simulator: Optional[Any] = None,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[float],
     ) -> None:
         """Initialize the sensor system.
 
@@ -721,7 +720,6 @@ class SensorSystem(core.System):
                 start_time=start_time,
                 end_time=end_time,
                 step_size=step_size,
-                simulator=simulator,
             )
 
         else:
@@ -731,26 +729,23 @@ class SensorSystem(core.System):
             len(self.connects_at) == 0 and self.physicalSystem is None
         ) == False, f'Sensor object "{self.id}" has no inputs and and holds no data.'
 
+        _, _, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        batch_size = len(start_time)
+
         if self.is_leaf:
             self.output["measuredValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=n_timesteps,
+                batch_size=batch_size,
                 values=self.physicalSystem.df.values,
             )
         else:
             self.input["measuredValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=n_timesteps,
+                batch_size=batch_size,
             )
             self.output["measuredValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=n_timesteps,
+                batch_size=batch_size,
             )
 
     def do_step(
@@ -778,10 +773,9 @@ class SensorSystem(core.System):
 
     def get_physical_readings(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[float],
     ) -> pd.DataFrame:
         """Retrieve physical sensor readings for a specified time period.
 
@@ -799,5 +793,5 @@ class SensorSystem(core.System):
         assert (
             self.physicalSystem is not None
         ), f'Cannot return physical readings for Sensor with id "{self.id}" as the argument "filename" was not provided when the object was initialized.'
-        self.physicalSystem.initialize(start_time, end_time, step_size, simulator)
+        self.physicalSystem.initialize(start_time, end_time, step_size)
         return self.physicalSystem.df
