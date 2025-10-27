@@ -87,7 +87,7 @@ class PrintProgress:
         self.removed_level = False
         self.level_stack = [0]
         self.has_printed = False
-        self._verbose = 0
+        self._verbose = 3
         self._current_level_indent = 0
         self._block_count = 0
         self.logfile = None
@@ -174,9 +174,6 @@ class PrintProgress:
         self._is_active = True
 
     def print_lines(self):
-        if self.verbose==0:
-            return
-            
         f = self.get_log()
         
         # Initialize curses if needed and we're not logging to file
@@ -710,6 +707,9 @@ class PrintProgress:
         self.add_line(indent=indent)
 
     def remove_level(self):
+        if self.verbose==0:
+            return
+
         if self.level[-1] == 0:
             return  # "Already at the root level. Cannot remove level."
 
@@ -748,6 +748,8 @@ class PrintProgress:
 
     def add_level(self, n=2):
         assert n >= 0, "Cannot add negative number of levels"
+        if self.verbose==0:
+            return
         if self.current_level + 2 > self.verbose:  # +2 because of the added level
             self._block_count += 1
             return
@@ -762,7 +764,7 @@ class PrintProgress:
         self.added_level = True
         self.removed_level = False
 
-    def get_line(self, s):
+    def _get_line(self, s):
         match_idx = []
         for i, (indent, message, status) in enumerate(
             zip(self.indent, self.message, self.status)
@@ -793,12 +795,14 @@ class PrintProgress:
         self, message=None, status="", change_status=False, ignore_no_match=False
     ):
         assert message is None or isinstance(message, str), "Message must be a string or None"
+        if self.verbose==0:
+            return
         # change_status = False
         if change_status:
             if self._block_count > 0:
                 ignore_no_match = True
             assert message is not None, "Cannot change status of None"
-            match_idx = self.get_line(message)
+            match_idx = self._get_line(message)
             if len(match_idx) == 0:
                 if ignore_no_match:
                     pass
@@ -844,7 +848,7 @@ class PrintProgress:
         self.removed_level = False
         self.level_stack = [0]
         self.has_printed = False
-        self._verbose = 0
+        # self._verbose = 3 # dont reset verbose level
         self._current_level_indent = 0
         self._block_count = 0
         self.logfile = None

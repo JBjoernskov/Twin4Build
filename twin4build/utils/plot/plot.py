@@ -481,7 +481,7 @@ def plot(
     if not components_1axis:
         raise ValueError("At least one entry must be specified for axis=1")
     load_params()
-    fig, ax1 = plt.subplots(figsize=(12, 6))
+    fig, ax1 = plt.subplots(figsize=(12, 10)) # 12, 6
     if title:
         fig.suptitle(title, fontsize=20)
     # ax1.ticklabel_format(useOffset=False, style='plain')
@@ -602,7 +602,7 @@ def plot(
         lines.extend(ax_lines)
         labels.extend(ax_labels)
 
-    legend = fig.legend(lines, labels, loc="upper center", ncol=3)
+    legend = fig.legend(lines, labels, ncol=3, bbox_to_anchor=(0.5,0.95), loc="upper center") # , 
 
     # Set up pick event and create mapping between legend entries and plot lines
     for legend_line, plot_line in zip(legend.get_lines(), lines):

@@ -2,7 +2,7 @@
 import datetime
 import shutil
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 # Third party imports
 import numpy as np
@@ -509,7 +509,7 @@ class Model:
         fcn: Optional[Callable] = None,
         draw_semantic_model: bool = True,
         draw_simulation_model: bool = True,
-        verbose: int = 3,
+        verbose: Union[int, None] = None,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
         logfile: Optional[str] = None,
@@ -589,7 +589,8 @@ class Model:
         #     warnings.warn("The model is already loaded. Resetting model.")
         #     self.reset()
 
-        PRINTPROGRESS.verbose = verbose
+        if verbose is not None:
+            PRINTPROGRESS.verbose = verbose
         PRINTPROGRESS.logfile = logfile
 
         PRINTPROGRESS("Loading model", status="")

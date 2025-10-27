@@ -515,7 +515,7 @@ class SemanticModel:
         namespaces: Optional[Dict[str, str]] = None,
         format: Optional[str] = None,
         parse_namespaces=False,
-        verbose=3,
+        verbose=None,
         id: str = "semantic_model",
         dir_conf: List[str] = None,
     ):
@@ -526,7 +526,9 @@ class SemanticModel:
             namespaces: Optional additional namespace prefix-URI pairs
             format: Optional format specification ('xml', 'turtle', 'n3', 'nt', 'json-ld', etc.)
         """
-        PRINTPROGRESS.verbose = verbose
+        if verbose is not None:
+            PRINTPROGRESS.verbose = verbose
+
         self.id = id
         self.rdf_file = rdf_file
         if namespaces is None:

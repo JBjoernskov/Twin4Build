@@ -58,7 +58,7 @@ def build_state_space_matrices(R_wa, R_ia, R_wao, R_ib, R_wb, R_wbo,
     D = torch.zeros((5, 3), dtype=torch.float64)
 
 
-
+    # Solution - shouldnt be visible for students
     A[0, 0] = -(1/(R_wa * C_a) + 1/(R_ia * C_a))
     A[0, 1] = 1/(R_wa * C_a)
     A[0, 2] = 1/(R_ia * C_a)
@@ -156,12 +156,12 @@ def verify_matrices():
     print("="*60)
     print("VERIFYING YOUR STATE-SPACE MATRICES")
     print("="*60)
-    
-    # Test with example parameters
+
+    # Initial guess (deliberately inaccurate)
     test_params = ThermalParameters(
-        R_wa=0.014, R_ia=0.005, R_wao=0.016,
-        R_ib=0.004, R_wb=0.014, R_wbo=0.018,
-        C_a=5e5, C_wa=15e5, C_i=1e5, C_b=1e5, C_wb=3e5
+        R_wa=0.01, R_ia=0.002, R_wao=0.01,
+        R_ib=0.002, R_wb=0.01, R_wbo=0.01,
+        C_a=1e6, C_wa=5e5, C_i=1e6, C_b=1e6, C_wb=5e5
     )
     
     A, B, C, D = build_state_space_matrices(
@@ -173,7 +173,7 @@ def verify_matrices():
     
     # Check dimensions and content
     checks_passed = 0
-    total_checks = 7
+    total_checks = 9
     
     print("\nDimension checks:")
     if A.shape == (5, 5):
@@ -219,6 +219,59 @@ def verify_matrices():
         checks_passed += 1
     else:
         print("✗ C matrix appears empty - please fill it in")
+
+
+    data_file = "bems_example_reference.csv"
+    df_ref = pd.read_csv(data_file, index_col=0, parse_dates=True)
+
+    data_file = "building_measurements.csv"
+    df = pd.read_csv(data_file, index_col=0, parse_dates=True)
+
+    model = _build_model(df, test_params)
+
+    # Create estimator
+    simulator = tb.Simulator(model)
+
+    # Run initial simulation
+    simulator.simulate(
+        step_size=600,
+        start_time=df.index[0],
+        end_time=df.index[-1] + pd.Timedelta(seconds=600)
+    )
+
+    print(df_ref.columns)
+
+    if torch.allclose(model.components["ThermalSystem"].output["y"].history[0,:,0], torch.tensor(df_ref['reference_T_a'].values)):
+        print("✓ Initial simulation passed")
+        checks_passed += 1
+    else:
+        print("✗ Initial simulation failed")
+
+
+    if torch.allclose(model.components["ThermalSystem"].output["y"].history[0,:,3], torch.tensor(df_ref['reference_T_b'].values)):
+        print("✓ Initial simulation passed")
+        checks_passed += 1
+    else:
+        print("✗ Initial simulation failed")
+
+
+    fig, axes = tb.plot.plot(
+        time=df.index,
+        entries=[
+            tb.plot.Entry(data=model.components["ThermalSystem"].output["y"].history[0,:,0].detach().numpy(), 
+                         label=r"$T_a$", color=tb.plot.Colors.blue, fmt="-", axis=1),
+            tb.plot.Entry(data=model.components["ThermalSystem"].output["y"].history[0,:,3].detach().numpy(), 
+                         label=r"$T_b$", color=tb.plot.Colors.red, fmt="--", axis=1),
+            tb.plot.Entry(data=df_ref['reference_T_a'].values, 
+                         label=r"$T_a$", color=tb.plot.Colors.green, fmt="-", axis=1),
+            tb.plot.Entry(data=df_ref['reference_T_b'].values, 
+                         label=r"$T_b$", color=tb.plot.Colors.green, fmt="--", axis=1),
+        ],
+        ylabel_1axis=r"Temperature $[^\circ$ C$]$",
+        show=True,
+        nticks=11
+    )
+    fig.savefig("initial_simulation_results.png", dpi=300)
 
 
 
@@ -963,43 +1016,43 @@ def _build_model(df, params):
 
 
 
-def sim():
-    # Initial guess (deliberately inaccurate)
-    initial = ThermalParameters(
-        R_wa=0.01, R_ia=0.002, R_wao=0.01,
-        R_ib=0.002, R_wb=0.01, R_wbo=0.01,
-        C_a=1e6, C_wa=5e5, C_i=1e6, C_b=1e6, C_wb=5e5
-    )
+# def sim():
+#     # Initial guess (deliberately inaccurate)
+#     initial = ThermalParameters(
+#         R_wa=0.01, R_ia=0.002, R_wao=0.01,
+#         R_ib=0.002, R_wb=0.01, R_wbo=0.01,
+#         C_a=1e6, C_wa=5e5, C_i=1e6, C_b=1e6, C_wb=5e5
+#     )
 
-    # R_wa=0.014, R_ia=0.005, R_wao=0.016,
-    #              R_ib=0.004, R_wb=0.014, R_wbo=0.018,
-    #              C_a=5e5, C_wa=15e5, C_i=1e5, C_b=1e5, C_wb=3e5):
+#     # R_wa=0.014, R_ia=0.005, R_wao=0.016,
+#     #              R_ib=0.004, R_wb=0.014, R_wbo=0.018,
+#     #              C_a=5e5, C_wa=15e5, C_i=1e5, C_b=1e5, C_wb=3e5):
     
-    print("Initial parameter guess:")
-    print(f"  R_wa = {initial.R_wa:.3e} K/W")
-    print(f"  C_a  = {initial.C_a:.3e} J/K")
-    print("  ... (11 parameters total)")
+#     print("Initial parameter guess:")
+#     print(f"  R_wa = {initial.R_wa:.3e} K/W")
+#     print(f"  C_a  = {initial.C_a:.3e} J/K")
+#     print("  ... (11 parameters total)")
     
 
-    df = load_data()
+#     df = load_data()
 
 
-    # Build model
-    model = _build_model(df, initial)
+#     # Build model
+#     model = _build_model(df, initial)
     
-    # Create estimator
-    simulator = tb.Simulator(model)
+#     # Create estimator
+#     simulator = tb.Simulator(model)
 
-    start_time = [datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc)]
-    end_time = [datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 3, tzinfo=datetime.timezone.utc)]
-    step_size = 600
+#     start_time = [datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc)]
+#     end_time = [datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc), datetime.datetime(2024, 1, 3, tzinfo=datetime.timezone.utc)]
+#     step_size = 600
 
-    # Run initial simulation
-    simulator.simulate(
-        start_time=start_time,
-        end_time=end_time,
-        step_size=step_size,
-    )
+#     # Run initial simulation
+#     simulator.simulate(
+#         start_time=start_time,
+#         end_time=end_time,
+#         step_size=step_size,
+#     )
 # ============================================================================
 # MAIN PROGRAM
 # ============================================================================
@@ -1059,4 +1112,3 @@ if __name__ == "__main__":
     
     # Run the workflow
     main()
-    # sim()
