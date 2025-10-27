@@ -15,7 +15,11 @@ import numpy as np
 import torch
 import torch.multiprocessing as multiprocessing
 import torch.nn as nn
-from fmpy.fmi2 import FMICallException
+try:
+    from fmpy.fmi2 import FMICallException
+except:
+    FMICallException = None
+    
 from scipy._lib._array_api import array_namespace
 from scipy.optimize import Bounds, least_squares, minimize
 
