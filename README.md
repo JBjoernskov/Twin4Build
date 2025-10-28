@@ -55,7 +55,7 @@ More examples are coming soon.
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration
 
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/feature/issue-74/batched-component-execution/twin4build/examples/bems_lecture/bems_example_lecture.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: RC modeling from scratch of 2 rooms with parameter estimation and heat optimization 
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Adding a custom System component - RC modeling from scratch of 2 rooms with parameter estimation and heat optimization
 
 ### Translator
 
