@@ -87,10 +87,10 @@ model = tb.Model(id="example_model")
 
 # Define components
 damper = tb.DamperTorchSystem(id="damper")
-space = tb.BuildingSpaceTorchSystem("space")
+space = tb.BuildingSpaceTorchSystem(id="space")
 
 # Add connections to the model
-self.add_connection(damper, space, 
+model.add_connection(damper, space, 
                     "airFlowRate", "supplyAirFlowRate")
 
 # Load the model
