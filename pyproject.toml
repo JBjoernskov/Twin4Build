@@ -5,6 +5,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages]
 find = {}  # Scan the project directory with the default parameters
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.package-data]
 "*" = ["*.xlsm", "*.ttl", "*.csv"]
 "twin4build.model.semantic_model.mappings" = ["*.yml"]

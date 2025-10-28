@@ -434,8 +434,10 @@ class Translator:
             for sp in sps:
                 _match_sp(sp, complete_groups, incomplete_groups)
 
+                # If the main pattern didn't find any matches, we try the equivalent patterns.
+
                 if len(complete_groups[component_cls][sp])==0:
-                    for sp_eq in sp.eq_sps:
+                    for sp_eq in sp.has_equivalent_sps:
                         _match_sp(sp_eq, complete_groups, incomplete_groups)
 
                         if len(complete_groups[component_cls][sp_eq])>0:
@@ -450,6 +452,7 @@ class Translator:
 
 
                                 new_node_map = sp_eq.map_back(_eq_group) # TODO: It maps the SP of the candidate back to the original SP.s
+                                sp_eq.apply_changes(semantic_model, new_node_map)
 
 
 

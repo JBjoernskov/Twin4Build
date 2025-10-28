@@ -481,7 +481,7 @@ def plot(
     if not components_1axis:
         raise ValueError("At least one entry must be specified for axis=1")
     load_params()
-    fig, ax1 = plt.subplots(figsize=(12, 10)) # 12, 6
+    fig, ax1 = plt.subplots(figsize=(12, 6)) # 12, 6
     if title:
         fig.suptitle(title, fontsize=20)
     # ax1.ticklabel_format(useOffset=False, style='plain')
@@ -652,6 +652,8 @@ def plot(
     # component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]
     # plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name('_'.join(component_ids))}.png")
     # fig.savefig(plot_filename, dpi=300, bbox_inches='tight')
+
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
 
     if show:
         plt.show()

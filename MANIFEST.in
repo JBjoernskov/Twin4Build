@@ -1,0 +1,7 @@
+include README.md
+include LICENSE.txt
+recursive-include twin4build *.csv
+recursive-include twin4build *.ttl
+recursive-include twin4build *.xlsm
+recursive-include twin4build *.yml
+recursive-include twin4build *.json
