@@ -437,7 +437,7 @@ class Translator:
                 # If the main pattern didn't find any matches, we try the equivalent patterns.
 
                 if len(complete_groups[component_cls][sp])==0:
-                    for sp_eq in sp.has_equivalent_sps:
+                    for sp_eq in sp.has_equivalent:
                         _match_sp(sp_eq, complete_groups, incomplete_groups)
 
                         if len(complete_groups[component_cls][sp_eq])>0:
@@ -448,11 +448,8 @@ class Translator:
 
 
                                 # Apply the listed changes to the semantic model.
-
-
-
-                                new_node_map = sp_eq.map_back(_eq_group) # TODO: It maps the SP of the candidate back to the original SP.s
-                                sp_eq.apply_changes(semantic_model, new_node_map)
+                                new_node_map = sp_eq.apply_changes(semantic_model, _eq_group) # TODO: It maps the SP of the candidate back to the original SP and applies the changes to the semantic model.
+                                complete_groups[component_cls][sp].append(new_node_map)
 
 
 
@@ -1876,11 +1873,22 @@ class SignaturePattern:
         self._ruleset = {}
         self._parameters = {}
         self._pedantic = pedantic
+        self._has_equivalent = []
+        self._is_equivalent_of = []
+        self._diff = None
 
         if self._pedantic:
             self.semantic_model.parse_namespaces(
                 self.semantic_model.graph, namespaces=self.semantic_model.namespaces
             )
+
+    @property
+    def has_equivalent(self):
+        return self._has_equivalent
+
+    @property
+    def is_equivalent_of(self):
+        return self._is_equivalent_of
 
     @property
     def parameters(self):
@@ -2008,9 +2016,94 @@ class SignaturePattern:
 
     def add_equivalent(self, sp, diff):
         """
-        Add
+        Add equivalent signature pattern and the corresponding diff between these.
         """
-        self.eq_sps.append((sp, diff))
+        self._has_equivalent.append(sp)
+        sp._diff = diff
+        sp._is_equivalent_of.append(self)
+        assert len(sp.has_equivalent)==0, "A signature cannot both be equivalent to and equivalent of another signature."
+        assert self.diff is None, "A signature cannot be equivalent to another signature if it has a diff."
+
+    def apply_changes(self, semantic_model, _eq_group):
+        """
+        Maps the SP of the candidate back to the original SP and applies the changes to the semantic model.
+        """
+        assert self._diff is not None, "A signature cannot map back if it has no diff."
+
+
+        original_sp = self._is_equivalent_of[0]
+        sp_sm_map = {sp_subject: None for sp_subject in original_sp.nodes}
+
+        for sp_node, sm_node in sp_sm_map.items():
+            if sp_node in _eq_group:
+                sm_node = _eq_group[sp_node]
+                sp_sm_map[sp_node] = sm_node
+
+
+        for removal in self._diff.removals:
+            subject, predicate, object = removal
+            subject_instance = _eq_group[subject]
+            object_instance = _eq_group[object]
+            semantic_model.graph.remove((subject_instance.uri, predicate, object_instance.uri))
+
+        # Locate uri already present in semantic model and reuse these. If not, create new ones.
+        # The ones created should match the ones not mapped in sp_sm_map.
+        for addition in self._diff.additions:
+            subject, predicate, object = addition
+            subject_type_uri = subject.cls[0].uri # Node.SemanticType.uri
+            object_type_uri = object.cls[0].uri # Node.SemanticType.uri
+
+
+            if subject in _eq_group:
+                subject_instance_uri = _eq_group[subject].uri
+            else:
+                # Make new instance
+                name = str(hash(subject))
+                subject_instance_uri = semantic_model.T4B.__getitem__(name) # Define namespace
+                semantic_model.graph.add(
+                    (
+                        subject_instance_uri,
+                        core.namespace.RDF.type,
+                        subject_type_uri,
+                    )
+                )
+
+            if object in _eq_group:
+                object_instance_uri = _eq_group[object].uri
+            else:
+                # Make new instance
+                name = str(hash(object))
+                object_instance_uri = semantic_model.T4B.__getitem__(name) # Define namespace
+                semantic_model.graph.add(
+                    (
+                        object_instance_uri,
+                        core.namespace.RDF.type,
+                        object_type_uri,
+                    )
+                )
+
+            semantic_model.graph.add((subject_instance_uri, predicate, object_instance_uri))
+
+            sp_sm_map[subject] = semantic_model.get_instance(subject_instance_uri)
+            sp_sm_map[object] = semantic_model.get_instance(object_instance_uri)
+
+
+        assert all(sp_sm_map[sp_node] is not None for sp_node in original_sp.nodes), "All nodes in the original SP must be mapped to a semantic model instance. Maybe the diff is not complete."
+
+        return sp_sm_map
+
+
+class Diff:
+    def __init__(self):
+        self.additions = []
+        self.removals = []
+
+    def add(self, subject, predicate, object):
+        self.additions.append((subject, predicate, object))
+
+    def remove(self, subject, predicate, object):
+        self.removals.append((subject, predicate, object))
+
 
 
 class Rule:
