@@ -9,7 +9,8 @@ from typing import Optional
 import fmpy.fmi2 as fmi2
 import numpy as np
 from fmpy import extract, read_model_description
-from fmpy.fmi2 import FMICallException, FMU2Slave
+from fmpy.fmi1 import FMICallException
+from fmpy.fmi2 import FMU2Slave
 
 # Local application imports
 import twin4build.core as core
