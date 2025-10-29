@@ -13,10 +13,7 @@ import torch
 # import george
 # from george import kernels
 
-try:
-    from fmpy.fmi2 import FMICallException
-except:
-    FMICallException = None
+from fmpy.fmi1 import FMICallException
 from tqdm import tqdm
 
 # Local application imports

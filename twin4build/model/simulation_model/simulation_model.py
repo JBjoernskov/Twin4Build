@@ -279,11 +279,10 @@ class SimulationModel:
         self._semantic_model = core.SemanticModel(
             id=self._id,
             namespaces={
-                "SIM": core.namespace.SIM,
-                "SAREF": core.namespace.SAREF,
-                "S4BLDG": core.namespace.S4BLDG,
+                "T4B": core.namespace.T4B,
+                # "SAREF": core.namespace.SAREF,
+                # "S4BLDG": core.namespace.S4BLDG,
                 "S4SYST": core.namespace.S4SYST,
-                "FSO": core.namespace.FSO,
             },
             dir_conf=self._dir_conf + ["semantic_model"],
         )
@@ -668,20 +667,20 @@ class SimulationModel:
             
 
         if components == self._components:
-            sender_component_uri = self._semantic_model.SIM.__getitem__(
+            sender_component_uri = self._semantic_model.T4B.__getitem__(
                 sender_component.id
             )
-            receiver_component_uri = self._semantic_model.SIM.__getitem__(
+            receiver_component_uri = self._semantic_model.T4B.__getitem__(
                 receiver_component.id
             )
 
             sender_component_class_name = sender_component.__class__.__name__
             receiver_component_class_name = receiver_component.__class__.__name__
 
-            connection_uri = self._semantic_model.SIM.__getitem__(
+            connection_uri = self._semantic_model.T4B.__getitem__(
                 str(hash(sender_obj_connection))
             )
-            connection_point_uri = self._semantic_model.SIM.__getitem__(
+            connection_point_uri = self._semantic_model.T4B.__getitem__(
                 str(hash(receiver_component_connection_point))
             )
 
@@ -697,27 +696,27 @@ class SimulationModel:
                 (
                     sender_component_uri,
                     RDF.type,
-                    core.namespace.SIM.__getitem__(sender_component_class_name),
+                    core.namespace.T4B.__getitem__(sender_component_class_name),
                 )
             )
             self._semantic_model.graph.add(
                 (
                     receiver_component_uri,
                     RDF.type,
-                    core.namespace.SIM.__getitem__(receiver_component_class_name),
+                    core.namespace.T4B.__getitem__(receiver_component_class_name),
                 )
             )
 
             self._semantic_model.graph.add(
                 (
-                    core.namespace.SIM.__getitem__(sender_component_class_name),
+                    core.namespace.T4B.__getitem__(sender_component_class_name),
                     RDFS.subClassOf,
                     core.namespace.S4SYST.System,
                 )
             )
             self._semantic_model.graph.add(
                 (
-                    core.namespace.SIM.__getitem__(receiver_component_class_name),
+                    core.namespace.T4B.__getitem__(receiver_component_class_name),
                     RDFS.subClassOf,
                     core.namespace.S4SYST.System,
                 )
@@ -778,12 +777,12 @@ class SimulationModel:
             )
 
             self._semantic_model.graph.add(
-                (connection_uri, core.namespace.SIM.outputPort, literal_sender_property)
+                (connection_uri, core.namespace.T4B.outputPort, literal_sender_property)
             )
             self._semantic_model.graph.add(
                 (
                     connection_point_uri,
-                    core.namespace.SIM.inputPort,
+                    core.namespace.T4B.inputPort,
                     literal_receiver_property,
                 )
             )
@@ -849,28 +848,28 @@ class SimulationModel:
             receiver_component_connection_point.connection_point_of = None
 
         if components == self._components:
-            sender_component_uri = self._semantic_model.SIM.__getitem__(
+            sender_component_uri = self._semantic_model.T4B.__getitem__(
                 sender_component.id
             )
-            receiver_component_uri = self._semantic_model.SIM.__getitem__(
+            receiver_component_uri = self._semantic_model.T4B.__getitem__(
                 receiver_component.id
             )
 
-            connection_uri = self._semantic_model.SIM.__getitem__(
+            connection_uri = self._semantic_model.T4B.__getitem__(
                 str(hash(sender_component_connection))
-            )  # self._semantic_model.SIM.__getitem__(sender_component.id + " " + sender_property_name)
-            connection_point_uri = self._semantic_model.SIM.__getitem__(
+            )  # self._semantic_model.T4B.__getitem__(sender_component.id + " " + sender_property_name)
+            connection_point_uri = self._semantic_model.T4B.__getitem__(
                 str(hash(receiver_component_connection_point))
-            )  # self._semantic_model.SIM.__getitem__(receiver_component.id + " " + receiver_property_name)
+            )  # self._semantic_model.T4B.__getitem__(receiver_component.id + " " + receiver_property_name)
 
             literal_sender_property = list(
                 self._semantic_model.graph.objects(
-                    connection_uri, core.namespace.SIM.outputPort
+                    connection_uri, core.namespace.T4B.outputPort
                 )
             )
             literal_receiver_property = list(
                 self._semantic_model.graph.objects(
-                    connection_point_uri, core.namespace.SIM.inputPort
+                    connection_point_uri, core.namespace.T4B.inputPort
                 )
             )
             assert (
@@ -916,7 +915,7 @@ class SimulationModel:
                 self._semantic_model.graph.remove(
                     (
                         connection_uri,
-                        core.namespace.SIM.outputPort,
+                        core.namespace.T4B.outputPort,
                         literal_sender_property,
                     )
                 )
@@ -939,7 +938,7 @@ class SimulationModel:
                 self._semantic_model.graph.remove(
                     (
                         connection_point_uri,
-                        core.namespace.SIM.inputPort,
+                        core.namespace.T4B.inputPort,
                         literal_receiver_property,
                     )
                 )
@@ -2178,7 +2177,7 @@ class SimulationModel:
         """
 
         def _update_literals_for_component(component: core.System) -> None:
-            component_uri = self._semantic_model.SIM.__getitem__(component.id)
+            component_uri = self._semantic_model.T4B.__getitem__(component.id)
             for key, value in flatten_dict(component.populate_config(), component):
                 if isinstance(value, dict):
                     value_ = json.dumps(value)
@@ -2190,7 +2189,7 @@ class SimulationModel:
                 # Check if the property is already in the semantic model
                 literal_property = list(
                     self._semantic_model.graph.objects(
-                        component_uri, core.namespace.SIM.__getitem__(key)
+                        component_uri, core.namespace.T4B.__getitem__(key)
                     )
                 )
                 if len(literal_property) == 0:
@@ -2200,7 +2199,7 @@ class SimulationModel:
                     self._semantic_model.graph.add(
                         (
                             component_uri,
-                            core.namespace.SIM.__getitem__(key),
+                            core.namespace.T4B.__getitem__(key),
                             literal_property,
                         )
                     )
@@ -2211,7 +2210,7 @@ class SimulationModel:
                     self._semantic_model.graph.remove(
                         (
                             component_uri,
-                            core.namespace.SIM.__getitem__(key),
+                            core.namespace.T4B.__getitem__(key),
                             literal_property,
                         )
                     )
@@ -2220,7 +2219,7 @@ class SimulationModel:
                     self._semantic_model.graph.add(
                         (
                             component_uri,
-                            core.namespace.SIM.__getitem__(key),
+                            core.namespace.T4B.__getitem__(key),
                             literal_property,
                         )
                     )
@@ -2279,7 +2278,7 @@ class SimulationModel:
         self._semantic_model = core.SemanticModel(
             id=self._id,
             rdf_file=rdf_file,
-            namespaces={"SIM": core.namespace.SIM, "S4SYST": core.namespace.S4SYST},
+            namespaces={"T4B": core.namespace.T4B, "S4SYST": core.namespace.S4SYST},
             dir_conf=self._dir_conf + ["semantic_model"],
         )
 
@@ -2325,7 +2324,7 @@ class SimulationModel:
                         connection.get_predicate_object_pairs()
                     )
                     outputPort = predicate_object_pairs_connection[
-                        core.namespace.SIM.outputPort
+                        core.namespace.T4B.outputPort
                     ][
                         0
                     ].uri.value  # There can only be one output port per connection
@@ -2343,7 +2342,7 @@ class SimulationModel:
                             0
                         ]  # There can only be one connection point per connection
                         inputPort = predicate_object_pairs_connection_point[
-                            core.namespace.SIM.inputPort
+                            core.namespace.T4B.inputPort
                         ][
                             0
                         ].uri.value  # There can only be one input port per connection point
