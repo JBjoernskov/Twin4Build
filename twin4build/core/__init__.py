@@ -5,7 +5,7 @@ This module provides the fundamental components and ontologies used throughout t
 It defines essential namespaces and provides access to the semantic model that underpins the digital twin functionality.
 
 Key Components:
-    - Namespaces (FSO, SAREF, S4BLDG, S4SYST, XSD, SIM): Core ontologies for building systems
+    - Namespaces (FSO, SAREF, S4BLDG, S4SYST, XSD, T4B): Core ontologies for building systems
     - SemanticModel: The central model for managing building system semantics
     - Ontology Management: Functions for accessing and managing building system ontologies
 
@@ -45,7 +45,7 @@ class namespace:
     S4SYST = rdflib.Namespace("https://saref.etsi.org/saref4syst/")
     BRICK = rdflib.Namespace("https://brickschema.org/schema/Brick#")
     XSD = rdflib.Namespace("http://www.w3.org/2001/XMLSchema#")
-    SIM = rdflib.Namespace("http://simulation.org/")
+    T4B = rdflib.Namespace("http://twin4build.org/")
     RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
     RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
 
@@ -57,7 +57,7 @@ class ontology:
     S4SYST = "https://saref.etsi.org/saref4syst/"
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     XSD = "http://www.w3.org/2001/XMLSchema#"
-    SIM = "http://simulation.org/"
+    T4B = "http://twin4build.org/"
 
 
 def get_ontologies():

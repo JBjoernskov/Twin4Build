@@ -206,7 +206,7 @@ class Model:
         self._semantic_model = core.SemanticModel(
             id=self._id,
             namespaces={
-                "SIM": core.namespace.SIM,
+                "T4B": core.namespace.T4B,
                 "SAREF": core.namespace.SAREF,
                 "S4BLDG": core.namespace.S4BLDG,
                 "S4SYST": core.namespace.S4SYST,
@@ -600,7 +600,8 @@ class Model:
             apply_translator = True
             PRINTPROGRESS("Parsing semantic model", status="")
             self._semantic_model = core.SemanticModel(
-                semantic_model_filename,
+                rdf_file=semantic_model_filename,
+                namespaces={"T4B": core.namespace.T4B},
                 dir_conf=self.dir_conf + ["semantic_model"],
                 id=f"{self._id}_semantic_model",
             )
