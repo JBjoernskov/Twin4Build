@@ -135,8 +135,8 @@ if __name__ == "__main__":
     )
     sm.reason()
 
-    points = sm.get_instances_of_type(tb.ontologies.BRICK.Point)
-    print(f"Number of points: {len(points)}")
+    # points = sm.get_instances_of_type(tb.ontologies.BRICK.Point)
+    # print(f"Number of points: {len(points)}")
     
     # sm.reason()
 
@@ -149,7 +149,7 @@ if __name__ == "__main__":
     }
     WHERE {
         ?s ?p ?o .
-        FILTER ((?p = brick:feeds || ?p = brick:hasPart || ?p = brick:hasPoint || ?p = brick:isLocationOf) &&
+        FILTER ((?p = brick:feeds || ?p = brick:hasPart || ?p = brick:hasPoint) &&
                 ?p != rdf:type && 
                 ?p != rdfs:subClassOf)
     }
@@ -159,11 +159,11 @@ if __name__ == "__main__":
     # initial_node = sm.namespaces["p33f3e0c2_f2cd_471c_b5a0_4655c2bd4623".upper()] + "fd5601fa_5513_4b0a_b935_9817c84319e6.5e4ae5df_1476_48a7_a752_cbd08af4c677" # Air temperature sensor
     # initial_node = sm.namespaces["p33f3e0c2_f2cd_471c_b5a0_4655c2bd4623".upper()] + "13211186_beb4_4227_bd2d_0644e860886e" # Building
 
-    # sm.visualize(query, dpi=30000, include_full_uri=False, generate_subgraphs=False, traversal_mode="bfs", random_seed=None, node_limit=100, initial_node=initial_node)
+    sm.visualize(query, dpi=30000, include_full_uri=False, generate_subgraphs=False, traversal_mode="bfs", random_seed=None, node_limit=100, initial_node=initial_node)
 
 
     model = tb.Model(id="site_b")
-    model.load(semantic_model_filename=file_path, verbose=2, draw_semantic_model=False, draw_simulation_model=True)
+    model.load(semantic_model_filename=file_path, verbose=10, draw_semantic_model=False, draw_simulation_model=True)
     # model.semantic_model.visualize()
     # model.simulation_model.visualize()
 

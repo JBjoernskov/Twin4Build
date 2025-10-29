@@ -307,7 +307,7 @@ def brick_signature_pattern():
 
     node0 = Node(cls=core.namespace.BRICK.AHU)
     node2 = Node(cls=core.namespace.BRICK.HVAC_Zone)  # building space/room
-    node3 = Node(cls=core.namespace.BRICK.Room)
+    node3 = Node(cls=(core.namespace.BRICK.Room, core.namespace.BRICK.Enclosed_space, core.namespace.BRICK.Open_space)) # 'Space' should be capital, but the ttl file has a bug where it is lowercase
     node4 = Node(cls=core.namespace.BRICK.Air_Temperature_Sensor)
     node5 = Node(cls=core.namespace.BRICK.CO2_Sensor)
     node6 = Node(
@@ -326,12 +326,12 @@ def brick_signature_pattern():
     sp.add_triple(
         Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
     )
-    sp.add_triple(
-        Exact(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
-    )
-    sp.add_triple(
-        Exact(subject=node5, object=node3, predicate=core.namespace.BRICK.isPointOf)
-    )
+    # sp.add_triple(
+    #     Exact(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
+    # )
+    # sp.add_triple(
+    #     Exact(subject=node5, object=node3, predicate=core.namespace.BRICK.isPointOf)
+    # )
 
     # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
@@ -340,7 +340,7 @@ def brick_signature_pattern():
     # numberOfPeople
 
     sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
-    sp.add_input("exhaustAirFlowRate", node0, "airsFlowRate")
+    sp.add_input("exhaustAirFlowRate", node0, "airFlowRate")
     # sp.add_input("numberOfPeople", node5, "measuredValue")
     sp.add_input("outdoorTemperature", node6, "measuredValue")
     # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
