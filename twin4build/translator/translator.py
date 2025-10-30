@@ -2083,10 +2083,8 @@ class SignaturePattern:
                 )
 
             semantic_model.graph.add((subject_instance_uri, predicate, object_instance_uri))
-
             sp_sm_map[subject] = semantic_model.get_instance(subject_instance_uri)
             sp_sm_map[object] = semantic_model.get_instance(object_instance_uri)
-
 
         assert all(sp_sm_map[sp_node] is not None for sp_node in original_sp.nodes), "All nodes in the original SP must be mapped to a semantic model instance. Maybe the diff is not complete."
 
