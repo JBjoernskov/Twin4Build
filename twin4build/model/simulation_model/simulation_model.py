@@ -213,6 +213,7 @@ class SimulationModel:
         "_validated_for_monitor",
         "_dir_conf",
         "_semantic_model",
+        "_translator",
     )
 
     def __str__(self):
@@ -286,6 +287,8 @@ class SimulationModel:
             },
             dir_conf=self._dir_conf + ["semantic_model"],
         )
+
+        self._translator = None
 
     @property
     def components(self) -> dict:
@@ -1133,7 +1136,7 @@ class SimulationModel:
                     if isinstance(
                         component.input[connection_point.inputPort], tps.Vector
                     ):
-                        if (
+                        if self._translator is not None and (
                             component,
                             connected_component,
                             connection.outputPort,

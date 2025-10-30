@@ -17,20 +17,6 @@ from dateutil import tz
 # Local application imports
 import twin4build.core as core
 
-# ###Only for testing before distributing package
-# if __name__ == '__main__':
-#     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-#     file_path = uppath(os.path.abspath(__file__), 3)
-#     sys.path.append(file_path)
-
-
-# class History(list):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-
-#     def plain(self):
-#         return [x.item() for x in self]
-
 
 class Vector:
     """A custom vector implementation with mapping capabilities.
@@ -163,9 +149,9 @@ class Vector:
         elif isinstance(v, Scalar):
             self[self.current_idx] = v.get()
         elif isinstance(v, torch.Tensor):
-            self[:] = v
+            self.tensor = v
         elif isinstance(v, Vector):
-            self[:] = v[:]
+            self.tensor = v.tensor
 
         self.current_idx += 1
         if self.current_idx == self.size:

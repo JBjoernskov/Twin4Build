@@ -114,7 +114,20 @@ class ReturnFlowJunctionSystem(core.System):
         step_size: int,
         simulator: core.Simulator,
     ) -> None:
-        pass
+        for input in self.input.values():
+            input.initialize(
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
+                simulator=simulator,
+            )
+        for output in self.output.values():
+            output.initialize(
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
+                simulator=simulator,
+            )
 
     def do_step(
         self,
