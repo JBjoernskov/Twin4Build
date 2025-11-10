@@ -10,6 +10,8 @@ import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 from urllib.error import HTTPError
+import random
+from webbrowser import get
 
 # Third party imports
 import brickschema.brickify.src.handlers.Handler.TableHandler as table_handler
@@ -22,11 +24,16 @@ from openpyxl import load_workbook
 from rdflib import RDF, RDFS, Graph, Literal, Namespace, URIRef
 from rdflib.tools.rdf2dot import rdf2dot
 
+
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.print_progress import PRINTPROGRESS, reset_print
 from twin4build.utils.uppath import uppath
+
+
+
+DYNAMIC_PARSING = True
 
 
 def get_short_name(uri: Union[str, URIRef], namespaces: Dict[str, Namespace]):
@@ -39,10 +46,11 @@ def get_short_name(uri: Union[str, URIRef], namespaces: Dict[str, Namespace]):
 class SemanticProperty:
     """Represents an ontology property"""
 
-    def __init__(self, uri: Union[str, URIRef], graph: Graph):
+    def __init__(self, uri: Union[str, URIRef], model: "SemanticModel"):
         # Convert string URI to URIRef if needed
         self.uri = URIRef(uri) if isinstance(uri, str) else uri
-        self.graph = graph
+        self.model = model
+        self.ontology_graph = model.ontology_graph
 
         # Property types to check for
         property_types = {
@@ -55,10 +63,10 @@ class SemanticProperty:
 
         # Check if URI represents a valid property
         is_property = any(
-            (self.uri, RDF.type, prop_type) in self.graph
+            (self.uri, RDF.type, prop_type) in self.ontology_graph
             for prop_type in property_types
         )
-        is_used_as_predicate = any(self.graph.triples((None, self.uri, None)))
+        is_used_as_predicate = any(self.ontology_graph.triples((None, self.uri, None)))
 
         if not (is_property or is_used_as_predicate):
             raise ValueError(
@@ -72,14 +80,14 @@ class SemanticProperty:
     def domain(self) -> List[URIRef]:
         """Get the domain (valid subject types) of this property"""
         if self._domain is None:
-            self._domain = set(self.graph.objects(self.uri, RDFS.domain))
+            self._domain = set(self.ontology_graph.objects(self.uri, RDFS.domain))
         return self._domain
 
     @property
     def range(self) -> List[URIRef]:
         """Get the range (valid object types) of this property"""
         if self._range is None:
-            self._range = set(self.graph.objects(self.uri, RDFS.range))
+            self._range = set(self.ontology_graph.objects(self.uri, RDFS.range))
         return self._range
 
     def __str__(self):
@@ -125,7 +133,7 @@ class SemanticType:
         # Convert string URI to URIRef if needed
         self.uri = URIRef(uri) if isinstance(uri, str) else uri
         self.model = model
-        self.graph = model.graph
+        self.ontology_graph = model.ontology_graph
 
         if validate:
 
@@ -150,14 +158,14 @@ class SemanticType:
                 self.uri,
                 RDF.type,
                 URIRef("http://www.w3.org/2002/07/owl#Class"),
-            ) in self.graph
-            is_rdfs_class = (self.uri, RDF.type, RDFS.Class) in self.graph
+            ) in self.ontology_graph
+            is_rdfs_class = (self.uri, RDF.type, RDFS.Class) in self.ontology_graph
             is_built_in = self.uri in BUILT_IN_CLASSES
 
             # Additional checks for class-like behavior
-            has_subclass = any(self.graph.triples((None, RDFS.subClassOf, self.uri)))
-            is_subclass = any(self.graph.triples((self.uri, RDFS.subClassOf, None)))
-            has_instances = any(self.graph.triples((None, RDF.type, self.uri)))
+            has_subclass = any(self.ontology_graph.triples((None, RDFS.subClassOf, self.uri)))
+            is_subclass = any(self.ontology_graph.triples((self.uri, RDFS.subClassOf, None)))
+            has_instances = any(self.model.instance_graph.triples((None, RDF.type, self.uri)))
 
             # Check if it's a property (which should not be treated as a class)
             property_types = {
@@ -169,14 +177,14 @@ class SemanticType:
             }
 
             is_property = any(
-                (self.uri, RDF.type, prop_type) in self.graph
+                (self.uri, RDF.type, prop_type) in self.ontology_graph
                 for prop_type in property_types
             )
-            is_used_as_predicate = any(self.graph.triples((None, self.uri, None)))
+            is_used_as_predicate = any(self.ontology_graph.triples((None, self.uri, None)))
 
             # Check if it's used in domain/range declarations (suggesting it's a class)
-            is_in_domain = any(self.graph.triples((None, RDFS.domain, self.uri)))
-            is_in_range = any(self.graph.triples((None, RDFS.range, self.uri)))
+            is_in_domain = any(self.ontology_graph.triples((None, RDFS.domain, self.uri)))
+            is_in_range = any(self.ontology_graph.triples((None, RDFS.range, self.uri)))
 
             # print(f"Debug - Class checks for {self.uri}:")
             # print(f"  is_owl_class: {is_owl_class}")
@@ -208,17 +216,40 @@ class SemanticType:
                     f"URI '{self.uri}' is not declared as a valid class/type in the ontology"
                 )
 
-        self._parent_classes = None
+        self._super_classes = None
+        self._sub_classes = None
         self._attributes = None
+        self._namespace = None
 
     @property
-    def parent_classes(self) -> Set[str]:
-        """Get all parent classes (including indirect) using RDFS reasoning"""
-        if self._parent_classes is None:
-            self._parent_classes = set()
-            for parent in self.graph.transitive_objects(self.uri, RDFS.subClassOf):
-                self._parent_classes.add(str(parent))
-        return self._parent_classes
+    def super_classes(self) -> List["SemanticType"]:
+        """Get all parent classes (including indirect) using RDFS reasoning.
+        
+        Note: This requires that ontology definitions (rdfs:subClassOf triples) are loaded 
+        into self.ontology_graph, typically by loading ontologies during initialization.
+        """
+        if self._super_classes is None:
+            self._super_classes = []
+            for parent in self.ontology_graph.transitive_objects(self.uri, RDFS.subClassOf):
+                if parent != self.uri:  # Exclude self
+                    parent_type = self.model.get_type(parent)
+                    self._super_classes.append(parent_type)
+        return self._super_classes
+
+    @property
+    def sub_classes(self) -> List["SemanticType"]:
+        """Get all sub classes (including indirect) using RDFS reasoning.
+        
+        Note: This requires that ontology definitions (rdfs:subClassOf triples) are loaded 
+        into self.ontology_graph, typically by loading ontologies during initialization.
+        """
+        if self._sub_classes is None:
+            self._sub_classes = []
+            # Note: transitive_subjects has signature (predicate, object) not (object, predicate)!
+            for sub in self.ontology_graph.transitive_subjects(RDFS.subClassOf, self.uri):
+                if sub != self.uri:  # Exclude self
+                    self._sub_classes.append(self.model.get_type(sub))
+        return self._sub_classes
 
     def get_type_attributes(self) -> Dict[str, List[Any]]:
         """Find all possible attributes (properties) that can be used with instances of this class.
@@ -235,21 +266,23 @@ class SemanticType:
             self._attributes = {}
 
             # Find all ObjectProperties in the ontology
-            for prop, _, _ in self.graph.triples(
+            for prop, _, _ in self.ontology_graph.triples(
                 (None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#ObjectProperty"))
             ):  # We are looking explicitly for ObjectProperties. This could maybe be generalized?
                 # pred_name = str(prop).split('#')[-1]
 
                 # Get the domains (if any) for this property
-                domains = list(self.graph.objects(prop, RDFS.domain))
+                domains = list(self.ontology_graph.objects(prop, RDFS.domain))
+
+                super_classes = [str(s) for s in self.super_classes]
 
                 # Property is valid if it has no domain restrictions or if this class/parents are in its domain
                 if not domains or any(
-                    str(domain) in self.parent_classes or domain == self.uri
+                    str(domain) in super_classes or domain == self.uri
                     for domain in domains
                 ):
                     # Get the ranges for this property
-                    ranges = list(self.graph.objects(prop, RDFS.range))
+                    ranges = list(self.ontology_graph.objects(prop, RDFS.range))
                     self._attributes[prop] = ranges
 
         return self._attributes
@@ -257,11 +290,23 @@ class SemanticType:
     def __str__(self):
         return str(self.uri)
 
-    def get_short_name(self):
+    def get_short_name(self) -> str:
         for namespace in self.model.namespaces.values():
-            if namespace in str(self.uri):
+            if str(namespace) in str(self.uri):
                 return str(self.uri).split(namespace)[-1]
         return None
+
+    def get_namespace(self) -> Tuple[str, Namespace]:
+        if self._namespace is None:
+            print(f"Getting namespace for {self.uri}")
+            for prefix, namespace in self.model.ontology_graph.namespaces():
+                print(f"Comparing {str(namespace)} in {str(self.uri)}")
+                if str(namespace) in str(self.uri):
+                    print(f"FOUND NAMESPACE: {prefix} {namespace}")
+                    self._namespace = prefix, namespace
+                    return self._namespace
+            self._namespace = None, None
+        return self._namespace
 
     def istype(
         self,
@@ -284,17 +329,19 @@ class SemanticType:
         if not isinstance(cls, (tuple, list)):
             cls = (cls,)
 
+        super_classes = [str(s) for s in self.super_classes]
+
         # Check each class in the tuple against all instance types
         for c in cls:
             if str(c) == str(self.uri):
                 return True
-            elif str(c) in self.parent_classes:
+            elif str(c) in super_classes:
                 return True
         return False
 
     def has_subclasses(self) -> bool:
         """Check if this type has any subclasses"""
-        return any(self.graph.triples((None, RDFS.subClassOf, self.uri)))
+        return any(self.ontology_graph.triples((None, RDFS.subClassOf, self.uri)))
 
 
 class SemanticObject:
@@ -383,17 +430,17 @@ class SemanticObject:
             return self._types
 
         if self._types is None:
-            # First check direct RDF.type assertions
-            direct_types = set(self.model.graph.objects(self.uri, RDF.type))
+            # First check direct RDF.type assertions in instance graph
+            direct_types = set(self.model.instance_graph.objects(self.uri, RDF.type))
 
             # Then check for type through owl:sameAs relations
             same_as = set(
-                self.model.graph.objects(
+                self.model.instance_graph.objects(
                     self.uri, URIRef("http://www.w3.org/2002/07/owl#sameAs")
                 )
             )
             for same_as_uri in same_as:
-                same_as_types = set(self.model.graph.objects(same_as_uri, RDF.type))
+                same_as_types = set(self.model.instance_graph.objects(same_as_uri, RDF.type))
                 direct_types.update(same_as_types)
 
             # Convert all direct types to SemanticType objects and include their parent types
@@ -403,14 +450,14 @@ class SemanticObject:
                 type_obj = self.model.get_type(t)
                 types_with_parents.add(type_obj)
 
-                # Add parent types
-                for parent_uri in type_obj.parent_classes:
-                    types_with_parents.add(self.model.get_type(parent_uri))
+                # Add parent types (from ontology graph)
+                for super_class in type_obj.super_classes:
+                    types_with_parents.add(self.model.get_type(super_class.uri))
 
             self._types = types_with_parents
         return self._types
 
-    def get_predicate_object_pairs(self) -> Dict[str, Any]:
+    def get_predicate_object_pairs(self) -> Dict[str, Any]: # TODO: if the graph is changed dynamically, the caching done here wont work anymore. Make sure to update the cache when the graph is changed.
         """Return all attributes of this instance"""
         if self.is_literal:
             # Literals don't have properties
@@ -418,13 +465,13 @@ class SemanticObject:
 
         if self._attributes is None:
             self._attributes = {}
-            for pred, obj in self.model.graph.predicate_objects(self.uri):
+            for pred, obj in self.model.instance_graph.predicate_objects(self.uri):
 
                 is_class = any(
-                    self.model.graph.triples(
+                    self.model.instance_graph.triples(
                         (obj, RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
                     )
-                ) or any(self.model.graph.triples((obj, RDF.type, RDFS.Class)))
+                ) or any(self.model.instance_graph.triples((obj, RDF.type, RDFS.Class)))
 
                 if is_class:
                     obj_instance = self.model.get_type(obj)
@@ -482,30 +529,57 @@ class SemanticObject:
             return False
 
         if self.type:
+            super_classes = [str(s) for s in self.super_classes]
             # Check each class in the tuple against all instance types
             for c in cls:
                 for instance_type in self.type:
                     if str(c) == str(instance_type.uri):
                         return True
-                    elif str(c) in instance_type.parent_classes:
+                    elif str(c) in super_classes:
                         return True
         return False
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.uri)
 
-    def get_short_name(self):
+    def get_short_name(self) -> str:
         for namespace in self.model.namespaces.values():
-            if namespace in str(self.uri):
+            if str(namespace) in str(self.uri):
                 return str(self.uri).split(namespace)[-1]
         return None
 
-    def get_namespace(self):
-        for namespace in self.model.namespaces.values():
-            for instance_type in self.type:
-                if namespace in str(instance_type.uri):
-                    return namespace
-        return None
+    def get_namespace(self) -> Tuple[str, Namespace]:
+        for prefix, namespace in self.model.instance_graph.namespaces():
+            if str(namespace) in str(self.uri):
+                return prefix, namespace
+        return None, None
+
+    def get_most_specific_type(self) -> "SemanticType":
+        """
+        Get the most specific type of this instance.
+        We find the class in self.type that has ALL the other classes in self.type as super classes.
+
+        This is not the same as finding the class in self.type that has none of the other classes in self.type as subclasses. (as initially implemented).
+        This is because ontologies reuse classes from other ontologies by declaring ChildClass -> rdfs:subClassOf -> ParentClass.
+        However, the ParentClass in the parent ontology does not necesarily have ChildClass as a subclass as this should be declared by the inheriting ontology.
+        """
+        # Convert URIRef objects to strings for comparison with sub_classes (which returns strings)
+        for it, t in enumerate(self.type):
+            prefix, namespace = t.get_namespace()
+            self.model.parse_namespaces(namespaces={prefix: namespace}) # Will only parse if not already parsed - now parses into ontology_graph
+            types_excluding_this = self.type - {t}
+            # Check if all the super classes of this type are in the current types (meaning it's the most specific)
+            if all([t_ in t.super_classes for t_ in types_excluding_this]):
+                ss = [tt.get_short_name() for tt in t.super_classes]
+                return t
+
+            # # Old method:
+            # # Check if none of this type's subclasses are in the current types (meaning it's the most specific)
+            # if all([t_ not in self.type for t_ in t.sub_classes]):
+            #     ss = [tt.get_short_name() for tt in t.sub_classes]
+            #     print(f"Subclasses: {ss}")
+            #     print(f"Found most specific type: {t.get_short_name()} out of types: {[t_.get_short_name() for t_ in self.type]}")
+            #     return t
 
 
 class SemanticModel:
@@ -514,17 +588,20 @@ class SemanticModel:
         rdf_file: Optional[str] = None,
         namespaces: Optional[Dict[str, str]] = None,
         format: Optional[str] = None,
-        parse_namespaces=False,
         verbose=None,
         id: str = "semantic_model",
         dir_conf: List[str] = None,
     ):
         """
-        Initialize the ontology model
+        Initialize the semantic model with separate graphs for instances and ontologies
+        
         Args:
-            rdf_file: Path or URL to the ontology file
+            rdf_file: Path or URL to the RDF file containing instance data
             namespaces: Optional additional namespace prefix-URI pairs
             format: Optional format specification ('xml', 'turtle', 'n3', 'nt', 'json-ld', etc.)
+            verbose: Verbosity level
+            id: Identifier for the semantic model
+            dir_conf: Directory configuration for file storage
         """
         if verbose is not None:
             PRINTPROGRESS.verbose = verbose
@@ -560,44 +637,58 @@ class SemanticModel:
 
         if rdf_file is not None:
             if verbose:
-                self._init(namespaces=namespaces, parse_namespaces=parse_namespaces)
+                self._init(namespaces=namespaces)
             else:
                 logging.disable(
                     sys.maxsize
                 )  # https://stackoverflow.com/questions/2266646/how-to-disable-logging-on-the-standard-error-stream
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    self._init(namespaces=namespaces, parse_namespaces=parse_namespaces)
+                    self._init(namespaces=namespaces)
         else:
-            self.graph = Graph()
+            # Initialize both graphs
+            self.instance_graph = Graph()
+            self.ontology_graph = Graph()
             for prefix, namespace in self.namespaces.items():
-                self.graph.bind(prefix.lower(), namespace)
+                self.instance_graph.bind(prefix.lower(), namespace)
+                self.ontology_graph.bind(prefix.lower(), namespace)
             # logging.disable(logging.NOTSET)
 
     def _init(
-        self, namespaces: Optional[Dict[str, Namespace]] = None, parse_namespaces=False
+        self, namespaces: Optional[Dict[str, Namespace]] = None
     ):
-        # Load and parse the RDF file
-        self.graph = self.get_graph(self.rdf_file, self.format)
+        # Load and parse the RDF file into instance_graph
+        self.instance_graph = self.get_graph(self.rdf_file, self.format)
+        
+        # Initialize empty ontology_graph - will be populated on demand via parse_namespaces
+        self.ontology_graph = Graph()
 
         # Common namespaces
         self.RDF = RDF
         self.RDFS = RDFS
 
-        if parse_namespaces:
-            self.parse_namespaces(self.graph, namespaces=namespaces)
-
-        # Extract namespaces from the graph
-        for prefix, uri in self.graph.namespaces():
+        # Extract namespaces from the instance graph
+        for prefix, uri in self.instance_graph.namespaces():
             if prefix:  # Skip empty prefix
                 self.namespaces[prefix.upper()] = Namespace(uri)
                 setattr(self, prefix.upper(), self.namespaces[prefix.upper()])
                 print("Set namespace: ", prefix.upper(), " to ", uri)
 
+        # Bind namespaces to both graphs
         for prefix, namespace in self.namespaces.items():
-            self.graph.bind(prefix.lower(), namespace)
+            self.instance_graph.bind(prefix.lower(), namespace)
+            self.ontology_graph.bind(prefix.lower(), namespace)
 
-    def get_graph_copy(self):
+    @property
+    def graph(self):
+        """Backwards compatibility property that returns instance_graph.
+        
+        Deprecated: Use instance_graph directly instead.
+        """
+        return self.instance_graph
+
+    @staticmethod
+    def get_graph_copy(graph):
         """Create a complete copy of the graph including namespace bindings.
 
         Returns:
@@ -606,32 +697,47 @@ class SemanticModel:
         new_graph = Graph()
 
         # Copy all namespace bindings
-        for prefix, namespace in self.graph.namespaces():
+        for prefix, namespace in graph.namespaces():
             new_graph.bind(prefix, namespace)
 
         # Copy all triples
-        for s, p, o in self.graph.triples((None, None, None)):
+        for s, p, o in graph.triples((None, None, None)):
             new_graph.add((s, p, o))
         return new_graph
 
-    def parse_namespaces(self, graph, namespaces=None):
-        if namespaces is None:
-            namespaces = dict(graph.namespaces())
 
-        for prefix, uri in namespaces.items():
+    @reset_print
+    def parse_namespaces(self, namespaces=None):
+        """Parse namespaces dynamically on demand into ontology_graph.
+        
+        This method is called when ontology information is needed (e.g., class hierarchies).
+        It parses ontology definitions from namespace URIs into the ontology_graph.
+        
+        Args:
+            namespaces: Dict of {prefix: namespace} to parse. If None, parses all namespaces
+                       from the ontology_graph.
+        """
+        PRINTPROGRESS.verbose = 0 # TODO: Remove this
+
+        print(f"PARSING NAMESPACES: {namespaces}")
+
+        if namespaces is None:
+            namespaces = dict(self.ontology_graph.namespaces())
+
+        for prefix, namespace in namespaces.items():
+            uri = str(namespace)
             try:
-                if graph == self.graph:
-                    if (
-                        uri not in self.parsed_namespaces
-                        and uri not in self.error_namespaces
-                    ):
-                        graph.parse(uri)
-                        self.parsed_namespaces.add(uri)
-                        self.namespaces[prefix.upper()] = Namespace(uri)
-                        self.ontologies[prefix.upper()] = str(uri)
-                        setattr(self, prefix.upper(), self.namespaces[prefix.upper()])
-                else:
-                    graph.parse(uri)
+                # Only parse if not already parsed
+                if (
+                    uri not in self.parsed_namespaces
+                    and uri not in self.error_namespaces
+                ):
+                    self.ontology_graph.parse(namespace)
+                    self.parsed_namespaces.add(uri)
+                    self.namespaces[prefix.upper()] = namespace
+                    # self.ontologies[prefix.upper()] = uri
+                    setattr(self, prefix.upper(), self.namespaces[prefix.upper()])
+                    print("Parsed namespace: ", prefix.upper(), " to ", uri)
 
             except HTTPError:
                 PRINTPROGRESS(f"Namespace parsing failed for {prefix}: {uri}", status="[WARNING]")
@@ -639,61 +745,42 @@ class SemanticModel:
                 PRINTPROGRESS(
                     f"HTTPError: Cannot parse namespace {uri}. Sometimes this error occurs when the ontology is not available at the same address as the namespace."
                 )
-                self._handle_namespace_fallback(graph, prefix, uri)
+                self._handle_namespace_fallback(prefix, namespace)
                 PRINTPROGRESS.remove_level()
             except Exception as e:
                 PRINTPROGRESS(f"Namespace parsing failed for {prefix}: {uri}", status="[WARNING]")
                 PRINTPROGRESS.add_level()
                 PRINTPROGRESS(f"Error: {str(e)}")
-                self._handle_namespace_fallback(graph, prefix, uri)
+                self._handle_namespace_fallback(prefix, namespace)
                 PRINTPROGRESS.remove_level()
 
-    def _handle_namespace_fallback(self, graph, prefix, uri):
-        """Handle fallback for namespace parsing failures"""
-        if graph == self.graph:
-            if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
-                # Check if we have a fallback namespace in core.ontologies
-                if hasattr(core.namespace, prefix.upper()) and hasattr(
-                    core.ontology, prefix.upper()
-                ):
-                    if prefix.upper() in core.ontologies.namespaces:
-                        fallback_namespace_uri = getattr(core.namespace, prefix.upper())
-                        fallback_ontology_uri = getattr(core.ontology, prefix.upper())
-                        PRINTPROGRESS(f"Trying fallback namespace for {prefix.upper()}")
-                        PRINTPROGRESS.add_level()
-                        PRINTPROGRESS(f"Found namespace in core.ontology fallback: {fallback_ontology_uri}")
-                        try:
-                            graph.parse(fallback_ontology_uri)
-                            self.parsed_namespaces.add(str(fallback_namespace_uri))
-                            self.namespaces[prefix.upper()] = fallback_namespace_uri
-                            self.ontologies[prefix.upper()] = fallback_ontology_uri
-                            setattr(
-                                self, prefix.upper(), self.namespaces[prefix.upper()]
-                            )
-                            PRINTPROGRESS(f"Successfully parsed fallback namespace", status="[OK]")
-                            PRINTPROGRESS.remove_level()
-                            return
-                        except Exception as e:
-                            PRINTPROGRESS(f"Fallback namespace also failed: {str(e)}", status="[WARNING]")
-                        PRINTPROGRESS.remove_level()
-                else:
-                    PRINTPROGRESS(f"No fallback namespace found for {prefix.upper()}")
-
-                # If no fallback or fallback failed, add to error namespaces
-                self.error_namespaces.add(uri)
-        else:
-            # For non-main graph, try fallback but don't track
+    def _handle_namespace_fallback(self, prefix, namespace):
+        """Handle fallback for namespace parsing failures
+        
+        This method tries to find and parse fallback ontology URIs when the primary
+        namespace URI fails to parse.
+        """
+        uri = str(namespace)
+        if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
+            # Check if we have a fallback namespace in core.ontologies
             if hasattr(core.namespace, prefix.upper()) and hasattr(
                 core.ontology, prefix.upper()
             ):
                 if prefix.upper() in core.ontologies.namespaces:
                     fallback_namespace_uri = getattr(core.namespace, prefix.upper())
                     fallback_ontology_uri = getattr(core.ontology, prefix.upper())
-                    PRINTPROGRESS(f"Trying fallback namespace for {prefix.upper()} (non-main graph)")
+                    PRINTPROGRESS(f"Trying fallback namespace for {prefix.upper()}")
                     PRINTPROGRESS.add_level()
-                    PRINTPROGRESS(f"Found namespace in core.ontologies fallback: {fallback_namespace_uri}")
+                    PRINTPROGRESS(f"Found namespace in core.ontology fallback: {fallback_ontology_uri}")
                     try:
-                        graph.parse(fallback_ontology_uri)
+                        self.ontology_graph.parse(fallback_ontology_uri)
+                        self.parsed_namespaces.add(str(fallback_namespace_uri))
+                        self.namespaces[prefix.upper()] = fallback_namespace_uri
+                        # self.ontologies[prefix.upper()] = fallback_ontology_uri
+                        setattr(
+                            self, prefix.upper(), self.namespaces[prefix.upper()]
+                        )
+                        print("Parsed fallback namespace: ", prefix.upper(), " to ", fallback_namespace_uri, " with FALLBACK")
                         PRINTPROGRESS(f"Successfully parsed fallback namespace", status="[OK]")
                         PRINTPROGRESS.remove_level()
                         return
@@ -702,6 +789,9 @@ class SemanticModel:
                     PRINTPROGRESS.remove_level()
             else:
                 PRINTPROGRESS(f"No fallback namespace found for {prefix.upper()}")
+
+            # If no fallback or fallback failed, add to error namespaces
+            self.error_namespaces.add(uri)
 
     def get_dir(
         self, folder_list: List[str] = None, filename: Optional[str] = None
@@ -872,52 +962,102 @@ class SemanticModel:
             object_triples[o].append(triple)
 
 
-        # First pass: Process all subject relationships
-        nodes_to_visit = list(start_nodes)
-        triples_leading_to = []
-        traversed_nodes = set()
+        # # First pass: Process all subject relationships
+        # nodes_to_visit = list(start_nodes)
+        # triples_leading_to = []
+        # traversed_nodes = set()
 
-        while len(nodes_to_visit) > 0:
-            node = nodes_to_visit.pop(0) if mode == "bfs" else nodes_to_visit.pop()
-            if len(triples_leading_to) > 0:
-                triple = triples_leading_to.pop(0) if mode == "bfs" else triples_leading_to.pop()
-            else:
-                triple = None
-
+        # iteration = 0
+        # while len(nodes_to_visit) > 0:
+        #     iteration += 1
+        #     node = nodes_to_visit.pop(0) if mode == "bfs" else nodes_to_visit.pop()
+        #     if len(triples_leading_to) > 0:
+        #         triple = triples_leading_to.pop(0) if mode == "bfs" else triples_leading_to.pop()
+        #     else:
+        #         triple = None
             
-            visited_nodes.add(node)
-            if triple is not None:
-                collected.add(triple)
+        #     visited_nodes.add(node)
+        #     if triple is not None:
+        #         collected.add(triple)
 
-            if node_limit and len(visited_nodes) >= node_limit:
-                return collected
 
-            if triple_limit and len(collected) >= triple_limit:
-                return collected
+        #     if node_limit and len(visited_nodes) >= node_limit:
+        #         return collected
+
+        #     if triple_limit and len(collected) >= triple_limit:
+        #         return collected
                 
-            if node not in traversed_nodes:
-                traversed_nodes.add(node)
+        #     if node not in traversed_nodes:
+        #         traversed_nodes.add(node)
 
-                # Process only subject relationships
-                for triple_ in subject_triples.get(node, []):
-                    if triple_ not in collected:
-                        s, p, o = triple_
-                        # if o not in traversed_nodes:
-                        if mode == "bfs":
-                            nodes_to_visit.append(o)  # For BFS, add to end
-                            triples_leading_to.append(triple_)
-                        else:
-                            # nodes_to_visit.insert(0, o)  # For DFS, add to front
-                            # triples_leading_to.insert(0, triple_)
-                            nodes_to_visit.append(o)  # For DFS, add to front
-                            triples_leading_to.append(triple_)
+        #         # Process only subject relationships
+        #         discovered_triples = []
+        #         for triple_ in subject_triples.get(node, []):
+        #             if triple_ not in collected:
+        #                 s, p, o = triple_
+        #                 discovered_triples.append((triple_, o))
+        #                 # if o not in traversed_nodes:
+        #                 if mode == "bfs":
+        #                     nodes_to_visit.append(o)  # For BFS, add to end
+        #                     triples_leading_to.append(triple_)
+        #                 else:
+        #                     # nodes_to_visit.insert(0, o)  # For DFS, add to front
+        #                     # triples_leading_to.insert(0, triple_)
+        #                     nodes_to_visit.append(o)  # For DFS, add to front
+        #                     triples_leading_to.append(triple_)
                 
-        # Second pass: Process all object relationships
-        nodes_to_visit = list(start_nodes)
+            
+        # # Second pass: Process all object relationships
+        # nodes_to_visit = list(visited_nodes) #start_nodes
+        # triples_leading_to = []
+        # traversed_nodes = set()  # Reset traversed nodes for object pass
+
+        # iteration = 0
+        # while len(nodes_to_visit) > 0:
+        #     iteration += 1
+        #     node = nodes_to_visit.pop(0) if mode == "bfs" else nodes_to_visit.pop()
+
+        #     if len(triples_leading_to) > 0:
+        #         triple = triples_leading_to.pop(0) if mode == "bfs" else triples_leading_to.pop()
+        #     else:
+        #         triple = None
+            
+        #     visited_nodes.add(node)
+        #     if triple is not None:
+        #         collected.add(triple)
+
+        #     if node_limit and len(visited_nodes) >= node_limit:
+        #         return collected
+
+        #     if triple_limit and len(collected) >= triple_limit:
+        #         return collected
+            
+        #     if node not in traversed_nodes:
+        #         traversed_nodes.add(node)
+                
+        #         # Process only object relationships
+        #         discovered_triples = []
+        #         for triple_ in object_triples.get(node, []):
+        #             if triple_ not in collected:
+        #                 s, p, o = triple_
+        #                 discovered_triples.append((triple_, s))
+        #                 if mode == "bfs":
+        #                     nodes_to_visit.append(s)  # For BFS, add to end
+        #                     triples_leading_to.append(triple_)
+        #                 else:
+        #                     nodes_to_visit.append(s)  # For DFS, add to front
+        #                     triples_leading_to.append(triple_)
+
+
+
+        # Third pass: Process all relationships
+        nodes_to_visit = list(start_nodes) #start_nodes
         triples_leading_to = []
         traversed_nodes = set()  # Reset traversed nodes for object pass
 
+        iteration = 0
         while len(nodes_to_visit) > 0:
+            iteration += 1
             node = nodes_to_visit.pop(0) if mode == "bfs" else nodes_to_visit.pop()
 
             if len(triples_leading_to) > 0:
@@ -937,21 +1077,34 @@ class SemanticModel:
             
             if node not in traversed_nodes:
                 traversed_nodes.add(node)
+                
                 # Process only object relationships
+                discovered_triples = []
+                for triple_ in subject_triples.get(node, []):
+                    if triple_ not in collected:
+                        s, p, o = triple_
+                        discovered_triples.append((triple_, o))
+                        if mode == "bfs":
+                            nodes_to_visit.append(o)
+                            triples_leading_to.append(triple_)
+                        else:
+                            nodes_to_visit.append(o)
+                            triples_leading_to.append(triple_)
+
                 for triple_ in object_triples.get(node, []):
                     if triple_ not in collected:
                         s, p, o = triple_
-                        # if s not in traversed_nodes:
+                        discovered_triples.append((triple_, s))
                         if mode == "bfs":
                             nodes_to_visit.append(s)  # For BFS, add to end
                             triples_leading_to.append(triple_)
                         else:
-                            # nodes_to_visit.insert(0, s)  # For DFS, add to front
-                            # triples_leading_to.insert(0, triple_)
                             nodes_to_visit.append(s)  # For DFS, add to front
                             triples_leading_to.append(triple_)
                 
-                        
+        print(f"Number of nodes visited: {len(visited_nodes)}")        
+        print(f"Number of traversed nodes: {len(traversed_nodes)}")        
+        print(f"Number of triples collected: {len(collected)}")                
         return collected
 
     def filter_graph(self, query: str, triple_limit: int = None, node_limit: int = None,
@@ -995,16 +1148,19 @@ class SemanticModel:
             if not query.strip().upper().startswith("CONSTRUCT"):
                 raise ValueError("Query must start with CONSTRUCT")
                 
-            import random
+            
             
             # Get initial triples from query
-            result = self.graph.query(query)
+            result = self.instance_graph.query(query)
             initial_triples = set()
             candidate_nodes = set()
             
             # Convert initial_node to URIRef if provided as string
             if initial_node is not None:
                 initial_node = URIRef(initial_node) if isinstance(initial_node, str) else initial_node
+
+
+            print(f"Number of rows in query result: {len(result)}")
             
             for row in result:
                 initial_triples.add(row)
@@ -1013,13 +1169,15 @@ class SemanticModel:
                 candidate_nodes.add(s)
                 candidate_nodes.add(o)
                 if triple_limit is not None and not traversal_mode and len(initial_triples) >= triple_limit:
+                    print(f"Reached triple limit: {triple_limit}")
                     break
+
             
             # Determine start nodes for traversal
             if initial_node is not None:
                 # Verify the node exists in our graph
-                if not any(self.graph.triples((initial_node, None, None))) and \
-                   not any(self.graph.triples((None, None, initial_node))):
+                if not any(self.instance_graph.triples((initial_node, None, None))) and \
+                   not any(self.instance_graph.triples((None, None, initial_node))):
                     raise ValueError(f"Initial node {initial_node} not found in graph")
                 start_nodes = {initial_node}
             else:
@@ -1073,23 +1231,26 @@ class SemanticModel:
                 return SemanticObject(value, self, datatype=datatype, lang=lang)
 
         # Handle URIs
-        uri = URIRef(value) if isinstance(value, str) else value
+        # uri = URIRef(value) if isinstance(value, str) else value
+        uri = str(value)
         if uri not in self._instances:
             self._instances[uri] = SemanticObject(uri, self)
         return self._instances[uri]
 
-    def get_type(self, uri: str) -> SemanticType:
+    def get_type(self, uri: Union[str, URIRef]) -> SemanticType:
         """Get a specific type by URI"""
-        uri = URIRef(uri) if isinstance(uri, str) else uri
+        # uri = URIRef(uri) if isinstance(uri, str) else uri
+        uri = str(uri)
         if uri not in self._types:
             self._types[uri] = SemanticType(uri, self)
         return self._types[uri]
 
-    def get_property(self, uri: str) -> SemanticProperty:
+    def get_property(self, uri: Union[str, URIRef]) -> SemanticProperty:
         """Get a specific property by URI"""
-        uri = URIRef(uri) if isinstance(uri, str) else uri
+        # uri = URIRef(uri) if isinstance(uri, str) else uri
+        uri = str(uri)
         if uri not in self._properties:
-            self._properties[uri] = SemanticProperty(uri, self.graph)
+            self._properties[uri] = SemanticProperty(uri, self)
         return self._properties[uri]
 
     def get_instances_of_type(
@@ -1141,24 +1302,24 @@ class SemanticModel:
         if uri_types:
             # Process each type in the tuple
             for uri in uri_types:
-                # Get the class and all its subclasses
+                # Get the class and all its subclasses from ontology_graph
                 subclasses = set([uri])
-                for subclass in self.graph.transitive_subjects(RDFS.subClassOf, uri):
+                for subclass in self.ontology_graph.transitive_subjects(RDFS.subClassOf, uri):
                     subclasses.add(subclass)
 
-                # Get instances of the class and its subclasses
+                # Get instances of the class and its subclasses from instance_graph
                 for subclass in subclasses:
                     # print(f"SUBCLASS: {subclass}")
                     # First check direct type assertions
-                    for instance in self.graph.subjects(RDF.type, subclass):
+                    for instance in self.instance_graph.subjects(RDF.type, subclass):
                         if instance not in processed_instances:
                             inst_obj = self.get_instance(instance)
                             instances.append(inst_obj)
                             processed_instances.add(instance)
 
                     # Then check for indirect type assertions through owl:sameAs
-                    for instance in self.graph.subjects(RDF.type, subclass):
-                        for same_as in self.graph.objects(
+                    for instance in self.instance_graph.subjects(RDF.type, subclass):
+                        for same_as in self.instance_graph.objects(
                             instance, URIRef("http://www.w3.org/2002/07/owl#sameAs")
                         ):
                             if same_as not in processed_instances:
@@ -1168,8 +1329,8 @@ class SemanticModel:
 
         # Then, handle literals with the specified datatypes
         if xsd_datatypes:
-            # Find all literals in the graph with the specified datatypes
-            for s, p, o in self.graph.triples((None, None, None)):
+            # Find all literals in the instance graph with the specified datatypes
+            for s, p, o in self.instance_graph.triples((None, None, None)):
                 if isinstance(o, Literal) and o.datatype in xsd_datatypes:
                     # Create a SemanticObject for this literal
                     literal_obj = self.get_instance(o)
@@ -1178,10 +1339,10 @@ class SemanticModel:
         return instances
 
     def count_instances(self) -> int:
-        return len(list(self.graph.subjects(RDF.type, None)))
+        return len(list(self.instance_graph.subjects(RDF.type, None)))
 
     def count_triples(self, s=None, p=None, o=None) -> int:
-        return len(list(self.graph.triples((s, p, o))))
+        return len(list(self.instance_graph.triples((s, p, o))))
 
     @reset_print
     def visualize(self, query=None, include_full_uri=True, dpi=2000, triple_limit=None, node_limit=None,
@@ -1334,13 +1495,17 @@ class SemanticModel:
                 uri = col.string
                 inst = self.get_instance(uri)
                 type_ = inst.type
+                most_specific_type = inst.get_most_specific_type()
 
-                z_ = {e for e in type_ if e.has_subclasses() == False}
-                z = {e.uri.n3(self.graph.namespace_manager) for e in z_}
-                if len(z) == 0:
-                    z = {"Unknown class"}
+                # z_ = {e for e in type_ if e.has_subclasses() == False}
+                # z = {e.uri.n3(self.graph.namespace_manager) for e in z_}
+                # if len(z) == 0:
+                #     z = {"Unknown class"}
+                # z = " | ".join(z)  # data
 
-                z = " | ".join(z)  # data
+                z = most_specific_type.get_short_name()
+
+
                 b = soup.new_tag("b", attrs={})
                 b.string = z
                 new_col = soup.new_tag("td", attrs={"bgcolor": "grey", "colspan": "2"})
@@ -1625,34 +1790,36 @@ class SemanticModel:
         - Equivalent properties (owl:equivalentProperty)
         - Property chains (owl:propertyChainAxiom)
         - SameAs reasoning (owl:sameAs)
+        
+        This method reads ontology definitions from ontology_graph and instance data from
+        instance_graph, and adds inferred triples to instance_graph.
         """
 
         print(PRINTPROGRESS._curses_mode)
         PRINTPROGRESS("Reasoning", status="")
         PRINTPROGRESS.add_level()
 
-
         if namespaces is None:
             # Convert Namespace objects to URI strings for parse_namespaces
             # namespaces = {prefix: str(uri) for prefix, uri in self.namespaces.items()}
             namespaces = self.namespaces
 
-        ontology_graph = Graph()
-        self.parse_namespaces(ontology_graph, namespaces=namespaces)
+        # Parse namespaces into ontology_graph if not already done
+        self.parse_namespaces(namespaces=namespaces)
 
         # Track new triples to add
         new_triples = set()
 
-        # Handle inverse properties
-        for s, p, o in ontology_graph.triples(
+        # Handle inverse properties (read from ontology_graph, apply to instance_graph)
+        for s, p, o in self.ontology_graph.triples(
             (None, URIRef("http://www.w3.org/2002/07/owl#inverseOf"), None)
         ):
             # Find and add inverse relationships
-            for subj, _, obj in self.graph.triples((None, s, None)):
+            for subj, _, obj in self.instance_graph.triples((None, s, None)):
                 new_triple = (obj, o, subj)
                 new_triples.add(new_triple)
 
-            for subj, _, obj in self.graph.triples((None, o, None)):
+            for subj, _, obj in self.instance_graph.triples((None, o, None)):
                 new_triple = (obj, s, subj)
                 new_triples.add(new_triple)
 
@@ -1662,12 +1829,12 @@ class SemanticModel:
 
         # Handle symmetric properties
         symmetric_props = set(
-            ontology_graph.subjects(
+            self.ontology_graph.subjects(
                 RDF.type, URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")
             )
         )
         for prop in symmetric_props:
-            for subj, _, obj in self.graph.triples((None, prop, None)):
+            for subj, _, obj in self.instance_graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
 
         PRINTPROGRESS(f"Added number of symmetric triples: {len(new_triples)-n_triples}")
@@ -1675,13 +1842,13 @@ class SemanticModel:
 
         # Handle transitive properties
         transitive_props = set(
-            ontology_graph.subjects(
+            self.ontology_graph.subjects(
                 RDF.type, URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")
             )
         )
         for prop in transitive_props:
             # Find all pairs connected by this property
-            pairs = list(self.graph.triples((None, prop, None)))
+            pairs = list(self.instance_graph.triples((None, prop, None)))
             # For each pair, look for additional connections
             for s1, _, o1 in pairs:
                 for s2, _, o2 in pairs:
@@ -1689,6 +1856,74 @@ class SemanticModel:
                         new_triples.add((s1, prop, o2))
 
         PRINTPROGRESS(f"Added number of transitive triples: {len(new_triples)-n_triples}")
+        n_triples = len(new_triples)
+
+        # Handle subclass reasoning (rdfs:subClassOf)
+        # This adds missing class assertions for instances based on complete class hierarchy
+        
+        def build_superclass_hierarchy(
+            ontology_graph: Graph,
+        ) -> Dict[URIRef, Set[URIRef]]:
+            """
+            Recursively build complete superclass hierarchy for each class.
+            
+            Args:
+                ontology_graph: The ontology graph containing subClassOf assertions
+                
+            Returns:
+                Dictionary mapping each class to the set of ALL its superclasses
+            """
+            # Build direct superclass relationships
+            direct_superclasses = {}
+            for subclass, _, superclass in ontology_graph.triples((None, RDFS.subClassOf, None)):
+                if subclass not in direct_superclasses:
+                    direct_superclasses[subclass] = set()
+                direct_superclasses[subclass].add(superclass)
+            
+            # Recursively compute all superclasses for each class
+            all_superclasses = {}
+            
+            def get_all_superclasses(class_uri: URIRef, visited: Set[URIRef] = None) -> Set[URIRef]:
+                """Recursively find all superclasses of a given class."""
+                if visited is None:
+                    visited = set()
+                    
+                # Avoid circular dependencies
+                if class_uri in visited:
+                    return set()
+                visited.add(class_uri)
+                
+                # Check if already computed
+                if class_uri in all_superclasses:
+                    return all_superclasses[class_uri]
+                
+                superclasses = set()
+                
+                # Get direct superclasses
+                if class_uri in direct_superclasses:
+                    for superclass in direct_superclasses[class_uri]:
+                        superclasses.add(superclass)
+                        # Recursively get superclasses of the superclass
+                        superclasses.update(get_all_superclasses(superclass, visited.copy()))
+                
+                all_superclasses[class_uri] = superclasses
+                return superclasses
+            
+            # Compute for all classes that have subClassOf relationships
+            for class_uri in direct_superclasses:
+                get_all_superclasses(class_uri)
+            
+            return all_superclasses
+        
+        # Execute subclass reasoning (read hierarchy from ontology_graph, apply to instance_graph)
+        superclass_hierarchy = build_superclass_hierarchy(self.ontology_graph)
+        for subclass, all_superclasses_set in superclass_hierarchy.items():
+            # For each instance of the subclass, assert it's also an instance of all superclasses
+            for instance in self.instance_graph.subjects(RDF.type, subclass):
+                for superclass in all_superclasses_set:
+                    new_triples.add((instance, RDF.type, superclass))
+        
+        PRINTPROGRESS(f"Added number of subclass triples: {len(new_triples)-n_triples}")
         n_triples = len(new_triples)
 
         # Handle equivalent classes (owl:equivalentClass)
@@ -1754,10 +1989,10 @@ class SemanticModel:
                 equivalence_class: Set of equivalent classes
                 new_triples: Set to collect new triples to add
             """
-            # Collect all instances of any class in this equivalence class
+            # Collect all instances of any class in this equivalence class (from instance_graph)
             all_instances = set()
             for class_uri in equivalence_class:
-                instances = set(self.graph.subjects(RDF.type, class_uri))
+                instances = set(self.instance_graph.subjects(RDF.type, class_uri))
                 all_instances.update(instances)
 
             # Add all instances to all classes in the equivalence class
@@ -1765,19 +2000,15 @@ class SemanticModel:
                 for class_uri in equivalence_class:
                     new_triples.add((instance, RDF.type, class_uri))
 
-        # Execute equivalent class reasoning
-        equivalence_map = build_equivalence_classes(ontology_graph)
+        # Execute equivalent class reasoning (read from ontology_graph, apply to instance_graph)
+        equivalence_map = build_equivalence_classes(self.ontology_graph)
         for equivalence_class in equivalence_map.values():
             propagate_class_assertions(equivalence_class, new_triples)
 
-        # These have not been tested yet
+        PRINTPROGRESS(f"Added number of equivalent class triples: {len(new_triples)-n_triples}")
+        n_triples = len(new_triples)
 
-        # # Handle subclass reasoning (rdfs:subClassOf)
-        # # This adds missing class assertions for instances based on inheritance
-        # for subclass, _, superclass in ontology_graph.triples((None, RDFS.subClassOf, None)):
-        #     # If an instance is of the subclass, it's also of the superclass
-        #     for instance in self.graph.subjects(RDF.type, subclass):
-        #         new_triples.add((instance, RDF.type, superclass))
+        # These have not been tested yet
 
         # # Handle equivalent properties (owl:equivalentProperty)
         # for prop1, _, prop2 in ontology_graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#equivalentProperty"), None)):
@@ -1807,17 +2038,17 @@ class SemanticModel:
         #                     if o1 == s2:  # Found a chain
         #                         new_triples.add((s1, target_prop, o2))
 
-        # # Handle sameAs reasoning (owl:sameAs)
-        # # This propagates all properties from one individual to its sameAs individuals
-        # for ind1, _, ind2 in self.graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#sameAs"), None)):
-        #     # Copy all properties from ind1 to ind2
-        #     for subj, pred, obj in self.graph.triples((ind1, None, None)):
-        #         if pred != URIRef("http://www.w3.org/2002/07/owl#sameAs"):  # Avoid infinite loops
-        #             new_triples.add((ind2, pred, obj))
-        #     # Copy all properties from ind2 to ind1
-        #     for subj, pred, obj in self.graph.triples((ind2, None, None)):
-        #         if pred != URIRef("http://www.w3.org/2002/07/owl#sameAs"):  # Avoid infinite loops
-        #             new_triples.add((ind1, pred, obj))
+        # Handle sameAs reasoning (owl:sameAs)
+        # This propagates all properties from one individual to its sameAs individuals
+        for ind1, _, ind2 in self.instance_graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#sameAs"), None)):
+            # Copy all properties from ind1 to ind2
+            for subj, pred, obj in self.instance_graph.triples((ind1, None, None)):
+                if pred != URIRef("http://www.w3.org/2002/07/owl#sameAs"):  # Avoid infinite loops
+                    new_triples.add((ind2, pred, obj))
+            # Copy all properties from ind2 to ind1
+            for subj, pred, obj in self.instance_graph.triples((ind2, None, None)):
+                if pred != URIRef("http://www.w3.org/2002/07/owl#sameAs"):  # Avoid infinite loops
+                    new_triples.add((ind1, pred, obj))
 
         # # Handle functional properties (owl:FunctionalProperty)
         # # If a property is functional, ensure we don't have conflicting values
@@ -1841,15 +2072,16 @@ class SemanticModel:
         #             object_subjects[obj] = subj
         #         # Note: In a real implementation, you might want to handle conflicts differently
 
-        # Add all new triples to the graph
+        # Add all new triples to the instance_graph
         for s, p, o in new_triples:
-            self.graph.add((s, p, o))
+            self.instance_graph.add((s, p, o))
 
         PRINTPROGRESS.remove_level()
         PRINTPROGRESS("Reasoning", status="[OK]", change_status=True)
 
     def serialize(self, folder_list: List[str] = None):
+        """Serialize the instance_graph to a file"""
         dirname, _ = self.get_dir(
             folder_list=folder_list, filename="semantic_model.ttl"
         )
-        self.graph.serialize(destination=str(dirname), format="turtle")
+        self.instance_graph.serialize(destination=str(dirname), format="turtle")
