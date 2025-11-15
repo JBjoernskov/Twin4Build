@@ -192,25 +192,20 @@ class Simulator:
         """
         # Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connects_at:
-            for j, connection in enumerate(connection_point.connects_system_through):
+            for connection in connection_point.connects_system_through:
                 connected_component = connection.connects_system
-                
-                value = connected_component.output[connection.outputPort].get()
-                if isinstance(value, torch.Tensor) and value.numel() == 1:
-                    value = value.item()
 
                 component.input[connection_point.inputPort].set(
-                    value,
+                    connected_component.output[connection.outputPort].get(),
                     stepIndex=self.stepIndex,
                 )
 
-
-            if torch.any(torch.isnan(component.input[connection_point.inputPort].get())):
-                for s in self.debug_str:
-                    print(s)
-                raise ValueError(
-                    f"Input {connection_point.inputPort} of component {component.id} is NaN"
-                )
+                if torch.isnan(component.input[connection_point.inputPort].get()):
+                    for s in self.debug_str:
+                        print(s)
+                    raise ValueError(
+                        f"Input {connection_point.inputPort} of component {component.id} is NaN"
+                    )
 
         component.do_step(
             self.secondTime,
