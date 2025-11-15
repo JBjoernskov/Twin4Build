@@ -279,12 +279,145 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             validated_for_optimizer,
         )
 
+    def _load_from_separate_files(self, start_time, end_time, step_size):
+        """Load data from 3 separate CSV files and combine them."""
+        # Validate that all required filename parameters are provided
+        
+        
+        if (
+            self.filename_outdoorTemperature is None
+            or self.filename_globalIrradiation is None
+            or self.filename_outdoorCo2Concentration is None
+        ):
+            raise ValueError(
+                "All three filename parameters (filename_outdoorTemperature, filename_globalIrradiation, filename_outdoorCo2Concentration) must be provided when useSpreadsheet=True"
+            )
+
+        df = []
+        for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
+            # Load each file
+            df_temp = load_from_spreadsheet(
+                filename=self.filename_outdoorTemperature,
+                datecolumn=self.datecolumn_outdoorTemperature,
+                valuecolumn=self.valuecolumn_outdoorTemperature,
+                step_size=step_size_,
+                start_time=start_time_,
+                end_time=end_time_,
+                cache_root=self.cache_root,
+            )
+            
+
+            df_irrad = load_from_spreadsheet(
+                filename=self.filename_globalIrradiation,
+                datecolumn=self.datecolumn_globalIrradiation,
+                valuecolumn=self.valuecolumn_globalIrradiation,
+                step_size=step_size_,
+                start_time=start_time_,
+                end_time=end_time_,
+                cache_root=self.cache_root,
+            )
+            df_co2 = load_from_spreadsheet(
+                filename=self.filename_outdoorCo2Concentration,
+                datecolumn=self.datecolumn_outdoorCo2Concentration,
+                valuecolumn=self.valuecolumn_outdoorCo2Concentration,
+                step_size=step_size_,
+                start_time=start_time_,
+                end_time=end_time_,
+                cache_root=self.cache_root,
+            )
+
+            # Create combined DataFrame
+            # When valuecolumn is specified, load_from_spreadsheet returns a pandas Series with date_timeIndex
+            _df = pd.DataFrame(
+                {
+                    "outdoorTemperature": df_temp.values,
+                    "globalIrradiation": df_irrad.values,
+                    "outdoorCo2Concentration": df_co2.values,
+                },
+                index=df_temp.index,
+            )
+            _df.index.name = "time"
+
+            #For compatibility with how dfs are handled in batches
+            df.append(_df)
+        return df
+
+    def _load_from_database(self, start_time, end_time, step_size):
+        """Load data from database and combine them."""
+        
+        # Validate that all required database parameters are provided
+        if (
+            (
+                self.uuid_outdoorTemperature is None
+                and self.name_outdoorTemperature is None
+            )
+            or (
+                self.uuid_globalIrradiation is None
+                and self.name_globalIrradiation is None
+            )
+            or (
+                self.uuid_outdoorCo2Concentration is None
+                and self.name_outdoorCo2Concentration is None
+            )
+        ):
+            raise ValueError(
+                "uuid or name parameters must be provided for all three data types (outdoorTemperature, globalIrradiation, outdoorCo2Concentration) when useDatabase=True"
+            )
+        df = []
+        for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
+            # Load each parameter from database
+            df_temp = load_from_database(
+                uuid=self.uuid_outdoorTemperature,
+                name=self.name_outdoorTemperature,
+                dbconfig=self.database_config_outdoorTemperature,
+                step_size=step_size_,
+                start_time=start_time_,
+                end_time=end_time_,
+                dt_limit=1200,
+            )
+
+            df_irrad = load_from_database(
+                uuid=self.uuid_globalIrradiation,
+                name=self.name_globalIrradiation,
+                dbconfig=self.database_config_globalIrradiation,
+                step_size=step_size_,
+                start_time=start_time_,
+                end_time=end_time_,
+                dt_limit=1200,
+            )
+
+            df_co2 = load_from_database(
+                uuid=self.uuid_outdoorCo2Concentration,
+                name=self.name_outdoorCo2Concentration,
+                dbconfig=self.dbconfig_outdoorCo2Concentration,
+                step_size=step_size_,
+                start_time=start_time_,
+                end_time=end_time_,
+                dt_limit=1200,
+            )
+
+            # Create combined DataFrame
+            _df = pd.DataFrame(
+                {
+                    "outdoorTemperature": df_temp.values,
+                    "globalIrradiation": df_irrad.values,
+                    "outdoorCo2Concentration": df_co2.values,
+                },
+                index=df_temp.index,
+            )
+            _df.index.name = "time"
+            df.append(_df)
+        return df
+
+    def _apply(self, x):
+        return x * self.a.get() + self.b.get()
+
+
     def initialize(
         self,
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the outdoor environment system.
 
@@ -297,7 +430,6 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             start_time (datetime.datetime): Start time of the simulation period.
             end_time (datetime.datetime): End time of the simulation period.
             step_size (int): Time step size in seconds.
-            simulator (core.Simulator): Simulation model object.
 
         Raises:
             ValueError: If the weather data files cannot be found or required columns are missing.
@@ -327,141 +459,40 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             "globalIrradiation",
             "outdoorCo2Concentration",
         ]
-        is_included = np.array([key in self.df.columns for key in required_keys])
-        assert np.all(
-            is_included
-        ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
-
-        for key, output in self._output.items():
-            output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
-                values=self.df[key].values,
+        if isinstance(self.df, list):
+            missing_by_df = []
+            for idx, df_item in enumerate(self.df):
+                missing_keys = [key for key in required_keys if key not in df_item.columns]
+                if missing_keys:
+                    missing_by_df.append(f"df[{idx}]: {', '.join(missing_keys)}")
+            assert not missing_by_df, (
+                "The following required columns are not included in the provided data: "
+                + "; ".join(missing_by_df)
             )
+        else:
+            is_included = np.array([key in self.df.columns for key in required_keys])
+            assert np.all(
+                is_included
+            ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
 
-    def _load_from_separate_files(self, start_time, end_time, step_size):
-        """Load data from 3 separate CSV files and combine them."""
-        # Validate that all required filename parameters are provided
-        if (
-            self.filename_outdoorTemperature is None
-            or self.filename_globalIrradiation is None
-            or self.filename_outdoorCo2Concentration is None
-        ):
-            raise ValueError(
-                "All three filename parameters (filename_outdoorTemperature, filename_globalIrradiation, filename_outdoorCo2Concentration) must be provided when useSpreadsheet=True"
-            )
+        _, _, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        batch_size = len(start_time)
+        n_variables = len(required_keys)
 
-        # Load each file
-        df_temp = load_from_spreadsheet(
-            filename=self.filename_outdoorTemperature,
-            datecolumn=self.datecolumn_outdoorTemperature,
-            valuecolumn=self.valuecolumn_outdoorTemperature,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            cache_root=self.cache_root,
-        )
-        df_irrad = load_from_spreadsheet(
-            filename=self.filename_globalIrradiation,
-            datecolumn=self.datecolumn_globalIrradiation,
-            valuecolumn=self.valuecolumn_globalIrradiation,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            cache_root=self.cache_root,
-        )
-        df_co2 = load_from_spreadsheet(
-            filename=self.filename_outdoorCo2Concentration,
-            datecolumn=self.datecolumn_outdoorCo2Concentration,
-            valuecolumn=self.valuecolumn_outdoorCo2Concentration,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            cache_root=self.cache_root,
-        )
 
-        # Create combined DataFrame
-        # When valuecolumn is specified, load_from_spreadsheet returns a pandas Series with date_timeIndex
-        df = pd.DataFrame(
-            {
-                "time": df_temp.index,
-                "outdoorTemperature": df_temp.values,
-                "globalIrradiation": df_irrad.values,
-                "outdoorCo2Concentration": df_co2.values,
-            }
-        )
+        
+        for key_index, key in enumerate(required_keys) :
+            values = np.empty((len(self.df), n_timesteps))
+            values.fill(np.nan)
 
-        return df
-
-    def _load_from_database(self, start_time, end_time, step_size):
-        """Load data from database and combine them."""
-
-        # Validate that all required database parameters are provided
-        if (
-            (
-                self.uuid_outdoorTemperature is None
-                and self.name_outdoorTemperature is None
-            )
-            or (
-                self.uuid_globalIrradiation is None
-                and self.name_globalIrradiation is None
-            )
-            or (
-                self.uuid_outdoorCo2Concentration is None
-                and self.name_outdoorCo2Concentration is None
-            )
-        ):
-            raise ValueError(
-                "uuid or name parameters must be provided for all three data types (outdoorTemperature, globalIrradiation, outdoorCo2Concentration) when useDatabase=True"
-            )
-
-        # Load each parameter from database
-        df_temp = load_from_database(
-            uuid=self.uuid_outdoorTemperature,
-            name=self.name_outdoorTemperature,
-            dbconfig=self.database_config_outdoorTemperature,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            dt_limit=1200,
-        )
-
-        df_irrad = load_from_database(
-            uuid=self.uuid_globalIrradiation,
-            name=self.name_globalIrradiation,
-            dbconfig=self.database_config_globalIrradiation,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            dt_limit=1200,
-        )
-
-        df_co2 = load_from_database(
-            uuid=self.uuid_outdoorCo2Concentration,
-            name=self.name_outdoorCo2Concentration,
-            dbconfig=self.dbconfig_outdoorCo2Concentration,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            dt_limit=1200,
-        )
-
-        # Create combined DataFrame
-        df = pd.DataFrame(
-            {
-                "time": df_temp.index,
-                "outdoorTemperature": df_temp.values,
-                "globalIrradiation": df_irrad.values,
-                "outdoorCo2Concentration": df_co2.values,
-            }
-        )
-
-        return df
-
-    def _apply(self, x):
-        return x * self.a.get() + self.b.get()
+            for batch_index, df in enumerate(self.df):
+                size = len(df.index)
+                values[batch_index,:size] = df.values[:,key_index]
+                self._output[key].initialize(
+                    n_timesteps=n_timesteps,
+                    batch_size=batch_size,
+                    values=values,
+                )
 
     def do_step(
         self,
@@ -507,7 +538,6 @@ def saref_signature_pattern():
     )
     sp.add_modeled_node(node0)
     return sp
-
 
 def brick_signature_pattern():
     """
