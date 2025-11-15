@@ -733,10 +733,12 @@ class SensorSystem(core.System):
         batch_size = len(start_time)
 
         if self.is_leaf:
+            # The batch initialization args are calculated in the TimeSeriesInputSystem.initialize() method.
+            # They are stored in the physicalSystem object and reused here. 
             self.output["measuredValue"].initialize(
-                n_timesteps=n_timesteps,
-                batch_size=batch_size,
-                values=self.physicalSystem.df.values,
+                n_timesteps=self.physicalSystem.n_timesteps,
+                batch_size=len(self.physicalSystem.df),
+                values=self.physicalSystem.values,
             )
         else:
             self.input["measuredValue"].initialize(

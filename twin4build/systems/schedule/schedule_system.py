@@ -240,12 +240,15 @@ class ScheduleSystem(core.System):
                 dbconfig=self.dbconfig,
             )
             time_series_input.initialize(start_time, end_time, step_size)
+
+            
+            # The batch initialization args are calculated in the time_series_input.initialize() method.
+            # They are stored in the time_series_input object and reused here.
             self.output["scheduleValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                values=time_series_input.df.values,
-            )
+                    n_timesteps=time_series_input.n_timesteps,
+                    batch_size=len(time_series_input.df),
+                    values=time_series_input.values,
+                )
         else:
             required_dicts = [
                 self.mondayRulesetDict,

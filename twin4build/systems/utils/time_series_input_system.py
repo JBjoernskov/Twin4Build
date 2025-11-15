@@ -344,16 +344,16 @@ class TimeSeriesInputSystem(core.System):
                 self.df.append(df)
 
         _, _, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-        values = np.empty((len(self.df), n_timesteps))
-        values.fill(np.nan)
+        self.n_timesteps = n_timesteps
+        self.values = np.empty((len(self.df), n_timesteps))
+        self.values.fill(np.nan)
         for batch_index, df in enumerate(self.df):
             size = len(df.index)
-            values[batch_index,:size] = df.values[:,0]
-
+            self.values[batch_index,:size] = df.values
         self.output["value"].initialize(
                 n_timesteps,
                 batch_size=len(start_time),
-                values=values,
+                values=self.values,
             )
 
 
