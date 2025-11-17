@@ -2,8 +2,7 @@
 import datetime
 import os
 import warnings
-from typing import Optional
-
+from typing import List, Optional
 # Third party imports
 import numpy as np
 import pandas as pd
@@ -115,6 +114,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         }
         self.useSpreadsheet = useSpreadsheet
         self.useDatabase = useDatabase
+        
 
         self.filename_outdoorTemperature = filename_outdoorTemperature
         self.datecolumn_outdoorTemperature = datecolumn_outdoorTemperature
@@ -148,7 +148,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             torch.tensor(b, dtype=torch.float64), requires_grad=False
         )
         self.apply_correction = apply_correction
-        self.cached_initialize_arguments = None
+        self.cached_initialize_arguments = []
         self.cache_root = get_main_dir()
 
         self._config = {
@@ -307,18 +307,18 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             filename=self.filename_globalIrradiation,
             datecolumn=self.datecolumn_globalIrradiation,
             valuecolumn=self.valuecolumn_globalIrradiation,
-            step_size=step_size_,
-            start_time=start_time_,
-            end_time=end_time_,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             cache_root=self.cache_root,
         )
         df_co2 = load_from_spreadsheet(
             filename=self.filename_outdoorCo2Concentration,
             datecolumn=self.datecolumn_outdoorCo2Concentration,
             valuecolumn=self.valuecolumn_outdoorCo2Concentration,
-            step_size=step_size_,
-            start_time=start_time_,
-            end_time=end_time_,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             cache_root=self.cache_root,
         )
 
@@ -362,9 +362,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             uuid=self.uuid_outdoorTemperature,
             name=self.name_outdoorTemperature,
             dbconfig=self.database_config_outdoorTemperature,
-            step_size=step_size_,
-            start_time=start_time_,
-            end_time=end_time_,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             dt_limit=1200,
         )
 
@@ -372,9 +372,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             uuid=self.uuid_globalIrradiation,
             name=self.name_globalIrradiation,
             dbconfig=self.database_config_globalIrradiation,
-            step_size=step_size_,
-            start_time=start_time_,
-            end_time=end_time_,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             dt_limit=1200,
         )
 
@@ -382,9 +382,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             uuid=self.uuid_outdoorCo2Concentration,
             name=self.name_outdoorCo2Concentration,
             dbconfig=self.dbconfig_outdoorCo2Concentration,
-            step_size=step_size_,
-            start_time=start_time_,
-            end_time=end_time_,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             dt_limit=1200,
         )
 
@@ -426,8 +426,8 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             ValueError: If the weather data files cannot be found or required columns are missing.
         """
 
-        if len(self._cached_initialize_arguments)>0 and len(self._cached_initialize_arguments) == len(start_time): # Only check first element of tuple for length as all elements are the same length
-            is_cached = all(start_time_==c[0] and end_time_==c[1] and step_size_==c[2] for start_time_, end_time_, step_size_, c in zip(start_time, end_time, step_size, self._cached_initialize_arguments))
+        if len(self.cached_initialize_arguments)>0 and len(self.cached_initialize_arguments) == len(start_time): # Only check first element of tuple for length as all elements are the same length
+            is_cached = all(start_time_==c[0] and end_time_==c[1] and step_size_==c[2] for start_time_, end_time_, step_size_, c in zip(start_time, end_time, step_size, self.cached_initialize_arguments))
         else:
             is_cached = False
 
@@ -443,11 +443,11 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 if self.useSpreadsheet:
                     # Load from 3 separate files
                     df_item = self._load_from_separate_files(
-                        start_time, end_time, step_size
+                        start_time_, end_time_, step_size_
                     )
                 elif self.useDatabase:
                     # Load from database
-                    df_item = self._load_from_database(start_time, end_time, step_size)
+                    df_item = self._load_from_database(start_time_, end_time_, step_size_)
                 else:
                     # Use provided DataFrame
                     if self.df is None:
