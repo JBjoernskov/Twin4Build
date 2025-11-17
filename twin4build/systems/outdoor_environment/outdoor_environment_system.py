@@ -293,54 +293,47 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 "All three filename parameters (filename_outdoorTemperature, filename_globalIrradiation, filename_outdoorCo2Concentration) must be provided when useSpreadsheet=True"
             )
 
-        df = []
-        for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
-            # Load each file
-            df_temp = load_from_spreadsheet(
-                filename=self.filename_outdoorTemperature,
-                datecolumn=self.datecolumn_outdoorTemperature,
-                valuecolumn=self.valuecolumn_outdoorTemperature,
-                step_size=step_size_,
-                start_time=start_time_,
-                end_time=end_time_,
-                cache_root=self.cache_root,
-            )
-            
-
-            df_irrad = load_from_spreadsheet(
-                filename=self.filename_globalIrradiation,
-                datecolumn=self.datecolumn_globalIrradiation,
-                valuecolumn=self.valuecolumn_globalIrradiation,
-                step_size=step_size_,
-                start_time=start_time_,
-                end_time=end_time_,
-                cache_root=self.cache_root,
-            )
-            df_co2 = load_from_spreadsheet(
-                filename=self.filename_outdoorCo2Concentration,
-                datecolumn=self.datecolumn_outdoorCo2Concentration,
-                valuecolumn=self.valuecolumn_outdoorCo2Concentration,
-                step_size=step_size_,
-                start_time=start_time_,
-                end_time=end_time_,
-                cache_root=self.cache_root,
-            )
+        # Load each file
+        df_temp = load_from_spreadsheet(
+            filename=self.filename_outdoorTemperature,
+            datecolumn=self.datecolumn_outdoorTemperature,
+            valuecolumn=self.valuecolumn_outdoorTemperature,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
+            cache_root=self.cache_root,
+        )
+        df_irrad = load_from_spreadsheet(
+            filename=self.filename_globalIrradiation,
+            datecolumn=self.datecolumn_globalIrradiation,
+            valuecolumn=self.valuecolumn_globalIrradiation,
+            step_size=step_size_,
+            start_time=start_time_,
+            end_time=end_time_,
+            cache_root=self.cache_root,
+        )
+        df_co2 = load_from_spreadsheet(
+            filename=self.filename_outdoorCo2Concentration,
+            datecolumn=self.datecolumn_outdoorCo2Concentration,
+            valuecolumn=self.valuecolumn_outdoorCo2Concentration,
+            step_size=step_size_,
+            start_time=start_time_,
+            end_time=end_time_,
+            cache_root=self.cache_root,
+        )
 
             # Create combined DataFrame
             # When valuecolumn is specified, load_from_spreadsheet returns a pandas Series with date_timeIndex
-            _df = pd.DataFrame(
-                {
-                    "outdoorTemperature": df_temp.values,
-                    "globalIrradiation": df_irrad.values,
-                    "outdoorCo2Concentration": df_co2.values,
-                },
-                index=df_temp.index,
-            )
-            _df.index.name = "time"
-
-            #For compatibility with how dfs are handled in batches
-            df.append(_df)
-        return df
+        _df = pd.DataFrame(
+            {
+                "outdoorTemperature": df_temp.values,
+                "globalIrradiation": df_irrad.values,
+                "outdoorCo2Concentration": df_co2.values,
+            },
+            index=df_temp.index,
+        )
+        _df.index.name = "time"
+        return _df
 
     def _load_from_database(self, start_time, end_time, step_size):
         """Load data from database and combine them."""
@@ -363,51 +356,49 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             raise ValueError(
                 "uuid or name parameters must be provided for all three data types (outdoorTemperature, globalIrradiation, outdoorCo2Concentration) when useDatabase=True"
             )
-        df = []
-        for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
-            # Load each parameter from database
-            df_temp = load_from_database(
-                uuid=self.uuid_outdoorTemperature,
-                name=self.name_outdoorTemperature,
-                dbconfig=self.database_config_outdoorTemperature,
-                step_size=step_size_,
-                start_time=start_time_,
-                end_time=end_time_,
-                dt_limit=1200,
-            )
 
-            df_irrad = load_from_database(
-                uuid=self.uuid_globalIrradiation,
-                name=self.name_globalIrradiation,
-                dbconfig=self.database_config_globalIrradiation,
-                step_size=step_size_,
-                start_time=start_time_,
-                end_time=end_time_,
-                dt_limit=1200,
-            )
+        # Load each parameter from database
+        df_temp = load_from_database(
+            uuid=self.uuid_outdoorTemperature,
+            name=self.name_outdoorTemperature,
+            dbconfig=self.database_config_outdoorTemperature,
+            step_size=step_size_,
+            start_time=start_time_,
+            end_time=end_time_,
+            dt_limit=1200,
+        )
 
-            df_co2 = load_from_database(
-                uuid=self.uuid_outdoorCo2Concentration,
-                name=self.name_outdoorCo2Concentration,
-                dbconfig=self.dbconfig_outdoorCo2Concentration,
-                step_size=step_size_,
-                start_time=start_time_,
-                end_time=end_time_,
-                dt_limit=1200,
-            )
+        df_irrad = load_from_database(
+            uuid=self.uuid_globalIrradiation,
+            name=self.name_globalIrradiation,
+            dbconfig=self.database_config_globalIrradiation,
+            step_size=step_size_,
+            start_time=start_time_,
+            end_time=end_time_,
+            dt_limit=1200,
+        )
 
-            # Create combined DataFrame
-            _df = pd.DataFrame(
-                {
-                    "outdoorTemperature": df_temp.values,
-                    "globalIrradiation": df_irrad.values,
-                    "outdoorCo2Concentration": df_co2.values,
-                },
-                index=df_temp.index,
-            )
-            _df.index.name = "time"
-            df.append(_df)
-        return df
+        df_co2 = load_from_database(
+            uuid=self.uuid_outdoorCo2Concentration,
+            name=self.name_outdoorCo2Concentration,
+            dbconfig=self.dbconfig_outdoorCo2Concentration,
+            step_size=step_size_,
+            start_time=start_time_,
+            end_time=end_time_,
+            dt_limit=1200,
+        )
+
+        # Create combined DataFrame
+        _df = pd.DataFrame(
+            {
+                "outdoorTemperature": df_temp.values,
+                "globalIrradiation": df_irrad.values,
+                "outdoorCo2Concentration": df_co2.values,
+            },
+            index=df_temp.index,
+        )
+        _df.index.name = "time"
+        return _df
 
     def _apply(self, x):
         return x * self.a.get() + self.b.get()
@@ -415,9 +406,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
+        start_time:  List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
     ) -> None:
         """Initialize the outdoor environment system.
 
@@ -434,26 +425,39 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         Raises:
             ValueError: If the weather data files cannot be found or required columns are missing.
         """
-        if self.df is None or (
-            self.cached_initialize_arguments != (start_time, end_time, step_size)
-            and self.cached_initialize_arguments is not None
-        ):
-            if self.useSpreadsheet:
-                # Load from 3 separate files
-                self.df = self._load_from_separate_files(
-                    start_time, end_time, step_size
-                )
-            elif self.useDatabase:
-                # Load from database
-                self.df = self._load_from_database(start_time, end_time, step_size)
-            else:
-                # Use provided DataFrame
-                if self.df is None:
-                    raise ValueError(
-                        "No data source provided. Set useSpreadsheet=True or useDatabase=True or provide df."
-                    )
 
-        self.cached_initialize_arguments = (start_time, end_time, step_size)
+        if len(self._cached_initialize_arguments)>0 and len(self._cached_initialize_arguments) == len(start_time): # Only check first element of tuple for length as all elements are the same length
+            is_cached = all(start_time_==c[0] and end_time_==c[1] and step_size_==c[2] for start_time_, end_time_, step_size_, c in zip(start_time, end_time, step_size, self._cached_initialize_arguments))
+        else:
+            is_cached = False
+
+
+        #Cache check for multiple batches
+        if self.df is None or ( 
+            len(self.cached_initialize_arguments)>0 and len(self.cached_initialize_arguments) == len(start_time)
+            ):
+            self.cached_initialize_arguments = []
+            self.df = []
+            
+            for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
+                if self.useSpreadsheet:
+                    # Load from 3 separate files
+                    df_item = self._load_from_separate_files(
+                        start_time, end_time, step_size
+                    )
+                elif self.useDatabase:
+                    # Load from database
+                    df_item = self._load_from_database(start_time, end_time, step_size)
+                else:
+                    # Use provided DataFrame
+                    if self.df is None:
+                        raise ValueError(
+                            "No data source provided. Set useSpreadsheet=True or useDatabase=True or provide df."
+                        )
+                self.df.append(df_item)
+                self.cached_initialize_arguments.append((start_time_, end_time_, step_size_))
+        
+
         required_keys = [
             "outdoorTemperature",
             "globalIrradiation",
