@@ -451,6 +451,11 @@ class Scalar:
             self._scalar = torch.zeros((self.batch_size), dtype=torch.float64)
         else:
             self._scalar = self._init_scalar.clone()
+            if self.batch_size > 1:
+                if self._scalar.dim() == 0:
+                    self._scalar = self._scalar.expand(self.batch_size).clone()
+                elif self._scalar.dim() == 1 and self._scalar.shape[0] == 1:
+                    self._scalar = self._scalar.expand(self.batch_size).clone()
 
         if values is not None:
             values = _convert_to_2D_tensor(values)
