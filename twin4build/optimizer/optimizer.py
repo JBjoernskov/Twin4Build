@@ -554,7 +554,8 @@ class Optimizer:
         assert end_time is not None, "end_time must be provided"
         assert step_size is not None, "step_size must be provided"
 
-        self.second_time_steps, self.date_time_steps, self.n_timesteps = core.Simulator.get_simulation_timesteps(self._start_time, self._end_time, self._stepSize)
+        self.second_time_steps, self.date_time_steps, max_timesteps, _ = core.Simulator.get_simulation_timesteps(self._start_time, self._end_time, self._stepSize)
+        self.max_timesteps = max_timesteps
 
         # Check that we have something to optimize
         assert (
@@ -863,7 +864,7 @@ class Optimizer:
         for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
-        second_time_steps, date_time_steps = core.Simulator.get_simulation_timesteps(
+        second_time_steps, date_time_steps, _, _ = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
         self.simulator.model.initialize(
@@ -1255,7 +1256,7 @@ class Optimizer:
             
             # Initialize with the new values (including padding)
             component.output[output_name].initialize(
-                n_timesteps=self.n_timesteps,
+                n_timesteps=self.max_timesteps,
                 batch_size=len(self._start_time),
                 values=values,
                 force=True,

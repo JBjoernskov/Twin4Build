@@ -587,7 +587,7 @@ class Estimator:
             )
 
         # Set up time periods
-        self._n_wamup = n_warmup
+        self._n_warmup = n_warmup
         if not isinstance(start_time, list):
             start_time = [start_time]
         if not isinstance(end_time, list):
@@ -1706,13 +1706,13 @@ class Estimator:
         for batch_idx, (startTime_, endTime_, stepSize_) in enumerate(zip(
             self._start_time, self._end_time, self._stepSize
         )):
-            second_time_steps, date_time_steps, n_timesteps = core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
-            n_time = n_timesteps - self._n_wamup
+            second_time_steps, date_time_steps, max_timesteps, _ = core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
+            n_time = max_timesteps - self._n_warmup
 
             # Extract measurements for this period
             for measuring_device, sd in self._measurements:
                 # Get simulation results for this period (batch dimension = period_idx)
-                y_model_period = measuring_device.input["measuredValue"].history[batch_idx, self._n_wamup:n_timesteps]
+                y_model_period = measuring_device.input["measuredValue"].history[batch_idx, self._n_warmup:max_timesteps]
                 
                 # Filter out NaN values (padding) for shorter periods
                 # valid_mask = ~torch.isnan(y_model_period)
@@ -1720,7 +1720,7 @@ class Estimator:
 
                 y_actual_period = self.actual_readings[measuring_device.id][batch_idx]
                 y_actual_period = y_actual_period.to_numpy()[:,0]
-                y_actual_period = y_actual_period[self._n_wamup:]
+                y_actual_period = y_actual_period[self._n_warmup:]
                 y_actual_period = torch.tensor(y_actual_period, dtype=torch.float64)
                 
                 # Store in concatenated arrays

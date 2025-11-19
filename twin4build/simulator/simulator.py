@@ -208,10 +208,12 @@ class Simulator:
                     index=input_port_index,
                 )
 
-                if torch.any(torch.isnan(component.input[connection_point.inputPort].get())):
-                    raise ValueError(
-                        f"Input {connection_point.inputPort} of component {component.id} is NaN"
-                    )
+
+                # Commenting this out for batch simulations where we pad with nans if simulation periods doesnt have the same length/number of time steps. 
+                # if torch.any(torch.isnan(component.input[connection_point.inputPort].get())):
+                #     raise ValueError(
+                #         f"Input {connection_point.inputPort} of component {component.id} is NaN"
+                #     )
 
         component.do_step(
             second_time,
@@ -272,26 +274,27 @@ class Simulator:
             step_size = [step_size]
         second_time_steps = []
         date_time_steps = []
+        n_timesteps = []
         for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
-            n_timesteps = math.floor((end_time_ - start_time_).total_seconds() / step_size_)
-            second_time_steps.append([i * step_size_ for i in range(n_timesteps)])
-            date_time_steps.append([start_time_ + datetime.timedelta(seconds=i * step_size_) for i in range(n_timesteps)])
-        most_timesteps = max([len(second_time_steps_) for second_time_steps_ in second_time_steps])
+            n_steps = math.floor((end_time_ - start_time_).total_seconds() / step_size_)
+            second_time_steps.append([i * step_size_ for i in range(n_steps)])
+            date_time_steps.append([start_time_ + datetime.timedelta(seconds=i * step_size_) for i in range(n_steps)])
+            n_timesteps.append(n_steps)
+        max_timesteps = max([len(second_time_steps_) for second_time_steps_ in second_time_steps])
 
         # Pad the second_time_steps and date_time_steps lists with np.nan to make them all the same length
-        second_time_steps = [second_time_steps_ + [np.nan] * (most_timesteps - len(second_time_steps_)) for second_time_steps_ in second_time_steps]
-        date_time_steps = [date_time_steps_ + [np.nan] * (most_timesteps - len(date_time_steps_)) for date_time_steps_ in date_time_steps]
+        second_time_steps = [second_time_steps_ + [np.nan] * (max_timesteps - len(second_time_steps_)) for second_time_steps_ in second_time_steps]
+        date_time_steps = [date_time_steps_ + [np.nan] * (max_timesteps - len(date_time_steps_)) for date_time_steps_ in date_time_steps]
 
         second_time_steps = np.array(second_time_steps)
         date_time_steps = np.array(date_time_steps)
-        n_timesteps = most_timesteps
-        return second_time_steps, date_time_steps, n_timesteps
+        return second_time_steps, date_time_steps, max_timesteps, n_timesteps
 
     def set_simulation_timesteps(self, start_time: datetime.datetime, end_time: datetime.datetime, step_size: int) -> None:
         """
         Set the simulation timesteps.
         """
-        self.second_time_steps, self.date_time_steps = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        self.second_time_steps, self.date_time_steps, _, _ = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
 
     def simulate(
         self,
@@ -343,15 +346,15 @@ class Simulator:
         self.end_time = end_time
         self.step_size = step_size
         self.debug = debug
-        second_time_steps, date_time_steps, n_timesteps = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        second_time_steps, date_time_steps, max_timesteps, _ = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         self.second_time_steps = second_time_steps
         self.date_time_steps = date_time_steps
-        self.n_timesteps = n_timesteps
+        self.n_timesteps = max_timesteps
         self.model.initialize(start_time, end_time, step_size, self)
         if show_progress_bar:
             for step_index in tqdm(
-                range(n_timesteps),
-                total=n_timesteps,
+                range(max_timesteps),
+                total=max_timesteps,
             ):
                 second_time = second_time_steps[:, step_index]
                 date_time = date_time_steps[:, step_index]
@@ -359,7 +362,7 @@ class Simulator:
 
                 self._do_system_time_step(self.model, second_time, date_time, step_size, step_index)
         else:
-            for step_index in range(n_timesteps):
+            for step_index in range(max_timesteps):
                 second_time = second_time_steps[:, step_index]
                 date_time = date_time_steps[:, step_index]
 
@@ -439,7 +442,7 @@ class Simulator:
         assert isinstance(start_time, datetime.datetime), "start_time must be a datetime.datetime object"
         assert isinstance(end_time, datetime.datetime), "end_time must be a datetime.datetime object"
         assert isinstance(step_size, int), "step_size must be an integer"
-        second_time_steps, date_time_steps, n_timesteps = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        second_time_steps, date_time_steps, max_timesteps, _ = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
 
         df_actual_readings = pd.DataFrame()
         time = date_time_steps[0]
@@ -452,7 +455,7 @@ class Simulator:
         for sensor in sensor_instances:
             sensor.initialize([start_time], [end_time], [step_size])
             # sensor.set_is_physical_system()
-            if sensor.physicalSystem is not None:
+            if sensor.time_series_input is not None:
                 if reading_type == "all":
                     actual_readings = sensor.get_physical_readings(
                         [start_time], [end_time], [step_size]
