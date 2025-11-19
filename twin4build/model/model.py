@@ -13,9 +13,9 @@ import torch
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, PrintProgress, reset_print
+from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
 
-
+@autoreset_print
 class Model:
     r"""
     A unified interface for building digital twin models.
@@ -553,7 +553,6 @@ class Model:
                     logfile=logfile,
                 )
 
-    @reset_print
     def _load(
         self,
         semantic_model_filename: Optional[str],
@@ -605,7 +604,7 @@ class Model:
                 dir_conf=self.dir_conf + ["semantic_model"],
                 id=f"{self._id}_semantic_model",
             )
-            self._semantic_model.reason()
+            # self._semantic_model.reason()
             PRINTPROGRESS("Parsing semantic model", status="[OK]", change_status=True)
             if draw_semantic_model:
                 app_path = shutil.which("dot")
@@ -613,7 +612,9 @@ class Model:
                     app_path is not None
                 ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
                 PRINTPROGRESS("Drawing semantic model", status="")
+                PRINTPROGRESS.add_level()
                 self._semantic_model.visualize()
+                PRINTPROGRESS.remove_level()
                 PRINTPROGRESS(
                     "Drawing semantic model", status="[OK]", change_status=True
                 )
@@ -622,13 +623,10 @@ class Model:
             apply_translator = False
 
         if apply_translator:
-            PRINTPROGRESS("Applying translator", status="")
-            PRINTPROGRESS.add_level()
             self._translator = core.Translator()
-            self._simulation_model = self._translator.translate(self._semantic_model)
+            self._simulation_model = self._translator.translate(self._semantic_model, verbose=verbose)
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
-            PRINTPROGRESS.remove_level()
-            PRINTPROGRESS("Applying translator", status="[OK]", change_status=True)
+            
 
         self._simulation_model.load(
             rdf_file=simulation_model_filename,
@@ -647,8 +645,10 @@ class Model:
             ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
 
             PRINTPROGRESS("Drawing simulation model", status="")
+            PRINTPROGRESS.add_level()
             self._simulation_model.visualize()
             PRINTPROGRESS("Drawing simulation model", status="[OK]", change_status=True)
+            PRINTPROGRESS.remove_level()
 
         PRINTPROGRESS.remove_level()
         PRINTPROGRESS("Loading model", status="[OK]", change_status=True)
