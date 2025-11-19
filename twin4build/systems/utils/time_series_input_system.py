@@ -337,7 +337,7 @@ class TimeSeriesInputSystem(core.System):
         self.output["value"].initialize(
                 max_timesteps,
                 batch_size=len(start_time),
-                values=values,
+                values=self.values,
             )
 
 

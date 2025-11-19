@@ -701,6 +701,8 @@ class SensorSystem(core.System):
         ) == False, f'Sensor object "{self.id}" has no inputs and and holds no data.'
 
         if self.is_leaf:
+            # The batch initialization args are calculated in the TimeSeriesInputSystem.initialize() method.
+            # They are stored in the physicalSystem object and reused here. 
             self.output["measuredValue"].initialize(
                 n_timesteps=self.time_series_input.n_timesteps,
                 batch_size=self.time_series_input.batch_size,

@@ -113,6 +113,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         }
         self.useSpreadsheet = useSpreadsheet
         self.useDatabase = useDatabase
+        
 
         self.filename_outdoorTemperature = filename_outdoorTemperature
         self.datecolumn_outdoorTemperature = datecolumn_outdoorTemperature
@@ -143,7 +144,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             torch.tensor(b, dtype=torch.float64), requires_grad=False
         )
         self.apply_correction = apply_correction
-        self.cached_initialize_arguments = None
+        self.cached_initialize_arguments = []
         self.cache_root = get_main_dir()
 
         self._config = {
@@ -367,6 +368,101 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
     def _apply(self, x):
         return x * self.a.get() + self.b.get()
 
+
+    def initialize(
+        self,
+        start_time:  List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
+    ) -> None:
+        """Initialize the outdoor environment system.
+
+        This method performs the following initialization steps:
+        1. Validates and resolves the weather data file paths
+        2. Loads weather data from 3 separate files or DataFrame
+        3. Verifies required data columns are present
+
+        Args:
+            start_time (datetime.datetime): Start time of the simulation period.
+            end_time (datetime.datetime): End time of the simulation period.
+            step_size (int): Time step size in seconds.
+
+        Raises:
+            ValueError: If the weather data files cannot be found or required columns are missing.
+        """
+
+        if len(self.cached_initialize_arguments)>0 and len(self.cached_initialize_arguments) == len(start_time): # Only check first element of tuple for length as all elements are the same length
+            is_cached = all(start_time_==c[0] and end_time_==c[1] and step_size_==c[2] for start_time_, end_time_, step_size_, c in zip(start_time, end_time, step_size, self.cached_initialize_arguments))
+        else:
+            is_cached = False
+
+
+        #Cache check for multiple batches
+        if self.df is None or ( 
+            len(self.cached_initialize_arguments)>0 and len(self.cached_initialize_arguments) == len(start_time)
+            ):
+            self.cached_initialize_arguments = []
+            self.df = []
+            
+            for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
+                if self.useSpreadsheet:
+                    # Load from 3 separate files
+                    df_item = self._load_from_separate_files(
+                        start_time_, end_time_, step_size_
+                    )
+                elif self.useDatabase:
+                    # Load from database
+                    df_item = self._load_from_database(start_time_, end_time_, step_size_)
+                else:
+                    # Use provided DataFrame
+                    if self.df is None:
+                        raise ValueError(
+                            "No data source provided. Set useSpreadsheet=True or useDatabase=True or provide df."
+                        )
+                self.df.append(df_item)
+                self.cached_initialize_arguments.append((start_time_, end_time_, step_size_))
+        
+
+        required_keys = [
+            "outdoorTemperature",
+            "globalIrradiation",
+            "outdoorCo2Concentration",
+        ]
+        if isinstance(self.df, list):
+            missing_by_df = []
+            for idx, df_item in enumerate(self.df):
+                missing_keys = [key for key in required_keys if key not in df_item.columns]
+                if missing_keys:
+                    missing_by_df.append(f"df[{idx}]: {', '.join(missing_keys)}")
+            assert not missing_by_df, (
+                "The following required columns are not included in the provided data: "
+                + "; ".join(missing_by_df)
+            )
+        else:
+            is_included = np.array([key in self.df.columns for key in required_keys])
+            assert np.all(
+                is_included
+            ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
+
+        _, _, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        batch_size = len(start_time)
+        n_variables = len(required_keys)
+
+
+        
+        for key_index, key in enumerate(required_keys) :
+            values = np.empty((len(self.df), n_timesteps))
+            values.fill(np.nan)
+
+            for batch_index, df in enumerate(self.df):
+                size = len(df.index)
+                values[batch_index,:size] = df.values[:,key_index]
+                self._output[key].initialize(
+                    n_timesteps=n_timesteps,
+                    batch_size=batch_size,
+                    values=values,
+                )
+
     def do_step(
         self,
         second_time: Optional[float] = None,
@@ -410,7 +506,6 @@ def saref_signature_pattern():
     )
     sp.add_modeled_node(node0)
     return sp
-
 
 def brick_signature_pattern():
     """

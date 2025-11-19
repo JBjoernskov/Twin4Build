@@ -240,6 +240,10 @@ class ScheduleSystem(core.System):
                 dbconfig=self.dbconfig,
             )
             time_series_input.initialize(start_time, end_time, step_size)
+
+            
+            # The batch initialization args are calculated in the time_series_input.initialize() method.
+            # They are stored in the time_series_input object and reused here.
             self.output["scheduleValue"].initialize(
                 time_series_input.n_timesteps,
                 batch_size=time_series_input.batch_size,
