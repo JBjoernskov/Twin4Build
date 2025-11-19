@@ -2284,12 +2284,15 @@ class SimulationModel:
         )
 
         PRINTPROGRESS("Instantiating components")
+        PRINTPROGRESS.add_level()
+
+        print(f"sm instances: {self._semantic_model.get_instances_of_type(core.namespace.S4SYST.System)}")
 
         # Instantiate components with their attributes
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
         ):
-            t = [t for t in sm_instance.type if t.has_subclasses() == False][0]
+            t = sm_instance.get_most_specific_type()
             class_name = t.get_short_name()
             cls = getattr(systems, class_name)
             attributes = {}
@@ -2300,13 +2303,16 @@ class SimulationModel:
                         attributes[
                             get_short_name(pred, self._semantic_model.namespaces)
                         ] = literal_value
+
+            PRINTPROGRESS(f"Instantiating component: {sm_instance.get_short_name()} with type: {class_name}")
             component = cls(id=sm_instance.get_short_name(), **attributes)
             # Check if the component already exists
             self.add_component(component)
+        PRINTPROGRESS.remove_level()
         PRINTPROGRESS("Instantiating components", status="[OK]", change_status=True)
 
         PRINTPROGRESS("Making connections")
-
+        PRINTPROGRESS.add_level()
         # Go through all the connections (from - to) and add them to the simulation model
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
@@ -2351,6 +2357,7 @@ class SimulationModel:
                         receiver_component_id = receiver_component.get_short_name()
                         receiver_component = self._components[receiver_component_id]
 
+                        PRINTPROGRESS(f"Adding connection: {component.id}.{outputPort} → {receiver_component.id}.{inputPort}")
                         self.add_connection(
                             sender_component=component,
                             receiver_component=receiver_component,

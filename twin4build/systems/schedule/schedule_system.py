@@ -287,7 +287,6 @@ class ScheduleSystem(core.System):
 
 
             second_time_steps, date_time_steps, max_timesteps, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-            print(f"date_time_steps: {date_time_steps}")
             values = np.empty((len(start_time), max_timesteps))
             values.fill(np.nan)
             for batch_index, (date_time_steps_, n_timesteps_) in enumerate(zip(date_time_steps, n_timesteps)):

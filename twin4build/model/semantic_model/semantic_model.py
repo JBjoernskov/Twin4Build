@@ -1099,7 +1099,6 @@ class SemanticObject:
         Note: Equivalent classes (owl:equivalentClass) are filtered out when determining the most specific type,
         as they are at the same level of specificity.
         """
-        print("\n ----------------------------- get_most_specific_type -----------------------------")
         for it, t in enumerate(self.type):
             # Exclude this type and any equivalent types from consideration
             types_excluding_this = self.type - {t}
@@ -1107,30 +1106,13 @@ class SemanticObject:
             # Also exclude equivalent classes (they're at the same level of specificity)
             equivalent_types_set = set(t.equivalent_classes)
             types_excluding_this = types_excluding_this - equivalent_types_set
-
-            print(f"namespace: {t.get_namespace()}")
-            print(f"t.get_short_name(): {t.get_short_name()}")
-            print(f"Types excluding this: {[t_.get_short_name() for t_ in types_excluding_this]}")
-            print(f"Super classes: {[t_.get_short_name() for t_ in t.super_classes]}")
-            print(f"[t_ in t.super_classes for t_ in types_excluding_this]: {[t_ in t.super_classes for t_ in types_excluding_this]}")
-            print("")
             
             # Check if all remaining types are superclasses of this type (meaning it's the most specific)
             if all([t_ in t.super_classes for t_ in types_excluding_this]):
                 return t
 
         warnings.warn(f"No most specific type found for {self.get_short_name()}")
-        
-        # If no most specific type found, return the first one as fallback
-        # return next(iter(self.type)) if self.type else None
 
-            # # Old method:
-            # # Check if none of this type's subclasses are in the current types (meaning it's the most specific)
-            # if all([t_ not in self.type for t_ in t.sub_classes]):
-            #     ss = [tt.get_short_name() for tt in t.sub_classes]
-            #     print(f"Subclasses: {ss}")
-            #     print(f"Found most specific type: {t.get_short_name()} out of types: {[t_.get_short_name() for t_ in self.type]}")
-            #     return t
 
 @autoreset_print
 class SemanticModel:
