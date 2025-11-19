@@ -5,6 +5,8 @@ import sys
 import os
 import atexit
 from itertools import cycle
+import functools
+import threading
 
 # Third party imports
 import __main__
@@ -43,32 +45,24 @@ def _print_color_palette(stdscr):
     # Add a header
     stdscr.addstr(0, 0, f"Available colors (showing {max_pairs} colors):\n\n")
     
-    try:
-        # Display colors with their numbers
-        row = 2
-        col = 0
-        for i in range(0, max_pairs+1):
-            color_text = f"{i:3d} "
-            
-            # Move to next row if we reach the right edge
-            if col + len(color_text) >= curses.COLS:
-                row += 1
-                col = 0
-                if row >= curses.LINES - 1:  # Leave room for instructions
-                    break
-            
-            stdscr.addstr(row, col, color_text, curses.color_pair(i))
-            col += len(color_text)
-    
-    except curses.ERR:
-        # End of screen reached
-        pass
+    # Display colors with their numbers
+    row = 2
+    col = 0
+    for i in range(0, max_pairs+1):
+        color_text = f"{i:3d} "
+        
+        # Move to next row if we reach the right edge
+        if col + len(color_text) >= curses.COLS:
+            row += 1
+            col = 0
+            if row >= curses.LINES - 1:  # Leave room for instructions
+                break
+        
+        stdscr.addstr(row, col, color_text, curses.color_pair(i))
+        col += len(color_text)
     
     # Add instructions at the bottom
-    try:
-        stdscr.addstr(curses.LINES-1, 0, "Press any key to exit...")
-    except curses.ERR:
-        pass
+    stdscr.addstr(curses.LINES-1, 0, "Press any key to exit...")
     
     stdscr.refresh()
     stdscr.getch()
@@ -92,6 +86,12 @@ class PrintProgress:
         self._block_count = 0
         self.logfile = None
         self._is_active = False
+        self.call_depth = 0
+        self._scroll_offset = 0
+        self._lock = threading.Lock()
+        self._stop_thread = threading.Event()
+        self._display_thread = None
+        self._scroll_step = 4 # Number of lines to scroll per tick
         # Curses-related attributes
         self._use_curses = CURSES_AVAILABLE and not self.is_interactive()
         self._curses_mode = False
@@ -115,16 +115,7 @@ class PrintProgress:
     def __exit__(self, exc_type, exc_value, traceback):
         """Context manager exit - cleanup curses if active"""
         if self._curses_mode:
-            try:
-                self._cleanup_curses(preserve_output=True)
-            except:
-                # Emergency cleanup
-                try:
-                    curses.endwin()
-                    sys.stdout.write('\033[?1049l')
-                    sys.stdout.flush()
-                except:
-                    pass
+            self._cleanup_curses(preserve_output=True)
         return False  # Don't suppress exceptions
 
     @property
@@ -181,16 +172,26 @@ class PrintProgress:
             self._init_curses()
         
         if self._curses_mode and f is None:
-            # In curses mode, clear the previous display and update with current lines
+            # In curses mode, update the data structure. The display thread handles drawing.
             # This simulates the clearing behavior of traditional printing
-            self._curses_lines = []
-            for indent, message, status, level in zip(
-                self.indent, self.message, self.status, self.level, strict=True
-            ):
-                self._curses_lines.append((indent, message, status, level))
-            
-            # Use curses display
-            self._update_curses_display()
+            with self._lock:
+                # Store current lines to calculate diff for anti-fighting logic
+                current_len = len(self._curses_lines)
+                
+                # Rebuild the list of lines
+                temp_lines = []
+                for indent, message, status, level in zip(
+                    self.indent, self.message, self.status, self.level, strict=True
+                ):
+                    temp_lines.append((indent, message, status, level))
+                
+                self._curses_lines = temp_lines
+                new_len = len(self._curses_lines)
+                diff = new_len - current_len
+                
+                # Anti-fighting logic: if scrolled up, maintain relative position
+                if self._scroll_offset > 0 and diff > 0:
+                     self._scroll_offset += diff
         else:
             # Use traditional printing
             if self.has_printed:
@@ -211,11 +212,22 @@ class PrintProgress:
             # Also update curses lines for potential final output
             # This ensures the final state matches what's currently visible
             if self._use_curses:
-                self._curses_lines = []
-                for indent, message, status, level in zip(
-                    self.indent, self.message, self.status, self.level, strict=True
-                ):
-                    self._curses_lines.append((indent, message, status, level))
+                with self._lock:
+                    current_len = len(self._curses_lines)
+                    
+                    temp_lines = []
+                    for indent, message, status, level in zip(
+                        self.indent, self.message, self.status, self.level, strict=True
+                    ):
+                        temp_lines.append((indent, message, status, level))
+                    
+                    self._curses_lines = temp_lines
+                    new_len = len(self._curses_lines)
+                    diff = new_len - current_len
+                    
+                    # Anti-fighting logic
+                    if self._scroll_offset > 0 and diff > 0:
+                        self._scroll_offset += diff
         
         if f is not None:
             f.close()
@@ -234,56 +246,71 @@ class PrintProgress:
         if not self._use_curses or self._curses_mode:
             return False
         
-        try:
-            print("DEBUG: Starting curses initialization", file=sys.stderr)
-            # Enter alternate screen buffer first (like vim does)
-            # This preserves the current terminal content and creates a separate "window"
-            sys.stdout.write('\033[?1049h')  # Enter alternate screen
-            sys.stdout.flush()
-            print("DEBUG: Alternate screen buffer entered", file=sys.stderr)
-            
-            # Now start curses in the alternate screen
-            self._stdscr = curses.initscr()
-            print("DEBUG: curses.initscr() completed", file=sys.stderr)
-            curses.noecho()
-            curses.cbreak()
-            curses.curs_set(0)  # Hide cursor
-            
-            # Clear the alternate screen to start fresh
-            self._stdscr.clear()
-            
-            # Enable color if available
-            if curses.has_colors():
-                curses.start_color()
+        # print("DEBUG: Starting curses initialization", file=sys.stderr)
+        # Enter alternate screen buffer first (like vim does)
+        # This preserves the current terminal content and creates a separate "window"
+        sys.stdout.write('\033[?1049h')  # Enter alternate screen
+        sys.stdout.flush()
+        # print("DEBUG: Alternate screen buffer entered", file=sys.stderr)
+        
+        # Now start curses in the alternate screen
+        self._stdscr = curses.initscr()
+        # print("DEBUG: curses.initscr() completed", file=sys.stderr)
+        curses.noecho()
+        curses.cbreak()
+        curses.curs_set(0)  # Hide cursor
+        self._stdscr.keypad(True) # Enable keypad for scrolling keys
+        self._stdscr.nodelay(True) # Non-blocking input
+        
+        # Clear the alternate screen to start fresh
+        self._stdscr.clear()
+        
+        # Enable color if available
+        if curses.has_colors():
+            curses.start_color()
+            try:
                 curses.use_default_colors()
-                max_pairs = min(curses.COLOR_PAIRS - 1, curses.COLORS)
-                print(f"DEBUG: Initializing {max_pairs} color pairs", file=sys.stderr)
-                for i in range(0, max_pairs):
+            except Exception:
+                pass
+            max_pairs = min(curses.COLOR_PAIRS - 1, curses.COLORS)
+            # print(f"DEBUG: Initializing {max_pairs} color pairs", file=sys.stderr)
+            for i in range(0, max_pairs):
+                try:
                     curses.init_pair(i+1, i, -1)
-                    
-
+                except Exception:
+                    # Fallback for terminals that might not support -1 background
+                    curses.init_pair(i+1, i, 0)
                 
+        # Start the display thread
+        self._stop_thread.clear()
+        self._display_thread = threading.Thread(target=self._display_loop, daemon=True)
+        self._display_thread.start()
+
             
-            # Register cleanup function to run at exit (only once)
-            if not self._atexit_registered:
-                atexit.register(self._cleanup_curses, preserve_output=True)
-                self._atexit_registered = True
-            
-            # Install exception handler to ensure curses cleanup on crashes
-            self._install_exception_handler()
-            
-            self._curses_mode = True
-            print("DEBUG: Curses initialization completed successfully", file=sys.stderr)
-            return True
-        except Exception as e:
-            # Log the specific error for debugging
-            print(f"DEBUG: Exception in curses setup: {type(e).__name__}: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc(file=sys.stderr)
-            
-            # If curses setup fails, clean up and fall back to regular terminal
-            self._cleanup_curses()
-            return False
+        
+        # Register cleanup function to run at exit (only once)
+        if not self._atexit_registered:
+            atexit.register(self._cleanup_curses, preserve_output=True)
+            self._atexit_registered = True
+        
+        # Install exception handler to ensure curses cleanup on crashes
+        self._install_exception_handler()
+        
+        self._curses_mode = True
+        # print("DEBUG: Curses initialization completed successfully", file=sys.stderr)
+        return True
+
+    def _display_loop(self):
+        """Background thread loop for handling input and updating display"""
+        while not self._stop_thread.is_set():
+            with self._lock:
+                if self._stdscr and self._curses_mode:
+                    try:
+                        self._handle_input()
+                        self._update_curses_display()
+                    except Exception:
+                        pass
+            time.sleep(0.05)  # Update at ~20Hz
     
     def _install_exception_handler(self):
         """Install a global exception handler to cleanup curses on crashes"""
@@ -295,22 +322,10 @@ class PrintProgress:
         def curses_exception_handler(exc_type, exc_value, exc_traceback):
             # Clean up curses first if we're in curses mode
             if self._curses_mode and self._stdscr is not None:
-                try:
-                    print(f"DEBUG: Exception occurred, cleaning up curses: {exc_type.__name__}", file=sys.stderr)
-                    # Try normal cleanup first (preserves output)
-                    self._cleanup_curses(preserve_output=True)
-                    print("DEBUG: Curses cleanup completed after exception", file=sys.stderr)
-                except Exception as cleanup_e:
-                    # Emergency cleanup if normal cleanup fails
-                    print(f"DEBUG: Cleanup failed, attempting emergency cleanup: {cleanup_e}", file=sys.stderr)
-                    try:
-                        curses.endwin()
-                        sys.stdout.write('\033[?1049l')  # Exit alternate screen
-                        sys.stdout.flush()
-                        print("DEBUG: Emergency cleanup completed", file=sys.stderr)
-                    except Exception as emergency_e:
-                        print(f"DEBUG: Emergency cleanup also failed: {emergency_e}", file=sys.stderr)
-
+                # print(f"DEBUG: Exception occurred, cleaning up curses: {exc_type.__name__}", file=sys.stderr)
+                # Try normal cleanup first (preserves output)
+                self._cleanup_curses(preserve_output=True)
+                # print("DEBUG: Curses cleanup completed after exception", file=sys.stderr)
             
             # Then call the original exception handler to show the traceback
             original_excepthook(exc_type, exc_value, exc_traceback)
@@ -422,51 +437,64 @@ class PrintProgress:
 
     def _sample_curses_colors(self):
         """Sample actual colors from curses display to build accurate color mapping"""
-        if not self._stdscr:
+        # Check if curses is available and not None (important for __del__)
+        if not self._stdscr or 'curses' not in globals() or curses is None:
             return {}
         
         color_mapping = {}
-        height, width = self._stdscr.getmaxyx()
-        
-        # Sample a few positions to determine actual color pairs being used
-        for y in range(height):  # Sample first 20 lines
-            for x in range(width):  # Sample first all chars per line
-                char_attr = self._stdscr.inch(y, x)
-                char = char_attr & 0xFF
-                attr = char_attr & ~0xFF
-                
-                if char != ord(' ') and char != 0:  # Skip spaces and nulls
-                    color_pair = curses.pair_number(attr)
-                    other_attrs = attr & ~(curses.A_COLOR)
+        try:
+            height, width = self._stdscr.getmaxyx()
+            
+            # Sample a few positions to determine actual color pairs being used
+            for y in range(min(height, 20)):  # Sample first 20 lines
+                for x in range(width):  # Sample chars per line
+                    try:
+                        char_attr = self._stdscr.inch(y, x)
+                    except curses.error:
+                        continue
+                    char = char_attr & 0xFF
+                    attr = char_attr & ~0xFF
                     
-                    # Only process valid color pair numbers (0-255 range)
-                    if 0 <= color_pair <= 255:
-                        # Store the mapping from color_pair to ANSI
-                        if color_pair not in color_mapping:
-                            color_mapping[color_pair] = self._convert_curses_attr_to_ansi(color_pair, other_attrs)
+                    if char != ord(' ') and char != 0:  # Skip spaces and nulls
+                        color_pair = curses.pair_number(attr)
+                        other_attrs = attr & ~(curses.A_COLOR)
+                        
+                        # Only process valid color pair numbers (0-255 range)
+                        if 0 <= color_pair <= 255:
+                            # Store the mapping from color_pair to ANSI
+                            if color_pair not in color_mapping:
+                                color_mapping[color_pair] = self._convert_curses_attr_to_ansi(color_pair, other_attrs)
 
-                # Check if we have all the colors we need
-                needed_pairs = set(self.COLOR_PAIR_LEVEL_CYCLE + [self.OK_COLOR_PAIR, self.ERROR_COLOR_PAIR, self.WARNING_COLOR_PAIR, self.INFO_COLOR_PAIR])
-                if needed_pairs.issubset(set(color_mapping.keys())):
-                    return color_mapping
+                    # Check if we have all the colors we need
+                    needed_pairs = set(self.COLOR_PAIR_LEVEL_CYCLE + [self.OK_COLOR_PAIR, self.ERROR_COLOR_PAIR, self.WARNING_COLOR_PAIR, self.INFO_COLOR_PAIR])
+                    if needed_pairs.issubset(set(color_mapping.keys())):
+                        return color_mapping
 
-        # Add OK, ERROR, WARNING, INFO color pairs
-        other_attrs = curses.color_pair(self.OK_COLOR_PAIR) & ~(curses.A_COLOR)
-        color_mapping[self.OK_COLOR_PAIR] = self._convert_curses_attr_to_ansi(self.OK_COLOR_PAIR, other_attrs)
+            # Add OK, ERROR, WARNING, INFO color pairs
+            try:
+                other_attrs = curses.color_pair(self.OK_COLOR_PAIR) & ~(curses.A_COLOR)
+                color_mapping[self.OK_COLOR_PAIR] = self._convert_curses_attr_to_ansi(self.OK_COLOR_PAIR, other_attrs)
 
-        other_attrs = curses.color_pair(self.ERROR_COLOR_PAIR) & ~(curses.A_COLOR)
-        color_mapping[self.ERROR_COLOR_PAIR] = self._convert_curses_attr_to_ansi(self.ERROR_COLOR_PAIR, other_attrs)
-        
-        other_attrs = curses.color_pair(self.WARNING_COLOR_PAIR) & ~(curses.A_COLOR)
-        color_mapping[self.WARNING_COLOR_PAIR] = self._convert_curses_attr_to_ansi(self.WARNING_COLOR_PAIR, other_attrs)
-        
-        other_attrs = curses.color_pair(self.INFO_COLOR_PAIR) & ~(curses.A_COLOR)
-        color_mapping[self.INFO_COLOR_PAIR] = self._convert_curses_attr_to_ansi(self.INFO_COLOR_PAIR, other_attrs)
-        
-        # # Ensure we have at least the basic color pairs, add defaults if missing
-        # for pair in self.COLOR_PAIR_LEVEL_CYCLE:
-        #     if pair not in color_mapping:
-        #         color_mapping[pair] = self._convert_curses_attr_to_ansi(pair, 0)
+                other_attrs = curses.color_pair(self.ERROR_COLOR_PAIR) & ~(curses.A_COLOR)
+                color_mapping[self.ERROR_COLOR_PAIR] = self._convert_curses_attr_to_ansi(self.ERROR_COLOR_PAIR, other_attrs)
+                
+                other_attrs = curses.color_pair(self.WARNING_COLOR_PAIR) & ~(curses.A_COLOR)
+                color_mapping[self.WARNING_COLOR_PAIR] = self._convert_curses_attr_to_ansi(self.WARNING_COLOR_PAIR, other_attrs)
+                
+                other_attrs = curses.color_pair(self.INFO_COLOR_PAIR) & ~(curses.A_COLOR)
+                color_mapping[self.INFO_COLOR_PAIR] = self._convert_curses_attr_to_ansi(self.INFO_COLOR_PAIR, other_attrs)
+            except (curses.error, AttributeError):
+                # Fallback if curses.color_pair fails or is not available
+                pass
+            
+            # Ensure we have at least the basic color pairs, add defaults if missing
+            for pair in self.COLOR_PAIR_LEVEL_CYCLE + [self.OK_COLOR_PAIR, self.ERROR_COLOR_PAIR, self.WARNING_COLOR_PAIR, self.INFO_COLOR_PAIR]:
+                if pair not in color_mapping:
+                    color_mapping[pair] = self._convert_curses_attr_to_ansi(pair, 0)
+                    
+        except Exception:
+            # If anything goes wrong during sampling, return what we have or empty
+            pass
         
         return color_mapping
 
@@ -488,13 +516,17 @@ class PrintProgress:
         if ansi_color:
             ansi_codes.append(ansi_color)
         
-        # Handle attributes
-        if other_attrs & curses.A_BOLD:
-            ansi_codes.append("1")
-        if other_attrs & curses.A_DIM:
-            ansi_codes.append("2")
-        if other_attrs & curses.A_UNDERLINE:
-            ansi_codes.append("4")
+        # Handle attributes safely
+        if 'curses' in globals() and curses is not None:
+            try:
+                if other_attrs & curses.A_BOLD:
+                    ansi_codes.append("1")
+                if other_attrs & curses.A_DIM:
+                    ansi_codes.append("2")
+                if other_attrs & curses.A_UNDERLINE:
+                    ansi_codes.append("4")
+            except AttributeError:
+                pass
         
         if ansi_codes:
             return f"\033[{';'.join(ansi_codes)}m"
@@ -511,91 +543,84 @@ class PrintProgress:
         if self._stdscr is not None and preserve_output:
             sampled_colors = self._sample_curses_colors()
         
+        # Stop the display thread
+        if self._display_thread is not None and self._display_thread.is_alive():
+            self._stop_thread.set()
+            self._display_thread.join(timeout=1.0)
+            
         if self._stdscr is not None:
+            # Clean up curses
+            # Check if curses is available (it might be None during interpreter shutdown)
+            if 'curses' in globals() and curses is not None:
+                try:
+                    curses.curs_set(1)
+                    curses.nocbreak()
+                    curses.echo()
+                    curses.endwin()
+                except Exception:
+                    pass
+            
+            # Exit alternate screen buffer - this restores the original terminal content
+            # We do this manually via sys.stdout as well to be safe
             try:
-                # Clean up curses
-                print(f"DEBUG: Starting curses cleanup, curses_mode={self._curses_mode}", file=sys.stderr)
-                curses.curs_set(1)
-                curses.nocbreak()
-                curses.echo()
-                curses.endwin()
-                print("DEBUG: curses.endwin() completed", file=sys.stderr)
-                
-                # Exit alternate screen buffer - this restores the original terminal content
                 sys.stdout.write('\033[?1049l')  # Exit alternate screen
                 sys.stdout.flush()
-                print("DEBUG: Alternate screen buffer exited", file=sys.stderr)
-                
-                # Display the COMPLETE progress history with sampled colors
-                if preserve_output and self._curses_lines:
-                    print("DEBUG: Starting to display progress history", file=sys.stderr)
-                    print()  # Add some spacing
-                    for indent, message, status, level in self._curses_lines:
-                        _status = "..." + status if status != "" else ""
+            except Exception:
+                pass
+            
+            # Display the COMPLETE progress history with sampled colors
+            if preserve_output and self._curses_lines:
+                # print("DEBUG: Starting to display progress history", file=sys.stderr)
+                print()  # Add some spacing
+                for indent, message, status, level in self._curses_lines:
+                    _status = "..." + status if status != "" else ""
+                    
+                    # Build the full line
+                    main_text = indent + message
+                    full_line = main_text + _status
+                    
+                    # Get character-level colors using your numpy method
+                    char_levels = self.get_char_level(full_line)
+                    
+                    # Build colored output character by character using actual curses colors
+                    colored_output = ""
+                    
+                    # Color the main text character by character
+                    for i, char in enumerate(main_text):
+                        char_level = char_levels[i]
                         
-                        # Build the full line
-                        main_text = indent + message
-                        full_line = main_text + _status
+                        # Map level to curses color pair (same logic as _get_color_pair)
+                        color_pair_idx = self._get_color_pair_idx(char_level)
                         
-                        # Get character-level colors using your numpy method
-                        char_levels = self.get_char_level(full_line)
+                        # Use sampled color if available, otherwise fallback
+                        char_color = sampled_colors.get(color_pair_idx, "")
+                        if not char_color:
+                             # Fallback to default mapping if sampling failed or key missing
+                             char_color = self._convert_curses_attr_to_ansi(color_pair_idx, 0)
                         
-                        # Build colored output character by character using actual curses colors
-                        colored_output = ""
-                        
-                        # Color the main text character by character
-                        for i, char in enumerate(main_text):
-                            char_level = char_levels[i]
-                            
-                            # Map level to curses color pair (same logic as _get_color_pair)
-                            color_pair_idx = self._get_color_pair_idx(char_level)
-                            
-                            # Use sampled color if available, otherwise fallback
-                            # if color_pair in sampled_colors:
-                            char_color = sampled_colors[color_pair_idx]
-                            # else:
-                            #     char_color = self._get_ansi_level_color(char_level)
-                            
-                            colored_output += f"{char_color}{char}\033[0m"
-                        
-                        # Add status color
-                        if status:
-                            status_lower = status.lower()
-                            if '[ok]' in status_lower or '[success]' in status_lower:
-                                status_color = "\033[32m"  # Green
-                            elif '[error]' in status_lower or '[failed]' in status_lower:
-                                status_color = "\033[31m"  # Red
-                            elif '[warning]' in status_lower or '[warn]' in status_lower:
-                                status_color = "\033[33m"  # Yellow
-                            else:
-                                status_color = "\033[34m"  # Blue
-                            _status = f"...{status_color}{status}\033[0m"
-                        
-                        # Print the complete colored line
+                        colored_output += f"{char_color}{char}\033[0m"
+                    
+                    # Add status color
+                    if status:
+                        status_lower = status.lower()
+                        if '[ok]' in status_lower or '[success]' in status_lower:
+                            status_color = "\033[32m"  # Green
+                        elif '[error]' in status_lower or '[failed]' in status_lower:
+                            status_color = "\033[31m"  # Red
+                        elif '[warning]' in status_lower or '[warn]' in status_lower:
+                            status_color = "\033[33m"  # Yellow
+                        else:
+                            status_color = "\033[34m"  # Blue
+                        _status = f"...{status_color}{status}\033[0m"
+                    
+                    # Print the complete colored line
+                    try:
                         print(f"{colored_output}{_status}", flush=True)
-                    print("DEBUG: Progress history display completed", file=sys.stderr)
-            except Exception as e:
-                # Log the specific error for debugging
-                print(f"DEBUG: Exception in cleanup: {type(e).__name__}: {e}", file=sys.stderr)
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-                
-                # Emergency cleanup if normal cleanup fails
-                try:
-                    print("DEBUG: Attempting emergency cleanup", file=sys.stderr)
-                    curses.endwin()
-                    sys.stdout.write('\033[?1049l')  # Exit alternate screen
-                    sys.stdout.flush()
-                    print("DEBUG: Emergency cleanup completed", file=sys.stderr)
-                except Exception as emergency_e:
-                    print(f"DEBUG: Emergency cleanup also failed: {emergency_e}", file=sys.stderr)
-                
-                # Re-raise the original exception so we can see what went wrong
-                raise e
-            finally:
-                print("DEBUG: Setting cleanup flags", file=sys.stderr)
-                self._stdscr = None
-                self._curses_mode = False
+                    except Exception:
+                        pass
+
+            self._stdscr = None
+            self._curses_mode = False
     
     def _get_status_color(self, status):
         """Get color for status text in curses mode"""
@@ -620,11 +645,44 @@ class PrintProgress:
     def _get_color_pair(self, level):
         return curses.color_pair(self._get_color_pair_idx(level))
     
+    def _handle_input(self):
+        """Handle user input for scrolling"""
+        if not self._stdscr:
+            return
+
+        while True:
+            try:
+                key = self._stdscr.getch()
+                if key == curses.ERR:
+                    break
+                
+                height, _ = self._stdscr.getmaxyx()
+                max_lines = height - 1
+                total_lines = len(self._curses_lines)
+                max_scroll = max(0, total_lines - max_lines)
+
+                if key == curses.KEY_UP:
+                    self._scroll_offset = min(self._scroll_offset + self._scroll_step, max_scroll)
+                elif key == curses.KEY_DOWN:
+                    self._scroll_offset = max(self._scroll_offset - self._scroll_step, 0)
+                elif key == curses.KEY_PPAGE:  # Page Up
+                    self._scroll_offset = min(self._scroll_offset + max_lines, max_scroll)
+                elif key == curses.KEY_NPAGE:  # Page Down
+                    self._scroll_offset = max(self._scroll_offset - max_lines, 0)
+                elif key == curses.KEY_HOME:
+                    self._scroll_offset = max_scroll
+                elif key == curses.KEY_END:
+                    self._scroll_offset = 0
+            except curses.error:
+                break
+
     def _update_curses_display(self):
         """Update the curses display with current lines"""
         if not self._curses_mode or self._stdscr is None:
             return
             
+        # Input handling is now done in the display thread via _handle_input
+
         self._stdscr.clear()
         height, width = self._stdscr.getmaxyx()
         
@@ -632,8 +690,16 @@ class PrintProgress:
         max_lines = height - 1  # Reserve one line for status
         total_lines = len(self._curses_lines)
         
-        # Auto-scroll to show latest lines
-        start_line = max(0, total_lines - max_lines) if total_lines > max_lines else 0
+        # Logic for scroll offset:
+        # 0 means "stick to bottom" (auto-scroll)
+        # >0 means "show lines offset from bottom"
+        
+        # Clamp scroll offset to valid range
+        max_scroll = max(0, total_lines - max_lines)
+        self._scroll_offset = min(self._scroll_offset, max_scroll)
+        
+        # Calculate start line based on scroll offset
+        start_line = max(0, total_lines - max_lines - self._scroll_offset)
         end_line = min(total_lines, start_line + max_lines)
         
         # Display lines
@@ -675,11 +741,10 @@ class PrintProgress:
         
         # Add scroll indicator if needed
         if total_lines > max_lines:
-            scroll_info = f"Lines {start_line + 1}-{end_line} of {total_lines}"
-            try:
-                self._stdscr.addstr(height - 1, 0, scroll_info[:width - 1])
-            except curses.error:
-                pass
+            scroll_msg = f"Lines {start_line + 1}-{end_line} of {total_lines}"
+            if self._scroll_offset > 0:
+                 scroll_msg += " (SCROLLED)"
+            self._stdscr.addstr(height - 1, 0, scroll_msg[:width - 1])
         
         self._stdscr.refresh()
 
@@ -813,7 +878,10 @@ class PrintProgress:
                         + f"verbose: {self.verbose}"
                     )
             elif len(match_idx) > 1:
-                raise ValueError("Multiple lines found")
+                # Multiple lines found, use the last one
+                self.status[match_idx[-1]] = status
+                self.print_lines()
+                # raise ValueError("Multiple lines found")
             elif len(match_idx) == 1:
                 self.status[match_idx[0]] = status
                 self.print_lines()
@@ -837,7 +905,7 @@ class PrintProgress:
     
     def reset(self):
         # Clean up curses before resetting
-        self._cleanup_curses(preserve_output=False)
+        self._cleanup_curses(preserve_output=True)
         
         self.level_indent = []  # level as function of line number
         self.level = []
@@ -858,21 +926,35 @@ class PrintProgress:
     
     def __del__(self):
         """Destructor to ensure curses cleanup"""
-        try:
-            self._cleanup_curses(preserve_output=True)
-        except:
-            pass
+        self._cleanup_curses(preserve_output=True)
 
 def reset_print(f):
+    @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        if not PRINTPROGRESS.is_active:
-            reset_PRINTPROGRESS = True
-        else:
-            reset_PRINTPROGRESS = False
-        f(*args, **kwargs)
-        if reset_PRINTPROGRESS:
-            PRINTPROGRESS.reset()
+        PRINTPROGRESS.call_depth += 1
+        try:
+            result = f(*args, **kwargs)
+        finally:
+            PRINTPROGRESS.call_depth -= 1
+            if PRINTPROGRESS.call_depth == 0:
+                PRINTPROGRESS.reset()
+        return result
     return wrapper
+
+def autoreset_print(cls):
+    """
+    Class decorator that applies @reset_print to all methods in the class.
+    This ensures that PRINTPROGRESS context is managed correctly even when
+    methods are called independently.
+    """
+    for name, attr in cls.__dict__.items():
+        if isinstance(attr, staticmethod):
+            setattr(cls, name, staticmethod(reset_print(attr.__func__)))
+        elif isinstance(attr, classmethod):
+            setattr(cls, name, classmethod(reset_print(attr.__func__)))
+        elif callable(attr):
+            setattr(cls, name, reset_print(attr))
+    return cls
 
 
 PRINTPROGRESS = PrintProgress()

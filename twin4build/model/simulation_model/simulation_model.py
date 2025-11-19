@@ -27,11 +27,11 @@ from twin4build.utils.dict_utils import (
     flatten_dict,
     merge_dicts,
 )
-from twin4build.utils.get_object_attributes import get_object_attributes
+from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.isnumeric import isnumeric
 from twin4build.utils.istype import istype
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, PrintProgress, reset_print
+from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
@@ -41,6 +41,7 @@ from twin4build.utils.simple_cycle import simple_cycles
 INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
 
 
+@autoreset_print
 class SimulationModel:
     r"""
     A simulation model for building digital twins.
@@ -379,7 +380,7 @@ class SimulationModel:
 
         fmus = self.get_component_by_class(self._components, systems.fmuSystem)
         for fmu in fmus:
-            if "fmu" in get_object_attributes(fmu):
+            if "fmu" in get_obj_attr(fmu):
                 del fmu.fmu
                 del fmu.fmu_initial_state
                 fmu.INITIALIZED = False
@@ -1577,7 +1578,7 @@ class SimulationModel:
                     logfile=logfile,
                 )
 
-    @reset_print
+    # @reset_print
     def _load(
         self,
         rdf_file: Optional[str],

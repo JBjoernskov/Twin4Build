@@ -18,6 +18,6 @@ def validate_period(start_time: Union[datetime.datetime, List[datetime.datetime]
         assert isinstance(step_size, int), "step_size must be an integer or list of integers"
         start_time = [start_time]
         end_time = [end_time]
-        step_size = [step_size]
+        step_size = [step_size] 
 
     return start_time, end_time, step_size

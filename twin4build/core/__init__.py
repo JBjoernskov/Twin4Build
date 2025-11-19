@@ -27,13 +27,14 @@ from twin4build.model.semantic_model.semantic_model import (
     SemanticObject,
     SemanticProperty,
     SemanticType,
+    SemanticPredicate,
 )
 from twin4build.model.simulation_model.simulation_model import SimulationModel
 from twin4build.simulator.simulator import Simulator
 from twin4build.systems.saref4syst.connection import Connection
 from twin4build.systems.saref4syst.connection_point import ConnectionPoint
 from twin4build.systems.saref4syst.system import System
-from twin4build.translator.translator import Translator, SignaturePattern
+from twin4build.translator.translator import Translator, SignaturePattern, Diff, Exact, Optional_, SinglePath, MultiPath
 
 NoneType = type(None)
 
@@ -48,43 +49,47 @@ class namespace:
     T4B = rdflib.Namespace("http://twin4build.org/")
     RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
     RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
+    REC = rdflib.Namespace("https://w3id.org/rec#")
+    OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#")
+    FPO = rdflib.Namespace("https://w3id.org/fpo#")
 
 
 class ontology:
     FSO = "https://alikucukavci.github.io/FSO/fso.ttl"
-    SAREF = "https://saref.etsi.org/core/"
+    SAREF = "https://saref.etsi.org/core/v3.1.1/"
     S4BLDG = "https://saref.etsi.org/saref4bldg/"
     S4SYST = "https://saref.etsi.org/saref4syst/"
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
-    XSD = "http://www.w3.org/2001/XMLSchema#"
     T4B = "http://twin4build.org/"
+    REC = "https://github.com/RealEstateCore/rec/blob/39b90763a241a1f1e327b87076f7e97b701a8616/Ontology/SHACL/RealEstateCore/rec.ttl"
 
 
-def get_ontologies():
-    """Retrieve and initialize the semantic model with required ontologies.
 
-    This function initializes the semantic model with the following ontologies:
-        - FSO (Facility Smart Objects)
-        - SAREF (Smart Applications REFerence)
-        - S4BLDG (SAREF for Building)
-        - S4SYST (SAREF for System)
+# def get_ontologies():
+#     """Retrieve and initialize the semantic model with required ontologies.
 
-    Returns:
-        SemanticModel: An initialized semantic model containing all required ontologies.
+#     This function initializes the semantic model with the following ontologies:
+#         - FSO (Facility Smart Objects)
+#         - SAREF (Smart Applications REFerence)
+#         - S4BLDG (SAREF for Building)
+#         - S4SYST (SAREF for System)
 
-    Note:
-        The FSO ontology URL is different from the namespace definition due to parsing limitations
-        with the namespace URL.
-    """
-    namespaces = {
-        "FSO": namespace.FSO,
-        "SAREF": namespace.SAREF,
-        "S4BLDG": namespace.S4BLDG,
-        "S4SYST": namespace.S4SYST,
-        "BRICK": namespace.BRICK,
-    }
-    sm = SemanticModel(namespaces=namespaces)
-    return sm
+#     Returns:
+#         SemanticModel: An initialized semantic model containing all required ontologies.
+
+#     Note:
+#         The FSO and Brick ontology URL is different from the namespace definition due to parsing limitations
+#         with the namespace URL.
+#     """
+#     namespaces = {
+#         "FSO": namespace.FSO,
+#         "SAREF": namespace.SAREF,
+#         "S4BLDG": namespace.S4BLDG,
+#         "S4SYST": namespace.S4SYST,
+#         "BRICK": namespace.BRICK,
+#     }
+#     sm = SemanticModel(namespaces=namespaces)
+#     return sm
 
 
-ontologies = get_ontologies()
+# ontologies = get_ontologies()
