@@ -191,37 +191,56 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the mass balance model by setting up the state-space representation."""
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         batch_size = len(start_time)
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
                 batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
                 batch_size=batch_size,
             )
 
         if not self.INITIALIZED:
             # First initialization
             self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+            
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
+            
             self.INITIALIZED = True
         else:
             # Re-initialize the state space
             self._create_state_space_model()  # We need to re-create the model because the parameters have changed to create a new computation graph
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+            
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
+
+    def _get_initial_state_tensor(self):
+        # Get batch size from indoorCO2 which should be initialized with correct batch size
+        co2_indoor = self.output["indoorCO2"].get()
+        batch_size = co2_indoor.shape[0] if co2_indoor.dim() > 0 else 1
+        
+        x0 = torch.zeros((batch_size, 1), dtype=torch.float64)
+        
+        # Handle indoor CO2
+        co2_indoor_val = co2_indoor
+        if co2_indoor_val.dim() == 0:
+            co2_indoor_val = co2_indoor_val.expand(batch_size)
+            
+        x0[:, 0] = co2_indoor_val
+            
+        return x0
 
     def _create_state_space_model(self):
         """Create the state space model matrices using PyTorch tensors."""
@@ -258,8 +277,9 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         # Feedthrough matrix D (no direct feedthrough)
         D = torch.zeros((n_states, n_inputs), dtype=torch.float64)
 
-        # Initial state
-        x0 = torch.tensor([self.output["indoorCO2"].get()], dtype=torch.float64)
+        # Initial state - use first batch element for system definition
+        x0_tensor = self._get_initial_state_tensor()
+        x0 = x0_tensor[0]
 
         # E matrix for input-state coupling: shape (n_inputs, n_states, n_states)
         E = torch.zeros((n_inputs, n_states, n_states), dtype=torch.float64)
@@ -304,10 +324,11 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
                 self.input["exhaustAirFlowRate"].get(),
                 self.input["outdoorCO2"].get(),
                 self.input["numberOfPeople"].get(),
-            ]
-        ).squeeze()
+            ],
+            dim=1
+        )
 
         self.ss_model.input["u"].set(u, step_index)
         self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
         y = self.ss_model.output["y"].get()
-        self.output["indoorCO2"].set(y[0], step_index)
+        self.output["indoorCO2"].set(y[:, 0], step_index)

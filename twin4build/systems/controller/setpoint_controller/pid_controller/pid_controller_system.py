@@ -1,6 +1,6 @@
 # Standard library imports
 import datetime
-from typing import Optional
+from typing import Optional, List
 
 # Third party imports
 import numpy as np
@@ -75,28 +75,23 @@ class PIDControllerSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        batch_size = len(start_time)
         self.input["actualValue"].initialize(
-            start_time=start_time,
-            end_time=end_time,
-            step_size=step_size,
-            simulator=simulator,
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
         )
         self.input["setpointValue"].initialize(
-            start_time=start_time,
-            end_time=end_time,
-            step_size=step_size,
-            simulator=simulator,
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
         )
         self.output["inputSignal"].initialize(
-            start_time=start_time,
-            end_time=end_time,
-            step_size=step_size,
-            simulator=simulator,
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
         )
         # self.acc_err = torch.tensor([0], dtype=torch.float64, requires_grad=False)
         self.err_prev = torch.tensor([0], dtype=torch.float64, requires_grad=False)
@@ -139,6 +134,8 @@ class PIDControllerSystem(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
+        # Convert to torch.tensor for use in do_step, e.g.
+        step_size = torch.tensor(step_size, dtype=torch.float64, requires_grad=False)
         err = self.input["setpointValue"].get() - self.input["actualValue"].get()
         du = self.kp.get() * (
             (1 + step_size / self.Ti.get() + self.Td.get() / step_size) * err
@@ -163,8 +160,7 @@ def saref_signature_pattern():
     node2 = Node(cls=core.namespace.SAREF.Property)
     node3 = Node(cls=core.namespace.S4BLDG.Schedule)
     node4 = Node(cls=core.namespace.XSD.boolean)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="pid_controller_signature_pattern"
+    sp = SignaturePattern(id="pid_controller_signature_pattern"
     )
     sp.add_triple(
         Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)

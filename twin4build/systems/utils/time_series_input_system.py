@@ -29,7 +29,6 @@ class TimeSeriesInputSystem(core.System):
         useSpreadsheet: Whether to use a spreadsheet for input. Defaults to False.
         useDatabase: Whether to use a database for input. Defaults to False.
         uuid: UUID for database operations.
-        name: Name for database operations.
         dbconfig: Database configuration parameters.
         **kwargs: Additional keyword arguments
     """
@@ -43,7 +42,6 @@ class TimeSeriesInputSystem(core.System):
         useSpreadsheet: bool = False,
         useDatabase: bool = False,
         uuid: Optional[str] = None,
-        name: Optional[str] = None,
         dbconfig: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> None:
@@ -57,7 +55,6 @@ class TimeSeriesInputSystem(core.System):
             useSpreadsheet: Whether to use a spreadsheet for input. Defaults to False.
             useDatabase: Whether to use a database for input. Defaults to False.
             uuid: UUID for database operations.
-            name: Name for database operations.
             dbconfig: Database configuration parameters.
             **kwargs: Additional keyword arguments passed to parent System class.
 
@@ -88,7 +85,6 @@ class TimeSeriesInputSystem(core.System):
         self._datecolumn = datecolumn
         self._valuecolumn = valuecolumn
         self._uuid = uuid
-        self._name = name
         self._dbconfig = dbconfig
         self._cached_initialize_arguments = []
         self._cache_root = get_main_dir()
@@ -114,7 +110,7 @@ class TimeSeriesInputSystem(core.System):
         self._config = {
             "parameters": [],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
-            "database": ["uuid", "name", "dbconfig"],
+            "database": ["uuid", "dbconfig"],
         }
 
 
@@ -251,20 +247,6 @@ class TimeSeriesInputSystem(core.System):
         self._uuid = value
 
     @property
-    def name(self) -> Optional[str]:
-        """
-        Get the name for database operations.
-        """
-        return self._name
-
-    @name.setter
-    def name(self, value: Optional[str]) -> None:
-        """
-        Set the name for database operations.
-        """
-        self._name = value
-
-    @property
     def dbconfig(self) -> Optional[Dict[str, Any]]:
         """
         Get the database configuration parameters.
@@ -320,8 +302,7 @@ class TimeSeriesInputSystem(core.System):
                     elif self.useDatabase:
                         df = load_from_database(
                             config=self.dbconfig,
-                            sensor_uuid=self.uuid,
-                            sensor_name=self.name,
+                            sensor_id=self.uuid,
                             step_size=step_size_,
                             start_time=start_time_,
                             end_time=end_time_,
@@ -343,15 +324,18 @@ class TimeSeriesInputSystem(core.System):
                 self._cached_initialize_arguments.append((start_time_, end_time_, step_size_))
                 self.df.append(df)
 
-        _, _, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-        values = np.empty((len(self.df), n_timesteps))
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        values = np.empty((len(self.df), max_timesteps))
         values.fill(np.nan)
         for batch_index, df in enumerate(self.df):
             size = len(df.index)
-            values[batch_index,:size] = df.values[:,0]
+            values[batch_index,:size] = df.values
 
+        self.n_timesteps = max_timesteps
+        self.batch_size = len(start_time)
+        self.values = values
         self.output["value"].initialize(
-                n_timesteps,
+                max_timesteps,
                 batch_size=len(start_time),
                 values=values,
             )

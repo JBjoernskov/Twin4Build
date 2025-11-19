@@ -1,6 +1,6 @@
 # Standard library imports
 import datetime
-from typing import Optional
+from typing import Optional, List
 
 # Third party imports
 import numpy as np
@@ -150,26 +150,23 @@ class DamperTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the damper system."""
         # Initialize I/O
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
 
         # Calculate b and c parameters
@@ -224,8 +221,7 @@ def saref_signature_pattern():
     node4 = Node(cls=core.namespace.SAREF.PropertyValue)
     node5 = Node(cls=core.namespace.XSD.float)
     node6 = Node(cls=core.namespace.S4BLDG.NominalAirFlowRate)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="damper_signature_pattern"
+    sp = SignaturePattern(id="damper_signature_pattern"
     )
 
     # Add edges to the signature pattern
@@ -275,8 +271,7 @@ def brick_signature_pattern():
     node3 = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
     node4 = Node(cls=core.namespace.BRICK.Air_Flow_Setpoint)
     node5 = Node(cls=core.namespace.XSD.float)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="damper_signature_pattern_brick"
+    sp = SignaturePattern(id="damper_signature_pattern_brick"
     )
 
     # Add edges to the signature pattern

@@ -380,7 +380,6 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """
         Initialize the RC model by initializing the state space model.
@@ -391,22 +390,19 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             step_size (int): Simulation step size.
             simulator (core.Simulator): Reference to the simulation model.
         """
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         batch_size = len(start_time)
+        self.setup_variable_inputs()
+        self.input["adjacentZoneTemperature"].initialize(n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_adjacent_zones)
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
                 batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
                 batch_size=batch_size,
             )
 
@@ -415,25 +411,28 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             self._create_state_space_model()
             # print("CREATED STATE SPACE MODEL 1")
             # print("C_air: ", self.C_air.get().detach())
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+            
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
+            
             self.INITIALIZED = True
         else:
             # Re-initialize the state space model
             self._create_state_space_model()  # We need to re-create the model because the parameters have changed to create a new computation graph
             # print("CREATED STATE SPACE MODEL 2")
             # print("C_air: ", self.C_air.get().detach())
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+            
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
 
         self._manual_setup_n_adjacent_zones = False
         self._manual_setup_n_boundary_temperature = False
 
-    def _create_state_space_model(self):
-        """
-        Create the state space model using PyTorch tensors.
-
-        This formulation directly constructs the state space matrices A and B
-        using PyTorch tensors for gradient tracking.
-        """
+    def setup_variable_inputs(self):
         if self.manual_setup_n_boundary_temperature == False:
             # Find if boundary temperature is set as input
             connection_point = [
@@ -462,6 +461,47 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 else 0
             )
             self.n_adjacent_zones = n_adjacent_zones
+
+    def _get_initial_state_tensor(self):
+        # Get batch size from indoorTemperature which should be initialized with correct batch size
+        t_indoor = self.output["indoorTemperature"].get()
+        batch_size = t_indoor.shape[0] if t_indoor.dim() > 0 else 1
+        
+        x0 = torch.zeros((batch_size, self.n_states), dtype=torch.float64)
+        
+        # Handle indoor temperature
+        t_indoor_val = t_indoor
+        if t_indoor_val.dim() == 0:
+            t_indoor_val = t_indoor_val.expand(batch_size)
+            
+        t_wall_val = self.output["wallTemperature"].get()
+        if t_wall_val.dim() == 0:
+            t_wall_val = t_wall_val.expand(batch_size)
+            
+        x0[:, 0] = t_indoor_val
+        x0[:, 1] = t_wall_val
+
+        if self.n_boundary_temperature == 1:
+            # Initialize boundary wall temperature with indoor temperature
+            x0[:, 2] = t_indoor_val
+
+        # Initialize interior wall temperatures with indoor temperature
+        for i in range(self.n_adjacent_zones):
+            adj_wall_idx = (
+                self.n_states - self.n_adjacent_zones - self.n_boundary_temperature
+            ) + i  # Interior walls are after boundary wall
+            x0[:, adj_wall_idx] = t_indoor_val
+            
+        return x0
+
+    def _create_state_space_model(self):
+        """
+        Create the state space model using PyTorch tensors.
+
+        This formulation directly constructs the state space matrices A and B
+        using PyTorch tensors for gradient tracking.
+        """
+        
 
         # Calculate number of states
         n_states = 2  # Base states: air and wall temperature
@@ -572,21 +612,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # Feedthrough matrix D (no direct feedthrough)
         D = torch.zeros((n_states, n_inputs), dtype=torch.float64)
 
-        # Initial state
-        x0 = torch.zeros(n_states, dtype=torch.float64)
-        x0[0] = self.output["indoorTemperature"].get()
-        x0[1] = self.output["wallTemperature"].get()
-
-        if self.n_boundary_temperature == 1:
-            # Initialize boundary wall temperature with indoor temperature
-            x0[2] = self.output["indoorTemperature"].get()
-
-        # Initialize interior wall temperatures with indoor temperature
-        for i in range(self.n_adjacent_zones):
-            adj_wall_idx = (
-                n_states - self.n_adjacent_zones - self.n_boundary_temperature
-            ) + i  # Interior walls are after boundary wall
-            x0[adj_wall_idx] = self.output["indoorTemperature"].get()
+        # Initial state - use first batch element for system definition
+        x0_tensor = self._get_initial_state_tensor()
+        x0 = x0_tensor[0]
 
         # E matrix for input-state coupling: shape (n_inputs, n_states, n_states)
         E = torch.zeros((n_inputs, n_states, n_states), dtype=torch.float64)
@@ -667,16 +695,17 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 self.input["globalIrradiation"].get(),
                 self.input["numberOfPeople"].get(),
                 self.input["heatGain"].get(),
-            ]
-        ).squeeze()
+            ],
+            dim=1
+        )
 
         
 
         if self.n_boundary_temperature == 1:
-            u = torch.cat([u, self.input["boundaryTemperature"].get()])
+            u = torch.cat([u, self.input["boundaryTemperature"].get().unsqueeze(1)], dim=1)
         # Add adjacent zone temperatures at the end
         if self.n_adjacent_zones > 0:
-            u = torch.cat([u, self.input["adjacentZoneTemperature"].get()])
+            u = torch.cat([u, self.input["adjacentZoneTemperature"].get()], dim=1)
 
         # Set the input vector
         self.ss_model.input["u"].set(u, step_index)
@@ -687,9 +716,13 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # Get the output vector
         y = self.ss_model.output["y"].get()
 
+
+        # print(self.output["indoorTemperature"].history.size)
+        # print(self.output["wallTemperature"].history.size)
+
         # Update individual outputs from the output vector
-        self.output["indoorTemperature"].set(y[0], step_index)
-        self.output["wallTemperature"].set(y[1], step_index)
+        self.output["indoorTemperature"].set(y[:,0], step_index)
+        self.output["wallTemperature"].set(y[:,1], step_index)
 
 
 
@@ -710,7 +743,6 @@ def brick_signature_pattern():
     )  # outdoor temperature sensor
 
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="building_space_signature_pattern_brick",
     )
 

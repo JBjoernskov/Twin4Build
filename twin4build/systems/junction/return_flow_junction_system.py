@@ -125,7 +125,6 @@ def saref_signature_pattern():
     node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
     node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)  # building space
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="return_flow_junction_signature_pattern",
     )
     sp.add_triple(
@@ -159,7 +158,6 @@ def brick_signature_pattern():
     node2 = Node(cls=core.namespace.BRICK.HVAC_Zone)  # building space/zone
     
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="return_flow_junction_signature_pattern_brick",
     )
     sp.add_triple(

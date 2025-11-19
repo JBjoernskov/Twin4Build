@@ -321,7 +321,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the space heater system for simulation.
 
@@ -336,21 +335,18 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
-
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        batch_size = len(start_time)
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
 
         if not self.INITIALIZED:
@@ -363,12 +359,21 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             self.UA.data = torch.tensor(UA_val, dtype=torch.float64)
             # First initialization
             self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+            
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
+            
             self.INITIALIZED = True
         else:
             # Re-initialize the state space model
             self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+            
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
 
     def _ua_residual(self, UA_candidate):
         """Calculate the residual for UA optimization.
@@ -418,6 +423,24 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         )  # Calculate power given states and UA guess
         return Power - self.Q_flow_nominal_sh
 
+    def _get_initial_state_tensor(self):
+        # Get batch size from outletWaterTemperature
+        t_outlet = self.output["outletWaterTemperature"].get()
+        batch_size = t_outlet.shape[0] if t_outlet.dim() > 0 else 1
+        
+        x0 = torch.zeros((batch_size, self.nelements), dtype=torch.float64)
+        
+        # Handle outlet water temperature
+        t_outlet_val = t_outlet
+        if t_outlet_val.dim() == 0:
+            t_outlet_val = t_outlet_val.expand(batch_size)
+            
+        # Initialize all elements with outlet water temperature
+        for i in range(self.nelements):
+            x0[:, i] = t_outlet_val
+            
+        return x0
+
     def _create_state_space_model(self):
         """Create the state-space model for the space heater.
 
@@ -460,8 +483,10 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         C = torch.zeros((1, n), dtype=torch.float64)
         C[0, n - 1] = 1.0
         D = torch.zeros((1, n_inputs), dtype=torch.float64)
-        x0 = torch.zeros(n, dtype=torch.float64)
-        x0[:] = self.output["outletWaterTemperature"].get()
+
+        # Initial state - use first batch element for system definition
+        x0_tensor = self._get_initial_state_tensor()
+        x0 = x0_tensor[0]
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -503,18 +528,19 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
                 self.input["supplyWaterTemperature"].get(),
                 self.input["waterFlowRate"].get(),
                 self.input["indoorTemperature"].get(),
-            ]
-        ).squeeze()
+            ],
+            dim=1
+        )
         self.ss_model.input["u"].set(u, step_index)
         self.ss_model.do_step(second_time, date_time, step_size, step_index)
         y = self.ss_model.output["y"].get()
-        outletWaterTemperature = y[0]
+        outletWaterTemperature = y[:, 0]
         UA_elem = self.UA.get() / self.nelements
         temps = self.ss_model.get_state()
         # print("----")
         # print("temps: ", temps)
         # print("u[2]: ", u[2])
-        Power = UA_elem * torch.sum(temps - u[2])
+        Power = UA_elem * torch.sum(temps - u[:, 2].unsqueeze(1), dim=1)
         # print("Power: ", Power)
         self.output["outletWaterTemperature"].set(outletWaterTemperature, step_index)
         self.output["Power"].set(Power, step_index)
@@ -532,7 +558,6 @@ def saref_signature_pattern():
     node3 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
     node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="space_heater_signature_pattern",
     )
 
@@ -570,7 +595,6 @@ def brick_signature_pattern():
     node3 = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
     
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="space_heater_signature_pattern_brick",
     )
 

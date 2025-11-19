@@ -2,7 +2,7 @@
 import datetime
 import os
 import warnings
-from typing import Optional
+from typing import List, Optional
 
 # Third party imports
 import numpy as np
@@ -13,6 +13,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import (
     Exact,
     Node,
@@ -70,13 +71,10 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         datecolumn_outdoorCo2Concentration: Optional[int] = 0,
         valuecolumn_outdoorCo2Concentration: Optional[int] = 1,
         uuid_outdoorTemperature: Optional[str] = None,
-        name_outdoorTemperature: Optional[str] = None,
         dbconfig_outdoorTemperature: Optional[dict] = None,
         uuid_globalIrradiation: Optional[str] = None,
-        name_globalIrradiation: Optional[str] = None,
         dbconfig_globalIrradiation: Optional[dict] = None,
         uuid_outdoorCo2Concentration: Optional[str] = None,
-        name_outdoorCo2Concentration: Optional[str] = None,
         dbconfig_outdoorCo2Concentration: Optional[dict] = None,
         a: Optional[float] = 1,
         b: Optional[float] = 0,
@@ -129,15 +127,12 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         self.valuecolumn_outdoorCo2Concentration = valuecolumn_outdoorCo2Concentration
 
         self.uuid_outdoorTemperature = uuid_outdoorTemperature
-        self.name_outdoorTemperature = name_outdoorTemperature
         self.dbconfig_outdoorTemperature = dbconfig_outdoorTemperature
 
         self.uuid_globalIrradiation = uuid_globalIrradiation
-        self.name_globalIrradiation = name_globalIrradiation
         self.dbconfig_globalIrradiation = dbconfig_globalIrradiation
 
         self.uuid_outdoorCo2Concentration = uuid_outdoorCo2Concentration
-        self.name_outdoorCo2Concentration = name_outdoorCo2Concentration
         self.dbconfig_outdoorCo2Concentration = dbconfig_outdoorCo2Concentration
 
         self.df = df
@@ -172,13 +167,10 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             ],
             "database": [
                 "uuid_outdoorTemperature",
-                "name_outdoorTemperature",
                 "dbconfig_outdoorTemperature",
                 "uuid_globalIrradiation",
-                "name_globalIrradiation",
                 "dbconfig_globalIrradiation",
                 "uuid_outdoorCo2Concentration",
-                "name_outdoorCo2Concentration",
                 "dbconfig_outdoorCo2Concentration",
             ],
         }
@@ -250,18 +242,11 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 self.useDatabase
                 and (
                     self.uuid_outdoorTemperature is None
-                    and self.name_outdoorTemperature is None
-                )
-                and (
-                    self.uuid_globalIrradiation is None
-                    and self.name_globalIrradiation is None
-                )
-                and (
-                    self.uuid_outdoorCo2Concentration is None
-                    and self.name_outdoorCo2Concentration is None
+                    or self.uuid_globalIrradiation is None
+                    or self.uuid_outdoorCo2Concentration is None
                 )
             ):
-                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid or name parameters must be provided for all three data types if useDatabase is True to enable use of Simulator, Estimator, and Optimizer."
+                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid parameters must be provided for all three data types if useDatabase is True to enable use of Simulator, Estimator, and Optimizer."
                 p(message, status="WARNING")
                 validated_for_simulator = False
                 validated_for_estimator = False
@@ -281,184 +266,103 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
     ) -> None:
         """Initialize the outdoor environment system.
 
         This method performs the following initialization steps:
         1. Validates and resolves the weather data file paths
-        2. Loads weather data from 3 separate files or DataFrame
+        2. Loads weather data from 3 separate files/database or DataFrame
         3. Verifies required data columns are present
 
         Args:
-            start_time (datetime.datetime): Start time of the simulation period.
-            end_time (datetime.datetime): End time of the simulation period.
-            step_size (int): Time step size in seconds.
-            simulator (core.Simulator): Simulation model object.
+            start_time (List[datetime.datetime]): List of start times for the simulation periods.
+            end_time (List[datetime.datetime]): List of end times for the simulation periods.
+            step_size (List[int]): List of time step sizes in seconds.
 
         Raises:
             ValueError: If the weather data files cannot be found or required columns are missing.
         """
-        if self.df is None or (
-            self.cached_initialize_arguments != (start_time, end_time, step_size)
-            and self.cached_initialize_arguments is not None
-        ):
-            if self.useSpreadsheet:
-                # Load from 3 separate files
-                self.df = self._load_from_separate_files(
-                    start_time, end_time, step_size
+        if self.useSpreadsheet or self.useDatabase:
+            # Use TimeSeriesInputSystem for each weather parameter (handles batching correctly)
+            time_series_temp = TimeSeriesInputSystem(
+                id=f"time series input - outdoorTemperature - {self.id}",
+                filename=self.filename_outdoorTemperature,
+                datecolumn=self.datecolumn_outdoorTemperature,
+                valuecolumn=self.valuecolumn_outdoorTemperature,
+                useSpreadsheet=self.useSpreadsheet,
+                useDatabase=self.useDatabase,
+                uuid=self.uuid_outdoorTemperature,
+                dbconfig=self.dbconfig_outdoorTemperature,
+            )
+            time_series_temp.initialize(start_time, end_time, step_size)
+            
+            time_series_irrad = TimeSeriesInputSystem(
+                id=f"time series input - globalIrradiation - {self.id}",
+                filename=self.filename_globalIrradiation,
+                datecolumn=self.datecolumn_globalIrradiation,
+                valuecolumn=self.valuecolumn_globalIrradiation,
+                useSpreadsheet=self.useSpreadsheet,
+                useDatabase=self.useDatabase,
+                uuid=self.uuid_globalIrradiation,
+                dbconfig=self.dbconfig_globalIrradiation,
+            )
+            time_series_irrad.initialize(start_time, end_time, step_size)
+            
+            time_series_co2 = TimeSeriesInputSystem(
+                id=f"time series input - outdoorCo2Concentration - {self.id}",
+                filename=self.filename_outdoorCo2Concentration,
+                datecolumn=self.datecolumn_outdoorCo2Concentration,
+                valuecolumn=self.valuecolumn_outdoorCo2Concentration,
+                useSpreadsheet=self.useSpreadsheet,
+                useDatabase=self.useDatabase,
+                uuid=self.uuid_outdoorCo2Concentration,
+                dbconfig=self.dbconfig_outdoorCo2Concentration,
+            )
+            time_series_co2.initialize(start_time, end_time, step_size)
+            
+            # Initialize outputs using the values from TimeSeriesInputSystem
+            self.output["outdoorTemperature"].initialize(
+                time_series_temp.n_timesteps,
+                batch_size=time_series_temp.batch_size,
+                values=time_series_temp.values,
+            )
+            self.output["globalIrradiation"].initialize(
+                time_series_irrad.n_timesteps,
+                batch_size=time_series_irrad.batch_size,
+                values=time_series_irrad.values,
+            )
+            self.output["outdoorCo2Concentration"].initialize(
+                time_series_co2.n_timesteps,
+                batch_size=time_series_co2.batch_size,
+                values=time_series_co2.values,
+            )
+        else:
+            # Use provided DataFrame
+            if self.df is None:
+                raise ValueError(
+                    "No data source provided. Set useSpreadsheet=True or useDatabase=True or provide df."
                 )
-            elif self.useDatabase:
-                # Load from database
-                self.df = self._load_from_database(start_time, end_time, step_size)
-            else:
-                # Use provided DataFrame
-                if self.df is None:
-                    raise ValueError(
-                        "No data source provided. Set useSpreadsheet=True or useDatabase=True or provide df."
-                    )
+            
+            required_keys = [
+                "outdoorTemperature",
+                "globalIrradiation",
+                "outdoorCo2Concentration",
+            ]
+            is_included = np.array([key in self.df.columns for key in required_keys])
+            assert np.all(
+                is_included
+            ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
 
-        self.cached_initialize_arguments = (start_time, end_time, step_size)
-        required_keys = [
-            "outdoorTemperature",
-            "globalIrradiation",
-            "outdoorCo2Concentration",
-        ]
-        is_included = np.array([key in self.df.columns for key in required_keys])
-        assert np.all(
-            is_included
-        ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
-
-        for key, output in self._output.items():
-            output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
-                values=self.df[key].values,
-            )
-
-    def _load_from_separate_files(self, start_time, end_time, step_size):
-        """Load data from 3 separate CSV files and combine them."""
-        # Validate that all required filename parameters are provided
-        if (
-            self.filename_outdoorTemperature is None
-            or self.filename_globalIrradiation is None
-            or self.filename_outdoorCo2Concentration is None
-        ):
-            raise ValueError(
-                "All three filename parameters (filename_outdoorTemperature, filename_globalIrradiation, filename_outdoorCo2Concentration) must be provided when useSpreadsheet=True"
-            )
-
-        # Load each file
-        df_temp = load_from_spreadsheet(
-            filename=self.filename_outdoorTemperature,
-            datecolumn=self.datecolumn_outdoorTemperature,
-            valuecolumn=self.valuecolumn_outdoorTemperature,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            cache_root=self.cache_root,
-        )
-        df_irrad = load_from_spreadsheet(
-            filename=self.filename_globalIrradiation,
-            datecolumn=self.datecolumn_globalIrradiation,
-            valuecolumn=self.valuecolumn_globalIrradiation,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            cache_root=self.cache_root,
-        )
-        df_co2 = load_from_spreadsheet(
-            filename=self.filename_outdoorCo2Concentration,
-            datecolumn=self.datecolumn_outdoorCo2Concentration,
-            valuecolumn=self.valuecolumn_outdoorCo2Concentration,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            cache_root=self.cache_root,
-        )
-
-        # Create combined DataFrame
-        # When valuecolumn is specified, load_from_spreadsheet returns a pandas Series with date_timeIndex
-        df = pd.DataFrame(
-            {
-                "time": df_temp.index,
-                "outdoorTemperature": df_temp.values,
-                "globalIrradiation": df_irrad.values,
-                "outdoorCo2Concentration": df_co2.values,
-            }
-        )
-
-        return df
-
-    def _load_from_database(self, start_time, end_time, step_size):
-        """Load data from database and combine them."""
-
-        # Validate that all required database parameters are provided
-        if (
-            (
-                self.uuid_outdoorTemperature is None
-                and self.name_outdoorTemperature is None
-            )
-            or (
-                self.uuid_globalIrradiation is None
-                and self.name_globalIrradiation is None
-            )
-            or (
-                self.uuid_outdoorCo2Concentration is None
-                and self.name_outdoorCo2Concentration is None
-            )
-        ):
-            raise ValueError(
-                "uuid or name parameters must be provided for all three data types (outdoorTemperature, globalIrradiation, outdoorCo2Concentration) when useDatabase=True"
-            )
-
-        # Load each parameter from database
-        df_temp = load_from_database(
-            uuid=self.uuid_outdoorTemperature,
-            name=self.name_outdoorTemperature,
-            dbconfig=self.database_config_outdoorTemperature,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            dt_limit=1200,
-        )
-
-        df_irrad = load_from_database(
-            uuid=self.uuid_globalIrradiation,
-            name=self.name_globalIrradiation,
-            dbconfig=self.database_config_globalIrradiation,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            dt_limit=1200,
-        )
-
-        df_co2 = load_from_database(
-            uuid=self.uuid_outdoorCo2Concentration,
-            name=self.name_outdoorCo2Concentration,
-            dbconfig=self.dbconfig_outdoorCo2Concentration,
-            step_size=step_size,
-            start_time=start_time,
-            end_time=end_time,
-            dt_limit=1200,
-        )
-
-        # Create combined DataFrame
-        df = pd.DataFrame(
-            {
-                "time": df_temp.index,
-                "outdoorTemperature": df_temp.values,
-                "globalIrradiation": df_irrad.values,
-                "outdoorCo2Concentration": df_co2.values,
-            }
-        )
-
-        return df
+            for key, output in self._output.items():
+                output.initialize(
+                    start_time=start_time,
+                    end_time=end_time,
+                    step_size=step_size,
+                    values=self.df[key].values,
+                )
 
     def _apply(self, x):
         return x * self.a.get() + self.b.get()
@@ -502,8 +406,7 @@ def saref_signature_pattern():
         SignaturePattern: The SAREF signature pattern of the outdoor environment component.
     """
     node0 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="outdoor_environment_signature_pattern"
+    sp = SignaturePattern(id="outdoor_environment_signature_pattern"
     )
     sp.add_modeled_node(node0)
     return sp
@@ -520,8 +423,7 @@ def brick_signature_pattern():
     node1 = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
     node2 = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
     node3 = Node(cls=core.namespace.BRICK.Outdoor_CO2_Concentration_Sensor)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="outdoor_environment_signature_pattern_brick"
+    sp = SignaturePattern(id="outdoor_environment_signature_pattern_brick"
     )
     sp.add_modeled_node(node0)
     return sp

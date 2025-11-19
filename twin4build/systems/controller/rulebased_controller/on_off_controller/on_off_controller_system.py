@@ -74,8 +74,7 @@ def saref_signature_pattern():
     node1 = Node(cls=(core.namespace.SAREF.Sensor))
     node2 = Node(cls=(core.namespace.SAREF.Property))
     node3 = Node(cls=(core.namespace.S4BLDG.Schedule))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="on_off_controller_signature_pattern"
+    sp = SignaturePattern(id="on_off_controller_signature_pattern"
     )
     sp.add_triple(
         Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
@@ -103,8 +102,7 @@ def brick_signature_pattern():
     node1 = Node(cls=core.namespace.BRICK.Sensor)
     node2 = Node(cls=core.namespace.BRICK.Setpoint)
     
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="on_off_controller_signature_pattern_brick"
+    sp = SignaturePattern(id="on_off_controller_signature_pattern_brick"
     )
     sp.add_triple(
         Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)

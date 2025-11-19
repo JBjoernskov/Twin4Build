@@ -16,7 +16,6 @@ from twin4build.translator.translator import Exact, Node, SignaturePattern, Sing
 def get_signature_pattern_input():
     node0 = Node(cls=(core.namespace.SAREF.Sensor,))
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="signature_pattern_input",
     )
     sp.add_modeled_node(node0)
@@ -33,8 +32,7 @@ def get_flow_signature_pattern_after_coil_air_side():
     node6 = Node(cls=core.namespace.S4SYST.System)  # after waterside
     node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
     node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="flow_signature_pattern_after_coil_air_side"
+    sp = SignaturePattern(id="flow_signature_pattern_after_coil_air_side"
     )
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -73,7 +71,6 @@ def get_flow_signature_pattern_after_coil_air_side_simple():
     node3 = Node(cls=(core.namespace.S4BLDG.Coil))  # airside
     node4 = Node(cls=(core.namespace.S4BLDG.Coil))  # supersystem
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="flow_signature_pattern_after_coil_air_side_simple",
     )
     sp.add_triple(
@@ -103,7 +100,6 @@ def get_flow_signature_pattern_after_coil_water_side():
     node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
     node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="flow_signature_pattern_after_coil_water_side",
     )
     sp.add_triple(
@@ -147,7 +143,6 @@ def get_flow_signature_pattern_before_coil_water_side():
     node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
     node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="flow_signature_pattern_before_coil_water_side",
     )
     sp.add_triple(
@@ -184,8 +179,7 @@ def get_space_temperature_signature_pattern():
     node0 = Node(cls=(core.namespace.SAREF.Sensor))
     node1 = Node(cls=(core.namespace.SAREF.Temperature))
     node2 = Node(cls=(core.namespace.S4BLDG.BuildingSpace))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="space_temperature_signature_pattern"
+    sp = SignaturePattern(id="space_temperature_signature_pattern"
     )
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -203,8 +197,7 @@ def get_space_co2_signature_pattern():
     node0 = Node(cls=(core.namespace.SAREF.Sensor,))
     node1 = Node(cls=(core.namespace.SAREF.Co2,))
     node2 = Node(cls=(core.namespace.S4BLDG.BuildingSpace,))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="space_co2_signature_pattern"
+    sp = SignaturePattern(id="space_co2_signature_pattern"
     )
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -227,8 +220,7 @@ def get_position_signature_pattern():
         )
     )
     node3 = Node(cls=(core.namespace.S4BLDG.Controller))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="position_signature_pattern"
+    sp = SignaturePattern(id="position_signature_pattern"
     )
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -249,8 +241,7 @@ def get_temperature_before_air_to_air_supply_side():
     node1 = Node(cls=(core.namespace.SAREF.Temperature,))
     node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery,))  # AirToAirPrimary
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="temperature_before_air_to_air_supply_side"
+    sp = SignaturePattern(id="temperature_before_air_to_air_supply_side"
     )
 
     sp.add_triple(
@@ -278,8 +269,7 @@ def get_temperature_before_air_to_air_exhaust_side():
 
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="temperature_before_air_to_air_exhaust_side"
+    sp = SignaturePattern(id="temperature_before_air_to_air_exhaust_side"
     )
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -305,8 +295,7 @@ def get_temperature_after_air_to_air_supply_side():
     node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="temperature_after_air_to_air_supply_side"
+    sp = SignaturePattern(id="temperature_after_air_to_air_supply_side"
     )
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -333,8 +322,7 @@ def get_temperature_after_air_to_air_exhaust_side():
 
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="temperature_after_air_to_air_exhaust_side"
+    sp = SignaturePattern(id="temperature_after_air_to_air_exhaust_side"
     )
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -394,7 +382,6 @@ class SensorSystem(core.System):
         filename: Optional[str] = None,
         df: Optional[pd.DataFrame] = None,
         uuid: Optional[str] = None,
-        name: Optional[str] = None,
         dbconfig: Optional[Dict[str, Any]] = None,
         useSpreadsheet: bool = False,
         useDatabase: bool = False,
@@ -436,15 +423,14 @@ class SensorSystem(core.System):
         self._datecolumn = 0
         self._valuecolumn = 1
         self._uuid = uuid
-        self._name = name
         self._dbconfig = dbconfig
         self._is_leaf = None
-        self._physicalSystem = None
+        self._time_series_input = None
 
         self._config = {
             "parameters": ["useSpreadsheet", "useDatabase"],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
-            "database": ["uuid", "name", "dbconfig"],
+            "database": ["uuid", "dbconfig"],
         }
 
     @property
@@ -544,18 +530,18 @@ class SensorSystem(core.System):
         self._is_leaf = value
 
     @property
-    def physicalSystem(self) -> Optional[TimeSeriesInputSystem]:
+    def time_series_input(self) -> Optional[TimeSeriesInputSystem]:
         """
         Get the data handling system for physical sensors.
         """
-        return self._physicalSystem
+        return self._time_series_input
 
-    @physicalSystem.setter
-    def physicalSystem(self, value: Optional[TimeSeriesInputSystem]) -> None:
+    @time_series_input.setter
+    def time_series_input(self, value: Optional[TimeSeriesInputSystem]) -> None:
         """
         Set the data handling system for physical sensors.
         """
-        self._physicalSystem = value
+        self._time_series_input = value
 
     @property
     def useSpreadsheet(self) -> bool:
@@ -598,20 +584,6 @@ class SensorSystem(core.System):
         Set the UUID for database operations.
         """
         self._uuid = value
-
-    @property
-    def name(self) -> Optional[str]:
-        """
-        Get the name for database operations.
-        """
-        return self._name
-
-    @name.setter
-    def name(self, value: Optional[str]) -> None:
-        """
-        Set the name for database operations.
-        """
-        self._name = value
 
     @property
     def dbconfig(self) -> Optional[Dict[str, Any]]:
@@ -704,7 +676,7 @@ class SensorSystem(core.System):
                 assert (
                     self.useSpreadsheet == True or self.useDatabase == True
                 ), "useSpreadsheet or useDatabase must be True if df is not provided."
-            self.physicalSystem = TimeSeriesInputSystem(
+            self.time_series_input = TimeSeriesInputSystem(
                 id=f"time series input - {self.id}",
                 df=self.df,
                 filename=self.filename,
@@ -713,38 +685,36 @@ class SensorSystem(core.System):
                 useSpreadsheet=self.useSpreadsheet,
                 useDatabase=self.useDatabase,
                 uuid=self.uuid,
-                name=self.name,
                 dbconfig=self.dbconfig,
             )
-            self.physicalSystem.initialize(
+            self.time_series_input.initialize(
                 start_time=start_time,
                 end_time=end_time,
                 step_size=step_size,
             )
 
         else:
-            self.physicalSystem = None
+            self.time_series_input = None
 
         assert (
-            len(self.connects_at) == 0 and self.physicalSystem is None
+            len(self.connects_at) == 0 and self.time_series_input is None
         ) == False, f'Sensor object "{self.id}" has no inputs and and holds no data.'
-
-        _, _, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-        batch_size = len(start_time)
 
         if self.is_leaf:
             self.output["measuredValue"].initialize(
-                n_timesteps=n_timesteps,
-                batch_size=batch_size,
-                values=self.physicalSystem.df.values,
+                n_timesteps=self.time_series_input.n_timesteps,
+                batch_size=self.time_series_input.batch_size,
+                values=self.time_series_input.values,
             )
         else:
+            _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+            batch_size = len(start_time)
             self.input["measuredValue"].initialize(
-                n_timesteps=n_timesteps,
+                n_timesteps=max_timesteps,
                 batch_size=batch_size,
             )
             self.output["measuredValue"].initialize(
-                n_timesteps=n_timesteps,
+                n_timesteps=max_timesteps,
                 batch_size=batch_size,
             )
 
@@ -791,7 +761,7 @@ class SensorSystem(core.System):
             AssertionError: If called on a virtual sensor (no physical readings available).
         """
         assert (
-            self.physicalSystem is not None
+            self.time_series_input is not None
         ), f'Cannot return physical readings for Sensor with id "{self.id}" as the argument "filename" was not provided when the object was initialized.'
-        self.physicalSystem.initialize(start_time, end_time, step_size)
-        return self.physicalSystem.df
+        self.time_series_input.initialize(start_time, end_time, step_size)
+        return self.time_series_input.df

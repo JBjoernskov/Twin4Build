@@ -58,16 +58,6 @@ class ValveTorchSystem(core.System, nn.Module):
        - :math:`\dot{m}_w` is the water flow rate [kg/s]
        - :math:`\dot{m}_{w,max}` is the maximum water flow rate [kg/s]
 
-    Parameters
-    ----------
-    waterFlowRateMax : float
-        Maximum water flow rate [kg/s]
-    valveAuthority : float
-        Valve authority (0-1), where:
-        - 0: Linear characteristic
-        - 1: Equal percentage characteristic
-        - Values in between: Mixed characteristic
-
     Notes
     -----
     Valve Authority Characteristics:
@@ -154,23 +144,20 @@ class ValveTorchSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the valve system."""
         # Initialize I/O
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         self.INITIALIZED = True
 
@@ -221,7 +208,7 @@ def saref_signature_pattern():
     node0 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
     node1 = Node(cls=core.namespace.S4BLDG.Controller)
     node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
-    sp = SignaturePattern(semantic_model_=core.ontologies)
+    sp = SignaturePattern()
 
     sp.add_triple(
         Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
@@ -248,7 +235,6 @@ def brick_signature_pattern():
     node2 = Node(cls=core.namespace.BRICK.Water_Flow_Sensor)
     
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="valve_signature_pattern_brick"
     )
 

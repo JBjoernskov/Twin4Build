@@ -223,7 +223,6 @@ def saref_signature_pattern():
     node6 = Node(cls=(core.namespace.SAREF.Sensor))
     node7 = Node(cls=(core.namespace.SAREF.OpeningPosition))
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="occupancy_schedule_signature_pattern",
     )
     sp.add_triple(
@@ -267,7 +266,6 @@ def brick_signature_pattern():
     node3 = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
     
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="occupancy_schedule_signature_pattern_brick",
     )
     

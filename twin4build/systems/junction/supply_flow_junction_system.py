@@ -132,7 +132,6 @@ def saref_signature_pattern():
         )
     )  # building space
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="supply_flow_junction_signature_pattern",
     )
     sp.add_triple(
@@ -162,7 +161,6 @@ def brick_signature_pattern():
     node2 = Node(cls=core.namespace.BRICK.AHU)  # air handling unit
     
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="supply_flow_junction_signature_pattern_brick",
     )
     sp.add_triple(

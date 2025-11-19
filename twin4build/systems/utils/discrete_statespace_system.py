@@ -606,7 +606,7 @@ class DiscreteStatespaceSystem(core.System):
             broadcasting rules.
         """
         # Reset and initialize I/O
-        _, _, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         sim_batch_size = len(start_time)
         
         # Calculate total batch size: sim_batch_size * system_batch_size (sim dimension first)
@@ -640,8 +640,8 @@ class DiscreteStatespaceSystem(core.System):
             self.sim_batch_size = sim_batch_size
             self.batch_size = total_batch_size
         
-        self.input["u"].initialize(n_timesteps, batch_size=self.batch_size)
-        self.output["y"].initialize(n_timesteps, batch_size=self.batch_size)
+        self.input["u"].initialize(max_timesteps, batch_size=self.batch_size)
+        self.output["y"].initialize(max_timesteps, batch_size=self.batch_size)
 
         # Reset state to initial state and detach from old graph
         # self.x shape: (batch_size, n_states)

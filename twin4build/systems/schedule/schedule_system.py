@@ -241,10 +241,9 @@ class ScheduleSystem(core.System):
             )
             time_series_input.initialize(start_time, end_time, step_size)
             self.output["scheduleValue"].initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                values=time_series_input.df.values,
+                time_series_input.n_timesteps,
+                batch_size=time_series_input.batch_size,
+                values=time_series_input.values,
             )
         else:
             required_dicts = [
@@ -283,16 +282,16 @@ class ScheduleSystem(core.System):
                             rulesetDict[key] = [0] * len_key
 
 
-            second_time_steps, date_time_steps, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-            values = np.empty((len(start_time), n_timesteps))
+            second_time_steps, date_time_steps, max_timesteps, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+            print(f"date_time_steps: {date_time_steps}")
+            values = np.empty((len(start_time), max_timesteps))
             values.fill(np.nan)
-            for batch_index, date_time_steps_ in enumerate(date_time_steps):
-                size = len(date_time_steps_)
-                values[batch_index,:size] = [self.get_schedule_value(date_time) for date_time in date_time_steps_]
+            for batch_index, (date_time_steps_, n_timesteps_) in enumerate(zip(date_time_steps, n_timesteps)):
+                values[batch_index,:n_timesteps_] = [self.get_schedule_value(date_time) for date_time in date_time_steps_[:n_timesteps_]]
             
 
             self.output["scheduleValue"].initialize(
-                    n_timesteps,
+                    max_timesteps,
                     batch_size=len(start_time),
                     values=values,
                 )
@@ -378,8 +377,7 @@ def saref_signature_pattern():
         SignaturePattern: The SAREF signature pattern of the schedule component.
     """
     node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="schedule_signature_pattern"
+    sp = SignaturePattern(id="schedule_signature_pattern"
     )
     sp.add_modeled_node(node0)
     return sp
@@ -393,8 +391,7 @@ def brick_signature_pattern():
         SignaturePattern: The BRICK signature pattern of the schedule component.
     """
     node0 = Node(cls=core.namespace.BRICK.Schedule)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="schedule_signature_pattern_brick"
+    sp = SignaturePattern(id="schedule_signature_pattern_brick"
     )
     sp.add_modeled_node(node0)
     return sp

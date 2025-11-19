@@ -151,8 +151,7 @@ def saref_signature_pattern():
     node8 = Node(cls=core.namespace.SAREF.Sensor)
     node9 = Node(cls=core.namespace.SAREF.Property)
 
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="sequence_controller_signature_pattern"
+    sp = SignaturePattern(id="sequence_controller_signature_pattern"
     )
     sp.add_triple(
         Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)

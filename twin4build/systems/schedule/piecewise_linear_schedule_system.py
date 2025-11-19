@@ -143,7 +143,6 @@ def saref_signature_pattern() -> SignaturePattern:
     """
     node0 = Node(cls=(core.namespace.S4BLDG.Schedule,))
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="piecewise_linear_schedule_signature_pattern",
     )
     sp.add_modeled_node(node0)
@@ -159,7 +158,6 @@ def brick_signature_pattern() -> SignaturePattern:
     """
     node0 = Node(cls=core.namespace.BRICK.Schedule)
     sp = SignaturePattern(
-        semantic_model_=core.ontologies,
         id="piecewise_linear_schedule_signature_pattern_brick",
     )
     sp.add_modeled_node(node0)
