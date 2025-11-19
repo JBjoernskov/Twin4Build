@@ -9,8 +9,6 @@ namespace_prefixes:
 
 operations:
   - data: |-
-      bldg:{id} a saref:{type} .
+      {subject} {predicate} {object} .
 
-  # - data: |-
-  #     saref:{type} rdfs:subClassOf saref:Property .
 
