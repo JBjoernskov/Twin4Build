@@ -174,9 +174,8 @@ class PlotSettings:
     right_y_second = (0.975, 0.50)
     outward = 68
 
-    @classmethod
-    @property
-    def save_folder(cls):
+    @staticmethod
+    def save_folder():
         save_folder, isfile = mkdir_in_root(["generated_files", "plots"])
         return save_folder
 
@@ -344,12 +343,8 @@ def get_data_legacy(simulator, t):
         t: Legacy tuple with component information
         
     Returns:
-        tuple: (data, label, color, fmt, linewidth, alpha)
+        tuple: (data, label)
     """
-    color = None
-    fmt = None
-    linewidth = None
-    alpha = None
     
     # Handle legacy tuple formats for backward compatibility
     if isinstance(t, tuple):
@@ -428,7 +423,13 @@ def get_data_legacy(simulator, t):
     # Use attribute name as label for legacy tuples
     final_label = display_label
         
-    return data, final_label, color, fmt, linewidth, alpha
+    return data, final_label
+
+def filter_nans(time, data):
+    valid_mask = ~pd.isna(time)
+    time = time[valid_mask]
+    data = data[valid_mask]
+    return time, data
 
 
 def plot(
@@ -471,9 +472,12 @@ def plot(
     """
     assert time is not None, "time parameter is required"
     assert entries is not None, "entries parameter is required"
+
+    if isinstance(entries, Entry):
+        entries = [entries]
     
     # Separate entries by axis
-    components_1axis = [e for e in entries if e.axis == 1]
+    components_1axis = [e for e in entries if e.axis == 1 or e.axis is None]
     components_2axis = [e for e in entries if e.axis == 2]
     components_3axis = [e for e in entries if e.axis == 3]
     
@@ -506,7 +510,7 @@ def plot(
         ), "ylabel_1axis is required if multiple components are plotted on the first axis"
     else:
         if ylabel_1axis is None:
-            ylabel_1axis = components_1axis[0][1]
+            ylabel_1axis = components_1axis[0].label
 
     # Plot components on the first axis
     for t in components_1axis:
@@ -515,9 +519,14 @@ def plot(
             # This should not happen in the new API since we only accept Entry objects or 2-tuples
             raise ValueError("Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays.")
         fmt = fmt if fmt is not None else "-"
-        color = kwargs.get("color", next(colors))
-        kwargs["color"] = color
-        (line,) = ax1.plot(time, data, fmt, **kwargs)
+        assert data.shape[0] == len(time), "data and time must have the same number of rows (batch size)"
+        for i in range(data.shape[0]):
+            kwargs_copy = kwargs.copy()
+            color = kwargs.get("color", next(colors))
+            kwargs_copy["color"] = color
+            kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
+            t, d = filter_nans(time[i], data[i,:]) 
+            ax1.plot(t, d, fmt, **kwargs_copy)
 
     ax1.set_xlabel("Time")
     if ylabel_1axis:
@@ -536,7 +545,7 @@ def plot(
             ), "ylabel_2axis is required if multiple components are plotted on the second axis"
         else:
             if ylabel_2axis is None:
-                ylabel_2axis = components_2axis[0][1]
+                ylabel_2axis = components_2axis[0].label
 
         ax2 = ax1.twinx()
         ax2.yaxis.set_major_formatter(y_formatter)
@@ -549,9 +558,14 @@ def plot(
             if data is None:
                 raise ValueError("Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays.")
             fmt = fmt if fmt is not None else "-"
-            color = kwargs.get("color", next(colors))
-            kwargs["color"] = color
-            (line,) = ax2.plot(time, data, fmt, **kwargs)   
+            assert data.shape[0] == len(time), "data and time must have the same number of rows (batch size)"
+            for i in range(data.shape[0]):
+                t, d = filter_nans(time[i], data[i,:])
+                kwargs_copy = kwargs.copy()
+                color = kwargs.get("color", next(colors))
+                kwargs_copy["color"] = color
+                kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
+                ax2.plot(t, d, fmt, **kwargs_copy)   
 
         if ylabel_2axis:
             ax2.set_ylabel(ylabel_2axis)
@@ -568,7 +582,7 @@ def plot(
             ), "ylabel_3axis is required if multiple components are plotted on the third axis"
         else:
             if ylabel_3axis is None:
-                ylabel_3axis = components_3axis[0][1]
+                ylabel_3axis = components_3axis[0].label
 
         ax3 = ax1.twinx()
         ax3.yaxis.set_major_formatter(y_formatter)
@@ -582,9 +596,14 @@ def plot(
             if data is None:
                 raise ValueError("Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays.")
             fmt = fmt if fmt is not None else "-"
-            color = kwargs.get("color", next(colors))
-            kwargs["color"] = color
-            (line,) = ax3.plot(time, data, fmt, **kwargs)
+            assert data.shape[0] == len(time), "data and time must have the same number of rows (batch size)"
+            for i in range(data.shape[0]):
+                t, d = filter_nans(time[i], data[i,:])
+                kwargs_copy = kwargs.copy()
+                color = kwargs.get("color", next(colors))
+                kwargs_copy["color"] = color
+                kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
+                ax3.plot(t, d, fmt, **kwargs_copy)
 
         if ylabel_3axis:
             ax3.set_ylabel(ylabel_3axis)
@@ -733,8 +752,8 @@ def plot_component(
                  DeprecationWarning, stacklevel=2)
     
     # Extract time from simulator
-    time = simulator.date_time_steps
-    
+    time = simulator.date_time_steps    
+
     # Convert old-style components to Entry objects
     entries = []
     
@@ -749,8 +768,8 @@ def plot_component(
                 entries.append(Entry(data=comp[0], label=comp[1], axis=1))
             else:
                 # Component-based tuple - extract data using legacy function
-                data, label, color, fmt = get_data_legacy(simulator, comp)
-                entries.append(Entry(data=data, label=label, color=color, fmt=fmt, axis=1))
+                data, label = get_data_legacy(simulator, comp)
+                entries.append(Entry(data=data, label=label, axis=1))
     
     # Add axis 2 components
     if components_2axis:
@@ -763,8 +782,8 @@ def plot_component(
                     entries.append(Entry(data=comp[0], label=comp[1], axis=2))
                 else:
                     # Component-based tuple - extract data using legacy function
-                    data, label, color, fmt = get_data_legacy(simulator, comp)
-                    entries.append(Entry(data=data, label=label, color=color, fmt=fmt, axis=2))
+                    data, label = get_data_legacy(simulator, comp)
+                    entries.append(Entry(data=data, label=label, axis=2))
     
     # Add axis 3 components
     if components_3axis:
@@ -777,8 +796,8 @@ def plot_component(
                     entries.append(Entry(data=comp[0], label=comp[1], axis=3))
                 else:
                     # Component-based tuple - extract data using legacy function
-                    data, label, color, fmt = get_data_legacy(simulator, comp)
-                    entries.append(Entry(data=data, label=label, color=color, fmt=fmt, axis=3))
+                    data, label = get_data_legacy(simulator, comp)
+                    entries.append(Entry(data=data, label=label, axis=3))
     
     # Call the new plot function
     return plot(
