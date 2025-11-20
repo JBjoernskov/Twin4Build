@@ -5,16 +5,16 @@ name: windows-python3.11
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "dev", "feature/**" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "dev", "feature/**" ]
 
 permissions:
   contents: read
 
 jobs:
   build:
-
+    name: Test Windows
     runs-on: windows-latest
     timeout-minutes: 45
     strategy:
