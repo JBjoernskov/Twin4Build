@@ -693,14 +693,14 @@ class SimulationModel:
             )  # , datatype=core.namespace.XSD.string)
 
             # Add the class of the components to the semantic model
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     sender_component_uri,
                     RDF.type,
                     core.namespace.T4B.__getitem__(sender_component_class_name),
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     receiver_component_uri,
                     RDF.type,
@@ -708,14 +708,14 @@ class SimulationModel:
                 )
             )
 
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     core.namespace.T4B.__getitem__(sender_component_class_name),
                     RDFS.subClassOf,
                     core.namespace.S4SYST.System,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     core.namespace.T4B.__getitem__(receiver_component_class_name),
                     RDFS.subClassOf,
@@ -724,29 +724,29 @@ class SimulationModel:
             )
 
             # Add the class of the connections and connection points to the semantic model
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (connection_uri, RDF.type, core.namespace.S4SYST.Connection)
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (connection_point_uri, RDF.type, core.namespace.S4SYST.ConnectionPoint)
             )
 
             # Add the forward connection to the semantic model
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     sender_component_uri,
                     core.namespace.S4SYST.connectedThrough,
                     connection_uri,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_uri,
                     core.namespace.S4SYST.connectsSystemAt,
                     connection_point_uri,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_point_uri,
                     core.namespace.S4SYST.connectionPointOf,
@@ -755,21 +755,21 @@ class SimulationModel:
             )
 
             # Add the reverse connection to the semantic model
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_uri,
                     core.namespace.S4SYST.connectsSystem,
                     sender_component_uri,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_point_uri,
                     core.namespace.S4SYST.connectsSystemThrough,
                     connection_uri,
                 )
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     receiver_component_uri,
                     core.namespace.S4SYST.connectsAt,
@@ -777,10 +777,10 @@ class SimulationModel:
                 )
             )
 
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (connection_uri, core.namespace.T4B.outputPort, literal_sender_property)
             )
-            self._semantic_model.graph.add(
+            self._semantic_model.instance_graph.add(
                 (
                     connection_point_uri,
                     core.namespace.T4B.inputPort,
@@ -864,12 +864,12 @@ class SimulationModel:
             )  # self._semantic_model.T4B.__getitem__(receiver_component.id + " " + receiver_property_name)
 
             literal_sender_property = list(
-                self._semantic_model.graph.objects(
+                self._semantic_model.instance_graph.objects(
                     connection_uri, core.namespace.T4B.outputPort
                 )
             )
             literal_receiver_property = list(
-                self._semantic_model.graph.objects(
+                self._semantic_model.instance_graph.objects(
                     connection_point_uri, core.namespace.T4B.inputPort
                 )
             )
@@ -883,14 +883,14 @@ class SimulationModel:
             literal_receiver_property = literal_receiver_property[0]
 
             # Remove the connections from the semantic model
-            self._semantic_model.graph.remove(
+            self._semantic_model.instance_graph.remove(
                 (
                     connection_uri,
                     core.namespace.S4SYST.connectsSystemAt,
                     connection_point_uri,
                 )
             )
-            self._semantic_model.graph.remove(
+            self._semantic_model.instance_graph.remove(
                 (
                     connection_point_uri,
                     core.namespace.S4SYST.connectsSystemThrough,
@@ -899,21 +899,21 @@ class SimulationModel:
             )
 
             if len(sender_component_connection.connects_system_at) == 0:
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         sender_component_uri,
                         core.namespace.S4SYST.connectedThrough,
                         connection_uri,
                     )
                 )
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         connection_uri,
                         core.namespace.S4SYST.connectsSystem,
                         sender_component_uri,
                     )
                 )
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         connection_uri,
                         core.namespace.T4B.outputPort,
@@ -922,21 +922,21 @@ class SimulationModel:
                 )
 
             if len(receiver_component_connection_point.connects_system_through) == 0:
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         receiver_component_uri,
                         core.namespace.S4SYST.connectsAt,
                         connection_point_uri,
                     )
                 )
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         connection_point_uri,
                         core.namespace.S4SYST.connectionPointOf,
                         receiver_component_uri,
                     )
                 )
-                self._semantic_model.graph.remove(
+                self._semantic_model.instance_graph.remove(
                     (
                         connection_point_uri,
                         core.namespace.T4B.inputPort,
@@ -2189,7 +2189,7 @@ class SimulationModel:
 
                 # Check if the property is already in the semantic model
                 literal_property = list(
-                    self._semantic_model.graph.objects(
+                    self._semantic_model.instance_graph.objects(
                         component_uri, core.namespace.T4B.__getitem__(key)
                     )
                 )
@@ -2197,7 +2197,7 @@ class SimulationModel:
                     # No literal in the semantic model.
                     # Add the literal to the semantic model.
                     literal_property = Literal(value_, datatype=datatype)
-                    self._semantic_model.graph.add(
+                    self._semantic_model.instance_graph.add(
                         (
                             component_uri,
                             core.namespace.T4B.__getitem__(key),
@@ -2208,7 +2208,7 @@ class SimulationModel:
                     # There is one literal in the semantic model.
                     literal_property = literal_property[0]
                     # Remove the literal from the semantic model.
-                    self._semantic_model.graph.remove(
+                    self._semantic_model.instance_graph.remove(
                         (
                             component_uri,
                             core.namespace.T4B.__getitem__(key),
@@ -2217,7 +2217,7 @@ class SimulationModel:
                     )
                     # Add the new literal to the semantic model.
                     literal_property = Literal(value_, datatype=datatype)
-                    self._semantic_model.graph.add(
+                    self._semantic_model.instance_graph.add(
                         (
                             component_uri,
                             core.namespace.T4B.__getitem__(key),
@@ -2261,8 +2261,8 @@ class SimulationModel:
                     FILTER (?p = s4syst:connectsSystemAt || 
                             ?p = s4syst:connectedThrough || 
                             ?p = s4syst:connectionPointOf ||
-                            ?p = sim:inputPort ||
-                            ?p = sim:outputPort)
+                            ?p = t4b:inputPort ||
+                            ?p = t4b:outputPort)
                 }
                 """
         self._semantic_model.visualize(query)
@@ -2286,13 +2286,18 @@ class SimulationModel:
         PRINTPROGRESS("Instantiating components")
         PRINTPROGRESS.add_level()
 
-        print(f"sm instances: {self._semantic_model.get_instances_of_type(core.namespace.S4SYST.System)}")
+        # print(f"sm instances: {self._semantic_model.get_instances_of_type(core.namespace.S4SYST.System)}")
+
+        # print("all triples:")
+        # for triple in self._semantic_model.instance_graph:
+            # print(triple)
 
         # Instantiate components with their attributes
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
         ):
             t = sm_instance.get_most_specific_type()
+            print("type: ", t)
             class_name = t.get_short_name()
             cls = getattr(systems, class_name)
             attributes = {}

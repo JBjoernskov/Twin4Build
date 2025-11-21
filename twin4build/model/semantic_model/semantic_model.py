@@ -64,7 +64,7 @@ class SemanticProperty:
         # Convert string URI to URIRef if needed
         self.uri = URIRef(uri) if isinstance(uri, str) else uri
         self.model = model
-        self.ontology_graph = model.ontology_graph
+        self._ontology_graph = model.ontology_graph
 
         # Property types to check for
         property_types = {
@@ -77,10 +77,10 @@ class SemanticProperty:
 
         # Check if URI represents a valid property
         is_property = any(
-            (self.uri, RDF.type, prop_type) in self.ontology_graph
+            (self.uri, RDF.type, prop_type) in self._ontology_graph
             for prop_type in property_types
         )
-        is_used_as_predicate = any(self.ontology_graph.triples((None, self.uri, None)))
+        is_used_as_predicate = any(self._ontology_graph.triples((None, self.uri, None)))
 
         if not (is_property or is_used_as_predicate):
             raise ValueError(
@@ -94,14 +94,14 @@ class SemanticProperty:
     def domain(self) -> List[URIRef]:
         """Get the domain (valid subject types) of this property"""
         if self._domain is None:
-            self._domain = set(self.ontology_graph.objects(self.uri, RDFS.domain))
+            self._domain = set(self._ontology_graph.objects(self.uri, RDFS.domain))
         return self._domain
 
     @property
     def range(self) -> List[URIRef]:
         """Get the range (valid object types) of this property"""
         if self._range is None:
-            self._range = set(self.ontology_graph.objects(self.uri, RDFS.range))
+            self._range = set(self._ontology_graph.objects(self.uri, RDFS.range))
         return self._range
 
     def __str__(self):
@@ -167,7 +167,7 @@ class SemanticPredicate:
         # Convert string URI to URIRef if needed
         self.uri = URIRef(uri) if isinstance(uri, str) else uri
         self.model = model
-        self.ontology_graph = model.ontology_graph
+        self._ontology_graph = model.ontology_graph
 
         # Property types to check for
         property_types = {
@@ -180,11 +180,11 @@ class SemanticPredicate:
 
         # # Check if URI represents a valid property/predicate
         # is_property = any(
-        #     (self.uri, RDF.type, prop_type) in self.ontology_graph
+        #     (self.uri, RDF.type, prop_type) in self._ontology_graph
         #     for prop_type in property_types
         # )
         # is_used_as_predicate = any(
-        #     self.ontology_graph.triples((None, self.uri, None))
+        #     self._ontology_graph.triples((None, self.uri, None))
         # ) or any(self.model.instance_graph.triples((None, self.uri, None)))
 
         # if not (is_property or is_used_as_predicate):
@@ -208,14 +208,14 @@ class SemanticPredicate:
     def domain(self) -> Set[URIRef]:
         """Get the domain (valid subject types) of this predicate"""
         if self._domain is None:
-            self._domain = set(self.ontology_graph.objects(self.uri, RDFS.domain))
+            self._domain = set(self._ontology_graph.objects(self.uri, RDFS.domain))
         return self._domain
 
     @property
     def range(self) -> Set[URIRef]:
         """Get the range (valid object types) of this predicate"""
         if self._range is None:
-            self._range = set(self.ontology_graph.objects(self.uri, RDFS.range))
+            self._range = set(self._ontology_graph.objects(self.uri, RDFS.range))
         return self._range
 
     @property
@@ -227,9 +227,9 @@ class SemanticPredicate:
             owl_inverse_of = URIRef("http://www.w3.org/2002/07/owl#inverseOf")
             
             # Check both directions since inverseOf is symmetric
-            for inv_uri in self.ontology_graph.objects(self.uri, owl_inverse_of):
+            for inv_uri in self._ontology_graph.objects(self.uri, owl_inverse_of):
                 self._inverse_properties.append(self.model.get_predicate(inv_uri))
-            for inv_uri in self.ontology_graph.subjects(owl_inverse_of, self.uri):
+            for inv_uri in self._ontology_graph.subjects(owl_inverse_of, self.uri):
                 self._inverse_properties.append(self.model.get_predicate(inv_uri))
         
         return self._inverse_properties
@@ -242,7 +242,7 @@ class SemanticPredicate:
             self._super_properties = []
             rdfs_sub_property = URIRef("http://www.w3.org/2000/01/rdf-schema#subPropertyOf")
             
-            for parent in self.ontology_graph.transitive_objects(self.uri, rdfs_sub_property):
+            for parent in self._ontology_graph.transitive_objects(self.uri, rdfs_sub_property):
                 if parent != self.uri:  # Exclude self
                     self._super_properties.append(self.model.get_predicate(parent))
         
@@ -256,7 +256,7 @@ class SemanticPredicate:
             self._sub_properties = []
             rdfs_sub_property = URIRef("http://www.w3.org/2000/01/rdf-schema#subPropertyOf")
             
-            for sub in self.ontology_graph.transitive_subjects(rdfs_sub_property, self.uri):
+            for sub in self._ontology_graph.transitive_subjects(rdfs_sub_property, self.uri):
                 if sub != self.uri:  # Exclude self
                     self._sub_properties.append(self.model.get_predicate(sub))
         
@@ -273,12 +273,12 @@ class SemanticPredicate:
             equivalent_uris = set()
             
             # Forward direction
-            for equiv in self.ontology_graph.transitive_objects(self.uri, owl_equivalent_property):
+            for equiv in self._ontology_graph.transitive_objects(self.uri, owl_equivalent_property):
                 if equiv != self.uri:
                     equivalent_uris.add(equiv)
             
             # Backward direction
-            for equiv in self.ontology_graph.transitive_subjects(owl_equivalent_property, self.uri):
+            for equiv in self._ontology_graph.transitive_subjects(owl_equivalent_property, self.uri):
                 if equiv != self.uri:
                     equivalent_uris.add(equiv)
             
@@ -293,7 +293,7 @@ class SemanticPredicate:
         if self._is_symmetric is None:
             self.parse_ontology()
             owl_symmetric = URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")
-            self._is_symmetric = (self.uri, RDF.type, owl_symmetric) in self.ontology_graph
+            self._is_symmetric = (self.uri, RDF.type, owl_symmetric) in self._ontology_graph
         return self._is_symmetric
 
     @property
@@ -302,7 +302,7 @@ class SemanticPredicate:
         if self._is_transitive is None:
             self.parse_ontology()
             owl_transitive = URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")
-            self._is_transitive = (self.uri, RDF.type, owl_transitive) in self.ontology_graph
+            self._is_transitive = (self.uri, RDF.type, owl_transitive) in self._ontology_graph
         return self._is_transitive
 
     @property
@@ -311,7 +311,7 @@ class SemanticPredicate:
         if self._is_functional is None:
             self.parse_ontology()
             owl_functional = URIRef("http://www.w3.org/2002/07/owl#FunctionalProperty")
-            self._is_functional = (self.uri, RDF.type, owl_functional) in self.ontology_graph
+            self._is_functional = (self.uri, RDF.type, owl_functional) in self._ontology_graph
         return self._is_functional
 
     @property
@@ -320,7 +320,7 @@ class SemanticPredicate:
         if self._is_inverse_functional is None:
             self.parse_ontology()
             owl_inverse_functional = URIRef("http://www.w3.org/2002/07/owl#InverseFunctionalProperty")
-            self._is_inverse_functional = (self.uri, RDF.type, owl_inverse_functional) in self.ontology_graph
+            self._is_inverse_functional = (self.uri, RDF.type, owl_inverse_functional) in self._ontology_graph
         return self._is_inverse_functional
 
     def __str__(self):
@@ -424,7 +424,7 @@ class SemanticType:
         # Convert string URI to URIRef if needed
         self.uri = URIRef(uri) if isinstance(uri, str) else uri
         self.model = model
-        self.ontology_graph = model.ontology_graph
+        self._ontology_graph = model.ontology_graph
 
         if validate:
 
@@ -449,13 +449,13 @@ class SemanticType:
                 self.uri,
                 RDF.type,
                 URIRef("http://www.w3.org/2002/07/owl#Class"),
-            ) in self.ontology_graph
-            is_rdfs_class = (self.uri, RDF.type, RDFS.Class) in self.ontology_graph
+            ) in self._ontology_graph
+            is_rdfs_class = (self.uri, RDF.type, RDFS.Class) in self._ontology_graph
             is_built_in = self.uri in BUILT_IN_CLASSES
 
             # Additional checks for class-like behavior
-            has_subclass = any(self.ontology_graph.triples((None, RDFS.subClassOf, self.uri)))
-            is_subclass = any(self.ontology_graph.triples((self.uri, RDFS.subClassOf, None)))
+            has_subclass = any(self._ontology_graph.triples((None, RDFS.subClassOf, self.uri)))
+            is_subclass = any(self._ontology_graph.triples((self.uri, RDFS.subClassOf, None)))
             has_instances = any(self.model.instance_graph.triples((None, RDF.type, self.uri)))
 
             # Check if it's a property (which should not be treated as a class)
@@ -468,14 +468,14 @@ class SemanticType:
             }
 
             is_property = any(
-                (self.uri, RDF.type, prop_type) in self.ontology_graph
+                (self.uri, RDF.type, prop_type) in self._ontology_graph
                 for prop_type in property_types
             )
-            is_used_as_predicate = any(self.ontology_graph.triples((None, self.uri, None)))
+            is_used_as_predicate = any(self._ontology_graph.triples((None, self.uri, None)))
 
             # Check if it's used in domain/range declarations (suggesting it's a class)
-            is_in_domain = any(self.ontology_graph.triples((None, RDFS.domain, self.uri)))
-            is_in_range = any(self.ontology_graph.triples((None, RDFS.range, self.uri)))
+            is_in_domain = any(self._ontology_graph.triples((None, RDFS.domain, self.uri)))
+            is_in_range = any(self._ontology_graph.triples((None, RDFS.range, self.uri)))
 
             # print(f"Debug - Class checks for {self.uri}:")
             # print(f"  is_owl_class: {is_owl_class}")
@@ -518,12 +518,15 @@ class SemanticType:
         """Get all parent classes (including indirect) using RDFS reasoning.
         
         Note: This requires that ontology definitions (rdfs:subClassOf triples) are loaded 
-        into self.ontology_graph, typically by loading ontologies during initialization.
+        into self._ontology_graph, typically by loading ontologies during initialization.
         """        
         if self._super_classes is None:
             self.parse_ontology()
             self._super_classes = []
-            for parent in self.ontology_graph.transitive_objects(self.uri, RDFS.subClassOf):
+            
+            # Collect parent classes using transitive closure
+            parent_uris = set()
+            for parent in self._ontology_graph.transitive_objects(self.uri, RDFS.subClassOf):
                 if parent != self.uri:  # Exclude self
                     parent_type = self.model.get_type(parent)
                     self._super_classes.append(parent_type)
@@ -531,6 +534,7 @@ class SemanticType:
                 for equivalent in parent.equivalent_classes:
                     if equivalent not in self._super_classes:
                         self._super_classes.append(equivalent)
+                        
         return self._super_classes
 
     @property
@@ -538,16 +542,22 @@ class SemanticType:
         """Get all sub classes (including indirect) using RDFS reasoning.
         
         Note: This requires that ontology definitions (rdfs:subClassOf triples) are loaded 
-        into self.ontology_graph, typically by loading ontologies during initialization.
+        into self._ontology_graph, typically by loading ontologies during initialization.
         """
         
         if self._sub_classes is None:
             self.parse_ontology()
             self._sub_classes = []
             # Note: transitive_subjects has signature (predicate, object) not (object, predicate)!
-            for sub in self.ontology_graph.transitive_subjects(RDFS.subClassOf, self.uri):
+            sub_uris = set()
+            for sub in self._ontology_graph.transitive_subjects(RDFS.subClassOf, self.uri):
                 if sub != self.uri:  # Exclude self
-                    self._sub_classes.append(self.model.get_type(sub))
+                    sub_uris.add(sub)
+            
+            # Convert URIs to SemanticType objects
+            for sub_uri in sub_uris:
+                self._sub_classes.append(self.model.get_type(sub_uri))
+                
         return self._sub_classes
 
     @property
@@ -558,7 +568,7 @@ class SemanticType:
         transitive_objects (forward) and transitive_subjects (backward).
         
         Note: This requires that ontology definitions (owl:equivalentClass triples) are loaded 
-        into self.ontology_graph, typically by loading ontologies during initialization.
+        into self._ontology_graph, typically by loading ontologies during initialization.
         """
         
         if self._equivalent_classes is None:
@@ -569,12 +579,12 @@ class SemanticType:
             equivalent_uris = set()
             
             # Forward direction: classes reachable from self.uri
-            for equiv in self.ontology_graph.transitive_objects(self.uri, owl_equivalent_class):
+            for equiv in self._ontology_graph.transitive_objects(self.uri, owl_equivalent_class):
                 if equiv != self.uri:
                     equivalent_uris.add(equiv)
             
             # Backward direction: classes that reach self.uri
-            for equiv in self.ontology_graph.transitive_subjects(owl_equivalent_class, self.uri):
+            for equiv in self._ontology_graph.transitive_subjects(owl_equivalent_class, self.uri):
                 if equiv != self.uri:
                     equivalent_uris.add(equiv)
             
@@ -599,13 +609,13 @@ class SemanticType:
             self._attributes = {}
 
             # Find all ObjectProperties in the ontology
-            for prop, _, _ in self.ontology_graph.triples(
+            for prop, _, _ in self._ontology_graph.triples(
                 (None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#ObjectProperty"))
             ):  # We are looking explicitly for ObjectProperties. This could maybe be generalized?
                 # pred_name = str(prop).split('#')[-1]
 
                 # Get the domains (if any) for this property
-                domains = list(self.ontology_graph.objects(prop, RDFS.domain))
+                domains = list(self._ontology_graph.objects(prop, RDFS.domain))
 
                 super_classes = [str(s) for s in self.super_classes]
 
@@ -615,7 +625,7 @@ class SemanticType:
                     for domain in domains
                 ):
                     # Get the ranges for this property
-                    ranges = list(self.ontology_graph.objects(prop, RDFS.range))
+                    ranges = list(self._ontology_graph.objects(prop, RDFS.range))
                     self._attributes[prop] = ranges
 
         return self._attributes
@@ -693,7 +703,7 @@ class SemanticType:
     def has_subclasses(self) -> bool:
         """Check if this type has any subclasses"""
         self.parse_ontology()
-        return any(self.ontology_graph.triples((None, RDFS.subClassOf, self.uri)))
+        return any(self._ontology_graph.triples((None, RDFS.subClassOf, self.uri)))
 
     def parse_ontology(self):
         # print(f"\n[DEBUG parse_ontology] Called for URI: {self.uri}")
@@ -1170,24 +1180,24 @@ class SemanticModel:
 
         if rdf_file is not None:
             if verbose:
-                self.instance_graph, self.ontology_graph = self.get_graphs(self.rdf_file, self.format)
-                # self.ontology_graph = Graph()
+                self._instance_graph, self._ontology_graph = self.get_graphs(self.rdf_file, self.format)
+                # self._ontology_graph = Graph()
             else:
                 logging.disable(
                     sys.maxsize
                 )  # https://stackoverflow.com/questions/2266646/how-to-disable-logging-on-the-standard-error-stream
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    self.instance_graph, self.ontology_graph = self.get_graphs(self.rdf_file, self.format)
-                    # self.ontology_graph = Graph()
+                    self._instance_graph, self._ontology_graph = self.get_graphs(self.rdf_file, self.format)
+                    # self._ontology_graph = Graph()
             filename_instance_graph = "raw_instance_graph.ttl"
             filename_ontology_graph = "raw_ontology_graph.ttl"
             self.serialize(filename_instance_graph=filename_instance_graph, filename_ontology_graph=filename_ontology_graph)
-            namespaces.update(dict(self.instance_graph.namespaces()))
+            namespaces.update(dict(self._instance_graph.namespaces()))
         else:
             # Initialize both graphs
-            self.instance_graph = Graph()
-            self.ontology_graph = Graph()
+            self._instance_graph = Graph()
+            self._ontology_graph = Graph()
         
         self.add_namespaces(namespaces)
             # logging.disable(logging.NOTSET)
@@ -1196,8 +1206,8 @@ class SemanticModel:
     @property
     def namespaces(self):
         # print("Called namespaces property")
-        n = {p.lower(): n for p, n in self.instance_graph.namespaces()}
-        n.update({p.lower(): n for p, n in self.ontology_graph.namespaces()})
+        n = {p.lower(): n for p, n in self._instance_graph.namespaces()}
+        n.update({p.lower(): n for p, n in self._ontology_graph.namespaces()})
         # print("Namespaces: ", n)
         return n
 
@@ -1218,12 +1228,20 @@ class SemanticModel:
         return self.namespaces[prefix]
 
     @property
-    def graph(self):
+    def instance_graph(self):
         """Backwards compatibility property that returns instance_graph.
         
         Deprecated: Use instance_graph directly instead.
         """
-        return self.instance_graph
+        return self._instance_graph
+
+    @property
+    def ontology_graph(self):
+        """Backwards compatibility property that returns instance_graph.
+        
+        Deprecated: Use ontology_graph directly instead.
+        """
+        return self._ontology_graph
 
     @staticmethod
     def get_graph_copy(graph):
@@ -1248,8 +1266,8 @@ class SemanticModel:
         for prefix, namespace in namespaces.items():
             if isinstance(namespace, str):
                 namespace = Namespace(namespace)
-            self.instance_graph.bind(prefix.lower(), namespace)
-            self.ontology_graph.bind(prefix.lower(), namespace)
+            self._instance_graph.bind(prefix.lower(), namespace)
+            self._ontology_graph.bind(prefix.lower(), namespace)
             # print(f"Added namespace {prefix}: {namespace}")
 
     def parse_namespaces(self, namespaces=None):
@@ -1293,7 +1311,7 @@ class SemanticModel:
                 fallback_ontology_uri = getattr(core.ontology, prefix.upper())
                 PRINTPROGRESS(f"Attempting to parse namespace from core.ontology using URI: {fallback_ontology_uri}")
                 try:
-                    parse_wrapper(self.ontology_graph, source=fallback_ontology_uri)
+                    parse_wrapper(self._ontology_graph, source=fallback_ontology_uri)
                     self.parsed_namespaces.add(uri)
                     status = "[OK]"
                     success = True
@@ -1309,7 +1327,7 @@ class SemanticModel:
             if not success:
                 PRINTPROGRESS(f"Attempting to parse namespace directly using URI: {uri}")
                 try:
-                    parse_wrapper(self.ontology_graph, source=namespace)
+                    parse_wrapper(self._ontology_graph, source=namespace)
                     self.parsed_namespaces.add(uri)
                     status = "[OK]"
                     success = True
@@ -1362,7 +1380,7 @@ class SemanticModel:
     #             PRINTPROGRESS.add_level()
     #             PRINTPROGRESS(f"Found namespace in core.ontology fallback: {fallback_ontology_uri}")
     #             try:
-    #                 parse_wrapper(self.ontology_graph, source=fallback_ontology_uri)
+    #                 parse_wrapper(self._ontology_graph, source=fallback_ontology_uri)
     #                 self.parsed_namespaces.add(str(namespace))
     #                 # self.namespaces[prefix.upper()] = namespace
     #                 # self.ontologies[prefix.upper()] = fallback_ontology_uri
@@ -1426,6 +1444,65 @@ class SemanticModel:
                 parse_wrapper(instance_graph, source=filename)
             else:
                 parse_wrapper(instance_graph, source=filename, format=format)
+            
+            # Copy schema definitions to ontology_graph
+            # This ensures that even if schema and instances are mixed in the input file,
+            # the ontology_graph contains the necessary schema definitions for reasoning.
+            # We copy instead of move to preserve the integrity of the input file representation in instance_graph.
+            # This was added because we want the serialized simulation model graph to be self-contained in 1 graph - the instance_graph.
+            # If we dont have this copy logic, we would need to pass around 2 graphs, the ontology_graph AND the instance graph.  
+            
+            # 1. Class definitions and hierarchy
+            for s, p, o in instance_graph.triples((None, RDFS.subClassOf, None)):
+                ontology_graph.add((s, p, o))
+            
+            for s, p, o in instance_graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#equivalentClass"), None)):
+                ontology_graph.add((s, p, o))
+                
+            for s, p, o in instance_graph.triples((None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))):
+                ontology_graph.add((s, p, o))
+            
+            for s, p, o in instance_graph.triples((None, RDF.type, RDFS.Class)):
+                ontology_graph.add((s, p, o))
+                
+            # 2. Property definitions
+            for s, p, o in instance_graph.triples((None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#ObjectProperty"))):
+                ontology_graph.add((s, p, o))
+            
+            for s, p, o in instance_graph.triples((None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#DatatypeProperty"))):
+                ontology_graph.add((s, p, o))
+            
+            for s, p, o in instance_graph.triples((None, RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"))):
+                ontology_graph.add((s, p, o))
+
+            for s, p, o in instance_graph.triples((None, RDFS.subPropertyOf, None)):
+                ontology_graph.add((s, p, o))
+
+            for s, p, o in instance_graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#equivalentProperty"), None)):
+                ontology_graph.add((s, p, o))
+                
+            for s, p, o in instance_graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#inverseOf"), None)):
+                ontology_graph.add((s, p, o))
+                
+            # 3. Domain and Range
+            for s, p, o in instance_graph.triples((None, RDFS.domain, None)):
+                ontology_graph.add((s, p, o))
+                
+            for s, p, o in instance_graph.triples((None, RDFS.range, None)):
+                ontology_graph.add((s, p, o))
+                
+            # 4. Property characteristics
+            for s, p, o in instance_graph.triples((None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty"))):
+                ontology_graph.add((s, p, o))
+                
+            for s, p, o in instance_graph.triples((None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty"))):
+                ontology_graph.add((s, p, o))
+
+            for s, p, o in instance_graph.triples((None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#FunctionalProperty"))):
+                ontology_graph.add((s, p, o))
+                
+            for s, p, o in instance_graph.triples((None, RDF.type, URIRef("http://www.w3.org/2002/07/owl#InverseFunctionalProperty"))):
+                ontology_graph.add((s, p, o))
         
         return instance_graph, ontology_graph
 
@@ -1732,7 +1809,7 @@ class SemanticModel:
         """
         assert traversal_mode in ("bfs", "dfs", None), "Traversal mode must be either 'bfs' or 'dfs' or None"
 
-        new_graph = SemanticModel.get_graph_copy(self.instance_graph)
+        new_graph = SemanticModel.get_graph_copy(self._instance_graph)
         # self.get_graph(self.rdf_file, self.format)
         keep_triples = set()
 
@@ -1743,7 +1820,7 @@ class SemanticModel:
             print("RUNNING QUERY: ", query)
             
             # Get initial triples from query
-            result = self.instance_graph.query(query)
+            result = self._instance_graph.query(query)
             print("FINISHED QUERY")
             initial_triples = set()
             candidate_nodes = set()
@@ -1781,8 +1858,8 @@ class SemanticModel:
             # Determine start nodes for traversal
             if initial_node is not None:
                 # Verify the node exists in our graph
-                if not any(self.instance_graph.triples((initial_node, None, None))) and \
-                   not any(self.instance_graph.triples((None, None, initial_node))):
+                if not any(self._instance_graph.triples((initial_node, None, None))) and \
+                   not any(self._instance_graph.triples((None, None, initial_node))):
                     raise ValueError(f"Initial node {initial_node} not found in graph")
                 start_nodes = {initial_node}
                 print(f"Using specified initial node: {initial_node}")
@@ -1941,18 +2018,25 @@ class SemanticModel:
                 # Include the type itself and all its subclasses
                 types_to_check = [t] + t.sub_classes + t.equivalent_classes
 
+                print(f"current uri: {uri}")
+                print(f"sub_classes: {t.sub_classes}")
+                print(f"equivalent_classes: {t.equivalent_classes}")
+                print(f"super_classes: {t.super_classes}")
+
                 # Get instances of the class and its subclasses from instance_graph
                 for t_ in types_to_check:
+                    print(f"checking type: {t_}")
                     # First check direct type assertions
-                    for instance in self.instance_graph.subjects(RDF.type, t_.uri):
+                    for instance in self._instance_graph.subjects(RDF.type, t_.uri):
+                        print(f"found instance: {instance}")
                         if instance not in processed_instances:
                             inst_obj = self.get_instance(instance)
                             instances.append(inst_obj)
                             processed_instances.add(instance)
 
                     # Then check for indirect type assertions through owl:sameAs
-                    for instance in self.instance_graph.subjects(RDF.type, t_.uri):
-                        for same_as in self.instance_graph.objects(
+                    for instance in self._instance_graph.subjects(RDF.type, t_.uri):
+                        for same_as in self._instance_graph.objects(
                             instance, URIRef("http://www.w3.org/2002/07/owl#sameAs")
                         ):
                             if same_as not in processed_instances:
@@ -1963,7 +2047,7 @@ class SemanticModel:
         # Then, handle literals with the specified datatypes
         if xsd_datatypes:
             # Find all literals in the instance graph with the specified datatypes
-            for s, p, o in self.instance_graph.triples((None, None, None)):
+            for s, p, o in self._instance_graph.triples((None, None, None)):
                 if isinstance(o, Literal) and o.datatype in xsd_datatypes:
                     # Create a SemanticObject for this literal
                     literal_obj = self.get_instance(o)
@@ -1972,10 +2056,10 @@ class SemanticModel:
         return instances
 
     def count_instances(self) -> int:
-        return len(list(self.instance_graph.subjects(RDF.type, None)))
+        return len(list(self._instance_graph.subjects(RDF.type, None)))
 
     def count_triples(self, s=None, p=None, o=None) -> int:
-        return len(list(self.instance_graph.triples((s, p, o))))
+        return len(list(self._instance_graph.triples((s, p, o))))
 
     def visualize(self, query=None, include_full_uri=True, slice_uri=None, dpi=2000, triple_limit=None, node_limit=None,
                   generate_subgraphs=False, traversal_mode=None, initial_node=None, random_seed=None):
@@ -2517,15 +2601,15 @@ class SemanticModel:
         new_triples = set()
 
         # Handle inverse properties (read from ontology_graph, apply to instance_graph)
-        for s, p, o in self.ontology_graph.triples(
+        for s, p, o in self._ontology_graph.triples(
             (None, URIRef("http://www.w3.org/2002/07/owl#inverseOf"), None)
         ):
             # Find and add inverse relationships
-            for subj, _, obj in self.instance_graph.triples((None, s, None)):
+            for subj, _, obj in self._instance_graph.triples((None, s, None)):
                 new_triple = (obj, o, subj)
                 new_triples.add(new_triple)
 
-            for subj, _, obj in self.instance_graph.triples((None, o, None)):
+            for subj, _, obj in self._instance_graph.triples((None, o, None)):
                 new_triple = (obj, s, subj)
                 new_triples.add(new_triple)
 
@@ -2535,12 +2619,12 @@ class SemanticModel:
 
         # Handle symmetric properties
         symmetric_props = set(
-            self.ontology_graph.subjects(
+            self._ontology_graph.subjects(
                 RDF.type, URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")
             )
         )
         for prop in symmetric_props:
-            for subj, _, obj in self.instance_graph.triples((None, prop, None)):
+            for subj, _, obj in self._instance_graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
 
         PRINTPROGRESS(f"Added number of symmetric triples: {len(new_triples)-n_triples}")
@@ -2548,13 +2632,13 @@ class SemanticModel:
 
         # Handle transitive properties
         transitive_props = set(
-            self.ontology_graph.subjects(
+            self._ontology_graph.subjects(
                 RDF.type, URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")
             )
         )
         for prop in transitive_props:
             # Find all pairs connected by this property
-            pairs = list(self.instance_graph.triples((None, prop, None)))
+            pairs = list(self._instance_graph.triples((None, prop, None)))
             # For each pair, look for additional connections
             for s1, _, o1 in pairs:
                 for s2, _, o2 in pairs:
@@ -2569,13 +2653,13 @@ class SemanticModel:
         
         # Execute subclass reasoning (read hierarchy from ontology_graph, apply to instance_graph)
         # For each class that has instances, get all its superclasses and propagate the type assertions
-        classes_with_instances = set(self.instance_graph.objects(None, RDF.type))
+        classes_with_instances = set(self._instance_graph.objects(None, RDF.type))
         for class_uri in classes_with_instances:
             semantic_type = self.get_type(class_uri)
             # Get all superclasses using the SemanticType.super_classes property (handles transitive reasoning)
             for superclass_type in semantic_type.super_classes:
                 # For each instance of this class, assert it's also an instance of all superclasses
-                for instance in self.instance_graph.subjects(RDF.type, class_uri):
+                for instance in self._instance_graph.subjects(RDF.type, class_uri):
                     new_triples.add((instance, RDF.type, superclass_type.uri))
         
         PRINTPROGRESS(f"Added number of subclass triples: {len(new_triples)-n_triples}")
@@ -2585,12 +2669,12 @@ class SemanticModel:
         owl_equiv_class = URIRef("http://www.w3.org/2002/07/owl#equivalentClass")
         
         # For each rdf:type assertion, check if the class has equivalent classes
-        for instance, _, class_uri in self.instance_graph.triples((None, RDF.type, None)):
+        for instance, _, class_uri in self._instance_graph.triples((None, RDF.type, None)):
             # Find equivalent classes in both directions
-            for equiv_class in self.ontology_graph.objects(class_uri, owl_equiv_class):
+            for equiv_class in self._ontology_graph.objects(class_uri, owl_equiv_class):
                 if equiv_class != class_uri:
                     new_triples.add((instance, RDF.type, equiv_class))
-            for equiv_class in self.ontology_graph.subjects(owl_equiv_class, class_uri):
+            for equiv_class in self._ontology_graph.subjects(owl_equiv_class, class_uri):
                 if equiv_class != class_uri:
                     new_triples.add((instance, RDF.type, equiv_class))
 
@@ -2601,12 +2685,12 @@ class SemanticModel:
         owl_equiv_prop = URIRef("http://www.w3.org/2002/07/owl#equivalentProperty")
         
         # For each triple in the instance graph, check if its predicate has equivalent properties
-        for subj, pred, obj in self.instance_graph.triples((None, None, None)):
+        for subj, pred, obj in self._instance_graph.triples((None, None, None)):
             # Find equivalent properties in both directions
-            for equiv_pred in self.ontology_graph.objects(pred, owl_equiv_prop):
+            for equiv_pred in self._ontology_graph.objects(pred, owl_equiv_prop):
                 if equiv_pred != pred:
                     new_triples.add((subj, equiv_pred, obj))
-            for equiv_pred in self.ontology_graph.subjects(owl_equiv_prop, pred):
+            for equiv_pred in self._ontology_graph.subjects(owl_equiv_prop, pred):
                 if equiv_pred != pred:
                     new_triples.add((subj, equiv_pred, obj))
         
@@ -2636,13 +2720,13 @@ class SemanticModel:
 
         # Handle sameAs reasoning (owl:sameAs)
         # This propagates all properties from one individual to its sameAs individuals
-        for ind1, _, ind2 in self.instance_graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#sameAs"), None)):
+        for ind1, _, ind2 in self._instance_graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#sameAs"), None)):
             # Copy all properties from ind1 to ind2
-            for subj, pred, obj in self.instance_graph.triples((ind1, None, None)):
+            for subj, pred, obj in self._instance_graph.triples((ind1, None, None)):
                 if pred != URIRef("http://www.w3.org/2002/07/owl#sameAs"):  # Avoid infinite loops
                     new_triples.add((ind2, pred, obj))
             # Copy all properties from ind2 to ind1
-            for subj, pred, obj in self.instance_graph.triples((ind2, None, None)):
+            for subj, pred, obj in self._instance_graph.triples((ind2, None, None)):
                 if pred != URIRef("http://www.w3.org/2002/07/owl#sameAs"):  # Avoid infinite loops
                     new_triples.add((ind1, pred, obj))
 
@@ -2670,7 +2754,7 @@ class SemanticModel:
 
         # Add all new triples to the instance_graph
         for s, p, o in new_triples:
-            self.instance_graph.add((s, p, o))
+            self._instance_graph.add((s, p, o))
         
         PRINTPROGRESS.remove_level()
         PRINTPROGRESS("Reasoning", status="[OK]", change_status=True)
@@ -2688,15 +2772,15 @@ class SemanticModel:
             # Added inferred types
             type_ = instance.type
             for type_ in type_:
-                self.instance_graph.add((URIRef(uri), RDF.type, type_.uri))
+                self._instance_graph.add((URIRef(uri), RDF.type, type_.uri))
 
             # Add inferred predicate-object pairs
             if instance._attributes is not None:
                 for pred, obj in instance.get_predicate_object_pairs().items():
                     for obj_ in obj:
-                        self.instance_graph.add((URIRef(uri), pred.uri, obj_.uri))
+                        self._instance_graph.add((URIRef(uri), pred.uri, obj_.uri))
 
 
 
-        self.ontology_graph.serialize(destination=str(dirname_ontology_graph), format="turtle")
-        self.instance_graph.serialize(destination=str(dirname_instance_graph), format="turtle")
+        self._ontology_graph.serialize(destination=str(dirname_ontology_graph), format="turtle")
+        self._instance_graph.serialize(destination=str(dirname_instance_graph), format="turtle")

@@ -563,8 +563,8 @@ class Scalar:
             ).item()  # Store as Python float
 
         # Convert cached floats to tensors when needed
-        min_val = _convert_to_2D_tensor(self._min_history)
-        max_val = _convert_to_2D_tensor(self._max_history)
+        min_val = _convert_to_1D_scalar_tensor(self._min_history)
+        max_val = _convert_to_1D_scalar_tensor(self._max_history)
 
 
         if torch.allclose(min_val, max_val):
@@ -582,8 +582,8 @@ class Scalar:
             self._is_normalized == True
         ), ".normalize() must be called before denormalizing"
         # Use cached float values and convert to tensors
-        min_val = _convert_to_2D_tensor(self._min_history)
-        max_val = _convert_to_2D_tensor(self._max_history)
+        min_val = _convert_to_1D_scalar_tensor(self._min_history)
+        max_val = _convert_to_1D_scalar_tensor(self._max_history)
         return v * (max_val - min_val) + min_val
 
     def get_float(self) -> float:
@@ -897,7 +897,7 @@ def _convert_to_2D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
 
 def _convert_to_2D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     """
-    Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (batch_size, 1)
+    Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (batch_size, n_timesteps)
 
     3 cases of tensor dimensions are handled:
     1. 2D tensor -> do nothing
@@ -918,7 +918,7 @@ def _convert_to_2D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
             v.dim() <= 2 
         ), f"Value must have less that or equal to 2 dimensions, got {v.dim()} dimensions"
         if v.dim() == 1:
-            v = v.reshape((v.shape[0], 1))
+            v = v.reshape((1, v.shape[0]))
         elif v.dim() == 0:
             v = v.reshape((1, 1))
     else:
