@@ -136,6 +136,12 @@ class Entry:
                          DeprecationWarning, stacklevel=2)
             fmt = linestyle
         
+        # Convert data to numpy array if necessary
+        if isinstance(data, (list, pd.Series)):
+            data = np.array(data)
+        elif isinstance(data, torch.Tensor):
+            data = data.detach().cpu().numpy()
+
         # Set attributes
         self.data = data
         self.fmt = fmt
@@ -316,19 +322,25 @@ def get_data(t):
         if len(t) == 2:
             # Direct data case
             data, label = t
+            if isinstance(data, (list, pd.Series)):
+                data = np.array(data)
+            elif isinstance(data, torch.Tensor):
+                data = data.detach().cpu().numpy()
+
             assert isinstance(
-                data, (torch.Tensor, np.ndarray, pd.Series, list)
+                data, np.ndarray
             ), f"First element must be data array, got {type(data)}"
             assert isinstance(
                 label, str
             ), f"Second element must be a string label, got {type(label)}"
-            return data, fmt, axis, kwargs
         else:
             # For backward compatibility, we should not raise an error here
             # Instead, return None to indicate this needs component-based processing
-            return None, None, None, None
+            data, fmt, axis, kwargs = None, None, None, None
     else:
         raise ValueError(f"Wrong input type. Got {type(t)}, expected Entry object or tuple")
+
+    
         
     return data, fmt, axis, kwargs
 
