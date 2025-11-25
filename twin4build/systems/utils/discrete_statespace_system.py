@@ -292,68 +292,76 @@ class DiscreteStatespaceSystem(core.System):
         """Expand tensor to include batch dimension if needed."""
         if tensor is None:
             return None
-        
+
         # If tensor already has batch dimension, verify it matches
         if len(tensor.shape) == len(target_shape):
             if tensor.shape[0] != batch_size and tensor.shape[0] != 1:
-                raise ValueError(f"Batch dimension mismatch: expected {batch_size} or 1, got {tensor.shape[0]}")
+                raise ValueError(
+                    f"Batch dimension mismatch: expected {batch_size} or 1, got {tensor.shape[0]}"
+                )
             # Expand if batch_size is 1 but we need larger batch
             if tensor.shape[0] == 1 and batch_size > 1:
                 expand_dims = [batch_size] + [-1] * (len(tensor.shape) - 1)
-                return tensor.expand(*expand_dims).contiguous()  # Keep contiguous here - expand may not be contiguous
+                return tensor.expand(
+                    *expand_dims
+                ).contiguous()  # Keep contiguous here - expand may not be contiguous
             return tensor
-        
+
         # If tensor doesn't have batch dimension, add it
         elif len(tensor.shape) == len(target_shape) - 1:
             return tensor.unsqueeze(0).expand(batch_size, *tensor.shape).contiguous()
         else:
-            raise ValueError(f"Tensor shape {tensor.shape} incompatible with target shape {target_shape}")
-    
+            raise ValueError(
+                f"Tensor shape {tensor.shape} incompatible with target shape {target_shape}"
+            )
+
     @staticmethod
     def _expand_to_nested_batch(tensor, system_batch_size, sim_batch_size):
         """
         Expand tensor to nested batch structure: (sim_batch_size, system_batch_size, ...).
-        
+
         The simulation batch dimension comes first, then system batch dimension.
         This allows for easier indexing where sim_batch_size varies dynamically.
-        
+
         Args:
             tensor: Input tensor with shape (system_batch_size, ...)
             system_batch_size: Number of different system configurations (preserved)
             sim_batch_size: Number of parallel simulations per system
-            
+
         Returns:
             Expanded tensor with shape (sim_batch_size * system_batch_size, ...)
             where the pattern is [sim0_sys0, sim0_sys1, ..., sim1_sys0, sim1_sys1, ...]
         """
         if tensor is None:
             return None
-        
+
         current_system_batch = tensor.shape[0]
-        
+
         # Verify system batch size matches
         if current_system_batch != system_batch_size:
-            raise ValueError(f"System batch size mismatch: expected {system_batch_size}, got {current_system_batch}")
-        
+            raise ValueError(
+                f"System batch size mismatch: expected {system_batch_size}, got {current_system_batch}"
+            )
+
         # If sim_batch_size is 1, no expansion needed
         if sim_batch_size == 1:
             return tensor
-        
+
         # Expand to nested structure: (sim_batch_size, system_batch_size, ...)
         # Original shape: (system_batch_size, ...)
         # Target shape: (sim_batch_size * system_batch_size, ...)
-        
+
         # Method: Create tensor with sim_batch_size first, system_batch_size second
         # Step 1: Add simulation batch dimension at the front
         # (system_batch_size, ...) -> (1, system_batch_size, ...)
         tensor_expanded = tensor.unsqueeze(0)
-        
+
         # Step 2: Expand along simulation dimension (first dimension)
         # (1, system_batch_size, ...) -> (sim_batch_size, system_batch_size, ...)
         remaining_dims = [-1] * (len(tensor.shape))
         expand_shape = [sim_batch_size] + remaining_dims
         tensor_replicated = tensor_expanded.expand(*expand_shape)
-        
+
         # Step 3: Flatten to target shape
         # (sim_batch_size, system_batch_size, ...) -> (sim_batch_size * system_batch_size, ...)
         target_shape = (sim_batch_size * system_batch_size,) + tensor.shape[1:]
@@ -400,20 +408,22 @@ class DiscreteStatespaceSystem(core.System):
                 batch_size = B.shape[0]
             elif len(C.shape) == 3:  # C has batch dimension
                 batch_size = C.shape[0]
-            
+
             # Determine base dimensions (without batch)
             n_states = A.shape[-2]  # Last two dimensions are (n_states, n_states)
             n_inputs = B.shape[-1]  # Last dimension is n_inputs
             n_outputs = C.shape[-2]  # Second to last dimension is n_outputs
-            
+
             # Expand all matrices to batch dimensions
             _A = self._expand_to_batch(A, (batch_size, n_states, n_states), batch_size)
             _B = self._expand_to_batch(B, (batch_size, n_states, n_inputs), batch_size)
             _C = self._expand_to_batch(C, (batch_size, n_outputs, n_states), batch_size)
-            
+
             # Handle D matrix
             if D is not None:
-                _D = self._expand_to_batch(D, (batch_size, n_outputs, n_inputs), batch_size)
+                _D = self._expand_to_batch(
+                    D, (batch_size, n_outputs, n_inputs), batch_size
+                )
             else:
                 _D = torch.zeros((batch_size, n_outputs, n_inputs), dtype=torch.float64)
 
@@ -427,9 +437,13 @@ class DiscreteStatespaceSystem(core.System):
             self._B_base = _B.clone()
 
             # Store dimensions
-            self.system_batch_size = batch_size  # Number of different system configurations
-            self.batch_size = batch_size         # Total batch size (will be system_batch_size * sim_batch_size)
-            self.sim_batch_size = 1              # Number of parallel simulations per system (default 1)
+            self.system_batch_size = (
+                batch_size  # Number of different system configurations
+            )
+            self.batch_size = batch_size  # Total batch size (will be system_batch_size * sim_batch_size)
+            self.sim_batch_size = (
+                1  # Number of parallel simulations per system (default 1)
+            )
             self.n_states = n_states
             self.n_inputs = n_inputs
             self.n_outputs = n_outputs
@@ -441,9 +455,13 @@ class DiscreteStatespaceSystem(core.System):
 
         # Handle initial state with batch dimension
         if x0 is not None:
-            self.x0 = self._expand_to_batch(x0, (self.system_batch_size, self.n_states), self.system_batch_size)
+            self.x0 = self._expand_to_batch(
+                x0, (self.system_batch_size, self.n_states), self.system_batch_size
+            )
         else:
-            self.x0 = torch.zeros((self.system_batch_size, self.n_states), dtype=torch.float64)
+            self.x0 = torch.zeros(
+                (self.system_batch_size, self.n_states), dtype=torch.float64
+            )
 
         # Current state (system_batch_size, n_states) - will be expanded during initialize()
         self.x = self.x0.clone()
@@ -462,8 +480,12 @@ class DiscreteStatespaceSystem(core.System):
             )
 
         # Set up inputs and outputs as private variables with batch support
-        self._input = {"u": tps.Vector(size=self.n_inputs)}  # Input vector (batch_size, n_inputs)
-        self._output = {"y": tps.Vector(size=self.n_outputs)}  # Output vector (batch_size, n_outputs)
+        self._input = {
+            "u": tps.Vector(size=self.n_inputs)
+        }  # Input vector (batch_size, n_inputs)
+        self._output = {
+            "y": tps.Vector(size=self.n_outputs)
+        }  # Output vector (batch_size, n_outputs)
 
         # Define parameters for potential calibration
         self.parameter = {
@@ -479,7 +501,11 @@ class DiscreteStatespaceSystem(core.System):
         # Handle bilinear matrices with batch dimensions
         if E is not None:
             # E: (system_batch_size, M, N, N) or (M, N, N)
-            self._E = self._expand_to_batch(E, (self.system_batch_size, self.n_inputs, self.n_states, self.n_states), self.system_batch_size)
+            self._E = self._expand_to_batch(
+                E,
+                (self.system_batch_size, self.n_inputs, self.n_states, self.n_states),
+                self.system_batch_size,
+            )
             # Check which input indices have non-zero E matrices (across all system batch elements)
             self.non_zero_E = torch.zeros(self.n_inputs, dtype=torch.bool)
             for i in range(self.n_inputs):
@@ -489,8 +515,12 @@ class DiscreteStatespaceSystem(core.System):
             self.non_zero_E = torch.zeros(0, dtype=torch.bool)
 
         if F is not None:
-            # F: (system_batch_size, M, N, M) or (M, N, M) 
-            self._F = self._expand_to_batch(F, (self.system_batch_size, self.n_inputs, self.n_states, self.n_inputs), self.system_batch_size)
+            # F: (system_batch_size, M, N, M) or (M, N, M)
+            self._F = self._expand_to_batch(
+                F,
+                (self.system_batch_size, self.n_inputs, self.n_states, self.n_inputs),
+                self.system_batch_size,
+            )
             # Check which input indices have non-zero F matrices (across all system batch elements)
             self.non_zero_F = torch.zeros(self.n_inputs, dtype=torch.bool)
             for i in range(self.n_inputs):
@@ -498,7 +528,7 @@ class DiscreteStatespaceSystem(core.System):
         else:
             self._F = None
             self.non_zero_F = torch.zeros(0, dtype=torch.bool)
-            
+
         self._prev_u = None  # For input change detection (total_batch_size, n_inputs)
 
     @property
@@ -539,7 +569,7 @@ class DiscreteStatespaceSystem(core.System):
 
         Uses the matrix exponential method to compute Ad and Bd efficiently for batch operations.
         The implementation ensures that gradients can flow back through the discretization process.
-        
+
         Tensor shapes:
             self._A: (batch_size, n_states, n_states)
             self._B: (batch_size, n_states, n_inputs)
@@ -555,7 +585,9 @@ class DiscreteStatespaceSystem(core.System):
         # Create block matrix for batch matrix exponential
         # M shape: (batch_size, n + m, n + m)
         ###
-        M = torch.zeros((batch_size, n + m, n + m), dtype=self._A.dtype, device=self._A.device)
+        M = torch.zeros(
+            (batch_size, n + m, n + m), dtype=self._A.dtype, device=self._A.device
+        )
         M[:, :n, :n] = self._A * T  # A block: (batch_size, n, n)
         M[:, :n, n:] = self._B * T  # B block: (batch_size, n, m)
         ###
@@ -565,15 +597,15 @@ class DiscreteStatespaceSystem(core.System):
         # A_block = self._A * T  # (batch_size, n, n)
         # B_block = self._B * T  # (batch_size, n, m)
         # zeros_bottom = torch.zeros((batch_size, m, n + m), dtype=self._A.dtype, device=self._A.device)
-        
+
         # # Build M using concatenation (no in-place operations)
         # top_row = torch.cat([A_block, B_block], dim=2)  # (batch_size, n, n+m)
         # M = torch.cat([top_row, zeros_bottom], dim=1)   # (batch_size, n+m, n+m)
         ###
-        
+
         # Compute matrix exponential for each batch element
         expM = torch.matrix_exp(M)  # (batch_size, n + m, n + m)
-        
+
         # Extract discretized matrices
         self.Ad = expM[:, :n, :n]  # (batch_size, n_states, n_states)
         self.Bd = expM[:, :n, n:]  # (batch_size, n_states, n_inputs)
@@ -590,7 +622,7 @@ class DiscreteStatespaceSystem(core.System):
     ) -> None:
         """
         Initialize the discrete state space model by computing discretized matrices.
-        
+
         This method automatically expands the system's batch dimensions to match the
         simulation batch size if they differ. This enables dynamic scaling from a
         single-instance system to multi-instance parallel simulation.
@@ -599,47 +631,67 @@ class DiscreteStatespaceSystem(core.System):
             start_time: Simulation start time (can be list for batch simulation).
             end_time: Simulation end time (can be list for batch simulation).
             step_size: Simulation step size.
-            
+
         Note:
             If len(start_time) != self.batch_size, all system matrices will be
             dynamically expanded to match len(start_time) using intelligent
             broadcasting rules.
         """
         # Reset and initialize I/O
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
         sim_batch_size = len(start_time)
-        
+
         # Calculate total batch size: sim_batch_size * system_batch_size (sim dimension first)
         total_batch_size = sim_batch_size * self.system_batch_size
-        
+
         # Update simulation batch size and total batch size
         if sim_batch_size != self.sim_batch_size:
             # print(f"Expanding from {self.sim_batch_size} sims × {self.system_batch_size} systems = {self.batch_size} total")
             # print(f"            to {sim_batch_size} sims × {self.system_batch_size} systems = {total_batch_size} total")
-            
+
             # Expand all system matrices using nested batch expansion
-            self._A = self._expand_to_nested_batch(self._A, self.system_batch_size, sim_batch_size)
-            self._B = self._expand_to_nested_batch(self._B, self.system_batch_size, sim_batch_size)
-            self._C = self._expand_to_nested_batch(self._C, self.system_batch_size, sim_batch_size)
-            self._D = self._expand_to_nested_batch(self._D, self.system_batch_size, sim_batch_size)
-            
+            self._A = self._expand_to_nested_batch(
+                self._A, self.system_batch_size, sim_batch_size
+            )
+            self._B = self._expand_to_nested_batch(
+                self._B, self.system_batch_size, sim_batch_size
+            )
+            self._C = self._expand_to_nested_batch(
+                self._C, self.system_batch_size, sim_batch_size
+            )
+            self._D = self._expand_to_nested_batch(
+                self._D, self.system_batch_size, sim_batch_size
+            )
+
             # Expand base matrices (used for bilinear terms)
-            self._A_base = self._expand_to_nested_batch(self._A_base, self.system_batch_size, sim_batch_size)
-            self._B_base = self._expand_to_nested_batch(self._B_base, self.system_batch_size, sim_batch_size)
-            
+            self._A_base = self._expand_to_nested_batch(
+                self._A_base, self.system_batch_size, sim_batch_size
+            )
+            self._B_base = self._expand_to_nested_batch(
+                self._B_base, self.system_batch_size, sim_batch_size
+            )
+
             # Expand bilinear matrices if they exist
             if self._E is not None:
-                self._E = self._expand_to_nested_batch(self._E, self.system_batch_size, sim_batch_size)
+                self._E = self._expand_to_nested_batch(
+                    self._E, self.system_batch_size, sim_batch_size
+                )
             if self._F is not None:
-                self._F = self._expand_to_nested_batch(self._F, self.system_batch_size, sim_batch_size)
-            
+                self._F = self._expand_to_nested_batch(
+                    self._F, self.system_batch_size, sim_batch_size
+                )
+
             # Expand initial state
-            self.x0 = self._expand_to_nested_batch(self.x0, self.system_batch_size, sim_batch_size)
-            
+            self.x0 = self._expand_to_nested_batch(
+                self.x0, self.system_batch_size, sim_batch_size
+            )
+
             # Update stored batch sizes
             self.sim_batch_size = sim_batch_size
             self.batch_size = total_batch_size
-        
+
         self.input["u"].initialize(max_timesteps, batch_size=self.batch_size)
         self.output["y"].initialize(max_timesteps, batch_size=self.batch_size)
 
@@ -659,18 +711,20 @@ class DiscreteStatespaceSystem(core.System):
     ) -> None:
         """
         Perform one step of the state space model simulation with batch support.
-        
+
         Now supports bilinear (state-input coupled) terms using batch operations.
         Ad and Bd are recomputed when inputs change significantly.
-        
+
         Tensor shapes:
             u: (batch_size, n_inputs)
-            x: (batch_size, n_states)  
+            x: (batch_size, n_states)
             Ad: (batch_size, n_states, n_states)
             Bd: (batch_size, n_states, n_inputs)
             y: (batch_size, n_outputs)
         """
-        assert all(step_size_==step_size[0] for step_size_ in step_size), "DiscreteStatespaceSystem only supports a single step size for batched simulations"
+        assert all(
+            step_size_ == step_size[0] for step_size_ in step_size
+        ), "DiscreteStatespaceSystem only supports a single step size for batched simulations"
         step_size = step_size[0]
         if step_index == 0:
             first_step = True
@@ -679,12 +733,14 @@ class DiscreteStatespaceSystem(core.System):
 
         if step_size != self.sample_time:
             self.sample_time = step_size
-            
+
         # Get current input: (batch_size, n_inputs)
-        u = self.input["u"].get()
+        u = (
+            self.input["u"].get().clone()
+        )  ######################################################
         # Current state: (batch_size, n_states)
         x = self.x
-        
+
         non_zero_E = False
         non_zero_F = False
 
@@ -716,7 +772,7 @@ class DiscreteStatespaceSystem(core.System):
                 # Compute effective A matrix for each batch element
                 # A_eff shape: (batch_size, n_states, n_states)
                 # Use non-in-place operation to preserve gradients
-                # Einstein summation for batch operations: 
+                # Einstein summation for batch operations:
                 # E: (batch_size, n_inputs, n_states, n_states)
                 # u: (batch_size, n_inputs)
                 # Result: (batch_size, n_states, n_states)
@@ -728,7 +784,7 @@ class DiscreteStatespaceSystem(core.System):
                 # B_eff shape: (batch_size, n_states, n_inputs)
                 # Use non-in-place operation to preserve gradients
                 # Einstein summation for batch operations:
-                # F: (batch_size, n_inputs, n_states, n_inputs)  
+                # F: (batch_size, n_inputs, n_states, n_inputs)
                 # u: (batch_size, n_inputs)
                 # Result: (batch_size, n_states, n_inputs)
                 B_eff = self._B_base + torch.einsum("bmij,bm->bij", self._F, u)
@@ -740,13 +796,17 @@ class DiscreteStatespaceSystem(core.System):
         # State update with batch matrix multiplication
         # Ad: (batch_size, n_states, n_states) @ x: (batch_size, n_states) -> (batch_size, n_states)
         # Bd: (batch_size, n_states, n_inputs) @ u: (batch_size, n_inputs) -> (batch_size, n_states)
-        x_new = torch.bmm(self.Ad, x.unsqueeze(-1)).squeeze(-1) + torch.bmm(self.Bd, u.unsqueeze(-1)).squeeze(-1)
+        x_new = torch.bmm(self.Ad, x.unsqueeze(-1)).squeeze(-1) + torch.bmm(
+            self.Bd, u.unsqueeze(-1)
+        ).squeeze(-1)
         self.x = x_new
-        
+
         # Output computation with batch matrix multiplication
         # Cd: (batch_size, n_outputs, n_states) @ x: (batch_size, n_states) -> (batch_size, n_outputs)
         # Dd: (batch_size, n_outputs, n_inputs) @ u: (batch_size, n_inputs) -> (batch_size, n_outputs)
-        y = torch.bmm(self.Cd, self.x.unsqueeze(-1)).squeeze(-1) + torch.bmm(self.Dd, u.unsqueeze(-1)).squeeze(-1)
+        y = torch.bmm(self.Cd, self.x.unsqueeze(-1)).squeeze(-1) + torch.bmm(
+            self.Dd, u.unsqueeze(-1)
+        ).squeeze(-1)
         self.output["y"].set(y, step_index)
 
     @classmethod
@@ -791,7 +851,7 @@ class DiscreteStatespaceSystem(core.System):
     def get_state(self) -> torch.Tensor:
         """
         Get the current state vector.
-        
+
         Returns:
             torch.Tensor: Current state vector of shape (batch_size, n_states)
         """
