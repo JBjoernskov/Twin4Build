@@ -16,7 +16,6 @@ import torch
 import torch.multiprocessing as multiprocessing
 import torch.nn as nn
 from fmpy.fmi1 import FMICallException
-
 from scipy._lib._array_api import array_namespace
 from scipy.optimize import Bounds, least_squares, minimize
 
@@ -593,7 +592,7 @@ class Estimator:
         if not isinstance(end_time, list):
             end_time = [end_time]
         if not isinstance(step_size, list):
-            step_size = [step_size]*len(start_time)
+            step_size = [step_size] * len(start_time)
 
         # Validate time periods
         for startTime_, endTime_, stepSize_ in zip(start_time, end_time, step_size):
@@ -614,11 +613,10 @@ class Estimator:
         self.actual_readings = {}
         for measuring_device, sd in self._measurements:
             df = measuring_device.get_physical_readings(start_time, end_time, step_size)
-            self.actual_readings[measuring_device.id] = df # list of 
-            
+            self.actual_readings[measuring_device.id] = df  # list of
+
         for df_ in df:
             self._n_timesteps += len(df_.index)
-
 
         # Validate bounds
         assert np.all(
@@ -1682,7 +1680,7 @@ class Estimator:
             overwrite=True,
         )
 
-        # 
+        #
 
         simulation_readings = {
             com.id: torch.zeros((self._n_timesteps), dtype=torch.float64)
@@ -1703,30 +1701,38 @@ class Estimator:
 
         # Extract and concatenate measurements from all periods
         n_time_prev = 0
-        for batch_idx, (startTime_, endTime_, stepSize_) in enumerate(zip(
-            self._start_time, self._end_time, self._stepSize
-        )):
-            second_time_steps, date_time_steps, max_timesteps, _ = core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
+        for batch_idx, (startTime_, endTime_, stepSize_) in enumerate(
+            zip(self._start_time, self._end_time, self._stepSize)
+        ):
+            second_time_steps, date_time_steps, max_timesteps, _ = (
+                core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
+            )
             n_time = max_timesteps - self._n_warmup
 
             # Extract measurements for this period
             for measuring_device, sd in self._measurements:
                 # Get simulation results for this period (batch dimension = period_idx)
-                y_model_period = measuring_device.input["measuredValue"].history[batch_idx, self._n_warmup:max_timesteps]
-                
+                y_model_period = measuring_device.input["measuredValue"].history[
+                    batch_idx, self._n_warmup : max_timesteps
+                ]
+
                 # Filter out NaN values (padding) for shorter periods
                 # valid_mask = ~torch.isnan(y_model_period)
                 # y_model_valid = y_model_period[valid_mask]
 
                 y_actual_period = self.actual_readings[measuring_device.id][batch_idx]
-                y_actual_period = y_actual_period.to_numpy()[:,0]
-                y_actual_period = y_actual_period[self._n_warmup:]
+                y_actual_period = y_actual_period.to_numpy()
+                y_actual_period = y_actual_period[self._n_warmup :]
                 y_actual_period = torch.tensor(y_actual_period, dtype=torch.float64)
-                
+
                 # Store in concatenated arrays
                 end_idx = n_time_prev + len(y_model_period)
-                simulation_readings[measuring_device.id][n_time_prev:end_idx] = y_model_period
-                actual_readings[measuring_device.id][n_time_prev:end_idx] = y_actual_period
+                simulation_readings[measuring_device.id][
+                    n_time_prev:end_idx
+                ] = y_model_period
+                actual_readings[measuring_device.id][
+                    n_time_prev:end_idx
+                ] = y_actual_period
 
             n_time_prev += n_time
 
@@ -1775,7 +1781,7 @@ class Estimator:
         torch.Tensor
             Objective value as numpy array.
         """
-        
+
         theta = torch.tensor(theta, dtype=torch.float64)
         if torch.equal(theta, self._theta_obj):
             return np.asarray(self._loglike.detach().numpy(), dtype=np.float64)

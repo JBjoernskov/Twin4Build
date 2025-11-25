@@ -34,7 +34,15 @@ from twin4build.simulator.simulator import Simulator
 from twin4build.systems.saref4syst.connection import Connection
 from twin4build.systems.saref4syst.connection_point import ConnectionPoint
 from twin4build.systems.saref4syst.system import System
-from twin4build.translator.translator import Translator, SignaturePattern, Diff, Exact, Optional_, SinglePath, MultiPath
+from twin4build.translator.translator import (
+    Translator,
+    SignaturePattern,
+    Diff,
+    Exact,
+    Optional_,
+    SinglePath,
+    MultiPath,
+)
 
 NoneType = type(None)
 
@@ -61,8 +69,7 @@ class ontology:
     S4SYST = "https://saref.etsi.org/saref4syst/"
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     T4B = "http://twin4build.org/"
-    REC = "https://github.com/RealEstateCore/rec/blob/39b90763a241a1f1e327b87076f7e97b701a8616/Ontology/SHACL/RealEstateCore/rec.ttl"
-
+    # REC = "https://github.com/RealEstateCore/rec/blob/main/Source/SHACL/RealEstateCore/rec.ttl"
 
 
 # def get_ontologies():
