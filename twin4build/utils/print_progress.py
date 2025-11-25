@@ -188,7 +188,7 @@ class PrintProgress:
                 # Rebuild the list of lines
                 temp_lines = []
                 for indent, message, status, level in zip(
-                    self.indent, self.message, self.status, self.level, strict=True
+                    self.indent, self.message, self.status, self.level
                 ):
                     temp_lines.append((indent, message, status, level))
 
@@ -206,7 +206,7 @@ class PrintProgress:
 
             self.n_printed = 0
             for indent, message, status, level in zip(
-                self.indent, self.message, self.status, self.level, strict=True
+                self.indent, self.message, self.status, self.level
             ):
                 # if level+1 <= self.verbose:
                 _status = "..." + status if status != "" else ""
@@ -224,7 +224,7 @@ class PrintProgress:
 
                     temp_lines = []
                     for indent, message, status, level in zip(
-                        self.indent, self.message, self.status, self.level, strict=True
+                        self.indent, self.message, self.status, self.level
                     ):
                         temp_lines.append((indent, message, status, level))
 
