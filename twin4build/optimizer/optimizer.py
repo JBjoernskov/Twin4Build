@@ -330,105 +330,111 @@ class Optimizer:
         ), "Simulator must be a twin4build.core.Simulator instance"
         self.simulator = simulator
 
-    def _closure(self):
-        self.optimizer.zero_grad()
-
-        # Apply bounds to decision variables
-        with torch.no_grad():
-            for component, output_name, *bounds in self._variables:
-                if len(bounds) > 0:
-                    lower_bound = bounds[0] if len(bounds) > 0 else float("-inf")
-                    upper_bound = bounds[1] if len(bounds) > 1 else float("inf")
-                    if component.output[output_name].do_normalization:
-                        lower_bound_ = component.output[output_name].normalize(
-                            lower_bound
-                        )
-                        upper_bound_ = component.output[output_name].normalize(
-                            upper_bound
-                        )
-                        # print("==========================")
-                        # print(f"CLAMPED BEFORE: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
-                        component.output[output_name].normalized_history.clamp_(
-                            min=lower_bound_, max=upper_bound_
-                        )
-
-                        # print("==========================")
-                        # print(f"CLAMPED AFTER: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
-                    else:
-                        component.output[output_name].history.clamp_(
-                            min=lower_bound, max=upper_bound
-                        )
-
-        # Run simulation
-        self.simulator.simulate(
-            start_time=self._start_time,
-            end_time=self._end_time,
-            step_size=self._stepSize,
-            show_progress_bar=False,
-        )
-
-        self.loss = 0
-        k = 100
-
-        # Handle equality constraints
-        if self._eq_cons is not None:
-            eq_term = 0
-            for constraint in self._eq_cons:
-                component, output_name, desired_value = constraint
-                y = component.output[output_name].history  # Shape: [n_periods, n_timesteps]
-                desired_tensor = self.equality_constraint_values[component, output_name]
-                y = component.output[output_name].normalize(y)
-                desired_tensor = component.output[output_name].normalize(desired_tensor)
-
-                # Aggregate loss across all periods
-                eq_term += torch.mean(torch.abs(y - desired_tensor))
-            self.loss += eq_term
-
-        # Handle inequality constraints
-        if self._ineq_cons is not None:
-            ineq_upper_term = 0
-            ineq_lower_term = 0
-            for constraint in self._ineq_cons:
-                component, output_name, constraint_type, desired_value = constraint
-                y = component.output[output_name].history  # Shape: [n_periods, n_timesteps]
-                desired_tensor = self.inequality_constraint_values[
-                    (component, output_name, constraint_type)
-                ]
-                y_norm = component.output[output_name].normalize(y)
-                desired_tensor_norm = component.output[output_name].normalize(
-                    desired_tensor
-                )
-
-                if constraint_type == "upper":
-                    # Penalize when y > desired_value
-                    constraint_violations = torch.relu(y_norm - desired_tensor_norm)
-                    constraint_term = torch.mean(k * constraint_violations)
-                    ineq_upper_term += constraint_term
-
-                elif constraint_type == "lower":
-                    # Penalize when y < desired_value
-                    constraint_violations = torch.relu(desired_tensor_norm - y_norm)
-                    constraint_term = torch.mean(k * constraint_violations)
-                    ineq_lower_term += constraint_term
-
-            self.loss += ineq_upper_term + ineq_lower_term
-
-        # Handle minimization objectives
-        if self._objectives is not None:
-            min_term = 0
-            for minimize_obj in self._objectives:
-                component, output_name = minimize_obj
-                y = component.output[output_name].history  # Shape: [n_periods, n_timesteps]
-                y_norm = component.output[output_name].normalize(y)
-                # print(f"NORMALIZED MINIMIZE OBJECTIVE BETWEEN: {component.output[output_name]._min_history} and {component.output[output_name]._max_history}")
-
-                # Aggregate loss across all periods
-                min_term += torch.mean(y_norm)
-            self.loss += min_term  # Minimize the mean value
-
-        # Compute gradients
-        self.loss.backward()
-        return self.loss
+    # def _closure(self):
+    #     self.optimizer.zero_grad()
+    #
+    #     # Apply bounds to decision variables
+    #     with torch.no_grad():
+    #         for component, output_name, *bounds in self._variables:
+    #             if len(bounds) > 0:
+    #                 lower_bound = bounds[0] if len(bounds) > 0 else float("-inf")
+    #                 upper_bound = bounds[1] if len(bounds) > 1 else float("inf")
+    #                 if component.output[output_name].do_normalization:
+    #                     lower_bound_ = component.output[output_name].normalize(
+    #                         lower_bound
+    #                     )
+    #                     upper_bound_ = component.output[output_name].normalize(
+    #                         upper_bound
+    #                     )
+    #                     # print("==========================")
+    #                     # print(f"CLAMPED BEFORE: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
+    #                     component.output[output_name].normalized_history.clamp_(
+    #                         min=lower_bound_, max=upper_bound_
+    #                     )
+    #
+    #                     # print("==========================")
+    #                     # print(f"CLAMPED AFTER: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
+    #                 else:
+    #                     component.output[output_name].history.clamp_(
+    #                         min=lower_bound, max=upper_bound
+    #                     )
+    #
+    #     # Run simulation
+    #     self.simulator.simulate(
+    #         start_time=self._start_time,
+    #         end_time=self._end_time,
+    #         step_size=self._stepSize,
+    #         show_progress_bar=False,
+    #     )
+    #
+    #     self.loss = 0
+    #     k = 100
+    #
+    #     # Handle equality constraints
+    #     if self._eq_cons is not None:
+    #         eq_term = 0
+    #         for constraint in self._eq_cons:
+    #             component, output_name, desired_value = constraint
+    #             y = component.output[
+    #                 output_name
+    #             ].history  # Shape: [n_periods, n_timesteps]
+    #             desired_tensor = self.equality_constraint_values[component, output_name]
+    #             y = component.output[output_name].normalize(y)
+    #             desired_tensor = component.output[output_name].normalize(desired_tensor)
+    #
+    #             # Aggregate loss across all periods
+    #             eq_term += torch.nanmean(torch.abs(y - desired_tensor))
+    #         self.loss += eq_term
+    #
+    #     # Handle inequality constraints
+    #     if self._ineq_cons is not None:
+    #         ineq_upper_term = torch.tensor(0.0, dtype=torch.float64)
+    #         ineq_lower_term = torch.tensor(0.0, dtype=torch.float64)
+    #         for constraint in self._ineq_cons:
+    #             component, output_name, constraint_type, desired_value = constraint
+    #             y = component.output[
+    #                 output_name
+    #             ].history  # Shape: [n_periods, n_timesteps]
+    #             desired_tensor = self.inequality_constraint_values[
+    #                 (component, output_name, constraint_type)
+    #             ]
+    #             y_norm = component.output[output_name].normalize(y)
+    #             desired_tensor_norm = component.output[output_name].normalize(
+    #                 desired_tensor
+    #             )
+    #
+    #             if constraint_type == "upper":
+    #                 # Penalize when y > desired_value
+    #                 constraint_violations = torch.relu(y_norm - desired_tensor_norm)
+    #                 constraint_term = torch.nanmean(k * constraint_violations)
+    #                 ineq_upper_term += constraint_term
+    #
+    #             elif constraint_type == "lower":
+    #                 # Penalize when y < desired_value
+    #                 constraint_violations = torch.relu(desired_tensor_norm - y_norm)
+    #                 constraint_term = torch.nanmean(k * constraint_violations)
+    #                 ineq_lower_term += constraint_term
+    #
+    #         self.loss += ineq_upper_term + ineq_lower_term
+    #
+    #     # Handle minimization objectives
+    #     if self._objectives is not None:
+    #         min_term = 0
+    #         for minimize_obj in self._objectives:
+    #             component, output_name = minimize_obj
+    #             y = component.output[
+    #                 output_name
+    #             ].history  # Shape: [n_periods, n_timesteps]
+    #             y_norm = component.output[output_name].normalize(y)
+    #             # print(f"NORMALIZED MINIMIZE OBJECTIVE BETWEEN: {component.output[output_name]._min_history} and {component.output[output_name]._max_history}")
+    #
+    #             # Aggregate loss across all periods
+    #             min_term += torch.nanmean(y_norm)
+    #         self.loss += min_term  # Minimize the mean value
+    #
+    #     # Compute gradients
+    #     self.loss.backward()
+    #     return self.loss
 
     def optimize(
         self,
@@ -471,11 +477,11 @@ class Optimizer:
 
                 Supported optimizers by library:
 
-                PyTorch-based methods (library="torch"):
-                   - "SGD": Stochastic Gradient Descent (default)
-                   - "Adam": Adam optimizer
-                   - "LBFGS": Limited-memory BFGS
-                   - Mode: Always "ad" (automatic differentiation)
+                # PyTorch-based methods (library="torch"):
+                #    - "SGD": Stochastic Gradient Descent (default)
+                #    - "Adam": Adam optimizer
+                #    - "LBFGS": Limited-memory BFGS
+                #    - Mode: Always "ad" (automatic differentiation)
 
                 SciPy-based methods (library="scipy"):
                    - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
@@ -487,27 +493,27 @@ class Optimizer:
                    - Mode: "ad" (automatic differentiation) or "fd" (finite difference)
 
                 Method selection guidelines:
-                   - PyTorch methods: Good for simple optimization problems, easy to configure
+                   # - PyTorch methods: Good for simple optimization problems, easy to configure
                    - SciPy SLSQP with AD: Preferred for most constrained optimization problems
                    - SciPy with FD: Use for non-PyTorch models or when AD is not available
 
                 Examples:
                    - ("scipy", "SLSQP", "ad"): Preferred for most constrained optimization problems
-                   - ("torch", "Adam", "ad"): Good for simple unconstrained problems
+                   # - ("torch", "Adam", "ad"): Good for simple unconstrained problems
                    - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
                    - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
 
             options: Additional options for the chosen method:
-                For PyTorch methods (library="torch"):
-                    - "lr": Learning rate for optimizer (default: 1.0)
-                    - "iterations": Number of optimization iterations (default: 100)
-                    - "optimizer_type": Type of PyTorch optimizer ("SGD", "Adam", "LBFGS")
-                    - "scheduler_type": Type of learning rate scheduler ("step", "exponential", "cosine", "reduce_on_plateau", None)
-                    - "scheduler_params": Parameters for learning rate scheduler
-                        - For "step": step_size (default: 30), gamma (default: 0.1)
-                        - For "exponential": gamma (default: 0.95)
-                        - For "cosine": T_max (default: 100), eta_min (default: 0)
-                        - For "reduce_on_plateau": mode (default: "min"), factor (default: 0.9), patience (default: 10), threshold (default: 1e-4)
+                # For PyTorch methods (library="torch"):
+                #     - "lr": Learning rate for optimizer (default: 1.0)
+                #     - "iterations": Number of optimization iterations (default: 100)
+                #     - "optimizer_type": Type of PyTorch optimizer ("SGD", "Adam", "LBFGS")
+                #     - "scheduler_type": Type of learning rate scheduler ("step", "exponential", "cosine", "reduce_on_plateau", None)
+                #     - "scheduler_params": Parameters for learning rate scheduler
+                #         - For "step": step_size (default: 30), gamma (default: 0.1)
+                #         - For "exponential": gamma (default: 0.95)
+                #         - For "cosine": T_max (default: 100), eta_min (default: 0)
+                #         - For "reduce_on_plateau": mode (default: "min"), factor (default: 0.9), patience (default: 10), threshold (default: 1e-4)
 
                 For SciPy methods (library="scipy"):
                     - "verbose": Verbosity level (0-3)
@@ -540,9 +546,11 @@ class Optimizer:
         self._objectives = objectives or []
         self._eq_cons = eq_cons or []
         self._ineq_cons = ineq_cons or []
-        
-        start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
-            
+
+        start_time, end_time, step_size = validate_period(
+            start_time, end_time, step_size
+        )
+
         self._start_time = start_time
         self._end_time = end_time
         self._stepSize = step_size
@@ -554,8 +562,21 @@ class Optimizer:
         assert end_time is not None, "end_time must be provided"
         assert step_size is not None, "step_size must be provided"
 
-        self.second_time_steps, self.date_time_steps, max_timesteps, _ = core.Simulator.get_simulation_timesteps(self._start_time, self._end_time, self._stepSize)
-        self.max_timesteps = max_timesteps
+        (
+            self._second_time_steps,
+            self._date_time_steps,
+            self._max_timesteps,
+            self._n_timesteps,
+        ) = core.Simulator.get_simulation_timesteps(
+            self._start_time, self._end_time, self._stepSize
+        )
+
+        timestep_mask = torch.ones(
+            len(self._start_time), self._max_timesteps, dtype=torch.bool
+        )
+        for batch_index, n_timesteps in enumerate(self._n_timesteps):
+            timestep_mask[batch_index, n_timesteps:] = False
+        self._timestep_mask = timestep_mask  # .bool()
 
         # Check that we have something to optimize
         assert (
@@ -575,9 +596,9 @@ class Optimizer:
         # Validate method
         # Define allowed optimization methods
         allowed_methods = [
-            ("torch", "SGD", "ad"),
-            ("torch", "Adam", "ad"),
-            ("torch", "LBFGS", "ad"),
+            # ("torch", "SGD", "ad"),
+            # ("torch", "Adam", "ad"),
+            # ("torch", "LBFGS", "ad"),
             ("scipy", "SLSQP", "ad"),
             ("scipy", "L-BFGS-B", "ad"),
             ("scipy", "TNC", "ad"),
@@ -778,224 +799,220 @@ class Optimizer:
         # default_mode = "ad" # Always choose automatic differentiation mode when ambiguous
 
         # Call the appropriate optimization method
-        if method[0] == "torch":
-            if options is None:
-                options = {}
-            # Extract optimizer type from method tuple
-            optimizer_type = method[1]
-            options["optimizer_type"] = optimizer_type
-            return self._torch_solver(**options)
-        elif method[0] == "scipy":
+        # if method[0] == "torch":
+        #     if options is None:
+        #         options = {}
+        #     # Extract optimizer type from method tuple
+        #     optimizer_type = method[1]
+        #     options["optimizer_type"] = optimizer_type
+        #     return self._torch_solver(**options)
+        if method[0] == "scipy":
             if options is None:
                 options = {}
             return self._scipy_solver(method=method, **options)
 
-    def _torch_solver(
-        self,
-        lr: float = 1.0,
-        iterations: int = 100,
-        optimizer_type: str = "SGD",
-        scheduler_type: str = "step",
-        scheduler_params: Dict = None,
-    ):
-        """
-        Perform optimization using PyTorch-based gradient optimization.
+    # def _torch_solver(
+    #     self,
+    #     lr: float = 1.0,
+    #     iterations: int = 100,
+    #     optimizer_type: str = "SGD",
+    #     scheduler_type: str = "step",
+    #     scheduler_params: Dict = None,
+    # ):
+    #     """
+    #     Perform optimization using PyTorch-based gradient optimization.
 
-        This method uses PyTorch's automatic differentiation to compute gradients and
-        applies gradient-based optimization algorithms to minimize the objective function.
-        It supports various optimizers and learning rate schedulers for fine-tuning
-        the optimization process.
+    #     This method uses PyTorch's automatic differentiation to compute gradients and
+    #     applies gradient-based optimization algorithms to minimize the objective function.
+    #     It supports various optimizers and learning rate schedulers for fine-tuning
+    #     the optimization process.
 
-        Args:
-            lr: Learning rate for optimizer. Controls the step size in gradient descent.
-                Higher values may converge faster but risk overshooting, while lower
-                values are more stable but may converge slowly.
-            iterations: Number of optimization iterations. More iterations generally
-                lead to better convergence but take longer to compute.
-            optimizer_type: Type of PyTorch optimizer:
-                - "SGD": Stochastic Gradient Descent - simple, robust, good for most problems
-                - "Adam": Adaptive learning rate optimizer - often faster convergence
-                - "LBFGS": Limited-memory BFGS - good for smooth, well-behaved functions
-            scheduler_type: Type of learning rate scheduler to adjust learning rate during optimization:
-                - "step": Decreases learning rate by gamma every step_size iterations
-                - "exponential": Decreases learning rate exponentially
-                - "cosine": Uses cosine annealing schedule
-                - "reduce_on_plateau": Reduces learning rate when loss stops improving
-                - None: No scheduler, constant learning rate
-            scheduler_params: Dictionary of parameters for the chosen scheduler:
-                - For "step": {"step_size": int, "gamma": float}
-                - For "exponential": {"gamma": float}
-                - For "cosine": {"T_max": int, "eta_min": float}
-                - For "reduce_on_plateau": {"mode": str, "factor": float, "patience": int, "threshold": float}
+    #     Args:
+    #         lr: Learning rate for optimizer. Controls the step size in gradient descent.
+    #             Higher values may converge faster but risk overshooting, while lower
+    #             values are more stable but may converge slowly.
+    #         iterations: Number of optimization iterations. More iterations generally
+    #             lead to better convergence but take longer to compute.
+    #         optimizer_type: Type of PyTorch optimizer:
+    #             - "SGD": Stochastic Gradient Descent - simple, robust, good for most problems
+    #             - "Adam": Adaptive learning rate optimizer - often faster convergence
+    #             - "LBFGS": Limited-memory BFGS - good for smooth, well-behaved functions
+    #         scheduler_type: Type of learning rate scheduler to adjust learning rate during optimization:
+    #             - "step": Decreases learning rate by gamma every step_size iterations
+    #             - "exponential": Decreases learning rate exponentially
+    #             - "cosine": Uses cosine annealing schedule
+    #             - "reduce_on_plateau": Reduces learning rate when loss stops improving
+    #             - None: No scheduler, constant learning rate
+    #         scheduler_params: Dictionary of parameters for the chosen scheduler:
+    #             - For "step": {"step_size": int, "gamma": float}
+    #             - For "exponential": {"gamma": float}
+    #             - For "cosine": {"T_max": int, "eta_min": float}
+    #             - For "reduce_on_plateau": {"mode": str, "factor": float, "patience": int, "threshold": float}
 
-        Note:
-            This method automatically handles gradient computation and parameter updates.
-            It disables gradients for model parameters and only optimizes the decision variables.
-            The optimization process is logged with current learning rate and loss values.
-        """
-        # Validate optimization parameters
-        assert lr > 0, f"Learning rate must be positive, got {lr}"
-        assert (
-            iterations > 0
-        ), f"Number of iterations must be positive, got {iterations}"
+    #     Note:
+    #         This method automatically handles gradient computation and parameter updates.
+    #         It disables gradients for model parameters and only optimizes the decision variables.
+    #         The optimization process is logged with current learning rate and loss values.
+    #     """
+    #     # Validate optimization parameters
+    #     assert lr > 0, f"Learning rate must be positive, got {lr}"
+    #     assert (
+    #         iterations > 0
+    #     ), f"Number of iterations must be positive, got {iterations}"
 
-        # Validate scheduler type
-        valid_scheduler_types = [
-            "step",
-            "exponential",
-            "cosine",
-            "reduce_on_plateau",
-            None,
-        ]
-        assert (
-            scheduler_type in valid_scheduler_types
-        ), f"Invalid scheduler_type: {scheduler_type}. Must be one of {valid_scheduler_types}"
+    #     # Validate scheduler type
+    #     valid_scheduler_types = [
+    #         "step",
+    #         "exponential",
+    #         "cosine",
+    #         "reduce_on_plateau",
+    #         None,
+    #     ]
+    #     assert (
+    #         scheduler_type in valid_scheduler_types
+    #     ), f"Invalid scheduler_type: {scheduler_type}. Must be one of {valid_scheduler_types}"
 
-        # Disable gradients for all parameters since we're optimizing inputs.
-        # It is VERY important to do this before initializing the model.
-        # Otherwise, the model parameters and state space matrices will have requires_grad=True
-        # and the backpropagate() call will fail.
-        for component in self.simulator.model.components.values():
-            if isinstance(component, nn.Module):
-                for parameter in component.parameters():
-                    parameter.requires_grad_(False)
+    #     # Disable gradients for all parameters since we're optimizing inputs.
+    #     # It is VERY important to do this before initializing the model.
+    #     # Otherwise, the model parameters and state space matrices will have requires_grad=True
+    #     # and the backpropagate() call will fail.
+    #     for component in self.simulator.model.components.values():
+    #         if isinstance(component, nn.Module):
+    #             for parameter in component.parameters():
+    #                 parameter.requires_grad_(False)
 
-        # Set before initializing the model
-        for component, output_name, *bounds in self._variables:
-            component.output[output_name].do_normalization = True
+    #     # Set before initializing the model
+    #     for component, output_name, *bounds in self._variables:
+    #         component.output[output_name].do_normalization = True
 
-        second_time_steps, date_time_steps, _, _ = core.Simulator.get_simulation_timesteps(
-            self._start_time, self._end_time, self._stepSize
-        )
-        self.simulator.model.initialize(
-            start_time=self._start_time,
-            end_time=self._end_time,
-            step_size=self._stepSize,
-            simulator=self.simulator,
-        )
+    #     self.simulator.model.initialize(
+    #         start_time=self._start_time,
+    #         end_time=self._end_time,
+    #         step_size=self._stepSize,
+    #         simulator=self.simulator,
+    #     )
 
-        # Enable gradients only for the inputs we want to optimize
-        opt_list = []
-        for component, output_name, *bounds in self._variables:
-            component.output[output_name].set_requires_grad(True)
-            if component.output[output_name].do_normalization:
-                opt_list.append(component.output[output_name].normalized_history)
-            else:
-                opt_list.append(component.output[output_name].history)
+    #     # Enable gradients only for the inputs we want to optimize
+    #     opt_list = []
+    #     for component, output_name, *bounds in self._variables:
+    #         component.output[output_name].set_requires_grad(True)
+    #         if component.output[output_name].do_normalization:
+    #             opt_list.append(component.output[output_name].normalized_history)
+    #         else:
+    #             opt_list.append(component.output[output_name].history)
 
-        if optimizer_type == "SGD":
-            # Initialize optimizer
-            self.optimizer = torch.optim.SGD(opt_list, lr=lr)
-        elif optimizer_type == "Adam":
-            self.optimizer = torch.optim.Adam(opt_list, lr=lr)
-        elif optimizer_type == "LBFGS":
-            self.optimizer = torch.optim.LBFGS(
-                opt_list, lr=lr, line_search_fn=None, history_size=100
-            )
-        else:
-            raise ValueError(
-                f"Invalid optimizer type: {optimizer_type}. Must be one of {['SGD', 'Adam', 'LBFGS']}"
-            )
+    #     if optimizer_type == "SGD":
+    #         # Initialize optimizer
+    #         self.optimizer = torch.optim.SGD(opt_list, lr=lr)
+    #     elif optimizer_type == "Adam":
+    #         self.optimizer = torch.optim.Adam(opt_list, lr=lr)
+    #     elif optimizer_type == "LBFGS":
+    #         self.optimizer = torch.optim.LBFGS(
+    #             opt_list, lr=lr, line_search_fn=None, history_size=100
+    #         )
+    #     else:
+    #         raise ValueError(
+    #             f"Invalid optimizer type: {optimizer_type}. Must be one of {['SGD', 'Adam', 'LBFGS']}"
+    #         )
 
-        # Initialize scheduler
-        if scheduler_params is None:
-            scheduler_params = {}
+    #     # Initialize scheduler
+    #     if scheduler_params is None:
+    #         scheduler_params = {}
 
-        if scheduler_type == "step":
-            # StepLR decreases learning rate by gamma every step_size epochs
-            step_size = scheduler_params.get("step_size", 30)
-            gamma = scheduler_params.get("gamma", 0.1)
-            self.scheduler = torch.optim.lr_scheduler.StepLR(
-                self.optimizer, step_size=step_size, gamma=gamma
-            )
-        elif scheduler_type == "exponential":
-            # ExponentialLR decreases learning rate by gamma every epoch
-            gamma = scheduler_params.get("gamma", 0.95)
-            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
-                self.optimizer, gamma=gamma
-            )
-        elif scheduler_type == "cosine":
-            # CosineAnnealingLR uses a cosine schedule to decrease learning rate
-            T_max = scheduler_params.get("T_max", 100)
-            eta_min = scheduler_params.get("eta_min", 0)
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=T_max, eta_min=eta_min
-            )
-        elif scheduler_type == "reduce_on_plateau":
-            # ReduceLROnPlateau reduces learning rate when a metric has stopped improving
-            mode = scheduler_params.get("mode", "min")
-            factor = scheduler_params.get("factor", 0.9)
-            patience = scheduler_params.get("patience", 10)
-            threshold = scheduler_params.get("threshold", 1e-4)
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer,
-                mode=mode,
-                factor=factor,
-                patience=patience,
-                threshold=threshold,
-            )
-        else:
-            # Default: no scheduler
-            self.scheduler = None
+    #     if scheduler_type == "step":
+    #         # StepLR decreases learning rate by gamma every step_size epochs
+    #         step_size = scheduler_params.get("step_size", 30)
+    #         gamma = scheduler_params.get("gamma", 0.1)
+    #         self.scheduler = torch.optim.lr_scheduler.StepLR(
+    #             self.optimizer, step_size=step_size, gamma=gamma
+    #         )
+    #     elif scheduler_type == "exponential":
+    #         # ExponentialLR decreases learning rate by gamma every epoch
+    #         gamma = scheduler_params.get("gamma", 0.95)
+    #         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
+    #             self.optimizer, gamma=gamma
+    #         )
+    #     elif scheduler_type == "cosine":
+    #         # CosineAnnealingLR uses a cosine schedule to decrease learning rate
+    #         T_max = scheduler_params.get("T_max", 100)
+    #         eta_min = scheduler_params.get("eta_min", 0)
+    #         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #             self.optimizer, T_max=T_max, eta_min=eta_min
+    #         )
+    #     elif scheduler_type == "reduce_on_plateau":
+    #         # ReduceLROnPlateau reduces learning rate when a metric has stopped improving
+    #         mode = scheduler_params.get("mode", "min")
+    #         factor = scheduler_params.get("factor", 0.9)
+    #         patience = scheduler_params.get("patience", 10)
+    #         threshold = scheduler_params.get("threshold", 1e-4)
+    #         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #             self.optimizer,
+    #             mode=mode,
+    #             factor=factor,
+    #             patience=patience,
+    #             threshold=threshold,
+    #         )
+    #     else:
+    #         # Default: no scheduler
+    #         self.scheduler = None
 
-        def _get_constraint_value(component_or_value):
-            """Helper function to get constraint value, handling both ScheduleSystem and scalar values"""
-            if isinstance(component_or_value, (int, float)):
-                return torch.tensor(component_or_value)
-            elif isinstance(component_or_value, systems.ScheduleSystem):
-                component_or_value.initialize(
-                    start_time=self._start_time,
-                    end_time=self._end_time,
-                    step_size=self._stepSize,
-                    simulator=self.simulator,
-                )
-                return component_or_value.output["scheduleValue"].history
-            elif isinstance(component_or_value, torch.Tensor):
-                return component_or_value
-            else:
-                raise ValueError(
-                    f"Invalid constraint value type: {type(component_or_value)}"
-                )
+    #     def _get_constraint_value(component_or_value):
+    #         """Helper function to get constraint value, handling both ScheduleSystem and scalar values"""
+    #         if isinstance(component_or_value, (int, float)):
+    #             return torch.tensor(component_or_value)
+    #         elif isinstance(component_or_value, systems.ScheduleSystem):
+    #             component_or_value.initialize(
+    #                 start_time=self._start_time,
+    #                 end_time=self._end_time,
+    #                 step_size=self._stepSize,
+    #             )
+    #             return component_or_value.output["scheduleValue"].history
+    #         elif isinstance(component_or_value, torch.Tensor):
+    #             return component_or_value
+    #         else:
+    #             raise ValueError(
+    #                 f"Invalid constraint value type: {type(component_or_value)}"
+    #             )
 
-        # Pre-compute all constraint values
-        self.equality_constraint_values = {}
-        if self._eq_cons is not None:
-            for component, output_name, desired_value in self._eq_cons:
-                self.equality_constraint_values[component, output_name] = (
-                    _get_constraint_value(desired_value)
-                )
+    #     # Pre-compute all constraint values
+    #     self.equality_constraint_values = {}
+    #     if self._eq_cons is not None:
+    #         for component, output_name, desired_value in self._eq_cons:
+    #             self.equality_constraint_values[component, output_name] = (
+    #                 _get_constraint_value(desired_value)
+    #             )
 
-        self.inequality_constraint_values = {}
-        if self._ineq_cons is not None:
-            for (
-                component,
-                output_name,
-                constraint_type,
-                desired_value,
-            ) in self._ineq_cons:
-                self.inequality_constraint_values[
-                    (component, output_name, constraint_type)
-                ] = _get_constraint_value(desired_value)
+    #     self.inequality_constraint_values = {}
+    #     if self._ineq_cons is not None:
+    #         for (
+    #             component,
+    #             output_name,
+    #             constraint_type,
+    #             desired_value,
+    #         ) in self._ineq_cons:
+    #             self.inequality_constraint_values[
+    #                 (component, output_name, constraint_type)
+    #             ] = _get_constraint_value(desired_value)
 
-        for i in range(iterations):
-            # Perform optimization step
-            self.optimizer.step(self._closure)
+    #     for i in range(iterations):
+    #         # Perform optimization step
+    #         self.optimizer.step(self._closure)
 
-            # Update learning rate with scheduler
-            if self.scheduler is not None:
-                if isinstance(
-                    self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
-                ):
-                    # ReduceLROnPlateau needs the loss value
-                    self.scheduler.step(self.loss)
-                else:
-                    # Other schedulers just need to be stepped
-                    self.scheduler.step()
+    #         # Update learning rate with scheduler
+    #         if self.scheduler is not None:
+    #             if isinstance(
+    #                 self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
+    #             ):
+    #                 # ReduceLROnPlateau needs the loss value
+    #                 self.scheduler.step(self.loss)
+    #             else:
+    #                 # Other schedulers just need to be stepped
+    #                 self.scheduler.step()
 
-            # Log current learning rate
-            current_lr = self.optimizer.param_groups[0]["lr"]
-            print(f"Current learning rate: {current_lr}")
-            print(f"Loss at step {i}: {self.loss.detach().item()}")
+    #         # Log current learning rate
+    #         current_lr = self.optimizer.param_groups[0]["lr"]
+    #         print(f"Current learning rate: {current_lr}")
+    #         print(f"Loss at step {i}: {self.loss.detach().item()}")
 
     def _scipy_solver(self, method: tuple = None, tol: float = None, **options):
         """
@@ -1062,32 +1079,29 @@ class Optimizer:
 
         # Create flattened vector using vectorized operations, excluding padded values
         x0_tensors = []
-        
-        # Calculate actual timesteps per period (excluding padding)
-        actual_timesteps_per_period = []
-        for period_idx in range(n_periods):
-            actual_timesteps_per_period.append(len(self.date_time_steps[period_idx]))
-        
+
         for component, output_name, *bounds in self._variables:
             component.output[output_name].set_requires_grad(True)
-            
+
             # Get the full history tensor for this component
             if component.output[output_name].do_normalization:
-                history_tensor = component.output[output_name].normalized_history.detach()
+                history_tensor = component.output[
+                    output_name
+                ].normalized_history.detach()
             else:
                 history_tensor = component.output[output_name].history.detach()
-            
+
             # Extract only actual timesteps (no padding) for each period
             period_tensors = []
             for period_idx in range(n_periods):
-                actual_timesteps = actual_timesteps_per_period[period_idx]
+                actual_timesteps = self._n_timesteps[period_idx]
                 period_data = history_tensor[period_idx, :actual_timesteps]
                 period_tensors.append(period_data)
-            
+
             # Concatenate all periods for this variable
             flattened_history = torch.cat(period_tensors, dim=0)
             x0_tensors.append(flattened_history)
-            
+
             # Set bounds for actual timesteps only
             total_actual_elements = flattened_history.numel()
             for _ in range(total_actual_elements):
@@ -1107,19 +1121,19 @@ class Optimizer:
                     bounds_list.append((lower, upper))
                 else:
                     bounds_list.append((None, None))
-        
-        # Store the actual timesteps info for use in __obj_ad
-        self._actual_timesteps_per_period = actual_timesteps_per_period
-        
+
         # Interleave the tensors: [var1_t0, var2_t0, var1_t1, var2_t1, ...]
         # This matches the expected structure for the theta vector
         if x0_tensors:
             # Stack tensors and transpose to interleave
-            stacked = torch.stack(x0_tensors, dim=1)  # Shape: (total_actual_timesteps, n_variables)
-            x0 = stacked.flatten().detach().numpy()  # Flatten to get interleaved structure
+            stacked = torch.stack(
+                x0_tensors, dim=1
+            )  # Shape: (total_actual_timesteps, n_variables)
+            x0 = (
+                stacked.flatten().detach().numpy()
+            )  # Flatten to get interleaved structure
         else:
             x0 = np.array([])
-
 
         # Create bounds object for SciPy
         if all(b[0] is not None and b[1] is not None for b in bounds_list):
@@ -1163,18 +1177,19 @@ class Optimizer:
                 constraint_type,
                 desired_value,
             ) in self._ineq_cons:
+                constraint_val = _get_constraint_value(desired_value)
                 self.inequality_constraint_values[
                     (component, output_name, constraint_type)
-                ] = _get_constraint_value(desired_value)
+                ] = constraint_val
 
         # Initialize caching variables for AD
-        self._theta_jac = torch.nan * torch.ones_like(
-            torch.tensor(x0, dtype=torch.float64)
+        self._theta_jac = 1000000 * torch.ones_like(
+            torch.tensor(x0, dtype=torch.float64)  # torch.nan
         )
         self._theta_hes = torch.nan * torch.ones_like(
             torch.tensor(x0, dtype=torch.float64)
         )
-        self._theta_obj = torch.nan * torch.ones_like(
+        self._theta_obj = 1000000 * torch.ones_like(
             torch.tensor(x0, dtype=torch.float64)
         )
 
@@ -1225,38 +1240,42 @@ class Optimizer:
         # Reshape theta using vectorized operations
         n_actuators = len(self._variables)
         n_periods = len(self._start_time)
-        
+
         # Reshape theta from interleaved format [var1_t0, var2_t0, var1_t1, var2_t1, ...]
         # to (total_actual_timesteps, n_variables) format
         total_actual_timesteps = int(len(theta) / n_actuators)
         theta_matrix = theta.reshape(total_actual_timesteps, n_actuators)
-        
+
         # Update decision variables for each actuator
         for i, (component, output_name, *bounds) in enumerate(self._variables):
             # Extract values for this actuator across all actual timesteps
             actuator_values = theta_matrix[:, i]
-            
+
             # Reconstruct the full padded tensor shape (n_periods, max_timesteps_per_period)
             original_shape = component.output[output_name].history.shape
-            reconstructed_tensor = torch.full(original_shape, float('nan'), dtype=torch.float64)
-            
+            reconstructed_tensor = torch.full(
+                original_shape, 0, dtype=torch.float64
+            )  # FIX OF NAN JACOBIAN: 0 instead float('nan')
+
             # Fill in the actual values period by period
             value_idx = 0
             for period_idx in range(n_periods):
-                actual_timesteps = self._actual_timesteps_per_period[period_idx]
-                period_values = actuator_values[value_idx:value_idx + actual_timesteps]
+                actual_timesteps = self._n_timesteps[period_idx]
+                period_values = actuator_values[
+                    value_idx : value_idx + actual_timesteps
+                ]
                 reconstructed_tensor[period_idx, :actual_timesteps] = period_values
                 value_idx += actual_timesteps
-            
+
             # Denormalize if needed
             if component.output[output_name].do_normalization:
                 values = component.output[output_name].denormalize(reconstructed_tensor)
             else:
                 values = reconstructed_tensor
-            
+
             # Initialize with the new values (including padding)
             component.output[output_name].initialize(
-                n_timesteps=self.max_timesteps,
+                n_timesteps=self._max_timesteps,
                 batch_size=len(self._start_time),
                 values=values,
                 force=True,
@@ -1270,17 +1289,18 @@ class Optimizer:
             show_progress_bar=False,
         )
 
-        # Compute loss
-        loss = 0
+        # Compute loss - initialize as tensor to avoid NaN propagation issues
+        loss = torch.tensor(0.0, dtype=torch.float64)
         k = 100
 
         # Handle equality constraints
         if self._eq_cons is not None:
             for constraint in self._eq_cons:
                 component, output_name, desired_value = constraint
-                y = component.output[output_name].history
-                # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
-                desired_tensor = self.equality_constraint_values[component, output_name]
+                y = component.output[output_name].history[self._timestep_mask]
+                desired_tensor = self.equality_constraint_values[
+                    component, output_name
+                ][self._timestep_mask]
                 y_norm = component.output[output_name].normalize(y)
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
@@ -1289,15 +1309,14 @@ class Optimizer:
 
         # Handle inequality constraints
         if self._ineq_cons is not None:
-            ineq_upper_term = 0
-            ineq_lower_term = 0
+            ineq_upper_term = torch.tensor(0.0, dtype=torch.float64)
+            ineq_lower_term = torch.tensor(0.0, dtype=torch.float64)
             for constraint in self._ineq_cons:
                 component, output_name, constraint_type, desired_value = constraint
-                y = component.output[output_name].history
-                # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
+                y = component.output[output_name].history[self._timestep_mask]
                 desired_tensor = self.inequality_constraint_values[
                     (component, output_name, constraint_type)
-                ]
+                ][self._timestep_mask]
                 y_norm = component.output[output_name].normalize(y)
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
@@ -1306,18 +1325,20 @@ class Optimizer:
                 if constraint_type == "upper":
                     # Penalize when y > desired_value
                     constraint_violations = torch.relu(y_norm - desired_tensor_norm)
-                    ineq_upper_term += torch.mean(k * constraint_violations)
+                    term = torch.mean(k * constraint_violations)
+                    ineq_upper_term += term
                 elif constraint_type == "lower":
                     # Penalize when y < desired_value
                     constraint_violations = torch.relu(desired_tensor_norm - y_norm)
-                    ineq_lower_term += torch.mean(k * constraint_violations)
+                    term = torch.mean(k * constraint_violations)
+                    ineq_lower_term += term
 
             loss += ineq_upper_term + ineq_lower_term
 
         # Handle minimization objectives
         if self._objectives is not None:
             for component, output_name, objective_type in self._objectives:
-                y = component.output[output_name].history
+                y = component.output[output_name].history[self._timestep_mask]
                 y_norm = component.output[output_name].normalize(y)
                 if objective_type == "min":
                     loss += torch.mean(y_norm)
@@ -1377,7 +1398,16 @@ class Optimizer:
         else:
             self._theta_jac = theta
             self.jac = self.__jac_ad(theta)
-            return self.jac.detach().numpy()
+            jac_numpy = self.jac.detach().numpy()
+
+            # Check for NaN values in Jacobian and warn
+            if np.isnan(jac_numpy).any():
+                n_nans = np.isnan(jac_numpy).sum()
+                raise ValueError(
+                    f"WARNING: Jacobian contains {n_nans} NaN values out of {jac_numpy.size} total values"
+                )
+
+            return jac_numpy
 
     def __hes_ad(self, theta: torch.Tensor) -> torch.Tensor:
         """
