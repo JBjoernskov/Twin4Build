@@ -235,6 +235,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - The UA value is optimized using numerical methods during initialization
        - The model supports both steady-state and dynamic simulations
     """
+
     def __init__(
         self,
         Q_flow_nominal_sh: float = 1000,
@@ -335,7 +336,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
         batch_size = len(start_time)
         # Initialize I/O
         for input in self.input.values():
@@ -360,17 +363,17 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             # First initialization
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size)
-            
+
             # FIX: Set correct initial state for batch
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
-            
+
             self.INITIALIZED = True
         else:
             # Re-initialize the state space model
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size)
-            
+
             # FIX: Set correct initial state for batch
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
@@ -427,18 +430,18 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         # Get batch size from outletWaterTemperature
         t_outlet = self.output["outletWaterTemperature"].get()
         batch_size = t_outlet.shape[0] if t_outlet.dim() > 0 else 1
-        
+
         x0 = torch.zeros((batch_size, self.nelements), dtype=torch.float64)
-        
+
         # Handle outlet water temperature
         t_outlet_val = t_outlet
         if t_outlet_val.dim() == 0:
             t_outlet_val = t_outlet_val.expand(batch_size)
-            
+
         # Initialize all elements with outlet water temperature
         for i in range(self.nelements):
             x0[:, i] = t_outlet_val
-            
+
         return x0
 
     def _create_state_space_model(self):
@@ -529,7 +532,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
                 self.input["waterFlowRate"].get(),
                 self.input["indoorTemperature"].get(),
             ],
-            dim=1
+            dim=1,
         )
         self.ss_model.input["u"].set(u, step_index)
         self.ss_model.do_step(second_time, date_time, step_size, step_index)
@@ -593,7 +596,7 @@ def brick_signature_pattern():
     node1 = Node(cls=core.namespace.BRICK.Space)  # building space
     node2 = Node(cls=core.namespace.BRICK.Heating_Water_Flow_Sensor)
     node3 = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
-    
+
     sp = SignaturePattern(
         id="space_heater_signature_pattern_brick",
     )

@@ -18,8 +18,6 @@ from twin4build.translator.translator import (
 )
 
 
-
-
 class ReturnFlowJunctionSystem(core.System):
     r"""
     A return flow junction system model for combining air flow rates and temperatures.
@@ -156,7 +154,7 @@ def brick_signature_pattern():
     node0 = Node(cls=core.namespace.BRICK.Air_Flow_Junction)  # flow junction
     node1 = Node(cls=core.namespace.BRICK.Damper)  # damper
     node2 = Node(cls=core.namespace.BRICK.HVAC_Zone)  # building space/zone
-    
+
     sp = SignaturePattern(
         id="return_flow_junction_signature_pattern_brick",
     )
@@ -171,6 +169,7 @@ def brick_signature_pattern():
     sp.add_input("airTemperatureIn", node2, "indoorTemperature")
     sp.add_modeled_node(node0)
     return sp
+
 
 ReturnFlowJunctionSystem.add_signature_pattern(brick_signature_pattern())
 ReturnFlowJunctionSystem.add_signature_pattern(saref_signature_pattern())

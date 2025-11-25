@@ -388,8 +388,6 @@ class AirToAirHeatRecoverySystem(core.System):
             )
 
 
-
-
 def saref_signature_pattern():
     node0 = Node(cls=core.namespace.S4BLDG.AirToAirHeatRecovery)
     node1 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
@@ -406,8 +404,7 @@ def saref_signature_pattern():
     node12 = Node(cls=core.namespace.S4BLDG.Controller)
     node13 = Node(cls=core.namespace.SAREF.Motion)
     node14 = Node(cls=core.namespace.S4BLDG.Schedule)
-    sp = SignaturePattern(id="air_to_air_heat_recovery_signature_pattern"
-    )
+    sp = SignaturePattern(id="air_to_air_heat_recovery_signature_pattern")
 
     # buildingTemperature (SecondaryTemperatureIn)
     sp.add_triple(

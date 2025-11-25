@@ -50,6 +50,7 @@ class SupplyFlowJunctionSystem(core.System):
 
 
     """
+
     def __init__(self, airFlowRateBias=None, **kwargs):
         super().__init__(**kwargs)
         if airFlowRateBias is not None:
@@ -111,7 +112,8 @@ class SupplyFlowJunctionSystem(core.System):
             step_index (int, optional): Current simulation step index.
         """
         self.output["airFlowRateIn"].set(
-            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias, step_index
+            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias,
+            step_index,
         )
 
 
@@ -159,7 +161,7 @@ def brick_signature_pattern():
     node0 = Node(cls=core.namespace.BRICK.Air_Flow_Junction)  # flow junction
     node1 = Node(cls=core.namespace.BRICK.Damper)  # damper
     node2 = Node(cls=core.namespace.BRICK.AHU)  # air handling unit
-    
+
     sp = SignaturePattern(
         id="supply_flow_junction_signature_pattern_brick",
     )
@@ -172,6 +174,7 @@ def brick_signature_pattern():
     sp.add_input("airFlowRateOut", node1, "airFlowRate")
     sp.add_modeled_node(node0)
     return sp
+
 
 SupplyFlowJunctionSystem.add_signature_pattern(brick_signature_pattern())
 SupplyFlowJunctionSystem.add_signature_pattern(saref_signature_pattern())

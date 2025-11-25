@@ -1,27 +1,19 @@
 # Standard library imports
 import datetime
-from typing import Optional, List
+from typing import List
 
 # Third party imports
-import numpy as np
 import torch
 import torch.nn as nn
-from scipy.optimize import least_squares
 
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
     Exact,
-    MultiPath,
     Node,
-    Optional_,
     SignaturePattern,
-    SinglePath,
 )
-
-
-
 
 
 class PIDControllerSystem(core.System, nn.Module):
@@ -36,6 +28,7 @@ class PIDControllerSystem(core.System, nn.Module):
         Td: Derivative time constant
         isReverse: Boolean flag to indicate if the controller is reverse
     """
+
     def __init__(
         self,
         kp=0.001,
@@ -79,7 +72,9 @@ class PIDControllerSystem(core.System, nn.Module):
         end_time: List[datetime.datetime],
         step_size: int,
     ) -> None:
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
         batch_size = len(start_time)
         self.input["actualValue"].initialize(
             n_timesteps=max_timesteps,
@@ -160,8 +155,7 @@ def saref_signature_pattern():
     node2 = Node(cls=core.namespace.SAREF.Property)
     node3 = Node(cls=core.namespace.S4BLDG.Schedule)
     node4 = Node(cls=core.namespace.XSD.boolean)
-    sp = SignaturePattern(id="pid_controller_signature_pattern"
-    )
+    sp = SignaturePattern(id="pid_controller_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
     )

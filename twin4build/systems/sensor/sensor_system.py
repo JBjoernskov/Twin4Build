@@ -32,8 +32,7 @@ def get_flow_signature_pattern_after_coil_air_side():
     node6 = Node(cls=core.namespace.S4SYST.System)  # after waterside
     node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
     node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
-    sp = SignaturePattern(id="flow_signature_pattern_after_coil_air_side"
-    )
+    sp = SignaturePattern(id="flow_signature_pattern_after_coil_air_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -179,8 +178,7 @@ def get_space_temperature_signature_pattern():
     node0 = Node(cls=(core.namespace.SAREF.Sensor))
     node1 = Node(cls=(core.namespace.SAREF.Temperature))
     node2 = Node(cls=(core.namespace.S4BLDG.BuildingSpace))
-    sp = SignaturePattern(id="space_temperature_signature_pattern"
-    )
+    sp = SignaturePattern(id="space_temperature_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -197,8 +195,7 @@ def get_space_co2_signature_pattern():
     node0 = Node(cls=(core.namespace.SAREF.Sensor,))
     node1 = Node(cls=(core.namespace.SAREF.Co2,))
     node2 = Node(cls=(core.namespace.S4BLDG.BuildingSpace,))
-    sp = SignaturePattern(id="space_co2_signature_pattern"
-    )
+    sp = SignaturePattern(id="space_co2_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -220,8 +217,7 @@ def get_position_signature_pattern():
         )
     )
     node3 = Node(cls=(core.namespace.S4BLDG.Controller))
-    sp = SignaturePattern(id="position_signature_pattern"
-    )
+    sp = SignaturePattern(id="position_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -241,8 +237,7 @@ def get_temperature_before_air_to_air_supply_side():
     node1 = Node(cls=(core.namespace.SAREF.Temperature,))
     node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery,))  # AirToAirPrimary
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-    sp = SignaturePattern(id="temperature_before_air_to_air_supply_side"
-    )
+    sp = SignaturePattern(id="temperature_before_air_to_air_supply_side")
 
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -269,8 +264,7 @@ def get_temperature_before_air_to_air_exhaust_side():
 
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(id="temperature_before_air_to_air_exhaust_side"
-    )
+    sp = SignaturePattern(id="temperature_before_air_to_air_exhaust_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -295,8 +289,7 @@ def get_temperature_after_air_to_air_supply_side():
     node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(id="temperature_after_air_to_air_supply_side"
-    )
+    sp = SignaturePattern(id="temperature_after_air_to_air_supply_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -322,8 +315,7 @@ def get_temperature_after_air_to_air_exhaust_side():
 
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(id="temperature_after_air_to_air_exhaust_side"
-    )
+    sp = SignaturePattern(id="temperature_after_air_to_air_exhaust_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -702,14 +694,16 @@ class SensorSystem(core.System):
 
         if self.is_leaf:
             # The batch initialization args are calculated in the TimeSeriesInputSystem.initialize() method.
-            # They are stored in the physicalSystem object and reused here. 
+            # They are stored in the physicalSystem object and reused here.
             self.output["measuredValue"].initialize(
                 n_timesteps=self.time_series_input.n_timesteps,
                 batch_size=self.time_series_input.batch_size,
                 values=self.time_series_input.values,
             )
         else:
-            _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+            _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+                start_time, end_time, step_size
+            )
             batch_size = len(start_time)
             self.input["measuredValue"].initialize(
                 n_timesteps=max_timesteps,

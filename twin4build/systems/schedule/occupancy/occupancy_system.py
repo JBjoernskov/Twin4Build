@@ -264,11 +264,11 @@ def brick_signature_pattern():
     node1 = Node(cls=core.namespace.BRICK.Space)
     node2 = Node(cls=core.namespace.BRICK.CO2_Sensor)
     node3 = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
-    
+
     sp = SignaturePattern(
         id="occupancy_schedule_signature_pattern_brick",
     )
-    
+
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
     )

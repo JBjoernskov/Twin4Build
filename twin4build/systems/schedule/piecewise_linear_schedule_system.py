@@ -41,6 +41,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         - Configurable noise addition
         - Real-time schedule value calculation
     """
+
     def __init__(self, **kwargs) -> None:
         """Initialize the piecewise linear schedule system.
 

@@ -8,9 +8,6 @@ import twin4build.utils.types as tps
 from twin4build.translator.translator import Exact, MultiPath, Node, SignaturePattern
 
 
-
-
-
 class OnOffControllerSystem(core.System):
 
     def __init__(self, offValue=0, onValue=1, isReverse=False, **kwargs):
@@ -63,6 +60,7 @@ class OnOffControllerSystem(core.System):
             else:
                 self.output["inputSignal"].set(self.offValue, step_index)
 
+
 def saref_signature_pattern():
     """
     Get the SAREF signature pattern of the on-off controller component.
@@ -74,8 +72,7 @@ def saref_signature_pattern():
     node1 = Node(cls=(core.namespace.SAREF.Sensor))
     node2 = Node(cls=(core.namespace.SAREF.Property))
     node3 = Node(cls=(core.namespace.S4BLDG.Schedule))
-    sp = SignaturePattern(id="on_off_controller_signature_pattern"
-    )
+    sp = SignaturePattern(id="on_off_controller_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
     )
@@ -101,9 +98,8 @@ def brick_signature_pattern():
     node0 = Node(cls=core.namespace.BRICK.On_Off_Controller)
     node1 = Node(cls=core.namespace.BRICK.Sensor)
     node2 = Node(cls=core.namespace.BRICK.Setpoint)
-    
-    sp = SignaturePattern(id="on_off_controller_signature_pattern_brick"
-    )
+
+    sp = SignaturePattern(id="on_off_controller_signature_pattern_brick")
     sp.add_triple(
         Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
@@ -115,6 +111,7 @@ def brick_signature_pattern():
     sp.add_input("setpointValue", node2, "setpoint")
     sp.add_modeled_node(node0)
     return sp
+
 
 OnOffControllerSystem.add_signature_pattern(brick_signature_pattern())
 OnOffControllerSystem.add_signature_pattern(saref_signature_pattern())

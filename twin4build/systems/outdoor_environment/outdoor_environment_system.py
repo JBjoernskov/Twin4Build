@@ -113,7 +113,6 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         }
         self.useSpreadsheet = useSpreadsheet
         self.useDatabase = useDatabase
-        
 
         self.filename_outdoorTemperature = filename_outdoorTemperature
         self.datecolumn_outdoorTemperature = datecolumn_outdoorTemperature
@@ -239,13 +238,10 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 validated_for_simulator = False
                 validated_for_estimator = False
                 validated_for_optimizer = False
-            elif (
-                self.useDatabase
-                and (
-                    self.uuid_outdoorTemperature is None
-                    or self.uuid_globalIrradiation is None
-                    or self.uuid_outdoorCo2Concentration is None
-                )
+            elif self.useDatabase and (
+                self.uuid_outdoorTemperature is None
+                or self.uuid_globalIrradiation is None
+                or self.uuid_outdoorCo2Concentration is None
             ):
                 message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid parameters must be provided for all three data types if useDatabase is True to enable use of Simulator, Estimator, and Optimizer."
                 p(message, status="WARNING")
@@ -299,7 +295,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 dbconfig=self.dbconfig_outdoorTemperature,
             )
             time_series_temp.initialize(start_time, end_time, step_size)
-            
+
             time_series_irrad = TimeSeriesInputSystem(
                 id=f"time series input - globalIrradiation - {self.id}",
                 filename=self.filename_globalIrradiation,
@@ -311,7 +307,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 dbconfig=self.dbconfig_globalIrradiation,
             )
             time_series_irrad.initialize(start_time, end_time, step_size)
-            
+
             time_series_co2 = TimeSeriesInputSystem(
                 id=f"time series input - outdoorCo2Concentration - {self.id}",
                 filename=self.filename_outdoorCo2Concentration,
@@ -323,7 +319,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 dbconfig=self.dbconfig_outdoorCo2Concentration,
             )
             time_series_co2.initialize(start_time, end_time, step_size)
-            
+
             # Initialize outputs using the values from TimeSeriesInputSystem
             self.output["outdoorTemperature"].initialize(
                 time_series_temp.n_timesteps,
@@ -346,7 +342,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 raise ValueError(
                     "No data source provided. Set useSpreadsheet=True or useDatabase=True or provide df."
                 )
-            
+
             required_keys = [
                 "outdoorTemperature",
                 "globalIrradiation",
@@ -407,10 +403,10 @@ def saref_signature_pattern():
         SignaturePattern: The SAREF signature pattern of the outdoor environment component.
     """
     node0 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
-    sp = SignaturePattern(id="outdoor_environment_signature_pattern"
-    )
+    sp = SignaturePattern(id="outdoor_environment_signature_pattern")
     sp.add_modeled_node(node0)
     return sp
+
 
 def brick_signature_pattern():
     """
@@ -420,11 +416,10 @@ def brick_signature_pattern():
         SignaturePattern: The BRICK signature pattern of the outdoor environment component.
     """
     node0 = Node(cls=core.namespace.BRICK.Weather_Station)
-    node1 = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    node2 = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
-    node3 = Node(cls=core.namespace.BRICK.Outdoor_CO2_Concentration_Sensor)
-    sp = SignaturePattern(id="outdoor_environment_signature_pattern_brick"
-    )
+    # node1 = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
+    # node2 = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    # node3 = Node(cls=core.namespace.BRICK.Outdoor_CO2_Concentration_Sensor)
+    sp = SignaturePattern(id="outdoor_environment_signature_pattern_brick")
     sp.add_modeled_node(node0)
     return sp
 

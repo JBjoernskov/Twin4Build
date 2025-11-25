@@ -9,10 +9,8 @@ from typing import Optional
 import fmpy.fmi2 as fmi2
 import numpy as np
 from fmpy import extract, read_model_description
-
 from fmpy.fmi1 import FMICallException
 from fmpy.fmi2 import FMU2Slave
-
 
 # Local application imports
 import twin4build.core as core
@@ -150,7 +148,9 @@ class fmuSystem(core.System):
                 ), f'|CLASS: {self.__class__.__name__}|ID: {self.id}|: "{key}" is None.'
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
 
-    def _do_step(self, second_time=None, date_time=None, step_size=None, step_index=None):
+    def _do_step(
+        self, second_time=None, date_time=None, step_size=None, step_index=None
+    ):
         for key in self.FMUinputMap.keys():
             x = self.input_conversion[key](self.input[key].get(), step_size=step_size)
             FMUkey = self.FMUinputMap[key]

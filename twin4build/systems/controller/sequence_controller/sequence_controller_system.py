@@ -12,8 +12,6 @@ from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
 
 
-
-
 class SequenceControllerSystem(core.System):
     def __init__(self, **kwargs):
         self.base_components = kwargs["base_components"]
@@ -138,6 +136,8 @@ class SequenceControllerSystem(core.System):
             ),
             step_index,
         )
+
+
 def saref_signature_pattern():
     node0 = Node(cls=core.namespace.S4BLDG.SetpointController)
     node1 = Node(cls=core.namespace.S4BLDG.RulebasedController)
@@ -151,8 +151,7 @@ def saref_signature_pattern():
     node8 = Node(cls=core.namespace.SAREF.Sensor)
     node9 = Node(cls=core.namespace.SAREF.Property)
 
-    sp = SignaturePattern(id="sequence_controller_signature_pattern"
-    )
+    sp = SignaturePattern(id="sequence_controller_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
     )

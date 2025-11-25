@@ -71,6 +71,7 @@ class ValveTorchSystem(core.System, nn.Module):
        - The valve authority equation provides better control at low flow rates
        - The model assumes ideal valve behavior (no hysteresis or deadband)
     """
+
     def __init__(
         self,
         waterFlowRateMax: Optional[float] = 1000
@@ -147,7 +148,9 @@ class ValveTorchSystem(core.System, nn.Module):
     ) -> None:
         """Initialize the valve system."""
         # Initialize I/O
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
         batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
@@ -233,10 +236,8 @@ def brick_signature_pattern():
     node0 = Node(cls=core.namespace.BRICK.Valve)
     node1 = Node(cls=core.namespace.BRICK.Valve_Position_Setpoint)
     node2 = Node(cls=core.namespace.BRICK.Water_Flow_Sensor)
-    
-    sp = SignaturePattern(
-        id="valve_signature_pattern_brick"
-    )
+
+    sp = SignaturePattern(id="valve_signature_pattern_brick")
 
     sp.add_triple(
         Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)

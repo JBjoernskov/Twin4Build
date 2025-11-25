@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 import datetime
-from typing import Union, List
+from typing import List, Union
 
 # Third party imports
 # from twin4build.utils.plot.simulation_result import SimulationResult

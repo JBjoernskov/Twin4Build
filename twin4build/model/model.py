@@ -7,13 +7,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 # Third party imports
 import numpy as np
 import pandas as pd
-from prettytable import PrettyTable
 import torch
+from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
+
 
 @autoreset_print
 class Model:
@@ -624,9 +625,10 @@ class Model:
 
         if apply_translator:
             self._translator = core.Translator()
-            self._simulation_model = self._translator.translate(self._semantic_model, verbose=verbose)
+            self._simulation_model = self._translator.translate(
+                self._semantic_model, verbose=verbose
+            )
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
-            
 
         self._simulation_model.load(
             rdf_file=simulation_model_filename,

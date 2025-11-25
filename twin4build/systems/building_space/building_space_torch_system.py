@@ -24,7 +24,6 @@ from twin4build.translator.translator import (
 )
 
 
-
 class BuildingSpaceTorchSystem(core.System, nn.Module):
     r"""
     Combined building space model for both thermal (RC) and CO2 (mass balance) dynamics.
@@ -169,8 +168,6 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
             len(connection_point[0].connects_system_through) if connection_point else 0
         )
 
-
-        
         # We dont have to initialize the input and output of the combined system, because the thermal and mass systems will initialize them (copied in __init__)
         # # Initialize I/O for the combined system
         # for input in self.input.values():
@@ -185,8 +182,6 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         #     )
 
         # self.input["adjacentZoneTemperature"].initialize(n_timesteps=n_timesteps, batch_size=batch_size, size=n_adjacent_zones)
-
-        
 
         self.thermal.n_adjacent_zones = n_adjacent_zones
         self.thermal.n_boundary_temperature = n_boundary_temperature
@@ -238,7 +233,7 @@ def saref_signature_pattern_sensor():
     node6 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
     node7 = Node(cls=core.namespace.SAREF.Sensor)
     node8 = Node(cls=core.namespace.SAREF.Temperature)
-    node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    # node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
     sp = SignaturePattern(
         id="building_space_signature_pattern",
     )
@@ -285,6 +280,7 @@ def saref_signature_pattern_sensor():
     sp.add_modeled_node(node2)
     return sp
 
+
 def saref_signature_pattern():
     """
     Get the signature pattern of the FMU component.
@@ -306,7 +302,7 @@ def saref_signature_pattern():
             core.namespace.S4BLDG.Fan,
         )
     )
-    node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    # node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
 
     sp = SignaturePattern(
         id="building_space_signature_pattern",
@@ -356,7 +352,7 @@ def saref_signature_pattern():
     return sp
 
 
-def brick_signature_pattern(): # Fits to site A
+def brick_signature_pattern():  # Fits to site A
     """
     Get the BRICK-only signature pattern of the building space component.
 
@@ -365,15 +361,19 @@ def brick_signature_pattern(): # Fits to site A
     """
 
     node0 = Node(cls=core.namespace.BRICK.AHU)
-    node1 = Node(cls=core.namespace.BRICK.Damper)
+    # node1 = Node(cls=core.namespace.BRICK.Damper)
     # node2 = Node(cls=core.namespace.BRICK.Zone)  # Compatibility with both site A and B (A uses Zone and B uses HVAC_Zone)
-    node3 = Node(cls=(core.namespace.BRICK.Room, core.namespace.BRICK.Enclosed_space, core.namespace.BRICK.Open_space)) # TODO: 'space' should be 'Office', but the site b ttl file has a bug
+    node3 = Node(
+        cls=(
+            core.namespace.BRICK.Room,
+            core.namespace.BRICK.Enclosed_space,
+            core.namespace.BRICK.Open_space,
+        )
+    )  # TODO: 'space' should be 'Office', but the site b ttl file has a bug
     # node4 = Node(cls=core.namespace.BRICK.Air_Temperature_Sensor)
     # node5 = Node(cls=core.namespace.BRICK.CO2_Sensor)
     node4 = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
-    node6 = Node(
-        cls=core.namespace.BRICK.Weather_Station
-    )  # outdoor temperature sensor
+    node6 = Node(cls=core.namespace.BRICK.Weather_Station)  # outdoor temperature sensor
     # node7 = Node(cls=core.namespace.BRICK.AHU) # For site A only
     node8 = Node(cls=core.namespace.BRICK.Solar_Radiance_Sensor)
     node9 = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
@@ -433,11 +433,9 @@ def brick_signature_pattern(): # Fits to site A
     # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
     sp.add_modeled_node(node3)
 
-
-    sp_eq = SignaturePattern(
-        id="building_space_signature_pattern_brick_eq",
-    )
-
+    # sp_eq = SignaturePattern(
+    #     id="building_space_signature_pattern_brick_eq",
+    # )
 
     #######################
 
@@ -448,7 +446,7 @@ def brick_signature_pattern(): # Fits to site A
     #     Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
     # )
 
-    # # TODO: How to handle inverse predicates? 
+    # # TODO: How to handle inverse predicates?
     # diff = core.Diff()
     # diff.remove(node0, core.namespace.BRICK.feeds, node2)
     # diff.remove(node2, core.namespace.BRICK.isFedBy, node0)

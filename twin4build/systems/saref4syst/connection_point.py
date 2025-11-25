@@ -3,9 +3,11 @@ from __future__ import annotations
 # Standard library imports
 from typing import Optional, Union
 
+# Third party imports
+import torch
+
 # Local application imports
 import twin4build.core as core
-import torch
 
 
 class ConnectionPoint:
@@ -124,13 +126,17 @@ class ConnectionPoint:
         """
         return self._output_port_index
 
-    def set_input_port_index(self, connection: core.Connection, index: [int, torch.Tensor]) -> None:
+    def set_input_port_index(
+        self, connection: core.Connection, index: [int, torch.Tensor]
+    ) -> None:
         """
         Set the index of the input port.
         """
         self._input_port_index[connection] = index
 
-    def set_output_port_index(self, connection: core.Connection, index: [int, torch.Tensor]) -> None:
+    def set_output_port_index(
+        self, connection: core.Connection, index: [int, torch.Tensor]
+    ) -> None:
         """
         Set the index of the output port.
         """

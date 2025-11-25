@@ -11,7 +11,6 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
-from twin4build.utils.constants import Constants
 from twin4build.translator.translator import (
     Exact,
     MultiPath,
@@ -19,6 +18,7 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
+from twin4build.utils.constants import Constants
 
 
 class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
@@ -390,10 +390,14 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             step_size (int): Simulation step size.
             simulator (core.Simulator): Reference to the simulation model.
         """
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
         batch_size = len(start_time)
         self.setup_variable_inputs()
-        self.input["adjacentZoneTemperature"].initialize(n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_adjacent_zones)
+        self.input["adjacentZoneTemperature"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_adjacent_zones
+        )
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
@@ -412,11 +416,11 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             # print("CREATED STATE SPACE MODEL 1")
             # print("C_air: ", self.C_air.get().detach())
             self.ss_model.initialize(start_time, end_time, step_size)
-            
+
             # FIX: Set correct initial state for batch
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
-            
+
             self.INITIALIZED = True
         else:
             # Re-initialize the state space model
@@ -424,7 +428,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             # print("CREATED STATE SPACE MODEL 2")
             # print("C_air: ", self.C_air.get().detach())
             self.ss_model.initialize(start_time, end_time, step_size)
-            
+
             # FIX: Set correct initial state for batch
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
@@ -466,18 +470,18 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # Get batch size from indoorTemperature which should be initialized with correct batch size
         t_indoor = self.output["indoorTemperature"].get()
         batch_size = t_indoor.shape[0] if t_indoor.dim() > 0 else 1
-        
+
         x0 = torch.zeros((batch_size, self.n_states), dtype=torch.float64)
-        
+
         # Handle indoor temperature
         t_indoor_val = t_indoor
         if t_indoor_val.dim() == 0:
             t_indoor_val = t_indoor_val.expand(batch_size)
-            
+
         t_wall_val = self.output["wallTemperature"].get()
         if t_wall_val.dim() == 0:
             t_wall_val = t_wall_val.expand(batch_size)
-            
+
         x0[:, 0] = t_indoor_val
         x0[:, 1] = t_wall_val
 
@@ -491,7 +495,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 self.n_states - self.n_adjacent_zones - self.n_boundary_temperature
             ) + i  # Interior walls are after boundary wall
             x0[:, adj_wall_idx] = t_indoor_val
-            
+
         return x0
 
     def _create_state_space_model(self):
@@ -501,7 +505,6 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         This formulation directly constructs the state space matrices A and B
         using PyTorch tensors for gradient tracking.
         """
-        
 
         # Calculate number of states
         n_states = 2  # Base states: air and wall temperature
@@ -696,13 +699,13 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 self.input["numberOfPeople"].get(),
                 self.input["heatGain"].get(),
             ],
-            dim=1
+            dim=1,
         )
 
-        
-
         if self.n_boundary_temperature == 1:
-            u = torch.cat([u, self.input["boundaryTemperature"].get().unsqueeze(1)], dim=1)
+            u = torch.cat(
+                [u, self.input["boundaryTemperature"].get().unsqueeze(1)], dim=1
+            )
         # Add adjacent zone temperatures at the end
         if self.n_adjacent_zones > 0:
             u = torch.cat([u, self.input["adjacentZoneTemperature"].get()], dim=1)
@@ -716,14 +719,12 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # Get the output vector
         y = self.ss_model.output["y"].get()
 
-
         # print(self.output["indoorTemperature"].history.size)
         # print(self.output["wallTemperature"].history.size)
 
         # Update individual outputs from the output vector
-        self.output["indoorTemperature"].set(y[:,0], step_index)
-        self.output["wallTemperature"].set(y[:,1], step_index)
-
+        self.output["indoorTemperature"].set(y[:, 0], step_index)
+        self.output["wallTemperature"].set(y[:, 1], step_index)
 
 
 def brick_signature_pattern():
