@@ -147,14 +147,27 @@ Use Google-style docstrings and type hints:
         """
         pass
 
-For class properties, use the @property decorator:
+For public class properties (acessed from outside the class), use the @property decorator:
 
 .. code-block:: python
 
     class MyClass:
         @property
-        def property_name(self) -> float:
+        def property_name(self) -> Any:
             """Description of the property."""
+            return self._property_name
+    
+Avoid defining setter methods for public class properties unless necessary.
+This way, we avoid accidently changing the value of a property.
+If necessary, define a setter method for the property.
+
+.. code-block:: python
+
+    class MyClass:
+        @property_name.setter
+        def property_name(self, value: Any) -> None:
+            """Description of the property."""
+            self._property_name = value
 
 Development Workflow
 -------------------
