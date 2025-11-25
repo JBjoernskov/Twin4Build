@@ -45,6 +45,15 @@ class TestExamples(unittest.TestCase):
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
 
+    def test_bems_lecture_example(self):
+        notebook_path = os.path.join(
+            uppath(os.path.abspath(__file__), 2),
+            "examples",
+            "bems_example_lecture.ipynb",
+        )
+        result = test_notebook(notebook_path)
+        self.assertTrue(result, f"Test failed for {notebook_path}")
+
 
 if __name__ == "__main__":
     unittest.main()
