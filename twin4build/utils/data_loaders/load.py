@@ -641,7 +641,9 @@ def load_from_database(
             print("No rows returned from query")
             # Debug: Check what sensor IDs exist in the database
             try:
-                cursor.execute(f"SELECT DISTINCT {id_column} FROM {full_table_name} ORDER BY {id_column}")
+                cursor.execute(
+                    f"SELECT DISTINCT {id_column} FROM {full_table_name} ORDER BY {id_column}"
+                )
                 existing_sensors = cursor.fetchall()
                 print(
                     f"Available sensor IDs in database: {[row[id_column] for row in existing_sensors]}"
@@ -666,7 +668,7 @@ def load_from_database(
     df = pd.DataFrame(rows)
 
     # Rename columns to standard names for sample_from_df
-    df = df.rename(columns={time_column: 'date_time', value_column: 'value'})
+    df = df.rename(columns={time_column: "date_time", value_column: "value"})
 
     # Use the existing sample_from_df function for consistent processing
     # Pass valuecolumn to match the behavior of load_from_spreadsheet
@@ -683,6 +685,8 @@ def load_from_database(
         tz=tz,
         preserve_order=preserve_order,
     )
+
+    df = df["value"]
 
     # Cache the result
     if cache:
