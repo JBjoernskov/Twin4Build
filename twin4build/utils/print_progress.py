@@ -97,7 +97,9 @@ class PrintProgress:
         self._display_thread = None
         self._scroll_step = 4  # Number of lines to scroll per tick
         # Curses-related attributes
-        self._use_curses = CURSES_AVAILABLE and not self.is_interactive()
+        # Disable curses in CI environments (GitHub Actions, Jenkins, etc.)
+        is_ci = os.getenv('CI') or os.getenv('GITHUB_ACTIONS') or os.getenv('JENKINS_HOME') or os.getenv('TRAVIS')
+        self._use_curses = CURSES_AVAILABLE and not self.is_interactive() and not is_ci
         self._curses_mode = False
         self._stdscr = None
         self._curses_lines = []  # Store lines for curses display
