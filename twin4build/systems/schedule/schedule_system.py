@@ -3,6 +3,8 @@ import datetime
 import random
 from random import randrange
 from typing import Optional
+
+# Third party imports
 import numpy as np
 
 # Local application imports
@@ -40,6 +42,7 @@ class ScheduleSystem(core.System):
         dbconfig: The configuration of the database to read the schedule value.
 
     """
+
     def __init__(
         self,
         weekDayRulesetDict: dict = None,
@@ -241,7 +244,6 @@ class ScheduleSystem(core.System):
             )
             time_series_input.initialize(start_time, end_time, step_size)
 
-            
             # The batch initialization args are calculated in the time_series_input.initialize() method.
             # They are stored in the time_series_input object and reused here.
             self.output["scheduleValue"].initialize(
@@ -285,19 +287,34 @@ class ScheduleSystem(core.System):
                         if key not in rulesetDict:
                             rulesetDict[key] = [0] * len_key
 
-
-            second_time_steps, date_time_steps, max_timesteps, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+            second_time_steps, date_time_steps, max_timesteps, n_timesteps = (
+                core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+            )
             values = np.empty((len(start_time), max_timesteps))
-            values.fill(np.nan)
-            for batch_index, (date_time_steps_, n_timesteps_) in enumerate(zip(date_time_steps, n_timesteps)):
-                values[batch_index,:n_timesteps_] = [self.get_schedule_value(date_time) for date_time in date_time_steps_[:n_timesteps_]]
-            
+            values.fill(
+                0
+            )  # Before we used nan, but this caused issues with the optimizer when the optimizer tried to compute the gradient of the loss function.
+            for batch_index, (date_time_steps_, n_timesteps_) in enumerate(
+                zip(date_time_steps, n_timesteps)
+            ):
+                # OLD: Only compute schedule values for actual timesteps
+                values[batch_index, :n_timesteps_] = [
+                    self.get_schedule_value(date_time)
+                    for date_time in date_time_steps_[:n_timesteps_]
+                ]
+                values[batch_index, n_timesteps_:] = values[
+                    batch_index, n_timesteps_ - 1
+                ]
+                # NEW: Compute schedule values for ALL timesteps (including extended dates for shorter periods)
+                # values[batch_index,:] = [self.get_schedule_value(date_time) for date_time in date_time_steps_]
+
+            assert not np.isnan(values).any(), "Values contain NaN."
 
             self.output["scheduleValue"].initialize(
-                    max_timesteps,
-                    batch_size=len(start_time),
-                    values=values,
-                )
+                max_timesteps,
+                batch_size=len(start_time),
+                values=values,
+            )
 
     def get_schedule_value(self, date_time):
         if (
@@ -380,8 +397,7 @@ def saref_signature_pattern():
         SignaturePattern: The SAREF signature pattern of the schedule component.
     """
     node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
-    sp = SignaturePattern(id="schedule_signature_pattern"
-    )
+    sp = SignaturePattern(id="schedule_signature_pattern")
     sp.add_modeled_node(node0)
     return sp
 
@@ -394,8 +410,7 @@ def brick_signature_pattern():
         SignaturePattern: The BRICK signature pattern of the schedule component.
     """
     node0 = Node(cls=core.namespace.BRICK.Schedule)
-    sp = SignaturePattern(id="schedule_signature_pattern_brick"
-    )
+    sp = SignaturePattern(id="schedule_signature_pattern_brick")
     sp.add_modeled_node(node0)
     return sp
 

@@ -4,13 +4,17 @@ import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.utils.data_loaders.load import load_from_database, load_from_spreadsheet, sample_from_df
+from twin4build.utils.data_loaders.load import (
+    load_from_database,
+    load_from_spreadsheet,
+    sample_from_df,
+)
 from twin4build.utils.get_main_dir import get_main_dir
 
 
@@ -112,10 +116,6 @@ class TimeSeriesInputSystem(core.System):
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
             "database": ["uuid", "dbconfig"],
         }
-
-
-
-
 
     @property
     def config(self):
@@ -274,18 +274,27 @@ class TimeSeriesInputSystem(core.System):
             end_time (datetime.datetime): End time for the simulation.
             step_size (int): Step size for the simulation.
         """
-        # 
-        if len(self._cached_initialize_arguments)>0 and len(self._cached_initialize_arguments) == len(start_time): # Only check first element of tuple for length as all elements are the same length
-            is_cached = all(start_time_==c[0] and end_time_==c[1] and step_size_==c[2] for start_time_, end_time_, step_size_, c in zip(start_time, end_time, step_size, self._cached_initialize_arguments))
+        #
+        if len(self._cached_initialize_arguments) > 0 and len(
+            self._cached_initialize_arguments
+        ) == len(
+            start_time
+        ):  # Only check first element of tuple for length as all elements are the same length
+            is_cached = all(
+                start_time_ == c[0] and end_time_ == c[1] and step_size_ == c[2]
+                for start_time_, end_time_, step_size_, c in zip(
+                    start_time, end_time, step_size, self._cached_initialize_arguments
+                )
+            )
         else:
             is_cached = False
 
-
-
-        if is_cached==False:
+        if is_cached == False:
             self.df = []
             self._cached_initialize_arguments = []
-            for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
+            for start_time_, end_time_, step_size_ in zip(
+                start_time, end_time, step_size
+            ):
                 # if (start_time_, end_time_, step_size_) not in self._cached_initialize_arguments:
 
                 if self._df_init is None:
@@ -319,27 +328,44 @@ class TimeSeriesInputSystem(core.System):
                         start_time=start_time_,
                         end_time=end_time_,
                     )
-                    
+                    valuename = df.columns[
+                        0
+                    ]  # The value column is the first column as we set index to datecolumn
+                    df = df[valuename]
 
-                self._cached_initialize_arguments.append((start_time_, end_time_, step_size_))
+                self._cached_initialize_arguments.append(
+                    (start_time_, end_time_, step_size_)
+                )
                 self.df.append(df)
 
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
         values = np.empty((len(self.df), max_timesteps))
-        values.fill(np.nan)
+        values.fill(
+            0
+        )  # Before we used nan, but this caused issues with the optimizer when the optimizer tried to compute the gradient of the loss function.
         for batch_index, df in enumerate(self.df):
             size = len(df.index)
-            values[batch_index,:size] = df.values
+            # OLD: Only fill actual data, leave rest as 0
+            # values[batch_index,:size] = df.values
+
+            # NEW: Fill actual data, then forward-fill (repeat last value) for extended timesteps
+            values[batch_index, :size] = df.values
+            if size < max_timesteps:
+                # Forward-fill: repeat the last value for extended timesteps
+                values[batch_index, size:] = df.values[-1]
+
+        assert not np.isnan(values).any(), "Values contain NaN."
 
         self.n_timesteps = max_timesteps
         self.batch_size = len(start_time)
         self.values = values
         self.output["value"].initialize(
-                max_timesteps,
-                batch_size=len(start_time),
-                values=self.values,
-            )
-
+            max_timesteps,
+            batch_size=len(start_time),
+            values=self.values,
+        )
 
     def do_step(
         self,
