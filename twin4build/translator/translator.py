@@ -1070,8 +1070,8 @@ class Translator:
                         or id_ not in class_to_instance_map[component_cls]
                     ):  # Check if the instance is already created. For components with Multiple matches, the model might already have been created.
                         base_kwargs.update(extension_kwargs)
-
-                        PRINTPROGRESS(f"Instantiating component: {base_kwargs["id"]}")
+                        s = base_kwargs["id"]
+                        PRINTPROGRESS(f"Instantiating component: {s}")
                         component = component_cls(**base_kwargs)
 
                         if component_cls not in class_to_instance_map:
