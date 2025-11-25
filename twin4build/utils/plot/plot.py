@@ -55,8 +55,8 @@ Mathematical Formulation:
 import itertools
 import math
 import shutil
-from itertools import cycle 
 from collections import namedtuple
+from itertools import cycle
 
 # Third party imports
 import matplotlib.dates as mdates
@@ -79,13 +79,13 @@ import twin4build.utils.types as tps
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.plot.align_y_axes import alignYaxes
 
-
 # Named tuple for plot component specifications
+
 
 class Entry:
     """
     A simple class for specifying plot data with named parameters (matplotlib-like API).
-    
+
     Args:
         data: Data array/tensor to plot (required)
         label: Display label for the plot line (required)
@@ -93,7 +93,7 @@ class Entry:
         fmt: Plot format string combining linestyle and marker (None for automatic style selection)
         axis: Which y-axis to plot on (1, 2, or 3, defaults to 1)
         linewidth: Plot line width (None for automatic width selection)
-        
+
         # Deprecated parameters (for backward compatibility)
         component: Deprecated, use direct data instead
         port: Deprecated, use direct data instead
@@ -101,41 +101,73 @@ class Entry:
         input_idx: Deprecated, use direct data instead
         attribute: Deprecated, use label instead
         linestyle: Deprecated, use fmt instead
-    
+
     Examples:
         # Simple data plot on axis 1
         Entry(data=temperature_array, label="Room Temperature")
-        
+
         # Data plot with custom styling on axis 2
-        Entry(data=power_array, label="Power Consumption", 
+        Entry(data=power_array, label="Power Consumption",
               color="red", fmt="--", axis=2)
-        
+
         # Data plot on axis 3 with markers
-        Entry(data=flow_array, label="Flow Rate", 
+        Entry(data=flow_array, label="Flow Rate",
               color="blue", fmt="o-", axis=3)
     """
-    def __init__(self, data=None, fmt=None, axis=1,
-                 # Deprecated parameters for backward compatibility
-                 component=None, port=None, io_type=None, input_idx=None, attribute=None, linestyle=None, **kwargs):
-        
+
+    def __init__(
+        self,
+        data=None,
+        fmt=None,
+        axis=1,
+        # Deprecated parameters for backward compatibility
+        component=None,
+        port=None,
+        io_type=None,
+        input_idx=None,
+        attribute=None,
+        linestyle=None,
+        **kwargs,
+    ):
+
         # Handle deprecated parameters
-        if component is not None or port is not None or io_type is not None or input_idx is not None:
+        if (
+            component is not None
+            or port is not None
+            or io_type is not None
+            or input_idx is not None
+        ):
+            # Standard library imports
             import warnings
-            warnings.warn("Component-based plotting is deprecated. Use direct data arrays instead.", 
-                         DeprecationWarning, stacklevel=2)
-        
-        if attribute is not None and label is None:
+
+            warnings.warn(
+                "Component-based plotting is deprecated. Use direct data arrays instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        if attribute is not None and kwargs.get("label") is None:
+            # Standard library imports
             import warnings
-            warnings.warn("The 'attribute' parameter is deprecated. Use 'label' instead.", 
-                         DeprecationWarning, stacklevel=2)
-            label = attribute
-        
+
+            warnings.warn(
+                "The 'attribute' parameter is deprecated. Use 'label' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            kwargs["label"] = attribute
+
         if linestyle is not None and fmt is None:
+            # Standard library imports
             import warnings
-            warnings.warn("The 'linestyle' parameter is deprecated. Use 'fmt' instead.", 
-                         DeprecationWarning, stacklevel=2)
+
+            warnings.warn(
+                "The 'linestyle' parameter is deprecated. Use 'fmt' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             fmt = linestyle
-        
+
         # Convert data to numpy array if necessary
         if isinstance(data, (list, pd.Series)):
             data = np.array(data)
@@ -151,11 +183,11 @@ class Entry:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-        
         # Validation
         if data is None:
             raise ValueError("'data' is required")
         assert "label" in kwargs, "'label' is required"
+
 
 class Colors:
     colors = sns.color_palette("deep")
@@ -298,50 +330,54 @@ def bar_plot_line_format(label, evaluation_metric):
 def get_data(t):
     """
     Extract data, label, color, and format from an Entry or legacy tuple.
-    
+
     Args:
         t: Entry object or legacy tuple
-        
+
     Returns:
-        tuple: (data, label, color, fmt, linewidth, alpha)
-    """    
+        tuple: (data, fmt, axis, kwargs)
+    """
     # Handle Entry class (and Option for backward compatibility)
     if isinstance(t, Entry):
         data = t.data
         fmt = t.fmt
         axis = t.axis
         kwargs = t.kwargs
-        return data, fmt, axis, kwargs
-    
+
     # Handle legacy tuple formats for backward compatibility
     elif isinstance(t, tuple):
+        # Standard library imports
         import warnings
-        warnings.warn("Using tuples for plot data is deprecated. Use tb.plot.Entry() instead.", 
-                     DeprecationWarning, stacklevel=3)
-        
+
+        warnings.warn(
+            "Using tuples for plot data is deprecated. Use tb.plot.Entry() instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
         if len(t) == 2:
             # Direct data case
             data, label = t
-            if isinstance(data, (list, pd.Series)):
-                data = np.array(data)
-            elif isinstance(data, torch.Tensor):
-                data = data.detach().cpu().numpy()
-
-            assert isinstance(
-                data, np.ndarray
-            ), f"First element must be data array, got {type(data)}"
-            assert isinstance(
-                label, str
-            ), f"Second element must be a string label, got {type(label)}"
+            kwargs = {"label": label}
+            fmt = None
+            axis = None
         else:
             # For backward compatibility, we should not raise an error here
             # Instead, return None to indicate this needs component-based processing
-            data, fmt, axis, kwargs = None, None, None, None
+            return None, None, None, None
     else:
-        raise ValueError(f"Wrong input type. Got {type(t)}, expected Entry object or tuple")
+        raise ValueError(
+            f"Wrong input type. Got {type(t)}, expected Entry object or tuple"
+        )
 
-    
-        
+    if isinstance(data, (list, pd.Series)):
+        data = np.array(data)
+    elif isinstance(data, torch.Tensor):
+        data = data.detach().cpu().numpy()
+
+    if isinstance(data, np.ndarray) and data.ndim == 1:
+        data = data.reshape(1, -1)
+
     return data, fmt, axis, kwargs
 
 
@@ -349,21 +385,26 @@ def get_data_legacy(simulator, t):
     """
     Legacy function to extract data from component-based tuples.
     This maintains full backward compatibility.
-    
+
     Args:
         simulator: The simulator object containing the model and time steps
         t: Legacy tuple with component information
-        
+
     Returns:
         tuple: (data, label)
     """
-    
+
     # Handle legacy tuple formats for backward compatibility
     if isinstance(t, tuple):
+        # Standard library imports
         import warnings
-        warnings.warn("Using component-based tuples is deprecated. Use direct data arrays instead.", 
-                     DeprecationWarning, stacklevel=3)
-        
+
+        warnings.warn(
+            "Using component-based tuples is deprecated. Use direct data arrays instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
         if len(t) >= 3:
             if len(t) == 4:
                 component, attribute, io_type, input_idx = t
@@ -382,7 +423,9 @@ def get_data_legacy(simulator, t):
             m = f"Wrong input output type specification. Got {t}, expected (component, attribute) or (component, attribute, 'input' or 'output')"
             raise (Exception(m))
     else:
-        raise ValueError(f"Expected tuple for legacy component processing, got {type(t)}")
+        raise ValueError(
+            f"Expected tuple for legacy component processing, got {type(t)}"
+        )
 
     # Handle component processing
     if isinstance(component, core.System):
@@ -404,38 +447,47 @@ def get_data_legacy(simulator, t):
     # Validate vector/scalar types based on input_idx
     if input_idx is not None:
         if io_type == "input":
-            assert isinstance(component.input[attribute], tps.Vector), "Attribute must be a vector when input_idx is provided"
+            assert isinstance(
+                component.input[attribute], tps.Vector
+            ), "Attribute must be a vector when input_idx is provided"
         else:
-            assert isinstance(component.output[attribute], tps.Vector), "Attribute must be a vector when input_idx is provided"
+            assert isinstance(
+                component.output[attribute], tps.Vector
+            ), "Attribute must be a vector when input_idx is provided"
     else:
         if io_type == "input":
-            assert isinstance(component.input[attribute], tps.Scalar), "Attribute must be a scalar when input_idx is not provided"
+            assert isinstance(
+                component.input[attribute], tps.Scalar
+            ), "Attribute must be a scalar when input_idx is not provided"
         else:
-            assert isinstance(component.output[attribute], tps.Scalar), "Attribute must be a scalar when input_idx is not provided"
+            assert isinstance(
+                component.output[attribute], tps.Scalar
+            ), "Attribute must be a scalar when input_idx is not provided"
 
     # Extract data
     if io_type == "input":
         data = component.input[attribute].history.detach()
         if input_idx is not None:
-            data = data[:,input_idx]
+            data = data[:, input_idx]
             display_label = f"{attribute}[{input_idx}]"
         else:
             display_label = attribute
     elif io_type == "output":
         data = component.output[attribute].history.detach()
         if input_idx is not None:
-            data = data[:,input_idx]
+            data = data[:, input_idx]
             display_label = f"{attribute}[{input_idx}]"
         else:
             display_label = attribute
     else:
         m = f"Wrong input output type specification. Got {io_type}, expected 'input' or 'output'"
         raise (Exception(m))
-    
+
     # Use attribute name as label for legacy tuples
     final_label = display_label
-        
+
     return data, final_label
+
 
 def filter_nans(time, data):
     valid_mask = ~pd.isna(time)
@@ -485,19 +537,34 @@ def plot(
     assert time is not None, "time parameter is required"
     assert entries is not None, "entries parameter is required"
 
+    # Normalize time to list of arrays (batch mode) if it's a single time series
+    if isinstance(time, (pd.Index, pd.Series)):
+        time = [time]
+    elif isinstance(time, np.ndarray):
+        if time.ndim == 1 and (
+            np.issubdtype(time.dtype, np.number)
+            or np.issubdtype(time.dtype, np.datetime64)
+        ):
+            time = [time]
+    elif isinstance(time, list):
+        if len(time) > 0 and not isinstance(
+            time[0], (list, np.ndarray, pd.Series, pd.Index)
+        ):
+            time = [time]
+
     if isinstance(entries, Entry):
         entries = [entries]
-    
+
     # Separate entries by axis
     components_1axis = [e for e in entries if e.axis == 1 or e.axis is None]
     components_2axis = [e for e in entries if e.axis == 2]
     components_3axis = [e for e in entries if e.axis == 3]
-    
+
     # Ensure we have at least some entries on axis 1
     if not components_1axis:
         raise ValueError("At least one entry must be specified for axis=1")
     load_params()
-    fig, ax1 = plt.subplots(figsize=(12, 6)) # 12, 6
+    fig, ax1 = plt.subplots(figsize=(12, 6))  # 12, 6
     if title:
         fig.suptitle(title, fontsize=20)
     # ax1.ticklabel_format(useOffset=False, style='plain')
@@ -514,7 +581,7 @@ def plot(
     roundto_list = [roundto_1axis]
     yoffset_list = [yoffset_1axis]
     graphs = {}  # Will store mapping from legend entries to plot lines
-    colors = cycle(Colors.colors.copy())
+    colors = [cycle(Colors.colors.copy()) for _ in range(len(time))]
 
     if len(components_1axis) > 1:
         assert (
@@ -529,15 +596,19 @@ def plot(
         data, fmt, axis, kwargs = get_data(t)
         if data is None:
             # This should not happen in the new API since we only accept Entry objects or 2-tuples
-            raise ValueError("Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays.")
+            raise ValueError(
+                "Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays."
+            )
         fmt = fmt if fmt is not None else "-"
-        assert data.shape[0] == len(time), "data and time must have the same number of rows (batch size)"
+        assert data.shape[0] == len(
+            time
+        ), "data and time must have the same number of rows (batch size)"
         for i in range(data.shape[0]):
             kwargs_copy = kwargs.copy()
-            color = kwargs.get("color", next(colors))
+            color = kwargs.get("color", next(colors[i]))
             kwargs_copy["color"] = color
             kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
-            t, d = filter_nans(time[i], data[i,:]) 
+            t, d = filter_nans(time[i], data[i, :])
             ax1.plot(t, d, fmt, **kwargs_copy)
 
     ax1.set_xlabel("Time")
@@ -547,8 +618,7 @@ def plot(
     if ylim_1axis:
         ax1.set_ylim(ylim_1axis)
 
-
-    colors = cycle(Colors.colors.copy())
+    # colors = cycle(Colors.colors.copy())
     # Plot components on the second axis if provided
     if components_2axis:
         if len(components_2axis) > 1:
@@ -568,24 +638,27 @@ def plot(
         for t in components_2axis:
             data, fmt, axis, kwargs = get_data(t)
             if data is None:
-                raise ValueError("Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays.")
+                raise ValueError(
+                    "Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays."
+                )
             fmt = fmt if fmt is not None else "-"
-            assert data.shape[0] == len(time), "data and time must have the same number of rows (batch size)"
+            assert data.shape[0] == len(
+                time
+            ), "data and time must have the same number of rows (batch size)"
             for i in range(data.shape[0]):
-                t, d = filter_nans(time[i], data[i,:])
+                t, d = filter_nans(time[i], data[i, :])
                 kwargs_copy = kwargs.copy()
-                color = kwargs.get("color", next(colors))
+                color = kwargs.get("color", next(colors[i]))
                 kwargs_copy["color"] = color
                 kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
-                ax2.plot(t, d, fmt, **kwargs_copy)   
+                ax2.plot(t, d, fmt, **kwargs_copy)
 
         if ylabel_2axis:
             ax2.set_ylabel(ylabel_2axis)
         if ylim_2axis:
             ax2.set_ylim(ylim_2axis)
 
-
-    colors = cycle(Colors.colors.copy())
+    # colors = cycle(Colors.colors.copy())
     # Plot components on the third axis if provided
     if components_3axis:
         if len(components_3axis) > 1:
@@ -606,13 +679,17 @@ def plot(
         for t in components_3axis:
             data, fmt, axis, kwargs = get_data(t)
             if data is None:
-                raise ValueError("Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays.")
+                raise ValueError(
+                    "Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays."
+                )
             fmt = fmt if fmt is not None else "-"
-            assert data.shape[0] == len(time), "data and time must have the same number of rows (batch size)"
+            assert data.shape[0] == len(
+                time
+            ), "data and time must have the same number of rows (batch size)"
             for i in range(data.shape[0]):
-                t, d = filter_nans(time[i], data[i,:])
+                t, d = filter_nans(time[i], data[i, :])
                 kwargs_copy = kwargs.copy()
-                color = kwargs.get("color", next(colors))
+                color = kwargs.get("color", next(colors[i]))
                 kwargs_copy["color"] = color
                 kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
                 ax3.plot(t, d, fmt, **kwargs_copy)
@@ -633,7 +710,9 @@ def plot(
         lines.extend(ax_lines)
         labels.extend(ax_labels)
 
-    legend = fig.legend(lines, labels, ncol=3, bbox_to_anchor=(0.5,0.95), loc="upper center") # , 
+    legend = fig.legend(
+        lines, labels, ncol=3, bbox_to_anchor=(0.5, 0.95), loc="upper center"
+    )  # ,
 
     # Set up pick event and create mapping between legend entries and plot lines
     for legend_line, plot_line in zip(legend.get_lines(), lines):
@@ -756,19 +835,24 @@ def plot_component(
 ):
     """
     Deprecated: Use plot() with time parameter and Entry objects instead.
-    
+
     This function is maintained for backward compatibility but will be removed in a future version.
     """
+    # Standard library imports
     import warnings
-    warnings.warn("plot_component() is deprecated. Use plot(time, entries) instead.", 
-                 DeprecationWarning, stacklevel=2)
-    
+
+    warnings.warn(
+        "plot_component() is deprecated. Use plot(time, entries) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     # Extract time from simulator
-    time = simulator.date_time_steps    
+    time = simulator.date_time_steps
 
     # Convert old-style components to Entry objects
     entries = []
-    
+
     # Add axis 1 components
     for comp in components_1axis:
         if isinstance(comp, Entry):
@@ -782,7 +866,7 @@ def plot_component(
                 # Component-based tuple - extract data using legacy function
                 data, label = get_data_legacy(simulator, comp)
                 entries.append(Entry(data=data, label=label, axis=1))
-    
+
     # Add axis 2 components
     if components_2axis:
         for comp in components_2axis:
@@ -796,7 +880,7 @@ def plot_component(
                     # Component-based tuple - extract data using legacy function
                     data, label = get_data_legacy(simulator, comp)
                     entries.append(Entry(data=data, label=label, axis=2))
-    
+
     # Add axis 3 components
     if components_3axis:
         for comp in components_3axis:
@@ -810,7 +894,7 @@ def plot_component(
                     # Component-based tuple - extract data using legacy function
                     data, label = get_data_legacy(simulator, comp)
                     entries.append(Entry(data=data, label=label, axis=3))
-    
+
     # Call the new plot function
     return plot(
         time=time,
