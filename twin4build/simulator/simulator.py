@@ -9,10 +9,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import torch
-
-# import george
-# from george import kernels
-
 from fmpy.fmi1 import FMICallException
 from tqdm import tqdm
 
@@ -21,6 +17,9 @@ import twin4build.core as core
 import twin4build.systems as systems
 from twin4build.utils.deprecation import deprecate_args
 from twin4build.utils.validate_period import validate_period
+
+# import george
+# from george import kernels
 
 
 class Simulator:
@@ -183,7 +182,13 @@ class Simulator:
         self.model = model
 
     @staticmethod
-    def _do_component_timestep(component: core.System, second_time: float, date_time: datetime.datetime, step_size: int, step_index: int) -> None:
+    def _do_component_timestep(
+        component: core.System,
+        second_time: float,
+        date_time: datetime.datetime,
+        step_size: int,
+        step_index: int,
+    ) -> None:
         """
         Perform a single timestep for a component.
 
@@ -193,27 +198,33 @@ class Simulator:
         Raises:
             AssertionError: If any input value is NaN.
         """
-        # print("-"*100)
-        # print(f"Doing step for component {component.id}")
         # Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connects_at:
             for connection in connection_point.connects_system_through:
                 connected_component = connection.connects_system
                 input_port_index = connection_point.input_port_index[connection]
                 output_port_index = connection_point.output_port_index[connection]
-                # print(f"Setting input {connection_point.inputPort} of component {component.id} to {connected_component.output[connection.outputPort].get(index=output_port_index)}")
                 component.input[connection_point.inputPort].set(
-                    connected_component.output[connection.outputPort].get(index=output_port_index),
+                    connected_component.output[connection.outputPort].get(
+                        index=output_port_index
+                    ),
                     step_index=step_index,
                     index=input_port_index,
                 )
 
+                # Actually, we HAVE to check for nans because it breaks jacobian calculation in optimizer will include nans which breaks scipy solver.
+                if torch.any(
+                    torch.isnan(component.input[connection_point.inputPort].get())
+                ):
+                    print(
+                        f"Component input: {component.input[connection_point.inputPort].get()}"
+                    )
+                    raise ValueError(
+                        f"Input {connection_point.inputPort} of component {component.id} is NaN"
+                    )
 
-                # Commenting this out for batch simulations where we pad with nans if simulation periods doesnt have the same length/number of time steps. 
-                # if torch.any(torch.isnan(component.input[connection_point.inputPort].get())):
-                #     raise ValueError(
-                #         f"Input {connection_point.inputPort} of component {component.id} is NaN"
-                #     )
+                # Removing the nan testing: The new batch simulations where we pad with nans if simulation periods doesnt have the same length/number of time steps.
+                # Therefore, nans are expected and not an error.
 
         component.do_step(
             second_time,
@@ -223,7 +234,13 @@ class Simulator:
         )
 
     @staticmethod
-    def _do_system_time_step(model: core.Model, second_time: List[float], date_time: List[datetime.datetime], step_size: List[int], step_index: int) -> None:
+    def _do_system_time_step(
+        model: core.Model,
+        second_time: List[float],
+        date_time: List[datetime.datetime],
+        step_size: List[int],
+        step_index: int,
+    ) -> None:
         """
         Execute a time step for all components in the model.
 
@@ -243,12 +260,15 @@ class Simulator:
         """
         for component_group in model.execution_order:
             for component in component_group:
-                Simulator._do_component_timestep(component, second_time, date_time, step_size, step_index)
-                
+                Simulator._do_component_timestep(
+                    component, second_time, date_time, step_size, step_index
+                )
 
     @staticmethod
     def get_simulation_timesteps(
-        start_time: Union[List[datetime.datetime], datetime.datetime], end_time: Union[List[datetime.datetime], datetime.datetime], step_size: Union[List[int], int]
+        start_time: Union[List[datetime.datetime], datetime.datetime],
+        end_time: Union[List[datetime.datetime], datetime.datetime],
+        step_size: Union[List[int], int],
     ) -> Tuple[List[List[float]], List[List[datetime.datetime]]]:
         """
         Generate simulation timesteps between start and end times.
@@ -278,23 +298,38 @@ class Simulator:
         for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
             n_steps = math.floor((end_time_ - start_time_).total_seconds() / step_size_)
             second_time_steps.append([i * step_size_ for i in range(n_steps)])
-            date_time_steps.append([start_time_ + datetime.timedelta(seconds=i * step_size_) for i in range(n_steps)])
+            date_time_steps.append(
+                [
+                    start_time_ + datetime.timedelta(seconds=i * step_size_)
+                    for i in range(n_steps)
+                ]
+            )
             n_timesteps.append(n_steps)
-        max_timesteps = max([len(second_time_steps_) for second_time_steps_ in second_time_steps])
-
-        # Pad the second_time_steps and date_time_steps lists with np.nan to make them all the same length
-        second_time_steps = [second_time_steps_ + [np.nan] * (max_timesteps - len(second_time_steps_)) for second_time_steps_ in second_time_steps]
-        date_time_steps = [date_time_steps_ + [np.nan] * (max_timesteps - len(date_time_steps_)) for date_time_steps_ in date_time_steps]
+        max_timesteps = max(
+            [len(second_time_steps_) for second_time_steps_ in second_time_steps]
+        )
+        second_time_steps = [
+            second_time_steps_ + [np.nan] * (max_timesteps - len(second_time_steps_))
+            for second_time_steps_ in second_time_steps
+        ]
+        date_time_steps = [
+            date_time_steps_ + [np.nan] * (max_timesteps - len(date_time_steps_))
+            for date_time_steps_ in date_time_steps
+        ]
 
         second_time_steps = np.array(second_time_steps)
         date_time_steps = np.array(date_time_steps)
         return second_time_steps, date_time_steps, max_timesteps, n_timesteps
 
-    def set_simulation_timesteps(self, start_time: datetime.datetime, end_time: datetime.datetime, step_size: int) -> None:
+    def set_simulation_timesteps(
+        self, start_time: datetime.datetime, end_time: datetime.datetime, step_size: int
+    ) -> None:
         """
         Set the simulation timesteps.
         """
-        self.second_time_steps, self.date_time_steps, _, _ = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        self.second_time_steps, self.date_time_steps, _, _ = (
+            Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        )
 
     def simulate(
         self,
@@ -332,21 +367,27 @@ class Simulator:
         end_time = value_map.get("end_time", end_time)
         step_size = value_map.get("step_size", step_size)
 
-
-
-        start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
+        start_time, end_time, step_size = validate_period(
+            start_time, end_time, step_size
+        )
 
         self.debug_str = []  # TODO: remove this
-        assert (
-            all(start_time_.tzinfo is not None for start_time_ in start_time)
+        assert all(
+            start_time_.tzinfo is not None for start_time_ in start_time
         ), "All start_times must have a timezone"
-        assert all(end_time_.tzinfo is not None for end_time_ in end_time), "All end_times must have a timezone"
-        assert all(isinstance(step_size_, int) for step_size_ in step_size), "All step_sizes must be integers"
+        assert all(
+            end_time_.tzinfo is not None for end_time_ in end_time
+        ), "All end_times must have a timezone"
+        assert all(
+            isinstance(step_size_, int) for step_size_ in step_size
+        ), "All step_sizes must be integers"
         self.start_time = start_time
         self.end_time = end_time
         self.step_size = step_size
         self.debug = debug
-        second_time_steps, date_time_steps, max_timesteps, _ = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        second_time_steps, date_time_steps, max_timesteps, _ = (
+            Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        )
         self.second_time_steps = second_time_steps
         self.date_time_steps = date_time_steps
         self.n_timesteps = max_timesteps
@@ -359,14 +400,17 @@ class Simulator:
                 second_time = second_time_steps[:, step_index]
                 date_time = date_time_steps[:, step_index]
 
-
-                self._do_system_time_step(self.model, second_time, date_time, step_size, step_index)
+                self._do_system_time_step(
+                    self.model, second_time, date_time, step_size, step_index
+                )
         else:
             for step_index in range(max_timesteps):
                 second_time = second_time_steps[:, step_index]
                 date_time = date_time_steps[:, step_index]
 
-                self._do_system_time_step(self.model, second_time, date_time, step_size, step_index)
+                self._do_system_time_step(
+                    self.model, second_time, date_time, step_size, step_index
+                )
         if self.debug:
             for s in self.debug_str:
                 print(s)
@@ -439,10 +483,16 @@ class Simulator:
         This is a temporary method for retrieving actual sensor readings.
         Currently it simply reads from csv files containing historic data.
         """
-        assert isinstance(start_time, datetime.datetime), "start_time must be a datetime.datetime object"
-        assert isinstance(end_time, datetime.datetime), "end_time must be a datetime.datetime object"
+        assert isinstance(
+            start_time, datetime.datetime
+        ), "start_time must be a datetime.datetime object"
+        assert isinstance(
+            end_time, datetime.datetime
+        ), "end_time must be a datetime.datetime object"
         assert isinstance(step_size, int), "step_size must be an integer"
-        second_time_steps, date_time_steps, max_timesteps, _ = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        second_time_steps, date_time_steps, max_timesteps, _ = (
+            Simulator.get_simulation_timesteps(start_time, end_time, step_size)
+        )
 
         df_actual_readings = pd.DataFrame()
         time = date_time_steps[0]
