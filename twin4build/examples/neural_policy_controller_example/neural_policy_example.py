@@ -420,7 +420,7 @@ if __name__ == "__main__":
         simulator,
         components_1axis=[(space_id, "indoorCo2Concentration")],
         components_2axis=[(space_id, "airFlowRate")],
-        ylabel_1axis="CO2 Concentration [ppm]",
+        ylabel_1axis="CO2 Concentration [ppmv]",
         ylabel_2axis="Air Flow Rate [m³/s]",
         show=True,
     )

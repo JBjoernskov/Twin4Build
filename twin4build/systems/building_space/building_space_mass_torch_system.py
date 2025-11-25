@@ -24,7 +24,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     Args:
         V: Volume of the space [m³]
-        G_occ: CO2 generation rate per occupant [ppm·kg/s]
+        G_occ: CO2 generation rate per occupant [kg_CO2/s]
         m_inf: Infiltration rate [kg/s]
 
     Mathematical Formulation:
@@ -41,13 +41,17 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     where:
 
        - :math:`V`: Volume of the space [m³]
-       - :math:`C`: Indoor CO2 concentration [ppm] (state variable)
+       - :math:`C`: Indoor CO2 concentration [ppmv] (state variable)
        - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
        - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
        - :math:`\dot{m}_{inf}`: Infiltration rate [kg/s] (parameter)
-       - :math:`C_{out}`: Outdoor CO2 concentration [ppm] (input)
-       - :math:`G_{occ}`: CO2 generation rate per occupant [ppm·kg/s] (parameter)
+       - :math:`C_{out}`: Outdoor CO2 concentration [ppmv] (input)
+       - :math:`G_{occ}`: CO2 generation rate per occupant [kg_CO2/s] (parameter)
        - :math:`N_{occ}`: Number of occupants (input)
+    
+    .. note::
+       Concentrations are expressed in **ppmv** (parts per million by volume), 
+       which is equivalent to **ppm-moles** (molar fraction × 10⁶) for ideal gases.
 
     Note: Supply air CO2 concentration is assumed equal to outdoor CO2 concentration.
 
@@ -167,13 +171,13 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         self.input = {
             "supplyAirFlowRate": tps.Scalar(),  # Supply air flow rate [kg/s]
             "exhaustAirFlowRate": tps.Scalar(),  # Exhaust air flow rate [kg/s]
-            "outdoorCO2": tps.Scalar(),  # Supply air CO2 concentration [ppm]
+            "outdoorCO2": tps.Scalar(),  # Outdoor CO2 concentration [ppmv]
             "numberOfPeople": tps.Scalar(),  # Number of occupants
         }
 
         # Define outputs
         self.output = {
-            "indoorCO2": tps.Scalar(400),  # Indoor CO2 concentration [ppm]
+            "indoorCO2": tps.Scalar(400),  # Indoor CO2 concentration [ppmv]
         }
 
         # Define parameters for calibration
@@ -277,10 +281,11 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
         # Number of people
         # Term: G_occ * N_occ / air_mass * conversion
-        # G_occ is in kg/s. We need output in ppmv (volume fraction * 1e6).
+        # G_occ is in kg_CO2/s. We need output in ppmv (volume fraction * 1e6).
+        # For ideal gases, ppmv = ppm-moles (molar fraction * 1e6).
         # 1. Convert kg_CO2/s to kg_CO2/kg_air/s (mass fraction rate): G_occ / air_mass
         # 2. Convert mass fraction to volume fraction: * (M_air / M_CO2)
-        # 3. Convert to ppm: * 1e6
+        # 3. Convert to ppmv: * 1e6
         B[0, 3] = (
             (self.G_occ.get() / air_mass) * (M_air / M_CO2) * 1e6
         )  # numberOfPeople coefficient

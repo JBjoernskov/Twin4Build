@@ -203,7 +203,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             dict: Dictionary containing output ports:
                 - "outdoorTemperature": Outdoor air temperature [°C]
                 - "globalIrradiation": Global solar irradiation [W/m²]
-                - "outdoorCo2Concentration": Outdoor CO2 concentration [ppm]
+                - "outdoorCo2Concentration": Outdoor CO2 concentration [ppmv]
         """
         return self._output
 
