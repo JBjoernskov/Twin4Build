@@ -33,18 +33,20 @@ import twin4build.core as core
 
 
 class Vector:
-    """A custom vector implementation with mapping capabilities.
+    """A custom vector implementation.
 
-    This class implements a vector (1D array) with additional functionality to map between
-    indices and group IDs. It maintains internal mappings and provides methods for
-    initialization, updates, and value access.
+    This class implements a vector (1D array) wrapper around PyTorch tensors with 
+    support for history logging, batching, and normalization.
 
     Attributes:
-        size (int): Current size of the vector.
-        id_map (Dict[int, int]): Maps vector indices to group IDs.
-        id_map_reverse (Dict[int, int]): Maps group IDs to vector indices.
         tensor (torch.Tensor): The underlying tensor storing vector values.
-        current_idx (int): Current index pointer for setting values.
+        batch_size (int): The batch size.
+        size (int): The size of the vector (number of elements).
+        log_history (bool): Whether to log the history of values.
+        history (torch.Tensor): The history of values over time.
+        is_leaf (bool): Whether this vector is a leaf node in the graph (input).
+        do_normalization (bool): Whether to normalize the history.
+        optional (bool): Whether the vector is optional.
     """
 
     def __init__(
@@ -57,7 +59,18 @@ class Vector:
         do_normalization: bool = False,
         optional: bool = False,
     ) -> None:
-        """Initialize an empty Vector instance."""
+        """
+        Initialize a Vector instance.
+
+        Args:
+            tensor (Optional[torch.Tensor]): Initial tensor value.
+            batch_size (int): The batch size. Defaults to 1.
+            size (Optional[int]): The size of the vector.
+            log_history (bool): Whether to log history. Defaults to True.
+            is_leaf (bool): Whether this vector is a leaf node. Defaults to False.
+            do_normalization (bool): Whether to normalize history. Defaults to False.
+            optional (bool): Whether this vector is optional. Defaults to False.
+        """
         self._tensor = None
         self._batch_size = batch_size
         self._size = size
@@ -246,14 +259,16 @@ class Vector:
 
     def set(
         self,
-        v: float,
-        step_index: Optional[int] = None,
+        v: Union[float, torch.Tensor],
+        step_index: Optional[int],
         index: Optional[int, torch.Tensor] = None,
     ) -> None:
         """Set the next value in the vector.
 
         Args:
             v (float): Value to set at current index.
+            step_index (Optional[int]): Step index to set value at.
+            index (Optional[int, torch.Tensor]): Index to set value at.
         """
 
         # v = _convert_to_2D_tensor(v)
@@ -330,10 +345,15 @@ class Scalar:
 
     This class wraps a single scalar value and provides arithmetic operations
     compatibility with other Scalar instances, numeric types, and numpy arrays.
-    Implements total ordering through the @functools.total_ordering decorator.
-
+    
     Attributes:
-        scalar: The wrapped scalar value.
+        scalar (torch.Tensor): The wrapped scalar value.
+        batch_size (int): The batch size.
+        log_history (bool): Whether to log the history of values.
+        history (torch.Tensor): The history of values over time.
+        is_leaf (bool): Whether this scalar is a leaf node in the graph (input).
+        do_normalization (bool): Whether to normalize the history.
+        optional (bool): Whether the scalar is optional.
     """
 
     def __init__(
@@ -345,11 +365,16 @@ class Scalar:
         do_normalization: bool = False,
         optional: bool = False,
     ) -> None:
-        """Initialize a Scalar instance.
+        """
+        Initialize a Scalar instance.
 
         Args:
-            scalar (Optional[Union[float, int, np.ndarray]], optional): Initial scalar value.
-                Defaults to None.
+            scalar (Optional[Union[float, int, torch.Tensor]]): Initial scalar value.
+            batch_size (int): The batch size. Defaults to 1.
+            log_history (bool): Whether to log history. Defaults to True.
+            is_leaf (bool): Whether this scalar is a leaf node. Defaults to False.
+            do_normalization (bool): Whether to normalize history. Defaults to False.
+            optional (bool): Whether this scalar is optional. Defaults to False.
         """
         assert isinstance(
             scalar, (float, int, torch.Tensor, type(None))
@@ -526,6 +551,7 @@ class Scalar:
             assert (
                 v is None
             ), "Values cannot be set for leaf scalars. Use scalar.set(step_index=step_index) to set value based on history"
+            assert step_index is not None, "step_index must be provided for leaf scalars"
             if self._do_normalization:
                 v = self._normalized_history[:, step_index]
                 v = self.denormalize(v)
@@ -539,6 +565,7 @@ class Scalar:
 
         self._scalar = v
         if self._log_history:
+            assert step_index is not None, "step_index must be provided when logging history"
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
                 self._history[:, step_index] = v
