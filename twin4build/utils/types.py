@@ -260,7 +260,7 @@ class Vector:
     def set(
         self,
         v: Union[float, torch.Tensor],
-        step_index: Optional[int],
+        step_index: Optional[int] = None,
         index: Optional[int, torch.Tensor] = None,
     ) -> None:
         """Set the next value in the vector.
@@ -282,6 +282,7 @@ class Vector:
             self.tensor[:, :] = v
 
         if self._log_history:
+            assert step_index is not None, "step_index must be provided when logging history"
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
                 if v.dim() == 2:
