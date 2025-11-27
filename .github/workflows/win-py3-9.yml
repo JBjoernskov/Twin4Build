@@ -5,9 +5,7 @@ name: windows-python3.9
 
 on:
   push:
-    branches: [ "main", "dev", "feature/**" ]
   pull_request:
-    branches: [ "main", "dev", "feature/**" ]
 
 permissions:
   contents: read
