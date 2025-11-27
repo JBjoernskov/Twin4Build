@@ -22,6 +22,14 @@ constants module
    :show-inheritance:
    :undoc-members:
 
+deprecation module
+------------------
+
+.. automodule:: twin4build.utils.deprecation
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 dict\_utils module
 ------------------
 
@@ -46,10 +54,10 @@ get\_main\_dir module
    :show-inheritance:
    :undoc-members:
 
-get\_object\_attributes module
-------------------------------
+get\_obj\_attr module
+---------------------
 
-.. automodule:: twin4build.utils.get_object_attributes
+.. automodule:: twin4build.utils.get_obj_attr
    :members:
    :show-inheritance:
    :undoc-members:
@@ -154,6 +162,14 @@ uppath module
 -------------
 
 .. automodule:: twin4build.utils.uppath
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+validate\_period module
+-----------------------
+
+.. automodule:: twin4build.utils.validate_period
    :members:
    :show-inheritance:
    :undoc-members:

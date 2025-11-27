@@ -573,8 +573,8 @@ class Scalar:
 
             if step_index == self._history.shape[1] - 1:
                 self._history_is_populated = True
-            else:
-                self._history_is_populated = False
+            # else:
+            #     self._history_is_populated = False ################## TODO: Remove this once we have a way to handle the case where the history is not populated
 
     def get(self, *args, **kwargs) -> torch.Tensor:
         """Get the scalar value.

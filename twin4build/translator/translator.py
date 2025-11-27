@@ -164,6 +164,9 @@ class Translator:
         PRINTPROGRESS("Applying translator", status="")
         PRINTPROGRESS.add_level()
 
+        if semantic_model.count_triples() == 0:
+            raise Exception("Semantic model provided to translator appears to be empty.")
+
         if systems_ is None:
             systems_ = [
                 cls[1]
@@ -230,6 +233,9 @@ class Translator:
 
         else:
             raise Exception("No matching patterns found.")
+
+
+        print("length of complete groups: ", len(complete_groups))
 
         # Create component instances
         self._instantiate_components(complete_groups, semantic_model)
@@ -2029,15 +2035,15 @@ class SignaturePattern:
     _signatures_reversed = {}
     _signature_instance_count = count()
 
-    def __init__(self, semantic_model_=None, id=None, pedantic=False):
-        if semantic_model_ is None:
-            semantic_model_ = core.SemanticModel()
+    def __init__(self, id=None):
+        # if semantic_model_ is None:
+        #     semantic_model_ = core.SemanticModel()
 
-        assert isinstance(
-            semantic_model_, core.SemanticModel
-        ), 'The "semantic_model_" argument must be an instance of SemanticModel.'
+        # assert isinstance(
+        #     semantic_model_, core.SemanticModel
+        # ), 'The "semantic_model_" argument must be an instance of SemanticModel.'
 
-        self.semantic_model = semantic_model_
+        self.semantic_model = core.SemanticModel()
 
         if id is None:
             id = f"{str(__file__)}_{str(next(SignaturePattern._signature_instance_count))}"

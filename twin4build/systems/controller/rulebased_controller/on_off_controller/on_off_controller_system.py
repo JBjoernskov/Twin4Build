@@ -31,13 +31,27 @@ class OnOffControllerSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """
         This function initializes the FMU component by setting the start_time and fmu_filename attributes,
         and then sets the parameters for the FMU model.
         """
-        pass
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        self.input["actualValue"].initialize(
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
+        )
+        self.input["setpointValue"].initialize(
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
+        )
+        self.output["inputSignal"].initialize(
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
+        )
 
     def do_step(
         self,
@@ -50,12 +64,12 @@ class OnOffControllerSystem(core.System):
         This function calls the do_step method of the FMU component, and then sets the output of the FMU model.
         """
         if self.isReverse:
-            if self.input["actualValue"] < self.input["setpointValue"]:
+            if self.input["actualValue"].get() < self.input["setpointValue"].get():
                 self.output["inputSignal"].set(self.onValue, step_index)
             else:
                 self.output["inputSignal"].set(self.offValue, step_index)
         else:
-            if self.input["actualValue"] > self.input["setpointValue"]:
+            if self.input["actualValue"].get() > self.input["setpointValue"].get():
                 self.output["inputSignal"].set(self.onValue, step_index)
             else:
                 self.output["inputSignal"].set(self.offValue, step_index)

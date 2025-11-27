@@ -11,6 +11,7 @@ import twin4build.utils.types as tps
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
+from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
 
 
 def get_signature_pattern_input():
@@ -332,6 +333,7 @@ def get_temperature_after_air_to_air_exhaust_side():
     return sp
 
 
+@autoreset_print
 class SensorSystem(core.System):
     """A system representing a physical or virtual sensor in the building.
 
@@ -622,7 +624,7 @@ class SensorSystem(core.System):
             p(message, status="WARNING")
             validated_for_estimator = False
 
-        self.is_leaf = len(self.connects_at) == 0
+        self.is_leaf = len(self.connects_at) == 0 # No inputs -> leaf scalar
         self.output["measuredValue"].is_leaf = self.is_leaf
 
         return (
@@ -658,6 +660,9 @@ class SensorSystem(core.System):
             step_size (Optional[float]): Time step size in seconds.
             model (Optional[Any]): Model object (not used in this class).
         """
+
+        self.validate(PRINTPROGRESS)
+        self.validate_connections(PRINTPROGRESS)
 
         if (
             self.filename is not None
@@ -758,6 +763,6 @@ class SensorSystem(core.System):
         """
         assert (
             self.time_series_input is not None
-        ), f'Cannot return physical readings for Sensor with id "{self.id}" as the argument "filename" was not provided when the object was initialized.'
+        ), f'Cannot return physical readings for Sensor with id "{self.id}" as time_series_input is None.\nEither this sensor has not been intialized or the arguments filename/df/dbconfig were not provided when the object was initialized or the sensor is virtual and has no time_series_input.'
         self.time_series_input.initialize(start_time, end_time, step_size)
         return self.time_series_input.df

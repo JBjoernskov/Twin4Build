@@ -28,8 +28,6 @@ from twin4build.utils.dict_utils import (
     merge_dicts,
 )
 from twin4build.utils.get_obj_attr import get_obj_attr
-from twin4build.utils.isnumeric import isnumeric
-from twin4build.utils.istype import istype
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
@@ -272,6 +270,10 @@ class SimulationModel:
         ), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
         self._id = id
         self._components = {}
+        self._execution_order = []
+        self._flat_execution_order = []
+        self._required_initialization_connections = []
+        self._components_no_cycles = {}
         self._saved_parameters = {}
         self._custom_initial_dict = None
         self._is_loaded = False
@@ -293,6 +295,10 @@ class SimulationModel:
     @property
     def components(self) -> dict:
         return self._components
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._is_loaded
 
     @property
     def dir_conf(self) -> List[str]:
@@ -1791,6 +1797,7 @@ class SimulationModel:
                 new_component.connects_at = []
                 new_to_old_mapping[new_component] = component
                 old_to_new_mapping[component] = new_component
+                self.add_component(new_component, _new_components)
             else:
                 new_component = old_to_new_mapping[component]
 
@@ -2339,7 +2346,6 @@ class SimulationModel:
             core.namespace.S4SYST.System
         ):
             t = sm_instance.get_most_specific_type()
-            print("type: ", t)
             class_name = t.get_short_name()
             cls = getattr(systems, class_name)
             attributes = {}

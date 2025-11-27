@@ -14,6 +14,7 @@ import twin4build.core as core
 import twin4build.systems as systems
 from twin4build.utils.deprecation import deprecate_args
 from twin4build.utils.validate_period import validate_period
+import twin4build.utils.types as tps
 
 
 def _min_max_normalize(x, min_val=None, max_val=None):
@@ -583,6 +584,10 @@ class Optimizer:
             len(self._variables) > 0
         ), "No decision variables specified for optimization"
 
+        for obj in self._objectives:
+            component, output_name, objective_type = obj
+            assert objective_type in ["min", "max"], f"Objective type must be 'min' or 'max', got '{objective_type}'"
+
         # Check that we have at least one objective (minimize or constraints)
         has_objective = (
             len(self._objectives) > 0
@@ -1143,11 +1148,26 @@ class Optimizer:
         else:
             bounds_obj = None
 
+
+        
+
         # Pre-compute constraint values
-        def _get_constraint_value(component_or_value):
+        def _get_constraint_value(component, output_name, component_or_value):
             """Helper function to get constraint value, handling both ScheduleSystem and scalar values"""
+            batch_size = len(self._start_time)
+            max_timesteps = max(self._n_timesteps)
+
+            if isinstance(component.output[output_name], tps.Scalar):
+                desired_shape = (batch_size, max_timesteps)
+            elif isinstance(component.output[output_name], tps.Vector):
+                desired_shape = (batch_size, max_timesteps, component.output[output_name].size)
+            else:
+                raise ValueError(
+                    f"Invalid constraint value type: {type(component.output[output_name])}"
+                )
+
             if isinstance(component_or_value, (int, float)):
-                return torch.tensor(component_or_value)
+                return torch.full(desired_shape, component_or_value, dtype=torch.float64)
             elif isinstance(component_or_value, systems.ScheduleSystem):
                 component_or_value.initialize(
                     start_time=self._start_time,
@@ -1177,7 +1197,7 @@ class Optimizer:
                 constraint_type,
                 desired_value,
             ) in self._ineq_cons:
-                constraint_val = _get_constraint_value(desired_value)
+                constraint_val = _get_constraint_value(component, output_name, desired_value)
                 self.inequality_constraint_values[
                     (component, output_name, constraint_type)
                 ] = constraint_val
