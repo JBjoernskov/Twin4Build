@@ -173,6 +173,11 @@ class TestParameter(unittest.TestCase):
         p.set(0.5, normalized=True)
         self.assertAlmostEqual(p.get().item(), 5.0, places=5)
 
+
+        p = Parameter(torch.tensor(5.0))
+        p.set(6.0, normalized=False)
+        self.assertAlmostEqual(p.get().item(), 6.0, places=5)
+
     def test_parameter_tensor_property(self):
         """Test parameter tensor property."""
         p = Parameter(torch.tensor(2.5), min_value=0.0, max_value=2.5)

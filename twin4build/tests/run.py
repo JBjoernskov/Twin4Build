@@ -37,11 +37,11 @@ def main():
 
         tests = loader.discover(start_dir=test_dir, pattern='test_*.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_simulation_model.py')
-
         # tests = loader.discover(start_dir=test_dir, pattern='test_components.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_translator.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_optimizer.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_semantic_model.py')
+        tests = loader.discover(start_dir=test_dir, pattern='test_types.py')
 
         
         # Create a test runner
@@ -54,7 +54,7 @@ def main():
         cov.stop()
 
 
-        if False:
+        if True:
             
             # Stop measuring coverage
             
