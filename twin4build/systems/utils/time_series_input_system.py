@@ -47,6 +47,7 @@ class TimeSeriesInputSystem(core.System):
         useDatabase: bool = False,
         uuid: Optional[str] = None,
         dbconfig: Optional[Dict[str, Any]] = None,
+        cache: Optional[bool] = True,
         **kwargs,
     ) -> None:
         """Initialize the TimeSeriesInputSystem.
@@ -92,6 +93,7 @@ class TimeSeriesInputSystem(core.System):
         self._dbconfig = dbconfig
         self._cached_initialize_arguments = []
         self._cache_root = get_main_dir()
+        self.cache = cache
 
         # Define inputs and outputs as private variables
         self._input = {}
@@ -301,12 +303,13 @@ class TimeSeriesInputSystem(core.System):
                     if self.useSpreadsheet:
                         df = load_from_spreadsheet(
                             self.filename,
-                            self.datecolumn,
-                            self.valuecolumn,
+                            self._datecolumn,
+                            self._valuecolumn,
                             step_size=step_size_,
                             start_time=start_time_,
                             end_time=end_time_,
                             cache_root=self._cache_root,
+                            cache=self.cache,
                         )
                     elif self.useDatabase:
                         df = load_from_database(
@@ -316,6 +319,7 @@ class TimeSeriesInputSystem(core.System):
                             start_time=start_time_,
                             end_time=end_time_,
                             cache_root=self._cache_root,
+                            cache=self.cache,
                         )
                 else:
                     df_ = self._df_init.copy()
