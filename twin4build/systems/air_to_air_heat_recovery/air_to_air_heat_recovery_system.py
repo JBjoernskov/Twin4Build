@@ -1,6 +1,7 @@
 # Standard library imports
 import datetime
 from typing import Optional
+import torch
 
 # Local application imports
 import twin4build.core as core
@@ -14,7 +15,6 @@ from twin4build.translator.translator import (
     SinglePath,
 )
 from twin4build.utils.constants import Constants
-
 
 class AirToAirHeatRecoverySystem(core.System):
     r"""
@@ -94,12 +94,24 @@ class AirToAirHeatRecoverySystem(core.System):
         super().__init__(**kwargs)
 
         # Store attributes as private variables
-        self._eps_75_h = eps_75_h
-        self._eps_100_h = eps_100_h
-        self._eps_75_c = eps_75_c
-        self._eps_100_c = eps_100_c
-        self._primaryAirFlowRateMax = primaryAirFlowRateMax
-        self._secondaryAirFlowRateMax = secondaryAirFlowRateMax
+        self.eps_75_h = tps.Parameter(
+            torch.tensor(eps_75_h, dtype=torch.float64), requires_grad=False
+        )
+        self.eps_100_h = tps.Parameter(
+            torch.tensor(eps_100_h, dtype=torch.float64), requires_grad=False
+        )
+        self.eps_75_c = tps.Parameter(
+            torch.tensor(eps_75_c, dtype=torch.float64), requires_grad=False
+        )
+        self.eps_100_c = tps.Parameter(
+            torch.tensor(eps_100_c, dtype=torch.float64), requires_grad=False
+        )
+        self.primaryAirFlowRateMax = tps.Parameter(
+            torch.tensor(primaryAirFlowRateMax, dtype=torch.float64), requires_grad=False
+        )
+        self.secondaryAirFlowRateMax = tps.Parameter(
+            torch.tensor(secondaryAirFlowRateMax, dtype=torch.float64), requires_grad=False
+        )
 
         # Define inputs and outputs as private variables
         self._input = {
@@ -160,96 +172,11 @@ class AirToAirHeatRecoverySystem(core.System):
         """
         return self._output
 
-    @property
-    def eps_75_h(self):
-        """
-        Get the effectiveness at 75% flow in heating mode.
-        """
-        return self._eps_75_h
-
-    @eps_75_h.setter
-    def eps_75_h(self, value):
-        """
-        Set the effectiveness at 75% flow in heating mode.
-        """
-        self._eps_75_h = value
-
-    @property
-    def eps_100_h(self):
-        """
-        Get the effectiveness at 100% flow in heating mode.
-        """
-        return self._eps_100_h
-
-    @eps_100_h.setter
-    def eps_100_h(self, value):
-        """
-        Set the effectiveness at 100% flow in heating mode.
-        """
-        self._eps_100_h = value
-
-    @property
-    def eps_75_c(self):
-        """
-        Get the effectiveness at 75% flow in cooling mode.
-        """
-        return self._eps_75_c
-
-    @eps_75_c.setter
-    def eps_75_c(self, value):
-        """
-        Set the effectiveness at 75% flow in cooling mode.
-        """
-        self._eps_75_c = value
-
-    @property
-    def eps_100_c(self):
-        """
-        Get the effectiveness at 100% flow in cooling mode.
-        """
-        return self._eps_100_c
-
-    @eps_100_c.setter
-    def eps_100_c(self, value):
-        """
-        Set the effectiveness at 100% flow in cooling mode.
-        """
-        self._eps_100_c = value
-
-    @property
-    def primaryAirFlowRateMax(self):
-        """
-        Get the maximum primary (supply) air flow rate.
-        """
-        return self._primaryAirFlowRateMax
-
-    @primaryAirFlowRateMax.setter
-    def primaryAirFlowRateMax(self, value):
-        """
-        Set the maximum primary (supply) air flow rate.
-        """
-        self._primaryAirFlowRateMax = value
-
-    @property
-    def secondaryAirFlowRateMax(self):
-        """
-        Get the maximum secondary (exhaust) air flow rate.
-        """
-        return self._secondaryAirFlowRateMax
-
-    @secondaryAirFlowRateMax.setter
-    def secondaryAirFlowRateMax(self, value):
-        """
-        Set the maximum secondary (exhaust) air flow rate.
-        """
-        self._secondaryAirFlowRateMax = value
-
     def initialize(
         self,
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the system for simulation.
 
@@ -261,7 +188,21 @@ class AirToAirHeatRecoverySystem(core.System):
             step_size: Time step size in seconds.
             simulator: Simulation model object.
         """
-        pass
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        for input in self.input.values():
+            input.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
+        for output in self.output.values():
+            output.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
+        self.INITIALIZED = True
 
     def do_step(
         self,
@@ -291,26 +232,26 @@ class AirToAirHeatRecoverySystem(core.System):
         self.output.update(self.input)
         tol = 1e-5
         if (
-            self.input["primaryAirFlowRate"] > tol
-            and self.input["secondaryAirFlowRate"] > tol
+            self.input["primaryAirFlowRate"].get() > tol
+            and self.input["secondaryAirFlowRate"].get() > tol
         ):
-            m_a_max = max(self.primaryAirFlowRateMax, self.secondaryAirFlowRateMax)
+            m_a_max = torch.max(self.primaryAirFlowRateMax.get(), self.secondaryAirFlowRateMax.get())
             if (
-                self.input["primaryTemperatureIn"]
-                < self.input["secondaryTemperatureIn"]
+                self.input["primaryTemperatureIn"].get()
+                < self.input["secondaryTemperatureIn"].get()
             ):
-                eps_75 = self.eps_75_h
-                eps_100 = self.eps_100_h
+                eps_75 = self.eps_75_h.get()
+                eps_100 = self.eps_100_h.get()
                 feasibleMode = "Heating"
             else:
-                eps_75 = self.eps_75_c
-                eps_100 = self.eps_100_c
+                eps_75 = self.eps_75_c.get()
+                eps_100 = self.eps_100_c.get()
                 feasibleMode = "Cooling"
 
             operationMode = (
                 "Heating"
-                if self.input["primaryTemperatureIn"]
-                < self.input["primaryTemperatureOutSetpoint"]
+                if self.input["primaryTemperatureIn"].get()
+                < self.input["primaryTemperatureOutSetpoint"].get()
                 else "Cooling"
             )
 
@@ -318,27 +259,27 @@ class AirToAirHeatRecoverySystem(core.System):
                 f_flow = (
                     0.5
                     * (
-                        self.input["primaryAirFlowRate"]
-                        + self.input["secondaryAirFlowRate"]
+                        self.input["primaryAirFlowRate"].get()
+                        + self.input["secondaryAirFlowRate"].get()
                     )
                     / m_a_max
                 )
                 eps_op = eps_75 + (eps_100 - eps_75) * (f_flow - 0.75) / (1 - 0.75)
                 C_sup = (
-                    self.input["primaryAirFlowRate"]
+                    self.input["primaryAirFlowRate"].get()
                     * Constants.specificHeatCapacity["air"]
                 )
                 C_exh = (
-                    self.input["secondaryAirFlowRate"]
+                    self.input["secondaryAirFlowRate"].get()
                     * Constants.specificHeatCapacity["air"]
                 )
                 C_min = min(C_sup, C_exh)
                 self.output["primaryTemperatureOut"].set(
-                    self.input["primaryTemperatureIn"]
+                    self.input["primaryTemperatureIn"].get()
                     + eps_op
                     * (
-                        self.input["secondaryTemperatureIn"]
-                        - self.input["primaryTemperatureIn"]
+                        self.input["secondaryTemperatureIn"].get()
+                        - self.input["primaryTemperatureIn"].get()
                     )
                     * (C_min / C_sup),
                     step_index,
@@ -346,19 +287,19 @@ class AirToAirHeatRecoverySystem(core.System):
 
                 if (
                     operationMode == "Heating"
-                    and self.output["primaryTemperatureOut"]
-                    > self.input["primaryTemperatureOutSetpoint"]
+                    and self.output["primaryTemperatureOut"].get()
+                    > self.input["primaryTemperatureOutSetpoint"].get()
                 ):
                     self.output["primaryTemperatureOut"].set(
-                        self.input["primaryTemperatureOutSetpoint"], step_index
+                        self.input["primaryTemperatureOutSetpoint"].get(), step_index
                     )
                 elif (
                     operationMode == "Cooling"
-                    and self.output["primaryTemperatureOut"]
-                    < self.input["primaryTemperatureOutSetpoint"]
+                    and self.output["primaryTemperatureOut"].get()
+                    < self.input["primaryTemperatureOutSetpoint"].get()
                 ):
                     self.output["primaryTemperatureOut"].set(
-                        self.input["primaryTemperatureOutSetpoint"], step_index
+                        self.input["primaryTemperatureOutSetpoint"].get(), step_index
                     )
 
                 # Calculate secondaryTemperatureOut using energy conservation
@@ -374,17 +315,17 @@ class AirToAirHeatRecoverySystem(core.System):
 
             else:
                 self.output["primaryTemperatureOut"].set(
-                    self.input["primaryTemperatureIn"], step_index
+                    self.input["primaryTemperatureIn"].get(), step_index
                 )
                 self.output["secondaryTemperatureOut"].set(
-                    self.input["secondaryTemperatureIn"], step_index
+                    self.input["secondaryTemperatureIn"].get(), step_index
                 )
         else:
             self.output["primaryTemperatureOut"].set(
-                self.input["primaryTemperatureIn"], step_index
+                self.input["primaryTemperatureIn"].get(), step_index
             )
             self.output["secondaryTemperatureOut"].set(
-                self.input["secondaryTemperatureIn"], step_index
+                self.input["secondaryTemperatureIn"].get(), step_index
             )
 
 

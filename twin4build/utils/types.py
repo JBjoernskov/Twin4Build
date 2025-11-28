@@ -1005,39 +1005,8 @@ def _convert_to_1D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
 #     return v
 
 
-def test():
-    a = Vector()
-    a.increment()
-    a.increment()
-    a.increment(2)
-    a.initialize()
-
-    print(a)
-
-    for i in range(100):
-        print("---")
-        a.set(i)
-        print(a)
-
-    b = Scalar()
-    b.set(5)
-    c = Scalar()
-    c.set(2.0)
-
-    print(b + c)
-    print(b - c)
-    print(b * c)
-    print(c - b)
-    print(b / c)
-    print(c / b)
-
-
-if __name__ == "__main__":
-    test()
-
 # Add get() method to nn.Parameter for compatibility
 if not hasattr(torch.nn.Parameter, "get"):
-
     def parameter_get(self):
         """Get the parameter value (fallback for regular nn.Parameter objects)."""
         return self

@@ -224,6 +224,136 @@ class TestDataLoaders(unittest.TestCase):
         from twin4build.utils.data_loaders.load import parseDateStr
         self.assertIsNotNone(parseDateStr)
 
+    def test_parseDateStr_valid(self):
+        """Test parseDateStr with valid date string."""
+        import numpy as np
+        from twin4build.utils.data_loaders.load import parseDateStr
+        
+        result = parseDateStr("2023-01-15T10:30:00")
+        self.assertIsNotNone(result)
+        self.assertFalse(np.isnat(result))
+
+    def test_parseDateStr_empty(self):
+        """Test parseDateStr with empty string."""
+        import numpy as np
+        from twin4build.utils.data_loaders.load import parseDateStr
+        
+        result = parseDateStr("")
+        self.assertTrue(np.isnat(result))
+
+    def test_parseDateStr_invalid(self):
+        """Test parseDateStr with invalid date string."""
+        import numpy as np
+        from twin4build.utils.data_loaders.load import parseDateStr
+        
+        result = parseDateStr("not_a_date")
+        self.assertTrue(np.isnat(result))
+
+    def test_sample_from_df_basic(self):
+        """Test sample_from_df with basic DataFrame."""
+        import pandas as pd
+        from twin4build.utils.data_loaders.load import sample_from_df
+        
+        # Create test DataFrame
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            periods=10,
+            freq='1h'
+        )
+        df = pd.DataFrame({
+            'date_time': dates,
+            'value': [i * 10.0 for i in range(10)]
+        })
+        
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+        
+        result = sample_from_df(
+            df,
+            datecolumn=0,
+            valuecolumn=1,
+            step_size=3600,
+            start_time=start_time,
+            end_time=end_time,
+            resample=True,
+            clip=True,
+            tz="UTC"
+        )
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 5)  # 5 hours from 0 to 4
+
+    def test_sample_from_df_constant_resample(self):
+        """Test sample_from_df with constant resampling."""
+        import pandas as pd
+        from twin4build.utils.data_loaders.load import sample_from_df
+        
+        # Create test DataFrame
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            periods=5,
+            freq='2h'
+        )
+        df = pd.DataFrame({
+            'date_time': dates,
+            'value': [10.0, 20.0, 30.0, 40.0, 50.0]
+        })
+        
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 6, 0, 0, tzinfo=pytz.UTC)
+        
+        result = sample_from_df(
+            df,
+            datecolumn=0,
+            valuecolumn=1,
+            step_size=3600,
+            start_time=start_time,
+            end_time=end_time,
+            resample=True,
+            resample_method="constant",
+            clip=True,
+            tz="UTC"
+        )
+        
+        self.assertIsNotNone(result)
+        # Check that constant resampling forward-fills values
+        self.assertEqual(result.iloc[0].item(), 10.0)
+        self.assertEqual(result.iloc[1].item(), 10.0)  # Forward-filled from previous
+
+    def test_sample_from_df_no_resample(self):
+        """Test sample_from_df without resampling."""
+        import pandas as pd
+        from twin4build.utils.data_loaders.load import sample_from_df
+        
+        # Create test DataFrame
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            periods=5,
+            freq='1h'
+        )
+        df = pd.DataFrame({
+            'date_time': dates,
+            'value': [10.0, 20.0, 30.0, 40.0, 50.0]
+        })
+        
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 3, 0, 0, tzinfo=pytz.UTC)
+        
+        result = sample_from_df(
+            df,
+            datecolumn=0,
+            valuecolumn=1,
+            step_size=3600,
+            start_time=start_time,
+            end_time=end_time,
+            resample=False,
+            clip=True,
+            tz="UTC"
+        )
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 3)  # 3 data points
+
 
 class TestPlotUtilities(unittest.TestCase):
     def test_plot_imports(self):
@@ -233,6 +363,155 @@ class TestPlotUtilities(unittest.TestCase):
         self.assertIsNotNone(plot_component)
         self.assertIsNotNone(Entry)
         self.assertIsNotNone(Colors)
+
+
+class TestUnitConverters(unittest.TestCase):
+    def test_do_nothing(self):
+        from twin4build.utils.unit_converters.functions import _do_nothing
+        self.assertEqual(_do_nothing(5), 5)
+        self.assertEqual(_do_nothing(-3.14), -3.14)
+
+    def test_change_sign(self):
+        from twin4build.utils.unit_converters.functions import change_sign
+        self.assertEqual(change_sign(5), -5)
+        self.assertEqual(change_sign(-3.14), 3.14)
+
+    def test_temperature_conversions(self):
+        from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC
+        
+        # 0 degC = 273.15 K
+        self.assertAlmostEqual(to_degC_from_degK(273.15), 0)
+        self.assertAlmostEqual(to_degK_from_degC(0), 273.15)
+        
+        # 100 degC = 373.15 K
+        self.assertAlmostEqual(to_degC_from_degK(373.15), 100)
+        self.assertAlmostEqual(to_degK_from_degC(100), 373.15)
+
+    def test_multiply_const(self):
+        from twin4build.utils.unit_converters.functions import multiply_const
+        
+        converter = multiply_const(2.5)
+        self.assertEqual(converter(4), 10.0)
+        self.assertEqual(converter.call(4), 10.0)
+
+    def test_regularize(self):
+        from twin4build.utils.unit_converters.functions import regularize
+        
+        converter = regularize(0)
+        self.assertEqual(converter(5), 5)
+        self.assertEqual(converter(-5), 0)
+        self.assertEqual(converter(0), 0)
+
+    def test_add_attr(self):
+        from twin4build.utils.unit_converters.functions import add_attr
+        
+        class TestObj:
+            def __init__(self):
+                self.offset = 10
+        
+        obj = TestObj()
+        converter = add_attr(obj, "offset")
+        
+        self.assertEqual(converter(5), 15)
+
+
+class TestGetObjAttr(unittest.TestCase):
+    def test_get_obj_attr_normal(self):
+        """Test get_obj_attr with normal object."""
+        from twin4build.utils.get_obj_attr import get_obj_attr
+        
+        class TestObj:
+            def __init__(self):
+                self.a = 1
+                self.b = 2
+                self._private = 3
+        
+        obj = TestObj()
+        attrs = get_obj_attr(obj)
+        
+        self.assertIn('a', attrs)
+        self.assertIn('b', attrs)
+        self.assertIn('_private', attrs)
+        self.assertEqual(attrs['a'], 1)
+        self.assertEqual(attrs['b'], 2)
+
+    def test_get_obj_attr_inverse(self):
+        """Test get_obj_attr with inverse mapping."""
+        from twin4build.utils.get_obj_attr import get_obj_attr
+        
+        class TestObj:
+            def __init__(self):
+                self.a = 1
+                self.b = 2
+        
+        obj = TestObj()
+        attrs = get_obj_attr(obj, inverse=True)
+        
+        self.assertIn(1, attrs)
+        self.assertIn(2, attrs)
+        self.assertEqual(attrs[1], 'a')
+        self.assertEqual(attrs[2], 'b')
+
+
+class TestDictUtils(unittest.TestCase):
+    def test_compare_dict_structure_same(self):
+        """Test compare_dict_structure with same structure."""
+        from twin4build.utils.dict_utils import compare_dict_structure
+        
+        dict1 = {'a': 1, 'b': {'c': 2}}
+        dict2 = {'a': 3, 'b': {'c': 4}}
+        
+        self.assertTrue(compare_dict_structure(dict1, dict2))
+
+    def test_compare_dict_structure_different(self):
+        """Test compare_dict_structure with different structure."""
+        from twin4build.utils.dict_utils import compare_dict_structure
+        
+        dict1 = {'a': 1, 'b': {'c': 2}}
+        dict2 = {'a': 3, 'x': {'y': 4}}
+        
+        self.assertFalse(compare_dict_structure(dict1, dict2))
+
+    def test_flatten_dict(self):
+        """Test flatten_dict function."""
+        from twin4build.utils.dict_utils import flatten_dict
+        
+        nested = {'a': {'b': {'c': 1}}, 'd': 2}
+        flattened = flatten_dict(nested)
+        
+        self.assertIn('a.b.c', flattened)
+        self.assertIn('d', flattened)
+        self.assertEqual(flattened['a.b.c'], 1)
+        self.assertEqual(flattened['d'], 2)
+
+    def test_flatten_dict_custom_separator(self):
+        """Test flatten_dict with custom separator."""
+        from twin4build.utils.dict_utils import flatten_dict
+        
+        nested = {'a': {'b': 1}}
+        flattened = flatten_dict(nested, sep='/')
+        
+        self.assertIn('a/b', flattened)
+        self.assertEqual(flattened['a/b'], 1)
+
+
+class TestMkdirInRoot(unittest.TestCase):
+    def test_mkdir_in_root_basic(self):
+        """Test mkdir_in_root creates directories."""
+        from twin4build.utils.mkdir_in_root import mkdir_in_root
+        import tempfile
+        import shutil
+        
+        # Use a temp directory as root
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result, isfile = mkdir_in_root(
+                folder_list=["test_folder", "subfolder"],
+                filename="test.txt",
+                root=tmpdir
+            )
+            
+            self.assertIsNotNone(result)
+            self.assertTrue(result.endswith("test.txt"))
 
 
 if __name__ == '__main__':

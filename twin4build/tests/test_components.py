@@ -13,8 +13,148 @@ from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.junction.supply_flow_junction_system import SupplyFlowJunctionSystem
 from twin4build.systems.junction.return_flow_junction_system import ReturnFlowJunctionSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.systems.space_heater.space_heater_torch_system import SpaceHeaterTorchSystem
+from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
+from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
+from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
+from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+from twin4build.systems.controller.rulebased_controller.rulebased_controller_system import RulebasedControllerSystem
 import pandas as pd
 import numpy as np
+
+
+class TestSpaceHeaterTorchSystem(unittest.TestCase):
+    def setUp(self):
+        self.heater = SpaceHeaterTorchSystem(
+            id="test_heater",
+            Q_flow_nominal_sh=1000.0,
+            T_a_nominal_sh=60.0,
+            T_b_nominal_sh=40.0,
+            TAir_nominal_sh=20.0,
+            thermalMassHeatCapacity=5000.0,
+            nelements=2
+        )
+
+    def test_initialization(self):
+        """Test space heater system initialization."""
+        self.assertIsNotNone(self.heater)
+        self.assertEqual(self.heater.id, "test_heater")
+        self.assertEqual(self.heater.nelements, 2)
+
+    def test_do_step(self):
+        """Test space heater system do_step method."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        self.heater.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set inputs
+        self.heater.input["supplyWaterTemperature"].set(torch.tensor([60.0]), step_index=0)
+        self.heater.input["waterFlowRate"].set(torch.tensor([0.1]), step_index=0)
+        self.heater.input["indoorTemperature"].set(torch.tensor([20.0]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        self.heater.do_step(second_time=0, date_time=datetime_val, step_size=step_size, step_index=0)
+        
+        # Check outputs
+        outlet_temp = self.heater.output["outletWaterTemperature"].get()
+        radiator_power = self.heater.output["Power"].get()
+        
+        self.assertIsNotNone(outlet_temp)
+        self.assertIsNotNone(radiator_power)
+
+
+class TestCoilTorchSystem(unittest.TestCase):
+    def setUp(self):
+        self.coil = CoilTorchSystem(id="test_coil")
+
+    def test_initialization(self):
+        """Test coil system initialization."""
+        self.assertIsNotNone(self.coil)
+        self.assertEqual(self.coil.id, "test_coil")
+
+    def test_do_step(self):
+        """Test coil system do_step method."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        self.coil.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set inputs
+        self.coil.input["inletAirTemperature"].set(torch.tensor([20.0]), step_index=0)
+        self.coil.input["outletAirTemperatureSetpoint"].set(torch.tensor([22.0]), step_index=0)
+        self.coil.input["airFlowRate"].set(torch.tensor([1.0]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        self.coil.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        
+        # Check outputs
+        heating_power = self.coil.output["heatingPower"].get()
+        cooling_power = self.coil.output["coolingPower"].get()
+        
+        self.assertIsNotNone(heating_power)
+        self.assertIsNotNone(cooling_power)
+        # Should be heating
+        self.assertGreater(heating_power.item(), 0)
+        self.assertEqual(cooling_power.item(), 0)
+
+
+class TestAirToAirHeatRecoverySystem(unittest.TestCase):
+    def setUp(self):
+        self.hr = AirToAirHeatRecoverySystem(
+            id="test_hr",
+            eps_75_h=0.8,
+            eps_100_h=0.7,
+            eps_75_c=0.8,
+            eps_100_c=0.7,
+            primaryAirFlowRateMax=1.0,
+            secondaryAirFlowRateMax=1.0
+        )
+
+    def test_initialization(self):
+        """Test heat recovery system initialization."""
+        self.assertIsNotNone(self.hr)
+        self.assertEqual(self.hr.id, "test_hr")
+
+    def test_do_step(self):
+        """Test heat recovery system do_step method."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        self.hr.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set inputs
+        # Supply side (outdoor to indoor)
+        self.hr.input["primaryTemperatureIn"].set(torch.tensor([0.0]), step_index=0) # Cold outdoor
+        self.hr.input["primaryAirFlowRate"].set(torch.tensor([1.0]), step_index=0)
+        self.hr.input["primaryTemperatureOutSetpoint"].set(torch.tensor([20.0]), step_index=0)
+
+        # Exhaust side (indoor to outdoor)
+        self.hr.input["secondaryTemperatureIn"].set(torch.tensor([20.0]), step_index=0) # Warm return
+        self.hr.input["secondaryAirFlowRate"].set(torch.tensor([1.0]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        self.hr.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+
+
+        primary_in = self.hr.input["primaryTemperatureIn"].get()
+        secondary_in = self.hr.input["secondaryTemperatureIn"].get()
+        
+        # Check outputs
+        primary_out = self.hr.output["primaryTemperatureOut"].get()
+        secondary_out = self.hr.output["secondaryTemperatureOut"].get()
+        
+        self.assertIsNotNone(primary_out)
+        self.assertIsNotNone(secondary_out)
+        
+        # Expect heat recovery: primary temp should increase
+        self.assertGreater(primary_out.item(), primary_in.item())
+        # Secondary temp should decrease
+        self.assertLess(secondary_out.item(), secondary_in.item())
+
 
 
 class TestScheduleSystem(unittest.TestCase):
@@ -308,6 +448,281 @@ class TestTimeSeriesInputSystem(unittest.TestCase):
         self.assertIsNotNone(value)
         self.assertAlmostEqual(value.item(), 0.5, places=5)
 
+
+
+class TestRulebasedControllerSystem(unittest.TestCase):
+    def setUp(self):
+        from twin4build.systems.controller.rulebased_controller.rulebased_controller_system import RulebasedControllerSystem
+        self.controller = RulebasedControllerSystem(id="test_rulebased")
+
+    def test_initialization(self):
+        """Test rulebased controller initialization."""
+        self.assertIsNotNone(self.controller)
+        self.assertEqual(self.controller.id, "test_rulebased")
+        self.assertEqual(self.controller.interval, 99)  # Default interval
+
+    def test_do_step_low_value(self):
+        """Test rulebased controller with low actual value (< 600)."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        self.controller.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set low input value
+        self.controller.input["actualValue"].set(torch.tensor([500.0]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        self.controller.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        
+        # Check output - should be 0 for values below 600
+        output = self.controller.output["inputSignal"].get()
+        self.assertIsNotNone(output)
+        self.assertEqual(output.item(), 0)
+
+    def test_do_step_medium_value(self):
+        """Test rulebased controller with medium actual value (600-750)."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        self.controller.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set medium input value
+        self.controller.input["actualValue"].set(torch.tensor([650.0]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        self.controller.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        
+        # Check output - should be 0.45 for values between 600-750
+        output = self.controller.output["inputSignal"].get()
+        self.assertIsNotNone(output)
+        self.assertAlmostEqual(output.item(), 0.45, places=2)
+
+    def test_do_step_high_value(self):
+        """Test rulebased controller with high actual value (> 900)."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        self.controller.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set high input value
+        self.controller.input["actualValue"].set(torch.tensor([950.0]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        self.controller.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        
+        # Check output - should be 1.0 for values above 900
+        output = self.controller.output["inputSignal"].get()
+        self.assertIsNotNone(output)
+        self.assertEqual(output.item(), 1.0)
+
+
+class TestReturnFlowJunctionSystem(unittest.TestCase):
+    def setUp(self):
+        self.junction = ReturnFlowJunctionSystem(id="test_return_junction", airFlowRateBias=0.1)
+
+    def test_initialization(self):
+        """Test return flow junction initialization."""
+        self.assertIsNotNone(self.junction)
+        self.assertEqual(self.junction.id, "test_return_junction")
+        self.assertEqual(self.junction.airFlowRateBias, 0.1)
+
+    def test_initialization_default_bias(self):
+        """Test return flow junction with default bias."""
+        junction = ReturnFlowJunctionSystem(id="test_default")
+        self.assertEqual(junction.airFlowRateBias, 0)
+
+    def test_do_step(self):
+        """Test return flow junction do_step method."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        self.junction.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set inputs - vector inputs for multiple flows
+        self.junction.input["airFlowRateIn"].set(torch.tensor([[0.5, 0.5]]), step_index=0)
+        self.junction.input["airTemperatureIn"].set(torch.tensor([[20.0, 22.0]]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        self.junction.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        
+        # Check outputs
+        flow_out = self.junction.output["airFlowRateOut"].get()
+        temp_out = self.junction.output["airTemperatureOut"].get()
+        
+        self.assertIsNotNone(flow_out)
+        self.assertIsNotNone(temp_out)
+        # Total flow = 0.5 + 0.5 + 0.1 (bias) = 1.1
+        self.assertAlmostEqual(flow_out.item(), 1.1, places=2)
+        # Weighted avg temp = (20*0.5 + 22*0.5) / 1.1 ≈ 19.09
+        self.assertAlmostEqual(temp_out.item(), 21.0/1.1, places=1)
+
+    def test_do_step_zero_flow(self):
+        """Test return flow junction with zero flow."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        
+        junction = ReturnFlowJunctionSystem(id="test_zero_flow")
+        junction.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set inputs with zero flow
+        junction.input["airFlowRateIn"].set(torch.tensor([[0.0, 0.0]]), step_index=0)
+        junction.input["airTemperatureIn"].set(torch.tensor([[20.0, 22.0]]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        junction.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        
+        # Check outputs - should be 0 flow and default temperature
+        flow_out = junction.output["airFlowRateOut"].get()
+        temp_out = junction.output["airTemperatureOut"].get()
+        
+        self.assertEqual(flow_out.item(), 0)
+        self.assertEqual(temp_out.item(), 20)  # Default temperature when flow is 0
+
+
+class TestSupplyFlowJunctionSystemExtended(unittest.TestCase):
+    def setUp(self):
+        self.junction = SupplyFlowJunctionSystem(id="test_supply_junction", airFlowRateBias=0.05)
+
+    def test_initialization(self):
+        """Test supply flow junction initialization."""
+        self.assertIsNotNone(self.junction)
+        self.assertEqual(self.junction.id, "test_supply_junction")
+        self.assertEqual(self.junction.airFlowRateBias, 0.05)
+
+    def test_initialization_default_bias(self):
+        """Test supply flow junction with default bias."""
+        junction = SupplyFlowJunctionSystem(id="test_default")
+        self.assertEqual(junction.airFlowRateBias, 0)
+
+    def test_do_step(self):
+        """Test supply flow junction do_step method."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        self.junction.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # Set inputs - vector inputs for multiple flows
+        self.junction.input["airFlowRateOut"].set(torch.tensor([[0.3, 0.4, 0.3]]), step_index=0)
+        
+        # Execute a time step
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        self.junction.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        
+        # Check output - sum of flows + bias
+        flow_in = self.junction.output["airFlowRateIn"].get()
+        
+        self.assertIsNotNone(flow_in)
+        # Total = 0.3 + 0.4 + 0.3 + 0.05 = 1.05
+        self.assertAlmostEqual(flow_in.item(), 1.05, places=2)
+
+
+class TestDiscreteStatespaceSystem(unittest.TestCase):
+    def setUp(self):
+        from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+        # Simple first-order system: dx/dt = -x + u, y = x
+        A = torch.tensor([[0.9]], dtype=torch.float64)  # Already discrete
+        B = torch.tensor([[0.1]], dtype=torch.float64)
+        C = torch.tensor([[1.0]], dtype=torch.float64)
+        D = torch.tensor([[0.0]], dtype=torch.float64)
+        x0 = torch.tensor([0.0], dtype=torch.float64)
+        
+        self.system = DiscreteStatespaceSystem(
+            id="test_ss",
+            A=A, B=B, C=C, D=D,
+            x0=x0,
+            is_discrete=True
+        )
+
+    def test_initialization(self):
+        """Test discrete statespace system initialization."""
+        self.assertIsNotNone(self.system)
+        self.assertEqual(self.system.id, "test_ss")
+
+    def test_state_property(self):
+        """Test get_state and set_state methods."""
+        state = self.system.get_state()
+        self.assertIsNotNone(state)
+        
+        # Set a new state
+        new_state = torch.tensor([[1.5]], dtype=torch.float64)
+        self.system.set_state(new_state)
+        retrieved_state = self.system.get_state()
+        self.assertAlmostEqual(retrieved_state[0, 0].item(), 1.5, places=5)
+
+
+class TestPiecewiseLinearSystem(unittest.TestCase):
+    def setUp(self):
+        from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
+        # Create a simple piecewise linear function: y = x for x in [0, 1], y = 2-x for x in [1, 2]
+        X = np.array([0.0, 1.0, 2.0])
+        Y = np.array([0.0, 1.0, 0.0])
+        self.system = PiecewiseLinearSystem(id="test_piecewise", X=X, Y=Y)
+
+    def test_initialization(self):
+        """Test piecewise linear system initialization."""
+        self.assertIsNotNone(self.system)
+        self.assertEqual(self.system.id, "test_piecewise")
+
+    def test_get_Y_within_range(self):
+        """Test interpolation within range."""
+        # At x=0.5, y should be 0.5 (on the first segment)
+        y = self.system._get_Y(0.5)
+        self.assertAlmostEqual(y, 0.5, places=5)
+        
+        # At x=1.5, y should be 0.5 (on the second segment, y = 2 - x)
+        y = self.system._get_Y(1.5)
+        self.assertAlmostEqual(y, 0.5, places=5)
+
+    def test_get_Y_at_boundaries(self):
+        """Test interpolation at boundary points."""
+        # At x=0, y should be 0
+        y = self.system._get_Y(0)
+        self.assertAlmostEqual(y, 0.0, places=5)
+        
+        # At x=1, y should be 1
+        y = self.system._get_Y(1.0)
+        self.assertAlmostEqual(y, 1.0, places=5)
+        
+        # At x=2, y should be 0
+        y = self.system._get_Y(2.0)
+        self.assertAlmostEqual(y, 0.0, places=5)
+
+    def test_get_Y_outside_range(self):
+        """Test interpolation outside range (extrapolation/clamping)."""
+        # Below range, should return first Y value
+        y = self.system._get_Y(-1.0)
+        self.assertAlmostEqual(y, 0.0, places=5)
+        
+        # Above range, should return last Y value
+        y = self.system._get_Y(3.0)
+        self.assertAlmostEqual(y, 0.0, places=5)
+
+
+class TestOnOffControllerSystemExtended(unittest.TestCase):
+    def test_reverse_mode(self):
+        """Test on/off controller in reverse mode."""
+        controller = OnOffControllerSystem(id="test_reverse", offValue=0, onValue=1, isReverse=True)
+        
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        step_size = [600]
+        controller.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        
+        # In reverse mode, when actual > setpoint, output should be ON
+        controller.input["actualValue"].set(torch.tensor([25.0]), step_index=0)
+        controller.input["setpointValue"].set(torch.tensor([22.0]), step_index=0)
+        
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        controller.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        
+        output = controller.output["inputSignal"].get()
+        self.assertIsNotNone(output)
 
 
 if __name__ == '__main__':

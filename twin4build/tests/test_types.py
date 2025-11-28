@@ -209,6 +209,134 @@ class TestParameter(unittest.TestCase):
         torch.testing.assert_close(result, torch.tensor([1.0, 2.0, 3.0], dtype=torch.float64))
 
 
+class TestScalarAdvanced(unittest.TestCase):
+    def test_scalar_normalized_history(self):
+        """Test scalar normalized history property."""
+        s = Scalar()
+        s.initialize(n_timesteps=5, batch_size=1)
+        
+        # Set values to populate history
+        for i in range(5):
+            s.set(i * 10.0, step_index=i)
+        
+        # Get normalized history
+        normalized = s.normalized_history
+        self.assertIsNotNone(normalized)
+        # Values should be normalized between 0 and 1
+        self.assertGreaterEqual(normalized.min(), 0)
+        self.assertLessEqual(normalized.max(), 1)
+
+    def test_scalar_is_leaf(self):
+        """Test scalar is_leaf property."""
+        s = Scalar()
+        s.initialize(n_timesteps=5, batch_size=1)
+        
+        # Test setting is_leaf
+        s.is_leaf = True
+        self.assertTrue(s.is_leaf)
+        
+        s.is_leaf = False
+        self.assertFalse(s.is_leaf)
+
+    def test_scalar_optional(self):
+        """Test scalar optional property."""
+        s = Scalar(optional=True)
+        self.assertTrue(s.optional)
+        
+        s2 = Scalar(optional=False)
+        self.assertFalse(s2.optional)
+
+    def test_scalar_do_normalization(self):
+        """Test scalar do_normalization property."""
+        s = Scalar()
+        s.initialize(n_timesteps=5, batch_size=1)
+        
+        s.do_normalization = True
+        self.assertTrue(s.do_normalization)
+        
+        s.do_normalization = False
+        self.assertFalse(s.do_normalization)
+
+    def test_scalar_str(self):
+        """Test scalar string representation."""
+        s = Scalar(scalar=5.0)
+        str_repr = str(s)
+        self.assertIsNotNone(str_repr)
+
+
+class TestVectorAdvanced(unittest.TestCase):
+    def test_vector_is_leaf(self):
+        """Test vector is_leaf property."""
+        v = Vector(size=3)
+        v.initialize(n_timesteps=5, batch_size=1)
+        
+        # Test setting is_leaf
+        v.is_leaf = True
+        self.assertTrue(v.is_leaf)
+
+    def test_vector_getitem_setitem(self):
+        """Test vector __getitem__ and __setitem__."""
+        v = Vector(size=3)
+        v.initialize(n_timesteps=5, batch_size=1)
+        
+        # Set via setitem
+        v[0] = torch.tensor([[1.0, 2.0, 3.0]])
+        
+        # Get via getitem
+        result = v[0]
+        self.assertEqual(result.shape[1], 3)
+
+
+class TestParameterAdvanced(unittest.TestCase):
+    def test_parameter_normalization(self):
+        """Test parameter normalize and denormalize."""
+        p = Parameter(torch.tensor(5.0), min_value=0.0, max_value=10.0)
+        
+        # Normalized value should be 0.5
+        normalized = p.normalize()
+        self.assertAlmostEqual(normalized.item(), 0.5, places=5)
+        
+        # Denormalize back
+        denorm = p.denormalize(normalized)
+        self.assertAlmostEqual(denorm.item(), 5.0, places=5)
+
+    def test_parameter_no_bounds(self):
+        """Test parameter without bounds."""
+        p = Parameter(torch.tensor(5.0))
+        
+        # Without bounds, normalize should work with identity
+        normalized = p.normalize()
+        self.assertAlmostEqual(normalized.item(), 5.0, places=5)
+
+
+class TestTensorParameter(unittest.TestCase):
+    def test_tensor_parameter_initialization(self):
+        """Test TensorParameter initialization."""
+        from twin4build.utils.types import TensorParameter
+        
+        tp = TensorParameter(initial_value=5.0, min_value=0.0, max_value=10.0)
+        self.assertIsNotNone(tp)
+        self.assertEqual(tp.get().item(), 5.0)
+
+    def test_tensor_parameter_set_get(self):
+        """Test TensorParameter set and get."""
+        from twin4build.utils.types import TensorParameter
+        
+        tp = TensorParameter(initial_value=5.0, min_value=0.0, max_value=10.0)
+        
+        tp.set(7.0, normalized=False)
+        self.assertAlmostEqual(tp.get().item(), 7.0, places=5)
+
+    def test_tensor_parameter_denormalize(self):
+        """Test TensorParameter denormalize."""
+        from twin4build.utils.types import TensorParameter
+        
+        tp = TensorParameter(initial_value=5.0, min_value=0.0, max_value=10.0)
+        
+        denorm = tp.denormalize(torch.tensor(0.5))
+        self.assertAlmostEqual(denorm.item(), 5.0, places=5)
+
+
 if __name__ == '__main__':
     unittest.main()
 

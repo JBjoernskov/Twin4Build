@@ -41,7 +41,7 @@ dict\_utils module
 do\_nothing module
 ------------------
 
-.. automodule:: twin4build.utils.do_nothing
+.. automodule:: twin4build.utils._do_nothing
    :members:
    :show-inheritance:
    :undoc-members:
