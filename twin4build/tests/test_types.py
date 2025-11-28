@@ -206,12 +206,10 @@ class TestParameter(unittest.TestCase):
         
         result = p.get()
         self.assertEqual(result.shape[0], 3)
-        torch.testing.assert_close(result, torch.tensor([1.0, 2.0, 3.0]))
+        torch.testing.assert_close(result, torch.tensor([1.0, 2.0, 3.0], dtype=torch.float64))
 
 
 if __name__ == '__main__':
     unittest.main()
 
-    v = TestVector()
-    v.test_vector_history()
 
