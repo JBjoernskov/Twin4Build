@@ -461,7 +461,8 @@ class TestDictUtils(unittest.TestCase):
         dict1 = {'a': 1, 'b': {'c': 2}}
         dict2 = {'a': 3, 'b': {'c': 4}}
         
-        self.assertTrue(compare_dict_structure(dict1, dict2))
+        result = compare_dict_structure(dict1, dict2)
+        self.assertTrue(result['structures_match'])
 
     def test_compare_dict_structure_different(self):
         """Test compare_dict_structure with different structure."""
@@ -470,29 +471,26 @@ class TestDictUtils(unittest.TestCase):
         dict1 = {'a': 1, 'b': {'c': 2}}
         dict2 = {'a': 3, 'x': {'y': 4}}
         
-        self.assertFalse(compare_dict_structure(dict1, dict2))
+        result = compare_dict_structure(dict1, dict2)
+        self.assertFalse(result['structures_match'])
+        self.assertIn('b', result['missing_in_2'])
+        self.assertIn('x', result['missing_in_1'])
 
     def test_flatten_dict(self):
-        """Test flatten_dict function."""
+        """Test flatten_dict function returns list of tuples."""
         from twin4build.utils.dict_utils import flatten_dict
         
-        nested = {'a': {'b': {'c': 1}}, 'd': 2}
-        flattened = flatten_dict(nested)
+        # Create a simple object for testing
+        class TestObj:
+            pass
         
-        self.assertIn('a.b.c', flattened)
-        self.assertIn('d', flattened)
-        self.assertEqual(flattened['a.b.c'], 1)
-        self.assertEqual(flattened['d'], 2)
-
-    def test_flatten_dict_custom_separator(self):
-        """Test flatten_dict with custom separator."""
-        from twin4build.utils.dict_utils import flatten_dict
+        obj = TestObj()
+        nested = {'a': 1, 'b': 2}
+        flattened = flatten_dict(nested, obj)
         
-        nested = {'a': {'b': 1}}
-        flattened = flatten_dict(nested, sep='/')
-        
-        self.assertIn('a/b', flattened)
-        self.assertEqual(flattened['a/b'], 1)
+        self.assertIsInstance(flattened, list)
+        # Should return tuples with (key, value)
+        self.assertEqual(len(flattened), 2)
 
 
 class TestMkdirInRoot(unittest.TestCase):

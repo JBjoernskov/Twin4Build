@@ -70,42 +70,27 @@ class TestSemanticModel(unittest.TestCase):
         from rdflib import URIRef, RDF
         self.semantic_model.instance_graph.add((URIRef(uri), RDF.type, URIRef(type_uri)))
         
-        output_file = "test_output.ttl"
+        output_file_instance = "test_output_instance.ttl"
+        output_file_ontology = "test_output_ontology.ttl"
         # Ensure we use absolute path or handle directory correctly
         # The serialize method might use internal dir_conf
         
-        # Overriding dir_conf locally for test
-        self.semantic_model.dir_conf = ["."]
-        
-        self.semantic_model.serialize(filename_instance_graph=output_file)
-        
-        # Check if file exists in current dir or under generated_files/...
-        # serialize uses get_dir which creates folders. 
-        
-        # Let's check where it actually writes
-        # It should write to ./generated_files/models/test_semantic_model/semantic_model/test_output.ttl by default structure
-        # But if we set dir_conf=["."] it might write to ./test_output.ttl
-        
-        # If serialize takes just filename, it appends it to the dir path.
-        # Let's check if we can find it.
-        
-        expected_path = os.path.join("generated_files", "models", self.model_id, "semantic_model", output_file)
-        if not os.path.exists(expected_path):
-             # Try current dir if logic is different
-             if os.path.exists(output_file):
-                 expected_path = output_file
-        
-        self.assertTrue(os.path.exists(expected_path), f"File not found at {expected_path}")
+        self.semantic_model.serialize(filename_instance_graph=output_file_instance, filename_ontology_graph=output_file_ontology)
+        expected_path_instance = self.semantic_model.get_dir(filename=output_file_instance)[0]
+        expected_path_ontology = self.semantic_model.get_dir(filename=output_file_ontology)[0]
+        self.assertTrue(os.path.exists(expected_path_instance), f"File not found at {expected_path_instance}")
+        self.assertTrue(os.path.exists(expected_path_ontology), f"File not found at {expected_path_ontology}")
+        self.assertEqual(len(self.semantic_model.instance_graph), len(Graph.parse(expected_path_instance, format="turtle")))
+        self.assertEqual(len(self.semantic_model.ontology_graph), len(Graph.parse(expected_path_ontology, format="turtle")))
+
 
     def test_visualize(self):
         """Test graph visualization."""
         # Just test that the method exists and doesn't crash
         # Actual visualization testing would require more setup
-        # We mock print or file operations if necessary, but for now just running it
-        try:
-            self.semantic_model.visualize()
-        except Exception as e:
-            self.fail(f"visualize() raised Exception: {e}")
+        self.semantic_model.visualize()
+        self.assertTrue(True)
+
 
     def test_graph_property(self):
         """Test that semantic model has graph properties."""
@@ -131,8 +116,8 @@ class TestSemanticModel(unittest.TestCase):
         type_uri = "http://example.org/TestType"
         self.semantic_model.instance_graph.add((URIRef(uri), RDF.type, URIRef(type_uri)))
         
-        # Get a copy of the graph
-        graph_copy = self.semantic_model.get_graph_copy()
+        # Get a copy of the graph - pass the instance_graph as argument
+        graph_copy = self.semantic_model.get_graph_copy(self.semantic_model.instance_graph)
         
         self.assertIsNotNone(graph_copy)
         # The copy should contain the same triples

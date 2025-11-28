@@ -7,7 +7,7 @@ import numpy as np
 
 # Local application imports
 import twin4build.core as core
-
+import twin4build.utils.types as tps
 
 class PiecewiseLinearSystem(core.System):
     """A system implementing piecewise linear interpolation functionality.
@@ -38,6 +38,13 @@ class PiecewiseLinearSystem(core.System):
         """
         super().__init__(**kwargs)
 
+        self.input = {
+            "x": tps.Scalar(),
+        }
+        self.output = {
+            "y": tps.Scalar(),
+        }
+
         # Store attributes as private variables
         self._X = X
         self._Y = Y
@@ -47,7 +54,7 @@ class PiecewiseLinearSystem(core.System):
 
         if X is not None and Y is not None:
             self._XY = np.array([X, Y]).transpose()
-            self.get_a_b_vectors()
+            self._get_a_b_vectors()
         self._config = {"parameters": []}
 
     @property
@@ -142,6 +149,5 @@ class PiecewiseLinearSystem(core.System):
             step_size (Optional[float], optional): Time step size in seconds.
                 Defaults to None.
         """
-        X = list(self.input.values())[0]
-        key = list(self.output.keys())[0]
-        self.output[key].set(self._get_Y(X), step_index)
+        X = self.input["x"].get()
+        self.output["y"].set(self._get_Y(X), step_index)
