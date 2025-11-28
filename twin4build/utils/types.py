@@ -675,7 +675,7 @@ class Parameter(nn.Parameter):
         # Set min and max values
         if min_value is None:
             if torch.all(data < 0):
-                min_value = data.clone()
+                min_value = torch.tensor(data.clone(), dtype=torch.float64)
             else:
                 min_value = torch.tensor(0, dtype=torch.float64)
             # validate = False
@@ -688,7 +688,7 @@ class Parameter(nn.Parameter):
             elif torch.allclose(data, torch.zeros_like(data)):
                 max_value = torch.tensor(1, dtype=torch.float64)
             else:
-                max_value = data.clone()
+                max_value = torch.tensor(data.clone(), dtype=torch.float64)
 
         else:
             max_value = _convert_to_1D_scalar_tensor(max_value).squeeze()
