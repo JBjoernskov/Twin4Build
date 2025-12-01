@@ -1,4 +1,3 @@
-
 Developer Reference
 ========================================
 
@@ -22,6 +21,8 @@ Twin4Build is organized around five main components which are exposed through th
 - **Translator**: Generates models from semantic descriptions
 - **Estimator**: Performs parameter estimation and calibration
 - **Optimizer**: Optimizes building operation and control
+
+The **core**—Model, Simulator, Estimator, Optimizer, Translator and their interactions—must remain stable and predictable. **Adjacent modules** (e.g., component models and GPU backends) extend the system but must respect explicit boundaries, documented contracts, and shared interfaces so contributors understand how their work interacts with the foundations.
 
 Package Structure
 ~~~~~~~~~~~~~~~~~
@@ -147,56 +148,128 @@ Use Google-style docstrings and type hints:
         """
         pass
 
-For class properties, use the @property decorator:
+For public class properties (acessed from outside the class), use the @property decorator:
 
 .. code-block:: python
 
     class MyClass:
         @property
-        def property_name(self) -> float:
+        def property_name(self) -> Any:
             """Description of the property."""
+            return self._property_name
+    
+Avoid defining setter methods for public class properties unless necessary.
+This way, we avoid accidently changing the value of a property.
+If necessary, define a setter method for the property.
+
+.. code-block:: python
+
+    class MyClass:
+        @property_name.setter
+        def property_name(self, value: Any) -> None:
+            """Description of the property."""
+            self._property_name = value
 
 Development Workflow
 -------------------
 
+Branching Strategy
+~~~~~~~~~~~~~~~~~
+
+Twin4Build follows a disciplined branching model to keep development organized and reversible:
+
+- **Main branch**: Stable releases only, updated through approved merges from dev branch
+- **Dev branch**: Integration branch for completed features with tests and documentation
+- **Feature branches**: Each feature lives in its own branch containing only logically related changes
+
+  - Feature branches may have one level of sub-branching when needed
+  - Once complete, features merge into dev (never directly into main)
+  - Main contributors can make exemptions to this rule
+
 Git Workflow
 ~~~~~~~~~~~
 
-1. **Create a feature branch** from `main`:
+1. **Create a GitHub issue** describing the work to be done
+
+2. **Create a feature branch** from `dev` (or `main` if exempted):
    ::
 
-       git checkout -b feature/your-feature-name
+       git checkout dev
+       git pull origin dev
+       git checkout -b feature/issue-XX/description
 
-2. **Make your changes** and commit with descriptive message using imperative mood:
+   Replace `XX` with the issue number and `description` with a brief description.
+
+3. **Make your changes** and commit with descriptive message using imperative mood:
    ::
 
        git commit -m "Add new HVAC component for variable air volume systems"
 
-3. **Push your branch** and create a pull request:
+4. **Push your branch** and create a pull request:
    ::
 
-       git push origin feature/your-feature-name
+       git push origin feature/issue-XX/description
 
 Branch Naming Conventions
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-- `feature/description`: New features
-- `bugfix/description`: Bug fixes
-- `docs/description`: Documentation updates
-- `test/description`: Test additions or improvements
-- `refactor/description`: Code refactoring
+All branches must reference a GitHub issue and follow this pattern: `type/issue-XX/description`
+
+- `feature/issue-XX/description`: New features
+- `bugfix/issue-XX/description`: Bug fixes
+- `docs/issue-XX/description`: Documentation updates
+- `test/issue-XX/description`: Test additions or improvements
+- `refactor/issue-XX/description`: Code refactoring
+
+**Examples:**
+
+- `feature/issue-88/increase-test-coverage`
+- `bugfix/issue-42/fix-simulator-memory-leak`
+- `docs/issue-15/update-installation-guide`
+
+Definition of Done
+~~~~~~~~~~~~~~~~~
+
+A feature is considered "done" when:
+
+- Functionality meets the agreed scope
+- Code satisfies style guidelines (validated with ``python scripts/validate_code.py``)
+- Tests (unit + integration) are included and pass
+- Documentation is updated
+- UML/architecture notes are provided when complexity requires it
+
+This checklist ensures consistency, transparency, and predictable development velocity.
 
 Pull Request Process
 ~~~~~~~~~~~~~~~~~~~
 
 1. **Run code validation**: `python scripts/validate_code.py`
-2. Update documentation if needed
-3. Add tests for new functionality
-4. Add examples if applicable
-5. Request review from maintainers
+2. **Run test suite locally**: Ensure all tests pass before pushing
+3. Update documentation if needed
+4. Add tests for new functionality
+5. Provide UML diagrams or architecture notes for moderately complex features
+6. Add examples if applicable
+7. Request review from maintainers
+
+Note: A pull request is required for any changes made to main and dev branches.
 
 Testing
 -------
+
+Testing Strategy
+~~~~~~~~~~~~~~~
+
+Twin4Build aims for a practical balance: ensure stability without over-engineering.
+
+**Core Requirements:**
+
+- All core features require component and integration tests to verify correctness of the Model→Simulator→Estimator→Optimizer chain
+- **Public methods MUST have unit tests**
+- **Private methods CAN have unit tests for critical functionality**
+- Adjacent modules should include targeted tests to validate their interfaces with the core
+- Before pushing to a branch, the test suite must be run locally to avoid pushing broken code
+
+Tests serve two purposes: quality assurance and developer guidance, helping newcomers understand expected behavior.
 
 Running Tests
 ~~~~~~~~~~~~
@@ -266,32 +339,30 @@ Before committing code, run the validation script to ensure your code meets Twin
 Writing Tests
 ~~~~~~~~~~~~
 
-- Place tests in the `twin4build/tests/` directory
-- Use descriptive test names starting with `test_`
-- Test both success and failure cases
-- Use setUp and tearDown methods for common setup
+Use unittest framework for all tests:
 
-Example test structure:
-::
+.. code-block:: python
 
     import unittest
     from twin4build import Model
 
     class TestModel(unittest.TestCase):
-        """Test cases for the Model class."""
         
         def setUp(self):
-            """Set up test fixtures before each test method."""
-            self.model = Model(id="test_model")
+            """Set up test fixtures."""
+            self.model = Model()
         
-        def test_model_creation(self):
-            """Test that a model can be created with basic parameters."""
-            self.assertEqual(self.model.id, "test_model")
-            self.assertEqual(self.model.components, [])
+        def test_component_addition(self):
+            """Test adding components to model."""
+            component = self.create_test_component()
+            self.model.add_component(component)
+            self.assertIn(component, self.model.components)
         
-        def tearDown(self):
-            """Clean up after each test method."""
-            pass
+        def test_simulation_run(self):
+            """Test basic simulation execution."""
+            result = self.model.simulate(start_time=0, end_time=100, step_size=1)
+            self.assertIsNotNone(result)
+            self.assertGreater(len(result), 0)
 
     if __name__ == '__main__':
         unittest.main()
@@ -333,6 +404,29 @@ Use unittest's advanced features for better testing:
 
 Documentation
 ------------
+
+Documentation Standards
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Keep documentation up to date with code changes
+- Include code examples for all public APIs
+- Use clear, concise language
+- Include diagrams and visual aids when helpful
+- Follow reStructuredText formatting for manual pages
+
+Architecture Documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For moderately complex features, contributors should provide lightweight but effective architecture documentation:
+
+- Small UML-style diagrams or flow charts summarizing class interactions
+- Data flow diagrams when relevant
+- Component lifecycle documentation
+- Interface contracts and boundaries
+
+This documentation supports knowledge transfer, helps reviewers rapidly understand intent, reduces onboarding friction, and prevents duplicate or conflicting design efforts.
+
+**Note**: Features naturally change the architecture of the library over time. The goal of architecture documentation is not purely technical—it's communicational: to define a ubiquitous language for developer onboarding and establish a traceable history of architectural decisions.
 
 Building Documentation
 ~~~~~~~~~~~~~~~~~~~~~
@@ -381,18 +475,6 @@ This step compiles all documentation (manual + API) into HTML:
 **View Documentation**
 
 For viewing and browsing the documentation, open the `Twin4Build/build/html/index.html` file in your browser.
-
-
-
-
-Documentation Standards
-~~~~~~~~~~~~~~~~~~~~~~
-
-- Keep documentation up to date with code changes
-- Include code examples for all public APIs
-- Use clear, concise language
-- Include diagrams and visual aids when helpful
-- Follow reStructuredText formatting for manual pages
 
 Writing Documentation
 ~~~~~~~~~~~~~~~~~~~~
@@ -474,6 +556,7 @@ Suggesting Features
 - Provide examples of how the feature would be used
 - Consider implementation complexity
 - Discuss potential impacts on existing functionality
+- Clearly distinguish whether the feature extends core functionality or is an adjacent module
 
 Code Contribution Process
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -482,10 +565,11 @@ Code Contribution Process
 2. **Create a feature branch** following naming conventions
 3. **Make your changes** following code style guidelines
 4. **Add examples (optional)** for new functionality
-5. **Add tests** for new functionality
+5. **Add tests** for new functionality (required for public methods)
 6. **Update documentation** as needed
-7. **Run the test suite** to ensure everything works
-8. **Submit a pull request** with a clear description
+7. **Add architecture documentation** if the feature is moderately complex
+8. **Run the test suite** to ensure everything works
+9. **Submit a pull request** with a clear description
 
 Advanced Topics
 --------------
@@ -516,7 +600,7 @@ Example:
             super().__init__(**kwargs)
             # Initialize component-specific attributes
             
-        def do_step(self, secondTime, dateTime, step_size, stepIndex):
+        def do_step(self, second_time, date_time, step_size, step_index):
             """Perform one simulation step."""
             # Implement simulation logic
             pass
@@ -524,11 +608,9 @@ Example:
 Performance Considerations
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Always use torch operations on 
+- Always use torch operations to enable automatic differentiation
 - Use vectorized operations when possible
 - Profile code to identify bottlenecks
-- Consider using NumPy for numerical computations
-- Optimize simulation loops for large models
 
 Debugging Tips
 ~~~~~~~~~~~~~
@@ -544,23 +626,31 @@ Release Process
 Version Management
 ~~~~~~~~~~~~~~~~~
 
-- Follow semantic versioning (MAJOR.MINOR.PATCH)
-- Update version in `pyproject.toml`
-- Create release notes for significant changes
-- Tag releases in Git
+Twin4Build follows semantic versioning (MAJOR.MINOR.PATCH) to maintain clarity for users and contributors:
+
+- **MAJOR**: Structural changes to the core or breaking interface updates
+- **MINOR**: New features or non-breaking improvements
+- **PATCH**: Hotfixes and stability updates
+
+Version updates occur in both **dev** and **main** branches:
+
+- Every merge into the dev branch bumps the version number with a pre-release tag
+- Main branch receives version updates only for stable releases
 
 Building and Distributing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-1. Update version number
+1. Update version number in `pyproject.toml`
 2. Run full test suite
 3. Build documentation
-4. Create distribution:
+4. Create release notes for significant changes
+5. Tag releases in Git
+6. Create distribution:
    ::
 
        python -m build
 
-5. Upload to PyPI (maintainers only)
+7. Upload to PyPI (maintainers only)
 
 Getting Help
 -----------
