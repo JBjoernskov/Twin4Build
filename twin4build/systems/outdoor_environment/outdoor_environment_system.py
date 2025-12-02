@@ -293,7 +293,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_outdoorTemperature,
                 dbconfig=self.dbconfig_outdoorTemperature,
+                cache=False # Cache is disabled for outdoor temperature data to avoid loading the same column multiple times form the same file
             )
+            
             time_series_temp.initialize(start_time, end_time, step_size)
 
             time_series_irrad = TimeSeriesInputSystem(
@@ -305,6 +307,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_globalIrradiation,
                 dbconfig=self.dbconfig_globalIrradiation,
+                cache=False
             )
             time_series_irrad.initialize(start_time, end_time, step_size)
 
@@ -317,6 +320,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_outdoorCo2Concentration,
                 dbconfig=self.dbconfig_outdoorCo2Concentration,
+                cache=False
             )
             time_series_co2.initialize(start_time, end_time, step_size)
 

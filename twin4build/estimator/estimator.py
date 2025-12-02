@@ -1623,6 +1623,15 @@ class Estimator:
         if method[0] == "scipy":
             self.simulator.model.restore_parameters(keep_values=True)
 
+        # Denormalize result using parameter's denormalize method
+        # result.x contains normalized values and parameters are in the same order as in the _flat_parameters list
+        result.x = np.array(
+            [
+                param.denormalize(torch.tensor(x_norm, dtype=torch.float64)).item()
+                for param, x_norm in zip(self._flat_parameters, result.x)
+            ]
+        )
+
         # Create and save result
         result = EstimationResult(
             result_x=result.x,
