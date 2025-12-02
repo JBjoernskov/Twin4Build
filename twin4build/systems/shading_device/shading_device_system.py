@@ -35,7 +35,6 @@ class ShadingDeviceSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the shading device system.
 

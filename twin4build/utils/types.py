@@ -277,9 +277,9 @@ class Vector:
         # print("self.tensor.shape", self.tensor.shape)
 
         if index is not None:
-            self.tensor[:, index] = v
+            self._tensor[:, index] = v
         else:
-            self.tensor[:, :] = v
+            self._tensor[:, :] = v
 
         if self._log_history:
             assert step_index is not None, "step_index must be provided when logging history"
@@ -484,7 +484,17 @@ class Scalar:
         batch_size: Optional[int] = None,
         values: Optional[List[float]] = None,
         force: bool = False,
-    ):
+        *args,
+        **kwargs,
+    ) -> None:
+        """Initialize the scalar.
+
+        Args:
+            n_timesteps (int): The number of timesteps.
+            batch_size (Optional[int]): The batch size.
+            values (Optional[List[float]]): The values to initialize the scalar with.
+            force (bool): Whether to force the initialization.
+        """
         assert isinstance(n_timesteps, int), "n_timesteps must be an integer"
 
         if batch_size is not None:

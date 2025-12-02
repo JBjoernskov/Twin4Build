@@ -246,13 +246,22 @@ class FanSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the fan system"""
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
         for port in self.input.values():
-            port.initialize(start_time, end_time, step_size, simulator)
+            port.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
         for port in self.output.values():
-            port.initialize(start_time, end_time, step_size, simulator)
+            port.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
         self.INITIALIZED = True
 
     def do_step(
@@ -350,13 +359,12 @@ class DamperSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the damper system"""
         for port in self.input.values():
-            port.initialize(start_time, end_time, step_size, simulator)
+            port.initialize(start_time, end_time, step_size)
         for port in self.output.values():
-            port.initialize(start_time, end_time, step_size, simulator)
+            port.initialize(start_time, end_time, step_size)
         self.INITIALIZED = True
 
     def do_step(
@@ -482,16 +490,15 @@ class BranchSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the branch system"""
         for port in self.input.values():
-            port.initialize(start_time, end_time, step_size, simulator)
+            port.initialize(start_time, end_time, step_size)
         for port in self.output.values():
-            port.initialize(start_time, end_time, step_size, simulator)
+            port.initialize(start_time, end_time, step_size)
 
         if self.has_damper:
-            self.damper.initialize(start_time, end_time, step_size, simulator)
+            self.damper.initialize(start_time, end_time, step_size)
 
         self.INITIALIZED = True
 
@@ -757,20 +764,19 @@ class AirNetworkSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the air network system"""
         for port in self.input.values():
-            port.initialize(start_time, end_time, step_size, simulator)
+            port.initialize(start_time, end_time, step_size)
         for port in self.output.values():
-            port.initialize(start_time, end_time, step_size, simulator)
+            port.initialize(start_time, end_time, step_size)
 
         # Initialize subsystems
-        self.fan_system.initialize(start_time, end_time, step_size, simulator)
+        self.fan_system.initialize(start_time, end_time, step_size)
         for branch in self.supply_branches:
-            branch.initialize(start_time, end_time, step_size, simulator)
+            branch.initialize(start_time, end_time, step_size)
         for branch in self.exhaust_branches:
-            branch.initialize(start_time, end_time, step_size, simulator)
+            branch.initialize(start_time, end_time, step_size)
 
         self.INITIALIZED = True
 

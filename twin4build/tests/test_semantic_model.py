@@ -80,8 +80,8 @@ class TestSemanticModel(unittest.TestCase):
         expected_path_ontology = self.semantic_model.get_dir(filename=output_file_ontology)[0]
         self.assertTrue(os.path.exists(expected_path_instance), f"File not found at {expected_path_instance}")
         self.assertTrue(os.path.exists(expected_path_ontology), f"File not found at {expected_path_ontology}")
-        self.assertEqual(len(self.semantic_model.instance_graph), len(Graph.parse(expected_path_instance, format="turtle")))
-        self.assertEqual(len(self.semantic_model.ontology_graph), len(Graph.parse(expected_path_ontology, format="turtle")))
+        self.assertEqual(len(self.semantic_model.instance_graph), len(Graph().parse(expected_path_instance, format="turtle")))
+        self.assertEqual(len(self.semantic_model.ontology_graph), len(Graph().parse(expected_path_ontology, format="turtle")))
 
 
     def test_visualize(self):

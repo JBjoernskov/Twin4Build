@@ -84,7 +84,7 @@ class ReturnFlowJunctionSystem(core.System):
         end_time: datetime.datetime,
         step_size: int,
     ) -> None:
-        pass
+        pass # TODO: Implement this. Count number of inputs. This can be a bit complicated as different inputs connections can set differnt indices of the tensor.
 
     def do_step(
         self,

@@ -89,7 +89,7 @@ class SupplyFlowJunctionSystem(core.System):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
-        pass
+        pass # TODO: Implement this. Count number of inputs. This can be a bit complicated as different inputs connections can set differnt indices of the tensor.
 
     def do_step(
         self,
@@ -111,7 +111,7 @@ class SupplyFlowJunctionSystem(core.System):
             step_index (int, optional): Current simulation step index.
         """
         self.output["airFlowRateIn"].set(
-            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias,
+            (self.input["airFlowRateOut"].get().sum(dim=1)) + self.airFlowRateBias,
             step_index,
         )
 

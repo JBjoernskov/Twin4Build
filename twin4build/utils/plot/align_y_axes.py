@@ -108,6 +108,75 @@ def calculate_ticks(ax, nticks, round_to=None, zero_tick_idx=None):
 
 
 def alignYaxes(axes_list, nticks_list, round_to_list, yoffset_list, align_zero=True):
+    r"""
+    Align multiple y-axes in a plot with synchronized tick positions and optional zero alignment.
+    
+    This function ensures that multiple y-axes (e.g., when using twinx()) are visually aligned
+    with consistent tick spacing and optional zero-line alignment across all axes.
+    
+    Mathematical Formulation:
+    
+    1. **Zero Alignment**: When ``align_zero=True`` and data crosses zero:
+       
+       .. math::
+       
+          zero\_idx = \begin{cases}
+          0 & \text{if } |y_{min}| \leq y_{max} \\
+          n_{ticks} - 2 & \text{if } |y_{min}| > y_{max}
+          \end{cases}
+       
+       where the zero line is placed at the bottom or near top based on data distribution.
+    
+    2. **Proportional Offset Calculation**: For each axis :math:`i`:
+       
+       .. math::
+       
+          y_{i,offset} = \frac{\Delta y_i \cdot y_{master,offset}}{\Delta y_{master} + 2y_{master,offset}} \cdot \frac{1}{1 - \frac{2y_{master,offset}}{\Delta y_{master} + 2y_{master,offset}}}
+       
+       where:
+       - :math:`\Delta y_i = y_{i,max} - y_{i,min}` is the axis range
+       - :math:`y_{master,offset}` is the reference offset from the master axis
+       - :math:`\Delta y_{master}` is the master axis range
+    
+    3. **Final Y-Limits**: Applied to each axis:
+       
+       .. math::
+       
+          y_{i,lim} = [y_{i,min} - y_{i,offset}, \quad y_{i,max} + y_{i,offset}]
+    
+    Args:
+        axes_list (list): List of matplotlib axes objects to align.
+        nticks_list (list): Number of ticks for each axis. Must have same length as axes_list.
+        round_to_list (list): Tick spacing values for each axis. Use None for automatic spacing.
+            Must have same length as axes_list.
+        yoffset_list (list): Y-axis offsets for padding. At least one must be non-None to serve
+            as the master offset. Must have same length as axes_list.
+        align_zero (bool, optional): If True, aligns the zero line across all axes that contain
+            zero in their data range. Defaults to True.
+    
+    Returns:
+        None: Modifies the axes in place by setting yticks and ylimits.
+    
+    Examples:
+        >>> import matplotlib.pyplot as plt
+        >>> fig, ax1 = plt.subplots()
+        >>> ax2 = ax1.twinx()
+        >>> ax1.plot([1, 2, 3], [-10, 0, 10])
+        >>> ax2.plot([1, 2, 3], [0, 50, 100])
+        >>> alignYaxes([ax1, ax2], [11, 11], [None, None], [0.5, None], align_zero=True)
+        # Both axes now have zero aligned and proportional offsets
+    
+    Notes:
+        - The first axis with a non-None offset in ``yoffset_list`` becomes the master axis
+        - All other axes get proportionally scaled offsets relative to the master
+        - When ``align_zero=True``, axes containing zero will have zero as a tick position
+        - Zero placement (bottom vs. top) depends on data distribution around zero
+    
+    See Also:
+        calculate_ticks : Calculate individual axis tick positions
+        plot : Main plotting function that uses this alignment
+    """
+    assert any(yoffset_list is not None for yoffset_list in yoffset_list), "At least one yoffset must be non-None to serve as the master offset"
     if align_zero:
         # Find axes that contain zero
         zero_axes = []

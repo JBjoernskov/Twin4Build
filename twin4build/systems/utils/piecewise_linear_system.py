@@ -3,7 +3,7 @@ import datetime
 from typing import Dict, List, Optional
 
 # Third party imports
-import numpy as np
+import torch
 
 # Local application imports
 import twin4build.core as core
@@ -27,7 +27,7 @@ class PiecewiseLinearSystem(core.System):
     """
 
     def __init__(
-        self, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None, **kwargs
+        self, X: Optional[torch.Tensor] = None, Y: Optional[torch.Tensor] = None, **kwargs
     ) -> None:
         """Initialize the piecewise linear system.
 
@@ -53,7 +53,17 @@ class PiecewiseLinearSystem(core.System):
         self._b_vec = None
 
         if X is not None and Y is not None:
-            self._XY = np.array([X, Y]).transpose()
+            # Stack X and Y coordinates
+            self._XY = torch.stack([X, Y]).T
+            
+            # Sort by X coordinates to ensure proper ordering for searchsorted
+            sorted_indices = torch.argsort(self._XY[:, 0])
+            self._XY = self._XY[sorted_indices]
+            
+            # Update X and Y to reflect sorted order
+            self._X = self._XY[:, 0]
+            self._Y = self._XY[:, 1]
+            
             self._get_a_b_vectors()
         self._config = {"parameters": []}
 
@@ -67,28 +77,28 @@ class PiecewiseLinearSystem(core.System):
         return self._config
 
     @property
-    def X(self) -> Optional[np.ndarray]:
+    def X(self) -> Optional[torch.Tensor]:
         """
         Get the X coordinates of the interpolation points.
         """
         return self._X
 
     @X.setter
-    def X(self, value: Optional[np.ndarray]) -> None:
+    def X(self, value: Optional[torch.Tensor]) -> None:
         """
         Set the X coordinates of the interpolation points.
         """
         self._X = value
 
     @property
-    def Y(self) -> Optional[np.ndarray]:
+    def Y(self) -> Optional[torch.Tensor]:
         """
         Get the Y coordinates of the interpolation points.
         """
         return self._Y
 
     @Y.setter
-    def Y(self, value: Optional[np.ndarray]) -> None:
+    def Y(self, value: Optional[torch.Tensor]) -> None:
         """
         Set the Y coordinates of the interpolation points.
         """
@@ -101,12 +111,12 @@ class PiecewiseLinearSystem(core.System):
         - Slope (a): (y2-y1)/(x2-x1)
         - Intercept (b): y1 - a*x1
         """
-        self._a_vec = (self.XY[1:, 1] - self.XY[0:-1, 1]) / (
-            self.XY[1:, 0] - self.XY[0:-1, 0]
+        self._a_vec = (self._XY[1:, 1] - self._XY[0:-1, 1]) / (
+            self._XY[1:, 0] - self._XY[0:-1, 0]
         )
-        self._b_vec = self.XY[0:-1, 1] - self.a_vec * self.XY[0:-1, 0]
+        self._b_vec = self._XY[0:-1, 1] - self._a_vec * self._XY[0:-1, 0]
 
-    def _get_Y(self, X: float) -> float:
+    def _get_Y(self, X: torch.Tensor) -> torch.Tensor:
         """Get interpolated Y value for given X.
 
         Performs piecewise linear interpolation:
@@ -115,21 +125,57 @@ class PiecewiseLinearSystem(core.System):
         - Otherwise finds appropriate segment and calculates Y = ax + b
 
         Args:
-            X (float): X value to interpolate at.
+            X (torch.Tensor): X values to interpolate at, shape (batch_size,).
 
         Returns:
-            float: Interpolated Y value.
+            torch.Tensor: Interpolated Y values, shape (batch_size,).
         """
-        if X <= self.XY[0, 0]:
-            Y = self.XY[0, 1]
-        elif X >= self.XY[-1, 0]:
-            Y = self.XY[-1, 1]
-        else:
-            cond = X < self.XY[:, 0]
-            idx = np.where(cond)[0][0] - 1
-            a = self.a_vec[idx]
-            b = self.b_vec[idx]
-            Y = a * X + b
+
+        # if X <= self._XY[0, 0].item():
+        #     Y = self._XY[0, 1].item()
+        # elif X >= self._XY[-1, 0].item():
+        #     Y = self._XY[-1, 1].item()
+        # else:
+        #     cond = X < self._XY[:, 0]
+        #     idx = torch.where(cond)[0][0].item() - 1
+        #     a = self._a_vec[idx].item()
+        #     b = self._b_vec[idx].item()
+        #     Y = a * X + b
+
+
+        # Ensure X is 1D
+        if X.dim() == 0:
+            X = X.unsqueeze(0)
+        
+        # Use searchsorted to find the segment index for each X value
+        # searchsorted returns indices where X would be inserted to maintain sorted order
+        indices = torch.searchsorted(self._XY[:, 0].contiguous(), X)
+        
+        # Clamp indices to valid segment range [0, len(a_vec)-1]
+        # indices is where X would be inserted, so segment_idx = indices - 1
+        segment_idx = torch.clamp(indices - 1, 0, len(self._a_vec) - 1)
+        
+        # Get the slope and intercept for each segment
+        a = self._a_vec[segment_idx]  # shape: (batch_size,)
+        b = self._b_vec[segment_idx]  # shape: (batch_size,)
+        
+        # Calculate interpolated values
+        Y_interp = a * X + b
+        
+        # Handle boundary conditions using torch.where
+        # If X <= first X value, use first Y value
+        # If X >= last X value, use last Y value
+        # Otherwise use interpolated value
+        Y = torch.where(
+            X <= self._XY[0, 0],
+            self._XY[0, 1].expand_as(X),
+            torch.where(
+                X >= self._XY[-1, 0],
+                self._XY[-1, 1].expand_as(X),
+                Y_interp
+            )
+        )
+        
         return Y
 
     def do_step(
