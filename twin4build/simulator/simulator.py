@@ -180,15 +180,22 @@ class Simulator:
         """
         self.model = model
 
-    def _do_component_timestep(self, component: core.System) -> None:
+    @staticmethod
+    def _assign_component_inputs(
+        component: core.System,
+        step_index: int,
+        debug_str: List[str] = None,
+    ) -> None:
         """
-        Perform a single timestep for a component.
+        Assign inputs to a component from connected components.
 
         Args:
-            component (core.System): The component to simulate.
+            component (core.System): The component to assign inputs to.
+            step_index (int): The current timestep index.
+            debug_str (List[str], optional): Debug message list for error reporting.
 
         Raises:
-            AssertionError: If any input value is NaN.
+            ValueError: If any input value is NaN.
         """
         # Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connects_at:
@@ -197,22 +204,16 @@ class Simulator:
 
                 component.input[connection_point.inputPort].set(
                     connected_component.output[connection.outputPort].get(),
-                    stepIndex=self.stepIndex,
+                    stepIndex=step_index,
                 )
 
                 if torch.isnan(component.input[connection_point.inputPort].get()):
-                    for s in self.debug_str:
-                        print(s)
+                    if debug_str is not None:
+                        for s in debug_str:
+                            print(s)
                     raise ValueError(
                         f"Input {connection_point.inputPort} of component {component.id} is NaN"
                     )
-
-        component.do_step(
-            self.secondTime,
-            self.dateTime,
-            self.step_size,
-            self.stepIndex,
-        )
 
     def _do_system_time_step(self, model: core.Model) -> None:
         """
@@ -224,6 +225,12 @@ class Simulator:
         2. Updates component states after all executions
         3. Handles both FMU and non-FMU components
 
+        The iteration method (gauss-seidel or jacobi) determines how inputs are assigned:
+        - gauss-seidel: Inputs are assigned immediately before each component executes,
+          allowing later components to use updated outputs from earlier components
+        - jacobi: All components execute first using previous inputs, then all inputs
+          are assigned for the next timestep
+
         Args:
             model (model.Model): The model containing components to simulate.
 
@@ -232,9 +239,34 @@ class Simulator:
             - Component execution order is determined by the model's execution_order attribute
             - Updates are propagated through the flat_execution_order after main execution
         """
-        for component_group in model.execution_order:
-            for component in component_group:
-                self._do_component_timestep(component)
+        if self.iteration_method == "gauss-seidel":
+            for component_group in model.execution_order:
+                for component in component_group:
+                    Simulator._assign_component_inputs(
+                        component, self.stepIndex, self.debug_str
+                    )
+                    component.do_step(
+                        self.secondTime,
+                        self.dateTime,
+                        self.step_size,
+                        self.stepIndex,
+                    )
+        
+        elif self.iteration_method == "jacobi":
+            # Execute all components first
+            for component in model.components:
+                component.do_step(
+                    self.secondTime,
+                    self.dateTime,
+                    self.step_size,
+                    self.stepIndex,
+                )
+            
+            # Then assign inputs for next timestep
+            for component in model.components:
+                Simulator._assign_component_inputs(
+                    component, self.stepIndex, self.debug_str
+                )
 
     def get_simulation_timesteps(
         self, start_time: datetime, end_time: datetime, step_size: int
@@ -269,6 +301,7 @@ class Simulator:
         step_size: int = None,
         show_progress_bar: bool = True,
         debug: bool = False,
+        iteration_method: str = "gauss-seidel",
         **kwargs,
     ) -> None:
         """
@@ -285,6 +318,10 @@ class Simulator:
             end_time: End time of the simulation.
             step_size: Step size in seconds.
             show_progress_bar: Whether to show a progress bar during simulation.
+            debug: Whether to enable debug mode.
+            iteration_method: The iteration method to use for component execution.
+                - "gauss-seidel": Components are executed sequentially with immediate input updates (default)
+                - "jacobi": All components execute first, then inputs are assigned
 
         Raises:
             AssertionError: If input parameters are invalid or missing timezone info.
@@ -308,6 +345,7 @@ class Simulator:
         self.end_time = end_time
         self.step_size = step_size
         self.debug = debug
+        self.iteration_method = iteration_method
         self.get_simulation_timesteps(start_time, end_time, step_size)
         self.model.initialize(start_time, end_time, step_size, self)
         if show_progress_bar:
