@@ -47,6 +47,7 @@ class TestEstimatorSaveLoad(unittest.TestCase):
         filename_simulation = utils.get_path(
             ["estimator_example", "instance_graph.ttl"]
         )
+
         model.load(simulation_model_filename=filename_simulation, verbose=0)
 
         # Configure file paths for sensors
@@ -126,7 +127,7 @@ class TestEstimatorSaveLoad(unittest.TestCase):
                 tzinfo=tz.gettz("Europe/Copenhagen"),
             ),
         ]
-        model.initialize(start_time, end_time, step_size, simulator)
+        # model.initialize(start_time, end_time, step_size)
 
         # Step 3: Identify key components
         space = model.components["020B"]
