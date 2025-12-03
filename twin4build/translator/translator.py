@@ -1745,7 +1745,25 @@ class Node:
         self._id = self.make_id()
 
     def make_id(self):
-        return str([str(s) for s in self.cls])
+        # Join class URIs with underscore separator to create a valid URI identifier
+        # This avoids creating invalid URIs like http://twin4build.org/['...', '...']
+        # Extract local names (fragment or last path component) for URI-safe identifiers
+        def get_local_name(uri_str):
+            # Try fragment first (part after #)
+            if '#' in uri_str:
+                return uri_str.split('#')[-1]
+            # Otherwise use last path component
+            return uri_str.split('/')[-1]
+        
+        parts = []
+        for s in self.cls:
+            if hasattr(s, 'uri'):
+                uri_str = str(s.uri)
+            else:
+                uri_str = str(s)
+            parts.append(get_local_name(uri_str))
+        
+        return "_".join(parts)
 
     def set_signature_pattern(self, signature_pattern):
         """Set the signature pattern for this node"""

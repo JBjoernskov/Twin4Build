@@ -58,6 +58,7 @@ class SupplyFlowJunctionSystem(core.System):
         else:
             self.airFlowRateBias = 0
 
+        self.n_input_ports = 1 # TODO: Write a method for initializing the number of input ports
         self.input = {"airFlowRateOut": tps.Vector()}
         self.output = {"airFlowRateIn": tps.Scalar()}
         self._config = {"parameters": ["airFlowRateBias"]}
@@ -76,7 +77,6 @@ class SupplyFlowJunctionSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the supply flow junction system.
 
@@ -90,19 +90,23 @@ class SupplyFlowJunctionSystem(core.System):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        # TODO: self.setup_variable_inputs()
+        self.input["airFlowRateOut"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_input_ports
+        )
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
 
     def do_step(

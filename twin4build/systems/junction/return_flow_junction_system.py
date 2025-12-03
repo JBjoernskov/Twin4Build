@@ -63,6 +63,7 @@ class ReturnFlowJunctionSystem(core.System):
             self.airFlowRateBias = airFlowRateBias
         else:
             self.airFlowRateBias = 0
+        self.n_input_ports = 2 # TODO: Write a method for initializing the number of input ports
 
         self.input = {
             "airFlowRateIn": tps.Vector(),
@@ -83,21 +84,23 @@ class ReturnFlowJunctionSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        # TODO: self.setup_variable_inputs()
+
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+                size=self.n_input_ports,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
 
     def do_step(

@@ -40,7 +40,7 @@ class TestExamples(unittest.TestCase):
             supply_flow_junction = tb.SupplyFlowJunctionSystem(id="SupplyFlowJunction")
 
             self.add_connection(position_schedule, damper, "scheduleValue", "damperPosition")
-            self.add_connection(damper, supply_flow_junction, "airFlowRate", "airFlowRateOut")
+            self.add_connection(damper, supply_flow_junction, "airFlowRate", "airFlowRateOut", input_port_index=0)
 
 
         model = tb.Model(id="test_model_fcn")
