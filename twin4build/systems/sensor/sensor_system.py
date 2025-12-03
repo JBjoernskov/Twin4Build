@@ -756,6 +756,7 @@ class SensorSystem(core.System):
         Raises:
             AssertionError: If called on a virtual sensor (no physical readings available).
         """
+        self.initialize(start_time, end_time, step_size)
         assert (
             self.time_series_input is not None
         ), f'Cannot return physical readings for Sensor with id "{self.id}" as the argument "filename" was not provided when the object was initialized.'
