@@ -267,7 +267,7 @@ class Simulator:
 
         elif iteration_method == "jacobi":
             # Execute all components first
-            for component in model.components:
+            for component in model.components.values():
                 component.do_step(
                     second_time,
                     date_time,
@@ -276,7 +276,7 @@ class Simulator:
                 )
 
             # Then assign inputs for next timestep
-            for component in model.components:
+            for component in model.components.values():
                 Simulator._assign_component_inputs(component, step_index)
 
     @staticmethod
