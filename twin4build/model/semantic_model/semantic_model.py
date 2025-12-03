@@ -2201,17 +2201,10 @@ class SemanticModel:
                 # Include the type itself and all its subclasses
                 types_to_check = [t] + t.sub_classes + t.equivalent_classes
 
-                print(f"current uri: {uri}")
-                print(f"sub_classes: {t.sub_classes}")
-                print(f"equivalent_classes: {t.equivalent_classes}")
-                print(f"super_classes: {t.super_classes}")
-
                 # Get instances of the class and its subclasses from instance_graph
                 for t_ in types_to_check:
-                    print(f"checking type: {t_}")
                     # First check direct type assertions
                     for instance in self._instance_graph.subjects(RDF.type, t_.uri):
-                        print(f"found instance: {instance}")
                         if instance not in processed_instances:
                             inst_obj = self.get_instance(instance)
                             instances.append(inst_obj)

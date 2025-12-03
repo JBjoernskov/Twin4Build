@@ -63,7 +63,9 @@ class ReturnFlowJunctionSystem(core.System):
             self.airFlowRateBias = airFlowRateBias
         else:
             self.airFlowRateBias = 0
-        self.n_input_ports = 2 # TODO: Write a method for initializing the number of input ports
+        self.n_input_ports = (
+            2  # TODO: Write a method for initializing the number of input ports
+        )
 
         self.input = {
             "airFlowRateIn": tps.Vector(),

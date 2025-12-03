@@ -58,7 +58,9 @@ class SupplyFlowJunctionSystem(core.System):
         else:
             self.airFlowRateBias = 0
 
-        self.n_input_ports = 1 # TODO: Write a method for initializing the number of input ports
+        self.n_input_ports = (
+            1  # TODO: Write a method for initializing the number of input ports
+        )
         self.input = {"airFlowRateOut": tps.Vector()}
         self.output = {"airFlowRateIn": tps.Scalar()}
         self._config = {"parameters": ["airFlowRateBias"]}

@@ -1079,20 +1079,24 @@ class SimulationModel:
             AssertionError: If a component doesn't have the specified attribute.
         """
 
-        
         if normalized is None:
             normalized = [False] * len(values)
         elif isinstance(normalized, bool):
             normalized = [normalized] * len(values)
 
-        #assert that min_values and max_values are either both None or both not None
-        assert (min_values is None and max_values is None) or (min_values is not None and max_values is not None), "min_values and max_values must both be None or both not None"
+        # assert that min_values and max_values are either both None or both not None
+        assert (min_values is None and max_values is None) or (
+            min_values is not None and max_values is not None
+        ), "min_values and max_values must both be None or both not None"
 
         if min_values is not None and max_values is not None:
-            #Assert that the min_values and max_values are the same length as the values
-            assert len(min_values) == len(values), "The length of min_values must be the same as the length of values"
-            assert len(max_values) == len(values), "The length of max_values must be the same as the length of values"
-
+            # Assert that the min_values and max_values are the same length as the values
+            assert len(min_values) == len(
+                values
+            ), "The length of min_values must be the same as the length of values"
+            assert len(max_values) == len(
+                values
+            ), "The length of max_values must be the same as the length of values"
 
         for i, (v, obj, attr, normalized_) in enumerate(
             zip(values, components, parameter_names, normalized)
@@ -1197,7 +1201,7 @@ class SimulationModel:
         start_time: List[datetime.datetime],
         end_time: List[datetime.datetime],
         step_size: List[int],
-        simulator: Optional[core.Simulator] = None,
+        # simulator: Optional[core.Simulator] = None,
     ) -> None:
         """
         Initialize the model for simulation.
@@ -1212,12 +1216,12 @@ class SimulationModel:
             self._is_loaded
         ), "The model is not loaded and cannot be simulated. Please call the load method first."
 
-        assert isinstance(
-            simulator, core.Simulator
-        ), "simulator must be a core.Simulator object"
+        # assert isinstance(
+        #     simulator, core.Simulator
+        # ), "simulator must be a core.Simulator object"
 
         # Validate and format as lists if needed
-        start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
+        # start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
 
         # self.set_initial_values()
         self.check_for_for_missing_initial_values()
@@ -2127,14 +2131,20 @@ class SimulationModel:
             self._components[com_id] for com_id in self._result["component_id"]
         ]
         flat_attr_list = self._result["component_attr"]
-        
+
         theta_mask = self._result["theta_mask"]
         min_values = self._result["lb"]
         min_values = min_values[theta_mask]
         max_values = self._result["ub"]
         max_values = max_values[theta_mask]
-        
-        self.set_parameters_from_array(theta, flat_components, flat_attr_list, min_values=min_values, max_values=max_values)
+
+        self.set_parameters_from_array(
+            theta,
+            flat_components,
+            flat_attr_list,
+            min_values=min_values,
+            max_values=max_values,
+        )
 
     def check_for_for_missing_initial_values(self) -> None:
         """
