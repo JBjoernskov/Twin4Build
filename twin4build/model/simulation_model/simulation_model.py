@@ -1210,7 +1210,6 @@ class SimulationModel:
             start_time (datetime.datetime): Start time for the simulation.
             end_time (datetime.datetime): End time for the simulation.
             step_size (int): Time step size for the simulation.
-            simulator (core.Simulator): Simulator instance.
         """
         assert (
             self._is_loaded
@@ -2375,7 +2374,6 @@ class SimulationModel:
             core.namespace.S4SYST.System
         ):
             t = sm_instance.get_most_specific_type()
-            print("type: ", t)
             class_name = t.get_short_name()
             cls = getattr(systems, class_name)
             attributes = {}

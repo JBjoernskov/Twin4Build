@@ -391,7 +391,7 @@ class Simulator:
         self.second_time_steps = second_time_steps
         self.date_time_steps = date_time_steps
         self.n_timesteps = max_timesteps
-        self.model.initialize(start_time, end_time, step_size, self)
+        self.model.initialize(start_time, end_time, step_size)
         if show_progress_bar:
             for step_index in tqdm(
                 range(max_timesteps),
