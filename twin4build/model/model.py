@@ -2,19 +2,21 @@
 import datetime
 import shutil
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 # Third party imports
 import numpy as np
 import pandas as pd
+import torch
 from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS
+from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
 
 
+@autoreset_print
 class Model:
     r"""
     A unified interface for building digital twin models.
@@ -205,7 +207,7 @@ class Model:
         self._semantic_model = core.SemanticModel(
             id=self._id,
             namespaces={
-                "SIM": core.namespace.SIM,
+                "T4B": core.namespace.T4B,
                 "SAREF": core.namespace.SAREF,
                 "S4BLDG": core.namespace.S4BLDG,
                 "S4SYST": core.namespace.S4SYST,
@@ -318,6 +320,8 @@ class Model:
         receiver_component: "core.System",
         outputPort: str,
         inputPort: str,
+        output_port_index: [int, torch.Tensor] = None,
+        input_port_index: [int, torch.Tensor] = None,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -336,6 +340,8 @@ class Model:
             receiver_component=receiver_component,
             outputPort=outputPort,
             inputPort=inputPort,
+            output_port_index=output_port_index,
+            input_port_index=input_port_index,
         )
 
     def remove_connection(
@@ -466,7 +472,6 @@ class Model:
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: "core.Simulator",
     ) -> None:
         """
         Initialize the model for simulation.
@@ -475,9 +480,8 @@ class Model:
             start_time (datetime.datetime): Start time for the simulation.
             end_time (datetime.datetime): End time for the simulation.
             step_size (int): Time step size for the simulation.
-            simulator (core.Simulator): Simulator instance.
         """
-        self.simulation_model.initialize(start_time, end_time, step_size, simulator)
+        self.simulation_model.initialize(start_time, end_time, step_size)
 
     def validate(self) -> None:
         """
@@ -504,20 +508,22 @@ class Model:
         fcn: Optional[Callable] = None,
         draw_semantic_model: bool = True,
         draw_simulation_model: bool = True,
-        verbose: bool = False,
+        verbose: Union[int, None] = None,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
+        logfile: Optional[str] = None,
     ) -> None:
         """
         Load and set up the model for simulation.
 
         Args:
-            semantic_model_filename (Optional[str]): Path to the semantic model configuration file.
-            fcn (Optional[Callable]): Custom function to be applied during model loading.
-            draw_semantic_model (bool): Whether to create and save the semantic model graph.
-            draw_simulation_model (bool): Whether to create and save the simulation model graph.
-            verbose (bool): Whether to print verbose output during loading.
-            validate_model (bool): Whether to perform model validation.
+            semantic_model_filename: Path to the semantic model configuration file.
+            fcn Custom function to be applied during model loading.
+            draw_semantic_model: Whether to create and save the semantic model graph.
+            draw_simulation_model: Whether to create and save the simulation model graph.
+            verbose: Verbosity level controlling the amount of output. 0 to disable, 1-n to contol how many levels to print.
+            validate_model: Whether to perform model validation.
+            logfile: Path to the log file.
         """
         if verbose:
             self._load(
@@ -529,6 +535,7 @@ class Model:
                 verbose=verbose,
                 validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
+                logfile=logfile,
             )
         else:
             with warnings.catch_warnings():
@@ -542,18 +549,20 @@ class Model:
                     verbose=verbose,
                     validate_model=validate_model,
                     force_config_overwrite=force_config_overwrite,
+                    logfile=logfile,
                 )
 
     def _load(
         self,
-        semantic_model_filename: Optional[str] = None,
-        simulation_model_filename: Optional[str] = None,
-        fcn: Optional[Callable] = None,
-        draw_semantic_model: bool = True,
-        draw_simulation_model: bool = True,
-        verbose: bool = False,
-        validate_model: bool = True,
-        force_config_overwrite: bool = False,
+        semantic_model_filename: Optional[str],
+        simulation_model_filename: Optional[str],
+        fcn: Optional[Callable],
+        draw_semantic_model: bool,
+        draw_simulation_model: bool,
+        verbose: int,
+        validate_model: bool,
+        force_config_overwrite: bool,
+        logfile: Optional[str],
     ) -> None:
         """
         Internal method to load and set up the model for simulation.
@@ -566,7 +575,7 @@ class Model:
             fcn: Custom function to be applied during model loading.
             draw_semantic_model: Whether to create and save the object graph.
             draw_simulation_model: Whether to create and save the system graph.
-            verbose: Whether to print verbose output during loading.
+            verbose: Verbosity level controlling the amount of output. 0 to disable, 1-n to contol how many levels to print.
             validate_model: Whether to perform model validation.
             force_config_overwrite: Whether to force the configuration file to be overwritten.
         """
@@ -578,36 +587,46 @@ class Model:
         #     warnings.warn("The model is already loaded. Resetting model.")
         #     self.reset()
 
-        PRINTPROGRESS("Loading model")
+        if verbose is not None:
+            PRINTPROGRESS.verbose = verbose
+        PRINTPROGRESS.logfile = logfile
+
+        PRINTPROGRESS("Loading model", status="")
         PRINTPROGRESS.add_level()
         # self.add_outdoor_environment()
         if semantic_model_filename is not None:
             apply_translator = True
             PRINTPROGRESS("Parsing semantic model", status="")
             self._semantic_model = core.SemanticModel(
-                semantic_model_filename,
+                rdf_file=semantic_model_filename,
+                namespaces={"T4B": core.namespace.T4B},
                 dir_conf=self.dir_conf + ["semantic_model"],
                 id=f"{self._id}_semantic_model",
             )
-            self._semantic_model.reason()
+            # self._semantic_model.reason()
+            PRINTPROGRESS("Parsing semantic model", status="[OK]", change_status=True)
             if draw_semantic_model:
                 app_path = shutil.which("dot")
                 assert (
                     app_path is not None
                 ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
-                PRINTPROGRESS("Drawing semantic model")
+                PRINTPROGRESS("Drawing semantic model", status="")
+                PRINTPROGRESS.add_level()
                 self._semantic_model.visualize()
+                PRINTPROGRESS.remove_level()
+                PRINTPROGRESS(
+                    "Drawing semantic model", status="[OK]", change_status=True
+                )
 
         else:
             apply_translator = False
 
         if apply_translator:
-            PRINTPROGRESS("Applying translator")
-            PRINTPROGRESS.add_level()
             self._translator = core.Translator()
-            self._simulation_model = self._translator.translate(self._semantic_model)
+            self._simulation_model = self._translator.translate(
+                self._semantic_model, verbose=verbose
+            )
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
-            PRINTPROGRESS.remove_level()
 
         self._simulation_model.load(
             rdf_file=simulation_model_filename,
@@ -615,6 +634,7 @@ class Model:
             verbose=verbose,
             validate_model=validate_model,
             force_config_overwrite=force_config_overwrite,
+            logfile=logfile,
         )
 
         if draw_simulation_model:
@@ -623,14 +643,17 @@ class Model:
             assert (
                 app_path is not None
             ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
-            PRINTPROGRESS("Drawing simulation model")
+
+            PRINTPROGRESS("Drawing simulation model", status="")
+            PRINTPROGRESS.add_level()
             self._simulation_model.visualize()
+            PRINTPROGRESS("Drawing simulation model", status="[OK]", change_status=True)
+            PRINTPROGRESS.remove_level()
 
         PRINTPROGRESS.remove_level()
+        PRINTPROGRESS("Loading model", status="[OK]", change_status=True)
 
-        PRINTPROGRESS("Model loaded", plain=True)
-        if verbose:
-            print(self)
+        # PRINTPROGRESS.reset()
 
     def fcn(self) -> None:
         """

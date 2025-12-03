@@ -1,0 +1,36 @@
+Loading model...[OK]
+|
+|
+|______Loading simulation model...[OK]
+|      |
+|      |
+|      |______Loading model from RDF file...[OK]
+|      |      |
+|      |      |
+|      |      |______Instantiating components...[OK]
+|      |      |______Making connections...[OK]
+|      |
+|      |______Prepare for topological sorting...[OK]
+|      |      |
+|      |      |
+|      |      |______Copying components...[OK]
+|      |      |______Detecting cycles...[OK]
+|      |      |______Removing cycles...[OK]
+|      |
+|      |______Determining execution order...[OK]
+|      |      |
+|      |      |
+|      |      |______Running Kahn's algorithm...[OK]
+|      |
+|      |______Loading parameters...[OK]
+|      |______Validating model...[OK]
+|      |      |
+|      |      |
+|      |      |______Validating components...[OK]
+|      |      |______Validating connections...[OK]
+|      |      |______Validated for Simulator...[OK]
+|      |      |______Validated for Estimator...[OK]
+|      |      |______Validated for Optimizer...[OK]
+|
+|______Drawing simulation model...[OK]
+

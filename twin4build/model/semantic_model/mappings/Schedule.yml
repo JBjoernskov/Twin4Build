@@ -11,8 +11,8 @@ operations:
   - data: |-
       bldg:{id} a s4bldg:Schedule .
 
-  - data: |-
-      s4bldg:Schedule rdfs:subClassOf saref:Profile .
+#   - data: |-
+#       s4bldg:Schedule rdfs:subClassOf saref:Profile .
 
   # Data properties (direct values)
   - template: |-

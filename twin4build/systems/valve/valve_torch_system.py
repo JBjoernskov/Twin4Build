@@ -20,25 +20,6 @@ from twin4build.translator.translator import (
 )
 
 
-def get_signature_pattern():
-    node0 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
-    node1 = Node(cls=core.namespace.S4BLDG.Controller)
-    node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
-    sp = SignaturePattern(semantic_model_=core.ontologies)
-
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
-    )
-
-    sp.add_input("valvePosition", node1, "inputSignal")
-    sp.add_modeled_node(node0)
-
-    return sp
-
-
 class ValveTorchSystem(core.System, nn.Module):
     r"""
     A valve system model implemented with PyTorch for gradient-based optimization.
@@ -77,16 +58,6 @@ class ValveTorchSystem(core.System, nn.Module):
        - :math:`\dot{m}_w` is the water flow rate [kg/s]
        - :math:`\dot{m}_{w,max}` is the maximum water flow rate [kg/s]
 
-    Parameters
-    ----------
-    waterFlowRateMax : float
-        Maximum water flow rate [kg/s]
-    valveAuthority : float
-        Valve authority (0-1), where:
-        - 0: Linear characteristic
-        - 1: Equal percentage characteristic
-        - Values in between: Mixed characteristic
-
     Notes
     -----
     Valve Authority Characteristics:
@@ -100,8 +71,6 @@ class ValveTorchSystem(core.System, nn.Module):
        - The valve authority equation provides better control at low flow rates
        - The model assumes ideal valve behavior (no hysteresis or deadband)
     """
-
-    sp = [get_signature_pattern()]
 
     def __init__(
         self,
@@ -176,32 +145,31 @@ class ValveTorchSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the valve system."""
         # Initialize I/O
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         self.INITIALIZED = True
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """
         Perform one step of the valve system simulation.
@@ -229,5 +197,60 @@ class ValveTorchSystem(core.System, nn.Module):
         m_w = u_norm * self.waterFlowRateMax.get()
 
         # Update outputs
-        self.output["valvePosition"].set(valve_position, stepIndex)
-        self.output["waterFlowRate"].set(m_w, stepIndex)
+        self.output["valvePosition"].set(valve_position, step_index)
+        self.output["waterFlowRate"].set(m_w, step_index)
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the valve component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the valve component.
+    """
+    node0 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
+    node1 = Node(cls=core.namespace.S4BLDG.Controller)
+    node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
+    sp = SignaturePattern()
+
+    sp.add_triple(
+        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
+    )
+
+    sp.add_input("valvePosition", node1, "inputSignal")
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the valve component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the valve component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Valve)
+    node1 = Node(cls=core.namespace.BRICK.Valve_Position_Setpoint)
+    node2 = Node(cls=core.namespace.BRICK.Water_Flow_Sensor)
+
+    sp = SignaturePattern(id="valve_signature_pattern_brick")
+
+    sp.add_triple(
+        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    )
+
+    sp.add_input("valvePosition", node1, "setpoint")
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+ValveTorchSystem.add_signature_pattern(brick_signature_pattern())
+ValveTorchSystem.add_signature_pattern(saref_signature_pattern())

@@ -22,43 +22,6 @@ from twin4build.translator.translator import (
 from twin4build.utils.constants import Constants
 
 
-def get_signature_pattern():
-    """
-    Get the signature pattern of the FMU component.
-
-    Returns:
-        SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
-    """
-
-    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
-    node3 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
-    node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="space_heater_signature_pattern",
-    )
-
-    sp.add_triple(
-        Exact(
-            subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
-        )
-    )
-    sp.add_triple(
-        Exact(
-            subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-
-    sp.add_input("waterFlowRate", node3)
-    sp.add_input("indoorTemperature", node2, "indoorTemperature")
-    sp.add_modeled_node(node4)
-
-    return sp
-
-
 class SpaceHeaterTorchSystem(core.System, nn.Module):
     r"""
     Space Heater (Radiator) Model with Finite Element Discretization.
@@ -273,8 +236,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - The model supports both steady-state and dynamic simulations
     """
 
-    sp = [get_signature_pattern()]
-
     def __init__(
         self,
         Q_flow_nominal_sh: float = 1000,
@@ -361,7 +322,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the space heater system for simulation.
 
@@ -376,21 +336,20 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
-
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
 
         if not self.INITIALIZED:
@@ -403,12 +362,21 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             self.UA.data = torch.tensor(UA_val, dtype=torch.float64)
             # First initialization
             self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
+
             self.INITIALIZED = True
         else:
             # Re-initialize the state space model
             self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
 
     def _ua_residual(self, UA_candidate):
         """Calculate the residual for UA optimization.
@@ -425,7 +393,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """
         n = self.nelements
         C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
-        UA_elem = float(UA_candidate) / n
+        UA_elem = float(UA_candidate[0]) / n
         m_dot = float(
             self.Q_flow_nominal_sh
             / (
@@ -457,6 +425,24 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             x_ss - self.TAir_nominal_sh
         )  # Calculate power given states and UA guess
         return Power - self.Q_flow_nominal_sh
+
+    def _get_initial_state_tensor(self):
+        # Get batch size from outletWaterTemperature
+        t_outlet = self.output["outletWaterTemperature"].get()
+        batch_size = t_outlet.shape[0] if t_outlet.dim() > 0 else 1
+
+        x0 = torch.zeros((batch_size, self.nelements), dtype=torch.float64)
+
+        # Handle outlet water temperature
+        t_outlet_val = t_outlet
+        if t_outlet_val.dim() == 0:
+            t_outlet_val = t_outlet_val.expand(batch_size)
+
+        # Initialize all elements with outlet water temperature
+        for i in range(self.nelements):
+            x0[:, i] = t_outlet_val
+
+        return x0
 
     def _create_state_space_model(self):
         """Create the state-space model for the space heater.
@@ -500,8 +486,10 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         C = torch.zeros((1, n), dtype=torch.float64)
         C[0, n - 1] = 1.0
         D = torch.zeros((1, n_inputs), dtype=torch.float64)
-        x0 = torch.zeros(n, dtype=torch.float64)
-        x0[:] = self.output["outletWaterTemperature"].get()
+
+        # Initial state - use first batch element for system definition
+        x0_tensor = self._get_initial_state_tensor()
+        x0 = x0_tensor[0]
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -518,10 +506,10 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
+        second_time=None,
+        date_time=None,
         step_size=None,
-        stepIndex: Optional[int] = None,
+        step_index: Optional[int] = None,
     ):
         """Perform one simulation step.
 
@@ -533,28 +521,102 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         4. Updates output values
 
         Args:
-            secondTime (float, optional): Current simulation time in seconds.
-            dateTime (datetime, optional): Current simulation date and time.
+            second_time (float, optional): Current simulation time in seconds.
+            date_time (date_time, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
-            stepIndex (int, optional): Current simulation step index.
+            step_index (int, optional): Current simulation step index.
         """
         u = torch.stack(
             [
                 self.input["supplyWaterTemperature"].get(),
                 self.input["waterFlowRate"].get(),
                 self.input["indoorTemperature"].get(),
-            ]
-        ).squeeze()
-        self.ss_model.input["u"].set(u, stepIndex)
-        self.ss_model.do_step(secondTime, dateTime, step_size, stepIndex)
+            ],
+            dim=1,
+        )
+        self.ss_model.input["u"].set(u, step_index)
+        self.ss_model.do_step(second_time, date_time, step_size, step_index)
         y = self.ss_model.output["y"].get()
-        outletWaterTemperature = y[0]
+        outletWaterTemperature = y[:, 0]
         UA_elem = self.UA.get() / self.nelements
         temps = self.ss_model.get_state()
         # print("----")
         # print("temps: ", temps)
         # print("u[2]: ", u[2])
-        Power = UA_elem * torch.sum(temps - u[2])
+        Power = UA_elem * torch.sum(temps - u[:, 2].unsqueeze(1), dim=1)
         # print("Power: ", Power)
-        self.output["outletWaterTemperature"].set(outletWaterTemperature, stepIndex)
-        self.output["Power"].set(Power, stepIndex)
+        self.output["outletWaterTemperature"].set(outletWaterTemperature, step_index)
+        self.output["Power"].set(Power, step_index)
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the space heater component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the space heater component.
+    """
+
+    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    node3 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
+    node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
+    sp = SignaturePattern(
+        id="space_heater_signature_pattern",
+    )
+
+    sp.add_triple(
+        Exact(
+            subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
+        )
+    )
+    sp.add_triple(
+        Exact(
+            subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
+        )
+    )
+    sp.add_triple(
+        Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
+    )
+
+    sp.add_input("waterFlowRate", node3)
+    sp.add_input("indoorTemperature", node2, "indoorTemperature")
+    sp.add_modeled_node(node4)
+
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the space heater component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the space heater component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Radiator)  # space heater
+    node1 = Node(cls=core.namespace.BRICK.Space)  # building space
+    node2 = Node(cls=core.namespace.BRICK.Heating_Water_Flow_Sensor)
+    node3 = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
+
+    sp = SignaturePattern(
+        id="space_heater_signature_pattern_brick",
+    )
+
+    sp.add_triple(
+        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Exact(subject=node3, object=node1, predicate=core.namespace.BRICK.isPointOf)
+    )
+
+    sp.add_input("waterFlowRate", node2, "measuredValue")
+    sp.add_input("indoorTemperature", node3, "measuredValue")
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+SpaceHeaterTorchSystem.add_signature_pattern(brick_signature_pattern())
+SpaceHeaterTorchSystem.add_signature_pattern(saref_signature_pattern())

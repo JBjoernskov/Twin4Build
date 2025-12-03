@@ -88,11 +88,11 @@ def sample_from_df(
 
     Args:
         df (pandas.DataFrame): Input DataFrame with time series data
-        datecolumn (int): Column index containing datetime information
+        datecolumn (int): Column index containing date_time information
         valuecolumn (int, optional): Column index containing values to process
         step_size (int, optional): Time step size in seconds for resampling
-        start_time (datetime, optional): Start time for data extraction
-        end_time (datetime, optional): End time for data extraction
+        start_time (date_time, optional): Start time for data extraction
+        end_time (date_time, optional): End time for data extraction
         resample (bool): Whether to resample data to regular intervals
         resample_method (str): Resampling method ("linear" or "constant")
         clip (bool): Whether to clip data to specified time range
@@ -103,10 +103,10 @@ def sample_from_df(
         pandas.DataFrame: Processed DataFrame with resampled time series data
     """
     assert datecolumn != valuecolumn, "datecolumn and valuecolumn cannot be the same"
-    df = df.rename(columns={df.columns.to_list()[datecolumn]: "datetime"})
+    df = df.rename(columns={df.columns.to_list()[datecolumn]: "date_time"})
 
     for i, column in enumerate(df.columns.to_list()):
-        if column != "datetime" and valuecolumn is None:
+        if column != "date_time" and valuecolumn is None:
             df[column] = pd.to_numeric(
                 df[column], errors="coerce"
             )  # Remove string entries
@@ -115,15 +115,15 @@ def sample_from_df(
                 df[column], errors="coerce"
             )  # Remove string entries
 
-    df["datetime"] = pd.to_datetime(df["datetime"])  # ), format=format)
-    if df["datetime"].apply(lambda x: x.tzinfo is not None).any():
+    df["date_time"] = pd.to_datetime(df["date_time"])  # ), format=format)
+    if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
         has_tz = True
-        df["datetime"] = df["datetime"].apply(lambda x: x.tz_convert("UTC"))
+        df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
     else:
         has_tz = False
 
-    df = df.set_index(pd.DatetimeIndex(df["datetime"]))
-    df = df.drop(columns=["datetime"])
+    df = df.set_index(pd.DatetimeIndex(df["date_time"]))
+    df = df.drop(columns=["date_time"])
 
     if preserve_order and has_tz == False:
         # Detect if dates are reverse
@@ -133,7 +133,7 @@ def sample_from_df(
             df = df.iloc[::-1]
         elif frac_neg > 0.05 and frac_neg < 0.95:
             raise Exception(
-                '"preserve_order" is true, but the datetime order cannot be determined.'
+                '"preserve_order" is true, but the date_time order cannot be determined.'
             )
     else:
         df = df.sort_index()
@@ -191,8 +191,8 @@ def load_from_spreadsheet(
 ):
     """
     This function loads a spead either in .csv or .xlsx format.
-    The datetime should in the first column - timezone-naive inputs are localized as "tz", while timezone-aware inputs are converted to "tz".
-    All data except for datetime column is converted to numeric data.
+    The date_time should in the first column - timezone-naive inputs are localized as "tz", while timezone-aware inputs are converted to "tz".
+    All data except for date_time column is converted to numeric data.
 
     tz: can be "UTC+2", "GMT-8" (no trailing zeros) or timezone name "Europe/Copenhagen"
 
@@ -227,9 +227,11 @@ def load_from_spreadsheet(
 
         if valuecolumn is not None:
             valuename = df.columns[valuecolumn]
+
         df = sample_from_df(
             df,
             datecolumn,
+            valuecolumn=valuecolumn,
             step_size=step_size,
             start_time=start_time,
             end_time=end_time,
@@ -334,9 +336,8 @@ def load_database_config(config_file=None, section="timescaledb"):
 
 
 def load_from_database(
-    building_name,
-    sensor_name=None,
-    sensor_uuid=None,
+    table_name=None,
+    sensor_id=None,
     step_size=None,
     start_time=None,
     end_time=None,
@@ -347,6 +348,11 @@ def load_from_database(
     cache_root=None,
     tz="Europe/Copenhagen",
     preserve_order=True,
+    schema=None,
+    time_column="time",
+    id_column="uuid",
+    value_column="value",
+    config=None,
     config_file=None,
     section="timescaledb",
     db_host=None,
@@ -358,9 +364,10 @@ def load_from_database(
     r"""
     Load time series data from TimescaleDB database for building sensor data.
 
-    This function connects to a TimescaleDB database and loads sensor data from tables
-    with the naming convention `data_{building_name}`. The database schema should have
-    columns: time (TIMESTAMPTZ), uuid (TEXT), name (TEXT), and value (FLOAT).
+    This function connects to a TimescaleDB database and loads sensor data from tables.
+    By default, the database schema should have columns: time (TIMESTAMPTZ), id (TEXT), 
+    and value (FLOAT). However, column names are fully configurable via the
+    time_column, id_column, and value_column parameters.
 
     Mathematical Formulation
     -----------------------
@@ -370,16 +377,13 @@ def load_from_database(
     .. math::
 
         Q(t) = \begin{cases}
-        \{y(t) : \text{name} = s_{name} \land \text{uuid} = s_{uuid}\} & \text{if } s_{name}, s_{uuid} \text{ specified} \\
-        \{y(t) : \text{name} = s_{name}\} & \text{if only } s_{name} \text{ specified} \\
-        \{y(t) : \text{uuid} = s_{uuid}\} & \text{if only } s_{uuid} \text{ specified} \\
+        \{y(t) : \text{id} = s_{id}\} & \text{if } s_{id} \text{ specified} \\
         \{y(t)\} & \text{otherwise (all sensors)}
         \end{cases}
 
     where:
        - :math:`Q(t)` is the query result at time :math:`t`
-       - :math:`s_{name}` is the sensor name filter
-       - :math:`s_{uuid}` is the sensor UUID filter
+       - :math:`s_{id}` is the sensor ID filter
        - :math:`y(t)` represents sensor values at time :math:`t`
 
     For multiple sensors, data is transformed from long to wide format:
@@ -407,18 +411,15 @@ def load_from_database(
     3. Environment variables (lowest priority)
 
     Args:
-       building_name (str): Name of the building (e.g., "bldg1", "bldg10"). The function will query
-           the table named `data_{building_name}`.
-       sensor_name (str, optional): Name of the sensor to filter by (e.g., "temperature", "humidity", "CO2").
-           If provided, only data from sensors with this name will be returned.
-           If None, data from all sensors will be returned.
-       sensor_uuid (str, optional): UUID of the sensor to filter by. If provided, only data from sensors with
-           this UUID will be returned. Can be used alone or in combination with sensor_name.
+       table_name (str): Name of the table (e.g., "bldg1", "bldg10"). The function will query
+           the table named `table_name`.
+       sensor_id (str, optional): ID of the sensor to filter by. If provided, only data from sensors with
+           this ID will be returned. If None, data from all sensors will be returned.
        step_size (int, optional): Time step size in seconds for resampling (e.g., 300 for 5-minute intervals).
            Required if resample=True. Ignored if resample=False.
-       start_time (datetime, optional): Start time for data extraction. If timezone-naive, will be localized to 'tz'.
+       start_time (date_time, optional): Start time for data extraction. If timezone-naive, will be localized to 'tz'.
            If None, no lower time bound is applied.
-       end_time (datetime, optional): End time for data extraction (exclusive). If timezone-naive, will be localized to 'tz'.
+       end_time (date_time, optional): End time for data extraction (exclusive). If timezone-naive, will be localized to 'tz'.
            If None, no upper time bound is applied.
        resample (bool, optional): Whether to resample the data to regular time intervals. If True, requires
            step_size, start_time, and end_time to be provided. Defaults to True.
@@ -433,6 +434,17 @@ def load_from_database(
        cache_root (str, optional): Root directory for cache files. If None, uses the default Twin4Build cache location.
        tz (str, optional): Timezone for data processing. Can be timezone name (e.g., "Europe/Copenhagen"),
            UTC offset (e.g., "UTC+2", "GMT-8"), or "UTC". Defaults to "Europe/Copenhagen".
+       schema (str, optional): Database schema name. If provided, the query will be executed as "schema.table_name".
+           If None, only the table_name will be used (defaults to the database's default schema, typically "public").
+           Example: schema="sensor_data" with table_name="building1" results in querying "sensor_data.building1".
+       time_column (str, optional): Name of the timestamp column in the database table. Defaults to "time".
+       id_column (str, optional): Name of the sensor ID column in the database table. Defaults to "id".
+       value_column (str, optional): Name of the value column in the database table. Defaults to "value".
+       config (dict, optional): Configuration dictionary containing database and table parameters.
+           Supported keys: "table_name", "schema", "time_column", "id_column", "value_column",
+           "host", "port", "name", "user", "password".
+           This provides a convenient way to pass all configuration at once.
+           Individual parameters take precedence over config dict values.
        config_file (str, optional): Path to INI configuration file for database settings.
            If provided, database connection parameters will be loaded from this file.
            See load_database_config() for file format details.
@@ -444,7 +456,7 @@ def load_from_database(
        db_password (str, optional): Database password. Overrides config file and environment variables.
 
     Returns:
-       pandas.DataFrame: DataFrame with time series data. The index is a DatetimeIndex with timezone
+       pandas.DataFrame: DataFrame with time series data. The index is a date_timeIndex with timezone
            information. Columns represent different sensors (if multiple sensors are
            selected) or a single column named after the sensor (if single sensor).
 
@@ -461,9 +473,9 @@ def load_from_database(
 
        .. code-block:: python
 
-          from datetime import datetime, timezone
-          start_time = datetime(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-          end_time = datetime(2023, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
+          from date_time import datetime, timezone
+          start_time = date_time(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+          end_time = date_time(2023, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
           df = load_from_database("bldg1", start_time=start_time, end_time=end_time, config_file="database.ini")
 
        Load specific sensor with explicit connection parameters:
@@ -471,8 +483,8 @@ def load_from_database(
        .. code-block:: python
 
           df = load_from_database(
-              building_name="bldg1",
-              sensor_name="temperature",
+              table_name="bldg1",
+              sensor_id="sensor_12345",
               start_time=start_time,
               end_time=end_time,
               step_size=300,
@@ -484,16 +496,40 @@ def load_from_database(
 
     Note:
        The function requires psycopg2 to be installed for PostgreSQL connectivity.
-       Database tables should follow the naming convention: data_{building_name}.
-       Database schema should have columns: time, uuid, name, value.
+       Database schema should have columns: time, id, value (configurable).
        Timezone handling follows the same logic as load_from_spreadsheet.
        Caching uses the same mechanism as load_from_spreadsheet for consistency.
-       For large datasets, consider using sensor_name or sensor_uuid filters to reduce
+       For large datasets, consider using sensor_id filter to reduce
        memory usage and improve performance.
     """
     # Third party imports
     import psycopg2
     from psycopg2.extras import RealDictCursor
+
+    # Handle config dict parameter - extract all parameters from it if provided
+    if config is not None:
+        if table_name is None and "table_name" in config:
+            table_name = config["table_name"]
+        if schema is None and "schema" in config:
+            schema = config["schema"]
+        # Column name configurations
+        if "time_column" in config:
+            time_column = config["time_column"]
+        if "id_column" in config:
+            id_column = config["id_column"]
+        if "value_column" in config:
+            value_column = config["value_column"]
+        # Database connection configurations
+        if db_host is None and "host" in config:
+            db_host = config["host"]
+        if db_port is None and "port" in config:
+            db_port = config["port"]
+        if db_name is None and "name" in config:
+            db_name = config["name"]
+        if db_user is None and "user" in config:
+            db_user = config["user"]
+        if db_password is None and "password" in config:
+            db_password = config["password"]
 
     # Load database configuration
     db_config = load_database_config(config_file, section)
@@ -516,12 +552,8 @@ def load_from_database(
             start_time.strftime("%d-%m-%Y %H-%M-%S") if start_time else "None"
         )
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S") if end_time else "None"
-        sensor_filter = (
-            f"sensor_{sensor_name}_{sensor_uuid}"
-            if sensor_name or sensor_uuid
-            else "all_sensors"
-        )
-        cached_filename = f"db_{building_name}_{sensor_filter}_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
+        sensor_filter = f"sensor_{sensor_id}" if sensor_id else "all_sensors"
+        cached_filename = f"db_{table_name}_{sensor_filter}_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
@@ -542,51 +574,58 @@ def load_from_database(
         conn = psycopg2.connect(conn_string)
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Build query
-        table_name = f"data_{building_name}"
+        # Build full table name with schema if provided
+        full_table_name = f"{schema}.{table_name}" if schema else table_name
 
         # Check if table exists
-        cursor.execute(
-            """
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = %s
-            );
-        """,
-            (table_name,),
-        )
+        if schema:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = %s AND table_name = %s
+                );
+            """,
+                (schema, table_name),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = %s
+                );
+            """,
+                (table_name,),
+            )
 
         if not cursor.fetchone()["exists"]:
-            raise Exception(f"Table {table_name} does not exist in the database")
+            raise Exception(f"Table {full_table_name} does not exist in the database")
 
         # Build WHERE clause
         where_conditions = []
         params = []
 
-        if sensor_name:
-            where_conditions.append("name = %s")
-            params.append(sensor_name)
-
-        if sensor_uuid:
-            where_conditions.append("uuid = %s")
-            params.append(sensor_uuid)
+        if sensor_id:
+            where_conditions.append(f"{id_column} = %s")
+            params.append(sensor_id)
 
         if start_time:
-            where_conditions.append("time >= %s")
+            where_conditions.append(f"{time_column} >= %s")
             params.append(start_time)
 
         if end_time:
-            where_conditions.append("time < %s")
+            where_conditions.append(f"{time_column} < %s")
             params.append(end_time)
 
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
 
         # Execute query
         query = f"""
-            SELECT time, uuid, name, value 
-            FROM {table_name} 
+            SELECT {time_column}, {value_column} 
+            FROM {full_table_name} 
             WHERE {where_clause}
-            ORDER BY time
+            ORDER BY {time_column}
         """
 
         print(f"Executing query: {query}")
@@ -600,12 +639,14 @@ def load_from_database(
             print(f"Sample row: {rows[0]}")
         else:
             print("No rows returned from query")
-            # Debug: Check what sensor names exist in the database
+            # Debug: Check what sensor IDs exist in the database
             try:
-                cursor.execute(f"SELECT DISTINCT name FROM {table_name} ORDER BY name")
+                cursor.execute(
+                    f"SELECT DISTINCT {id_column} FROM {full_table_name} ORDER BY {id_column}"
+                )
                 existing_sensors = cursor.fetchall()
                 print(
-                    f"Available sensors in database: {[row['name'] for row in existing_sensors]}"
+                    f"Available sensor IDs in database: {[row[id_column] for row in existing_sensors]}"
                 )
             except Exception as e:
                 print(f"Could not check existing sensors: {e}")
@@ -620,22 +661,21 @@ def load_from_database(
         raise
 
     if not rows:
-        print(f"No data found for building {building_name}")
+        print(f"No data found for table {table_name}")
         return pd.DataFrame()
 
     # Convert to DataFrame
     df = pd.DataFrame(rows)
 
-    # Make the columns the sensor names (if there are multiple sensors)
-    # This is necessary for the sample_from_df function as it expects all columns to be numeric for groupby operations
-    df = df.pivot_table(index="time", columns="name", values="value", aggfunc="mean")
-    df = df.reset_index()
+    # Rename columns to standard names for sample_from_df
+    df = df.rename(columns={time_column: "date_time", value_column: "value"})
 
     # Use the existing sample_from_df function for consistent processing
+    # Pass valuecolumn to match the behavior of load_from_spreadsheet
     df = sample_from_df(
         df,
-        datecolumn=0,  # datetime is now the index
-        valuecolumn=3,
+        datecolumn=0,  # date_time column
+        valuecolumn=1,  # value column (consistent with load_from_spreadsheet)
         step_size=step_size,
         start_time=start_time,
         end_time=end_time,
@@ -645,6 +685,8 @@ def load_from_database(
         tz=tz,
         preserve_order=preserve_order,
     )
+
+    df = df["value"]
 
     # Cache the result
     if cache:

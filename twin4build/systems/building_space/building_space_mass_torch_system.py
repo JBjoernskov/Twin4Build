@@ -24,7 +24,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     Args:
         V: Volume of the space [m³]
-        G_occ: CO2 generation rate per occupant [ppm·kg/s]
+        G_occ: CO2 generation rate per occupant [kg_CO2/s]
         m_inf: Infiltration rate [kg/s]
 
     Mathematical Formulation:
@@ -41,13 +41,17 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     where:
 
        - :math:`V`: Volume of the space [m³]
-       - :math:`C`: Indoor CO2 concentration [ppm] (state variable)
+       - :math:`C`: Indoor CO2 concentration [ppmv] (state variable)
        - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
        - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
        - :math:`\dot{m}_{inf}`: Infiltration rate [kg/s] (parameter)
-       - :math:`C_{out}`: Outdoor CO2 concentration [ppm] (input)
-       - :math:`G_{occ}`: CO2 generation rate per occupant [ppm·kg/s] (parameter)
+       - :math:`C_{out}`: Outdoor CO2 concentration [ppmv] (input)
+       - :math:`G_{occ}`: CO2 generation rate per occupant [kg_CO2/s] (parameter)
        - :math:`N_{occ}`: Number of occupants (input)
+    
+    .. note::
+       Concentrations are expressed in **ppmv** (parts per million by volume), 
+       which is equivalent to **ppm-moles** (molar fraction × 10⁶) for ideal gases.
 
     Note: Supply air CO2 concentration is assumed equal to outdoor CO2 concentration.
 
@@ -167,13 +171,13 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         self.input = {
             "supplyAirFlowRate": tps.Scalar(),  # Supply air flow rate [kg/s]
             "exhaustAirFlowRate": tps.Scalar(),  # Exhaust air flow rate [kg/s]
-            "outdoorCO2": tps.Scalar(),  # Supply air CO2 concentration [ppm]
+            "outdoorCO2": tps.Scalar(),  # Outdoor CO2 concentration [ppmv]
             "numberOfPeople": tps.Scalar(),  # Number of occupants
         }
 
         # Define outputs
         self.output = {
-            "indoorCO2": tps.Scalar(400),  # Indoor CO2 concentration [ppm]
+            "indoorCO2": tps.Scalar(400),  # Indoor CO2 concentration [ppmv]
         }
 
         # Define parameters for calibration
@@ -191,34 +195,58 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the mass balance model by setting up the state-space representation."""
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
 
         if not self.INITIALIZED:
             # First initialization
             self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
+
             self.INITIALIZED = True
         else:
             # Re-initialize the state space
             self._create_state_space_model()  # We need to re-create the model because the parameters have changed to create a new computation graph
-            self.ss_model.initialize(start_time, end_time, step_size, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size)
+
+            # FIX: Set correct initial state for batch
+            x0_tensor = self._get_initial_state_tensor()
+            self.ss_model.set_state(x0_tensor)
+
+    def _get_initial_state_tensor(self):
+        # Get batch size from indoorCO2 which should be initialized with correct batch size
+        co2_indoor = self.output["indoorCO2"].get()
+        batch_size = co2_indoor.shape[0] if co2_indoor.dim() > 0 else 1
+
+        x0 = torch.zeros((batch_size, 1), dtype=torch.float64)
+
+        # Handle indoor CO2
+        co2_indoor_val = co2_indoor
+        if co2_indoor_val.dim() == 0:
+            co2_indoor_val = co2_indoor_val.expand(batch_size)
+
+        x0[:, 0] = co2_indoor_val
+
+        return x0
 
     def _create_state_space_model(self):
         """Create the state space model matrices using PyTorch tensors."""
@@ -230,24 +258,37 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         A = torch.zeros((n_states, n_states), dtype=torch.float64)
         B = torch.zeros((n_states, n_inputs), dtype=torch.float64)
 
-        # State matrix A: -sum of all flow rates / volume
-        A[0, 0] = -(
-            self.m_inf.get() / self.V.get()
-        )  # Base coefficient from infiltration
+        # Calculate air mass from volume and density
+        # We use the density of air from constants to convert volume to mass
+        # This ensures unit consistency (flows are in kg/s, concentration in ppm)
+        density_air = Constants.density["air"]
+        air_mass = self.V.get() * density_air
+
+        M_air = 28.9647  # g/mol
+        M_CO2 = 44.01  # g/mol
+
+        # State matrix A: -sum of all flow rates / air_mass
+        A[0, 0] = -(self.m_inf.get() / air_mass)  # Base coefficient from infiltration
 
         # Input matrix B coefficients
-        # Supply air flow rate * supply air CO2
-        B[0, 0] = 1 / self.V.get()  # supplyAirFlowRate coefficient
-        B[0, 2] = 1 / self.V.get()  # outdoorCO2 coefficient
+        # Note: Supply and Exhaust flow rate effects are bilinear and handled in E/F matrices
+        # We only set linear terms here.
 
-        # Exhaust air flow rate
-        B[0, 1] = -1 / self.V.get()  # exhaustAirFlowRate coefficient
-
-        # Outdoor CO2
-        B[0, 2] = self.m_inf.get() / self.V.get()  # outdoorCO2 coefficient
+        # Outdoor CO2 (from infiltration)
+        # Term: m_inf * C_out / air_mass
+        # This is equivalent to (V_inf/V) * C_out assuming constant density ratio
+        B[0, 2] = self.m_inf.get() / air_mass  # outdoorCO2 coefficient
 
         # Number of people
-        B[0, 3] = self.G_occ.get() / self.V.get()  # numberOfPeople coefficient
+        # Term: G_occ * N_occ / air_mass * conversion
+        # G_occ is in kg_CO2/s. We need output in ppmv (volume fraction * 1e6).
+        # For ideal gases, ppmv = ppm-moles (molar fraction * 1e6).
+        # 1. Convert kg_CO2/s to kg_CO2/kg_air/s (mass fraction rate): G_occ / air_mass
+        # 2. Convert mass fraction to volume fraction: * (M_air / M_CO2)
+        # 3. Convert to ppmv: * 1e6
+        B[0, 3] = (
+            (self.G_occ.get() / air_mass) * (M_air / M_CO2) * 1e6
+        )  # numberOfPeople coefficient
 
         # Output matrix C - Identity matrix for direct observation
         C = torch.eye(n_states, dtype=torch.float64)
@@ -255,18 +296,21 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         # Feedthrough matrix D (no direct feedthrough)
         D = torch.zeros((n_states, n_inputs), dtype=torch.float64)
 
-        # Initial state
-        x0 = torch.tensor([self.output["indoorCO2"].get()], dtype=torch.float64)
+        # Initial state - use first batch element for system definition
+        x0_tensor = self._get_initial_state_tensor()
+        x0 = x0_tensor[0]
 
         # E matrix for input-state coupling: shape (n_inputs, n_states, n_states)
         E = torch.zeros((n_inputs, n_states, n_states), dtype=torch.float64)
         # -m_ex*C (input 1, state 0)
-        E[1, 0, 0] = -1 / self.V.get()  # exhaustAirFlowRate * C
+        # dC/dt term: -(m_exh * C) / air_mass
+        E[1, 0, 0] = -1 / air_mass  # exhaustAirFlowRate * C
 
         # F matrix for input-input coupling: shape (n_inputs, n_states, n_inputs)
         F = torch.zeros((n_inputs, n_states, n_inputs), dtype=torch.float64)
         # m_sup*C_sup (inputs 0 and 2)
-        F[0, 0, 2] = 1 / self.V.get()  # supplyAirFlowRate * supplyAirCO2
+        # dC/dt term: (m_sup * C_sup) / air_mass
+        F[0, 0, 2] = 1 / air_mass  # supplyAirFlowRate * supplyAirCO2
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -288,10 +332,10 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
+        second_time: Optional[float] = None,
+        date_time: Optional[datetime.datetime] = None,
         step_size: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        step_index: Optional[int] = None,
     ) -> None:
         """Execute a single simulation step using the state-space model."""
         # Build input vector u
@@ -301,10 +345,11 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
                 self.input["exhaustAirFlowRate"].get(),
                 self.input["outdoorCO2"].get(),
                 self.input["numberOfPeople"].get(),
-            ]
-        ).squeeze()
+            ],
+            dim=1,
+        )
 
-        self.ss_model.input["u"].set(u, stepIndex)
-        self.ss_model.do_step(secondTime, dateTime, step_size, stepIndex=stepIndex)
+        self.ss_model.input["u"].set(u, step_index)
+        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
         y = self.ss_model.output["y"].get()
-        self.output["indoorCO2"].set(y[0], stepIndex)
+        self.output["indoorCO2"].set(y[:, 0], step_index)
