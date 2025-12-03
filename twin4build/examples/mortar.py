@@ -302,10 +302,10 @@ if __name__ == "__main__":
     # file_path = r"C:\Users\jabj\Documents\python\Twin4Build\twin4build\examples\generated_files\models\semantic_model\semantic_model.ttl"
     # file_path = r"C:\Users\jabj\Documents\python\Datasets\mortar\mortargraphs\bldg2.ttl"
 
-    # file_path = r"C:\Users\jabj\Documents\python\Datasets\Building Timeseries dataset\Site_A.ttl"
+    file_path = r"C:\Users\jabj\Documents\python\Datasets\Building Timeseries dataset\Site_A.ttl"
     # file_path = r"C:\Users\jabj\Documents\python\Twin4Build\twin4build\examples\generated_files\models\site_a\instance_graph.ttl"
 
-    file_path = r"C:\Users\jabj\Documents\python\Datasets\Building Timeseries dataset\Site_B.ttl"
+    # file_path = r"C:\Users\jabj\Documents\python\Datasets\Building Timeseries dataset\Site_B.ttl"
     # file_path = r"C:\Users\jabj\Documents\python\Twin4Build\twin4build\examples\generated_files\models\site_b\semantic_model.ttl"
 
     # file_path = r"C:\Users\jabj\Documents\python\Datasets\HTR\HTR full graph.ttl"
@@ -316,13 +316,13 @@ if __name__ == "__main__":
     # sm = tb.SemanticModel(
     #     rdf_file=file_path, id="site_b", verbose=10
     # )
-    sm = tb.SemanticModel(rdf_file=file_path, id="site_b", verbose=10)
+    sm = tb.SemanticModel(rdf_file=file_path, id="site_a", verbose=10)
 
     # Site A
-    # weather_station_class = core.namespace.BRICK.Weather_Station
-    # custom_class = URIRef("https://brickschema.org/schema/Brick#ec2ab3b8_518f_41d7_81c4_3b396f0d9d23")
-    # # Add the equivalentClass relationship to the ontology graph
-    # sm.ontology_graph.add((custom_class, core.namespace.OWL.equivalentClass, weather_station_class))
+    weather_station_class = core.namespace.BRICK.Weather_Station
+    custom_class = URIRef("https://brickschema.org/schema/Brick#ec2ab3b8_518f_41d7_81c4_3b396f0d9d23")
+    # Add the equivalentClass relationship to the ontology graph
+    sm.ontology_graph.add((custom_class, core.namespace.OWL.equivalentClass, weather_station_class))
 
     # HTR
     # Map fso:feedsFluidTo to brick:feeds to enable reasoning across ontologies
@@ -332,7 +332,7 @@ if __name__ == "__main__":
     # sm.ontology_graph.add((fso_feeds_fluid_to, core.namespace.OWL.equivalentProperty, brick_feeds))
     # print(f"Added equivalence: fso:feedsFluidTo ≡ brick:feeds")
 
-    analyze_types = True
+    analyze_types = False
     if analyze_types:
 
         points = sm.get_instances_of_type(tb.ontologies.BRICK.Point)
@@ -427,21 +427,21 @@ if __name__ == "__main__":
     # initial_node = sm.namespaces["p33f3e0c2_f2cd_471c_b5a0_4655c2bd4623".upper()] + "5c2c591b_b04c_47d6_a586_7b323df99c9a" # HVAC zone
 
     # HTR
-    initial_node = sm.namespaces["inst"] + "HTR9_VEN02"
+    # initial_node = sm.namespaces["inst"] + "HTR9_VEN02"
 
-    sm.reason()
-    sm.serialize()
-    sm.visualize(
-        query,
-        dpi=30000,
-        include_full_uri=False,
-        slice_uri=(-8, None),
-        generate_subgraphs=False,
-        traversal_mode="bfs",
-        random_seed=None,
-        node_limit=300,
-        initial_node=initial_node,
-    )
+    # sm.reason()
+    # sm.serialize()
+    # sm.visualize(
+    #     query,
+    #     dpi=30000,
+    #     include_full_uri=False,
+    #     slice_uri=(-8, None),
+    #     generate_subgraphs=False,
+    #     traversal_mode="bfs",
+    #     random_seed=None,
+    #     node_limit=300,
+    #     initial_node=initial_node,
+    # )
     # sm.visualize(query, dpi=30000, include_full_uri=False, generate_subgraphs=False, traversal_mode=None, random_seed=None, node_limit=200, initial_node=None)
 
     # https://example.com/inst#de757268-ae7f-4271-9846-adbe8ec919b3-004acc59-2
@@ -450,9 +450,9 @@ if __name__ == "__main__":
     # aa
 
     translator = tb.Translator()
-    sim_model = translator.translate(sm, systems_=[tb.BuildingSpaceTorchSystem])
-
+    sim_model = translator.translate(sm, systems_=[tb.BuildingSpaceTorchSystem], verbose=10)
     sim_model.visualize()
+    aa
 
     # model = tb.Model(id="site_b")
     # model.load(semantic_model_filename=file_path, verbose=10, draw_semantic_model=False, draw_simulation_model=True)

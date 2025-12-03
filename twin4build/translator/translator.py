@@ -148,7 +148,7 @@ class Translator:
         self,
         semantic_model: core.SemanticModel,
         systems_: List[core.System] = None,
-        verbose=0,
+        verbose=4,
     ) -> core.SimulationModel:
         """
         Translate semantic model to simulation model using pattern matching
