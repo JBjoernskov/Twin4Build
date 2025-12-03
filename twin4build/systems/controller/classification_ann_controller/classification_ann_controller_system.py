@@ -214,16 +214,16 @@ class ClassificationAnnControllerSystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         # The input of the model is a data vector of 5 elements: Month, day, hour, minute, CO2. Extract the time-related elements from the simulation timestamp
         co2_concentration = self.normalize_co2_data(
             self.room_identifier, self.input["actualValue"].get()
         )
-        time_embeddings = self.time_embedding(dateTime)
+        time_embeddings = self.time_embedding(date_time)
 
         # create a torch tensor with co2_concentration and time_embeddings
         inputs = (
@@ -236,4 +236,4 @@ class ClassificationAnnControllerSystem(core.System):
         # Make the output signal to be in the range of 0-1
         predicted = predicted / 20
 
-        self.output["inputSignal"].set(predicted.item(), stepIndex)
+        self.output["inputSignal"].set(predicted.item(), step_index)

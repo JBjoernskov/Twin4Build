@@ -15,40 +15,6 @@ from twin4build.translator.translator import (
 )
 
 
-def get_signature_pattern():
-    """Get the signature pattern for the supply flow junction system.
-
-    Returns:
-        SignaturePattern: The signature pattern defining the system's connections.
-    """
-    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
-    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
-    node2 = Node(
-        cls=(
-            core.namespace.S4BLDG.Coil,
-            core.namespace.S4BLDG.AirToAirHeatRecovery,
-            core.namespace.S4BLDG.Fan,
-        )
-    )  # building space
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="supply_flow_junction_signature_pattern",
-    )
-    sp.add_triple(
-        MultiPath(
-            subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo
-        )
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    sp.add_input("airFlowRateOut", node1, "airFlowRate")
-    sp.add_modeled_node(node0)
-    return sp
-
-
 class SupplyFlowJunctionSystem(core.System):
     r"""
     A supply flow junction system model for combining air flow rates.
@@ -85,8 +51,6 @@ class SupplyFlowJunctionSystem(core.System):
 
     """
 
-    sp = [get_signature_pattern()]
-
     def __init__(self, airFlowRateBias=None, **kwargs):
         super().__init__(**kwargs)
         if airFlowRateBias is not None:
@@ -94,6 +58,9 @@ class SupplyFlowJunctionSystem(core.System):
         else:
             self.airFlowRateBias = 0
 
+        self.n_input_ports = (
+            1  # TODO: Write a method for initializing the number of input ports
+        )
         self.input = {"airFlowRateOut": tps.Vector()}
         self.output = {"airFlowRateIn": tps.Scalar()}
         self._config = {"parameters": ["airFlowRateBias"]}
@@ -112,7 +79,6 @@ class SupplyFlowJunctionSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the supply flow junction system.
 
@@ -126,27 +92,31 @@ class SupplyFlowJunctionSystem(core.System):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        # TODO: self.setup_variable_inputs()
+        self.input["airFlowRateOut"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_input_ports
+        )
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """Perform one simulation step.
 
@@ -155,11 +125,75 @@ class SupplyFlowJunctionSystem(core.System):
         and the output is a scalar representing the total flow rate.
 
         Args:
-            secondTime (float, optional): Current simulation time in seconds.
-            dateTime (datetime, optional): Current simulation date and time.
+            second_time (float, optional): Current simulation time in seconds.
+            date_time (date_time, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
-            stepIndex (int, optional): Current simulation step index.
+            step_index (int, optional): Current simulation step index.
         """
         self.output["airFlowRateIn"].set(
-            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias, stepIndex
+            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias,
+            step_index,
         )
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the supply flow junction component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the supply flow junction component.
+    """
+    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
+    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
+    node2 = Node(
+        cls=(
+            core.namespace.S4BLDG.Coil,
+            core.namespace.S4BLDG.AirToAirHeatRecovery,
+            core.namespace.S4BLDG.Fan,
+        )
+    )  # building space
+    sp = SignaturePattern(
+        id="supply_flow_junction_signature_pattern",
+    )
+    sp.add_triple(
+        MultiPath(
+            subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo
+        )
+    )
+    sp.add_triple(
+        SinglePath(
+            subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
+        )
+    )
+    sp.add_input("airFlowRateOut", node1, "airFlowRate")
+    sp.add_modeled_node(node0)
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the supply flow junction component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the supply flow junction component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Air_Flow_Junction)  # flow junction
+    node1 = Node(cls=core.namespace.BRICK.Damper)  # damper
+    node2 = Node(cls=core.namespace.BRICK.AHU)  # air handling unit
+
+    sp = SignaturePattern(
+        id="supply_flow_junction_signature_pattern_brick",
+    )
+    sp.add_triple(
+        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.feeds)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.feeds)
+    )
+    sp.add_input("airFlowRateOut", node1, "airFlowRate")
+    sp.add_modeled_node(node0)
+    return sp
+
+
+SupplyFlowJunctionSystem.add_signature_pattern(brick_signature_pattern())
+SupplyFlowJunctionSystem.add_signature_pattern(saref_signature_pattern())

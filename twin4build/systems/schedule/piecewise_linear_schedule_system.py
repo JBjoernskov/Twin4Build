@@ -12,21 +12,6 @@ from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSyst
 from twin4build.translator.translator import Node, SignaturePattern
 
 
-def get_signature_pattern() -> SignaturePattern:
-    """Create a signature pattern for PiecewiseLinearScheduleSystem.
-
-    Returns:
-        SignaturePattern: Pattern matching Schedule core class with priority 0.
-    """
-    node0 = Node(cls=(core.namespace.S4BLDG.Schedule,))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="piecewise_linear_schedule_signature_pattern",
-    )
-    sp.add_modeled_node(node0)
-    return sp
-
-
 class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     """A schedule system using piecewise linear interpolation.
 
@@ -56,8 +41,6 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         - Configurable noise addition
         - Real-time schedule value calculation
     """
-
-    sp = [get_signature_pattern()]
 
     def __init__(self, **kwargs) -> None:
         """Initialize the piecewise linear schedule system.
@@ -127,10 +110,10 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """Execute one time step of the schedule system.
 
@@ -138,15 +121,49 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         points, and calculates the output value using piecewise linear interpolation.
 
         Args:
-            secondTime: Current simulation time in seconds.
-            dateTime: Current simulation datetime.
+            second_time: Current simulation time in seconds.
+            date_time: Current simulation date_time.
             step_size: Time step size in seconds.
-            stepIndex: Current simulation step index.
+            step_index: Current simulation step index.
         """
-        schedule_value = self.get_schedule_value(dateTime)
+        schedule_value = self.get_schedule_value(date_time)
         self.XY = np.array([schedule_value["X"], schedule_value["Y"]]).transpose()
         self.get_a_b_vectors()
 
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key].set(self.get_Y(X), stepIndex)
+        self.output[key].set(self.get_Y(X), step_index)
+
+
+def saref_signature_pattern() -> SignaturePattern:
+    """
+    Get the SAREF signature pattern of the piecewise linear schedule component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the piecewise linear schedule component.
+    """
+    node0 = Node(cls=(core.namespace.S4BLDG.Schedule,))
+    sp = SignaturePattern(
+        id="piecewise_linear_schedule_signature_pattern",
+    )
+    sp.add_modeled_node(node0)
+    return sp
+
+
+def brick_signature_pattern() -> SignaturePattern:
+    """
+    Get the BRICK signature pattern of the piecewise linear schedule component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the piecewise linear schedule component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Schedule)
+    sp = SignaturePattern(
+        id="piecewise_linear_schedule_signature_pattern_brick",
+    )
+    sp.add_modeled_node(node0)
+    return sp
+
+
+PiecewiseLinearScheduleSystem.add_signature_pattern(brick_signature_pattern())
+PiecewiseLinearScheduleSystem.add_signature_pattern(saref_signature_pattern())

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 import datetime
-from typing import Union
+from typing import List, Union
 
 # Third party imports
 # from twin4build.utils.plot.simulation_result import SimulationResult
@@ -28,6 +28,8 @@ class System:
         parameterGradient: A dictionary of parameter gradients to the system.
         id: The id of the system.
     """
+
+    sp = None
 
     def __str__(self):
         t = PrettyTable(field_names=["input", "output"], divider=True)
@@ -112,6 +114,15 @@ class System:
         self._input = input
         self._output = output
         self._id = id
+
+    @classmethod
+    def add_signature_pattern(cls, signature_pattern: core.SignaturePattern) -> None:
+        """
+        Add a signature pattern to the system.
+        """
+        if cls.sp is None:
+            cls.sp = []
+        cls.sp.append(signature_pattern)
 
     @property
     def connects_at(self) -> list:
@@ -203,19 +214,19 @@ class System:
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
-        step_size: int,
-        stepIndex: int,
+        second_time: List[float],
+        date_time: List[datetime.datetime],
+        step_size: List[int],
+        step_index: int,
     ) -> None:
         """
         Do a single step of the system.
 
         Args:
-            secondTime (float): The current time in seconds.
-            dateTime (datetime.datetime): The current date and time.
-            step_size (int): The step size of the simulation in seconds.
-            stepIndex (int): The current step index.
+            second_time (List[float]): The current time in seconds.
+            date_time (List[datetime.datetime]): The current date and time.
+            step_size (List[int]): The step size of the simulation in seconds.
+            step_index (int): The current step index.
         """
         pass
 

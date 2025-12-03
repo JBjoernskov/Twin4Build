@@ -18,33 +18,6 @@ from twin4build.translator.translator import (
 )
 
 
-def get_signature_pattern():
-    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
-    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
-    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)  # building space
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="return_flow_junction_signature_pattern",
-    )
-    sp.add_triple(
-        MultiPath(
-            subject=node0, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-    sp.add_triple(
-        Exact(
-            subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-
-    sp.add_input("airFlowRateIn", node1, "airFlowRate")
-    sp.add_input("airTemperatureIn", node2, "indoorTemperature")
-    # sp.add_input("inletAirTemperature", node15, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
-    sp.add_modeled_node(node0)
-    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
-    return sp
-
-
 class ReturnFlowJunctionSystem(core.System):
     r"""
     A return flow junction system model for combining air flow rates and temperatures.
@@ -84,14 +57,15 @@ class ReturnFlowJunctionSystem(core.System):
        - :math:`\dot{m}_{out}` is the total output flow rate [kg/s]
     """
 
-    sp = [get_signature_pattern()]
-
     def __init__(self, airFlowRateBias=None, **kwargs):
         super().__init__(**kwargs)
         if airFlowRateBias is not None:
             self.airFlowRateBias = airFlowRateBias
         else:
             self.airFlowRateBias = 0
+        self.n_input_ports = (
+            2  # TODO: Write a method for initializing the number of input ports
+        )
 
         self.input = {
             "airFlowRateIn": tps.Vector(),
@@ -112,29 +86,31 @@ class ReturnFlowJunctionSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        # TODO: self.setup_variable_inputs()
+
         for input in self.input.values():
             input.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+                size=self.n_input_ports,
             )
         for output in self.output.values():
             output.initialize(
-                start_time=start_time,
-                end_time=end_time,
-                step_size=step_size,
-                simulator=simulator,
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
             )
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         with np.errstate(invalid="raise"):
             m_dot_in = self.input["airFlowRateIn"].get().sum()
@@ -144,11 +120,74 @@ class ReturnFlowJunctionSystem(core.System):
             tol = 1e-5
             if m_dot_in > tol:
                 self.output["airFlowRateOut"].set(
-                    m_dot_in + self.airFlowRateBias, stepIndex
+                    m_dot_in + self.airFlowRateBias, step_index
                 )
                 self.output["airTemperatureOut"].set(
-                    Q_dot_in.sum() / self.output["airFlowRateOut"].get(), stepIndex
+                    Q_dot_in.sum() / self.output["airFlowRateOut"].get(), step_index
                 )
             else:
-                self.output["airFlowRateOut"].set(0, stepIndex)
-                self.output["airTemperatureOut"].set(20, stepIndex)
+                self.output["airFlowRateOut"].set(0, step_index)
+                self.output["airTemperatureOut"].set(20, step_index)
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the return flow junction component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the return flow junction component.
+    """
+    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
+    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
+    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)  # building space
+    sp = SignaturePattern(
+        id="return_flow_junction_signature_pattern",
+    )
+    sp.add_triple(
+        MultiPath(
+            subject=node0, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
+        )
+    )
+    sp.add_triple(
+        Exact(
+            subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
+        )
+    )
+
+    sp.add_input("airFlowRateIn", node1, "airFlowRate")
+    sp.add_input("airTemperatureIn", node2, "indoorTemperature")
+    # sp.add_input("inletAirTemperature", node15, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
+    sp.add_modeled_node(node0)
+    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the return flow junction component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the return flow junction component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Air_Flow_Junction)  # flow junction
+    node1 = Node(cls=core.namespace.BRICK.Damper)  # damper
+    node2 = Node(cls=core.namespace.BRICK.HVAC_Zone)  # building space/zone
+
+    sp = SignaturePattern(
+        id="return_flow_junction_signature_pattern_brick",
+    )
+    sp.add_triple(
+        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.feeds)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node1, predicate=core.namespace.BRICK.feeds)
+    )
+
+    sp.add_input("airFlowRateIn", node1, "airFlowRate")
+    sp.add_input("airTemperatureIn", node2, "indoorTemperature")
+    sp.add_modeled_node(node0)
+    return sp
+
+
+ReturnFlowJunctionSystem.add_signature_pattern(brick_signature_pattern())
+ReturnFlowJunctionSystem.add_signature_pattern(saref_signature_pattern())

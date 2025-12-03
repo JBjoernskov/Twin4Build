@@ -38,9 +38,9 @@ class PassInputToOutput(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
-        self.output["value"].set(self.input["value"], stepIndex)
+        self.output["value"].set(self.input["value"], step_index)

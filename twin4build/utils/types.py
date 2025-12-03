@@ -31,36 +31,92 @@ class Vector:
         id_map_reverse (Dict[int, int]): Maps group IDs to vector indices.
         tensor (torch.Tensor): The underlying tensor storing vector values.
         current_idx (int): Current index pointer for setting values.
-        sorted_id_indices (torch.Tensor): Indices that sort the vector by group IDs.
     """
 
     def __init__(
         self,
         tensor: Optional[torch.Tensor] = None,
+        batch_size: int = 1,
         size: Optional[int] = None,
+        log_history: bool = True,
+        is_leaf: bool = False,
+        do_normalization: bool = False,
         optional: bool = False,
     ) -> None:
         """Initialize an empty Vector instance."""
-        self.id_map = {}
-        self.id_map_reverse = {}
-        self.sorted_id_indices = None
-        self.tensor = None
-        self._init_tensor = tensor
-        self._init_id_map_reverse = self.id_map_reverse
-        self._init_id_map = self.id_map
+        self._tensor = None
+        self._batch_size = batch_size
+        self._size = size
+        self._log_history = log_history
+        self._is_leaf = is_leaf
+        self._do_normalization = do_normalization
         self._optional = optional
 
-        if tensor is None and size is None:
-            self.size = 0
-            self._init_size = 0
+        self._init_tensor = tensor.clone() if tensor is not None else None
 
-        else:
-            assert isinstance(size, int), f"Size must be an integer. Got {type(size)}"
-            self.size = size
-            self._init_size = size
-            for s in range(size):
-                self.id_map_reverse[s] = s
-                self.id_map[s] = s
+        self._history = None
+        self._normalized_history = None
+        self._initialized = False
+        self._requires_reinittialization = True
+        self._min_history = None  # Will be set to float when first calculated
+        self._max_history = None  # Will be set to float when first calculated
+        self._history_is_populated = False
+        self._is_normalized = False
+
+    @property
+    def tensor(self):
+        return self._tensor
+
+    @property
+    def size(self):
+        return self._size
+
+    @property
+    def batch_size(self):
+        return self._batch_size
+
+    @property
+    def log_history(self):
+        return self._log_history
+
+    @log_history.setter
+    def log_history(self, value: bool):
+        self._log_history = value
+
+    @property
+    def scalar(self):
+        return self._scalar
+
+    @property
+    def history(self):
+        assert (
+            self._history_is_populated
+        ), "History is not populated. Set log_history to True to populate history."
+        return self._history
+
+    @property
+    def normalized_history(self):
+        return self._normalized_history
+
+    @property
+    def is_leaf(self):
+        return self._is_leaf
+
+    @is_leaf.setter
+    def is_leaf(self, value: bool):
+        assert isinstance(value, bool), "is_leaf must be a boolean"
+        if self._is_leaf:
+            raise ("Leaf Vectors are currently not supported.")
+        self._is_leaf = value
+
+    @property
+    def do_normalization(self):
+        return self._do_normalization
+
+    @do_normalization.setter
+    def do_normalization(self, value: bool):
+        assert isinstance(value, bool), "do_normalization must be a boolean"
+        self._do_normalization = value
 
     @property
     def optional(self):
@@ -89,7 +145,7 @@ class Vector:
         Returns:
             float: Value at specified index.
         """
-        return self.tensor[key].item()
+        return self.tensor[key]
 
     def __setitem__(self, key: int, value: float) -> None:
         """Set value at specified index.
@@ -100,82 +156,141 @@ class Vector:
         """
         self.tensor[key] = value
 
-    def reset(self) -> None:
-        """Reset the vector to initial state."""
-        self.size = self._init_size
-        self.id_map = self._init_id_map
-        self.id_map_reverse = self._init_id_map_reverse
-        return self
+    # def reset(self) -> None:
+    #     """Reset the vector to initial state."""
+    #     self._size = self._init_size
+    #     return self
 
     def initialize(
         self,
-        start_time: Optional[datetime.datetime] = None,
-        end_time: Optional[datetime.datetime] = None,
-        step_size: Optional[int] = None,
-        simulator: Optional[core.Simulator] = None,
+        n_timesteps: int,
+        size: Optional[int] = None,
+        batch_size: Optional[int] = None,
+        values: Optional[List[float]] = None,
+        force: bool = False,
     ) -> None:
         """Initialize the vector tensor and sorting indices.
 
         Creates the underlying torch tensor and computes indices for sorted access by group ID.
         """
+        assert isinstance(n_timesteps, int), "n_timesteps must be an integer"
+        if size is not None:
+            self._size = size
+        if batch_size is not None:
+            self._batch_size = batch_size
+
+        ### Vector stufff
         if self._init_tensor is None:
-            self.tensor = torch.zeros(self.size, dtype=torch.float64)
+            self._tensor = torch.zeros(
+                (self.batch_size, self.size), dtype=torch.float64
+            )
         else:
-            self.tensor = self._init_tensor.clone()
-        self.current_idx = 0
-        id_array = torch.empty(self.size, dtype=torch.int64)
-        for idx, group_id in self.id_map.items():
-            id_array[idx] = group_id
-        self.sorted_id_indices = torch.argsort(id_array)
+            self._tensor = self._init_tensor.clone()
+        # self.current_idx = 0
+
+        if values is not None:
+            values = _convert_to_3D_tensor(values)
+
+        # We return early if this scalar has requires_grad=True.
+        # This is the case when used in the optimizer.
+        # Here we dont want to reinitialize the history as the torch.optim.Optimizer changes this in-place.
+        if (
+            self._initialized
+            and self._requires_reinittialization == False
+            and force == False
+        ):
+            # self._history_is_populated = False # When we reinitialize a leaf Scalar, a simulation must be run before the history is populated.
+            return
+
+        if self._is_leaf:
+            assert values is not None, "Values must be provided for leaf scalars"
+            assert (
+                values.shape[0] == self.batch_size
+            ), "Values must be the same length as the batch size"
+            assert (
+                values.shape[1] == n_timesteps
+            ), "Values must be the same length as the number of date_time_steps"
+            assert (
+                values.shape[2] == self.size
+            ), "Values must be the same length as the vector size"
+            # Pre-allocate the history tensor with the correct size
+            self._history = values
+            self._history_is_populated = True
+            if self._do_normalization:
+                self._normalized_history = self.normalize()
+
+        else:
+            self._history = torch.zeros(
+                (self._batch_size, n_timesteps, self.size),
+                dtype=torch.float64,
+                requires_grad=False,
+            )
+            self._history_is_populated = False
+
+        self._initialized = True
         return self
 
-    def increment(self, v: int = 1) -> None:
-        """Increment the vector size.
-
-        Args:
-            v (int, optional): Amount to increment by. Defaults to 1.
-        """
-        self.size += v
-        return self
-
-    def set(self, v: float, stepIndex: Optional[int] = None) -> None:
+    def set(
+        self,
+        v: float,
+        step_index: Optional[int] = None,
+        index: Optional[int, torch.Tensor] = None,
+    ) -> None:
         """Set the next value in the vector.
 
         Args:
             v (float): Value to set at current index.
         """
-        if isinstance(v, float):
-            self[self.current_idx] = v
-        elif isinstance(v, Scalar):
-            self[self.current_idx] = v.get()
-        elif isinstance(v, torch.Tensor):
-            self.tensor = v
-        elif isinstance(v, Vector):
-            self.tensor = v.tensor
 
-        self.current_idx += 1
-        if self.current_idx == self.size:
-            self.current_idx = 0
+        # v = _convert_to_2D_tensor(v)
+        # print("v.shape", v.shape)
+        # print("index", index)
+        # print("self.tensor.shape", self.tensor.shape)
 
-    def get(self) -> torch.Tensor:
+        if index is not None:
+            self.tensor[:, index] = v
+        else:
+            self.tensor[:, :] = v
+
+        if self._log_history:
+            # if self._do_normalization:
+            if self.is_leaf == False or (self.is_leaf and self._do_normalization):
+                if v.dim() == 2:
+                    self._history[:, step_index, :] = v
+                elif v.dim() == 1:
+                    self._history[:, step_index, index] = v
+                else:
+                    raise ValueError(f"Unsupported dimension: {v.dim()}")
+
+            if step_index == self._history.shape[1] - 1:
+                self._history_is_populated = True
+            else:
+                self._history_is_populated = False
+
+    def get(self, index: Optional[int, torch.Tensor] = None) -> torch.Tensor:
         """Get vector values sorted by group ID.
 
         Returns:
             torch.Tensor: Tensor of values sorted by group ID.
         """
-        return self.tensor[self.sorted_id_indices]
+        if index is not None:
+            out = self.tensor[:, index]
+        else:
+            out = self.tensor
+        return out
 
-    def update(self, group_id: Optional[int] = None) -> None:
-        """Update the vector with a new group ID.
+    # def update(self, group_id: Optional[int] = None) -> None:
+    #     """Update the vector with a new group ID.
 
-        Args:
-            group_id (Optional[int]): Group ID to add. If None, uses current size.
-        """
-        if group_id is None:
-            group_id = self.size
-        self.id_map_reverse[group_id] = self.size
-        self.id_map[self.size] = group_id
-        self.increment()
+    #     Args:
+    #         group_id (Optional[int]): Group ID to add. If None, uses current size.
+    #     """
+    #     assert self._current_idx +1 <= self.size, "Vector size is not large enough to add a new group ID"
+    #     if group_id is None:
+    #         group_id = self._current_idx
+    #     self.id_map_reverse[group_id] = self._current_idx
+    #     self.id_map[self._current_idx] = group_id
+    #     self._current_idx += 1
 
     def copy(self):
         """Create a copy of the vector.
@@ -183,11 +298,16 @@ class Vector:
         Returns:
             Vector: A new Vector instance with the same data.
         """
-        copy = Vector()
-        copy.size = self.size
-        copy.id_map = self.id_map.copy()
-        copy.id_map_reverse = self.id_map_reverse.copy()
-        copy.initialize()
+        tensor = self.tensor.clone() if self.tensor is not None else None
+        copy = Vector(
+            tensor=tensor,
+            batch_size=self.batch_size,
+            size=self.size,
+            log_history=self.log_history,
+            is_leaf=self.is_leaf,
+            do_normalization=self.do_normalization,
+            optional=self.optional,
+        )
         return copy
 
 
@@ -205,6 +325,7 @@ class Scalar:
     def __init__(
         self,
         scalar: Optional[Union[float, int, torch.Tensor]] = None,
+        batch_size: int = 1,
         log_history: bool = True,
         is_leaf: bool = False,
         do_normalization: bool = False,
@@ -235,6 +356,7 @@ class Scalar:
             scalar = torch.tensor([scalar], dtype=torch.float64, requires_grad=False)
 
         self._scalar = scalar
+        self._batch_size = batch_size
         self._init_scalar = scalar
         self._history = None
         self._normalized_history = None
@@ -248,6 +370,10 @@ class Scalar:
         self._history_is_populated = False
         self._is_normalized = False
         self._optional = optional
+
+    @property
+    def batch_size(self):
+        return self._batch_size
 
     @property
     def log_history(self):
@@ -314,28 +440,28 @@ class Scalar:
 
     def initialize(
         self,
-        start_time: Optional[datetime.datetime] = None,
-        end_time: Optional[datetime.datetime] = None,
-        step_size: Optional[int] = None,
-        simulator: Optional[core.Simulator] = None,
+        n_timesteps: int,
+        batch_size: Optional[int] = None,
         values: Optional[List[float]] = None,
         force: bool = False,
     ):
-        assert isinstance(
-            values, (list, torch.Tensor, np.ndarray, type(None))
-        ), "values must be a list or torch.Tensor"
-        if isinstance(values, torch.Tensor):
-            assert values.ndim == 1, "values must be a 1D torch.Tensor"
+        assert isinstance(n_timesteps, int), "n_timesteps must be an integer"
 
-        elif isinstance(values, np.ndarray):
-            assert values.ndim == 1, "values must be a 1D numpy array"
-            values = torch.tensor(values, dtype=torch.float64)
+        if batch_size is not None:
+            self._batch_size = batch_size
 
-        elif isinstance(values, list):
-            values = torch.tensor(values, dtype=torch.float64)
-            assert (
-                values.ndim == 1
-            ), "if a list is provided, it must convert to a 1D torch.Tensor"
+        if self._init_scalar is None:
+            self._scalar = torch.zeros((self.batch_size), dtype=torch.float64)
+        else:
+            self._scalar = self._init_scalar.clone()
+            if self.batch_size > 1:
+                if self._scalar.dim() == 0:
+                    self._scalar = self._scalar.expand(self.batch_size).clone()
+                elif self._scalar.dim() == 1 and self._scalar.shape[0] == 1:
+                    self._scalar = self._scalar.expand(self.batch_size).clone()
+
+        if values is not None:
+            values = _convert_to_2D_tensor(values)
 
         # We return early if this scalar has requires_grad=True.
         # This is the case when used in the optimizer.
@@ -345,14 +471,16 @@ class Scalar:
             and self._requires_reinittialization == False
             and force == False
         ):
-            # self._history_is_populated = False # When we reinitialize a leaf Scalar, a simulation must be run before the history is populated.
             return
 
         if self._is_leaf:
             assert values is not None, "Values must be provided for leaf scalars"
-            assert values.shape[0] == len(
-                simulator.dateTimeSteps
-            ), "Values must be the same length as the number of dateTimeSteps"
+            assert (
+                values.shape[0] == self.batch_size
+            ), f"First dimension of values ({values.shape[0]}) must be the same as the batch size ({self.batch_size}). Did you forget to provide the batch_size argument in the initialize method?"
+            assert (
+                values.shape[1] == n_timesteps
+            ), f"Second dimension of values ({values.shape[1]}) must be the same as the number of date_time_steps ({n_timesteps}). Did you forget to provide the n_timesteps argument in the initialize method?"
             # Pre-allocate the history tensor with the correct size
             self._history = values
             self._history_is_populated = True
@@ -361,7 +489,7 @@ class Scalar:
 
         else:
             self._history = torch.zeros(
-                len(simulator.dateTimeSteps), dtype=torch.float64, requires_grad=False
+                self._batch_size, n_timesteps, dtype=torch.float64, requires_grad=False
             )
             self._history_is_populated = False
 
@@ -370,8 +498,10 @@ class Scalar:
     def set(
         self,
         v: Union[Scalar, float, int, torch.Tensor] = None,
-        stepIndex: Optional[int] = None,
+        step_index: Optional[int] = None,
         apply: callable = None,
+        *args,
+        **kwargs,
     ) -> None:
         """Set the scalar value.
 
@@ -381,14 +511,14 @@ class Scalar:
         if self._is_leaf:
             assert (
                 v is None
-            ), "Values cannot be set for leaf scalars. Use scalar.set(stepIndex=step_index) to set value based on history"
+            ), "Values cannot be set for leaf scalars. Use scalar.set(step_index=step_index) to set value based on history"
             if self._do_normalization:
-                v = self._normalized_history[stepIndex]
+                v = self._normalized_history[:, step_index]
                 v = self.denormalize(v)
             else:
-                v = self._history[stepIndex]
+                v = self._history[:, step_index]
         else:
-            v = _convert_to_scalar_tensor(v)
+            v = _convert_to_1D_scalar_tensor(v)
 
         if apply is not None:
             v = apply(v)
@@ -397,14 +527,14 @@ class Scalar:
         if self._log_history:
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
-                self._history[stepIndex] = v
+                self._history[:, step_index] = v
 
-            if stepIndex == self._history.shape[0] - 1:
+            if step_index == self._history.shape[1] - 1:
                 self._history_is_populated = True
             else:
                 self._history_is_populated = False
 
-    def get(self) -> torch.Tensor:
+    def get(self, *args, **kwargs) -> torch.Tensor:
         """Get the scalar value.
 
         Returns:
@@ -420,26 +550,29 @@ class Scalar:
             v = self._history
         # else:
         # print(v)
-        v = _convert_to_1D_tensor(v)
+        v = _convert_to_2D_tensor(v)
         # elif isinstance(v, torch.Tensor):
         #     v = torch.tensor(v, dtype=torch.float64)
         assert isinstance(v, torch.Tensor), "v must be a torch.Tensor"
 
         # Cache min/max as Python floats to avoid GradTrackingTensor issues
         if self._min_history is None:
-            # with torch.no_grad():
+            no_nan_history = self._history.detach()  # a[~a.isnan()])
+            no_nan_history = no_nan_history[~torch.isnan(no_nan_history)]
             self._min_history = torch.min(
-                self._history.detach()
-            ).item()  # Store as Python float
+                no_nan_history  # , dim=1 # TODO: remove dim=1 if we want to normalize all periods together
+            ).item()  # Store as numpy float
         if self._max_history is None:
             # with torch.no_grad():
+            no_nan_history = self._history.detach()  # a[~a.isnan()])
+            no_nan_history = no_nan_history[~torch.isnan(no_nan_history)]
             self._max_history = torch.max(
-                self._history.detach()
+                no_nan_history  # , dim=1 # TODO: remove dim=1 if we want to normalize all periods together
             ).item()  # Store as Python float
 
         # Convert cached floats to tensors when needed
-        min_val = torch.tensor(self._min_history, dtype=torch.float64)
-        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+        min_val = _convert_to_1D_scalar_tensor(self._min_history)
+        max_val = _convert_to_1D_scalar_tensor(self._max_history)
 
         if torch.allclose(min_val, max_val):
             min_val = torch.tensor(0, dtype=torch.float64)
@@ -456,8 +589,8 @@ class Scalar:
             self._is_normalized == True
         ), ".normalize() must be called before denormalizing"
         # Use cached float values and convert to tensors
-        min_val = torch.tensor(self._min_history, dtype=torch.float64)
-        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+        min_val = _convert_to_1D_scalar_tensor(self._min_history)
+        max_val = _convert_to_1D_scalar_tensor(self._max_history)
         return v * (max_val - min_val) + min_val
 
     def get_float(self) -> float:
@@ -468,14 +601,11 @@ class Scalar:
         """
         return self._scalar.item()
 
-    def update(self, group_id: Optional[int] = None):
-        pass
-
-    def reset(self):
-        if self._init_scalar is not None:
-            self._scalar = self._init_scalar.clone()
-        else:
-            self._scalar = None
+    # def reset(self):
+    #     if self._init_scalar is not None:
+    #         self._scalar = self._init_scalar.clone()
+    #     else:
+    #         self._scalar = None
 
     def copy(self):
         copy = Scalar()
@@ -498,7 +628,7 @@ class Parameter(nn.Parameter):
 
     def __new__(cls, data, min_value=None, max_value=None, requires_grad=True):
         # Convert data to tensor if it's not already
-        data = _convert_to_scalar_tensor(data).squeeze()
+        data = _convert_to_1D_scalar_tensor(data).squeeze()
         # validate = True
         # Set min and max values
         if min_value is None:
@@ -508,7 +638,7 @@ class Parameter(nn.Parameter):
                 min_value = torch.tensor(0, dtype=torch.float64)
             # validate = False
         else:
-            min_value = _convert_to_scalar_tensor(min_value).squeeze()
+            min_value = _convert_to_1D_scalar_tensor(min_value).squeeze()
 
         if max_value is None:
             if torch.all(data < 0):
@@ -519,7 +649,7 @@ class Parameter(nn.Parameter):
                 max_value = data.clone()
 
         else:
-            max_value = _convert_to_scalar_tensor(max_value).squeeze()
+            max_value = _convert_to_1D_scalar_tensor(max_value).squeeze()
 
         # if validate:
         assert torch.all(
@@ -580,12 +710,12 @@ class Parameter(nn.Parameter):
 
     @min_value.setter
     def min_value(self, value):
-        value = _convert_to_scalar_tensor(value).squeeze()
+        value = _convert_to_1D_scalar_tensor(value).squeeze()
         self._min_value = value
 
     @max_value.setter
     def max_value(self, value):
-        value = _convert_to_scalar_tensor(value).squeeze()
+        value = _convert_to_1D_scalar_tensor(value).squeeze()
         self._max_value = value
 
     def normalize(
@@ -594,17 +724,17 @@ class Parameter(nn.Parameter):
         min_value: torch.Tensor = None,
         max_value: torch.Tensor = None,
     ):
-        v = _convert_to_scalar_tensor(v).squeeze()
+        v = _convert_to_1D_scalar_tensor(v).squeeze()
 
         if min_value is None:
             min_value = self._min_value
         else:
-            min_value = _convert_to_scalar_tensor(min_value).squeeze()
+            min_value = _convert_to_1D_scalar_tensor(min_value).squeeze()
 
         if max_value is None:
             max_value = self._max_value
         else:
-            max_value = _convert_to_scalar_tensor(max_value).squeeze()
+            max_value = _convert_to_1D_scalar_tensor(max_value).squeeze()
 
         self._min_value = min_value
         self._max_value = max_value
@@ -622,7 +752,7 @@ class Parameter(nn.Parameter):
 
     def set(self, value, normalized: bool = True):
         """Set the parameter value (will be normalized internally)."""
-        value = _convert_to_scalar_tensor(value).squeeze()
+        value = _convert_to_1D_scalar_tensor(value).squeeze()
         if normalized:
             normalized_value = value
         else:
@@ -644,7 +774,7 @@ class TensorParameter:
         max_value=None,
         normalized: bool = True,
     ):
-        tensor = _convert_to_scalar_tensor(tensor)
+        tensor = _convert_to_1D_scalar_tensor(tensor)
         self._min_value = min_value
         self._max_value = max_value
 
@@ -660,12 +790,12 @@ class TensorParameter:
 
     @min_value.setter
     def min_value(self, value):
-        value = _convert_to_scalar_tensor(value).squeeze()
+        value = _convert_to_1D_scalar_tensor(value).squeeze()
         self._min_value = value
 
     @max_value.setter
     def max_value(self, value):
-        value = _convert_to_scalar_tensor(value).squeeze()
+        value = _convert_to_1D_scalar_tensor(value).squeeze()
         self._max_value = value
 
     def normalize(
@@ -674,17 +804,17 @@ class TensorParameter:
         min_value: torch.Tensor = None,
         max_value: torch.Tensor = None,
     ):
-        v = _convert_to_scalar_tensor(v).squeeze()
+        v = _convert_to_1D_scalar_tensor(v).squeeze()
 
         if min_value is None:
             min_value = self._min_value
         else:
-            min_value = _convert_to_scalar_tensor(min_value).squeeze()
+            min_value = _convert_to_1D_scalar_tensor(min_value).squeeze()
 
         if max_value is None:
             max_value = self._max_value
         else:
-            max_value = _convert_to_scalar_tensor(max_value).squeeze()
+            max_value = _convert_to_1D_scalar_tensor(max_value).squeeze()
 
         self._min_value = min_value
         self._max_value = max_value
@@ -708,22 +838,108 @@ class TensorParameter:
 
     def set(self, value, normalized: bool = True):
         """Set the parameter value (will be normalized internally)."""
-        value = _convert_to_scalar_tensor(value).squeeze()
+        value = _convert_to_1D_scalar_tensor(value).squeeze()
         if normalized:
             value = self.denormalize(value)
         self.tensor = value
 
 
-def _convert_to_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
+def _convert_to_3D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
+    """
+    Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (batch_size, 1)
+
+    3 cases of tensor dimensions are handled:
+    1. 2D tensor -> do nothing
+    2. 1D tensor -> reshape to batch dimension of 1 (1, n)
+    3. 0D tensor -> reshape to batch dimension of 1 (1, 1)
+
+    """
+    if isinstance(v, list):
+        v = torch.Tensor(v)
+
     if isinstance(v, Scalar):
         v = v.get()
     elif isinstance(v, (float, int)):
+        v = torch.tensor([[[v]]], dtype=torch.float64)
+    elif isinstance(v, torch.Tensor):
+        assert (
+            v.dim() == 3
+        ), f"Value must have less that or equal to 2 dimensions, got {v.dim()} dimensions"
+        # if v.dim() == 2:
+        #     v = v.reshape((1, v.shape[0], v.shape[1]))
+        # elif v.dim() == 1:
+        #     v = v.reshape((1, 1, v.shape[0]))
+        # elif v.dim() == 0:
+        #     v = v.reshape((1, 1, 1))
+    else:
+        raise TypeError(f"Unsupported type: {type(v)}")
+    return v
+
+
+def _convert_to_2D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
+    """
+    Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (batch_size, 1)
+
+    Interpret
+    """
+    if isinstance(v, Scalar):
+        v = _convert_to_2D_scalar_tensor(v.get())
+    elif isinstance(v, (float, int)):
+        v = torch.tensor([[v]], dtype=torch.float64)
+    elif isinstance(v, torch.Tensor):
+        assert (
+            v.dim() == 2
+        ), f"Value must have less that or equal to 2 dimensions, got {v.dim()} dimensions"
+        # if v.dim() == 1:
+        #     assert v.shape[0] == 1, f"Value must be a single value, got {v.shape[0]} values and shape {v.shape}"
+        #     v = v.reshape((1, 1))
+        # elif v.dim() == 0:
+        #     v = v.reshape((1, 1))
+
+    else:
+        raise TypeError(f"Unsupported type: {type(v)}")
+    return v
+
+
+def _convert_to_2D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
+    """
+    Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (batch_size, n_timesteps)
+
+    3 cases of tensor dimensions are handled:
+    1. 2D tensor -> do nothing
+    2. 1D tensor -> reshape to batch dimension of 1 (1, n)
+    3. 0D tensor -> reshape to batch dimension of 1 (1, 1)
+
+    """
+    if isinstance(v, (list, np.ndarray)):
+        v = torch.Tensor(v)
+
+    if isinstance(v, Scalar):
+        v = _convert_to_2D_tensor(v.get())
+    elif isinstance(v, (float, int)):
+        v = torch.tensor([[v]], dtype=torch.float64)
+    elif isinstance(v, torch.Tensor):
+        assert (
+            v.dim() <= 2
+        ), f"Value must have less that or equal to 2 dimensions, got {v.dim()} dimensions"
+        if v.dim() == 1:
+            v = v.reshape((1, v.shape[0]))
+        elif v.dim() == 0:
+            v = v.reshape((1, 1))
+    else:
+        raise TypeError(f"Unsupported type: {type(v)}")
+    return v
+
+
+def _convert_to_1D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
+    if isinstance(v, Scalar):
+        v = _convert_to_1D_scalar_tensor(v.get())
+    elif isinstance(v, (float, int)):
         v = torch.tensor([v], dtype=torch.float64)
     elif isinstance(v, torch.Tensor):
-        assert v.numel() == 1, f"Value must be a single value, got {v.numel()} values"
         assert (
-            v.dim() == 0 or v.dim() == 1
-        ), f"Value must have 0 or 1 dimensions, got {v.dim()} dimensions"
+            v.dim() <= 1
+        ), f"Value must have less that or equal to 1 dimensions, got {v.dim()} dimensions"
         if v.dim() == 0:
             v = v.unsqueeze(0)
     else:
@@ -731,20 +947,20 @@ def _convert_to_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     return v
 
 
-def _convert_to_1D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
-    if isinstance(v, Scalar):
-        v = v.get()
-    elif isinstance(v, (float, int)):
-        v = torch.tensor([v], dtype=torch.float64)
-    elif isinstance(v, torch.Tensor):
-        assert (
-            v.dim() == 0 or v.dim() == 1
-        ), f"Value must have 0 or 1 dimensions, got {v.dim()} dimensions"
-        if v.dim() == 0:
-            v = v.unsqueeze(0)
-    elif isinstance(v, torch.Tensor) == False:
-        raise TypeError(f"Unsupported type: {type(v)}")
-    return v
+# def _convert_to_1D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
+#     if isinstance(v, Scalar):
+#         v = v.get()
+#     elif isinstance(v, (float, int)):
+#         v = torch.tensor([v], dtype=torch.float64)
+#     elif isinstance(v, torch.Tensor):
+#         assert (
+#             v.dim() == 0 or v.dim() == 1
+#         ), f"Value must have 0 or 1 dimensions, got {v.dim()} dimensions"
+#         if v.dim() == 0:
+#             v = v.unsqueeze(0)
+#     elif isinstance(v, torch.Tensor) == False:
+#         raise TypeError(f"Unsupported type: {type(v)}")
+#     return v
 
 
 def test():

@@ -45,12 +45,12 @@ class OnOffSystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         if self.input["criteriaValue"] >= self.threshold:
-            self.output["value"].set(self.input["value"], stepIndex)
+            self.output["value"].set(self.input["value"], step_index)
         else:
-            self.output["value"].set(self.is_off_value, stepIndex)
+            self.output["value"].set(self.is_off_value, step_index)

@@ -22,11 +22,12 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.utils.types as tps
-from twin4build.utils.print_progress import PRINTPROGRESS
+from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
 
 
+@autoreset_print
 class Translator:
     r"""
     Class for ontology-driven automated model generation and calibration in building energy systems.
@@ -144,7 +145,10 @@ class Translator:
         self._instance_to_group_map = {}
 
     def translate(
-        self, semantic_model: core.SemanticModel, systems_: List[core.System] = None
+        self,
+        semantic_model: core.SemanticModel,
+        systems_: List[core.System] = None,
+        verbose=0,
     ) -> core.SimulationModel:
         """
         Translate semantic model to simulation model using pattern matching
@@ -152,10 +156,13 @@ class Translator:
         Args:
             systems: List of system types to match against
             semantic_model: The semantic model to translate
-
+            verbose: Verbosity level
         Returns:
             SimulationModel instance with matched components
         """
+        PRINTPROGRESS.verbose = verbose
+        PRINTPROGRESS("Applying translator", status="")
+        PRINTPROGRESS.add_level()
 
         if systems_ is None:
             systems_ = [
@@ -174,13 +181,51 @@ class Translator:
             # PRINTPROGRESS("Found following matching candidate patterns:")
 
             for component_cls in complete_groups.keys():
-                PRINTPROGRESS(f"Component: {component_cls.__name__}")
+                PRINTPROGRESS(f"Class: {component_cls.__name__}")
                 PRINTPROGRESS.add_level()
 
                 for sp in complete_groups[component_cls].keys():
                     PRINTPROGRESS(
                         f"Signature pattern: {sp.id}, {len(complete_groups[component_cls][sp])} matches found"
                     )
+                    PRINTPROGRESS.add_level()
+                    for i, group in enumerate(complete_groups[component_cls][sp]):
+                        PRINTPROGRESS(f"Group {i}:")
+                        PRINTPROGRESS.add_level()
+
+                        for sp_subject, sm_subject in group.items():
+                            # id_sp = str([str(s) for s in sp_subject.cls])
+                            id_sp = sp_subject.id
+                            id_m = (
+                                sm_subject.get_short_name()
+                                if sm_subject is not None
+                                else None
+                            )  # Can be None if sp includes an Optional_ node.
+                            PRINTPROGRESS(f"{id_sp}: {id_m}")
+                        PRINTPROGRESS.remove_level()
+                    PRINTPROGRESS.remove_level()
+
+                for sp in incomplete_groups[component_cls].keys():
+                    PRINTPROGRESS(
+                        f"INCOMPLETE signature patterns: {sp.id}, {len(incomplete_groups[component_cls][sp])}"
+                    )
+                    PRINTPROGRESS.add_level()
+                    for i, group in enumerate(incomplete_groups[component_cls][sp]):
+                        PRINTPROGRESS(f"Group {i}:")
+                        PRINTPROGRESS.add_level()
+
+                        for sp_subject, sm_subject in group.items():
+                            # id_sp = str([str(s) for s in sp_subject.cls])
+                            id_sp = sp_subject.id
+                            id_m = (
+                                sm_subject.get_short_name()
+                                if sm_subject is not None
+                                else None
+                            )
+                            PRINTPROGRESS(f"{id_sp}: {id_m}")
+                        PRINTPROGRESS.remove_level()
+                    PRINTPROGRESS.remove_level()
+
                 PRINTPROGRESS.remove_level()
 
         else:
@@ -201,9 +246,13 @@ class Translator:
 
             # Connect components
             self._connect_components(result["connections"], sim_model)
+            PRINTPROGRESS("Applying translator", status="[OK]", change_status=True)
+            PRINTPROGRESS.remove_level()
         else:
             # This can happen if all components require no inputs. In this case, we can just return the simulation model with no connections. But this is probably not wanted behavior - better to raise an exception.
-            print(result["message"])
+            PRINTPROGRESS(result["message"], status="[ERROR]")
+            PRINTPROGRESS("Applying translator", status="[ERROR]", change_status=True)
+            PRINTPROGRESS.remove_level()
             raise Exception(f"MILP solver failed: {result['message']}")
 
         return sim_model
@@ -222,207 +271,225 @@ class Translator:
         Returns:
             Tuple of (complete_groups, incomplete_groups) dictionaries
         """
+
+        def _match_sp(sp, complete_groups, incomplete_groups):
+            # print(f"\n=== Starting new signature pattern match for class {component_cls} ===")
+            # Initialize groups for this signature pattern
+            complete_groups[component_cls][sp] = []
+            incomplete_groups[component_cls][sp] = []
+            cg = complete_groups[component_cls][sp]
+            ig = incomplete_groups[component_cls][sp]
+            feasible_map = {}
+            comparison_table_map = {}
+            for sp_subject in sp.nodes:
+                match_nodes = semantic_model.get_instances_of_type(sp_subject.cls)
+                # nodes = [str(s.uri) for s in sp_subject.cls]
+                # print(f"Found {len(match_nodes)} matches for node {nodes}")
+                # print(f"MATCH NODES: {match_nodes}")
+                # print(f"({component_cls}) TESTING SP_SUBJECT: {[s.uri for s in sp_subject.cls]}")
+                for sm_subject in match_nodes:
+                    sp_sm_map = {sp_subject: None for sp_subject in sp.nodes}
+                    feasible = {sp_subject: set() for sp_subject in sp.nodes}
+                    comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
+                    sp_sm_map_list = [Translator._copy_nodemap(sp_sm_map)]
+                    prune = True
+                    if sm_subject not in comparison_table[sp_subject]:
+                        sp.reset_ruleset()
+
+                        # print("====================== ENTERING PRUNE RECURSIVE ======================")
+                        # id_sp = str([str(s) for s in sp_subject.cls])
+                        # id_sp = sp_subject.id
+                        # id_sp = id_sp.replace(r"\n", "")
+                        # mn = sm_subject.uri if sm_subject is not None else None
+                        # id_m = [str(mn)]
+                        # print(id_sp, id_m)
+
+                        sp_sm_map_list, feasible, comparison_table, prune = (
+                            Translator._prune_recursive(
+                                sm_subject,
+                                sp_subject,
+                                sp_sm_map_list,
+                                feasible,
+                                comparison_table,
+                                sp,
+                                verbose=False,
+                            )
+                        )
+
+                        for sp_sm_map_ in sp_sm_map_list:
+                            feasible_map[id(sp_sm_map_)] = feasible
+                            comparison_table_map[id(sp_sm_map_)] = comparison_table
+
+                    # elif sm_subject in feasible[sp_subject]:
+                    #     sp_sm_map[sp_subject] = sm_subject
+                    #     sp_sm_map_list = [sp_sm_map]
+                    #     prune = False
+
+                    if prune == False:
+                        # print(f"\nProcessing match for {sp_subject.id}")
+                        # print(f"Current sp_sm_map_list length: {len(sp_sm_map_list)}")
+
+                        # We check that the obtained sp_sm_map_list contains node maps with different modeled nodes.
+                        # If an SP does not contain a MultiPath rule, we can prune the sp_sm_map_list to only contain node maps with different modeled nodes.
+                        modeled_nodes = []
+                        for sp_sm_map_ in sp_sm_map_list:
+                            node_map_set = set()
+                            for sp_modeled_node in sp.modeled_nodes:
+                                node_map_set.add(sp_sm_map_[sp_modeled_node])
+                            modeled_nodes.append(node_map_set)
+
+                        node_map_list_new = []
+                        for i, (sp_sm_map_, node_map_set) in enumerate(
+                            zip(sp_sm_map_list, modeled_nodes)
+                        ):
+                            active_set = node_map_set
+                            passive_set = set().union(
+                                *[v for k, v in enumerate(modeled_nodes) if k != i]
+                            )
+                            if (
+                                len(active_set.intersection(passive_set)) > 0
+                                and any(
+                                    [
+                                        isinstance(v, MultiPath)
+                                        for v in sp._ruleset.values()
+                                    ]
+                                )
+                                == False
+                            ):
+                                warnings.warn(
+                                    f"Multiple matches found for {sp_subject.id} and {sp_subject.cls}."
+                                )
+                            node_map_list_new.append(
+                                sp_sm_map_
+                            )  # This constraint has been removed to allow for multiple matches. Note that multiple
+                        sp_sm_map_list = node_map_list_new
+
+                        # Cross matching could maybe stop early if a match is found. For SP with multiple allowed matches it might be necessary to check all matches
+                        for sp_sm_map_ in sp_sm_map_list:
+                            # print("\nCROSS MATCHING AGAINST INCOMPLETE GROUPS: ")
+                            # for sp_subject___, sm_subject___ in sp_sm_map_.items():
+                            #     id_sp = sp_subject___.id
+                            #     id_sp = id_sp.replace(r"\n", "")
+                            #     mn = sm_subject___.uri if sm_subject___ is not None else None
+                            #     id_m = [str(mn)]
+                            #     print(id_sp, id_m)
+
+                            if all(
+                                [
+                                    sp_sm_map_[sp_subject] is not None
+                                    for sp_subject in sp.required_nodes
+                                ]
+                            ):
+                                cg.append(sp_sm_map_)
+                            else:
+                                if (
+                                    len(ig) == 0
+                                ):  # If there are no groups in the incomplete group list, add the node map
+                                    ig.append(sp_sm_map_)
+                                else:
+                                    new_ig = ig.copy()
+                                    is_match_ = False
+                                    for group in ig:  # Iterate over incomplete groups
+                                        is_match, group, cg, new_ig = Translator._match(
+                                            group,
+                                            sp_sm_map_,
+                                            sp,
+                                            cg,
+                                            new_ig,
+                                            feasible_map,
+                                            comparison_table_map,
+                                        )
+                                        if is_match:
+                                            is_match_ = True
+                                    if is_match_ == False:
+                                        new_ig.append(sp_sm_map_)
+                                    ig = new_ig
+
+            ig_len = np.inf
+            while len(ig) < ig_len:
+                ig_len = len(ig)
+                new_ig = ig.copy()
+                is_match = False
+                for group_i in ig:
+                    for group_j in ig:
+                        if group_i != group_j:
+                            is_match, group, cg, new_ig = Translator._match(
+                                group_i,
+                                group_j,
+                                sp,
+                                cg,
+                                new_ig,
+                                feasible_map,
+                                comparison_table_map,
+                            )
+                        if is_match:
+                            break
+                    if is_match:
+                        break
+                ig = new_ig
+
+            # # # if True:#component_cls is components.BuildingSpace1AdjBoundaryOutdoorFMUSystem:
+            # print("INCOMPLETE GROUPS================================================================================")
+            # for group in ig:
+            #     print("GROUP------------------------------")
+            #     for sp_subject___, sm_subject___ in group.items():
+            #         id_sp = sp_subject___.id
+            #         id_sp = id_sp.replace(r"\n", "")
+            #         mn = sm_subject___.uri if sm_subject___ is not None else None
+            #         id_m = [str(mn)]
+            #         print(id_sp, id_m)
+
+            # print("COMPLETE GROUPS================================================================================")
+            # for group in cg:
+            #     print("GROUP------------------------------")
+            #     for sp_subject___, sm_subject___ in group.items():
+            #         id_sp = sp_subject___.id
+            #         id_sp = id_sp.replace(r"\n", "")
+            #         mn = sm_subject___.uri if sm_subject___ is not None else None
+            #         id_m = [str(mn)]
+            #         print(id_sp, id_m)
+
+            new_ig = ig.copy()
+            for group in ig:  # Iterate over incomplete groups
+                if all(
+                    [group[sp_subject] is not None for sp_subject in sp.required_nodes]
+                ):  # CHANGED: Check for None instead of empty sets
+                    cg.append(group)
+                    new_ig.remove(group)
+            ig = new_ig
+
         complete_groups = {}
         incomplete_groups = {}
 
         # Get classes with signature patterns
-        classes = [cls for cls in systems_ if hasattr(cls, "sp")]
+        classes = [cls for cls in systems_ if hasattr(cls, "sp") and cls.sp is not None]
         for component_cls in classes:
             complete_groups[component_cls] = {}
             incomplete_groups[component_cls] = {}
 
-            for sp in component_cls.sp:
-                # print(f"\n=== Starting new signature pattern match for class {component_cls} ===")
-                # Initialize groups for this signature pattern
-                complete_groups[component_cls][sp] = []
-                incomplete_groups[component_cls][sp] = []
-                cg = complete_groups[component_cls][sp]
-                ig = incomplete_groups[component_cls][sp]
-                feasible_map = {}
-                comparison_table_map = {}
-                for sp_subject in sp.nodes:
-                    match_nodes = semantic_model.get_instances_of_type(sp_subject.cls)
-                    # print(f"MATCH NODES: {match_nodes}")
-                    # print(f"({component_cls}) TESTING SP_SUBJECT: {[s.uri for s in sp_subject.cls]}")
-                    for sm_subject in match_nodes:
-                        sp_sm_map = {sp_subject: None for sp_subject in sp.nodes}
-                        feasible = {sp_subject: set() for sp_subject in sp.nodes}
-                        comparison_table = {
-                            sp_subject: set() for sp_subject in sp.nodes
-                        }
-                        sp_sm_map_list = [Translator._copy_nodemap(sp_sm_map)]
-                        prune = True
-                        if sm_subject not in comparison_table[sp_subject]:
-                            sp.reset_ruleset()
+            sps = component_cls.sp
+            # for sp in sps:
+            #     sps.extend(sp.eq_sps)
 
-                            # print("====================== ENTERING PRUNE RECURSIVE ======================")
-                            # id_sp = str([str(s) for s in sp_subject.cls])
-                            # id_sp = sp_subject.id
-                            # id_sp = id_sp.replace(r"\n", "")
-                            # mn = sm_subject.uri if sm_subject is not None else None
-                            # id_m = [str(mn)]
-                            # print(id_sp, id_m)
+            for sp in sps:
+                semantic_model.add_namespaces(sp.semantic_model.namespaces)
+                _match_sp(sp, complete_groups, incomplete_groups)
 
-                            sp_sm_map_list, feasible, comparison_table, prune = (
-                                Translator._prune_recursive(
-                                    sm_subject,
-                                    sp_subject,
-                                    sp_sm_map_list,
-                                    feasible,
-                                    comparison_table,
-                                    sp,
-                                    verbose=False,
-                                )
-                            )
+                # If the main pattern didn't find any matches, we try the equivalent patterns.
 
-                            for sp_sm_map_ in sp_sm_map_list:
-                                feasible_map[id(sp_sm_map_)] = feasible
-                                comparison_table_map[id(sp_sm_map_)] = comparison_table
+                # if len(complete_groups[component_cls][sp])==0:
+                #     for sp_eq in sp.has_equivalent:
+                #         _match_sp(sp_eq, complete_groups, incomplete_groups)
 
-                        # elif sm_subject in feasible[sp_subject]:
-                        #     sp_sm_map[sp_subject] = sm_subject
-                        #     sp_sm_map_list = [sp_sm_map]
-                        #     prune = False
+                #         if len(complete_groups[component_cls][sp_eq])>0:
+                #             # Apply the listed changes to the semantic model.
 
-                        if prune == False:
-                            # print(f"\nProcessing match for {sp_subject.id}")
-                            # print(f"Current sp_sm_map_list length: {len(sp_sm_map_list)}")
+                #             _eq_groups = complete_groups[component_cls][sp_eq]
+                #             for _eq_group in _eq_groups:
 
-                            # We check that the obtained sp_sm_map_list contains node maps with different modeled nodes.
-                            # If an SP does not contain a MultiPath rule, we can prune the sp_sm_map_list to only contain node maps with different modeled nodes.
-                            modeled_nodes = []
-                            for sp_sm_map_ in sp_sm_map_list:
-                                node_map_set = set()
-                                for sp_modeled_node in sp.modeled_nodes:
-                                    node_map_set.add(sp_sm_map_[sp_modeled_node])
-                                modeled_nodes.append(node_map_set)
-
-                            node_map_list_new = []
-                            for i, (sp_sm_map_, node_map_set) in enumerate(
-                                zip(sp_sm_map_list, modeled_nodes)
-                            ):
-                                active_set = node_map_set
-                                passive_set = set().union(
-                                    *[v for k, v in enumerate(modeled_nodes) if k != i]
-                                )
-                                if (
-                                    len(active_set.intersection(passive_set)) > 0
-                                    and any(
-                                        [
-                                            isinstance(v, MultiPath)
-                                            for v in sp._ruleset.values()
-                                        ]
-                                    )
-                                    == False
-                                ):
-                                    warnings.warn(
-                                        f"Multiple matches found for {sp_subject.id} and {sp_subject.cls}."
-                                    )
-                                node_map_list_new.append(
-                                    sp_sm_map_
-                                )  # This constraint has been removed to allow for multiple matches. Note that multiple
-                            sp_sm_map_list = node_map_list_new
-
-                            # Cross matching could maybe stop early if a match is found. For SP with multiple allowed matches it might be necessary to check all matches
-                            for sp_sm_map_ in sp_sm_map_list:
-                                # print("\nCROSS MATCHING AGAINST INCOMPLETE GROUPS: ")
-                                # for sp_subject___, sm_subject___ in sp_sm_map_.items():
-                                #     id_sp = sp_subject___.id
-                                #     id_sp = id_sp.replace(r"\n", "")
-                                #     mn = sm_subject___.uri if sm_subject___ is not None else None
-                                #     id_m = [str(mn)]
-                                #     print(id_sp, id_m)
-
-                                if all(
-                                    [
-                                        sp_sm_map_[sp_subject] is not None
-                                        for sp_subject in sp.required_nodes
-                                    ]
-                                ):
-                                    cg.append(sp_sm_map_)
-                                else:
-                                    if (
-                                        len(ig) == 0
-                                    ):  # If there are no groups in the incomplete group list, add the node map
-                                        ig.append(sp_sm_map_)
-                                    else:
-                                        new_ig = ig.copy()
-                                        is_match_ = False
-                                        for (
-                                            group
-                                        ) in ig:  # Iterate over incomplete groups
-                                            is_match, group, cg, new_ig = (
-                                                Translator._match(
-                                                    group,
-                                                    sp_sm_map_,
-                                                    sp,
-                                                    cg,
-                                                    new_ig,
-                                                    feasible_map,
-                                                    comparison_table_map,
-                                                )
-                                            )
-                                            if is_match:
-                                                is_match_ = True
-                                        if is_match_ == False:
-                                            new_ig.append(sp_sm_map_)
-                                        ig = new_ig
-
-                ig_len = np.inf
-                while len(ig) < ig_len:
-                    ig_len = len(ig)
-                    new_ig = ig.copy()
-                    is_match = False
-                    for group_i in ig:
-                        for group_j in ig:
-                            if group_i != group_j:
-                                is_match, group, cg, new_ig = Translator._match(
-                                    group_i,
-                                    group_j,
-                                    sp,
-                                    cg,
-                                    new_ig,
-                                    feasible_map,
-                                    comparison_table_map,
-                                )
-                            if is_match:
-                                break
-                        if is_match:
-                            break
-                    ig = new_ig
-
-                # # # if True:#component_cls is components.BuildingSpace1AdjBoundaryOutdoorFMUSystem:
-                # print("INCOMPLETE GROUPS================================================================================")
-                # for group in ig:
-                #     print("GROUP------------------------------")
-                #     for sp_subject___, sm_subject___ in group.items():
-                #         id_sp = sp_subject___.id
-                #         id_sp = id_sp.replace(r"\n", "")
-                #         mn = sm_subject___.uri if sm_subject___ is not None else None
-                #         id_m = [str(mn)]
-                #         print(id_sp, id_m)
-
-                # print("COMPLETE GROUPS================================================================================")
-                # for group in cg:
-                #     print("GROUP------------------------------")
-                #     for sp_subject___, sm_subject___ in group.items():
-                #         id_sp = sp_subject___.id
-                #         id_sp = id_sp.replace(r"\n", "")
-                #         mn = sm_subject___.uri if sm_subject___ is not None else None
-                #         id_m = [str(mn)]
-                #         print(id_sp, id_m)
-
-                new_ig = ig.copy()
-                for group in ig:  # Iterate over incomplete groups
-                    if all(
-                        [
-                            group[sp_subject] is not None
-                            for sp_subject in sp.required_nodes
-                        ]
-                    ):  # CHANGED: Check for None instead of empty sets
-                        cg.append(group)
-                        new_ig.remove(group)
-                ig = new_ig
+                #                 # Apply the listed changes to the semantic model.
+                #                 new_node_map = sp_eq.apply_changes(semantic_model, _eq_group) # TODO: It maps the SP of the candidate back to the original SP and applies the changes to the semantic model.
+                #                 complete_groups[component_cls][sp].append(new_node_map)
 
         return complete_groups, incomplete_groups
 
@@ -442,6 +509,9 @@ class Translator:
         """
 
         # TODO: Maybe we should have 2 modes. "Strict": generates the largest complete model "Loose": generates as many components as possible, where some components might miss connections.
+
+        PRINTPROGRESS("Solving MILP problem")
+        PRINTPROGRESS.add_level()
 
         def update_Y_mappings(component, Y_idx_to_component, Y_component_to_idx, N_Y):
             if component not in Y_component_to_idx:
@@ -493,10 +563,10 @@ class Translator:
                     print(("{:" + str(col_maxes[i]) + fmt + "}").format(y), end="  ")
                 print("")
 
-        def print_problem(problem_info):
-            print("Problem:")
-            for info in problem_info:
-                print(info)
+        # def print_problem(problem_info):
+        #     print("Problem:")
+        #     for info in problem_info:
+        #         print(info)
 
         # Component and connection index mappings
         Y_idx_to_component = {}  # Maps component variable index to component
@@ -602,7 +672,7 @@ class Translator:
         # Set up the constraints
         total_vars = N_E + N_Y + N_Y
         constraints_list = []
-        problem_info = []
+        constraint_info = []
 
         # 1. Required input constraints:
         # If a component is included, all its required inputs must be satisfied
@@ -629,7 +699,7 @@ class Translator:
                         required_input_constraints.append(row)
                         edge_vars = [f"E_{idx}" for idx in edge_indices]
                         constraint_desc = f"Y_{component_idx} ≤ {' + '.join(edge_vars)}"
-                        problem_info.append(constraint_desc)
+                        constraint_info.append(constraint_desc)
 
         # Convert to numpy array
         if required_input_constraints:
@@ -659,7 +729,7 @@ class Translator:
             row[N_E + source_idx] = -1
             conn_source_constraints.append(row)
             constraint_desc = f"E_{e_idx} ≤ Y_{source_idx}"
-            problem_info.append(constraint_desc)
+            constraint_info.append(constraint_desc)
 
         # Convert to numpy array
         if conn_source_constraints:
@@ -689,7 +759,7 @@ class Translator:
             row[N_E + target_idx] = -1
             conn_target_constraints.append(row)
             constraint_desc = f"E_{e_idx} ≤ Y_{target_idx}"
-            problem_info.append(constraint_desc)
+            constraint_info.append(constraint_desc)
 
         # Convert to numpy array
         if conn_target_constraints:
@@ -728,7 +798,7 @@ class Translator:
                 one_input_constraints.append(row)
                 edge_vars = [f"E_{idx}" for idx in input_connections]
                 constraint_desc = f"{' + '.join(edge_vars)} ≤ 1"
-                problem_info.append(constraint_desc)
+                constraint_info.append(constraint_desc)
 
         # Convert to numpy array
         if one_input_constraints:
@@ -766,7 +836,7 @@ class Translator:
                 modeled_node_constraints.append(row)
                 components_str = " + ".join([f"Y_{idx}" for idx in component_indices])
                 constraint_desc = f"{components_str} ≤ 1"
-                problem_info.append(constraint_desc)
+                constraint_info.append(constraint_desc)
 
         # Convert to numpy array and add to constraints
         if modeled_node_constraints:
@@ -785,7 +855,7 @@ class Translator:
         c = np.zeros(total_vars)
         c[:N_E] = (
             -0.1
-        )  # -1 works. Maximize the number of edges. We do this to favor more specific components, e.g. BuildingSpace components with 1 adjacent space instead of 0 adjacent spaces.
+        )  # -1 works. Maximize the number of edges. We do this to favor more specialized components, e.g. BuildingSpace components with 1 adjacent space instead of 0 adjacent spaces.
         c[N_E + N_Y :] = source_node_weight  # Minimize source nodes
 
         # Modify the objective function to prefer complex components over multiple simple ones
@@ -810,69 +880,123 @@ class Translator:
         integrality = np.ones(total_vars)
         bounds = Bounds(lb=0, ub=1)
 
+        PRINTPROGRESS("Problem info")
+        PRINTPROGRESS.add_level()
+
+        # PRINTPROGRESS("Objective function")
+        # PRINTPROGRESS.add_level()
+        # PRINTPROGRESS(c)
+        # PRINTPROGRESS.remove_level()
+
+        PRINTPROGRESS("Variables")
+        PRINTPROGRESS.add_level()
+        for i in range(N_Y):
+            component = Y_idx_to_component[i]
+            PRINTPROGRESS(f"Y_{i}: {component.id}")
+        PRINTPROGRESS.remove_level()
+
+        PRINTPROGRESS("Constraint info")
+        PRINTPROGRESS.add_level()
+        for info in constraint_info:
+            PRINTPROGRESS(info)
+        PRINTPROGRESS.remove_level()
+        PRINTPROGRESS.remove_level()
+
         # Solve the MILP problem
         if not constraints_list:
-            print_problem(problem_info)
+            # print_problem(problem_info)
             return {"success": False, "message": "No valid constraints"}
 
         res = milp(
             c=c, constraints=constraints_list, integrality=integrality, bounds=bounds
         )
 
-        debug = False
+        PRINTPROGRESS("Solution")
+        PRINTPROGRESS.add_level()
 
-        if debug:
-            print("=== Active components ===")
+        PRINTPROGRESS("Active components")
+        PRINTPROGRESS.add_level()
         components = []
         for i in range(N_Y):
             if res.x[N_E + i] == 1:
                 component = Y_idx_to_component[i]
                 components.append(component)
-                if debug:
-                    print(
-                        f"  Y_{i} = 1: ({component.__class__.__name__}){component.id}"
-                    )
+                # if debug:
+                #     print(
+                #         f"  Y_{i} = 1: ({component.__class__.__name__}){component.id}"
+                #     )
+                PRINTPROGRESS(
+                    f"  Y_{i} = 1: ({component.__class__.__name__}){component.id}"
+                )
+        PRINTPROGRESS.remove_level()
 
-        if debug:
-            print("=== Active connections ===")
+        # if debug:
+        #     print("=== Active connections ===")
+        PRINTPROGRESS("Active connections")
+        PRINTPROGRESS.add_level()
         connections = []
+        # Collect all active connections and find max length for alignment
+        active_conn_strings = []
         for i in range(N_E):
             if res.x[i] == 1:
                 connections.append(E_idx_to_conn[i])
                 source, target, source_key, target_key = E_idx_to_conn[i]
-                if debug:
-                    print(
-                        f"  E_{i} = 1: ({source.__class__.__name__}){source.id}.{source_key} → ({target.__class__.__name__}){target.id}.{target_key}"
-                    )
+                left_part = f"  E_{i} = 1: ({source.__class__.__name__}){source.id}.{source_key}"
+                right_part = f"({target.__class__.__name__}){target.id}.{target_key}"
+                active_conn_strings.append((left_part, right_part))
 
-        if debug:
-            print("=== Inactive components ===")
+        # Find max length of left parts
+        if active_conn_strings:
+            max_left_len = max(len(left) for left, _ in active_conn_strings)
+            for left_part, right_part in active_conn_strings:
+                PRINTPROGRESS(f"{left_part:<{max_left_len}} → {right_part}")
+        PRINTPROGRESS.remove_level()
+
+        # if debug:
+        #     print("=== Inactive components ===")
+        PRINTPROGRESS("Inactive components")
+        PRINTPROGRESS.add_level()
         for i in range(N_Y):
             if res.x[N_E + i] == 0:
                 component = Y_idx_to_component[i]
-                if debug:
-                    print(
-                        f"  Y_{i} = 0: ({component.__class__.__name__}){component.id}"
-                    )
+                # if debug:
+                #     print(
+                #         f"  Y_{i} = 0: ({component.__class__.__name__}){component.id}"
+                #     )
+                PRINTPROGRESS(
+                    f"  Y_{i} = 0: ({component.__class__.__name__}){component.id}"
+                )
+        PRINTPROGRESS.remove_level()
 
-        if debug:
-            print("=== Inactive connections ===")
+        # if debug:
+        #     print("=== Inactive connections ===")
+        PRINTPROGRESS("Inactive connections")
+        PRINTPROGRESS.add_level()
+        # Collect all inactive connections and find max length for alignment
+        inactive_conn_strings = []
         for i in range(N_E):
             if res.x[i] == 0:
                 source, target, source_key, target_key = E_idx_to_conn[i]
-                if debug:
-                    print(
-                        f"  E_{i} = 0: ({source.__class__.__name__}){source.id}.{source_key} → ({target.__class__.__name__}){target.id}.{target_key}"
-                    )
+                left_part = f"  E_{i} = 0: ({source.__class__.__name__}){source.id}.{source_key}"
+                right_part = f"({target.__class__.__name__}){target.id}.{target_key}"
+                inactive_conn_strings.append((left_part, right_part))
 
-        if debug:
-            print_problem(problem_info)
+        # Find max length of left parts
+        if inactive_conn_strings:
+            max_left_len = max(len(left) for left, _ in inactive_conn_strings)
+            for left_part, right_part in inactive_conn_strings:
+                PRINTPROGRESS(f"{left_part:<{max_left_len}} → {right_part}")
+        PRINTPROGRESS.remove_level()
+
+        # if debug:
+        #     print_problem(problem_info)
+        PRINTPROGRESS.remove_level()
 
         if res.success:
             return {
                 "success": True,
                 "message": "Optimization successful",
-                "problem_info": problem_info,
+                "problem_info": constraint_info,
                 "connections": connections,
             }
         else:
@@ -901,6 +1025,9 @@ class Translator:
                         pairs_new[key_] = value_.uri.value
             return pairs_new
 
+        PRINTPROGRESS("Instantiating components")
+        PRINTPROGRESS.add_level()
+
         # Component instantiation logic from _connect method
         class_to_instance_map = {}
         self._sim2sem_map = {}
@@ -908,6 +1035,8 @@ class Translator:
         self._instance_to_group_map = {}
         self.modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
+            PRINTPROGRESS(f"Class: {component_cls.__name__}")
+            PRINTPROGRESS.add_level()
             for sp, groups in sps.items():
                 for group in groups:
                     modeled_match_nodes = {
@@ -941,6 +1070,8 @@ class Translator:
                         or id_ not in class_to_instance_map[component_cls]
                     ):  # Check if the instance is already created. For components with Multiple matches, the model might already have been created.
                         base_kwargs.update(extension_kwargs)
+                        s = base_kwargs["id"]
+                        PRINTPROGRESS(f"Instantiating component: {s}")
                         component = component_cls(**base_kwargs)
 
                         if component_cls not in class_to_instance_map:
@@ -951,12 +1082,18 @@ class Translator:
                         ), f"Component {component.id} already exists in class {component_cls}"
                         class_to_instance_map[component_cls][component.id] = component
 
+                        PRINTPROGRESS(
+                            f"Mapping parameters for component: {component.id}"
+                        )
+                        PRINTPROGRESS.add_level()
                         # Get all parameters for the component
                         for key, node in sp.parameters.items():
                             if group[node] is not None:
                                 value = group[node]
                                 value = value.uri.value
                                 obj = rgetattr(component, key)
+                                PRINTPROGRESS(f"{key}: {value}")
+
                                 if isinstance(obj, tps.Parameter):
                                     rsetattr(
                                         component,
@@ -968,6 +1105,8 @@ class Translator:
                                     )
                                 else:
                                     rsetattr(component, key, value)
+                        PRINTPROGRESS.remove_level()
+
                         sps_new = {sp: [group]}
                         self._instance_to_group_map[component] = (
                             modeled_match_nodes,
@@ -995,6 +1134,8 @@ class Translator:
                             modeled_match_nodes,
                             (component_cls, sps_new),
                         )
+            PRINTPROGRESS.remove_level()
+        PRINTPROGRESS.remove_level()
 
     def _connect_components(
         self,
@@ -1124,6 +1265,8 @@ class Translator:
             ):  # is there a match with the semantic node?
                 sm_object = sm_predicate_object_pairs[sp_predicate]
                 if sm_object is not None:
+                    l = [mm.uri for mm in sm_object]
+                    print(f"sm_object is not None: {l}") if verbose else None
                     for sp_object_ in sp_object:
                         rule = ruleset[(sp_subject, sp_predicate, sp_object_)]
                         pairs, rule_applies, ruleset = rule.apply(
@@ -1132,6 +1275,7 @@ class Translator:
                             ruleset,
                             sp_sm_map_list=sp_sm_map_list,
                         )
+                        print(f"pairs: {pairs}") if verbose else None
                         found = False
                         for (
                             sp_sm_map_list__,
@@ -1278,7 +1422,101 @@ class Translator:
         return sp_sm_map_list, feasible, comparison_table, False
 
     @staticmethod
+    def _try_match_direction(source_map, group, sp_sm_map, use_group_as_source):
+        """
+        Helper function to attempt matching in a specific direction.
+
+        Args:
+            source_map: Dictionary to iterate through (either node_map_no_None or group_no_None)
+            group: The candidate group mapping
+            sp_sm_map: The proposed sp to sm mapping
+            use_group_as_source: If True, check sp_sm_map against group's predicates
+                                 If False, check group against source_map's predicates
+
+        Returns:
+            bool: True if a match is found, False otherwise
+        """
+        for sp_subject, match_node in source_map.items():
+            # Iterate through each predicate-object pair in the search pattern node
+            for predicate, sp_object in sp_subject.predicate_object_pairs.items():
+                predicate_object_pairs = match_node.get_predicate_object_pairs()
+                # Check if the semantic model node has the same predicate
+                if (
+                    predicate in predicate_object_pairs
+                    and len(predicate_object_pairs[predicate]) != 0
+                ):
+                    predicate_children = predicate_object_pairs[predicate]
+                    # Check if any child matches based on direction
+                    for sp_object_ in sp_object:
+                        if use_group_as_source:
+                            # Step 4 logic: check if sp_sm_map child equals group's predicate children
+                            candidate_child = sp_sm_map[sp_object_]
+                            if (
+                                candidate_child is not None
+                                and predicate_children is not None
+                            ):
+                                if predicate_children == candidate_child:
+                                    return True
+                        else:
+                            # Step 2 logic: check if group child is in source_map's predicate children
+                            candidate_child = group[sp_object_]
+                            if (
+                                candidate_child is not None
+                                and len(predicate_children) != 0
+                            ):
+                                if candidate_child in predicate_children:
+                                    return True
+
+        # for sp_subject, match_node_group in group_no_None.items():
+        #     for (
+        #         sp_predicate,
+        #         sp_object,
+        #     ) in sp_subject.predicate_object_pairs.items():
+        #         predicate_object_pairs = (
+        #             match_node_group.get_predicate_object_pairs()
+        #         )
+        #         # Check if the group's semantic model node has the same predicate
+        #         if (
+        #             sp_predicate in predicate_object_pairs
+        #             and len(predicate_object_pairs[sp_predicate]) != 0
+        #         ):
+        #             group_child = predicate_object_pairs[sp_predicate]
+        #             # Check if the child from sp_sm_map matches the group's child
+        #             for sp_object_ in sp_object:
+        #                 node_map_child_ = sp_sm_map[sp_object_]
+        #                 if node_map_child_ is not None and group_child is not None:
+        #                     if group_child == node_map_child_:
+        #                         is_match = True
+        #                         break
+        #         if is_match:
+        #             break
+        #     if is_match:
+        #         break
+        return False
+
+    @staticmethod
     def _match(group, sp_sm_map, sp, cg, new_ig, feasible_map, comparison_table_map):
+        """
+        Attempts to match and validate a candidate group mapping against a search pattern.
+
+        This function performs bidirectional matching between semantic pattern nodes (sp) and
+        semantic model nodes (sm), validating the match through predicate-object relationships
+        and pruning rules.
+
+        Args:
+            group: Candidate mapping from search pattern nodes to semantic model nodes
+            sp_sm_map: Proposed mapping from search pattern to semantic model
+            sp: Search pattern object containing nodes and rules
+            cg: Complete groups list (successfully matched and validated groups)
+            new_ig: New incomplete groups list (groups still being processed)
+            feasible_map: Tracking structure for feasible mappings
+            comparison_table_map: Tracking structure for comparison results
+
+        Returns:
+            Tuple of (is_match, group, cg, new_ig)
+        """
+        # Step 1: Check if the group can potentially match by verifying all nodes are compatible
+        # A node is compatible if both values are None OR they are equal
         can_match = all(
             [
                 (
@@ -1290,42 +1528,50 @@ class Translator:
                 for sp_subject in sp.nodes
             ]
         )
+
+        # Early exit: Check if sp_sm_map adds any new information
+        # Count how many new non-None mappings sp_sm_map would add
+        new_mappings = sum(
+            1
+            for sp_node in sp.nodes
+            if group.get(sp_node) is None and sp_sm_map.get(sp_node) is not None
+        )
+
+        # If no new mappings and no conflicts, there's nothing to match/merge
+        if new_mappings == 0:
+            return False, group, cg, new_ig
+
         is_match = False
+
+        # Create a mapping with only non-None values for actual matching
+        node_map_no_None = {
+            sp_subject: sm_subject
+            for sp_subject, sm_subject in sp_sm_map.items()
+            if sm_subject is not None
+        }
+
+        # Step 2: First matching strategy - match from sp_sm_map perspective
         if can_match:
-            node_map_no_None = {
-                sp_subject: sm_subject
-                for sp_subject, sm_subject in sp_sm_map.items()
-                if sm_subject is not None
-            }
+            # Try to find a match by checking if child nodes in the group exist
+            # in the predicate-object pairs of the matched nodes
+            is_match = Translator._try_match_direction(
+                node_map_no_None, group, sp_sm_map, use_group_as_source=False
+            )
 
-            for sp_subject, match_node_nm in node_map_no_None.items():
-                for attr, sp_object in sp_subject.predicate_object_pairs.items():
-                    predicate_object_pairs = match_node_nm.get_predicate_object_pairs()
-                    if (
-                        attr in predicate_object_pairs
-                        and len(predicate_object_pairs[attr]) != 0
-                    ):
-                        node_map_child = predicate_object_pairs[attr]
-                        for sp_object_ in sp_object:
-                            group_child = group[sp_object_]
-                            if group_child is not None and len(node_map_child) != 0:
-                                if group_child in node_map_child:
-                                    is_match = True
-                                    break
-                    if is_match:
-                        break
-                if is_match:
-                    break
-
+            # Step 3: Validate the match using pruning rules
+            # If a match was found, verify it doesn't violate any pruning constraints
             if is_match:
                 for sp_subject, sm_subject_ in node_map_no_None.items():
+                    # Initialize tracking structures for this validation
                     feasible = {sp_subject: set() for sp_subject in sp.nodes}
                     comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
                     sp.reset_ruleset()
+                    # Create a copy of the group for pruning validation
                     group_prune = Translator._copy_nodemap(group)
                     group_prune = {
                         sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes
                     }
+                    # Run recursive pruning to validate the match
                     l, _, _, prune = Translator._prune_recursive(
                         sm_subject_,
                         sp_subject,
@@ -1334,49 +1580,26 @@ class Translator:
                         comparison_table,
                         sp,
                     )
+                    # If pruning indicates this match is invalid, reject it
                     if prune:
                         is_match = False
                         break
 
-            if is_match:
-                for sp_node__, match_node__ in node_map_no_None.items():
-                    group[sp_node__] = match_node__
-                if all(
-                    [group[sp_subject] is not None for sp_subject in sp.required_nodes]
-                ):
-                    cg.append(group)
-                    new_ig.remove(group)
-
+        # Step 4: Second matching strategy - match from group perspective
+        # If first strategy didn't find a match, try matching in the opposite direction
         if not is_match:
+            # Create a mapping from the group with only non-None values
             group_no_None = {
                 sp_subject: sm_subject
                 for sp_subject, sm_subject in group.items()
                 if sm_subject is not None
             }
-            for sp_subject, match_node_group in group_no_None.items():
-                for (
-                    sp_predicate,
-                    sp_object,
-                ) in sp_subject.predicate_object_pairs.items():
-                    predicate_object_pairs = (
-                        match_node_group.get_predicate_object_pairs()
-                    )
-                    if (
-                        sp_predicate in predicate_object_pairs
-                        and len(predicate_object_pairs[sp_predicate]) != 0
-                    ):
-                        group_child = predicate_object_pairs[sp_predicate]
-                        for sp_object_ in sp_object:
-                            node_map_child_ = sp_sm_map[sp_object_]
-                            if node_map_child_ is not None and group_child is not None:
-                                if group_child == node_map_child_:
-                                    is_match = True
-                                    break
-                    if is_match:
-                        break
-                if is_match:
-                    break
+            # Check if children in sp_sm_map match the children in the group's predicate-object pairs
+            is_match = Translator._try_match_direction(
+                group_no_None, group, sp_sm_map, use_group_as_source=True
+            )
 
+            # Step 5: Validate this match using pruning rules (same as Step 3)
             if is_match:
                 for sp_subject, sm_subject_ in node_map_no_None.items():
                     feasible = {sp_subject: set() for sp_subject in sp.nodes}
@@ -1399,14 +1622,59 @@ class Translator:
                         is_match = False
                         break
 
-            if is_match:
-                for sp_node__, match_node__ in node_map_no_None.items():
-                    group[sp_node__] = match_node__
-                if all(
-                    [group[sp_subject] is not None for sp_subject in sp.required_nodes]
-                ):
-                    cg.append(group)
-                    new_ig.remove(group)
+        # Step 5.5: Third matching strategy - join isolated/disconnected groups
+        # If both previous strategies failed, try merging disconnected components
+        # This handles signature patterns with multiple isolated subgraphs
+        # Note: can_match already ensures no conflicts (no sp_node mapped to different sm_nodes)
+        # Note: new_mappings > 0 already verified at the start (early exit check)
+        if not is_match and can_match:
+            is_match = True
+
+            # Validate the merged result with pruning rules
+            for sp_subject, sm_subject_ in node_map_no_None.items():
+                if sm_subject_ is None:
+                    continue
+
+                feasible = {sp_subject: set() for sp_subject in sp.nodes}
+                comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
+                sp.reset_ruleset()
+
+                # Create merged group for validation
+                group_merged = Translator._copy_nodemap(group)
+                for sp_node, sm_node in sp_sm_map.items():
+                    if sm_node is not None and group_merged.get(sp_node) is None:
+                        group_merged[sp_node] = sm_node
+                group_merged = {
+                    sp_node___: group_merged[sp_node___] for sp_node___ in sp.nodes
+                }
+
+                # Run recursive pruning to validate the merged group
+                l, _, _, prune = Translator._prune_recursive(
+                    sm_subject_,
+                    sp_subject,
+                    [group_merged],
+                    feasible,
+                    comparison_table,
+                    sp,
+                )
+
+                # If pruning indicates this merge is invalid, reject it
+                if prune:
+                    is_match = False
+                    break
+
+        # Step 6: If match is valid, update the group and potentially complete it
+        # This consolidates the logic and handles all three matching strategies
+        if is_match:
+            # Update the group with the matched nodes
+            for sp_node__, match_node__ in node_map_no_None.items():
+                group[sp_node__] = match_node__
+            # Check if all required nodes are now matched
+            if all([group[sp_subject] is not None for sp_subject in sp.required_nodes]):
+                # Move from incomplete to complete groups
+                cg.append(group)
+                new_ig.remove(group)
+
         return is_match, group, cg, new_ig
 
 
@@ -1477,7 +1745,25 @@ class Node:
         self._id = self.make_id()
 
     def make_id(self):
-        return str([str(s) for s in self.cls])
+        # Join class URIs with underscore separator to create a valid URI identifier
+        # This avoids creating invalid URIs like http://twin4build.org/['...', '...']
+        # Extract local names (fragment or last path component) for URI-safe identifiers
+        def get_local_name(uri_str):
+            # Try fragment first (part after #)
+            if "#" in uri_str:
+                return uri_str.split("#")[-1]
+            # Otherwise use last path component
+            return uri_str.split("/")[-1]
+
+        parts = []
+        for s in self.cls:
+            if hasattr(s, "uri"):
+                uri_str = str(s.uri)
+            else:
+                uri_str = str(s)
+            parts.append(get_local_name(uri_str))
+
+        return "_".join(parts)
 
     def set_signature_pattern(self, signature_pattern):
         """Set the signature pattern for this node"""
@@ -1490,6 +1776,7 @@ class Node:
         return attr
 
 
+@autoreset_print
 class SignaturePattern:
     r"""
     A class for defining signature patterns that describe how component models map to semantic model instances.
@@ -1767,6 +2054,7 @@ class SignaturePattern:
         assert isinstance(
             semantic_model_, core.SemanticModel
         ), 'The "semantic_model_" argument must be an instance of SemanticModel.'
+
         self.semantic_model = semantic_model_
 
         if id is None:
@@ -1781,12 +2069,23 @@ class SignaturePattern:
         self._modeled_nodes = []
         self._ruleset = {}
         self._parameters = {}
-        self._pedantic = pedantic
+        # self._pedantic = pedantic
+        self._has_equivalent = []
+        self._is_equivalent_of = []
+        self._diff = None
 
-        if self._pedantic:
-            self.semantic_model.parse_namespaces(
-                self.semantic_model.graph, namespaces=self.semantic_model.namespaces
-            )
+        # if self._pedantic:
+        #     self.semantic_model.parse_namespaces(
+        #         self.semantic_model.graph, namespaces=self.semantic_model.namespaces
+        #     )
+
+    @property
+    def has_equivalent(self):
+        return self._has_equivalent
+
+    @property
+    def is_equivalent_of(self):
+        return self._is_equivalent_of
 
     @property
     def parameters(self):
@@ -1834,19 +2133,22 @@ class SignaturePattern:
         assert isinstance(subject, Node) and isinstance(
             object, Node
         ), '"a" and "b" must be instances of class Node'
-        self._add_node(subject, rule)
-        self._add_node(object, rule)
 
-        subject.set_signature_pattern(self)
-        object.set_signature_pattern(self)
-        subject.validate_cls()
-        object.validate_cls()
+        self._add_node(subject)
+        self._add_node(object)
 
-        if self._pedantic:
-            attributes_a = subject.get_type_attributes()
-            assert (
-                predicate in attributes_a
-            ), f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
+        if isinstance(predicate, URIRef):
+            predicate = core.SemanticPredicate(predicate, self.semantic_model)
+        elif isinstance(predicate, str):
+            predicate = core.SemanticPredicate(URIRef(predicate), self.semantic_model)
+        elif isinstance(predicate, core.SemanticPredicate) == False:
+            raise ValueError(f"Invalid predicate type: {type(predicate)}")
+
+        # if self._pedantic:
+        #     attributes_a = subject.get_type_attributes()
+        #     assert (
+        #         predicate in attributes_a
+        #     ), f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
 
         if (
             predicate not in subject.predicate_object_pairs
@@ -1854,9 +2156,34 @@ class SignaturePattern:
             subject.predicate_object_pairs[predicate] = [object]
         else:
             subject.predicate_object_pairs[predicate].append(object)
+
+        subject_instance = core.namespace.T4B.__getitem__(subject.id)
+        object_instance = core.namespace.T4B.__getitem__(object.id)
+
+        for cls_ in subject.cls:
+            self.semantic_model.instance_graph.add(
+                (subject_instance, core.namespace.RDF.type, cls_.uri)
+            )
+        for cls_ in object.cls:
+            self.semantic_model.instance_graph.add(
+                (object_instance, core.namespace.RDF.type, cls_.uri)
+            )
+
+        self.semantic_model.instance_graph.add(
+            (subject_instance, predicate.uri, object_instance)
+        )
         self._ruleset[(subject, predicate, object)] = rule
 
+        if isinstance(rule, Optional_) == False:
+            if subject not in self._required_nodes:
+                self._required_nodes.append(subject)
+
+        if isinstance(rule, Optional_) == False:
+            if object not in self._required_nodes:
+                self._required_nodes.append(object)
+
     def add_input(self, key, node, source_keys=None):
+        self._add_node(node)
         cls = list(node.cls)
         assert (
             key not in self._inputs
@@ -1874,15 +2201,14 @@ class SignaturePattern:
 
         self._inputs[key] = (node, source_keys)
 
-    def _add_node(self, node, rule):
+    def _add_node(self, node):
         if node not in self._nodes:
             self._nodes.append(node)
-
-        if isinstance(rule, Optional_) == False:
-            if node not in self._required_nodes:
-                self._required_nodes.append(node)
+            node.set_signature_pattern(self)
+            node.validate_cls()
 
     def add_parameter(self, key, node):
+        self._add_node(node)
         cls = list(node.cls)
         # allowed_classes = (float, int)
         allowed_classes = (
@@ -1897,10 +2223,9 @@ class SignaturePattern:
         self._parameters[key] = node
 
     def add_modeled_node(self, node):
+        self._add_node(node)
         if node not in self._modeled_nodes:
             self._modeled_nodes.append(node)
-        if node not in self._nodes:
-            self._nodes.append(node)
 
     def remove_modeled_node(self, node):
         self._modeled_nodes.remove(node)
@@ -1911,6 +2236,105 @@ class SignaturePattern:
 
     def add_namespace(self, namespace):
         self.semantic_model.graph.parse(namespace)
+
+    def add_equivalent(self, sp, diff):
+        """
+        Add equivalent signature pattern and the corresponding diff between these.
+        """
+        self._has_equivalent.append(sp)
+        sp._diff = diff
+        sp._is_equivalent_of.append(self)
+        assert (
+            len(sp.has_equivalent) == 0
+        ), "A signature cannot both be equivalent to and equivalent of another signature."
+        assert (
+            self.diff is None
+        ), "A signature cannot be equivalent to another signature if it has a diff."
+
+    def apply_changes(self, semantic_model, _eq_group):
+        """
+        Maps the SP of the candidate back to the original SP and applies the changes to the semantic model.
+        """
+        assert self._diff is not None, "A signature cannot map back if it has no diff."
+
+        original_sp = self._is_equivalent_of[0]
+        sp_sm_map = {sp_subject: None for sp_subject in original_sp.nodes}
+
+        for sp_node, sm_node in sp_sm_map.items():
+            if sp_node in _eq_group:
+                sm_node = _eq_group[sp_node]
+                sp_sm_map[sp_node] = sm_node
+
+        for removal in self._diff.removals:
+            subject, predicate, object = removal
+            subject_instance = _eq_group[subject]
+            object_instance = _eq_group[object]
+            semantic_model.graph.remove(
+                (subject_instance.uri, predicate, object_instance.uri)
+            )
+
+        # Locate uri already present in semantic model and reuse these. If not, create new ones.
+        # The ones created should match the ones not mapped in sp_sm_map.
+        for addition in self._diff.additions:
+            subject, predicate, object = addition
+            subject_type_uri = subject.cls[0].uri  # Node.SemanticType.uri
+            object_type_uri = object.cls[0].uri  # Node.SemanticType.uri
+
+            if subject in _eq_group:
+                subject_instance_uri = _eq_group[subject].uri
+            else:
+                # Make new instance
+                name = str(hash(subject))
+                subject_instance_uri = semantic_model.T4B.__getitem__(
+                    name
+                )  # Define namespace
+                semantic_model.graph.add(
+                    (
+                        subject_instance_uri,
+                        core.namespace.RDF.type,
+                        subject_type_uri,
+                    )
+                )
+
+            if object in _eq_group:
+                object_instance_uri = _eq_group[object].uri
+            else:
+                # Make new instance
+                name = str(hash(object))
+                object_instance_uri = semantic_model.T4B.__getitem__(
+                    name
+                )  # Define namespace
+                semantic_model.graph.add(
+                    (
+                        object_instance_uri,
+                        core.namespace.RDF.type,
+                        object_type_uri,
+                    )
+                )
+
+            semantic_model.graph.add(
+                (subject_instance_uri, predicate, object_instance_uri)
+            )
+            sp_sm_map[subject] = semantic_model.get_instance(subject_instance_uri)
+            sp_sm_map[object] = semantic_model.get_instance(object_instance_uri)
+
+        assert all(
+            sp_sm_map[sp_node] is not None for sp_node in original_sp.nodes
+        ), "All nodes in the original SP must be mapped to a semantic model instance. Maybe the diff is not complete."
+
+        return sp_sm_map
+
+
+class Diff:
+    def __init__(self):
+        self.additions = []
+        self.removals = []
+
+    def add(self, subject, predicate, object):
+        self.additions.append((subject, predicate, object))
+
+    def remove(self, subject, predicate, object):
+        self.removals.append((subject, predicate, object))
 
 
 class Rule:
@@ -2204,7 +2628,6 @@ class Exact(Rule):
     def apply(
         self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None
     ):  # a is potential match nodes and b is pattern node
-        # print("ENTERED EXACT")
         if master_rule is None:
             master_rule = self
         pairs = []
@@ -2289,7 +2712,7 @@ class _SinglePath(Rule):
             for sm_object_ in sm_objects:
                 # The hash is provided to make sure the added key in the sm_sp_map is recognizeable by its context and not its
                 subject = Node(
-                    cls=sm_object_.type,
+                    cls=sm_object_.get_most_specific_type(),
                     hash_=(sm_object_, self.subject, self.predicate, self.object),
                 )
                 subject.set_signature_pattern(self.object.signature_pattern)
@@ -2493,7 +2916,7 @@ class _MultiPath(Rule):
 
         if rule_applies:
             for sm_object_ in sm_objects:
-                subject = Node(cls=sm_object_.type)
+                subject = Node(cls=sm_object_.get_most_specific_type())
                 subject.set_signature_pattern(self.object.signature_pattern)
                 subject.validate_cls()
                 subject.predicate_object_pairs[self.predicate] = [self.object]
