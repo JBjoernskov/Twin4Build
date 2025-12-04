@@ -133,10 +133,6 @@ class TestEstimatorSaveLoad(unittest.TestCase):
         space = model.components["020B"]
         space_heater = model.components["020B_space_heater"]
         heating_controller = model.components["020B_temperature_heating_controller"]
-        co2_controller = model.components["020B_co2_controller"]
-        space_heater_valve = model.components["020B_space_heater_valve"]
-        supply_damper = model.components["020B_room_supply_damper"]
-        exhaust_damper = model.components["020B_room_exhaust_damper"]
 
         # Step 4: Define parameters for estimation (simplified set for faster testing)
         parameters = [
