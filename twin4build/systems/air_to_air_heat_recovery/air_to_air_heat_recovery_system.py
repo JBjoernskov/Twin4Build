@@ -14,7 +14,7 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
-from twin4build.utils.constants import Constants
+import twin4build.utils.constants as constants
 
 class AirToAirHeatRecoverySystem(core.System):
     r"""
@@ -263,8 +263,8 @@ class AirToAirHeatRecoverySystem(core.System):
         f_flow = 0.5 * (primary_flow + secondary_flow) / m_a_max
         eps_op = eps_75 + (eps_100 - eps_75) * (f_flow - 0.75) / (1 - 0.75)
         
-        C_sup = primary_flow * Constants.specificHeatCapacity["air"]
-        C_exh = secondary_flow * Constants.specificHeatCapacity["air"]
+        C_sup = primary_flow * constants.CP_AIR
+        C_exh = secondary_flow * constants.CP_AIR
         C_min = torch.min(C_sup, C_exh)
         
         # Calculate primary temperature out with heat recovery

@@ -19,7 +19,7 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
-from twin4build.utils.constants import Constants
+import twin4build.utils.constants as constants
 
 
 class SpaceHeaterTorchSystem(core.System, nn.Module):
@@ -397,11 +397,11 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         m_dot = float(
             self.Q_flow_nominal_sh
             / (
-                Constants.specificHeatCapacity["water"]
+                constants.CP_WATER
                 * (self.T_a_nominal_sh - self.T_b_nominal_sh)
             )
         )
-        c_p = float(Constants.specificHeatCapacity["water"])
+        c_p = float(constants.CP_WATER)
         # Build A, B
         A = torch.zeros((n, n), dtype=torch.float64)
         B = torch.zeros((n, 3), dtype=torch.float64)
@@ -460,7 +460,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
         C_elem = self.thermalMassHeatCapacity.get() / n
         UA_elem = self.UA.get() / n
-        c_p = Constants.specificHeatCapacity["water"]
+        c_p = constants.CP_WATER
 
         # LTI part: Only UA/C on diagonal
         A = torch.zeros((n, n), dtype=torch.float64)

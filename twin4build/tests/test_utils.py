@@ -807,6 +807,201 @@ class TestGetMainDir(unittest.TestCase):
         self.assertIn("Twin4Build", main_dir) or self.assertIn("twin4build", main_dir.lower())
 
 
+class TestPrintProgress(unittest.TestCase):
+    def test_print_progress_initialization(self):
+        """Test PrintProgress initialization."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        p = PrintProgress()
+        self.assertIsNotNone(p)
+        self.assertFalse(p.is_active)
+        self.assertEqual(p.verbose, 3)
+        # Auto-disabled in test environments
+        self.assertFalse(p.enabled)
+
+    def test_print_progress_enable_disable(self):
+        """Test PrintProgress enable/disable functionality."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        p = PrintProgress()
+        # Auto-disabled in test environments
+        self.assertFalse(p.enabled)
+        
+        p.enable()
+        self.assertTrue(p.enabled)
+        
+        p.disable()
+        self.assertFalse(p.enabled)
+
+    def test_print_progress_verbose_setting(self):
+        """Test PrintProgress verbose setting."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        p = PrintProgress()
+        self.assertEqual(p.verbose, 3)
+        
+        p.verbose = 2
+        self.assertEqual(p.verbose, 2)
+        
+        p.verbose = 0
+        self.assertEqual(p.verbose, 0)
+
+    def test_print_progress_add_line(self):
+        """Test PrintProgress add_line method."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        p = PrintProgress()
+        p.add_line(indent="  ", message="Test message", status="OK")
+        
+        self.assertTrue(p.is_active)
+        self.assertEqual(len(p.message), 1)
+        self.assertEqual(p.message[0], "Test message")
+        self.assertEqual(p.status[0], "OK")
+
+    def test_print_progress_get_char_level(self):
+        """Test PrintProgress get_char_level method."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        p = PrintProgress()
+        
+        # Test with a line containing vertical bars
+        line = "|__|test|data"
+        char_levels = p.get_char_level(line)
+        
+        self.assertIsNotNone(char_levels)
+        self.assertEqual(len(char_levels), len(line))
+
+    def test_print_progress_current_level(self):
+        """Test PrintProgress current_level property."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        p = PrintProgress()
+        self.assertEqual(p.current_level, 0)
+
+    def test_print_progress_add_remove_level(self):
+        """Test PrintProgress add_level and remove_level."""
+        from twin4build.utils.print_progress import PrintProgress
+        from unittest.mock import patch
+        
+        p = PrintProgress()
+        p.enable()  # Enable to test add_level functionality
+        
+        # Mock only print_lines to prevent terminal manipulation
+        # but allow _add_level to run so internal state is correct
+        with patch.object(p, 'print_lines'):
+            p.add_level(n=2)
+            self.assertTrue(p.added_level)
+            
+            p.remove_level()
+            self.assertFalse(p.added_level)
+        
+        p.disable()
+
+    def test_print_progress_call(self):
+        """Test PrintProgress __call__ method."""
+        from twin4build.utils.print_progress import PrintProgress
+        from unittest.mock import patch
+        
+        p = PrintProgress()
+        p.enable()  # Enable for this test (auto-disabled in test environments)
+        p.verbose = 3
+        
+        # Mock print_lines to prevent any terminal manipulation
+        with patch.object(p, 'print_lines'):
+            p("Test message", status="INFO")
+        
+        p.disable()
+        
+        self.assertTrue(p.is_active)
+        self.assertIn("Test message", p.message)
+
+    def test_print_progress_call_disabled(self):
+        """Test PrintProgress __call__ when disabled."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        p = PrintProgress()
+        # Instance is auto-disabled in test environments
+        self.assertFalse(p.enabled)
+        
+        # Call with a message - should do nothing when disabled
+        p("Test message", status="INFO")
+        
+        # Should not have added any lines
+        self.assertEqual(len(p.message), 0)
+
+    def test_print_progress_context_manager(self):
+        """Test PrintProgress as context manager."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        # Instance is auto-disabled in test environments
+        with PrintProgress() as p:
+            self.assertIsNotNone(p)
+            self.assertFalse(p.enabled)
+
+    def test_print_progress_is_interactive(self):
+        """Test PrintProgress is_interactive method."""
+        from twin4build.utils.print_progress import PrintProgress
+        
+        p = PrintProgress()
+        # This should return True or False depending on environment
+        result = p.is_interactive()
+        self.assertIsInstance(result, bool)
+
+
+class TestSimpleCycle(unittest.TestCase):
+    def test_simple_cycles(self):
+        """Test simple_cycles function for detecting cycles in a graph."""
+        from twin4build.utils.simple_cycle import simple_cycles
+        
+        # Create a simple graph with a cycle: A -> B -> C -> A
+        graph = {
+            'A': {'B'},
+            'B': {'C'},
+            'C': {'A'}
+        }
+        
+        cycles = list(simple_cycles(graph))
+        self.assertEqual(len(cycles), 1)
+        self.assertEqual(len(cycles[0]), 3)
+
+    def test_no_cycles(self):
+        """Test simple_cycles with acyclic graph."""
+        from twin4build.utils.simple_cycle import simple_cycles
+        
+        # Acyclic graph: A -> B -> C
+        graph = {
+            'A': {'B'},
+            'B': {'C'},
+            'C': set()
+        }
+        
+        cycles = list(simple_cycles(graph))
+        self.assertEqual(len(cycles), 0)
+
+    def test_multiple_cycles(self):
+        """Test simple_cycles with multiple cycles."""
+        from twin4build.utils.simple_cycle import simple_cycles
+        
+        # Graph with two cycles
+        graph = {
+            'A': {'B'},
+            'B': {'A', 'C'},
+            'C': {'D'},
+            'D': {'C'}
+        }
+        
+        cycles = list(simple_cycles(graph))
+        self.assertGreaterEqual(len(cycles), 1)
+
+
+class TestConstants(unittest.TestCase):
+    def test_constants_import(self):
+        """Test that constants can be imported."""
+        import twin4build.utils.constants as constants
+        self.assertIsNotNone(constants.ABSOLUTE_ZERO_CELSIUS)
+        self.assertAlmostEqual(constants.ABSOLUTE_ZERO_CELSIUS, -273.15, places=2)
+
+
 if __name__ == '__main__':
     unittest.main()
 

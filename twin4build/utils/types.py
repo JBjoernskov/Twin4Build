@@ -17,21 +17,6 @@ from dateutil import tz
 # Local application imports
 import twin4build.core as core
 
-# ###Only for testing before distributing package
-# if __name__ == '__main__':
-#     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-#     file_path = uppath(os.path.abspath(__file__), 3)
-#     sys.path.append(file_path)
-
-
-# class History(list):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-
-#     def plain(self):
-#         return [x.item() for x in self]
-
-
 class Vector:
     """A custom vector implementation.
 
@@ -1014,23 +999,6 @@ def _convert_to_1D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     else:
         raise TypeError(f"Unsupported type: {type(v)}")
     return v
-
-
-# def _convert_to_1D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
-#     if isinstance(v, Scalar):
-#         v = v.get()
-#     elif isinstance(v, (float, int)):
-#         v = torch.tensor([v], dtype=torch.float64)
-#     elif isinstance(v, torch.Tensor):
-#         assert (
-#             v.dim() == 0 or v.dim() == 1
-#         ), f"Value must have 0 or 1 dimensions, got {v.dim()} dimensions"
-#         if v.dim() == 0:
-#             v = v.unsqueeze(0)
-#     elif isinstance(v, torch.Tensor) == False:
-#         raise TypeError(f"Unsupported type: {type(v)}")
-#     return v
-
 
 # Add get() method to nn.Parameter for compatibility
 if not hasattr(torch.nn.Parameter, "get"):

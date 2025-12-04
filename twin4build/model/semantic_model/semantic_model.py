@@ -1129,13 +1129,13 @@ class SemanticObject:
                 if self.uri.datatype and c_str == str(self.uri.datatype):
                     return True
                 # Check for XSD.string match with language-tagged literals
-                if self.uri.language and c_str == str(self.model.XSD.string):
+                if self.uri.language and c_str == str(core.namespace.XSD.string):
                     return True
                 # Plain literals (no datatype) match with XSD.string
                 if (
                     not self.uri.datatype
                     and not self.uri.language
-                    and c_str == str(self.model.XSD.string)
+                    and c_str == str(core.namespace.XSD.string)
                 ):
                     return True
             return False
@@ -2429,6 +2429,7 @@ class SemanticModel:
                     z = "Unknown class"
                 else:
                     z = most_specific_type.get_short_name()
+                    assert z is not None, f"get_short_name() returned None for type {most_specific_type}"
 
                 b = soup.new_tag("b", attrs={})
                 b.string = z

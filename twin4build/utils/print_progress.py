@@ -20,7 +20,8 @@ except ImportError:
     CURSES_AVAILABLE = False
 
 
-
+def is_testing():
+    return 'unittest' in sys.modules.keys()
 
 
 def _print_color_palette(stdscr):
@@ -109,7 +110,8 @@ class PrintProgress:
         self.ERROR_COLOR_PAIR = 5
         self.WARNING_COLOR_PAIR = 7
         self.INFO_COLOR_PAIR = 2
-        self._enabled = True
+        # Auto-disable in test environments
+        self._enabled = not is_testing()
 
     def __enter__(self):
         """Context manager entry - ensures proper cleanup on exceptions"""
@@ -1012,15 +1014,14 @@ def autoreset_print(cls):
             setattr(cls, name, reset_print(attr))
     return cls
 
-def is_testing():
-    return 'unittest' in sys.modules.keys()
+
 
 
 PRINTPROGRESS = PrintProgress()
-if is_testing():
-    PRINTPROGRESS.disable()
-else:
-    PRINTPROGRESS.enable()
+# if is_testing():
+#     PRINTPROGRESS.disable()
+# else:
+#     PRINTPROGRESS.enable()
 
 if __name__ == "__main__":
 

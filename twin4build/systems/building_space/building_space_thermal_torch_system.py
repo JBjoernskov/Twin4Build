@@ -18,7 +18,7 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
-from twin4build.utils.constants import Constants
+import twin4build.utils.constants as constants
 
 
 class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
@@ -623,7 +623,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         E = torch.zeros((n_inputs, n_states, n_states), dtype=torch.float64)
         # -m_ex*cp*T_air (input 2, state 0)
         E[2, 0, 0] = (
-            -Constants.specificHeatCapacity["air"] / self.C_air.get()
+            -constants.CP_AIR / self.C_air.get()
         )  # exhaustAirFlowRate * T_air
 
         # Use E and F matrices for correct couplings
@@ -631,7 +631,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         F = torch.zeros((n_inputs, n_states, n_inputs), dtype=torch.float64)
         # m_sup*cp*T_sup (inputs 1 and 3)
         F[1, 0, 3] = (
-            Constants.specificHeatCapacity["air"] / self.C_air.get()
+            constants.CP_AIR / self.C_air.get()
         )  # supplyAirFlowRate * supplyAirTemperature
 
         # Pass E and F to DiscreteStatespaceSystem

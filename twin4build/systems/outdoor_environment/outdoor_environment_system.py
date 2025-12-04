@@ -42,6 +42,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             Must have columns 'outdoorTemperature', 'globalIrradiation', and 'outdoorCo2Concentration'.
         useSpreadsheet: Whether to use spreadsheet files for data loading.
         useDatabase: Whether to use database for data loading.
+        usedf: Whether to use the provided DataFrame for data loading.
         filename_outdoorTemperature: Path to CSV file containing outdoor temperature data.
         datecolumn_outdoorTemperature: Name of the date column in temperature file.
         valuecolumn_outdoorTemperature: Name of the temperature value column.
@@ -61,6 +62,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         df: Optional[pd.DataFrame] = None,
         useSpreadsheet: Optional[bool] = False,
         useDatabase: Optional[bool] = False,
+        usedf: Optional[bool] = False,
         filename_outdoorTemperature: Optional[str] = None,
         datecolumn_outdoorTemperature: Optional[int] = 0,
         valuecolumn_outdoorTemperature: Optional[int] = 1,
@@ -81,9 +83,43 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         apply_correction: Optional[bool] = False,
         **kwargs,
     ):
+        # Count how many data sources are provided
+        has_df = df is not None
+        has_filename = (
+            filename_outdoorTemperature is not None
+            or filename_globalIrradiation is not None
+            or filename_outdoorCo2Concentration is not None
+        )
+        has_database = (
+            dbconfig_outdoorTemperature is not None
+            or dbconfig_globalIrradiation is not None
+            or dbconfig_outdoorCo2Concentration is not None
+            or uuid_outdoorTemperature is not None
+            or uuid_globalIrradiation is not None
+            or uuid_outdoorCo2Concentration is not None
+        )
+        n_sources = sum([has_df, has_filename, has_database])
+        n_flags = sum([useSpreadsheet, useDatabase, usedf])
+
+        # If multiple sources provided, user must explicitly set a flag
+        assert not (n_sources > 1 and n_flags == 0), (
+            "Multiple data sources provided (df, filename, database). "
+            "You must explicitly set one of usedf=True, useSpreadsheet=True, or useDatabase=True "
+            "to specify which source to use."
+        )
+
+        # Auto-detect data source if no flags are explicitly set
+        if not useSpreadsheet and not useDatabase and not usedf:
+            if has_df:
+                usedf = True
+            elif has_filename:
+                useSpreadsheet = True
+            elif has_database:
+                useDatabase = True
+
         assert (
-            useSpreadsheet == False or useDatabase == False
-        ), "useSpreadsheet and useDatabase cannot both be True."
+            sum([useSpreadsheet, useDatabase, usedf]) <= 1
+        ), "Only one of useSpreadsheet, useDatabase, or usedf can be True."
         super().__init__(**kwargs)
         nn.Module.__init__(self)
 
@@ -113,6 +149,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         }
         self.useSpreadsheet = useSpreadsheet
         self.useDatabase = useDatabase
+        self.usedf = usedf
 
         self.filename_outdoorTemperature = filename_outdoorTemperature
         self.datecolumn_outdoorTemperature = datecolumn_outdoorTemperature
@@ -153,6 +190,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 "apply_correction",
                 "useSpreadsheet",
                 "useDatabase",
+                "usedf",
             ],
             "spreadsheet": [
                 "filename_outdoorTemperature",
@@ -227,7 +265,13 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         validated_for_estimator = True
         validated_for_optimizer = True
 
-        if self.df is None:
+        if self.usedf and self.df is None:
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: df must be provided when usedf=True to enable use of Simulator, Estimator, and Optimizer."
+            p(message, status="WARNING")
+            validated_for_simulator = False
+            validated_for_estimator = False
+            validated_for_optimizer = False
+        elif self.df is None:
             if self.useSpreadsheet and (
                 self.filename_outdoorTemperature is None
                 or self.filename_globalIrradiation is None
@@ -248,8 +292,8 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 validated_for_simulator = False
                 validated_for_estimator = False
                 validated_for_optimizer = False
-            elif not self.useSpreadsheet and not self.useDatabase:
-                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either df or useSpreadsheet=True or useDatabase=True must be provided to enable use of Simulator, Estimator, and Optimizer."
+            elif not self.useSpreadsheet and not self.useDatabase and not self.usedf:
+                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either df with usedf=True, useSpreadsheet=True, or useDatabase=True must be provided to enable use of Simulator, Estimator, and Optimizer."
                 p(message, status="WARNING")
                 validated_for_simulator = False
                 validated_for_estimator = False
@@ -282,13 +326,36 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         Raises:
             ValueError: If the weather data files cannot be found or required columns are missing.
         """
-        if self.useSpreadsheet or self.useDatabase:
+        if self.useSpreadsheet or self.useDatabase or self.usedf:
+            # Validate df if usedf is True
+            if self.usedf:
+                if self.df is None:
+                    raise ValueError(
+                        "df must be provided when usedf=True."
+                    )
+                required_keys = [
+                    "outdoorTemperature",
+                    "globalIrradiation",
+                    "outdoorCo2Concentration",
+                ]
+                is_included = np.array([key in self.df.columns for key in required_keys])
+                assert np.all(
+                    is_included
+                ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
+                # Create separate DataFrames for each weather parameter
+                df_temp = self.df[["outdoorTemperature"]]
+                df_irrad = self.df[["globalIrradiation"]]
+                df_co2 = self.df[["outdoorCo2Concentration"]]
+            else:
+                df_temp = df_irrad = df_co2 = None
+
             # Use TimeSeriesInputSystem for each weather parameter (handles batching correctly)
             time_series_temp = TimeSeriesInputSystem(
                 id=f"time series input - outdoorTemperature - {self.id}",
+                df=df_temp,
                 filename=self.filename_outdoorTemperature,
                 datecolumn=self.datecolumn_outdoorTemperature,
-                valuecolumn=self.valuecolumn_outdoorTemperature,
+                valuecolumn="outdoorTemperature" if self.usedf else self.valuecolumn_outdoorTemperature,
                 useSpreadsheet=self.useSpreadsheet,
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_outdoorTemperature,
@@ -298,9 +365,10 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
             time_series_irrad = TimeSeriesInputSystem(
                 id=f"time series input - globalIrradiation - {self.id}",
+                df=df_irrad,
                 filename=self.filename_globalIrradiation,
                 datecolumn=self.datecolumn_globalIrradiation,
-                valuecolumn=self.valuecolumn_globalIrradiation,
+                valuecolumn="globalIrradiation" if self.usedf else self.valuecolumn_globalIrradiation,
                 useSpreadsheet=self.useSpreadsheet,
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_globalIrradiation,
@@ -310,9 +378,10 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
             time_series_co2 = TimeSeriesInputSystem(
                 id=f"time series input - outdoorCo2Concentration - {self.id}",
+                df=df_co2,
                 filename=self.filename_outdoorCo2Concentration,
                 datecolumn=self.datecolumn_outdoorCo2Concentration,
-                valuecolumn=self.valuecolumn_outdoorCo2Concentration,
+                valuecolumn="outdoorCo2Concentration" if self.usedf else self.valuecolumn_outdoorCo2Concentration,
                 useSpreadsheet=self.useSpreadsheet,
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_outdoorCo2Concentration,
@@ -337,29 +406,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 values=time_series_co2.values,
             )
         else:
-            # Use provided DataFrame
-            if self.df is None:
-                raise ValueError(
-                    "No data source provided. Set useSpreadsheet=True or useDatabase=True or provide df."
-                )
-
-            required_keys = [
-                "outdoorTemperature",
-                "globalIrradiation",
-                "outdoorCo2Concentration",
-            ]
-            is_included = np.array([key in self.df.columns for key in required_keys])
-            assert np.all(
-                is_included
-            ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
-
-            for key, output in self._output.items():
-                output.initialize(
-                    start_time=start_time,
-                    end_time=end_time,
-                    step_size=step_size,
-                    values=self.df[key].values,
-                )
+            raise ValueError(
+                "No data source provided. Set useSpreadsheet=True, useDatabase=True, or usedf=True."
+            )
 
     def _apply(self, x):
         return x * self.a.get() + self.b.get()

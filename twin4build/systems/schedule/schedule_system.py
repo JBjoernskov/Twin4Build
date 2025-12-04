@@ -57,6 +57,7 @@ class ScheduleSystem(core.System):
         add_noise: bool = False,
         useSpreadsheet: bool = False,
         useDatabase: bool = False,
+        usedict: bool = False,
         filename: str = None,
         datecolumn: int = 0,
         valuecolumn: int = 1,
@@ -65,10 +66,43 @@ class ScheduleSystem(core.System):
         dbconfig: dict = None,
         **kwargs,
     ):
+        # Count how many data sources are provided
+        has_dict = (
+            weekDayRulesetDict is not None
+            or weekendRulesetDict is not None
+            or mondayRulesetDict is not None
+            or tuesdayRulesetDict is not None
+            or wednesdayRulesetDict is not None
+            or thursdayRulesetDict is not None
+            or fridayRulesetDict is not None
+            or saturdayRulesetDict is not None
+            or sundayRulesetDict is not None
+        )
+        has_filename = filename is not None
+        has_database = dbconfig is not None or uuid is not None or name is not None
+        n_sources = sum([has_dict, has_filename, has_database])
+        n_flags = sum([useSpreadsheet, useDatabase, usedict])
+
+        # If multiple sources provided, user must explicitly set a flag
+        assert not (n_sources > 1 and n_flags == 0), (
+            "Multiple data sources provided (weekDayRulesetDict, filename, database). "
+            "You must explicitly set one of usedict=True, useSpreadsheet=True, or useDatabase=True "
+            "to specify which source to use."
+        )
+
+        # Auto-detect data source if no flags are explicitly set
+        if not useSpreadsheet and not useDatabase and not usedict:
+            if has_dict:
+                usedict = True
+            elif has_filename:
+                useSpreadsheet = True
+            elif has_database:
+                useDatabase = True
+
         super().__init__(**kwargs)
         assert (
-            useSpreadsheet == False or useDatabase == False
-        ), "useSpreadsheet and useDatabase cannot both be True."
+            sum([useSpreadsheet, useDatabase, usedict]) <= 1
+        ), "Only one of useSpreadsheet, useDatabase, or usedict can be True."
         self.weekDayRulesetDict = weekDayRulesetDict
         self.weekendRulesetDict = weekendRulesetDict
         self.mondayRulesetDict = mondayRulesetDict
@@ -81,6 +115,7 @@ class ScheduleSystem(core.System):
         self.add_noise = add_noise
         self.useSpreadsheet = useSpreadsheet
         self.useDatabase = useDatabase
+        self.usedict = usedict
         self.filename = filename
         self.datecolumn = datecolumn
         self.valuecolumn = valuecolumn
@@ -104,6 +139,7 @@ class ScheduleSystem(core.System):
                 "add_noise",
                 "useSpreadsheet",
                 "useDatabase",
+                "usedict",
             ],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
             "database": ["uuid", "name", "dbconfig"],
@@ -132,12 +168,32 @@ class ScheduleSystem(core.System):
             validated_for_estimator = False
             validated_for_optimizer = False
 
-        elif (
-            self.useSpreadsheet == False
-            and self.useDatabase == False
-            and self.weekDayRulesetDict is None
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False to enable use of Simulator, Estimator, and Optimizer."
+        elif self.usedict:
+            # Check that all days can be covered (either directly or via fallback dicts)
+            missing_days = []
+            if self.mondayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("mondayRulesetDict")
+            if self.tuesdayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("tuesdayRulesetDict")
+            if self.wednesdayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("wednesdayRulesetDict")
+            if self.thursdayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("thursdayRulesetDict")
+            if self.fridayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("fridayRulesetDict")
+            if self.saturdayRulesetDict is None and self.weekendRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("saturdayRulesetDict")
+            if self.sundayRulesetDict is None and self.weekendRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("sundayRulesetDict")
+            if missing_days:
+                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: The following ruleset dicts are missing (provide directly or via weekDayRulesetDict/weekendRulesetDict): {', '.join(missing_days)}"
+                p(message, status="WARNING")
+                validated_for_simulator = False
+                validated_for_estimator = False
+                validated_for_optimizer = False
+
+        if not self.useSpreadsheet and not self.useDatabase and not self.usedict:
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either weekDayRulesetDict with usedict=True, useSpreadsheet=True, or useDatabase=True must be provided to enable use of Simulator, Estimator, and Optimizer."
             p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
@@ -164,10 +220,8 @@ class ScheduleSystem(core.System):
             self.useDatabase and (self.uuid is None and self.name is None)
         ) == False, "uuid or name must be provided if useDatabase is True."
         assert (
-            self.useSpreadsheet == False
-            and self.useDatabase == False
-            and self.weekDayRulesetDict is None
-        ) == False, "weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False."
+            self.useSpreadsheet or self.useDatabase or self.usedict
+        ), "One of useSpreadsheet, useDatabase, or usedict must be True."
 
         if self.mondayRulesetDict is None:
             self.mondayRulesetDict = self.weekDayRulesetDict
@@ -189,46 +243,28 @@ class ScheduleSystem(core.System):
                 self.sundayRulesetDict = self.weekDayRulesetDict
             else:
                 self.sundayRulesetDict = self.weekendRulesetDict
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.weekDayRulesetDict is not None, (
-            "weekDayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.mondayRulesetDict is not None, (
-            "mondayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.tuesdayRulesetDict is not None, (
-            "tuesdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.wednesdayRulesetDict is not None, (
-            "wednesdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.thursdayRulesetDict is not None, (
-            "thursdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.fridayRulesetDict is not None, (
-            "fridayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.saturdayRulesetDict is not None, (
-            "saturdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.sundayRulesetDict is not None, (
-            "sundayRulesetDict must be provided as argument."
-        )
+        if self.usedict:
+            assert self.mondayRulesetDict is not None, (
+                "mondayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            )
+            assert self.tuesdayRulesetDict is not None, (
+                "tuesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            )
+            assert self.wednesdayRulesetDict is not None, (
+                "wednesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            )
+            assert self.thursdayRulesetDict is not None, (
+                "thursdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            )
+            assert self.fridayRulesetDict is not None, (
+                "fridayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            )
+            assert self.saturdayRulesetDict is not None, (
+                "saturdayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when usedict is True."
+            )
+            assert self.sundayRulesetDict is not None, (
+                "sundayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when usedict is True."
+            )
 
         if self.useSpreadsheet or self.useDatabase:
             time_series_input = TimeSeriesInputSystem(

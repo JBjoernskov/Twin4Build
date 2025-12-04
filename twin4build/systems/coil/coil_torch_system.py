@@ -10,7 +10,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.utils.constants import Constants
+import twin4build.utils.constants as constants
 
 
 class CoilTorchSystem(core.System, nn.Module):
@@ -76,12 +76,6 @@ class CoilTorchSystem(core.System, nn.Module):
         """
         super().__init__(**kwargs)
         nn.Module.__init__(self)
-
-        # Store specific heat capacity as tps.Parameter with private variable
-        self._specificHeatCapacityAir = tps.Parameter(
-            torch.tensor(Constants.specificHeatCapacity["air"], dtype=torch.float64),
-            requires_grad=False,
-        )
 
         # Define inputs and outputs as private variables
         self._input = {
@@ -211,7 +205,7 @@ class CoilTorchSystem(core.System, nn.Module):
         # Calculate power magnitude (same formula, different sign interpretation)
         power = (
             air_flow_rate
-            * self.specificHeatCapacityAir.get()
+            * constants.CP_AIR
             * torch.abs(outlet_air_temp_setpoint - inlet_air_temp)
         )
         

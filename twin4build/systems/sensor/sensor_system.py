@@ -379,6 +379,7 @@ class SensorSystem(core.System):
         dbconfig: Optional[Dict[str, Any]] = None,
         useSpreadsheet: bool = False,
         useDatabase: bool = False,
+        usedf: bool = False,
         **kwargs,
     ) -> None:
         """Initialize the sensor system.
@@ -392,15 +393,41 @@ class SensorSystem(core.System):
                 Defaults to False.
             useDatabase: Whether to use a database for input.
                 Defaults to False.
+            usedf: Whether to use the provided DataFrame for input.
+                Defaults to False.
             **kwargs: Additional keyword arguments passed to parent class.
 
         Note:
             Either filename/df must be provided for physical sensors, or
             the sensor must have connections defined for virtual sensors.
+            Flags are auto-detected if only one data source is provided.
         """
+        # Count how many data sources are provided
+        has_df = df is not None
+        has_filename = filename is not None
+        has_database = dbconfig is not None or uuid is not None
+        n_sources = sum([has_df, has_filename, has_database])
+        n_flags = sum([useSpreadsheet, useDatabase, usedf])
+
+        # If multiple sources provided, user must explicitly set a flag
+        assert not (n_sources > 1 and n_flags == 0), (
+            "Multiple data sources provided (df, filename, database). "
+            "You must explicitly set one of usedf=True, useSpreadsheet=True, or useDatabase=True "
+            "to specify which source to use."
+        )
+
+        # Auto-detect data source if no flags are explicitly set
+        if not useSpreadsheet and not useDatabase and not usedf:
+            if has_df:
+                usedf = True
+            elif has_filename:
+                useSpreadsheet = True
+            elif has_database:
+                useDatabase = True
+
         assert (
-            useSpreadsheet == False or useDatabase == False
-        ), "useSpreadsheet and useDatabase cannot both be True."
+            sum([useSpreadsheet, useDatabase, usedf]) <= 1
+        ), "Only one of useSpreadsheet, useDatabase, or usedf can be True."
         super().__init__(**kwargs)
 
         # Define inputs and outputs as private variables
@@ -412,6 +439,7 @@ class SensorSystem(core.System):
         # Store attributes as private variables
         self._useSpreadsheet = useSpreadsheet
         self._useDatabase = useDatabase
+        self._usedf = usedf
         self._filename = filename
         self._df = df
         self._datecolumn = 0
@@ -422,7 +450,7 @@ class SensorSystem(core.System):
         self._time_series_input = None
 
         self._config = {
-            "parameters": ["useSpreadsheet", "useDatabase"],
+            "parameters": ["useSpreadsheet", "useDatabase", "usedf"],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
             "database": ["uuid", "dbconfig"],
         }
@@ -566,6 +594,20 @@ class SensorSystem(core.System):
         self._useDatabase = value
 
     @property
+    def usedf(self) -> bool:
+        """
+        Get whether to use a DataFrame for input.
+        """
+        return self._usedf
+
+    @usedf.setter
+    def usedf(self, value: bool) -> None:
+        """
+        Set whether to use a DataFrame for input.
+        """
+        self._usedf = value
+
+    @property
     def uuid(self) -> Optional[str]:
         """
         Get the UUID for database operations.
@@ -635,7 +677,7 @@ class SensorSystem(core.System):
 
     def validate_connections(self, p) -> bool:
         validated = True
-        if self.is_leaf and self.useSpreadsheet == False and self.useDatabase == False:
+        if self.is_leaf and self.useSpreadsheet == False and self.useDatabase == False and self.usedf == False:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
             p(message, status="[WARNING]")
             p.add_level()
@@ -664,15 +706,12 @@ class SensorSystem(core.System):
         self.validate(PRINTPROGRESS)
         self.validate_connections(PRINTPROGRESS)
 
-        if (
-            self.filename is not None
-            or self.df is not None
-            or self.dbconfig is not None
-        ):
-            if self.df is None:
-                assert (
-                    self.useSpreadsheet == True or self.useDatabase == True
-                ), "useSpreadsheet or useDatabase must be True if df is not provided."
+        if self.useSpreadsheet or self.useDatabase or self.usedf:
+            if self.usedf:
+                if self.df is None:
+                    raise ValueError(
+                        "df must be provided when usedf=True."
+                    )
             self.time_series_input = TimeSeriesInputSystem(
                 id=f"time series input - {self.id}",
                 df=self.df,

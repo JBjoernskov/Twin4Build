@@ -11,7 +11,7 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
-from twin4build.utils.constants import Constants
+import twin4build.utils.constants as constants
 
 
 class BuildingSpaceMassTorchSystem(core.System, nn.Module):
@@ -261,11 +261,8 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         # Calculate air mass from volume and density
         # We use the density of air from constants to convert volume to mass
         # This ensures unit consistency (flows are in kg/s, concentration in ppm)
-        density_air = Constants.density["air"]
+        density_air = constants.RHO_AIR
         air_mass = self.V.get() * density_air
-
-        M_air = 28.9647  # g/mol
-        M_CO2 = 44.01  # g/mol
 
         # State matrix A: -sum of all flow rates / air_mass
         A[0, 0] = -(self.m_inf.get() / air_mass)  # Base coefficient from infiltration
@@ -287,7 +284,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         # 2. Convert mass fraction to volume fraction: * (M_air / M_CO2)
         # 3. Convert to ppmv: * 1e6
         B[0, 3] = (
-            (self.G_occ.get() / air_mass) * (M_air / M_CO2) * 1e6
+            (self.G_occ.get() / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6
         )  # numberOfPeople coefficient
 
         # Output matrix C - Identity matrix for direct observation

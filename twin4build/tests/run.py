@@ -37,11 +37,22 @@ def main():
 
         tests = loader.discover(start_dir=test_dir, pattern='test_*.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_simulation_model.py')
-        tests = loader.discover(start_dir=test_dir, pattern='test_components.py')
+        # tests = loader.discover(start_dir=test_dir, pattern='test_components.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_translator.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_optimizer.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_semantic_model.py')
         # tests = loader.discover(start_dir=test_dir, pattern='test_types.py')
+
+        # Combine multiple test patterns (use fresh loaders for each pattern)
+        # tests = unittest.TestSuite()
+        # for pattern in ['test_utils.py', 'test_semantic_model.py', 'test_plot_utils.py']:
+        #     suite = unittest.TestLoader().discover(start_dir=test_dir, pattern=pattern)
+        #     # Flatten and add each test individually
+        #     for test_group in suite:
+        #         tests.addTests(test_group)
+        #     print(f"Discovered {suite.countTestCases()} tests from {pattern}")
+        
+        # print(f"Total tests to run: {tests.countTestCases()}")
 
         
         # Create a test runner
@@ -49,8 +60,7 @@ def main():
         
         # Run the tests
         result = runner.run(tests)
-
-
+    
         cov.stop()
 
 

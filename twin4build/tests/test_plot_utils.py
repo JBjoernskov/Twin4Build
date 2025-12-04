@@ -443,6 +443,168 @@ class TestLoadParams(unittest.TestCase):
         self.assertTrue(success)
 
 
+class TestOnPick(unittest.TestCase):
+    """Tests for on_pick event handler."""
+    
+    def test_on_pick_toggle_visibility(self):
+        """Test on_pick toggles line visibility."""
+        from twin4build.utils.plot.plot import on_pick
+        from unittest.mock import Mock, MagicMock
+        
+        # Create mock figure and line
+        fig = Mock()
+        fig.canvas = Mock()
+        fig.canvas.draw_idle = Mock()
+        
+        # Create mock line
+        mock_line = Mock()
+        mock_line.get_visible.return_value = True
+        mock_line.set_visible = Mock()
+        
+        # Create mock legend item
+        mock_legend = Mock()
+        mock_legend.set_alpha = Mock()
+        
+        # Create graphs dict mapping legend to line
+        graphs = {mock_legend: mock_line}
+        
+        # Create mock event
+        event = Mock()
+        event.artist = mock_legend
+        
+        # Call on_pick
+        on_pick(event, fig, graphs)
+        
+        # Line should be toggled to not visible
+        mock_line.set_visible.assert_called_with(False)
+        mock_legend.set_alpha.assert_called_with(0.2)
+        fig.canvas.draw_idle.assert_called_once()
+
+    def test_on_pick_make_visible(self):
+        """Test on_pick makes hidden line visible."""
+        from twin4build.utils.plot.plot import on_pick
+        from unittest.mock import Mock
+        
+        fig = Mock()
+        fig.canvas = Mock()
+        fig.canvas.draw_idle = Mock()
+        
+        mock_line = Mock()
+        mock_line.get_visible.return_value = False
+        mock_line.set_visible = Mock()
+        
+        mock_legend = Mock()
+        mock_legend.set_alpha = Mock()
+        
+        graphs = {mock_legend: mock_line}
+        
+        event = Mock()
+        event.artist = mock_legend
+        
+        on_pick(event, fig, graphs)
+        
+        # Line should be toggled to visible
+        mock_line.set_visible.assert_called_with(True)
+        mock_legend.set_alpha.assert_called_with(1)
+
+
+class TestGetData(unittest.TestCase):
+    """Tests for get_data function."""
+    
+    def test_get_data_with_entry_object(self):
+        """Test get_data with Entry object."""
+        from twin4build.utils.plot.plot import get_data, Entry
+        
+        data = np.array([1.0, 2.0, 3.0])
+        entry = Entry(data=data, label="Test", fmt="--", axis=2)
+        
+        parsed_data, fmt, axis, kwargs = get_data(entry)
+        
+        self.assertIsNotNone(parsed_data)
+        self.assertEqual(fmt, "--")
+        self.assertEqual(axis, 2)
+        self.assertEqual(kwargs.get("label"), "Test")
+
+    def test_get_data_with_tuple_deprecated(self):
+        """Test get_data with deprecated tuple format."""
+        from twin4build.utils.plot.plot import get_data
+        
+        data = np.array([1.0, 2.0, 3.0])
+        t = (data, "Test Label")
+        
+        with self.assertWarns(DeprecationWarning):
+            parsed_data, fmt, axis, kwargs = get_data(t)
+        
+        self.assertIsNotNone(parsed_data)
+        self.assertIsNone(fmt)
+        self.assertIsNone(axis)
+        self.assertEqual(kwargs.get("label"), "Test Label")
+
+    def test_get_data_with_invalid_type(self):
+        """Test get_data with invalid type raises error."""
+        from twin4build.utils.plot.plot import get_data
+        
+        with self.assertRaises(ValueError):
+            get_data("invalid")
+
+    def test_get_data_with_tuple_wrong_length(self):
+        """Test get_data with tuple of wrong length returns None."""
+        from twin4build.utils.plot.plot import get_data
+        
+        # Tuple with more than 2 elements returns None for legacy component processing
+        t = (np.array([1.0]), "label", "extra")
+        
+        with self.assertWarns(DeprecationWarning):
+            data, fmt, axis, kwargs = get_data(t)
+        
+        self.assertIsNone(data)
+
+    def test_get_data_converts_list_to_numpy(self):
+        """Test get_data converts list to numpy array."""
+        from twin4build.utils.plot.plot import get_data, Entry
+        
+        data = [1.0, 2.0, 3.0, 4.0]
+        entry = Entry(data=data, label="List Data")
+        
+        parsed_data, _, _, _ = get_data(entry)
+        
+        self.assertIsInstance(parsed_data, np.ndarray)
+
+    def test_get_data_converts_tensor_to_numpy(self):
+        """Test get_data converts torch tensor to numpy array."""
+        from twin4build.utils.plot.plot import get_data, Entry
+        
+        data = torch.tensor([1.0, 2.0, 3.0])
+        entry = Entry(data=data, label="Tensor Data")
+        
+        parsed_data, _, _, _ = get_data(entry)
+        
+        self.assertIsInstance(parsed_data, np.ndarray)
+
+    def test_get_data_converts_series_to_numpy(self):
+        """Test get_data converts pandas Series to numpy array."""
+        from twin4build.utils.plot.plot import get_data, Entry
+        
+        data = pd.Series([1.0, 2.0, 3.0])
+        entry = Entry(data=data, label="Series Data")
+        
+        parsed_data, _, _, _ = get_data(entry)
+        
+        self.assertIsInstance(parsed_data, np.ndarray)
+
+    def test_get_data_reshapes_1d_array(self):
+        """Test get_data reshapes 1D array to 2D."""
+        from twin4build.utils.plot.plot import get_data, Entry
+        
+        data = np.array([1.0, 2.0, 3.0])
+        entry = Entry(data=data, label="1D Data")
+        
+        parsed_data, _, _, _ = get_data(entry)
+        
+        self.assertEqual(parsed_data.ndim, 2)
+        self.assertEqual(parsed_data.shape, (1, 3))
+
+
 if __name__ == '__main__':
     unittest.main()
 
