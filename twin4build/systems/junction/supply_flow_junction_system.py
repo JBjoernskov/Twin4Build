@@ -111,7 +111,7 @@ class SupplyFlowJunctionSystem(core.System):
             step_index (int, optional): Current simulation step index.
         """
         self.output["airFlowRateIn"].set(
-            (self.input["airFlowRateOut"].get().sum(dim=1)) + self.airFlowRateBias,
+            (self.input["airFlowRateOut"].get().sum(dim=-1)) + self.airFlowRateBias,
             step_index,
         )
 

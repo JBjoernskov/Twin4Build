@@ -48,4 +48,4 @@ class MaxSystem(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        self.output["value"].set(torch.max(self.input["inputs"].get()), step_index)
+        self.output["value"].set(torch.max(self.input["inputs"].get(), dim=-1).values, step_index)

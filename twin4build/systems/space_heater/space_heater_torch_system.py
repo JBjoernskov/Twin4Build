@@ -393,7 +393,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """
         n = self.nelements
         C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
-        UA_elem = float(UA_candidate) / n
+        UA_elem = float(UA_candidate.item()) / n
         m_dot = float(
             self.Q_flow_nominal_sh
             / (

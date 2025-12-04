@@ -54,6 +54,7 @@ class Vector:
         tensor: Optional[torch.Tensor] = None,
         batch_size: int = 1,
         size: Optional[int] = None,
+        n_timesteps: Optional[int] = None,
         log_history: bool = True,
         is_leaf: bool = False,
         do_normalization: bool = False,
@@ -74,6 +75,7 @@ class Vector:
         self._tensor = None
         self._batch_size = batch_size
         self._size = size
+        self._n_timesteps = n_timesteps
         self._log_history = log_history
         self._is_leaf = is_leaf
         self._do_normalization = do_normalization
@@ -101,6 +103,10 @@ class Vector:
     @property
     def batch_size(self):
         return self._batch_size
+
+    @property
+    def n_timesteps(self):
+        return self._n_timesteps
 
     @property
     def log_history(self):
@@ -201,6 +207,8 @@ class Vector:
         Creates the underlying torch tensor and computes indices for sorted access by group ID.
         """
         assert isinstance(n_timesteps, int), "n_timesteps must be an integer"
+        if n_timesteps is not None:
+            self._n_timesteps = n_timesteps
         if size is not None:
             self._size = size
         if batch_size is not None:
@@ -235,7 +243,7 @@ class Vector:
                 values.shape[0] == self.batch_size
             ), "Values must be the same length as the batch size"
             assert (
-                values.shape[1] == n_timesteps
+                values.shape[1] == self.n_timesteps
             ), "Values must be the same length as the number of date_time_steps"
             assert (
                 values.shape[2] == self.size
@@ -248,7 +256,7 @@ class Vector:
 
         else:
             self._history = torch.zeros(
-                (self._batch_size, n_timesteps, self.size),
+                (self.batch_size, self.n_timesteps, self.size),
                 dtype=torch.float64,
                 requires_grad=False,
             )
@@ -361,6 +369,7 @@ class Scalar:
         self,
         scalar: Optional[Union[float, int, torch.Tensor]] = None,
         batch_size: int = 1,
+        n_timesteps: Optional[int] = None,
         log_history: bool = True,
         is_leaf: bool = False,
         do_normalization: bool = False,
@@ -397,6 +406,7 @@ class Scalar:
 
         self._scalar = scalar
         self._batch_size = batch_size
+        self._n_timesteps = n_timesteps
         self._init_scalar = scalar
         self._history = None
         self._normalized_history = None
@@ -414,6 +424,10 @@ class Scalar:
     @property
     def batch_size(self):
         return self._batch_size
+
+    @property
+    def n_timesteps(self):
+        return self._n_timesteps
 
     @property
     def log_history(self):
@@ -500,6 +514,9 @@ class Scalar:
         if batch_size is not None:
             self._batch_size = batch_size
 
+        if n_timesteps is not None:
+            self._n_timesteps = n_timesteps
+
         if self._init_scalar is None:
             self._scalar = torch.zeros((self.batch_size), dtype=torch.float64)
         else:
@@ -529,8 +546,8 @@ class Scalar:
                 values.shape[0] == self.batch_size
             ), f"First dimension of values ({values.shape[0]}) must be the same as the batch size ({self.batch_size}). Did you forget to provide the batch_size argument in the initialize method?"
             assert (
-                values.shape[1] == n_timesteps
-            ), f"Second dimension of values ({values.shape[1]}) must be the same as the number of date_time_steps ({n_timesteps}). Did you forget to provide the n_timesteps argument in the initialize method?"
+                values.shape[1] == self.n_timesteps
+            ), f"Second dimension of values ({values.shape[1]}) must be the same as the number of date_time_steps ({self.n_timesteps}). Did you forget to provide the n_timesteps argument in the initialize method?"
             # Pre-allocate the history tensor with the correct size
             self._history = values
             self._history_is_populated = True
@@ -539,7 +556,7 @@ class Scalar:
 
         else:
             self._history = torch.zeros(
-                self._batch_size, n_timesteps, dtype=torch.float64, requires_grad=False
+                self.batch_size, self.n_timesteps, dtype=torch.float64, requires_grad=False
             )
             self._history_is_populated = False
 

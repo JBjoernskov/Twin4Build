@@ -4,6 +4,7 @@ from typing import Optional
 
 # Third party imports
 import numpy as np
+import torch
 
 # Local application imports
 import twin4build.core as core
@@ -84,7 +85,14 @@ class ReturnFlowJunctionSystem(core.System):
         end_time: datetime.datetime,
         step_size: int,
     ) -> None:
-        pass # TODO: Implement this. Count number of inputs. This can be a bit complicated as different inputs connections can set differnt indices of the tensor.
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        self.input["airFlowRateIn"].initialize(n_timesteps=max_timesteps, batch_size=batch_size, size=2)
+        self.input["airTemperatureIn"].initialize(n_timesteps=max_timesteps, batch_size=batch_size, size=2)
+        self.output["airFlowRateOut"].initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+        self.output["airTemperatureOut"].initialize(n_timesteps=max_timesteps, batch_size=batch_size)
 
     def do_step(
         self,
@@ -93,22 +101,26 @@ class ReturnFlowJunctionSystem(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        with np.errstate(invalid="raise"):
-            m_dot_in = self.input["airFlowRateIn"].get().sum()
-            Q_dot_in = (
-                self.input["airTemperatureIn"].get() * self.input["airFlowRateIn"].get()
-            )
-            tol = 1e-5
-            if m_dot_in > tol:
-                self.output["airFlowRateOut"].set(
-                    m_dot_in + self.airFlowRateBias, step_index
-                )
-                self.output["airTemperatureOut"].set(
-                    Q_dot_in.sum() / self.output["airFlowRateOut"].get(), step_index
-                )
-            else:
-                self.output["airFlowRateOut"].set(0, step_index)
-                self.output["airTemperatureOut"].set(20, step_index)
+        # Sum over last dimension (input flows dimension) to preserve batch dimension
+        m_dot_in = self.input["airFlowRateIn"].get().sum(dim=-1)
+        Q_dot_in = (
+            self.input["airTemperatureIn"].get() * self.input["airFlowRateIn"].get()
+        ).sum(dim=-1)
+        
+        tol = 1e-5
+        has_flow = m_dot_in > tol
+        
+        # Calculate outputs for flow case
+        flow_rate_out = m_dot_in + self.airFlowRateBias
+        # Avoid division by zero by using flow_rate_out (which includes bias)
+        temp_out_flow = Q_dot_in / torch.clamp(flow_rate_out, min=tol)
+        
+        # Select between flow and no-flow cases
+        air_flow_rate_out = torch.where(has_flow, flow_rate_out, torch.zeros_like(m_dot_in))
+        air_temp_out = torch.where(has_flow, temp_out_flow, torch.full_like(m_dot_in, 20.0))
+        
+        self.output["airFlowRateOut"].set(air_flow_rate_out, step_index)
+        self.output["airTemperatureOut"].set(air_temp_out, step_index)
 
 
 def saref_signature_pattern():

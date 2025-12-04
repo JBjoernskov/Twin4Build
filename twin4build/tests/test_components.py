@@ -82,17 +82,13 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
         
         batch_size = 3
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        # Batch size is determined by the length of start_time/end_time/step_size lists
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)] * batch_size
+        step_size = [600] * batch_size
         heater_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
         
-        # Initialize inputs with batch size
-        heater_batch.input["supplyWaterTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        heater_batch.input["waterFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        heater_batch.input["indoorTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        
-        # Set inputs with batch size 3
+        # Set inputs with batch size 3 (inputs already initialized with correct batch_size by initialize())
         heater_batch.input["supplyWaterTemperature"].set(torch.tensor([60.0, 65.0, 55.0]), step_index=0)
         heater_batch.input["waterFlowRate"].set(torch.tensor([0.1, 0.15, 0.08]), step_index=0)
         heater_batch.input["indoorTemperature"].set(torch.tensor([20.0, 22.0, 18.0]), step_index=0)
@@ -152,15 +148,15 @@ class TestCoilTorchSystem(unittest.TestCase):
         
         batch_size = 2
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * 2
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)] * 2
+        step_size = [600]*2
         coil_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
         
         # Initialize inputs with batch size
-        coil_batch.input["inletAirTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        coil_batch.input["outletAirTemperatureSetpoint"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        coil_batch.input["airFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # coil_batch.input["inletAirTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # coil_batch.input["outletAirTemperatureSetpoint"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # coil_batch.input["airFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
         
         # Set inputs with batch size 2
         coil_batch.input["inletAirTemperature"].set(torch.tensor([20.0, 25.0]), step_index=0)
@@ -169,7 +165,7 @@ class TestCoilTorchSystem(unittest.TestCase):
         
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        coil_batch.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        coil_batch.do_step(second_time=0, date_time=datetime_val, step_size=step_size, step_index=0)
         
         # Check outputs - verify all outputs have consistent batch shape
         heating_power = coil_batch.output["heatingPower"].get()
@@ -249,17 +245,17 @@ class TestAirToAirHeatRecoverySystem(unittest.TestCase):
         
         batch_size = 2
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * 2
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)] * 2
+        step_size = [600]*2
         hr_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
         
         # Initialize inputs with batch size
-        hr_batch.input["primaryTemperatureIn"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        hr_batch.input["primaryAirFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        hr_batch.input["primaryTemperatureOutSetpoint"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        hr_batch.input["secondaryTemperatureIn"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        hr_batch.input["secondaryAirFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # hr_batch.input["primaryTemperatureIn"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # hr_batch.input["primaryAirFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # hr_batch.input["primaryTemperatureOutSetpoint"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # hr_batch.input["secondaryTemperatureIn"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # hr_batch.input["secondaryAirFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
         
         # Set inputs with batch size 2
         hr_batch.input["primaryTemperatureIn"].set(torch.tensor([0.0, -5.0]), step_index=0)
@@ -270,7 +266,7 @@ class TestAirToAirHeatRecoverySystem(unittest.TestCase):
         
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        hr_batch.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        hr_batch.do_step(second_time=0, date_time=datetime_val, step_size=step_size, step_index=0)
         
         # Check outputs - verify all outputs have consistent batch shape
         primary_out = hr_batch.output["primaryTemperatureOut"].get()
@@ -407,6 +403,8 @@ class TestDamperTorchSystem(unittest.TestCase):
         step_size = [600]
         damper_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
         damper_batch.input["damperPosition"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        damper_batch.output["damperPosition"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        damper_batch.output["airFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
         
         # Set input with batch size 3
         damper_batch.input["damperPosition"].set(torch.tensor([0.5, 0.7, 0.3]), step_index=0)
@@ -473,6 +471,9 @@ class TestFanTorchSystem(unittest.TestCase):
         # Set inputs with batch size 2
         fan_batch.input["airFlowRate"].set(torch.tensor([1.0, 0.8]), step_index=0)
         fan_batch.input["inletAirTemperature"].set(torch.tensor([20.0, 22.0]), step_index=0)
+
+        fan_batch.output["outletAirTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        fan_batch.output["Power"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
         
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -527,6 +528,8 @@ class TestValveTorchSystem(unittest.TestCase):
         step_size = [600]
         valve_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
         valve_batch.input["valvePosition"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        valve_batch.output["waterFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        valve_batch.output["valvePosition"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
 
         # Set inputs with batch size 3
         valve_batch.input["valvePosition"].set(torch.tensor([0.5, 0.7, 0.3]), step_index=0)
@@ -575,14 +578,10 @@ class TestOnOffControllerSystem(unittest.TestCase):
         
         batch_size = 2
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)] * batch_size
+        step_size = [600] * batch_size
         controller_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
-        
-        # Initialize inputs with batch size
-        controller_batch.input["actualValue"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        controller_batch.input["setpointValue"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
         
         # Set inputs with batch size 2
         controller_batch.input["actualValue"].set(torch.tensor([20.0, 23.0]), step_index=0)
@@ -632,14 +631,10 @@ class TestPIDControllerSystem(unittest.TestCase):
         
         batch_size = 3
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)] * batch_size
+        step_size = [600]*batch_size
         controller_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
-        
-        # Initialize inputs with batch size
-        controller_batch.input["actualValue"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        controller_batch.input["setpointValue"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
         
         # Set inputs with batch size 3
         controller_batch.input["actualValue"].set(torch.tensor([20.0, 21.0, 19.0]), step_index=0)
@@ -718,21 +713,6 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
         """Test outdoor environment system initialization."""
         self.assertIsNotNone(self.outdoor_env)
         self.assertEqual(self.outdoor_env.id, "test_outdoor")
-
-
-class TestFlowJunctions(unittest.TestCase):
-    def test_supply_flow_junction_initialization(self):
-        """Test supply flow junction initialization."""
-        junction = SupplyFlowJunctionSystem(id="test_supply_junction")
-        self.assertIsNotNone(junction)
-        self.assertEqual(junction.id, "test_supply_junction")
-
-    def test_return_flow_junction_initialization(self):
-        """Test return flow junction initialization."""
-        junction = ReturnFlowJunctionSystem(id="test_return_junction")
-        self.assertIsNotNone(junction)
-        self.assertEqual(junction.id, "test_return_junction")
-
 
 class TestTimeSeriesInputSystem(unittest.TestCase):
     def setUp(self):
@@ -842,10 +822,6 @@ class TestReturnFlowJunctionSystem(unittest.TestCase):
         
         junction = ReturnFlowJunctionSystem(id="test_zero_flow")
         junction.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
-        junction.input["airFlowRateIn"].initialize(n_timesteps=1, batch_size=1, size=2)
-        junction.input["airTemperatureIn"].initialize(n_timesteps=1, batch_size=1, size=2)
-        junction.output["airFlowRateOut"].initialize(n_timesteps=1, batch_size=1)
-        junction.output["airTemperatureOut"].initialize(n_timesteps=1, batch_size=1)
 
         # Set inputs with zero flow
         junction.input["airFlowRateIn"].set(torch.tensor([[0.0, 0.0]]), step_index=0)
@@ -890,6 +866,8 @@ class TestReturnFlowJunctionSystem(unittest.TestCase):
         
         self.assertIsNotNone(flow_out)
         self.assertIsNotNone(temp_out)
+        print(flow_out.shape)
+        print(temp_out.shape)
         self.assertEqual(flow_out.shape[0], batch_size)  # Output batch matches input batch
         self.assertEqual(temp_out.shape[0], batch_size)  # Output batch matches input batch
 
@@ -1004,7 +982,7 @@ class TestDiscreteStatespaceSystem(unittest.TestCase):
         
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        self.system.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        self.system.do_step(second_time=0, date_time=datetime_val, step_size=step_size, step_index=0)
         
         # Check output
         output = self.system.output["y"].get()
@@ -1027,16 +1005,16 @@ class TestDiscreteStatespaceSystem(unittest.TestCase):
         
         batch_size = 2
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * 2
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)] * 2
+        step_size = [600]*2
         system_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
         
         # Initialize inputs with batch size (state space input is 2D: batch x state_dim)
         system_batch.input["u"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
         
         # Set input with batch size 2
-        system_batch.input["u"].set(torch.tensor([1.0, 2.0], dtype=torch.float64), step_index=0)
+        system_batch.input["u"].set(torch.tensor([[1.0], [2.0]], dtype=torch.float64), step_index=0)
         
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -1186,7 +1164,8 @@ class TestPiecewiseLinearSystem(unittest.TestCase):
         
         # Initialize inputs with batch size
         piecewise_batch.input["x"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        
+        piecewise_batch.output["y"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+
         # Set input with batch size 2
         piecewise_batch.input["x"].set(torch.tensor([2.5, 7.5]), step_index=0)
         
@@ -1256,27 +1235,28 @@ class TestMaxSystem(unittest.TestCase):
         """Test MaxSystem with batch size > 1."""
         max_system_batch = MaxSystem(id="test_max_batch")
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * 2
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)] * 2
+        step_size = [600]*2
         batch_size = 2
-        max_system_batch.input["inputs"].initialize(n_timesteps=1, batch_size=batch_size, size=3)
+        max_system_batch.input["inputs"].initialize(n_timesteps=1, size=3)
         max_system_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
-        
+       
+
         # Set inputs with batch size 2
-        input_values = torch.tensor([5.0, 3.0, 2.0], [1.0, 9.0, 4.0])
+        input_values = torch.tensor([[5.0, 3.0, 2.0], [1.0, 9.0, 4.0]])
         max_system_batch.input["inputs"].set(input_values, step_index=0)
         
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        max_system_batch.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        max_system_batch.do_step(second_time=0, date_time=datetime_val, step_size=step_size, step_index=0)
         
         # Check output is maximum - verify batch shape consistency
         output = max_system_batch.output["value"].get()
         self.assertIsNotNone(output)
         self.assertEqual(output.shape[0], batch_size)  # Output batch matches input batch
-        self.assertEqual(output[0].item(), 5.0)
-        self.assertEqual(output[1].item(), 9.0)
+        self.assertAlmostEqual(output[0].item(), 5.0)
+        self.assertAlmostEqual(output[1].item(), 9.0)
 
 
 class TestOnOffSystem(unittest.TestCase):
@@ -1340,9 +1320,9 @@ class TestOnOffSystem(unittest.TestCase):
         
         batch_size = 3
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)] * batch_size
+        step_size = [600] * batch_size
         onoff_system_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
         
         # Initialize inputs with batch size
@@ -1408,7 +1388,8 @@ class TestPassInputToOutput(unittest.TestCase):
         
         # Initialize inputs with batch size
         pass_system_batch.input["value"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        
+        pass_system_batch.output["value"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+
         # Set input with batch size 2
         test_values = torch.tensor([42.5, 55.3])
         pass_system_batch.input["value"].set(test_values, step_index=0)
@@ -1421,8 +1402,8 @@ class TestPassInputToOutput(unittest.TestCase):
         output = pass_system_batch.output["value"].get()
         self.assertIsNotNone(output)
         self.assertEqual(output.shape[0], batch_size)  # Output batch matches input batch
-        self.assertEqual(output[0].item(), 42.5)
-        self.assertEqual(output[1].item(), 55.3)
+        self.assertAlmostEqual(output[0].item(), 42.5, places=5)
+        self.assertAlmostEqual(output[1].item(), 55.3, places=5)
 
 
 class TestBuildingSpaceTorchSystem(unittest.TestCase):
@@ -1508,7 +1489,7 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        self.building_space.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        self.building_space.do_step(second_time=0, date_time=datetime_val, step_size=step_size, step_index=0)
         
         # Check outputs
         indoor_temp = self.building_space.output["indoorTemperature"].get()
@@ -1545,32 +1526,32 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         
         batch_size = 2
         
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
-        step_size = [600]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * 2
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)] * 2
+        step_size = [600]*2
         building_space_batch.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
         
         # Initialize inputs with batch size
-        building_space_batch.input["supplyAirFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        building_space_batch.input["exhaustAirFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        building_space_batch.input["outdoorTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        building_space_batch.input["supplyAirTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        building_space_batch.input["outdoorCo2"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        building_space_batch.input["numberOfPeople"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
-        building_space_batch.input["globalIrradiation"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # building_space_batch.input["supplyAirFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # building_space_batch.input["exhaustAirFlowRate"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # building_space_batch.input["outdoorTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # building_space_batch.input["supplyAirTemperature"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # building_space_batch.input["outdoorCO2"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # building_space_batch.input["numberOfPeople"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
+        # building_space_batch.input["globalIrradiation"].initialize(n_timesteps=1, batch_size=batch_size, size=1)
         
         # Set required inputs with batch size 2
         building_space_batch.input["supplyAirFlowRate"].set(torch.tensor([0.5, 0.6]), step_index=0)
         building_space_batch.input["exhaustAirFlowRate"].set(torch.tensor([0.5, 0.6]), step_index=0)
         building_space_batch.input["outdoorTemperature"].set(torch.tensor([5.0, 3.0]), step_index=0)
         building_space_batch.input["supplyAirTemperature"].set(torch.tensor([20.0, 21.0]), step_index=0)
-        building_space_batch.input["outdoorCo2"].set(torch.tensor([400.0, 400.0]), step_index=0)
+        building_space_batch.input["outdoorCO2"].set(torch.tensor([400.0, 400.0]), step_index=0)
         building_space_batch.input["numberOfPeople"].set(torch.tensor([2.0, 3.0]), step_index=0)
         building_space_batch.input["globalIrradiation"].set(torch.tensor([0.0, 100.0]), step_index=0)
         
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        building_space_batch.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        building_space_batch.do_step(second_time=0, date_time=datetime_val, step_size=step_size, step_index=0)
         
         # Check outputs - verify all outputs have consistent batch shape
         indoor_temp = building_space_batch.output["indoorTemperature"].get()

@@ -2,6 +2,9 @@
 import datetime
 from typing import Optional
 
+# Third party imports
+import torch
+
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
@@ -63,16 +66,20 @@ class OnOffControllerSystem(core.System):
         """
         This function calls the do_step method of the FMU component, and then sets the output of the FMU model.
         """
+        actual_value = self.input["actualValue"].get()
+        setpoint_value = self.input["setpointValue"].get()
+        
+        # Determine trigger condition based on reverse mode
+        # Reverse: trigger ON when actual < setpoint
+        # Normal: trigger ON when actual > setpoint
         if self.isReverse:
-            if self.input["actualValue"].get() < self.input["setpointValue"].get():
-                self.output["inputSignal"].set(self.onValue, step_index)
-            else:
-                self.output["inputSignal"].set(self.offValue, step_index)
+            trigger_on = actual_value < setpoint_value
         else:
-            if self.input["actualValue"].get() > self.input["setpointValue"].get():
-                self.output["inputSignal"].set(self.onValue, step_index)
-            else:
-                self.output["inputSignal"].set(self.offValue, step_index)
+            trigger_on = actual_value > setpoint_value
+        
+        # Select output signal based on trigger condition
+        output_signal = torch.where(trigger_on, self.onValue, self.offValue)
+        self.output["inputSignal"].set(output_signal, step_index)
 
 
 def saref_signature_pattern():
