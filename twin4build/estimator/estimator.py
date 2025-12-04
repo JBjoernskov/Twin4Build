@@ -1620,16 +1620,16 @@ class Estimator:
                 )
 
         if method[0] == "scipy":
-            self.simulator.model.restore_parameters(keep_values=True)
+           self.simulator.model.restore_parameters(keep_values=True) 
 
-        # Denormalize result using parameter's denormalize method
-        # result.x contains normalized values and parameters are in the same order as in the _flat_parameters list
-        result.x = np.array(
-            [
-                param.denormalize(torch.tensor(x_norm, dtype=torch.float64)).item()
-                for param, x_norm in zip(self._flat_parameters, result.x)
-            ]
-        )
+        # Denormalize result using bounds (lb, ub) and theta_mask
+        # Use theta_mask to obtain the boundaries for each item in result.x array
+        # theta_mask maps each flat parameter to its unique parameter index
+        # For each value in result.x, use the bounds from lb and ub via theta_mask
+        result.x = np.array([
+            x_norm * (self._ub[param_idx] - self._lb[param_idx]) + self._lb[param_idx]
+            for param_idx, x_norm in zip(self._theta_mask, result.x)
+        ])
 
         # Create and save result
         result = EstimationResult(
