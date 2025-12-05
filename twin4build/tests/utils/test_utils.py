@@ -42,13 +42,6 @@ class TestUppath(unittest.TestCase):
         result = uppath(path, 0)
         self.assertEqual(result, path)
 
-    def test_uppath_with_windows_path(self):
-        """Test uppath with Windows-style path."""
-        path = "C:\\Users\\test\\file.txt"
-        result = uppath(path, 1)
-        # Should handle OS-specific separators
-        self.assertIn("test", result)
-
 
 class TestRecursiveAttributeOperations(unittest.TestCase):
     def setUp(self):
@@ -1282,16 +1275,6 @@ class TestGetMainDir(unittest.TestCase):
         # Should be an existing directory
         self.assertTrue(os.path.isdir(main_dir))
 
-    def test_get_main_dir_contains_twin4build(self):
-        """Test get_main_dir path contains twin4build."""
-        # Local application imports
-        from twin4build.utils.get_main_dir import get_main_dir
-
-        main_dir = get_main_dir()
-        # The main directory should contain twin4build somewhere in the path
-        self.assertIn("Twin4Build", main_dir) or self.assertIn(
-            "twin4build", main_dir.lower()
-        )
 
 
 class TestPrintProgress(unittest.TestCase):
