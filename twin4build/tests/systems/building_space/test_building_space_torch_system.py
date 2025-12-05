@@ -54,15 +54,11 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         self.space.input["outdoorTemperature"].set(torch.tensor([5.0]), step_index=0)
         self.space.input["globalIrradiation"].set(torch.tensor([200.0]), step_index=0)
         self.space.input["supplyAirFlowRate"].set(torch.tensor([0.05]), step_index=0)
+        self.space.input["exhaustAirFlowRate"].set(torch.tensor([0.02]), step_index=0)
         self.space.input["supplyAirTemperature"].set(torch.tensor([22.0]), step_index=0)
         self.space.input["numberOfPeople"].set(torch.tensor([3.0]), step_index=0)
-        self.space.input["supplyWaterTemperature"].set(
-            torch.tensor([50.0]), step_index=0
-        )
-        self.space.input["waterFlowRate"].set(torch.tensor([0.01]), step_index=0)
-        self.space.input["outdoorCo2Concentration"].set(
-            torch.tensor([400.0]), step_index=0
-        )
+        self.space.input["heatGain"].set(torch.tensor([0.0]), step_index=0)
+        self.space.input["outdoorCO2"].set(torch.tensor([400.0]), step_index=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -72,7 +68,7 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
 
         # Check outputs
         temp = self.space.output["indoorTemperature"].get()
-        co2 = self.space.output["indoorCo2Concentration"].get()
+        co2 = self.space.output["indoorCO2"].get()
 
         self.assertIsNotNone(temp)
         self.assertIsNotNone(co2)
@@ -124,17 +120,15 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         space_batch.input["supplyAirFlowRate"].set(
             torch.tensor([0.05, 0.06]), step_index=0
         )
+        space_batch.input["exhaustAirFlowRate"].set(
+            torch.tensor([0.02, 0.03]), step_index=0
+        )
         space_batch.input["supplyAirTemperature"].set(
             torch.tensor([22.0, 23.0]), step_index=0
         )
         space_batch.input["numberOfPeople"].set(torch.tensor([3.0, 5.0]), step_index=0)
-        space_batch.input["supplyWaterTemperature"].set(
-            torch.tensor([50.0, 55.0]), step_index=0
-        )
-        space_batch.input["waterFlowRate"].set(
-            torch.tensor([0.01, 0.02]), step_index=0
-        )
-        space_batch.input["outdoorCo2Concentration"].set(
+        space_batch.input["heatGain"].set(torch.tensor([0.0, 0.0]), step_index=0)
+        space_batch.input["outdoorCO2"].set(
             torch.tensor([400.0, 410.0]), step_index=0
         )
 
@@ -146,7 +140,7 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
 
         # Check outputs - verify all outputs have consistent batch shape
         temp = space_batch.output["indoorTemperature"].get()
-        co2 = space_batch.output["indoorCo2Concentration"].get()
+        co2 = space_batch.output["indoorCO2"].get()
 
         self.assertIsNotNone(temp)
         self.assertIsNotNone(co2)

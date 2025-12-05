@@ -87,8 +87,8 @@ class TestDiscreteStatespaceSystem(unittest.TestCase):
 class TestPiecewiseLinearSystem(unittest.TestCase):
     def setUp(self):
         # Create a simple piecewise linear function
-        X = np.array([0.0, 1.0, 2.0])
-        Y = np.array([0.0, 1.0, 0.0])
+        X = torch.tensor([0.0, 1.0, 2.0], dtype=torch.float64)
+        Y = torch.tensor([0.0, 1.0, 0.0], dtype=torch.float64)
         self.system = PiecewiseLinearSystem(id="test_piecewise", X=X, Y=Y)
 
     def test_initialization(self):
@@ -117,13 +117,15 @@ class TestMaxSystem(unittest.TestCase):
         start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
         end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
         step_size = [600]
+        
+
+        # Set inputs - initialize with size parameter for Vector type
+        self.system.input["inputs"].initialize(n_timesteps=1, batch_size=1, size=3)
+        
         self.system.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-
-        # Set inputs
-        self.system.input["inputSignal"].initialize(n_timesteps=1, batch_size=1, size=3)
-        self.system.input["inputSignal"].set(
+        self.system.input["inputs"].set(
             torch.tensor([[1.0, 5.0, 3.0]]), step_index=0
         )
 
@@ -134,14 +136,14 @@ class TestMaxSystem(unittest.TestCase):
         )
 
         # Check output
-        output = self.system.output["outputSignal"].get()
+        output = self.system.output["value"].get()
         self.assertIsNotNone(output)
         self.assertEqual(output.item(), 5.0)
 
 
 class TestOnOffSystem(unittest.TestCase):
     def setUp(self):
-        self.system = OnOffSystem(id="test_onoff", offValue=0, onValue=100)
+        self.system = OnOffSystem(id="test_onoff", threshold=0.5, is_off_value=0, is_on_value=100)
 
     def test_initialization(self):
         """Test on/off system initialization."""
@@ -157,8 +159,9 @@ class TestOnOffSystem(unittest.TestCase):
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
-        # Set input > 0.5
-        self.system.input["inputSignal"].set(torch.tensor([0.8]), step_index=0)
+        # Set inputs: value is the on value, criteriaValue is what we compare
+        self.system.input["value"].set(torch.tensor([100.0]), step_index=0)
+        self.system.input["criteriaValue"].set(torch.tensor([0.8]), step_index=0)
 
         # Execute
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -166,8 +169,8 @@ class TestOnOffSystem(unittest.TestCase):
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
 
-        # Check output should be onValue
-        output = self.system.output["outputSignal"].get()
+        # Check output should be value (100) since criteriaValue (0.8) >= threshold (0.5)
+        output = self.system.output["value"].get()
         self.assertEqual(output.item(), 100)
 
 
@@ -190,7 +193,7 @@ class TestPassInputToOutput(unittest.TestCase):
         )
 
         # Set input
-        self.system.input["inputSignal"].set(torch.tensor([42.0]), step_index=0)
+        self.system.input["value"].set(torch.tensor([42.0]), step_index=0)
 
         # Execute
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -199,7 +202,7 @@ class TestPassInputToOutput(unittest.TestCase):
         )
 
         # Check output equals input
-        output = self.system.output["outputSignal"].get()
+        output = self.system.output["value"].get()
         self.assertEqual(output.item(), 42.0)
 
 

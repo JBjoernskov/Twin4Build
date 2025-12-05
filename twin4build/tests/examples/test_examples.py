@@ -12,7 +12,7 @@ class TestExamples(unittest.TestCase):
     # @unittest.skip("Temporarily disabled - notebook test failing")
     def test_minimal_example(self):
         notebook_path = os.path.join(
-            uppath(os.path.abspath(__file__), 2), "examples", "minimal_example.ipynb"
+            uppath(os.path.abspath(__file__), 3), "examples", "minimal_example.ipynb"
         )
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
@@ -20,7 +20,7 @@ class TestExamples(unittest.TestCase):
     # @unittest.skip("Temporarily disabled - notebook test failing")
     def test_space_co2_controller_example(self):
         notebook_path = os.path.join(
-            uppath(os.path.abspath(__file__), 2),
+            uppath(os.path.abspath(__file__), 3),
             "examples",
             "space_co2_controller_example.ipynb",
         )
@@ -30,7 +30,7 @@ class TestExamples(unittest.TestCase):
     # @unittest.skip("Temporarily disabled - notebook test failing")
     def test_estimator_example(self):
         notebook_path = os.path.join(
-            uppath(os.path.abspath(__file__), 2), "examples", "estimator_example.ipynb"
+            uppath(os.path.abspath(__file__), 3), "examples", "estimator_example.ipynb"
         )
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
@@ -38,7 +38,7 @@ class TestExamples(unittest.TestCase):
     # @unittest.skip("Temporarily disabled - notebook test failing")
     def test_optimizer_example(self):
         notebook_path = os.path.join(
-            uppath(os.path.abspath(__file__), 2), "examples", "optimizer_example.ipynb"
+            uppath(os.path.abspath(__file__), 3), "examples", "optimizer_example.ipynb"
         )
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
@@ -46,7 +46,7 @@ class TestExamples(unittest.TestCase):
     # @unittest.skip("Temporarily disabled - notebook test failing")
     def test_translator_example(self):
         notebook_path = os.path.join(
-            uppath(os.path.abspath(__file__), 2), "examples", "translator_example.ipynb"
+            uppath(os.path.abspath(__file__), 3), "examples", "translator_example.ipynb"
         )
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
@@ -54,7 +54,7 @@ class TestExamples(unittest.TestCase):
     # @unittest.skip("Temporarily disabled - notebook test failing")
     def test_bems_lecture_example(self):
         notebook_path = os.path.join(
-            uppath(os.path.abspath(__file__), 2),
+            uppath(os.path.abspath(__file__), 3),
             "examples",
             "bems_example_lecture.ipynb",
         )

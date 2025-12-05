@@ -8,6 +8,7 @@ import torch
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.types import _convert_to_1D_scalar_tensor
 
 
 class PiecewiseLinearSystem(core.System):
@@ -146,9 +147,8 @@ class PiecewiseLinearSystem(core.System):
         #     b = self._b_vec[idx].item()
         #     Y = a * X + b
 
-        # Ensure X is 1D
-        if X.dim() == 0:
-            X = X.unsqueeze(0)
+        # Convert X to tensor if it's a scalar (float or int) using the safe converter
+        X = _convert_to_1D_scalar_tensor(X)
 
         # Use searchsorted to find the segment index for each X value
         # searchsorted returns indices where X would be inserted to maintain sorted order
