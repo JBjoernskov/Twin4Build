@@ -1,7 +1,9 @@
+# Standard library imports
+import datetime
+
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps 
-import datetime
+import twin4build.utils.types as tps
 
 
 class ToDegKFromDegC(core.System):
@@ -24,7 +26,9 @@ class ToDegKFromDegC(core.System):
         self.input = {"C": tps.Scalar()}
         self.output = {"K": tps.Scalar()}
 
-    def initialize(self, start_time: datetime.datetime, end_time: datetime.datetime, step_size: int):
+    def initialize(
+        self, start_time: datetime.datetime, end_time: datetime.datetime, step_size: int
+    ):
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
         )
@@ -32,5 +36,11 @@ class ToDegKFromDegC(core.System):
         self.input["C"].initialize(n_timesteps=max_timesteps, batch_size=batch_size)
         self.output["K"].initialize(n_timesteps=max_timesteps, batch_size=batch_size)
 
-    def do_step(self, second_time: float, date_time: datetime.datetime, step_size: int, step_index: int):
+    def do_step(
+        self,
+        second_time: float,
+        date_time: datetime.datetime,
+        step_size: int,
+        step_index: int,
+    ):
         self.output["K"].set(self.input["C"].get() + 273.15, step_index=step_index)

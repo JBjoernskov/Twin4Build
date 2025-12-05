@@ -181,9 +181,17 @@ class ScheduleSystem(core.System):
                 missing_days.append("thursdayRulesetDict")
             if self.fridayRulesetDict is None and self.weekDayRulesetDict is None:
                 missing_days.append("fridayRulesetDict")
-            if self.saturdayRulesetDict is None and self.weekendRulesetDict is None and self.weekDayRulesetDict is None:
+            if (
+                self.saturdayRulesetDict is None
+                and self.weekendRulesetDict is None
+                and self.weekDayRulesetDict is None
+            ):
                 missing_days.append("saturdayRulesetDict")
-            if self.sundayRulesetDict is None and self.weekendRulesetDict is None and self.weekDayRulesetDict is None:
+            if (
+                self.sundayRulesetDict is None
+                and self.weekendRulesetDict is None
+                and self.weekDayRulesetDict is None
+            ):
                 missing_days.append("sundayRulesetDict")
             if missing_days:
                 message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: The following ruleset dicts are missing (provide directly or via weekDayRulesetDict/weekendRulesetDict): {', '.join(missing_days)}"
@@ -244,27 +252,27 @@ class ScheduleSystem(core.System):
             else:
                 self.sundayRulesetDict = self.weekendRulesetDict
         if self.usedict:
-            assert self.mondayRulesetDict is not None, (
-                "mondayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
-            )
-            assert self.tuesdayRulesetDict is not None, (
-                "tuesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
-            )
-            assert self.wednesdayRulesetDict is not None, (
-                "wednesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
-            )
-            assert self.thursdayRulesetDict is not None, (
-                "thursdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
-            )
-            assert self.fridayRulesetDict is not None, (
-                "fridayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
-            )
-            assert self.saturdayRulesetDict is not None, (
-                "saturdayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when usedict is True."
-            )
-            assert self.sundayRulesetDict is not None, (
-                "sundayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when usedict is True."
-            )
+            assert (
+                self.mondayRulesetDict is not None
+            ), "mondayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            assert (
+                self.tuesdayRulesetDict is not None
+            ), "tuesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            assert (
+                self.wednesdayRulesetDict is not None
+            ), "wednesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            assert (
+                self.thursdayRulesetDict is not None
+            ), "thursdayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            assert (
+                self.fridayRulesetDict is not None
+            ), "fridayRulesetDict must be provided (directly or via weekDayRulesetDict) when usedict is True."
+            assert (
+                self.saturdayRulesetDict is not None
+            ), "saturdayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when usedict is True."
+            assert (
+                self.sundayRulesetDict is not None
+            ), "sundayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when usedict is True."
 
         if self.useSpreadsheet or self.useDatabase:
             time_series_input = TimeSeriesInputSystem(

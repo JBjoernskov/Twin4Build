@@ -176,7 +176,9 @@ def alignYaxes(axes_list, nticks_list, round_to_list, yoffset_list, align_zero=T
         calculate_ticks : Calculate individual axis tick positions
         plot : Main plotting function that uses this alignment
     """
-    assert any(yoffset_list is not None for yoffset_list in yoffset_list), "At least one yoffset must be non-None to serve as the master offset"
+    assert any(
+        yoffset_list is not None for yoffset_list in yoffset_list
+    ), "At least one yoffset must be non-None to serve as the master offset"
     if align_zero:
         # Find axes that contain zero
         zero_axes = []

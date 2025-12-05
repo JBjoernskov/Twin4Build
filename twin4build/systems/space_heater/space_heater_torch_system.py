@@ -8,6 +8,7 @@ import torch.nn as nn
 from scipy.optimize import fsolve
 
 # Local application imports
+import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build import core
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
@@ -19,7 +20,6 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
-import twin4build.utils.constants as constants
 
 
 class SpaceHeaterTorchSystem(core.System, nn.Module):
@@ -396,10 +396,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         UA_elem = float(UA_candidate.item()) / n
         m_dot = float(
             self.Q_flow_nominal_sh
-            / (
-                constants.CP_WATER
-                * (self.T_a_nominal_sh - self.T_b_nominal_sh)
-            )
+            / (constants.CP_WATER * (self.T_a_nominal_sh - self.T_b_nominal_sh))
         )
         c_p = float(constants.CP_WATER)
         # Build A, B

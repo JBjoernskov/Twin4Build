@@ -666,7 +666,7 @@ class SensorSystem(core.System):
             p(message, status="WARNING")
             validated_for_estimator = False
 
-        self.is_leaf = len(self.connects_at) == 0 # No inputs -> leaf scalar
+        self.is_leaf = len(self.connects_at) == 0  # No inputs -> leaf scalar
         self.output["measuredValue"].is_leaf = self.is_leaf
 
         return (
@@ -677,7 +677,12 @@ class SensorSystem(core.System):
 
     def validate_connections(self, p) -> bool:
         validated = True
-        if self.is_leaf and self.useSpreadsheet == False and self.useDatabase == False and self.usedf == False:
+        if (
+            self.is_leaf
+            and self.useSpreadsheet == False
+            and self.useDatabase == False
+            and self.usedf == False
+        ):
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
             p(message, status="[WARNING]")
             p.add_level()
@@ -709,9 +714,7 @@ class SensorSystem(core.System):
         if self.useSpreadsheet or self.useDatabase or self.usedf:
             if self.usedf:
                 if self.df is None:
-                    raise ValueError(
-                        "df must be provided when usedf=True."
-                    )
+                    raise ValueError("df must be provided when usedf=True.")
             self.time_series_input = TimeSeriesInputSystem(
                 id=f"time series input - {self.id}",
                 df=self.df,

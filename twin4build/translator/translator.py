@@ -165,7 +165,9 @@ class Translator:
         PRINTPROGRESS.add_level()
 
         if semantic_model.count_triples() == 0:
-            raise Exception("Semantic model provided to translator appears to be empty.")
+            raise Exception(
+                "Semantic model provided to translator appears to be empty."
+            )
 
         if systems_ is None:
             systems_ = [
@@ -233,7 +235,6 @@ class Translator:
 
         else:
             raise Exception("No matching patterns found.")
-
 
         print("length of complete groups: ", len(complete_groups))
 

@@ -1624,7 +1624,7 @@ class Estimator:
         if method[0] == "scipy":
             self.simulator.model.restore_parameters(keep_values=True)
 
-        # 
+        #
 
         # Create and save result
         result = EstimationResult(

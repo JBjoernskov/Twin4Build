@@ -17,10 +17,11 @@ from dateutil import tz
 # Local application imports
 import twin4build.core as core
 
+
 class Vector:
     """A custom vector implementation.
 
-    This class implements a vector (1D array) wrapper around PyTorch tensors with 
+    This class implements a vector (1D array) wrapper around PyTorch tensors with
     support for history logging, batching, and normalization.
 
     Attributes:
@@ -275,7 +276,9 @@ class Vector:
             self._tensor[:, :] = v
 
         if self._log_history:
-            assert step_index is not None, "step_index must be provided when logging history"
+            assert (
+                step_index is not None
+            ), "step_index must be provided when logging history"
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
                 if v.dim() == 2:
@@ -339,7 +342,7 @@ class Scalar:
 
     This class wraps a single scalar value and provides arithmetic operations
     compatibility with other Scalar instances, numeric types, and numpy arrays.
-    
+
     Attributes:
         scalar (torch.Tensor): The wrapped scalar value.
         batch_size (int): The batch size.
@@ -541,7 +544,10 @@ class Scalar:
 
         else:
             self._history = torch.zeros(
-                self.batch_size, self.n_timesteps, dtype=torch.float64, requires_grad=False
+                self.batch_size,
+                self.n_timesteps,
+                dtype=torch.float64,
+                requires_grad=False,
             )
             self._history_is_populated = False
 
@@ -564,7 +570,9 @@ class Scalar:
             assert (
                 v is None
             ), "Values cannot be set for leaf scalars. Use scalar.set(step_index=step_index) to set value based on history"
-            assert step_index is not None, "step_index must be provided for leaf scalars"
+            assert (
+                step_index is not None
+            ), "step_index must be provided for leaf scalars"
             if self._do_normalization:
                 v = self._normalized_history[:, step_index]
                 v = self.denormalize(v)
@@ -578,7 +586,9 @@ class Scalar:
 
         self._scalar = v
         if self._log_history:
-            assert step_index is not None, "step_index must be provided when logging history"
+            assert (
+                step_index is not None
+            ), "step_index must be provided when logging history"
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
                 self._history[:, step_index] = v
@@ -1000,8 +1010,10 @@ def _convert_to_1D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
         raise TypeError(f"Unsupported type: {type(v)}")
     return v
 
+
 # Add get() method to nn.Parameter for compatibility
 if not hasattr(torch.nn.Parameter, "get"):
+
     def parameter_get(self):
         """Get the parameter value (fallback for regular nn.Parameter objects)."""
         return self

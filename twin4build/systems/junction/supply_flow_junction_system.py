@@ -89,7 +89,7 @@ class SupplyFlowJunctionSystem(core.System):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
-        pass # TODO: Implement this. Count number of inputs. This can be a bit complicated as different inputs connections can set differnt indices of the tensor.
+        pass  # TODO: Implement this. Count number of inputs. This can be a bit complicated as different inputs connections can set differnt indices of the tensor.
 
     def do_step(
         self,

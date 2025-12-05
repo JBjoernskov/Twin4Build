@@ -1,10 +1,13 @@
 # Standard library imports
 import datetime
 from typing import Optional
+
+# Third party imports
 import torch
 
 # Local application imports
 import twin4build.core as core
+import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
     Exact,
@@ -14,7 +17,7 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
-import twin4build.utils.constants as constants
+
 
 class AirToAirHeatRecoverySystem(core.System):
     r"""
@@ -107,10 +110,12 @@ class AirToAirHeatRecoverySystem(core.System):
             torch.tensor(eps_100_c, dtype=torch.float64), requires_grad=False
         )
         self.primaryAirFlowRateMax = tps.Parameter(
-            torch.tensor(primaryAirFlowRateMax, dtype=torch.float64), requires_grad=False
+            torch.tensor(primaryAirFlowRateMax, dtype=torch.float64),
+            requires_grad=False,
         )
         self.secondaryAirFlowRateMax = tps.Parameter(
-            torch.tensor(secondaryAirFlowRateMax, dtype=torch.float64), requires_grad=False
+            torch.tensor(secondaryAirFlowRateMax, dtype=torch.float64),
+            requires_grad=False,
         )
 
         # Define inputs and outputs as private variables
@@ -230,69 +235,82 @@ class AirToAirHeatRecoverySystem(core.System):
             step_index: Current simulation step index.
         """
         tol = 1e-5
-        
+
         # Get input values
         primary_flow = self.input["primaryAirFlowRate"].get()
         secondary_flow = self.input["secondaryAirFlowRate"].get()
         primary_temp_in = self.input["primaryTemperatureIn"].get()
         secondary_temp_in = self.input["secondaryTemperatureIn"].get()
         primary_temp_setpoint = self.input["primaryTemperatureOutSetpoint"].get()
-        
+
         # Condition: both flow rates above tolerance
         has_flow = (primary_flow > tol) & (secondary_flow > tol)
-        
+
         # Determine feasible mode (heating if primary < secondary, else cooling)
         is_heating_feasible = primary_temp_in < secondary_temp_in
-        
+
         # Select effectiveness values based on feasible mode
-        eps_75 = torch.where(is_heating_feasible, self.eps_75_h.get(), self.eps_75_c.get())
-        eps_100 = torch.where(is_heating_feasible, self.eps_100_h.get(), self.eps_100_c.get())
-        
+        eps_75 = torch.where(
+            is_heating_feasible, self.eps_75_h.get(), self.eps_75_c.get()
+        )
+        eps_100 = torch.where(
+            is_heating_feasible, self.eps_100_h.get(), self.eps_100_c.get()
+        )
+
         # Determine operation mode (heating if primary < setpoint, else cooling)
         is_heating_mode = primary_temp_in < primary_temp_setpoint
-        
+
         # Feasible matches operation mode when both are heating or both are cooling
         feasible_matches_mode = is_heating_feasible == is_heating_mode
-        
+
         # Condition for heat recovery: has flow AND feasible matches mode
         do_heat_recovery = has_flow & feasible_matches_mode
-        
+
         # Calculate heat recovery values (computed for all, selected later)
-        m_a_max = torch.max(self.primaryAirFlowRateMax.get(), self.secondaryAirFlowRateMax.get())
-        
+        m_a_max = torch.max(
+            self.primaryAirFlowRateMax.get(), self.secondaryAirFlowRateMax.get()
+        )
+
         f_flow = 0.5 * (primary_flow + secondary_flow) / m_a_max
         eps_op = eps_75 + (eps_100 - eps_75) * (f_flow - 0.75) / (1 - 0.75)
-        
+
         C_sup = primary_flow * constants.CP_AIR
         C_exh = secondary_flow * constants.CP_AIR
         C_min = torch.min(C_sup, C_exh)
-        
+
         # Calculate primary temperature out with heat recovery
-        primary_temp_out_hr = (
-            primary_temp_in
-            + eps_op * (secondary_temp_in - primary_temp_in) * (C_min / C_sup)
-        )
-        
+        primary_temp_out_hr = primary_temp_in + eps_op * (
+            secondary_temp_in - primary_temp_in
+        ) * (C_min / C_sup)
+
         # Clamp to setpoint based on operation mode
         # In heating mode: clamp if output > setpoint
         # In cooling mode: clamp if output < setpoint
-        heating_exceeds = is_heating_mode & (primary_temp_out_hr > primary_temp_setpoint)
-        cooling_exceeds = (~is_heating_mode) & (primary_temp_out_hr < primary_temp_setpoint)
+        heating_exceeds = is_heating_mode & (
+            primary_temp_out_hr > primary_temp_setpoint
+        )
+        cooling_exceeds = (~is_heating_mode) & (
+            primary_temp_out_hr < primary_temp_setpoint
+        )
         needs_clamping = heating_exceeds | cooling_exceeds
-        
+
         primary_temp_out_hr = torch.where(
             needs_clamping, primary_temp_setpoint, primary_temp_out_hr
         )
-        
+
         # Calculate secondary temperature out using energy conservation
         primary_delta_T = primary_temp_out_hr - primary_temp_in
         secondary_delta_T = primary_delta_T * (C_sup / C_exh)
         secondary_temp_out_hr = secondary_temp_in - secondary_delta_T
-        
+
         # Select final outputs: heat recovery values if conditions met, else pass-through
-        primary_temp_out = torch.where(do_heat_recovery, primary_temp_out_hr, primary_temp_in)
-        secondary_temp_out = torch.where(do_heat_recovery, secondary_temp_out_hr, secondary_temp_in)
-        
+        primary_temp_out = torch.where(
+            do_heat_recovery, primary_temp_out_hr, primary_temp_in
+        )
+        secondary_temp_out = torch.where(
+            do_heat_recovery, secondary_temp_out_hr, secondary_temp_in
+        )
+
         # Set outputs
         self.output["primaryTemperatureOut"].set(primary_temp_out, step_index)
         self.output["secondaryTemperatureOut"].set(secondary_temp_out, step_index)

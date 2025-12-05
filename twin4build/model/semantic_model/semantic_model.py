@@ -2429,7 +2429,9 @@ class SemanticModel:
                     z = "Unknown class"
                 else:
                     z = most_specific_type.get_short_name()
-                    assert z is not None, f"get_short_name() returned None for type {most_specific_type}"
+                    assert (
+                        z is not None
+                    ), f"get_short_name() returned None for type {most_specific_type}"
 
                 b = soup.new_tag("b", attrs={})
                 b.string = z

@@ -15,13 +15,14 @@ from dateutil import tz
 try:
     # Standard library imports
     import curses
+
     CURSES_AVAILABLE = True
 except ImportError:
     CURSES_AVAILABLE = False
 
 
 def is_testing():
-    return 'unittest' in sys.modules.keys()
+    return "unittest" in sys.modules.keys()
 
 
 def _print_color_palette(stdscr):
@@ -93,7 +94,12 @@ class PrintProgress:
         self._scroll_step = 4  # Number of lines to scroll per tick
         # Curses-related attributes
         # Disable curses in CI environments (GitHub Actions, Jenkins, etc.)
-        is_ci = os.getenv('CI') or os.getenv('GITHUB_ACTIONS') or os.getenv('JENKINS_HOME') or os.getenv('TRAVIS')
+        is_ci = (
+            os.getenv("CI")
+            or os.getenv("GITHUB_ACTIONS")
+            or os.getenv("JENKINS_HOME")
+            or os.getenv("TRAVIS")
+        )
         self._use_curses = CURSES_AVAILABLE and not self.is_interactive() and not is_ci
         self._curses_mode = False
         self._stdscr = None
@@ -915,7 +921,7 @@ class PrintProgress:
         assert message is None or isinstance(
             message, str
         ), "Message must be a string or None"
-        if self.verbose==0 or self.enabled is False:
+        if self.verbose == 0 or self.enabled is False:
             return
         # change_status = False
         if change_status:
@@ -1013,8 +1019,6 @@ def autoreset_print(cls):
         elif callable(attr):
             setattr(cls, name, reset_print(attr))
     return cls
-
-
 
 
 PRINTPROGRESS = PrintProgress()

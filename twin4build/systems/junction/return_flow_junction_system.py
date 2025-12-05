@@ -89,10 +89,18 @@ class ReturnFlowJunctionSystem(core.System):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
-        self.input["airFlowRateIn"].initialize(n_timesteps=max_timesteps, batch_size=batch_size, size=2)
-        self.input["airTemperatureIn"].initialize(n_timesteps=max_timesteps, batch_size=batch_size, size=2)
-        self.output["airFlowRateOut"].initialize(n_timesteps=max_timesteps, batch_size=batch_size)
-        self.output["airTemperatureOut"].initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+        self.input["airFlowRateIn"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size, size=2
+        )
+        self.input["airTemperatureIn"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size, size=2
+        )
+        self.output["airFlowRateOut"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size
+        )
+        self.output["airTemperatureOut"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size
+        )
 
     def do_step(
         self,
@@ -106,19 +114,23 @@ class ReturnFlowJunctionSystem(core.System):
         Q_dot_in = (
             self.input["airTemperatureIn"].get() * self.input["airFlowRateIn"].get()
         ).sum(dim=-1)
-        
+
         tol = 1e-5
         has_flow = m_dot_in > tol
-        
+
         # Calculate outputs for flow case
         flow_rate_out = m_dot_in + self.airFlowRateBias
         # Avoid division by zero by using flow_rate_out (which includes bias)
         temp_out_flow = Q_dot_in / torch.clamp(flow_rate_out, min=tol)
-        
+
         # Select between flow and no-flow cases
-        air_flow_rate_out = torch.where(has_flow, flow_rate_out, torch.zeros_like(m_dot_in))
-        air_temp_out = torch.where(has_flow, temp_out_flow, torch.full_like(m_dot_in, 20.0))
-        
+        air_flow_rate_out = torch.where(
+            has_flow, flow_rate_out, torch.zeros_like(m_dot_in)
+        )
+        air_temp_out = torch.where(
+            has_flow, temp_out_flow, torch.full_like(m_dot_in, 20.0)
+        )
+
         self.output["airFlowRateOut"].set(air_flow_rate_out, step_index)
         self.output["airTemperatureOut"].set(air_temp_out, step_index)
 

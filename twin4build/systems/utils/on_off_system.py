@@ -61,11 +61,11 @@ class OnOffSystem(core.System):
     ) -> None:
         criteria_value = self.input["criteriaValue"].get()
         input_value = self.input["value"].get()
-        
+
         # Vectorized conditional: where criteria >= threshold, use input_value, else use is_off_value
         output_value = torch.where(
             criteria_value >= self.threshold,
             input_value,
-            torch.full_like(input_value, self.is_off_value)
+            torch.full_like(input_value, self.is_off_value),
         )
         self.output["value"].set(output_value, step_index)

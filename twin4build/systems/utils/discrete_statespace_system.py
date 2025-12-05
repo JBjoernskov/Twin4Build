@@ -588,8 +588,12 @@ class DiscreteStatespaceSystem(core.System):
         M = torch.zeros(
             (batch_size, n + m, n + m), dtype=self._A.dtype, device=self._A.device
         )
-        M[:, :n, :n] = self._A * T  # A block: (batch_size, n, n) TODO: Implement broadcasting of T for batched simulations. Currently, T is a scalar.
-        M[:, :n, n:] = self._B * T  # B block: (batch_size, n, m) TODO: Implement broadcasting of T vector for batched simulations. Currently, T is a scalar.
+        M[:, :n, :n] = (
+            self._A * T
+        )  # A block: (batch_size, n, n) TODO: Implement broadcasting of T for batched simulations. Currently, T is a scalar.
+        M[:, :n, n:] = (
+            self._B * T
+        )  # B block: (batch_size, n, m) TODO: Implement broadcasting of T vector for batched simulations. Currently, T is a scalar.
         ###
 
         ###

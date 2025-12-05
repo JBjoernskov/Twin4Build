@@ -330,15 +330,15 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             # Validate df if usedf is True
             if self.usedf:
                 if self.df is None:
-                    raise ValueError(
-                        "df must be provided when usedf=True."
-                    )
+                    raise ValueError("df must be provided when usedf=True.")
                 required_keys = [
                     "outdoorTemperature",
                     "globalIrradiation",
                     "outdoorCo2Concentration",
                 ]
-                is_included = np.array([key in self.df.columns for key in required_keys])
+                is_included = np.array(
+                    [key in self.df.columns for key in required_keys]
+                )
                 assert np.all(
                     is_included
                 ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
@@ -355,7 +355,11 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 df=df_temp,
                 filename=self.filename_outdoorTemperature,
                 datecolumn=self.datecolumn_outdoorTemperature,
-                valuecolumn="outdoorTemperature" if self.usedf else self.valuecolumn_outdoorTemperature,
+                valuecolumn=(
+                    "outdoorTemperature"
+                    if self.usedf
+                    else self.valuecolumn_outdoorTemperature
+                ),
                 useSpreadsheet=self.useSpreadsheet,
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_outdoorTemperature,
@@ -368,7 +372,11 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 df=df_irrad,
                 filename=self.filename_globalIrradiation,
                 datecolumn=self.datecolumn_globalIrradiation,
-                valuecolumn="globalIrradiation" if self.usedf else self.valuecolumn_globalIrradiation,
+                valuecolumn=(
+                    "globalIrradiation"
+                    if self.usedf
+                    else self.valuecolumn_globalIrradiation
+                ),
                 useSpreadsheet=self.useSpreadsheet,
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_globalIrradiation,
@@ -381,7 +389,11 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 df=df_co2,
                 filename=self.filename_outdoorCo2Concentration,
                 datecolumn=self.datecolumn_outdoorCo2Concentration,
-                valuecolumn="outdoorCo2Concentration" if self.usedf else self.valuecolumn_outdoorCo2Concentration,
+                valuecolumn=(
+                    "outdoorCo2Concentration"
+                    if self.usedf
+                    else self.valuecolumn_outdoorCo2Concentration
+                ),
                 useSpreadsheet=self.useSpreadsheet,
                 useDatabase=self.useDatabase,
                 uuid=self.uuid_outdoorCo2Concentration,

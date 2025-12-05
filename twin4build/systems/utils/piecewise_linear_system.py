@@ -9,6 +9,7 @@ import torch
 import twin4build.core as core
 import twin4build.utils.types as tps
 
+
 class PiecewiseLinearSystem(core.System):
     """A system implementing piecewise linear interpolation functionality.
 
@@ -27,7 +28,10 @@ class PiecewiseLinearSystem(core.System):
     """
 
     def __init__(
-        self, X: Optional[torch.Tensor] = None, Y: Optional[torch.Tensor] = None, **kwargs
+        self,
+        X: Optional[torch.Tensor] = None,
+        Y: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> None:
         """Initialize the piecewise linear system.
 
@@ -55,15 +59,15 @@ class PiecewiseLinearSystem(core.System):
         if X is not None and Y is not None:
             # Stack X and Y coordinates
             self._XY = torch.stack([X, Y]).T
-            
+
             # Sort by X coordinates to ensure proper ordering for searchsorted
             sorted_indices = torch.argsort(self._XY[:, 0])
             self._XY = self._XY[sorted_indices]
-            
+
             # Update X and Y to reflect sorted order
             self._X = self._XY[:, 0]
             self._Y = self._XY[:, 1]
-            
+
             self._get_a_b_vectors()
         self._config = {"parameters": []}
 
@@ -142,26 +146,25 @@ class PiecewiseLinearSystem(core.System):
         #     b = self._b_vec[idx].item()
         #     Y = a * X + b
 
-
         # Ensure X is 1D
         if X.dim() == 0:
             X = X.unsqueeze(0)
-        
+
         # Use searchsorted to find the segment index for each X value
         # searchsorted returns indices where X would be inserted to maintain sorted order
         indices = torch.searchsorted(self._XY[:, 0].contiguous(), X)
-        
+
         # Clamp indices to valid segment range [0, len(a_vec)-1]
         # indices is where X would be inserted, so segment_idx = indices - 1
         segment_idx = torch.clamp(indices - 1, 0, len(self._a_vec) - 1)
-        
+
         # Get the slope and intercept for each segment
         a = self._a_vec[segment_idx]  # shape: (batch_size,)
         b = self._b_vec[segment_idx]  # shape: (batch_size,)
-        
+
         # Calculate interpolated values
         Y_interp = a * X + b
-        
+
         # Handle boundary conditions using torch.where
         # If X <= first X value, use first Y value
         # If X >= last X value, use last Y value
@@ -169,13 +172,9 @@ class PiecewiseLinearSystem(core.System):
         Y = torch.where(
             X <= self._XY[0, 0],
             self._XY[0, 1].expand_as(X),
-            torch.where(
-                X >= self._XY[-1, 0],
-                self._XY[-1, 1].expand_as(X),
-                Y_interp
-            )
+            torch.where(X >= self._XY[-1, 0], self._XY[-1, 1].expand_as(X), Y_interp),
         )
-        
+
         return Y
 
     def do_step(

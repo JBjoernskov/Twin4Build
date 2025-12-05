@@ -9,6 +9,7 @@ import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
+import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.translator.translator import (
@@ -18,7 +19,6 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
-import twin4build.utils.constants as constants
 
 
 class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
@@ -622,9 +622,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # E matrix for input-state coupling: shape (n_inputs, n_states, n_states)
         E = torch.zeros((n_inputs, n_states, n_states), dtype=torch.float64)
         # -m_ex*cp*T_air (input 2, state 0)
-        E[2, 0, 0] = (
-            -constants.CP_AIR / self.C_air.get()
-        )  # exhaustAirFlowRate * T_air
+        E[2, 0, 0] = -constants.CP_AIR / self.C_air.get()  # exhaustAirFlowRate * T_air
 
         # Use E and F matrices for correct couplings
         # F matrix for input-input coupling: shape (n_inputs, n_states, n_inputs)

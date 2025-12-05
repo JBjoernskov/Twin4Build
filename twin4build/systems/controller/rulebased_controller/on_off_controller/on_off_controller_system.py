@@ -68,7 +68,7 @@ class OnOffControllerSystem(core.System):
         """
         actual_value = self.input["actualValue"].get()
         setpoint_value = self.input["setpointValue"].get()
-        
+
         # Determine trigger condition based on reverse mode
         # Reverse: trigger ON when actual < setpoint
         # Normal: trigger ON when actual > setpoint
@@ -76,7 +76,7 @@ class OnOffControllerSystem(core.System):
             trigger_on = actual_value < setpoint_value
         else:
             trigger_on = actual_value > setpoint_value
-        
+
         # Select output signal based on trigger condition
         output_signal = torch.where(trigger_on, self.onValue, self.offValue)
         self.output["inputSignal"].set(output_signal, step_index)

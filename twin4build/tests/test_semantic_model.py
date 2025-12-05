@@ -1,25 +1,39 @@
-import unittest
+# Standard library imports
 import os
 import shutil
 import tempfile
-from rdflib import Graph, URIRef, RDF, RDFS, Literal, Namespace, XSD
-from twin4build.model.semantic_model.semantic_model import SemanticModel, SemanticObject, SemanticProperty, SemanticType, get_short_name, parse_wrapper
+import unittest
+
+# Third party imports
+from rdflib import RDF, RDFS, XSD, Graph, Literal, Namespace, URIRef
+
+# Local application imports
 import twin4build.core as core
+from twin4build.model.semantic_model.semantic_model import (
+    SemanticModel,
+    SemanticObject,
+    SemanticProperty,
+    SemanticType,
+    get_short_name,
+    parse_wrapper,
+)
 
 
 class TestSemanticModel(unittest.TestCase):
     """Comprehensive tests for SemanticModel, SemanticObject, SemanticProperty, SemanticType, and SemanticPredicate."""
-    
+
     @classmethod
     def setUpClass(cls):
         """Check if Graphviz is installed."""
-        cls.graphviz_installed = all([
-            shutil.which("dot") is not None,
-            shutil.which("ccomps") is not None,
-            shutil.which("gvpack") is not None,
-            shutil.which("neato") is not None,
-        ])
-    
+        cls.graphviz_installed = all(
+            [
+                shutil.which("dot") is not None,
+                shutil.which("ccomps") is not None,
+                shutil.which("gvpack") is not None,
+                shutil.which("neato") is not None,
+            ]
+        )
+
     def setUp(self):
         """Set up a fresh semantic model for each test."""
         self.model_id = "test_semantic_model"
@@ -31,11 +45,11 @@ class TestSemanticModel(unittest.TestCase):
         """Clean up any generated files."""
         if os.path.exists("test_output.ttl"):
             os.remove("test_output.ttl")
-        
+
         # Cleanup model directory
         if os.path.exists("generated_files/models/" + self.model_id):
             shutil.rmtree("generated_files/models/" + self.model_id)
-        
+
         # Cleanup temp directory
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
@@ -45,36 +59,46 @@ class TestSemanticModel(unittest.TestCase):
         model = SemanticModel(id="test_init")
         self.assertIsNotNone(model)
         # Semantic model uses instance_graph and ontology_graph
-        self.assertTrue(hasattr(model, 'instance_graph'))
-        self.assertTrue(hasattr(model, 'ontology_graph'))
+        self.assertTrue(hasattr(model, "instance_graph"))
+        self.assertTrue(hasattr(model, "ontology_graph"))
 
     def test_get_instance(self):
         """Test get_instance method."""
         # Create a new instance
         uri = "http://example.org/instance1"
         instance = self.semantic_model.get_instance(uri)
-        
+
         self.assertIsInstance(instance, SemanticObject)
         self.assertEqual(str(instance.uri), uri)
-        
+
         # Retrieve existing instance
         instance2 = self.semantic_model.get_instance(uri)
         self.assertEqual(instance, instance2)
-        
+
         # Create literal instance
         literal_val = "some_value"
-        literal = self.semantic_model.get_instance(literal_val, datatype="http://www.w3.org/2001/XMLSchema#string")
+        literal = self.semantic_model.get_instance(
+            literal_val, datatype="http://www.w3.org/2001/XMLSchema#string"
+        )
         self.assertTrue(literal.is_literal)
 
     def test_get_property(self):
         """Test get_property method."""
         uri = "http://example.org/property1"
-        
-        from rdflib import URIRef, RDF
-        self.semantic_model.ontology_graph.add((URIRef(uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+
+        # Third party imports
+        from rdflib import RDF, URIRef
+
+        self.semantic_model.ontology_graph.add(
+            (
+                URIRef(uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.semantic_model.get_property(uri)
-        
+
         self.assertIsInstance(prop, SemanticProperty)
         self.assertEqual(str(prop.uri), uri)
 
@@ -82,20 +106,43 @@ class TestSemanticModel(unittest.TestCase):
         """Test RDF serialization."""
         uri = "http://example.org/instance1"
         type_uri = "http://example.org/Type1"
-        
-        from rdflib import URIRef, RDF
-        self.semantic_model.instance_graph.add((URIRef(uri), RDF.type, URIRef(type_uri)))
-        
+
+        # Third party imports
+        from rdflib import RDF, URIRef
+
+        self.semantic_model.instance_graph.add(
+            (URIRef(uri), RDF.type, URIRef(type_uri))
+        )
+
         output_file_instance = "test_output_instance.ttl"
         output_file_ontology = "test_output_ontology.ttl"
-        
-        self.semantic_model.serialize(filename_instance_graph=output_file_instance, filename_ontology_graph=output_file_ontology)
-        expected_path_instance = self.semantic_model.get_dir(filename=output_file_instance)[0]
-        expected_path_ontology = self.semantic_model.get_dir(filename=output_file_ontology)[0]
-        self.assertTrue(os.path.exists(expected_path_instance), f"File not found at {expected_path_instance}")
-        self.assertTrue(os.path.exists(expected_path_ontology), f"File not found at {expected_path_ontology}")
-        self.assertEqual(len(self.semantic_model.instance_graph), len(Graph().parse(expected_path_instance, format="turtle")))
-        self.assertEqual(len(self.semantic_model.ontology_graph), len(Graph().parse(expected_path_ontology, format="turtle")))
+
+        self.semantic_model.serialize(
+            filename_instance_graph=output_file_instance,
+            filename_ontology_graph=output_file_ontology,
+        )
+        expected_path_instance = self.semantic_model.get_dir(
+            filename=output_file_instance
+        )[0]
+        expected_path_ontology = self.semantic_model.get_dir(
+            filename=output_file_ontology
+        )[0]
+        self.assertTrue(
+            os.path.exists(expected_path_instance),
+            f"File not found at {expected_path_instance}",
+        )
+        self.assertTrue(
+            os.path.exists(expected_path_ontology),
+            f"File not found at {expected_path_ontology}",
+        )
+        self.assertEqual(
+            len(self.semantic_model.instance_graph),
+            len(Graph().parse(expected_path_instance, format="turtle")),
+        )
+        self.assertEqual(
+            len(self.semantic_model.ontology_graph),
+            len(Graph().parse(expected_path_ontology, format="turtle")),
+        )
 
     def test_visualize(self):
         """Test graph visualization."""
@@ -104,16 +151,20 @@ class TestSemanticModel(unittest.TestCase):
 
     def test_graph_property(self):
         """Test that semantic model has graph properties."""
-        self.assertTrue(hasattr(self.semantic_model, 'instance_graph'))
-        self.assertTrue(hasattr(self.semantic_model, 'ontology_graph'))
+        self.assertTrue(hasattr(self.semantic_model, "instance_graph"))
+        self.assertTrue(hasattr(self.semantic_model, "ontology_graph"))
 
     def test_count_triples(self):
         """Test count_triples method."""
-        from rdflib import URIRef, RDF
+        # Third party imports
+        from rdflib import RDF, URIRef
+
         uri = "http://example.org/instance1"
         type_uri = "http://example.org/Type1"
-        self.semantic_model.instance_graph.add((URIRef(uri), RDF.type, URIRef(type_uri)))
-        
+        self.semantic_model.instance_graph.add(
+            (URIRef(uri), RDF.type, URIRef(type_uri))
+        )
+
         count = self.semantic_model.count_triples()
         self.assertGreaterEqual(count, 1)
 
@@ -124,13 +175,19 @@ class TestSemanticModel(unittest.TestCase):
 
     def test_get_graph_copy(self):
         """Test get_graph_copy method."""
-        from rdflib import URIRef, RDF
+        # Third party imports
+        from rdflib import RDF, URIRef
+
         uri = "http://example.org/test_copy"
         type_uri = "http://example.org/TestType"
-        self.semantic_model.instance_graph.add((URIRef(uri), RDF.type, URIRef(type_uri)))
-        
-        graph_copy = self.semantic_model.get_graph_copy(self.semantic_model.instance_graph)
-        
+        self.semantic_model.instance_graph.add(
+            (URIRef(uri), RDF.type, URIRef(type_uri))
+        )
+
+        graph_copy = self.semantic_model.get_graph_copy(
+            self.semantic_model.instance_graph
+        )
+
         self.assertIsNotNone(graph_copy)
         self.assertEqual(len(graph_copy), len(self.semantic_model.instance_graph))
 
@@ -142,66 +199,78 @@ class TestSemanticModel(unittest.TestCase):
 
     def test_add_namespaces(self):
         """Test add_namespaces method."""
+        # Third party imports
         from rdflib import Namespace
-        
+
         custom_ns = Namespace("http://example.org/custom#")
         self.semantic_model.add_namespaces({"CUSTOM": custom_ns})
-        
+
         namespaces = self.semantic_model.namespaces
         self.assertIsNotNone(namespaces)
 
     def test_get_type(self):
         """Test get_type method."""
         type_uri = "http://www.w3.org/2000/01/rdf-schema#Class"
-        
+
         sem_type = self.semantic_model.get_type(type_uri)
         self.assertIsNotNone(sem_type)
 
     def test_get_predicate(self):
         """Test get_predicate method."""
+        # Third party imports
         from rdflib import RDF
-        
+
         predicate = self.semantic_model.get_predicate(str(RDF.type))
         self.assertIsNotNone(predicate)
 
     def test_get_instances_of_type(self):
         """Test get_instances_of_type method."""
-        from rdflib import URIRef, RDF
-        
+        # Third party imports
+        from rdflib import RDF, URIRef
+
         type_uri = "http://example.org/TestClass"
         for i in range(3):
             inst_uri = f"http://example.org/instance_{i}"
-            self.semantic_model.instance_graph.add((URIRef(inst_uri), RDF.type, URIRef(type_uri)))
-        
+            self.semantic_model.instance_graph.add(
+                (URIRef(inst_uri), RDF.type, URIRef(type_uri))
+            )
+
         instances = self.semantic_model.get_instances_of_type(type_uri)
-        
+
         self.assertIsNotNone(instances)
         self.assertEqual(len(instances), 3)
 
     def test_get_instances_of_nonexistent_type(self):
         """Test get_instances_of_type with non-existent type."""
-        instances = self.semantic_model.get_instances_of_type("http://example.org/NonExistentType")
+        instances = self.semantic_model.get_instances_of_type(
+            "http://example.org/NonExistentType"
+        )
         self.assertEqual(len(instances), 0)
 
     def test_get_dir(self):
         """Test get_dir method."""
-        path, isfile = self.semantic_model.get_dir(folder_list=["test"], filename="file.txt")
+        path, isfile = self.semantic_model.get_dir(
+            folder_list=["test"], filename="file.txt"
+        )
         self.assertIsNotNone(path)
 
     def test_bind_namespace(self):
         """Test bind_namespace method."""
+        # Third party imports
         from rdflib import Namespace
-        
+
         custom_ns = Namespace("http://custom.example.org/")
         namespaces = {"CUSTOM": custom_ns}
         self.semantic_model.add_namespaces(namespaces)
-        
+
         namespaces = self.semantic_model.namespaces
         self.assertIsNotNone(namespaces)
 
     def test_instance_is_literal(self):
         """Test literal instance creation."""
-        literal = self.semantic_model.get_instance("test_value", datatype="http://www.w3.org/2001/XMLSchema#string")
+        literal = self.semantic_model.get_instance(
+            "test_value", datatype="http://www.w3.org/2001/XMLSchema#string"
+        )
         self.assertTrue(literal.is_literal)
 
     def test_instance_not_literal(self):
@@ -212,38 +281,35 @@ class TestSemanticModel(unittest.TestCase):
 
     def test_parse_namespaces(self):
         """Test parse_namespaces method."""
+        # Third party imports
         from rdflib import Namespace
-        
+
         # This is a basic test - real ontology parsing would need actual ontology files
         custom_ns = Namespace("http://example.org/ns/")
-        
+
         # parse_namespaces might need ontology files to work properly
         # Just test that the method exists and can be called
         try:
             self.semantic_model.parse_namespaces(namespaces={"EX": custom_ns})
         except Exception:
             pass  # Expected if ontology file doesn't exist
-        
+
         self.assertTrue(True)
 
     def test_get_all_instances(self):
         """Test getting all instances of a certain type."""
         type_uri = "http://example.org/TestInstanceType"
-        
-        self.semantic_model.ontology_graph.add((
-            URIRef(type_uri), 
-            RDF.type, 
-            URIRef("http://www.w3.org/2002/07/owl#Class")
-        ))
-        
+
+        self.semantic_model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         for i in range(3):
             inst_uri = f"http://example.org/inst_{i}"
-            self.semantic_model.instance_graph.add((
-                URIRef(inst_uri), 
-                RDF.type, 
-                URIRef(type_uri)
-            ))
-        
+            self.semantic_model.instance_graph.add(
+                (URIRef(inst_uri), RDF.type, URIRef(type_uri))
+            )
+
         instances = self.semantic_model.get_instances_of_type(type_uri)
         self.assertEqual(len(instances), 3)
 
@@ -252,13 +318,11 @@ class TestSemanticModel(unittest.TestCase):
         # Add some data
         subj_uri = "http://example.org/querySubj"
         type_uri = "http://example.org/QueryType"
-        
-        self.semantic_model.instance_graph.add((
-            URIRef(subj_uri), 
-            RDF.type, 
-            URIRef(type_uri)
-        ))
-        
+
+        self.semantic_model.instance_graph.add(
+            (URIRef(subj_uri), RDF.type, URIRef(type_uri))
+        )
+
         # Run a simple query
         query = """
         SELECT ?s WHERE {
@@ -266,7 +330,7 @@ class TestSemanticModel(unittest.TestCase):
         }
         """
         results = list(self.semantic_model.instance_graph.query(query))
-        
+
         self.assertGreater(len(results), 0)
 
     # ==================== SemanticObject Tests ====================
@@ -305,7 +369,7 @@ class TestSemanticModel(unittest.TestCase):
         obj = self.model.get_instance(uri)
         obj2 = self.model.get_instance(uri)
         self.assertEqual(obj, obj2)
-        
+
         obj3 = self.model.get_instance("http://example.org/different")
         self.assertNotEqual(obj, obj3)
 
@@ -345,10 +409,10 @@ class TestSemanticModel(unittest.TestCase):
         """Test get_short_name when namespace matches."""
         custom_ns = Namespace("http://custom.example.org/")
         self.model.add_namespaces({"CUSTOM": custom_ns})
-        
+
         uri = "http://custom.example.org/MyInstance"
         obj = self.model.get_instance(uri)
-        
+
         short_name = obj.get_short_name()
         if short_name is not None:
             self.assertEqual(short_name, "MyInstance")
@@ -357,21 +421,17 @@ class TestSemanticModel(unittest.TestCase):
         """Test isinstance checking."""
         type_uri = "http://example.org/TestObjType"
         instance_uri = "http://example.org/testInstance"
-        
-        self.model.ontology_graph.add((
-            URIRef(type_uri), 
-            RDF.type, 
-            URIRef("http://www.w3.org/2002/07/owl#Class")
-        ))
-        self.model.instance_graph.add((
-            URIRef(instance_uri), 
-            RDF.type, 
-            URIRef(type_uri)
-        ))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.instance_graph.add(
+            (URIRef(instance_uri), RDF.type, URIRef(type_uri))
+        )
+
         obj = self.model.get_instance(instance_uri)
         types = obj.types
-        
+
         self.assertIsNotNone(types)
         self.assertIsInstance(types, set)
 
@@ -379,10 +439,10 @@ class TestSemanticModel(unittest.TestCase):
         """Test types property for literals with datatype."""
         literal_value = Literal("42", datatype=XSD.integer)
         literal_obj = self.model.get_instance(literal_value)
-        
+
         self.assertTrue(literal_obj.is_literal)
         types = literal_obj.types
-        
+
         self.assertIsNotNone(types)
         self.assertIsInstance(types, set)
         self.assertGreater(len(types), 0)
@@ -391,17 +451,17 @@ class TestSemanticModel(unittest.TestCase):
         """Test types property for plain literals."""
         literal_value = Literal("plain text")
         literal_obj = self.model.get_instance(literal_value)
-        
+
         self.assertTrue(literal_obj.is_literal)
         types = literal_obj.types
-        
+
         self.assertIsNotNone(types)
         self.assertIsInstance(types, set)
 
     def test_object_isinstance_literal_with_datatype(self):
         """Test isinstance for literal with datatype."""
         literal_obj = self.model.get_instance(Literal("42", datatype=XSD.integer))
-        
+
         self.assertTrue(literal_obj.isinstance(str(XSD.integer)))
         self.assertFalse(literal_obj.isinstance(str(XSD.string)))
 
@@ -421,20 +481,16 @@ class TestSemanticModel(unittest.TestCase):
         """Test isinstance for URI instances."""
         type_uri = "http://example.org/TestInstanceType"
         instance_uri = "http://example.org/testInstanceIsInstance"
-        
-        self.model.ontology_graph.add((
-            URIRef(type_uri), 
-            RDF.type, 
-            URIRef("http://www.w3.org/2002/07/owl#Class")
-        ))
-        self.model.instance_graph.add((
-            URIRef(instance_uri), 
-            RDF.type, 
-            URIRef(type_uri)
-        ))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.instance_graph.add(
+            (URIRef(instance_uri), RDF.type, URIRef(type_uri))
+        )
+
         obj = self.model.get_instance(instance_uri)
-        
+
         self.assertTrue(obj.isinstance(type_uri))
         self.assertFalse(obj.isinstance("http://example.org/OtherType"))
 
@@ -442,18 +498,14 @@ class TestSemanticModel(unittest.TestCase):
         """Test isinstance with tuple of types."""
         type_uri = "http://example.org/TupleTestType"
         instance_uri = "http://example.org/tupleTestInstance"
-        
-        self.model.ontology_graph.add((
-            URIRef(type_uri), 
-            RDF.type, 
-            URIRef("http://www.w3.org/2002/07/owl#Class")
-        ))
-        self.model.instance_graph.add((
-            URIRef(instance_uri), 
-            RDF.type, 
-            URIRef(type_uri)
-        ))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.instance_graph.add(
+            (URIRef(instance_uri), RDF.type, URIRef(type_uri))
+        )
+
         obj = self.model.get_instance(instance_uri)
         self.assertTrue(obj.isinstance((type_uri, "http://example.org/OtherType")))
 
@@ -461,12 +513,12 @@ class TestSemanticModel(unittest.TestCase):
         """Test get_namespace method."""
         custom_ns = Namespace("http://namespace.test.org/")
         self.model.add_namespaces({"NSTEST": custom_ns})
-        
+
         instance_uri = "http://namespace.test.org/MyInstance"
         obj = self.model.get_instance(instance_uri)
-        
+
         namespace = obj.get_namespace()
-        
+
         self.assertIsNotNone(namespace)
         self.assertIsInstance(namespace, tuple)
 
@@ -476,17 +528,35 @@ class TestSemanticModel(unittest.TestCase):
         mammal_uri = "http://example.org/Mammal"
         dog_uri = "http://example.org/Dog"
         instance_uri = "http://example.org/fido"
-        
-        self.model.ontology_graph.add((URIRef(animal_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(mammal_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(dog_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(mammal_uri), RDFS.subClassOf, URIRef(animal_uri)))
-        self.model.ontology_graph.add((URIRef(dog_uri), RDFS.subClassOf, URIRef(mammal_uri)))
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(animal_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(mammal_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(dog_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(mammal_uri), RDFS.subClassOf, URIRef(animal_uri))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(dog_uri), RDFS.subClassOf, URIRef(mammal_uri))
+        )
         self.model.instance_graph.add((URIRef(instance_uri), RDF.type, URIRef(dog_uri)))
-        
+
         obj = self.model.get_instance(instance_uri)
         most_specific = obj.get_most_specific_type()
-        
+
         if most_specific is not None:
             self.assertEqual(str(most_specific.uri), dog_uri)
 
@@ -495,16 +565,28 @@ class TestSemanticModel(unittest.TestCase):
     def test_semantic_property_creation(self):
         """Test creating a semantic property."""
         prop_uri = "http://example.org/testProperty"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.model.get_property(prop_uri)
         self.assertIsNotNone(prop)
 
     def test_semantic_property_str(self):
         """Test semantic property string representation."""
         prop_uri = "http://example.org/testPropStr"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.model.get_property(prop_uri)
         str_repr = str(prop)
         self.assertIsNotNone(str_repr)
@@ -512,8 +594,14 @@ class TestSemanticModel(unittest.TestCase):
     def test_property_domain(self):
         """Test property domain access."""
         prop_uri = "http://example.org/testPropDomain"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.model.get_property(prop_uri)
         domain = prop.domain
         self.assertIsNotNone(domain)
@@ -521,8 +609,14 @@ class TestSemanticModel(unittest.TestCase):
     def test_property_range(self):
         """Test property range access."""
         prop_uri = "http://example.org/testPropRange"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.model.get_property(prop_uri)
         range_ = prop.range
         self.assertIsNotNone(range_)
@@ -530,8 +624,14 @@ class TestSemanticModel(unittest.TestCase):
     def test_property_isproperty(self):
         """Test isproperty method."""
         prop_uri = "http://example.org/testPropIs"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.model.get_property(prop_uri)
         self.assertTrue(prop.isproperty(prop_uri))
         self.assertFalse(prop.isproperty("http://example.org/otherProperty"))
@@ -539,11 +639,17 @@ class TestSemanticModel(unittest.TestCase):
     def test_property_get_short_name(self):
         """Test property get_short_name method."""
         prop_uri = "http://example.org/testPropShortName"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.model.get_property(prop_uri)
         short_name = prop.get_short_name()
-        
+
         if short_name is not None:
             self.assertIsInstance(short_name, str)
 
@@ -551,10 +657,16 @@ class TestSemanticModel(unittest.TestCase):
         """Test property get_short_name when namespace matches."""
         custom_ns = Namespace("http://custom.test.org/")
         self.model.add_namespaces({"CUSTOMTEST": custom_ns})
-        
+
         prop_uri = "http://custom.test.org/myProperty"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.model.get_property(prop_uri)
         short_name = prop.get_short_name()
         self.assertEqual(short_name, "myProperty")
@@ -562,8 +674,14 @@ class TestSemanticModel(unittest.TestCase):
     def test_property_get_short_name_no_match(self):
         """Test property get_short_name when no namespace matches."""
         prop_uri = "http://unregistered.property.org/myProperty"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         prop = self.model.get_property(prop_uri)
         short_name = prop.get_short_name()
         self.assertIsNone(short_name)
@@ -650,15 +768,31 @@ class TestSemanticModel(unittest.TestCase):
         """Test equivalent_properties property."""
         prop_uri = "http://example.org/testPropEquivPred"
         equiv_prop_uri = "http://example.org/equivalentPropPred"
-        owl_equivalent_property = URIRef("http://www.w3.org/2002/07/owl#equivalentProperty")
-        
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(equiv_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(prop_uri), owl_equivalent_property, URIRef(equiv_prop_uri)))
-        
+        owl_equivalent_property = URIRef(
+            "http://www.w3.org/2002/07/owl#equivalentProperty"
+        )
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(equiv_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(prop_uri), owl_equivalent_property, URIRef(equiv_prop_uri))
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         equiv_props = predicate.equivalent_properties
-        
+
         self.assertIsNotNone(equiv_props)
         self.assertIsInstance(equiv_props, list)
         self.assertGreater(len(equiv_props), 0)
@@ -668,15 +802,21 @@ class TestSemanticModel(unittest.TestCase):
         prop_uri = "http://example.org/symmetricPropPred"
         owl_symmetric = URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")
         self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, owl_symmetric))
-        
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertTrue(predicate.is_symmetric)
 
     def test_predicate_is_not_symmetric(self):
         """Test is_symmetric property when property is not symmetric."""
         prop_uri = "http://example.org/nonSymmetricPropPred"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertFalse(predicate.is_symmetric)
 
@@ -685,15 +825,21 @@ class TestSemanticModel(unittest.TestCase):
         prop_uri = "http://example.org/transitivePropPred"
         owl_transitive = URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")
         self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, owl_transitive))
-        
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertTrue(predicate.is_transitive)
 
     def test_predicate_is_not_transitive(self):
         """Test is_transitive property when property is not transitive."""
         prop_uri = "http://example.org/nonTransitivePropPred"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertFalse(predicate.is_transitive)
 
@@ -702,15 +848,21 @@ class TestSemanticModel(unittest.TestCase):
         prop_uri = "http://example.org/functionalPropPred"
         owl_functional = URIRef("http://www.w3.org/2002/07/owl#FunctionalProperty")
         self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, owl_functional))
-        
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertTrue(predicate.is_functional)
 
     def test_predicate_is_not_functional(self):
         """Test is_functional property when property is not functional."""
         prop_uri = "http://example.org/nonFunctionalPropPred"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertFalse(predicate.is_functional)
 
@@ -719,15 +871,21 @@ class TestSemanticModel(unittest.TestCase):
         prop_uri = "http://example.org/inverseFunctionalPropPred"
         owl_inv_func = URIRef("http://www.w3.org/2002/07/owl#InverseFunctionalProperty")
         self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, owl_inv_func))
-        
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertTrue(predicate.is_inverse_functional)
 
     def test_predicate_is_not_inverse_functional(self):
         """Test is_inverse_functional property when property is not inverse functional."""
         prop_uri = "http://example.org/nonInverseFunctionalPropPred"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertFalse(predicate.is_inverse_functional)
 
@@ -750,14 +908,28 @@ class TestSemanticModel(unittest.TestCase):
         prop_uri = "http://example.org/propWithInversePred"
         inv_prop_uri = "http://example.org/inversePropPred"
         owl_inverse_of = URIRef("http://www.w3.org/2002/07/owl#inverseOf")
-        
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(inv_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(prop_uri), owl_inverse_of, URIRef(inv_prop_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(inv_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(prop_uri), owl_inverse_of, URIRef(inv_prop_uri))
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         inv_props = predicate.inverse_properties
-        
+
         self.assertIsNotNone(inv_props)
         self.assertIsInstance(inv_props, list)
         self.assertGreater(len(inv_props), 0)
@@ -766,10 +938,16 @@ class TestSemanticModel(unittest.TestCase):
         """Test predicate get_short_name when namespace matches."""
         custom_ns = Namespace("http://predicate.test.org/")
         self.model.add_namespaces({"PREDTEST": custom_ns})
-        
+
         prop_uri = "http://predicate.test.org/myPredicate"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         short_name = predicate.get_short_name()
         self.assertEqual(short_name, "myPredicate")
@@ -777,8 +955,14 @@ class TestSemanticModel(unittest.TestCase):
     def test_predicate_get_short_name_no_match(self):
         """Test predicate get_short_name when no namespace matches."""
         prop_uri = "http://unregistered.predicate.org/myPredicate"
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         short_name = predicate.get_short_name()
         self.assertIsNone(short_name)
@@ -787,11 +971,25 @@ class TestSemanticModel(unittest.TestCase):
         """Test ispredicate matching super properties."""
         sub_prop_uri = "http://example.org/subPropIsPred"
         super_prop_uri = "http://example.org/superPropIsPred"
-        
-        self.model.ontology_graph.add((URIRef(sub_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(super_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(sub_prop_uri), RDFS.subPropertyOf, URIRef(super_prop_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(sub_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(super_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(sub_prop_uri), RDFS.subPropertyOf, URIRef(super_prop_uri))
+        )
+
         predicate = self.model.get_predicate(sub_prop_uri)
         self.assertTrue(predicate.ispredicate(super_prop_uri))
 
@@ -799,12 +997,28 @@ class TestSemanticModel(unittest.TestCase):
         """Test ispredicate matching equivalent properties."""
         prop_uri = "http://example.org/propIsEquiv"
         equiv_prop_uri = "http://example.org/equivPropIs"
-        owl_equivalent_property = URIRef("http://www.w3.org/2002/07/owl#equivalentProperty")
-        
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(equiv_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(prop_uri), owl_equivalent_property, URIRef(equiv_prop_uri)))
-        
+        owl_equivalent_property = URIRef(
+            "http://www.w3.org/2002/07/owl#equivalentProperty"
+        )
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(equiv_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(prop_uri), owl_equivalent_property, URIRef(equiv_prop_uri))
+        )
+
         predicate = self.model.get_predicate(prop_uri)
         self.assertTrue(predicate.ispredicate(equiv_prop_uri))
 
@@ -812,11 +1026,25 @@ class TestSemanticModel(unittest.TestCase):
         """Test super_properties when subPropertyOf is defined."""
         sub_prop_uri = "http://example.org/subPropPred"
         super_prop_uri = "http://example.org/superPropPred"
-        
-        self.model.ontology_graph.add((URIRef(sub_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(super_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(sub_prop_uri), RDFS.subPropertyOf, URIRef(super_prop_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(sub_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(super_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(sub_prop_uri), RDFS.subPropertyOf, URIRef(super_prop_uri))
+        )
+
         predicate = self.model.get_predicate(sub_prop_uri)
         super_props = predicate.super_properties
         self.assertIsNotNone(super_props)
@@ -826,11 +1054,25 @@ class TestSemanticModel(unittest.TestCase):
         """Test sub_properties when subPropertyOf is defined."""
         sub_prop_uri = "http://example.org/subProp2Pred"
         super_prop_uri = "http://example.org/superProp2Pred"
-        
-        self.model.ontology_graph.add((URIRef(sub_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(super_prop_uri), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(sub_prop_uri), RDFS.subPropertyOf, URIRef(super_prop_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(sub_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(super_prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(sub_prop_uri), RDFS.subPropertyOf, URIRef(super_prop_uri))
+        )
+
         predicate = self.model.get_predicate(super_prop_uri)
         sub_props = predicate.sub_properties
         self.assertIsNotNone(sub_props)
@@ -852,14 +1094,15 @@ class TestSemanticModel(unittest.TestCase):
         self.assertNotEqual(predicate, 42)
         self.assertNotEqual(predicate, None)
 
-
     # ==================== SemanticType Tests ====================
 
     def test_type_creation(self):
         """Test creating a semantic type."""
         type_uri = "http://example.org/TestClassType"
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         sem_type = self.model.get_type(type_uri)
         self.assertIsNotNone(sem_type)
 
@@ -867,11 +1110,25 @@ class TestSemanticModel(unittest.TestCase):
         """Test super_classes property."""
         child_type_uri = "http://example.org/ChildClass"
         parent_type_uri = "http://example.org/ParentClass"
-        
-        self.model.ontology_graph.add((URIRef(child_type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(parent_type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(child_type_uri), RDFS.subClassOf, URIRef(parent_type_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(child_type_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(parent_type_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(child_type_uri), RDFS.subClassOf, URIRef(parent_type_uri))
+        )
+
         child_type = self.model.get_type(child_type_uri)
         super_classes = child_type.super_classes
         self.assertIsNotNone(super_classes)
@@ -881,11 +1138,25 @@ class TestSemanticModel(unittest.TestCase):
         """Test sub_classes property."""
         child_type_uri = "http://example.org/ChildClass2"
         parent_type_uri = "http://example.org/ParentClass2"
-        
-        self.model.ontology_graph.add((URIRef(child_type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(parent_type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(child_type_uri), RDFS.subClassOf, URIRef(parent_type_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(child_type_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(parent_type_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(child_type_uri), RDFS.subClassOf, URIRef(parent_type_uri))
+        )
+
         parent_type = self.model.get_type(parent_type_uri)
         sub_classes = parent_type.sub_classes
         self.assertIsNotNone(sub_classes)
@@ -896,11 +1167,17 @@ class TestSemanticModel(unittest.TestCase):
         type1_uri = "http://example.org/EquivClass1"
         type2_uri = "http://example.org/EquivClass2"
         owl_equivalent_class = URIRef("http://www.w3.org/2002/07/owl#equivalentClass")
-        
-        self.model.ontology_graph.add((URIRef(type1_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(type2_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(type1_uri), owl_equivalent_class, URIRef(type2_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(type1_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(type2_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(type1_uri), owl_equivalent_class, URIRef(type2_uri))
+        )
+
         type1 = self.model.get_type(type1_uri)
         equiv_classes = type1.equivalent_classes
         self.assertIsNotNone(equiv_classes)
@@ -910,11 +1187,19 @@ class TestSemanticModel(unittest.TestCase):
         """Test get_type_attributes method."""
         type_uri = "http://example.org/ClassWithAttrs"
         prop_uri = "http://example.org/someObjectProperty"
-        
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(prop_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#ObjectProperty")))
+
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(prop_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#ObjectProperty"),
+            )
+        )
         self.model.ontology_graph.add((URIRef(prop_uri), RDFS.domain, URIRef(type_uri)))
-        
+
         sem_type = self.model.get_type(type_uri)
         attrs = sem_type.get_type_attributes()
         self.assertIsNotNone(attrs)
@@ -923,8 +1208,10 @@ class TestSemanticModel(unittest.TestCase):
     def test_type_str_repr(self):
         """Test string representation of type."""
         type_uri = "http://example.org/TestTypeStr"
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         sem_type = self.model.get_type(type_uri)
         self.assertEqual(str(sem_type), type_uri)
         self.assertIn("SemanticType", repr(sem_type))
@@ -932,8 +1219,10 @@ class TestSemanticModel(unittest.TestCase):
     def test_type_hash_and_equality(self):
         """Test type hash and equality."""
         type_uri = "http://example.org/TestTypeHash"
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         type1 = self.model.get_type(type_uri)
         type2 = self.model.get_type(type_uri)
         self.assertEqual(hash(type1), hash(type2))
@@ -943,11 +1232,21 @@ class TestSemanticModel(unittest.TestCase):
         """Test istype method."""
         child_uri = "http://example.org/ChildType"
         parent_uri = "http://example.org/ParentType"
-        
-        self.model.ontology_graph.add((URIRef(child_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(parent_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(child_uri), RDFS.subClassOf, URIRef(parent_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(child_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(parent_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(child_uri), RDFS.subClassOf, URIRef(parent_uri))
+        )
+
         child_type = self.model.get_type(child_uri)
         self.assertTrue(child_type.istype(child_uri))
         result = child_type.istype("http://example.org/UnrelatedType")
@@ -957,11 +1256,21 @@ class TestSemanticModel(unittest.TestCase):
         """Test istype method matching parent class."""
         child_uri = "http://example.org/ChildTypeIsType"
         parent_uri = "http://example.org/ParentTypeIsType"
-        
-        self.model.ontology_graph.add((URIRef(child_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(parent_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(child_uri), RDFS.subClassOf, URIRef(parent_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(child_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(parent_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(child_uri), RDFS.subClassOf, URIRef(parent_uri))
+        )
+
         child_type = self.model.get_type(child_uri)
         self.assertTrue(child_type.istype(parent_uri))
 
@@ -969,11 +1278,21 @@ class TestSemanticModel(unittest.TestCase):
         """Test has_subclasses method."""
         child_uri = "http://example.org/ChildTypeHasSub"
         parent_uri = "http://example.org/ParentTypeHasSub"
-        
-        self.model.ontology_graph.add((URIRef(child_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(parent_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(child_uri), RDFS.subClassOf, URIRef(parent_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(child_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(parent_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(child_uri), RDFS.subClassOf, URIRef(parent_uri))
+        )
+
         parent_type = self.model.get_type(parent_uri)
         child_type = self.model.get_type(child_uri)
         self.assertTrue(parent_type.has_subclasses())
@@ -983,10 +1302,12 @@ class TestSemanticModel(unittest.TestCase):
         """Test get_short_name when namespace matches."""
         custom_ns = Namespace("http://type.test.org/")
         self.model.add_namespaces({"TYPETEST": custom_ns})
-        
+
         type_uri = "http://type.test.org/MyClass"
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         sem_type = self.model.get_type(type_uri)
         short_name = sem_type.get_short_name()
         self.assertEqual(short_name, "MyClass")
@@ -994,8 +1315,10 @@ class TestSemanticModel(unittest.TestCase):
     def test_type_get_short_name_no_match(self):
         """Test get_short_name when no namespace matches."""
         type_uri = "http://unregistered.namespace.org/MyClass"
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         sem_type = self.model.get_type(type_uri)
         short_name = sem_type.get_short_name()
         self.assertIsNone(short_name)
@@ -1006,13 +1329,31 @@ class TestSemanticModel(unittest.TestCase):
         parent_uri = "http://example.org/ParentWithEquiv"
         equiv_parent_uri = "http://example.org/EquivParent"
         owl_equivalent_class = URIRef("http://www.w3.org/2002/07/owl#equivalentClass")
-        
-        self.model.ontology_graph.add((URIRef(child_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(parent_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(equiv_parent_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(child_uri), RDFS.subClassOf, URIRef(parent_uri)))
-        self.model.ontology_graph.add((URIRef(parent_uri), owl_equivalent_class, URIRef(equiv_parent_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(child_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(parent_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(equiv_parent_uri),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(child_uri), RDFS.subClassOf, URIRef(parent_uri))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(parent_uri), owl_equivalent_class, URIRef(equiv_parent_uri))
+        )
+
         child_type = self.model.get_type(child_uri)
         super_classes = child_type.super_classes
         super_uris = [str(s.uri) for s in super_classes]
@@ -1023,11 +1364,17 @@ class TestSemanticModel(unittest.TestCase):
         type1_uri = "http://example.org/EquivClassVal1"
         type2_uri = "http://example.org/EquivClassVal2"
         owl_equivalent_class = URIRef("http://www.w3.org/2002/07/owl#equivalentClass")
-        
-        self.model.ontology_graph.add((URIRef(type1_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(type2_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(type2_uri), owl_equivalent_class, URIRef(type1_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(type1_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(type2_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(type2_uri), owl_equivalent_class, URIRef(type1_uri))
+        )
+
         type1 = self.model.get_type(type1_uri)
         equiv_classes = type1.equivalent_classes
         self.assertGreater(len(equiv_classes), 0)
@@ -1035,28 +1382,33 @@ class TestSemanticModel(unittest.TestCase):
     def test_type_equality_with_string(self):
         """Test type equality with string."""
         type_uri = "http://example.org/TestTypeEq"
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         sem_type = self.model.get_type(type_uri)
         self.assertEqual(sem_type, type_uri)
 
     def test_type_equality_with_uriref(self):
         """Test type equality with URIRef."""
         type_uri = "http://example.org/TestTypeEqRef"
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         sem_type = self.model.get_type(type_uri)
         self.assertEqual(sem_type, URIRef(type_uri))
 
     def test_type_inequality(self):
         """Test type inequality."""
         type_uri = "http://example.org/TestTypeIneq"
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+
         sem_type = self.model.get_type(type_uri)
         self.assertNotEqual(sem_type, 42)
         self.assertNotEqual(sem_type, None)
-
 
     # ==================== get_short_name Function Tests ====================
 
@@ -1092,7 +1444,9 @@ class TestSemanticModel(unittest.TestCase):
 
     def test_parse_wrapper_with_valid_source(self):
         """Test parse_wrapper with a valid source."""
+        # Standard library imports
         from io import StringIO
+
         graph = Graph()
         ttl_data = """
         @prefix ex: <http://example.org/> .
@@ -1101,7 +1455,6 @@ class TestSemanticModel(unittest.TestCase):
         parse_wrapper(graph, source=StringIO(ttl_data), format="turtle")
         self.assertGreater(len(graph), 0)
 
-
     # ==================== get_predicate_object_pairs Tests ====================
 
     def test_get_predicate_object_pairs_basic(self):
@@ -1109,19 +1462,23 @@ class TestSemanticModel(unittest.TestCase):
         subj_uri = "http://example.org/subject1"
         obj_uri = "http://example.org/object1"
         pred_uri = "http://example.org/hasSomething"
-        
-        self.model.instance_graph.add((URIRef(subj_uri), URIRef(pred_uri), URIRef(obj_uri)))
-        
+
+        self.model.instance_graph.add(
+            (URIRef(subj_uri), URIRef(pred_uri), URIRef(obj_uri))
+        )
+
         subj = self.model.get_instance(subj_uri)
         pairs = subj.get_predicate_object_pairs()
-        
+
         self.assertIsNotNone(pairs)
         self.assertIsInstance(pairs, dict)
         self.assertGreater(len(pairs), 0)
 
     def test_get_predicate_object_pairs_literal_returns_empty(self):
         """Test get_predicate_object_pairs returns empty dict for literals."""
-        literal_obj = self.model.get_instance("test_value", datatype="http://www.w3.org/2001/XMLSchema#string")
+        literal_obj = self.model.get_instance(
+            "test_value", datatype="http://www.w3.org/2001/XMLSchema#string"
+        )
         pairs = literal_obj.get_predicate_object_pairs()
         self.assertEqual(pairs, {})
 
@@ -1132,10 +1489,14 @@ class TestSemanticModel(unittest.TestCase):
         obj2_uri = "http://example.org/object2b"
         pred1_uri = "http://example.org/hasFirst"
         pred2_uri = "http://example.org/hasSecond"
-        
-        self.model.instance_graph.add((URIRef(subj_uri), URIRef(pred1_uri), URIRef(obj1_uri)))
-        self.model.instance_graph.add((URIRef(subj_uri), URIRef(pred2_uri), URIRef(obj2_uri)))
-        
+
+        self.model.instance_graph.add(
+            (URIRef(subj_uri), URIRef(pred1_uri), URIRef(obj1_uri))
+        )
+        self.model.instance_graph.add(
+            (URIRef(subj_uri), URIRef(pred2_uri), URIRef(obj2_uri))
+        )
+
         subj = self.model.get_instance(subj_uri)
         pairs = subj.get_predicate_object_pairs()
         self.assertGreaterEqual(len(pairs), 2)
@@ -1144,9 +1505,11 @@ class TestSemanticModel(unittest.TestCase):
         """Test get_predicate_object_pairs with literal object values."""
         subj_uri = "http://example.org/subject3"
         pred_uri = "http://example.org/hasValue"
-        
-        self.model.instance_graph.add((URIRef(subj_uri), URIRef(pred_uri), Literal("test value")))
-        
+
+        self.model.instance_graph.add(
+            (URIRef(subj_uri), URIRef(pred_uri), Literal("test value"))
+        )
+
         subj = self.model.get_instance(subj_uri)
         pairs = subj.get_predicate_object_pairs()
         self.assertIsNotNone(pairs)
@@ -1159,12 +1522,28 @@ class TestSemanticModel(unittest.TestCase):
         has_child = "http://example.org/hasChild"
         has_parent = "http://example.org/hasParent"
         owl_inverse_of = URIRef("http://www.w3.org/2002/07/owl#inverseOf")
-        
-        self.model.ontology_graph.add((URIRef(has_child), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(has_parent), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(has_child), owl_inverse_of, URIRef(has_parent)))
-        self.model.instance_graph.add((URIRef(subj_uri), URIRef(has_child), URIRef(obj_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(has_child),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(has_parent),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(has_child), owl_inverse_of, URIRef(has_parent))
+        )
+        self.model.instance_graph.add(
+            (URIRef(subj_uri), URIRef(has_child), URIRef(obj_uri))
+        )
+
         obj = self.model.get_instance(obj_uri)
         pairs = obj.get_predicate_object_pairs()
         self.assertIsNotNone(pairs)
@@ -1175,14 +1554,15 @@ class TestSemanticModel(unittest.TestCase):
         obj_uri = "http://example.org/entityB"
         knows = "http://example.org/knows"
         owl_symmetric = URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")
-        
+
         self.model.ontology_graph.add((URIRef(knows), RDF.type, owl_symmetric))
-        self.model.instance_graph.add((URIRef(subj_uri), URIRef(knows), URIRef(obj_uri)))
-        
+        self.model.instance_graph.add(
+            (URIRef(subj_uri), URIRef(knows), URIRef(obj_uri))
+        )
+
         obj = self.model.get_instance(obj_uri)
         pairs = obj.get_predicate_object_pairs()
         self.assertIsNotNone(pairs)
-
 
     # ==================== reason() Tests ====================
 
@@ -1190,10 +1570,14 @@ class TestSemanticModel(unittest.TestCase):
         """Test basic reason() call."""
         type_uri = "http://example.org/TestType"
         instance_uri = "http://example.org/instance1"
-        
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.instance_graph.add((URIRef(instance_uri), RDF.type, URIRef(type_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.instance_graph.add(
+            (URIRef(instance_uri), RDF.type, URIRef(type_uri))
+        )
+
         self.model.reason()
         self.assertTrue(True)
 
@@ -1204,12 +1588,28 @@ class TestSemanticModel(unittest.TestCase):
         whole_uri = "http://example.org/whole"
         part_uri = "http://example.org/part"
         owl_inverse_of = URIRef("http://www.w3.org/2002/07/owl#inverseOf")
-        
-        self.model.ontology_graph.add((URIRef(has_part), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(is_part_of), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(has_part), owl_inverse_of, URIRef(is_part_of)))
-        self.model.instance_graph.add((URIRef(whole_uri), URIRef(has_part), URIRef(part_uri)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(has_part),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(is_part_of),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(has_part), owl_inverse_of, URIRef(is_part_of))
+        )
+        self.model.instance_graph.add(
+            (URIRef(whole_uri), URIRef(has_part), URIRef(part_uri))
+        )
+
         initial_count = len(self.model.instance_graph)
         self.model.reason()
         self.assertGreaterEqual(len(self.model.instance_graph), initial_count)
@@ -1220,10 +1620,12 @@ class TestSemanticModel(unittest.TestCase):
         person_a = "http://example.org/personA"
         person_b = "http://example.org/personB"
         owl_symmetric = URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")
-        
+
         self.model.ontology_graph.add((URIRef(knows), RDF.type, owl_symmetric))
-        self.model.instance_graph.add((URIRef(person_a), URIRef(knows), URIRef(person_b)))
-        
+        self.model.instance_graph.add(
+            (URIRef(person_a), URIRef(knows), URIRef(person_b))
+        )
+
         initial_count = len(self.model.instance_graph)
         self.model.reason()
         self.assertGreaterEqual(len(self.model.instance_graph), initial_count)
@@ -1235,11 +1637,11 @@ class TestSemanticModel(unittest.TestCase):
         b = "http://example.org/B"
         c = "http://example.org/C"
         owl_transitive = URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")
-        
+
         self.model.ontology_graph.add((URIRef(contains), RDF.type, owl_transitive))
         self.model.instance_graph.add((URIRef(a), URIRef(contains), URIRef(b)))
         self.model.instance_graph.add((URIRef(b), URIRef(contains), URIRef(c)))
-        
+
         initial_count = len(self.model.instance_graph)
         self.model.reason()
         self.assertGreaterEqual(len(self.model.instance_graph), initial_count)
@@ -1249,12 +1651,16 @@ class TestSemanticModel(unittest.TestCase):
         animal = "http://example.org/Animal"
         dog = "http://example.org/Dog"
         fido = "http://example.org/fido"
-        
-        self.model.ontology_graph.add((URIRef(animal), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(dog), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
+
+        self.model.ontology_graph.add(
+            (URIRef(animal), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(dog), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
         self.model.ontology_graph.add((URIRef(dog), RDFS.subClassOf, URIRef(animal)))
         self.model.instance_graph.add((URIRef(fido), RDF.type, URIRef(dog)))
-        
+
         initial_count = len(self.model.instance_graph)
         self.model.reason()
         self.assertGreaterEqual(len(self.model.instance_graph), initial_count)
@@ -1265,12 +1671,22 @@ class TestSemanticModel(unittest.TestCase):
         automobile = "http://example.org/Automobile"
         my_car = "http://example.org/myCar"
         owl_equiv_class = URIRef("http://www.w3.org/2002/07/owl#equivalentClass")
-        
-        self.model.ontology_graph.add((URIRef(car), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(automobile), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(car), owl_equiv_class, URIRef(automobile)))
+
+        self.model.ontology_graph.add(
+            (URIRef(car), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(automobile),
+                RDF.type,
+                URIRef("http://www.w3.org/2002/07/owl#Class"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(car), owl_equiv_class, URIRef(automobile))
+        )
         self.model.instance_graph.add((URIRef(my_car), RDF.type, URIRef(car)))
-        
+
         initial_count = len(self.model.instance_graph)
         self.model.reason()
         self.assertGreaterEqual(len(self.model.instance_graph), initial_count)
@@ -1281,12 +1697,16 @@ class TestSemanticModel(unittest.TestCase):
         type2 = "http://example.org/Type2"
         instance = "http://example.org/instance"
         owl_equiv_class = URIRef("http://www.w3.org/2002/07/owl#equivalentClass")
-        
-        self.model.ontology_graph.add((URIRef(type1), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.ontology_graph.add((URIRef(type2), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
+
+        self.model.ontology_graph.add(
+            (URIRef(type1), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.ontology_graph.add(
+            (URIRef(type2), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
         self.model.ontology_graph.add((URIRef(type2), owl_equiv_class, URIRef(type1)))
         self.model.instance_graph.add((URIRef(instance), RDF.type, URIRef(type1)))
-        
+
         self.model.reason()
         self.assertTrue(True)
 
@@ -1297,12 +1717,24 @@ class TestSemanticModel(unittest.TestCase):
         person = "http://example.org/person1"
         thing = "http://example.org/thing1"
         owl_equiv_prop = URIRef("http://www.w3.org/2002/07/owl#equivalentProperty")
-        
-        self.model.ontology_graph.add((URIRef(likes), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(enjoys), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(likes),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(enjoys),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
         self.model.ontology_graph.add((URIRef(likes), owl_equiv_prop, URIRef(enjoys)))
         self.model.instance_graph.add((URIRef(person), URIRef(likes), URIRef(thing)))
-        
+
         initial_count = len(self.model.instance_graph)
         self.model.reason()
         self.assertGreaterEqual(len(self.model.instance_graph), initial_count)
@@ -1313,12 +1745,28 @@ class TestSemanticModel(unittest.TestCase):
         has_ancestor = "http://example.org/hasAncestor"
         person = "http://example.org/child"
         parent = "http://example.org/parent"
-        
-        self.model.ontology_graph.add((URIRef(has_parent), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(has_ancestor), RDF.type, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property")))
-        self.model.ontology_graph.add((URIRef(has_parent), RDFS.subPropertyOf, URIRef(has_ancestor)))
-        self.model.instance_graph.add((URIRef(person), URIRef(has_parent), URIRef(parent)))
-        
+
+        self.model.ontology_graph.add(
+            (
+                URIRef(has_parent),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (
+                URIRef(has_ancestor),
+                RDF.type,
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            )
+        )
+        self.model.ontology_graph.add(
+            (URIRef(has_parent), RDFS.subPropertyOf, URIRef(has_ancestor))
+        )
+        self.model.instance_graph.add(
+            (URIRef(person), URIRef(has_parent), URIRef(parent))
+        )
+
         initial_count = len(self.model.instance_graph)
         self.model.reason()
         self.assertGreaterEqual(len(self.model.instance_graph), initial_count)
@@ -1330,14 +1778,13 @@ class TestSemanticModel(unittest.TestCase):
         prop = "http://example.org/hasProperty"
         obj = "http://example.org/object"
         owl_same_as = URIRef("http://www.w3.org/2002/07/owl#sameAs")
-        
+
         self.model.instance_graph.add((URIRef(ind1), owl_same_as, URIRef(ind2)))
         self.model.instance_graph.add((URIRef(ind1), URIRef(prop), URIRef(obj)))
-        
+
         initial_count = len(self.model.instance_graph)
         self.model.reason()
         self.assertGreaterEqual(len(self.model.instance_graph), initial_count)
-
 
     # ==================== get_graphs() Tests ====================
 
@@ -1351,14 +1798,14 @@ class TestSemanticModel(unittest.TestCase):
         ex:subject1 rdf:type ex:TestClass .
         ex:subject1 ex:hasValue "test" .
         """
-        
+
         ttl_file = os.path.join(self.temp_dir, "test.ttl")
         with open(ttl_file, "w") as f:
             f.write(ttl_content)
-        
+
         # Call get_graphs
         instance_graph, ontology_graph = self.model.get_graphs(ttl_file)
-        
+
         self.assertIsNotNone(instance_graph)
         self.assertIsNotNone(ontology_graph)
         self.assertGreater(len(instance_graph), 0)
@@ -1370,14 +1817,16 @@ class TestSemanticModel(unittest.TestCase):
         @prefix ex: <http://example.org/> .
         ex:subject ex:predicate ex:object .
         """
-        
+
         ttl_file = os.path.join(self.temp_dir, "test_format.ttl")
         with open(ttl_file, "w") as f:
             f.write(ttl_content)
-        
+
         # Call get_graphs with format
-        instance_graph, ontology_graph = self.model.get_graphs(ttl_file, format="turtle")
-        
+        instance_graph, ontology_graph = self.model.get_graphs(
+            ttl_file, format="turtle"
+        )
+
         self.assertIsNotNone(instance_graph)
         self.assertGreater(len(instance_graph), 0)
 
@@ -1410,14 +1859,16 @@ class TestSemanticModel(unittest.TestCase):
         ex:fido rdf:type ex:Dog .
         ex:fido ex:hasName "Fido" .
         """
-        
+
         ttl_file = os.path.join(self.temp_dir, "test_schema.ttl")
         with open(ttl_file, "w") as f:
             f.write(ttl_content)
-        
+
         # Call get_graphs
-        instance_graph, ontology_graph = self.model.get_graphs(ttl_file, format="turtle")
-        
+        instance_graph, ontology_graph = self.model.get_graphs(
+            ttl_file, format="turtle"
+        )
+
         self.assertIsNotNone(instance_graph)
         self.assertIsNotNone(ontology_graph)
         # Ontology graph should have schema definitions
@@ -1428,16 +1879,45 @@ class TestSemanticModel(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.model.get_graphs("nonexistent.xlsx")
 
-
     # ==================== filter_graph() Tests ====================
 
     def _setup_filter_graph_data(self):
         """Helper to set up test data for filter_graph tests."""
-        self.model.instance_graph.add((URIRef("http://example.org/a"), URIRef("http://example.org/knows"), URIRef("http://example.org/b")))
-        self.model.instance_graph.add((URIRef("http://example.org/b"), URIRef("http://example.org/knows"), URIRef("http://example.org/c")))
-        self.model.instance_graph.add((URIRef("http://example.org/c"), URIRef("http://example.org/knows"), URIRef("http://example.org/d")))
-        self.model.instance_graph.add((URIRef("http://example.org/a"), RDF.type, URIRef("http://example.org/Person")))
-        self.model.instance_graph.add((URIRef("http://example.org/b"), RDF.type, URIRef("http://example.org/Person")))
+        self.model.instance_graph.add(
+            (
+                URIRef("http://example.org/a"),
+                URIRef("http://example.org/knows"),
+                URIRef("http://example.org/b"),
+            )
+        )
+        self.model.instance_graph.add(
+            (
+                URIRef("http://example.org/b"),
+                URIRef("http://example.org/knows"),
+                URIRef("http://example.org/c"),
+            )
+        )
+        self.model.instance_graph.add(
+            (
+                URIRef("http://example.org/c"),
+                URIRef("http://example.org/knows"),
+                URIRef("http://example.org/d"),
+            )
+        )
+        self.model.instance_graph.add(
+            (
+                URIRef("http://example.org/a"),
+                RDF.type,
+                URIRef("http://example.org/Person"),
+            )
+        )
+        self.model.instance_graph.add(
+            (
+                URIRef("http://example.org/b"),
+                RDF.type,
+                URIRef("http://example.org/Person"),
+            )
+        )
 
     def test_filter_graph_with_construct_query(self):
         """Test filter_graph with CONSTRUCT query."""
@@ -1457,7 +1937,9 @@ class TestSemanticModel(unittest.TestCase):
         CONSTRUCT { ?s ?p ?o }
         WHERE { ?s ?p ?o }
         """
-        filtered = self.model.filter_graph(query=query, initial_node="http://example.org/a")
+        filtered = self.model.filter_graph(
+            query=query, initial_node="http://example.org/a"
+        )
         self.assertIsNotNone(filtered)
 
     def test_filter_graph_with_node_limit(self):
@@ -1487,7 +1969,9 @@ class TestSemanticModel(unittest.TestCase):
         CONSTRUCT { ?s ?p ?o }
         WHERE { ?s ?p ?o }
         """
-        filtered = self.model.filter_graph(query=query, traversal_mode="bfs", node_limit=5)
+        filtered = self.model.filter_graph(
+            query=query, traversal_mode="bfs", node_limit=5
+        )
         self.assertIsNotNone(filtered)
 
     def test_filter_graph_with_dfs_traversal(self):
@@ -1497,7 +1981,9 @@ class TestSemanticModel(unittest.TestCase):
         CONSTRUCT { ?s ?p ?o }
         WHERE { ?s ?p ?o }
         """
-        filtered = self.model.filter_graph(query=query, traversal_mode="dfs", node_limit=5)
+        filtered = self.model.filter_graph(
+            query=query, traversal_mode="dfs", node_limit=5
+        )
         self.assertIsNotNone(filtered)
 
     def test_filter_graph_with_random_seed(self):
@@ -1528,8 +2014,9 @@ class TestSemanticModel(unittest.TestCase):
         WHERE { ?s ?p ?o }
         """
         with self.assertRaises(ValueError):
-            self.model.filter_graph(query=query, initial_node="http://example.org/nonexistent")
-
+            self.model.filter_graph(
+                query=query, initial_node="http://example.org/nonexistent"
+            )
 
     # ==================== visualize() Tests ====================
 
@@ -1538,34 +2025,50 @@ class TestSemanticModel(unittest.TestCase):
         # Register namespace so get_short_name() works
         example_ns = Namespace("http://example.org/")
         self.model.add_namespaces({"EX": example_ns})
-        
+
         type_uri = "http://example.org/TestClass"
         instance1_uri = "http://example.org/instance1"
         instance2_uri = "http://example.org/instance2"
         pred_uri = "http://example.org/relatesTo"
-        
-        self.model.ontology_graph.add((URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))
-        self.model.instance_graph.add((URIRef(instance1_uri), RDF.type, URIRef(type_uri)))
-        self.model.instance_graph.add((URIRef(instance2_uri), RDF.type, URIRef(type_uri)))
-        self.model.instance_graph.add((URIRef(instance1_uri), URIRef(pred_uri), URIRef(instance2_uri)))
-        self.model.instance_graph.add((URIRef(instance1_uri), URIRef("http://example.org/hasName"), Literal("Instance One")))
+
+        self.model.ontology_graph.add(
+            (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.instance_graph.add(
+            (URIRef(instance1_uri), RDF.type, URIRef(type_uri))
+        )
+        self.model.instance_graph.add(
+            (URIRef(instance2_uri), RDF.type, URIRef(type_uri))
+        )
+        self.model.instance_graph.add(
+            (URIRef(instance1_uri), URIRef(pred_uri), URIRef(instance2_uri))
+        )
+        self.model.instance_graph.add(
+            (
+                URIRef(instance1_uri),
+                URIRef("http://example.org/hasName"),
+                Literal("Instance One"),
+            )
+        )
 
     def test_visualize_basic(self):
         """Test basic visualize call."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize()
-        
-        png_path, _ = self.model.get_dir(folder_list=["graphs"], filename="semantic_model.png")
+
+        png_path, _ = self.model.get_dir(
+            folder_list=["graphs"], filename="semantic_model.png"
+        )
         self.assertTrue(os.path.exists(png_path), f"Expected PNG file at {png_path}")
 
     def test_visualize_with_custom_query(self):
         """Test visualize with custom CONSTRUCT query."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         query = """
         CONSTRUCT { ?s ?p ?o }
@@ -1577,7 +2080,7 @@ class TestSemanticModel(unittest.TestCase):
         """Test visualize with node_limit."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize(node_limit=5)
 
@@ -1585,7 +2088,7 @@ class TestSemanticModel(unittest.TestCase):
         """Test visualize with triple_limit."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize(triple_limit=10)
 
@@ -1593,7 +2096,7 @@ class TestSemanticModel(unittest.TestCase):
         """Test visualize with include_full_uri=False."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize(include_full_uri=False)
 
@@ -1601,7 +2104,7 @@ class TestSemanticModel(unittest.TestCase):
         """Test visualize with slice_uri as integer."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize(slice_uri=20)
 
@@ -1609,7 +2112,7 @@ class TestSemanticModel(unittest.TestCase):
         """Test visualize with slice_uri as tuple."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize(slice_uri=(0, 30))
 
@@ -1617,7 +2120,7 @@ class TestSemanticModel(unittest.TestCase):
         """Test visualize with BFS traversal mode."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize(traversal_mode="bfs", node_limit=5)
 
@@ -1625,7 +2128,7 @@ class TestSemanticModel(unittest.TestCase):
         """Test visualize with generate_subgraphs=True."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize(generate_subgraphs=True)
 
@@ -1633,12 +2136,12 @@ class TestSemanticModel(unittest.TestCase):
         """Test visualize with custom DPI."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz not installed")
-        
+
         self._setup_visualize_data()
         self.model.visualize(dpi=100)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
     # TestSemanticModel.setUpClass()
     # test_semantic_model = TestSemanticModel()

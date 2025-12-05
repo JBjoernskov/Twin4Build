@@ -9,9 +9,9 @@ import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
+import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
-import twin4build.utils.constants as constants
 
 
 class BuildingSpaceMassTorchSystem(core.System, nn.Module):
