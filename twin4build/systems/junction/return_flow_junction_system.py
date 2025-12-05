@@ -1,6 +1,6 @@
 # Standard library imports
 import datetime
-from typing import Optional
+from typing import List, Optional, Union
 
 # Third party imports
 import numpy as np
@@ -64,8 +64,9 @@ class ReturnFlowJunctionSystem(core.System):
         else:
             self.airFlowRateBias = 0
         self.n_input_ports = (
-            2  # TODO: Write a method for initializing the number of input ports
+            2  
         )
+        self._manual_setup_n_input_ports = False
 
         self.input = {
             "airFlowRateIn": tps.Vector(),
@@ -78,26 +79,54 @@ class ReturnFlowJunctionSystem(core.System):
         self._config = {"parameters": ["airFlowRateBias"]}
 
     @property
+    def n_input_ports(self):
+        return self._n_input_ports
+
+    @n_input_ports.setter
+    def n_input_ports(self, n_input_ports: int):
+        self._manual_setup_n_input_ports = True
+        self._n_input_ports = n_input_ports
+
+    @property
     def config(self):
         return self._config
 
+    def setup_variable_inputs(self):
+
+        #Check that the number of airFlowRateIn and airTemperatureIn are the same
+        connection_point_airFlowRateIn = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateIn"]
+        connection_point_airTemperatureIn = [cp for cp in self.connects_at if cp.inputPort == "airTemperatureIn"]
+        if len(connection_point_airFlowRateIn) != len(connection_point_airTemperatureIn):
+            raise ValueError("The number of airFlowRateIn and airTemperatureIn must be the same")
+        
+        if self._manual_setup_n_input_ports == False:
+            #Assert that the number of input ports is at least 1
+            connection_point = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateIn"]
+            if len(connection_point) == 0:
+                raise ValueError("No input port found for airFlowRateIn")
+            n_input_ports = len(connection_point[0].connects_system_through)
+            self.n_input_ports = n_input_ports
+   
+   
+   
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
+        start_time: Union[List[datetime.datetime], datetime.datetime],
+        end_time: Union[List[datetime.datetime], datetime.datetime],
+        step_size: Union[List[int], int],
     ) -> None:
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
-        # TODO: self.setup_variable_inputs()
-
+        self.setup_variable_inputs()
+        
+        
         for input in self.input.values():
             input.initialize(
                 n_timesteps=max_timesteps,
                 batch_size=batch_size,
-                size=self.n_input_ports,
+                size=self.n_input_ports, #both inputs must have the same number of input ports
             )
         for output in self.output.values():
             output.initialize(

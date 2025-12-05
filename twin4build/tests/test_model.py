@@ -31,11 +31,34 @@ class TestExamples(unittest.TestCase):
                 },
                 id="PositionSchedule",
             )
+            temperature_schedule = tb.ScheduleSystem(
+                weekDayRulesetDict={
+                    "ruleset_default_value": 0,
+                    "ruleset_start_minute": [0, 0, 0, 0, 0, 0, 0],
+                    "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
+                    "ruleset_start_hour": [6, 7, 8, 12, 14, 16, 18],
+                    "ruleset_end_hour": [7, 8, 12, 14, 16, 18, 22],
+                    "ruleset_value": [0, 0.1, 1, 0, 0, 0.5, 0.7],
+                },
+                id="TemperatureSchedule",
+            )
+            temperature_schedule2 = tb.ScheduleSystem(
+                weekDayRulesetDict={
+                    "ruleset_default_value": 0,
+                    "ruleset_start_minute": [0, 0, 0, 0, 0, 0, 0],
+                    "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
+                    "ruleset_start_hour": [6, 7, 8, 12, 14, 16, 18],
+                    "ruleset_end_hour": [7, 8, 12, 14, 16, 18, 22],
+                    "ruleset_value": [0, 0.1, 1, 0, 0, 0.5, 0.7],
+                },
+                id="TemperatureSchedule2",
+            )
 
             # 2. Create a damper
             damper = tb.DamperTorchSystem(nominalAirFlowRate=1.6, a=5, id="Damper")
 
             supply_flow_junction = tb.SupplyFlowJunctionSystem(id="SupplyFlowJunction")
+            return_flow_junction = tb.ReturnFlowJunctionSystem(id="ReturnFlowJunction")
 
             self.add_connection(
                 position_schedule, damper, "scheduleValue", "damperPosition"
@@ -46,6 +69,26 @@ class TestExamples(unittest.TestCase):
                 "airFlowRate",
                 "airFlowRateOut",
                 input_port_index=0,
+            )
+            self.add_connection(
+                temperature_schedule, return_flow_junction, "scheduleValue", "airTemperatureIn", input_port_index=0
+            )
+            self.add_connection(
+                temperature_schedule2, return_flow_junction, "scheduleValue", "airTemperatureIn", input_port_index=1
+            )
+            self.add_connection(
+                damper,
+                return_flow_junction,
+                "airFlowRate",
+                "airFlowRateIn",
+                input_port_index=0,
+            )
+            self.add_connection(
+                supply_flow_junction,
+                return_flow_junction,
+                "airFlowRateIn", 
+                "airFlowRateIn",
+                input_port_index=1,
             )
 
         model = tb.Model(id="test_model_fcn")
