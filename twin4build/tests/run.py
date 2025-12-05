@@ -1,7 +1,33 @@
 #!/usr/bin/env python
 """
 Script to run unittest discovery with coverage measurement.
-Equivalent to: coverage run -m unittest discover
+Discovers tests from the new refactored folder structure that mirrors twin4build.
+
+Test folder structure:
+tests/
+├── estimator/           - Tests for twin4build.estimator
+├── examples/            - Tests for twin4build.examples
+├── model/               - Tests for twin4build.model
+│   ├── semantic_model/  - Tests for twin4build.model.semantic_model
+│   └── simulation_model/- Tests for twin4build.model.simulation_model
+├── optimizer/           - Tests for twin4build.optimizer
+├── simulator/           - Tests for twin4build.simulator
+├── systems/             - Tests for twin4build.systems
+│   ├── air_to_air_heat_recovery/
+│   ├── building_space/
+│   ├── coil/
+│   ├── controller/
+│   ├── damper/
+│   ├── fan/
+│   ├── junction/
+│   ├── outdoor_environment/
+│   ├── schedule/
+│   ├── sensor/
+│   ├── space_heater/
+│   ├── utils/
+│   └── valve/
+├── translator/          - Tests for twin4build.translator
+└── utils/               - Tests for twin4build.utils
 """
 
 # Standard library imports
@@ -34,27 +60,11 @@ def main():
         loader = unittest.TestLoader()
 
         # Discover all tests in the current directory and subdirectories
-        # Start directory: current test directory
-        # Pattern: test*.py (default pattern for unittest discovery)
-
+        # This will find all test_*.py files in the new folder structure
         tests = loader.discover(start_dir=test_dir, pattern="test_*.py")
-        # tests = loader.discover(start_dir=test_dir, pattern='test_simulation_model.py')
-        # tests = loader.discover(start_dir=test_dir, pattern='test_components.py')
-        # tests = loader.discover(start_dir=test_dir, pattern='test_translator.py')
-        # tests = loader.discover(start_dir=test_dir, pattern='test_optimizer.py')
-        # tests = loader.discover(start_dir=test_dir, pattern='test_semantic_model.py')
-        # tests = loader.discover(start_dir=test_dir, pattern='test_types.py')
 
-        # Combine multiple test patterns (use fresh loaders for each pattern)
-        # tests = unittest.TestSuite()
-        # for pattern in ['test_utils.py', 'test_semantic_model.py', 'test_plot_utils.py']:
-        #     suite = unittest.TestLoader().discover(start_dir=test_dir, pattern=pattern)
-        #     # Flatten and add each test individually
-        #     for test_group in suite:
-        #         tests.addTests(test_group)
-        #     print(f"Discovered {suite.countTestCases()} tests from {pattern}")
-
-        # print(f"Total tests to run: {tests.countTestCases()}")
+        # Print discovered test count
+        print(f"Discovered {tests.countTestCases()} tests")
 
         # Create a test runner
         runner = unittest.TextTestRunner(verbosity=2)
@@ -65,7 +75,6 @@ def main():
         cov.stop()
 
         if True:
-
             # Stop measuring coverage
 
             # Save coverage data
@@ -114,5 +123,47 @@ def main():
         sys.exit(1)
 
 
+def run_specific_tests(patterns: list[str]):
+    """Run tests matching specific patterns.
+    
+    Args:
+        patterns: List of patterns to match (e.g., ['test_model.py', 'test_simulator.py'])
+    """
+    cov = coverage.Coverage()
+    cov.start()
+
+    try:
+        test_dir = os.path.dirname(os.path.abspath(__file__))
+        tests = unittest.TestSuite()
+        
+        for pattern in patterns:
+            suite = unittest.TestLoader().discover(start_dir=test_dir, pattern=pattern)
+            for test_group in suite:
+                tests.addTests(test_group)
+            print(f"Discovered {suite.countTestCases()} tests from {pattern}")
+
+        runner = unittest.TextTestRunner(verbosity=2)
+        result = runner.run(tests)
+
+        cov.stop()
+        cov.save()
+        cov.report()
+
+        if result.wasSuccessful():
+            sys.exit(0)
+        else:
+            sys.exit(1)
+
+    except Exception as e:
+        cov.stop()
+        cov.save()
+        print(f"\nError occurred: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
+    # To run all tests:
     main()
+    
+    # To run specific tests, uncomment the following and modify patterns:
+    # run_specific_tests(['test_model.py', 'test_simulator.py'])

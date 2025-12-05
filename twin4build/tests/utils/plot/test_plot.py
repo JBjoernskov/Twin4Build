@@ -549,6 +549,62 @@ class TestOnPick(unittest.TestCase):
         mock_legend.set_alpha.assert_called_with(1)
 
 
+class TestFilterNans(unittest.TestCase):
+    """Tests for filter_nans function."""
+
+    def test_filter_nans_no_nans(self):
+        """Test filter_nans with no NaN values."""
+        # Local application imports
+        from twin4build.utils.plot.plot import filter_nans
+
+        time = np.array([1.0, 2.0, 3.0, 4.0])
+        data = np.array([10.0, 20.0, 30.0, 40.0])
+
+        filtered_time, filtered_data = filter_nans(time, data)
+
+        np.testing.assert_array_equal(filtered_time, time)
+        np.testing.assert_array_equal(filtered_data, data)
+
+    def test_filter_nans_with_nans_in_time(self):
+        """Test filter_nans with NaN values in time array."""
+        # Local application imports
+        from twin4build.utils.plot.plot import filter_nans
+
+        time = np.array([1.0, np.nan, 3.0, 4.0])
+        data = np.array([10.0, 20.0, 30.0, 40.0])
+
+        filtered_time, filtered_data = filter_nans(time, data)
+
+        np.testing.assert_array_equal(filtered_time, np.array([1.0, 3.0, 4.0]))
+        np.testing.assert_array_equal(filtered_data, np.array([10.0, 30.0, 40.0]))
+
+    def test_filter_nans_with_pandas_nat(self):
+        """Test filter_nans with pandas NaT values."""
+        # Local application imports
+        from twin4build.utils.plot.plot import filter_nans
+
+        time = pd.Series([pd.Timestamp("2023-01-01"), pd.NaT, pd.Timestamp("2023-01-03")])
+        data = np.array([10.0, 20.0, 30.0])
+
+        filtered_time, filtered_data = filter_nans(time.values, data)
+
+        self.assertEqual(len(filtered_time), 2)
+        self.assertEqual(len(filtered_data), 2)
+
+    def test_filter_nans_all_nans(self):
+        """Test filter_nans when all time values are NaN."""
+        # Local application imports
+        from twin4build.utils.plot.plot import filter_nans
+
+        time = np.array([np.nan, np.nan, np.nan])
+        data = np.array([10.0, 20.0, 30.0])
+
+        filtered_time, filtered_data = filter_nans(time, data)
+
+        self.assertEqual(len(filtered_time), 0)
+        self.assertEqual(len(filtered_data), 0)
+
+
 class TestGetData(unittest.TestCase):
     """Tests for get_data function."""
 
@@ -652,6 +708,567 @@ class TestGetData(unittest.TestCase):
 
         self.assertEqual(parsed_data.ndim, 2)
         self.assertEqual(parsed_data.shape, (1, 3))
+
+
+class TestPlotFunction(unittest.TestCase):
+    """Tests for the main plot function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create sample time and data
+        self.time = pd.date_range(start="2023-01-01", periods=24, freq="h")
+        self.data1 = np.sin(np.linspace(0, 2 * np.pi, 24))
+        self.data2 = np.cos(np.linspace(0, 2 * np.pi, 24))
+        self.data3 = np.linspace(0, 100, 24)
+
+    def tearDown(self):
+        """Clean up after tests."""
+        plt.close("all")
+
+    def test_plot_single_entry(self):
+        """Test plot with a single Entry on axis 1."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry = Entry(data=self.data1, label="Sine Wave")
+        fig, axes = plot(time=self.time, entries=[entry], show=False)
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 1)
+
+        plt.close(fig)
+
+    def test_plot_multiple_entries_axis1(self):
+        """Test plot with multiple entries on axis 1."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry1 = Entry(data=self.data1, label="Sine Wave")
+        entry2 = Entry(data=self.data2, label="Cosine Wave")
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry1, entry2],
+            ylabel_1axis="Amplitude",
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 1)
+
+        plt.close(fig)
+
+    def test_plot_with_two_axes(self):
+        """Test plot with entries on two y-axes."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry1 = Entry(data=self.data1, label="Sine Wave", axis=1)
+        entry2 = Entry(data=self.data3, label="Linear Data", axis=2)
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry1, entry2],
+            ylabel_1axis="Amplitude",
+            ylabel_2axis="Value",
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 2)
+
+        plt.close(fig)
+
+    def test_plot_with_three_axes(self):
+        """Test plot with entries on three y-axes."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry1 = Entry(data=self.data1, label="Sine Wave", axis=1)
+        entry2 = Entry(data=self.data2, label="Cosine Wave", axis=2)
+        entry3 = Entry(data=self.data3, label="Linear Data", axis=3)
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry1, entry2, entry3],
+            ylabel_1axis="Amplitude 1",
+            ylabel_2axis="Amplitude 2",
+            ylabel_3axis="Value",
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 3)
+
+        plt.close(fig)
+
+    def test_plot_with_ylim(self):
+        """Test plot with y-axis limits."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry = Entry(data=self.data1, label="Sine Wave")
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry],
+            ylim_1axis=(-2, 2),
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+        ylim = axes[0].get_ylim()
+        self.assertLessEqual(ylim[0], -2)
+        self.assertGreaterEqual(ylim[1], 2)
+
+        plt.close(fig)
+
+    def test_plot_with_title(self):
+        """Test plot with title."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry = Entry(data=self.data1, label="Sine Wave")
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry],
+            title="Test Plot Title",
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+        # Check suptitle exists
+        self.assertEqual(fig._suptitle.get_text(), "Test Plot Title")
+
+        plt.close(fig)
+
+    def test_plot_with_custom_styling(self):
+        """Test plot with custom Entry styling."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry = Entry(
+            data=self.data1,
+            label="Styled Data",
+            color="red",
+            fmt="--",
+            linewidth=3,
+        )
+
+        fig, axes = plot(time=self.time, entries=[entry], show=False)
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_with_numpy_time(self):
+        """Test plot with numpy datetime array."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        time = np.array(self.time)
+        entry = Entry(data=self.data1, label="Test Data")
+
+        fig, axes = plot(time=time, entries=[entry], show=False)
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_with_list_time(self):
+        """Test plot with list of times (batch mode)."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        time = [self.time]
+        data = self.data1.reshape(1, -1)
+        entry = Entry(data=data, label="Batch Data")
+
+        fig, axes = plot(time=time, entries=[entry], show=False)
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_with_single_entry_not_list(self):
+        """Test plot with single Entry (not in list)."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry = Entry(data=self.data1, label="Single Entry")
+
+        fig, axes = plot(time=self.time, entries=entry, show=False)
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_missing_time_raises_error(self):
+        """Test plot raises error when time is missing."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry = Entry(data=self.data1, label="Test Data")
+
+        with self.assertRaises(AssertionError):
+            plot(time=None, entries=[entry], show=False)
+
+    def test_plot_missing_entries_raises_error(self):
+        """Test plot raises error when entries is missing."""
+        # Local application imports
+        from twin4build.utils.plot.plot import plot
+
+        with self.assertRaises(AssertionError):
+            plot(time=self.time, entries=None, show=False)
+
+    def test_plot_no_axis1_entries_raises_error(self):
+        """Test plot raises error when no entries for axis 1."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry = Entry(data=self.data1, label="Axis 2 Only", axis=2)
+
+        with self.assertRaises(ValueError) as context:
+            plot(time=self.time, entries=[entry], show=False)
+
+        self.assertIn("axis=1", str(context.exception))
+
+    def test_plot_with_roundto_parameters(self):
+        """Test plot with roundto parameters."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry1 = Entry(data=self.data1, label="Data 1", axis=1)
+        entry2 = Entry(data=self.data3, label="Data 2", axis=2)
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry1, entry2],
+            ylabel_1axis="Amp",
+            ylabel_2axis="Val",
+            roundto_1axis=0.1,
+            roundto_2axis=10,
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_with_yoffset_parameters(self):
+        """Test plot with yoffset parameters."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry1 = Entry(data=self.data1, label="Data 1", axis=1)
+        entry2 = Entry(data=self.data3, label="Data 2", axis=2)
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry1, entry2],
+            ylabel_1axis="Amp",
+            ylabel_2axis="Val",
+            yoffset_1axis=0.1,
+            yoffset_2axis=5,
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_with_align_zero_false(self):
+        """Test plot with align_zero=False."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry1 = Entry(data=self.data1, label="Data 1", axis=1)
+        entry2 = Entry(data=self.data3, label="Data 2", axis=2)
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry1, entry2],
+            ylabel_1axis="Amp",
+            ylabel_2axis="Val",
+            yoffset_2axis=5,
+            align_zero=False,
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_with_ylim_on_multiple_axes(self):
+        """Test plot with y-limits on multiple axes."""
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot
+
+        entry1 = Entry(data=self.data1, label="Data 1", axis=1)
+        entry2 = Entry(data=self.data2, label="Data 2", axis=2)
+        entry3 = Entry(data=self.data3, label="Data 3", axis=3)
+
+        fig, axes = plot(
+            time=self.time,
+            entries=[entry1, entry2, entry3],
+            ylabel_1axis="Amp 1",
+            ylabel_2axis="Amp 2",
+            ylabel_3axis="Value",
+            ylim_1axis=(-1.5, 1.5),
+            ylim_2axis=(-1.5, 1.5),
+            ylim_3axis=(0, 120),
+            show=False,
+        )
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+
+class TestGetFigAxes(unittest.TestCase):
+    """Tests for get_fig_axes function."""
+
+    def tearDown(self):
+        """Clean up after tests."""
+        plt.close("all")
+
+    def test_get_fig_axes_single_plot(self):
+        """Test get_fig_axes with single plot."""
+        # Local application imports
+        from twin4build.utils.plot.plot import get_fig_axes
+
+        fig, axes = get_fig_axes("Single Plot", n_plots=1)
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 1)
+        self.assertIsInstance(axes[0], Axes)
+
+        plt.close(fig)
+
+    def test_get_fig_axes_multiple_plots(self):
+        """Test get_fig_axes with multiple plots."""
+        # Local application imports
+        from twin4build.utils.plot.plot import get_fig_axes
+
+        fig, axes = get_fig_axes("Multiple Plots", n_plots=4, cols=2)
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 4)
+
+        plt.close(fig)
+
+    def test_get_fig_axes_with_custom_size(self):
+        """Test get_fig_axes with custom size."""
+        # Local application imports
+        from twin4build.utils.plot.plot import get_fig_axes
+
+        fig, axes = get_fig_axes("Custom Size", n_plots=1, size_inches=(10, 8))
+
+        self.assertIsInstance(fig, Figure)
+        size = fig.get_size_inches()
+        self.assertEqual(tuple(size), (10, 8))
+
+        plt.close(fig)
+
+    def test_get_fig_axes_with_custom_offset(self):
+        """Test get_fig_axes with custom offset."""
+        # Local application imports
+        from twin4build.utils.plot.plot import get_fig_axes
+
+        fig, axes = get_fig_axes("Custom Offset", n_plots=1, offset=(0.15, 0.2))
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 1)
+
+        plt.close(fig)
+
+    def test_get_fig_axes_with_multiple_rows(self):
+        """Test get_fig_axes with multiple rows."""
+        # Local application imports
+        from twin4build.utils.plot.plot import get_fig_axes
+
+        fig, axes = get_fig_axes("Multiple Rows", n_plots=6, cols=2)
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 6)
+
+        plt.close(fig)
+
+    def test_get_fig_axes_fewer_plots_than_grid(self):
+        """Test get_fig_axes with fewer plots than grid cells."""
+        # Local application imports
+        from twin4build.utils.plot.plot import get_fig_axes
+
+        # 3 plots in a 2x2 grid
+        fig, axes = get_fig_axes("Partial Grid", n_plots=3, cols=2)
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 3)
+
+        plt.close(fig)
+
+    def test_get_fig_axes_title_set(self):
+        """Test that get_fig_axes sets the title correctly."""
+        # Local application imports
+        from twin4build.utils.plot.plot import get_fig_axes
+
+        fig, axes = get_fig_axes("My Test Title", n_plots=1)
+
+        self.assertEqual(fig._suptitle.get_text(), "My Test Title")
+
+        plt.close(fig)
+
+
+class TestPlotComponentDeprecated(unittest.TestCase):
+    """Tests for deprecated plot_component function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.time = pd.date_range(start="2023-01-01", periods=24, freq="h")
+        self.data1 = np.sin(np.linspace(0, 2 * np.pi, 24))
+        self.data2 = np.cos(np.linspace(0, 2 * np.pi, 24))
+
+    def tearDown(self):
+        """Clean up after tests."""
+        plt.close("all")
+
+    def test_plot_component_with_entry_objects(self):
+        """Test plot_component with Entry objects."""
+        # Standard library imports
+        from unittest.mock import Mock
+
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot_component
+
+        # Create mock simulator
+        mock_simulator = Mock()
+        mock_simulator.date_time_steps = self.time
+
+        entry1 = Entry(data=self.data1, label="Test Data")
+
+        with self.assertWarns(DeprecationWarning):
+            fig, axes = plot_component(
+                simulator=mock_simulator,
+                components_1axis=[entry1],
+                show=False,
+            )
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_component_with_direct_data_tuples(self):
+        """Test plot_component with direct data tuples (deprecated format)."""
+        # Standard library imports
+        from unittest.mock import Mock
+
+        # Local application imports
+        from twin4build.utils.plot.plot import plot_component
+
+        mock_simulator = Mock()
+        mock_simulator.date_time_steps = self.time
+
+        # Direct data tuple format: (data, label)
+        with self.assertWarns(DeprecationWarning):
+            fig, axes = plot_component(
+                simulator=mock_simulator,
+                components_1axis=[(self.data1, "Direct Data")],
+                show=False,
+            )
+
+        self.assertIsInstance(fig, Figure)
+
+        plt.close(fig)
+
+    def test_plot_component_multiple_axes_with_entries(self):
+        """Test plot_component with entries on multiple axes."""
+        # Standard library imports
+        from unittest.mock import Mock
+
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot_component
+
+        mock_simulator = Mock()
+        mock_simulator.date_time_steps = self.time
+
+        entry1 = Entry(data=self.data1, label="Axis 1")
+        entry2 = Entry(data=self.data2, label="Axis 2")
+
+        with self.assertWarns(DeprecationWarning):
+            fig, axes = plot_component(
+                simulator=mock_simulator,
+                components_1axis=[entry1],
+                components_2axis=[entry2],
+                ylabel_1axis="Amp 1",
+                ylabel_2axis="Amp 2",
+                show=False,
+            )
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 2)
+
+        plt.close(fig)
+
+    def test_plot_component_three_axes_with_entries(self):
+        """Test plot_component with entries on three axes."""
+        # Standard library imports
+        from unittest.mock import Mock
+
+        # Local application imports
+        from twin4build.utils.plot.plot import Entry, plot_component
+
+        mock_simulator = Mock()
+        mock_simulator.date_time_steps = self.time
+
+        data3 = np.linspace(0, 100, 24)
+
+        entry1 = Entry(data=self.data1, label="Axis 1")
+        entry2 = Entry(data=self.data2, label="Axis 2")
+        entry3 = Entry(data=data3, label="Axis 3")
+
+        with self.assertWarns(DeprecationWarning):
+            fig, axes = plot_component(
+                simulator=mock_simulator,
+                components_1axis=[entry1],
+                components_2axis=[entry2],
+                components_3axis=[entry3],
+                ylabel_1axis="Amp 1",
+                ylabel_2axis="Amp 2",
+                ylabel_3axis="Value",
+                show=False,
+            )
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 3)
+
+        plt.close(fig)
+
+    def test_plot_component_direct_tuples_multiple_axes(self):
+        """Test plot_component with direct data tuples on multiple axes."""
+        # Standard library imports
+        from unittest.mock import Mock
+
+        # Local application imports
+        from twin4build.utils.plot.plot import plot_component
+
+        mock_simulator = Mock()
+        mock_simulator.date_time_steps = self.time
+
+        with self.assertWarns(DeprecationWarning):
+            fig, axes = plot_component(
+                simulator=mock_simulator,
+                components_1axis=[(self.data1, "Axis 1")],
+                components_2axis=[(self.data2, "Axis 2")],
+                ylabel_1axis="Amp 1",
+                ylabel_2axis="Amp 2",
+                show=False,
+            )
+
+        self.assertIsInstance(fig, Figure)
+        self.assertEqual(len(axes), 2)
+
+        plt.close(fig)
 
 
 if __name__ == "__main__":

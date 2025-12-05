@@ -13,16 +13,16 @@ class TestScalar(unittest.TestCase):
         """Test scalar initialization with and without initial value."""
         s = Scalar()
         # Default initialization creates None
-        self.assertIsNone(s.scalar)
+        self.assertIsNone(s.tensor)
 
         s = Scalar(scalar=5.0)
-        self.assertEqual(s.scalar.item(), 5.0)
+        self.assertEqual(s.tensor.item(), 5.0)
 
     def test_scalar_tensor(self):
         """Test that scalar values are stored as tensors."""
         s = Scalar(scalar=5.0)
-        self.assertTrue(torch.is_tensor(s.scalar))
-        self.assertEqual(s.scalar.item(), 5.0)
+        self.assertTrue(torch.is_tensor(s.tensor))
+        self.assertEqual(s.tensor.item(), 5.0)
 
     def test_scalar_set_get(self):
         """Test setting and getting scalar values."""

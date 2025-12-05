@@ -373,6 +373,417 @@ class TestDataLoaders(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(len(result), 3)  # 3 data points
 
+    def test_sample_from_df_with_timezone_aware_data(self):
+        """Test sample_from_df with timezone-aware datetime data."""
+        # Third party imports
+        import pandas as pd
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import sample_from_df
+
+        # Create test DataFrame with timezone-aware dates
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            periods=5,
+            freq="1h",
+            tz="UTC",
+        )
+        df = pd.DataFrame({"date_time": dates, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
+
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=pytz.UTC)
+
+        result = sample_from_df(
+            df,
+            datecolumn=0,
+            valuecolumn=1,
+            step_size=3600,
+            start_time=start_time,
+            end_time=end_time,
+            resample=True,
+            clip=True,
+            tz="UTC",
+        )
+
+        self.assertIsNotNone(result)
+
+    def test_sample_from_df_with_multiple_columns(self):
+        """Test sample_from_df with multiple value columns (no specific valuecolumn)."""
+        # Third party imports
+        import pandas as pd
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import sample_from_df
+
+        # Create test DataFrame with multiple value columns
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            periods=5,
+            freq="1h",
+        )
+        df = pd.DataFrame({
+            "date_time": dates,
+            "value1": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "value2": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=pytz.UTC)
+
+        # When valuecolumn is None, all columns should be converted to numeric
+        result = sample_from_df(
+            df,
+            datecolumn=0,
+            valuecolumn=None,
+            step_size=3600,
+            start_time=start_time,
+            end_time=end_time,
+            resample=True,
+            clip=True,
+            tz="UTC",
+        )
+
+        self.assertIsNotNone(result)
+        self.assertIn("value1", result.columns)
+        self.assertIn("value2", result.columns)
+
+    def test_sample_from_df_preserve_order_reversed(self):
+        """Test sample_from_df with reversed date order."""
+        # Third party imports
+        import pandas as pd
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import sample_from_df
+
+        # Create test DataFrame with reversed dates (newest first)
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0),
+            periods=5,
+            freq="1h",
+        )
+        df = pd.DataFrame({
+            "date_time": dates[::-1],  # Reversed order
+            "value": [50.0, 40.0, 30.0, 20.0, 10.0],
+        })
+
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=pytz.UTC)
+
+        result = sample_from_df(
+            df,
+            datecolumn=0,
+            valuecolumn=1,
+            step_size=3600,
+            start_time=start_time,
+            end_time=end_time,
+            resample=True,
+            clip=True,
+            tz="UTC",
+            preserve_order=True,
+        )
+
+        self.assertIsNotNone(result)
+
+
+class TestLoadDatabaseConfig(unittest.TestCase):
+    """Tests for load_database_config function."""
+
+    def test_load_database_config_defaults(self):
+        """Test load_database_config returns defaults when no config file."""
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_database_config
+
+        config = load_database_config()
+
+        self.assertEqual(config["host"], "localhost")
+        self.assertEqual(config["port"], 5432)
+        self.assertEqual(config["name"], "postgres")
+        self.assertEqual(config["user"], "postgres")
+
+    def test_load_database_config_with_env_vars(self):
+        """Test load_database_config uses environment variables."""
+        # Standard library imports
+        import os
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_database_config
+
+        # Set environment variables
+        original_host = os.environ.get("TIMESCALEDB_HOST")
+        os.environ["TIMESCALEDB_HOST"] = "test_host"
+
+        try:
+            config = load_database_config()
+            self.assertEqual(config["host"], "test_host")
+        finally:
+            # Restore original value
+            if original_host is not None:
+                os.environ["TIMESCALEDB_HOST"] = original_host
+            else:
+                del os.environ["TIMESCALEDB_HOST"]
+
+    def test_load_database_config_with_ini_file(self):
+        """Test load_database_config with INI file."""
+        # Standard library imports
+        import os
+        import tempfile
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_database_config
+
+        # Create a temporary INI file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write("[timescaledb]\n")
+            f.write("host = ini_host\n")
+            f.write("port = 5433\n")
+            f.write("name = testdb\n")
+            f.write("user = testuser\n")
+            f.write("password = testpass\n")
+            temp_file = f.name
+
+        try:
+            config = load_database_config(config_file=temp_file)
+            self.assertEqual(config["host"], "ini_host")
+            self.assertEqual(config["port"], 5433)
+            self.assertEqual(config["name"], "testdb")
+            self.assertEqual(config["user"], "testuser")
+            self.assertEqual(config["password"], "testpass")
+        finally:
+            os.unlink(temp_file)
+
+    def test_load_database_config_nonexistent_file(self):
+        """Test load_database_config with nonexistent file returns defaults."""
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_database_config
+
+        config = load_database_config(config_file="nonexistent_file.ini")
+
+        # Should return defaults
+        self.assertEqual(config["host"], "localhost")
+        self.assertEqual(config["port"], 5432)
+
+    def test_load_database_config_custom_section(self):
+        """Test load_database_config with custom section."""
+        # Standard library imports
+        import os
+        import tempfile
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_database_config
+
+        # Create a temporary INI file with custom section
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
+            f.write("[custom_section]\n")
+            f.write("host = custom_host\n")
+            f.write("port = 5434\n")
+            temp_file = f.name
+
+        try:
+            config = load_database_config(config_file=temp_file, section="custom_section")
+            self.assertEqual(config["host"], "custom_host")
+            self.assertEqual(config["port"], 5434)
+        finally:
+            os.unlink(temp_file)
+
+
+class TestLoadFromSpreadsheet(unittest.TestCase):
+    """Tests for load_from_spreadsheet function."""
+
+    def test_load_from_csv(self):
+        """Test load_from_spreadsheet with CSV file."""
+        # Standard library imports
+        import os
+        import tempfile
+
+        # Third party imports
+        import pandas as pd
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_from_spreadsheet
+
+        # Create a temporary CSV file
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0),
+            periods=10,
+            freq="1h",
+        )
+        df = pd.DataFrame({
+            "date_time": dates,
+            "value": [float(i) for i in range(10)],
+        })
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            df.to_csv(f, index=False)
+            temp_file = f.name
+
+        try:
+            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+
+            result = load_from_spreadsheet(
+                filename=temp_file,
+                datecolumn=0,
+                valuecolumn=1,
+                step_size=3600,
+                start_time=start_time,
+                end_time=end_time,
+                resample=True,
+                clip=True,
+                cache=False,  # Disable caching for test
+                tz="UTC",
+            )
+
+            self.assertIsNotNone(result)
+            self.assertEqual(len(result), 5)  # 5 hours from 0 to 4
+        finally:
+            os.unlink(temp_file)
+
+    def test_load_from_csv_with_cache(self):
+        """Test load_from_spreadsheet with caching enabled."""
+        # Standard library imports
+        import os
+        import tempfile
+
+        # Third party imports
+        import pandas as pd
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_from_spreadsheet
+
+        # Create a temporary CSV file
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0),
+            periods=10,
+            freq="1h",
+        )
+        df = pd.DataFrame({
+            "date_time": dates,
+            "value": [float(i) for i in range(10)],
+        })
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            df.to_csv(f, index=False)
+            temp_file = f.name
+
+        try:
+            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+
+            # First load - creates cache
+            result1 = load_from_spreadsheet(
+                filename=temp_file,
+                datecolumn=0,
+                valuecolumn=1,
+                step_size=3600,
+                start_time=start_time,
+                end_time=end_time,
+                resample=True,
+                clip=True,
+                cache=True,
+                tz="UTC",
+            )
+
+            # Second load - should use cache
+            result2 = load_from_spreadsheet(
+                filename=temp_file,
+                datecolumn=0,
+                valuecolumn=1,
+                step_size=3600,
+                start_time=start_time,
+                end_time=end_time,
+                resample=True,
+                clip=True,
+                cache=True,
+                tz="UTC",
+            )
+
+            self.assertIsNotNone(result1)
+            self.assertIsNotNone(result2)
+            self.assertEqual(len(result1), len(result2))
+        finally:
+            os.unlink(temp_file)
+
+    def test_load_from_xlsx(self):
+        """Test load_from_spreadsheet with XLSX file."""
+        # Standard library imports
+        import os
+        import tempfile
+
+        # Third party imports
+        import pandas as pd
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_from_spreadsheet
+
+        # Create a temporary XLSX file
+        dates = pd.date_range(
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0),
+            periods=10,
+            freq="1h",
+        )
+        df = pd.DataFrame({
+            "date_time": dates,
+            "value": [float(i) for i in range(10)],
+        })
+
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            temp_file = f.name
+
+        df.to_excel(temp_file, index=False)
+
+        try:
+            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+
+            result = load_from_spreadsheet(
+                filename=temp_file,
+                datecolumn=0,
+                valuecolumn=1,
+                step_size=3600,
+                start_time=start_time,
+                end_time=end_time,
+                resample=True,
+                clip=True,
+                cache=False,
+                tz="UTC",
+            )
+
+            self.assertIsNotNone(result)
+            self.assertEqual(len(result), 5)
+        finally:
+            os.unlink(temp_file)
+
+    def test_load_from_spreadsheet_invalid_extension(self):
+        """Test load_from_spreadsheet with invalid file extension."""
+        # Standard library imports
+        import os
+        import tempfile
+
+        # Local application imports
+        from twin4build.utils.data_loaders.load import load_from_spreadsheet
+
+        # Create a temporary file with invalid extension
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("test")
+            temp_file = f.name
+
+        try:
+            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+
+            with self.assertRaises(Exception):
+                load_from_spreadsheet(
+                    filename=temp_file,
+                    datecolumn=0,
+                    valuecolumn=1,
+                    step_size=3600,
+                    start_time=start_time,
+                    end_time=end_time,
+                    cache=False,
+                )
+        finally:
+            os.unlink(temp_file)
+
 
 class TestPlotUtilities(unittest.TestCase):
     def test_plot_imports(self):
