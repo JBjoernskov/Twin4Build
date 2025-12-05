@@ -163,14 +163,14 @@ def run_specific_tests(patterns: list[str]):
 
 if __name__ == "__main__":
     # To run all tests:
-    # main()
+    main()
 
     # Run specific tests that were previously failing:
-    run_specific_tests(
-        [
-            "test_building_space_torch_system.py",  # BuildingSpaceTorchSystem tests
-            "test_utility_systems.py",  # MaxSystem, OnOffSystem, PassInputToOutput, PiecewiseLinearSystem
-            "test_utils.py",  # sample_from_df test
-            "test_plot.py",  # plot_component tests
-        ]
-    )
+    # run_specific_tests(
+    #     [
+    #         "test_building_space_torch_system.py",  # BuildingSpaceTorchSystem tests
+    #         "test_utility_systems.py",  # MaxSystem, OnOffSystem, PassInputToOutput, PiecewiseLinearSystem
+    #         "test_utils.py",  # sample_from_df test
+    #         "test_plot.py",  # plot_component tests
+    #     ]
+    # )
