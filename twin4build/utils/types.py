@@ -5,6 +5,7 @@ import datetime
 import functools
 import os
 import sys
+import warnings
 from collections import OrderedDict
 from typing import List, Optional, Union
 
@@ -82,6 +83,10 @@ class Vector:
     def tensor(self):
         return self._tensor
 
+    @tensor.setter
+    def tensor(self, value):
+        self._tensor = value
+
     @property
     def size(self):
         return self._size
@@ -101,10 +106,6 @@ class Vector:
     @log_history.setter
     def log_history(self, value: bool):
         self._log_history = value
-
-    @property
-    def scalar(self):
-        return self._scalar
 
     @property
     def history(self):
@@ -392,7 +393,7 @@ class Scalar:
         elif isinstance(scalar, (float, int)):
             scalar = torch.tensor([scalar], dtype=torch.float64, requires_grad=False)
 
-        self._scalar = scalar
+        self._tensor = scalar
         self._batch_size = batch_size
         self._n_timesteps = n_timesteps
         self._init_scalar = scalar
@@ -426,8 +427,21 @@ class Scalar:
         self._log_history = value
 
     @property
+    def tensor(self):
+        return self._tensor
+
+    @tensor.setter
+    def tensor(self, value):
+        self._tensor = value
+
+    @property
     def scalar(self):
-        return self._scalar
+        warnings.warn(
+            "Property 'scalar' is deprecated. Use 'tensor' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._tensor
 
     @property
     def history(self):
@@ -468,7 +482,7 @@ class Scalar:
         Returns:
             str: String representation of the scalar value.
         """
-        return str(self._scalar)
+        return str(self._tensor)
 
     def set_requires_grad(self, requires_grad: bool):  # TODO: Implement this for Vector
         assert self._is_leaf or (
@@ -506,14 +520,14 @@ class Scalar:
             self._n_timesteps = n_timesteps
 
         if self._init_scalar is None:
-            self._scalar = torch.zeros((self.batch_size), dtype=torch.float64)
+            self._tensor = torch.zeros((self.batch_size), dtype=torch.float64)
         else:
-            self._scalar = self._init_scalar.clone()
+            self._tensor = self._init_scalar.clone()
             if self.batch_size > 1:
-                if self._scalar.dim() == 0:
-                    self._scalar = self._scalar.expand(self.batch_size).clone()
-                elif self._scalar.dim() == 1 and self._scalar.shape[0] == 1:
-                    self._scalar = self._scalar.expand(self.batch_size).clone()
+                if self._tensor.dim() == 0:
+                    self._tensor = self._tensor.expand(self.batch_size).clone()
+                elif self._tensor.dim() == 1 and self._tensor.shape[0] == 1:
+                    self._tensor = self._tensor.expand(self.batch_size).clone()
 
         if values is not None:
             values = _convert_to_2D_tensor(values)
@@ -584,7 +598,7 @@ class Scalar:
         if apply is not None:
             v = apply(v)
 
-        self._scalar = v
+        self._tensor = v
         if self._log_history:
             assert (
                 step_index is not None
@@ -604,7 +618,7 @@ class Scalar:
         Returns:
             float: Scalar value.
         """
-        return self._scalar
+        return self._tensor
 
     def normalize(self, v: torch.Tensor = None):
         assert (
@@ -663,17 +677,17 @@ class Scalar:
         Returns:
             float: Scalar value.
         """
-        return self._scalar.item()
+        return self._tensor.item()
 
     # def reset(self):
     #     if self._init_scalar is not None:
-    #         self._scalar = self._init_scalar.clone()
+    #         self._tensor = self._init_scalar.clone()
     #     else:
-    #         self._scalar = None
+    #         self._tensor = None
 
     def copy(self):
         copy = Scalar()
-        copy._scalar = self._scalar
+        copy._tensor = self._tensor
         copy._init_scalar = self._init_scalar
         if self._history is None:
             copy._history = None
@@ -697,7 +711,7 @@ class Parameter(nn.Parameter):
         # Set min and max values
         if min_value is None:
             if torch.all(data < 0):
-                min_value = torch.tensor(data.clone(), dtype=torch.float64)
+                min_value = torch.tensor(data.detach().clone(), dtype=torch.float64)
             else:
                 min_value = torch.tensor(0, dtype=torch.float64)
             # validate = False
@@ -710,7 +724,7 @@ class Parameter(nn.Parameter):
             elif torch.allclose(data, torch.zeros_like(data)):
                 max_value = torch.tensor(1, dtype=torch.float64)
             else:
-                max_value = torch.tensor(data.clone(), dtype=torch.float64)
+                max_value = torch.tensor(data.detach().clone(), dtype=torch.float64)
 
         else:
             max_value = _convert_to_1D_scalar_tensor(max_value).squeeze()
