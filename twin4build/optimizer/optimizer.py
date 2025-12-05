@@ -1076,7 +1076,6 @@ class Optimizer:
             start_time=self._start_time,
             end_time=self._end_time,
             step_size=self._stepSize,
-            simulator=self.simulator,
         )
 
         # Create initial guess vector

@@ -518,7 +518,6 @@ class Model:
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: "core.Simulator",
     ) -> None:
         """
         Initialize the model for simulation.
@@ -527,9 +526,8 @@ class Model:
             start_time (datetime.datetime): Start time for the simulation.
             end_time (datetime.datetime): End time for the simulation.
             step_size (int): Time step size for the simulation.
-            simulator (core.Simulator): Simulator instance.
         """
-        self.simulation_model.initialize(start_time, end_time, step_size, simulator)
+        self.simulation_model.initialize(start_time, end_time, step_size)
 
     def validate(self) -> None:
         """

@@ -58,6 +58,9 @@ class SupplyFlowJunctionSystem(core.System):
         else:
             self.airFlowRateBias = 0
 
+        self.n_input_ports = (
+            1  # TODO: Write a method for initializing the number of input ports
+        )
         self.input = {"airFlowRateOut": tps.Vector()}
         self.output = {"airFlowRateIn": tps.Scalar()}
         self._config = {"parameters": ["airFlowRateBias"]}
@@ -89,7 +92,24 @@ class SupplyFlowJunctionSystem(core.System):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
-        pass  # TODO: Implement this. Count number of inputs. This can be a bit complicated as different inputs connections can set differnt indices of the tensor.
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        # TODO: self.setup_variable_inputs()
+        self.input["airFlowRateOut"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_input_ports
+        )
+        for input in self.input.values():
+            input.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
+        for output in self.output.values():
+            output.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
 
     def do_step(
         self,
