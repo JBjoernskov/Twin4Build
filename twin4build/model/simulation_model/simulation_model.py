@@ -2152,58 +2152,17 @@ class SimulationModel:
             if ext == ".pickle":
                 with open(filename, "rb") as handle:
                     self._result = pickle.load(handle)
-
-            elif ext == ".npz":
-                if "_ls.npz" in filename:
-                    d = dict(np.load(filename, allow_pickle=True))
-                    d = {
-                        k.replace(".", "_"): v for k, v in d.items()
-                    }  # For backwards compatibility
-                    self._result = estimator.EstimationResult(**d)
-                elif "_mcmc.npz" in filename:
-                    d = dict(np.load(filename, allow_pickle=True))
-                    d = {
-                        k.replace(".", "_"): v for k, v in d.items()
-                    }  # For backwards compatibility
-                    self._result = estimator.EstimationResult(**d)
-                else:
-                    raise Exception(
-                        'The estimation result file is not of a supported type. The file must be a .pickle, .npz file with the name containing "_ls" or "_mcmc".'
-                    )
-
-                for key, value in self._result.items():
-                    self._result[key] = (
-                        1 / self._result["chain_betas"] if key == "chain_T" else value
-                    )
-                    if self._result[key].size == 1 and (
-                        len(self._result[key].shape) == 0
-                        or len(self._result[key].shape) == 1
-                    ):
-                        self._result[key] = value.tolist()
-
-                    elif (
-                        key == "startTime_train"
-                        or key == "endTime_train"
-                        or key == "stepSize_train"
-                    ):
-                        self._result[key] = value.tolist()
             else:
                 raise Exception(
-                    f"The estimation result is of type {type(self._result)}. This type is not supported by the model class."
+                    f"The file {filename} is not a pickle file."
                 )
 
-        if isinstance(self._result, estimator.EstimationResult):
-            theta = self._result["result_x"]
-        else:
-            raise Exception(
-                f"The estimation result is of type {type(self._result)}. This type is not supported by the model class."
-            )
-
+        assert isinstance(self._result, estimator.EstimationResult), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
+        theta = self._result["result_x"]
         flat_components = [
             self._components[com_id] for com_id in self._result["component_id"]
         ]
         flat_attr_list = self._result["component_attr"]
-
         theta_mask = self._result["theta_mask"]
         min_values = self._result["lb"]
         min_values = min_values[theta_mask]
