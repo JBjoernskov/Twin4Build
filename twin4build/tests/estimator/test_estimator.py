@@ -8,8 +8,8 @@ import unittest
 # Third party imports
 import numpy as np
 import pandas as pd
-from dateutil import tz
 import pytz
+from dateutil import tz
 
 # Local application imports
 import twin4build as tb
@@ -342,8 +342,10 @@ class TestEstimator(unittest.TestCase):
             model.components["BTA004"].filename = utils.get_path(
                 ["estimator_example", "supply_air_temperature.csv"]
             )
-            model.components["020B_temperature_heating_setpoint"].filename = utils.get_path(
-                ["estimator_example", "temperature_heating_setpoint.csv"]
+            model.components["020B_temperature_heating_setpoint"].filename = (
+                utils.get_path(
+                    ["estimator_example", "temperature_heating_setpoint.csv"]
+                )
             )
             model.components["outdoor_environment"].filename_outdoorTemperature = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
@@ -351,7 +353,9 @@ class TestEstimator(unittest.TestCase):
             model.components["outdoor_environment"].filename_globalIrradiation = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
             )
-            model.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 2
+            model.components[
+                "outdoor_environment"
+            ].valuecolumn_outdoorCo2Concentration = 2
             model.components["outdoor_environment"].filename_outdoorCo2Concentration = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
             )
@@ -448,7 +452,9 @@ class TestEstimator(unittest.TestCase):
             # Step 8: Verify that result was returned
             self.assertIsNotNone(result, "Estimation result should not be None")
             self.assertIn("result_x", result, "Result should contain 'result_x'")
-            self.assertIn("component_id", result, "Result should contain 'component_id'")
+            self.assertIn(
+                "component_id", result, "Result should contain 'component_id'"
+            )
             self.assertIn(
                 "component_attr", result, "Result should contain 'component_attr'"
             )
@@ -486,7 +492,9 @@ class TestEstimator(unittest.TestCase):
                 ["estimator_example", "supply_air_temperature.csv"]
             )
             model2.components["020B_temperature_heating_setpoint"].filename = (
-                utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"])
+                utils.get_path(
+                    ["estimator_example", "temperature_heating_setpoint.csv"]
+                )
             )
             model2.components["outdoor_environment"].filename_outdoorTemperature = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
@@ -494,9 +502,13 @@ class TestEstimator(unittest.TestCase):
             model2.components["outdoor_environment"].filename_globalIrradiation = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
             )
-            model2.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 2
-            model2.components["outdoor_environment"].filename_outdoorCo2Concentration = (
-                utils.get_path(["estimator_example", "outdoor_environment.csv"])
+            model2.components[
+                "outdoor_environment"
+            ].valuecolumn_outdoorCo2Concentration = 2
+            model2.components[
+                "outdoor_environment"
+            ].filename_outdoorCo2Concentration = utils.get_path(
+                ["estimator_example", "outdoor_environment.csv"]
             )
 
             # Step 11: Load the estimation result from file
@@ -505,7 +517,8 @@ class TestEstimator(unittest.TestCase):
             # Step 12: Verify that parameters were loaded
             # Check that the loaded result is accessible
             self.assertIsNotNone(
-                model2.simulation_model._result, "Model should have a result after loading"
+                model2.simulation_model._result,
+                "Model should have a result after loading",
             )
             self.assertIn(
                 "result_x",
@@ -547,7 +560,8 @@ class TestEstimator(unittest.TestCase):
             # Check that the space component has output values
             space_loaded = model2.components["020B"]
             self.assertIsNotNone(
-                space_loaded.output, "Space component should have output after simulation"
+                space_loaded.output,
+                "Space component should have output after simulation",
             )
             self.assertIn(
                 "indoorTemperature",
@@ -575,7 +589,9 @@ class TestEstimator(unittest.TestCase):
             )
 
             # Test passed if we got here without exceptions
-            self.assertTrue(True, "Successfully saved, loaded, and used estimation results")
+            self.assertTrue(
+                True, "Successfully saved, loaded, and used estimation results"
+            )
 
         finally:
             # Clean up the temporary directory

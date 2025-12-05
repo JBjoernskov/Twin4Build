@@ -421,11 +421,13 @@ class TestDataLoaders(unittest.TestCase):
             periods=5,
             freq="1h",
         )
-        df = pd.DataFrame({
-            "date_time": dates,
-            "value1": [10.0, 20.0, 30.0, 40.0, 50.0],
-            "value2": [1.0, 2.0, 3.0, 4.0, 5.0],
-        })
+        df = pd.DataFrame(
+            {
+                "date_time": dates,
+                "value1": [10.0, 20.0, 30.0, 40.0, 50.0],
+                "value2": [1.0, 2.0, 3.0, 4.0, 5.0],
+            }
+        )
 
         start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
         end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=pytz.UTC)
@@ -461,10 +463,12 @@ class TestDataLoaders(unittest.TestCase):
             periods=5,
             freq="1h",
         )
-        df = pd.DataFrame({
-            "date_time": dates[::-1],  # Reversed order
-            "value": [50.0, 40.0, 30.0, 20.0, 10.0],
-        })
+        df = pd.DataFrame(
+            {
+                "date_time": dates[::-1],  # Reversed order
+                "value": [50.0, 40.0, 30.0, 20.0, 10.0],
+            }
+        )
 
         start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
         end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=pytz.UTC)
@@ -579,7 +583,9 @@ class TestLoadDatabaseConfig(unittest.TestCase):
             temp_file = f.name
 
         try:
-            config = load_database_config(config_file=temp_file, section="custom_section")
+            config = load_database_config(
+                config_file=temp_file, section="custom_section"
+            )
             self.assertEqual(config["host"], "custom_host")
             self.assertEqual(config["port"], 5434)
         finally:
@@ -607,10 +613,12 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             periods=10,
             freq="1h",
         )
-        df = pd.DataFrame({
-            "date_time": dates,
-            "value": [float(i) for i in range(10)],
-        })
+        df = pd.DataFrame(
+            {
+                "date_time": dates,
+                "value": [float(i) for i in range(10)],
+            }
+        )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             df.to_csv(f, index=False)
@@ -656,10 +664,12 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             periods=10,
             freq="1h",
         )
-        df = pd.DataFrame({
-            "date_time": dates,
-            "value": [float(i) for i in range(10)],
-        })
+        df = pd.DataFrame(
+            {
+                "date_time": dates,
+                "value": [float(i) for i in range(10)],
+            }
+        )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             df.to_csv(f, index=False)
@@ -721,10 +731,12 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             periods=10,
             freq="1h",
         )
-        df = pd.DataFrame({
-            "date_time": dates,
-            "value": [float(i) for i in range(10)],
-        })
+        df = pd.DataFrame(
+            {
+                "date_time": dates,
+                "value": [float(i) for i in range(10)],
+            }
+        )
 
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
             temp_file = f.name

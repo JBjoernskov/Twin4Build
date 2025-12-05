@@ -114,7 +114,7 @@ class ScheduleSystem(core.System):
         assert (
             sum([use_spreadsheet, use_database, use_dict]) <= 1
         ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Only one of use_spreadsheet, use_database, or use_dict can be True."
-        
+
         # Store as private variables for property access
         self._weekDayRulesetDict = weekDayRulesetDict
         self._weekendRulesetDict = weekendRulesetDict
@@ -163,7 +163,7 @@ class ScheduleSystem(core.System):
         return self._config
 
     # ==================== Ruleset Dict Properties ====================
-    
+
     @property
     def weekDayRulesetDict(self):
         return self._weekDayRulesetDict
@@ -612,7 +612,11 @@ class ScheduleSystem(core.System):
                 # NEW: Compute schedule values for ALL timesteps (including extended dates for shorter periods)
                 # values[batch_index,:] = [self.get_schedule_value(date_time) for date_time in date_time_steps_]
 
-            assert not np.isnan(values).any(), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Values contain NaN."
+            assert not np.isnan(
+                values
+            ).any(), (
+                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Values contain NaN."
+            )
 
             self.output["scheduleValue"].initialize(
                 max_timesteps,

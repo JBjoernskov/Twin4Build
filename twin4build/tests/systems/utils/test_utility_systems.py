@@ -117,17 +117,14 @@ class TestMaxSystem(unittest.TestCase):
         start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
         end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
         step_size = [600]
-        
 
         # Set inputs - initialize with size parameter for Vector type
         self.system.input["inputs"].initialize(n_timesteps=1, batch_size=1, size=3)
-        
+
         self.system.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-        self.system.input["inputs"].set(
-            torch.tensor([[1.0, 5.0, 3.0]]), step_index=0
-        )
+        self.system.input["inputs"].set(torch.tensor([[1.0, 5.0, 3.0]]), step_index=0)
 
         # Execute
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -143,7 +140,9 @@ class TestMaxSystem(unittest.TestCase):
 
 class TestOnOffSystem(unittest.TestCase):
     def setUp(self):
-        self.system = OnOffSystem(id="test_onoff", threshold=0.5, is_off_value=0, is_on_value=100)
+        self.system = OnOffSystem(
+            id="test_onoff", threshold=0.5, is_off_value=0, is_on_value=100
+        )
 
     def test_initialization(self):
         """Test on/off system initialization."""
@@ -208,4 +207,3 @@ class TestPassInputToOutput(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

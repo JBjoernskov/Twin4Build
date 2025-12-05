@@ -128,9 +128,7 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         )
         space_batch.input["numberOfPeople"].set(torch.tensor([3.0, 5.0]), step_index=0)
         space_batch.input["heatGain"].set(torch.tensor([0.0, 0.0]), step_index=0)
-        space_batch.input["outdoorCO2"].set(
-            torch.tensor([400.0, 410.0]), step_index=0
-        )
+        space_batch.input["outdoorCO2"].set(torch.tensor([400.0, 410.0]), step_index=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -150,4 +148,3 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

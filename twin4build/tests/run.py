@@ -125,7 +125,7 @@ def main():
 
 def run_specific_tests(patterns: list[str]):
     """Run tests matching specific patterns.
-    
+
     Args:
         patterns: List of patterns to match (e.g., ['test_model.py', 'test_simulator.py'])
     """
@@ -135,7 +135,7 @@ def run_specific_tests(patterns: list[str]):
     try:
         test_dir = os.path.dirname(os.path.abspath(__file__))
         tests = unittest.TestSuite()
-        
+
         for pattern in patterns:
             suite = unittest.TestLoader().discover(start_dir=test_dir, pattern=pattern)
             for test_group in suite:
@@ -164,11 +164,13 @@ def run_specific_tests(patterns: list[str]):
 if __name__ == "__main__":
     # To run all tests:
     # main()
-    
+
     # Run specific tests that were previously failing:
-    run_specific_tests([
-        'test_building_space_torch_system.py',  # BuildingSpaceTorchSystem tests
-        'test_utility_systems.py',               # MaxSystem, OnOffSystem, PassInputToOutput, PiecewiseLinearSystem
-        'test_utils.py',                         # sample_from_df test
-        'test_plot.py'                           # plot_component tests
-    ])
+    run_specific_tests(
+        [
+            "test_building_space_torch_system.py",  # BuildingSpaceTorchSystem tests
+            "test_utility_systems.py",  # MaxSystem, OnOffSystem, PassInputToOutput, PiecewiseLinearSystem
+            "test_utils.py",  # sample_from_df test
+            "test_plot.py",  # plot_component tests
+        ]
+    )

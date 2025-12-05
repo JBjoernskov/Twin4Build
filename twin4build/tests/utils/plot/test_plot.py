@@ -583,7 +583,9 @@ class TestFilterNans(unittest.TestCase):
         # Local application imports
         from twin4build.utils.plot.plot import filter_nans
 
-        time = pd.Series([pd.Timestamp("2023-01-01"), pd.NaT, pd.Timestamp("2023-01-03")])
+        time = pd.Series(
+            [pd.Timestamp("2023-01-01"), pd.NaT, pd.Timestamp("2023-01-03")]
+        )
         data = np.array([10.0, 20.0, 30.0])
 
         filtered_time, filtered_data = filter_nans(time.values, data)

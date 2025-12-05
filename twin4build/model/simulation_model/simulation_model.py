@@ -1103,9 +1103,17 @@ class SimulationModel:
             if v is not None:
                 # Set the tensor value for Scalar or Vector types
                 if isinstance(output_obj, tps.Scalar):
-                    output_obj.tensor = v if isinstance(v, torch.Tensor) else torch.tensor([v], dtype=torch.float64)
+                    output_obj.tensor = (
+                        v
+                        if isinstance(v, torch.Tensor)
+                        else torch.tensor([v], dtype=torch.float64)
+                    )
                 elif isinstance(output_obj, tps.Vector):
-                    output_obj.tensor = v if isinstance(v, torch.Tensor) else torch.tensor(v, dtype=torch.float64)
+                    output_obj.tensor = (
+                        v
+                        if isinstance(v, torch.Tensor)
+                        else torch.tensor(v, dtype=torch.float64)
+                    )
                 else:
                     raise TypeError(
                         f'Output property "{output_name}" for component "{component.id}" '
@@ -2122,8 +2130,6 @@ class SimulationModel:
                 c_from.connected_through.remove(connection)
         PRINTPROGRESS.remove_level()
 
-
-
     def load_estimation_result(
         self, filename: Optional[str] = None, result: Optional[Dict] = None
     ) -> None:
@@ -2153,11 +2159,11 @@ class SimulationModel:
                 with open(filename, "rb") as handle:
                     self._result = pickle.load(handle)
             else:
-                raise Exception(
-                    f"The file {filename} is not a pickle file."
-                )
+                raise Exception(f"The file {filename} is not a pickle file.")
 
-        assert isinstance(self._result, estimator.EstimationResult), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
+        assert isinstance(
+            self._result, estimator.EstimationResult
+        ), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
         theta = self._result["result_x"]
         flat_components = [
             self._components[com_id] for com_id in self._result["component_id"]

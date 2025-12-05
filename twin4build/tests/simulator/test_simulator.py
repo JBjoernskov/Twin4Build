@@ -6,9 +6,9 @@ import unittest
 
 # Third party imports
 import numpy as np
-from dateutil import tz
 import pytz
 import torch
+from dateutil import tz
 
 # Local application imports
 import twin4build as tb
@@ -412,13 +412,12 @@ class TestSimulator(unittest.TestCase):
         co2_gs = space_gs.output["indoorCO2"].history.detach().numpy()
         co2_jacobi = space_jacobi.output["indoorCO2"].history.detach().numpy()
 
-
         # Plotting for debugging
-        # tb.plot.plot(simulator_gs.date_time_steps, 
-        # [tb.plot.Entry(temp_gs, label="Gauss-Seidel",), 
+        # tb.plot.plot(simulator_gs.date_time_steps,
+        # [tb.plot.Entry(temp_gs, label="Gauss-Seidel",),
         # tb.plot.Entry(temp_jacobi, label="Jacobi")], ylabel_1axis="Temperature [°C]")
-        # tb.plot.plot(simulator_gs.date_time_steps, 
-        # [tb.plot.Entry(co2_gs, label="Gauss-Seidel"), 
+        # tb.plot.plot(simulator_gs.date_time_steps,
+        # [tb.plot.Entry(co2_gs, label="Gauss-Seidel"),
         # tb.plot.Entry(co2_jacobi, label="Jacobi")], ylabel_1axis="CO2 Concentration [ppmv]", show=True)
 
         # With a small step size, results should be very close
@@ -440,8 +439,12 @@ class TestSimulator(unittest.TestCase):
         )
 
         # Also verify that both simulations actually produced results
-        self.assertTrue(len(temp_gs) > 0, "Gauss-Seidel simulation should produce results")
-        self.assertTrue(len(temp_jacobi) > 0, "Jacobi simulation should produce results")
+        self.assertTrue(
+            len(temp_gs) > 0, "Gauss-Seidel simulation should produce results"
+        )
+        self.assertTrue(
+            len(temp_jacobi) > 0, "Jacobi simulation should produce results"
+        )
 
     def test_jacobi_runs_successfully(self):
         """

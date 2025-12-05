@@ -157,7 +157,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             "globalIrradiation": tps.Scalar(is_leaf=True),
             "outdoorCo2Concentration": tps.Scalar(is_leaf=True),
         }
-        
+
         # Store as private variables for property access
         self._use_spreadsheet = use_spreadsheet
         self._use_database = use_database
