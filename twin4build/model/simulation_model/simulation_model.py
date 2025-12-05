@@ -301,6 +301,10 @@ class SimulationModel:
         return self._is_loaded
 
     @property
+    def is_validated(self) -> bool:
+        return self._is_validated
+
+    @property
     def dir_conf(self) -> List[str]:
         return self._dir_conf
 
@@ -1025,43 +1029,89 @@ class SimulationModel:
             v for v in dict_.values() if (isinstance(v, class_) and filter(v, class_))
         ]
 
-    def set_custom_initial_dict(
-        self, _custom_initial_dict: Dict[str, Dict[str, Any]]
+    # def set_custom_initial_dict(
+    #     self, _custom_initial_dict: Dict[str, Dict[str, Any]]
+    # ) -> None:
+    #     """
+    #     Set custom initial values for components.
+
+    #     Args:
+    #         _custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+
+    #     Raises:
+    #         AssertionError: If unknown component IDs are provided.
+    #     """
+    #     np_custom_initial_dict_ids = np.array(list(_custom_initial_dict.keys()))
+    #     legal_ids = np.array(
+    #         [dict_id in self._components for dict_id in _custom_initial_dict]
+    #     )
+    #     assert np.all(
+    #         legal_ids
+    #     ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
+    #     self._custom_initial_dict = _custom_initial_dict
+
+    def set_initial_values(
+        self,
+        values: List[Any] = None,
+        components: List[core.System] = None,
+        output_names: List[str] = None,
+        **kwargs,
     ) -> None:
         """
-        Set custom initial values for components.
+        Set initial values for components in the model.
 
         Args:
-            _custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+            values (List[Any]): List of initial values to set.
+            components (List[core.System]): List of components to set initial values for.
+            output_names (List[str]): List of output property names corresponding to the values.
 
         Raises:
-            AssertionError: If unknown component IDs are provided.
+            AssertionError: If a component doesn't have the specified output property.
         """
-        np_custom_initial_dict_ids = np.array(list(_custom_initial_dict.keys()))
-        legal_ids = np.array(
-            [dict_id in self._components for dict_id in _custom_initial_dict]
-        )
-        assert np.all(
-            legal_ids
-        ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
-        self._custom_initial_dict = _custom_initial_dict
+        # Handle deprecated dict-based signature: set_initial_values(dict_)
+        # Old format: dict_ = {component_id: {output_name: value, ...}, ...}
+        old_dict = kwargs.get("dict_", None)
+        if old_dict is None and isinstance(values, dict):
+            old_dict = values
+            values = None
 
-    def set_initial_values(self, dict_: Dict[str, Any]) -> None:
-        """
-        Set initial values for all components in the model.
-        """
-        for component in self._components.values():
-            # Check that all keys in the dictionary are valid output properties
-            for key in dict_[component.id].keys():
-                assert (
-                    key in component.output
-                ), f'Invalid output property "{key}" for component "{component.id}"'
-                assert isinstance(
-                    dict_[component.id][key], component.output[key].__class__
-                ), f'Invalid type for output property "{key}" for component "{component.id}"'
-            component.output.update(dict_[component.id])
+        if old_dict is not None:
+            warnings.warn(
+                "The dict-based signature for set_initial_values(dict_) is deprecated. "
+                "Use set_initial_values(values, components, output_names) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # Convert old dict format to new list format
+            values = []
+            components = []
+            output_names = []
+            for component_id, outputs in old_dict.items():
+                component = self._components[component_id]
+                for output_name, value in outputs.items():
+                    values.append(value)
+                    components.append(component)
+                    output_names.append(output_name)
 
-    def set_parameters_from_array(
+        for v, component, output_name in zip(values, components, output_names):
+            assert (
+                output_name in component.output
+            ), f'Invalid output property "{output_name}" for component "{component.id}"'
+
+            output_obj = component.output[output_name]
+            if v is not None:
+                # Set the tensor value for Scalar or Vector types
+                if isinstance(output_obj, tps.Scalar):
+                    output_obj.tensor = v if isinstance(v, torch.Tensor) else torch.tensor([v], dtype=torch.float64)
+                elif isinstance(output_obj, tps.Vector):
+                    output_obj.tensor = v if isinstance(v, torch.Tensor) else torch.tensor(v, dtype=torch.float64)
+                else:
+                    raise TypeError(
+                        f'Output property "{output_name}" for component "{component.id}" '
+                        f"is not a Scalar or Vector type"
+                    )
+
+    def set_parameters(
         self,
         values: List[Any],
         components: List[core.System],
@@ -1075,8 +1125,11 @@ class SimulationModel:
 
         Args:
             values (List[Any]): List of parameter values.
-            component_list (List[core.System]): List of components to set parameters for.
-            attr_list (List[str]): List of attribute names corresponding to the parameters.
+            components (List[core.System]): List of components to set parameters for.
+            parameter_names (List[str]): List of attribute names corresponding to the parameters.
+            normalized (List[bool]): List of booleans indicating if values are normalized.
+            overwrite (bool): Whether to overwrite existing parameters.
+            save_original (bool): Whether to save original parameters for later restoration.
 
         Raises:
             AssertionError: If a component doesn't have the specified attribute.
@@ -1122,6 +1175,17 @@ class SimulationModel:
                     obj_.set(v, normalized=normalized_)
                 else:
                     rsetattr(obj, attr, v)
+
+    def set_parameters_from_array(self, *args, **kwargs) -> None:
+        """
+        Deprecated: Use set_parameters instead.
+        """
+        warnings.warn(
+            "Method 'set_parameters_from_array' is deprecated. Use 'set_parameters' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.set_parameters(*args, **kwargs)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
         for obj in self._saved_parameters:
@@ -2033,6 +2097,8 @@ class SimulationModel:
             if len(connection.connects_system_at) == 0:
                 c_from.connected_through.remove(connection)
         PRINTPROGRESS.remove_level()
+
+
 
     def load_estimation_result(
         self, filename: Optional[str] = None, result: Optional[Dict] = None

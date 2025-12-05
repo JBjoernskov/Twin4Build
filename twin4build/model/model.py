@@ -256,10 +256,6 @@ class Model:
         self._dir_conf = dir_conf
 
     @property
-    def result(self) -> Any:
-        return self.simulation_model.result
-
-    @property
     def execution_order(self) -> List[str]:
         return self.simulation_model.execution_order
 
@@ -388,29 +384,65 @@ class Model:
             dict_=dict_, class_=class_, filter=filter
         )
 
-    def set_custom_initial_dict(
-        self, custom_initial_dict: Dict[str, Dict[str, Any]]
+    # def set_custom_initial_dict(
+    #     self, custom_initial_dict: Dict[str, Dict[str, Any]]
+    # ) -> None:
+    #     """
+    #     Set custom initial values for components.
+
+    #     Args:
+    #         custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+
+    #     Raises:
+    #         AssertionError: If unknown component IDs are provided.
+    #     """
+    #     self.simulation_model.set_custom_initial_dict(
+    #         custom_initial_dict=custom_initial_dict
+    #     )
+
+    def set_initial_values(
+        self,
+        values: List[Any] = None,
+        components: List["core.System"] = None,
+        output_names: List[str] = None,
+        **kwargs,
     ) -> None:
         """
-        Set custom initial values for components.
+        Set initial values for components in the model.
 
         Args:
-            custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+            values (List[Any]): List of initial values to set.
+            components (List[core.System]): List of components to set initial values for.
+            output_names (List[str]): List of output property names corresponding to the values.
 
         Raises:
-            AssertionError: If unknown component IDs are provided.
+            AssertionError: If a component doesn't have the specified output property.
         """
-        self.simulation_model.set_custom_initial_dict(
-            custom_initial_dict=custom_initial_dict
+        # Handle deprecated dict-based signature: set_initial_values(dict_)
+        # Old format: dict_ = {component_id: {output_name: value, ...}, ...}
+        old_dict = kwargs.get("dict_", None)
+        if old_dict is None and isinstance(values, dict):
+            old_dict = values
+            values = None
+
+        if old_dict is not None:
+            warnings.warn(
+                "The dict-based signature for set_initial_values(dict_) is deprecated. "
+                "Use set_initial_values(values, components, output_names) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # Pass the old dict to simulation_model which will handle conversion
+            self.simulation_model.set_initial_values(dict_=old_dict)
+            return
+
+        self.simulation_model.set_initial_values(
+            values=values,
+            components=components,
+            output_names=output_names,
         )
 
-    def set_initial_values(self) -> None:
-        """
-        Set initial values for all components in the model.
-        """
-        self.simulation_model.set_initial_values()
-
-    def set_parameters_from_array(
+    def set_parameters(
         self,
         values: List[Any],
         components: List["core.System"],
@@ -424,13 +456,16 @@ class Model:
 
         Args:
             values (List[Any]): List of parameter values.
-            component_list (List[core.System]): List of components to set parameters for.
-            attr_list (List[str]): List of attribute names corresponding to the parameters.
+            components (List[core.System]): List of components to set parameters for.
+            parameter_names (List[str]): List of attribute names corresponding to the parameters.
+            normalized (List[bool]): List of booleans indicating if values are normalized.
+            overwrite (bool): Whether to overwrite existing parameters.
+            save_original (bool): Whether to save original parameters for later restoration.
 
         Raises:
             AssertionError: If a component doesn't have the specified attribute.
         """
-        self.simulation_model.set_parameters_from_array(
+        self.simulation_model.set_parameters(
             values=values,
             components=components,
             parameter_names=parameter_names,
@@ -438,6 +473,17 @@ class Model:
             overwrite=overwrite,
             save_original=save_original,
         )
+
+    def set_parameters_from_array(self, *args, **kwargs) -> None:
+        """
+        Deprecated: Use set_parameters instead.
+        """
+        warnings.warn(
+            "Method 'set_parameters_from_array' is deprecated. Use 'set_parameters' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.set_parameters(*args, **kwargs)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
         """
@@ -664,13 +710,6 @@ class Model:
 
     def set_save_simulation_result(self, flag: bool = True, c: list = None):
         self.simulation_model.set_save_simulation_result(flag=flag, c=c)
-
-    def reset(self) -> None:
-        """
-        Reset the model to its initial state.
-        """
-        # Reset all the dictionaries and lists
-        self.simulation_model.reset()
 
     def load_estimation_result(
         self, filename: Optional[str] = None, result: Optional[Dict] = None
