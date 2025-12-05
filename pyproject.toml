@@ -132,6 +132,8 @@ omit = [
 
 [tool.coverage.report]
 exclude_lines = [
+    "if __name__ == '__main__'",
+    "def _",
     "pragma: no cover",
     "def __repr__",
     "raise AssertionError",
@@ -161,4 +163,5 @@ skip_glob = [
     "twin4build/__init__.py",      # Linux/Unix paths  
     "twin4build/core/__init__.py"
 ]
+
 

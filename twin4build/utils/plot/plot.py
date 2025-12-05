@@ -856,6 +856,8 @@ def plot_component(
     # Add axis 1 components
     for comp in components_1axis:
         if isinstance(comp, Entry):
+            # Override axis to ensure it's set correctly
+            comp.axis = 1
             entries.append(comp)
         else:
             # Handle legacy tuples with full backward compatibility
@@ -871,6 +873,8 @@ def plot_component(
     if components_2axis:
         for comp in components_2axis:
             if isinstance(comp, Entry):
+                # Override axis to ensure it's set correctly
+                comp.axis = 2
                 entries.append(comp)
             else:
                 if len(comp) == 2:
@@ -885,6 +889,8 @@ def plot_component(
     if components_3axis:
         for comp in components_3axis:
             if isinstance(comp, Entry):
+                # Override axis to ensure it's set correctly
+                comp.axis = 3
                 entries.append(comp)
             else:
                 if len(comp) == 2:

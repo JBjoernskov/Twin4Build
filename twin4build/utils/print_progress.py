@@ -1,13 +1,10 @@
 # Standard library imports
 import atexit
-import datetime
 import functools
 import os
 import sys
 import threading
 import time
-from itertools import cycle
-from tkinter.constants import S
 
 # Third party imports
 import __main__
@@ -23,10 +20,9 @@ try:
 except ImportError:
     CURSES_AVAILABLE = False
 
-# Local application imports
-# %pip install twin4build # Uncomment in google colab
-import twin4build as tb
-import twin4build.examples.utils as utils
+
+def is_testing():
+    return "unittest" in sys.modules.keys()
 
 
 def _print_color_palette(stdscr):
@@ -120,6 +116,8 @@ class PrintProgress:
         self.ERROR_COLOR_PAIR = 5
         self.WARNING_COLOR_PAIR = 7
         self.INFO_COLOR_PAIR = 2
+        # Auto-disable in test environments
+        self._enabled = not is_testing()
 
     def __enter__(self):
         """Context manager entry - ensures proper cleanup on exceptions"""
@@ -130,6 +128,16 @@ class PrintProgress:
         if self._curses_mode:
             self._cleanup_curses(preserve_output=True)
         return False  # Don't suppress exceptions
+
+    @property
+    def enabled(self):
+        return self._enabled
+
+    def enable(self):
+        self._enabled = True
+
+    def disable(self):
+        self._enabled = False
 
     @property
     def is_active(self):
@@ -823,7 +831,7 @@ class PrintProgress:
         self.add_line(indent=indent)
 
     def remove_level(self):
-        if self.verbose == 0:
+        if self.verbose == 0 or self.enabled is False:
             return
 
         if self.level[-1] == 0:
@@ -864,7 +872,7 @@ class PrintProgress:
 
     def add_level(self, n=2):
         assert n >= 0, "Cannot add negative number of levels"
-        if self.verbose == 0:
+        if self.verbose == 0 or self.enabled is False:
             return
         if self.current_level + 2 > self.verbose:  # +2 because of the added level
             self._block_count += 1
@@ -913,7 +921,7 @@ class PrintProgress:
         assert message is None or isinstance(
             message, str
         ), "Message must be a string or None"
-        if self.verbose == 0:
+        if self.verbose == 0 or self.enabled is False:
             return
         # change_status = False
         if change_status:
@@ -1014,6 +1022,10 @@ def autoreset_print(cls):
 
 
 PRINTPROGRESS = PrintProgress()
+# if is_testing():
+#     PRINTPROGRESS.disable()
+# else:
+#     PRINTPROGRESS.enable()
 
 if __name__ == "__main__":
 

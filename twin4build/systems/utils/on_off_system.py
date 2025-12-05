@@ -2,6 +2,9 @@
 import datetime
 from typing import Optional
 
+# Third party imports
+import torch
+
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
@@ -39,9 +42,15 @@ class OnOffSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
-        pass
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        for input in self.input.values():
+            input.initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+        for output in self.output.values():
+            output.initialize(n_timesteps=max_timesteps, batch_size=batch_size)
 
     def do_step(
         self,
@@ -50,7 +59,13 @@ class OnOffSystem(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        if self.input["criteriaValue"] >= self.threshold:
-            self.output["value"].set(self.input["value"], step_index)
-        else:
-            self.output["value"].set(self.is_off_value, step_index)
+        criteria_value = self.input["criteriaValue"].get()
+        input_value = self.input["value"].get()
+
+        # Vectorized conditional: where criteria >= threshold, use input_value, else use is_off_value
+        output_value = torch.where(
+            criteria_value >= self.threshold,
+            input_value,
+            torch.full_like(input_value, self.is_off_value),
+        )
+        self.output["value"].set(output_value, step_index)

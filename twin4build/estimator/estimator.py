@@ -612,6 +612,7 @@ class Estimator:
 
         self.actual_readings = {}
         for measuring_device, sd in self._measurements:
+            measuring_device.initialize(start_time, end_time, step_size)
             df = measuring_device.get_physical_readings(start_time, end_time, step_size)
             self.actual_readings[measuring_device.id] = df  # list of
 

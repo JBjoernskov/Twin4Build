@@ -1,0 +1,389 @@
+# Standard library imports
+import os
+import unittest
+from tkinter import E
+
+# Local application imports
+from twin4build.model.semantic_model.semantic_model import SemanticModel
+from twin4build.translator.translator import (
+    Exact,
+    MultiPath,
+    Node,
+    Optional_,
+    SignaturePattern,
+    SinglePath,
+    Translator,
+)
+from twin4build.utils.uppath import uppath
+
+
+class TestTranslator(unittest.TestCase):
+    def setUp(self):
+        """Set up a fresh translator for each test."""
+        self.translator = Translator()
+        # Third party imports
+        from rdflib import URIRef
+
+        # Local application imports
+        import twin4build.core as core
+
+        # Set up a very small semantic model
+        self.semantic_model = SemanticModel()
+
+        # Define URIs
+        base_uri = "http://example.org/test#"
+        ahu_uri = URIRef(base_uri + "AHU_1")
+        damper1_uri = URIRef(base_uri + "Damper_1")
+        damper2_uri = URIRef(base_uri + "Damper_2")
+        damper21_uri = URIRef(base_uri + "Damper_21")
+        damper22_uri = URIRef(base_uri + "Damper_22")
+        room1_uri = URIRef(base_uri + "Room_1")
+        room2_uri = URIRef(base_uri + "Room_2")
+        sensor1_uri = URIRef(base_uri + "Temperature_Sensor_1")
+        sensor2_uri = URIRef(base_uri + "Temperature_Sensor_2")
+
+        # Add types
+        self.semantic_model.instance_graph.add(
+            (ahu_uri, core.namespace.RDF.type, core.namespace.BRICK.AHU)
+        )
+        self.semantic_model.instance_graph.add(
+            (damper1_uri, core.namespace.RDF.type, core.namespace.BRICK.Damper)
+        )
+        self.semantic_model.instance_graph.add(
+            (damper2_uri, core.namespace.RDF.type, core.namespace.BRICK.Damper)
+        )
+        self.semantic_model.instance_graph.add(
+            (damper21_uri, core.namespace.RDF.type, core.namespace.BRICK.Damper)
+        )
+        self.semantic_model.instance_graph.add(
+            (damper22_uri, core.namespace.RDF.type, core.namespace.BRICK.Damper)
+        )
+        self.semantic_model.instance_graph.add(
+            (room1_uri, core.namespace.RDF.type, core.namespace.BRICK.Room)
+        )
+        self.semantic_model.instance_graph.add(
+            (room2_uri, core.namespace.RDF.type, core.namespace.BRICK.Room)
+        )
+        self.semantic_model.instance_graph.add(
+            (
+                sensor1_uri,
+                core.namespace.RDF.type,
+                core.namespace.BRICK.Temperature_Sensor,
+            )
+        )
+        self.semantic_model.instance_graph.add(
+            (
+                sensor2_uri,
+                core.namespace.RDF.type,
+                core.namespace.BRICK.Temperature_Sensor,
+            )
+        )
+
+        # Add relationships
+        self.semantic_model.instance_graph.add(
+            (ahu_uri, core.namespace.BRICK.feeds, damper1_uri)
+        )
+        self.semantic_model.instance_graph.add(
+            (ahu_uri, core.namespace.BRICK.feeds, damper2_uri)
+        )
+        self.semantic_model.instance_graph.add(
+            (damper1_uri, core.namespace.BRICK.feeds, room1_uri)
+        )
+        # Parallel paths to Room 2
+        self.semantic_model.instance_graph.add(
+            (damper2_uri, core.namespace.BRICK.feeds, damper21_uri)
+        )
+        self.semantic_model.instance_graph.add(
+            (damper2_uri, core.namespace.BRICK.feeds, damper22_uri)
+        )
+        self.semantic_model.instance_graph.add(
+            (damper21_uri, core.namespace.BRICK.feeds, room2_uri)
+        )
+        self.semantic_model.instance_graph.add(
+            (damper22_uri, core.namespace.BRICK.feeds, room2_uri)
+        )
+
+        self.semantic_model.instance_graph.add(
+            (room1_uri, core.namespace.BRICK.hasPoint, sensor1_uri)
+        )
+        self.semantic_model.instance_graph.add(
+            (room2_uri, core.namespace.BRICK.hasPoint, sensor2_uri)
+        )
+
+        self.semantic_model.serialize(filename_instance_graph="test_instance_graph.ttl")
+
+    def test_exact_rule_matching(self):
+        """Test matching Exact rules against the semantic model."""
+        # Local application imports
+        import twin4build.core as core
+
+        # Define pattern locally
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+
+        sp = SignaturePattern(id="exact_pattern")
+        sp.add_triple(
+            Exact(
+                subject=node_ahu,
+                object=node_damper,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        # Mock system
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        # Match
+        # Use list of classes for systems_
+        complete_groups, incomplete = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        # Expect matches (AHU feeds Damper1, AHU feeds Damper2)
+        self.assertEqual(len(complete_groups[DummySystem][sp]), 2)
+
+    def test_optional_rule_matching(self):
+        """Test matching Optional rules against the semantic model."""
+        # Local application imports
+        import twin4build.core as core
+
+        # Define pattern with optional node
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_fan = Node(cls=core.namespace.BRICK.Fan)  # Doesn't exist in our model
+
+        sp = SignaturePattern(id="optional_pattern")
+        # AHU exists, Fan doesn't. Optional relation.
+        sp.add_triple(
+            Optional_(
+                subject=node_ahu, object=node_fan, predicate=core.namespace.BRICK.feeds
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, incomplete = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        # Should still match AHU, even if Fan is missing
+        self.assertEqual(len(complete_groups[DummySystem][sp]), 1)
+
+    def test_single_path_rule_matching(self):
+        """Test matching SinglePath rules against the semantic model.
+        Should find 1 match for AHU -> Room (via Damper1)
+
+        This rule doesnt match paths via Damper_2 -> Damper_21 -> Room2 or Damper_2 -> Damper_22 -> Room2 because the path splits into two paths.
+        This matches the indented behavior of SinglePath.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        # AHU -> feeds -> Damper -> feeds -> Room
+        # Check AHU -> Room via feeds (hop 2)
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="single_path_pattern")
+        sp.add_triple(
+            SinglePath(
+                subject=node_ahu, object=node_room, predicate=core.namespace.BRICK.feeds
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, incomplete = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+        self.assertEqual(len(complete_groups[DummySystem][sp]), 1)
+
+    def test_multi_path_rule_matching(self):
+        """Test matching MultiPath rules against the semantic model.
+        Should find 3 matches for AHU -> Room (one via Damper_1, one via Damper_21, one via Damper_22)
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="multi_path_pattern")
+        sp.add_triple(
+            MultiPath(
+                subject=node_ahu, object=node_room, predicate=core.namespace.BRICK.feeds
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, incomplete = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        # print the complete groups
+        # for group in complete_groups[DummySystem][sp]:
+        #     print("\nGroup--------------------------------:")
+        #     for sp_subject, sm_subject in group.items():
+        #         print(f"{sp_subject.id}: {sm_subject.uri}")
+
+        # Should find 2 matches for Damper_2 (one via Damper_21, one via Damper_22)
+        self.assertEqual(len(complete_groups[DummySystem][sp]), 3)
+
+    def test_initialization(self):
+        """Test translator initialization."""
+        self.assertIsNotNone(self.translator)
+        self.assertIsNotNone(self.translator.sim2sem_map)
+        self.assertIsNotNone(self.translator.sem2sim_map)
+        self.assertEqual(len(self.translator.sim2sem_map), 0)
+        self.assertEqual(len(self.translator.sem2sim_map), 0)
+
+    def test_translate_with_empty_semantic_model(self):
+        """Test translation with an empty semantic model."""
+        semantic_model = SemanticModel()
+
+        with self.assertRaises(Exception):
+            sim_model = self.translator.translate(semantic_model)
+
+
+class TestSignaturePattern(unittest.TestCase):
+    def test_node_creation(self):
+        """Test creating nodes for signature patterns."""
+        # Local application imports
+        import twin4build.core as core
+
+        # Create a node with a single class
+        node1 = Node(cls=core.namespace.S4BLDG.Damper)
+        self.assertIsNotNone(node1)
+
+        # Create a node with multiple classes (tuple)
+        node2 = Node(cls=(core.namespace.S4BLDG.Damper, core.namespace.S4BLDG.Valve))
+        self.assertIsNotNone(node2)
+
+    def test_signature_pattern_creation(self):
+        """Test creating a basic signature pattern."""
+        # Local application imports
+        # Create signature pattern
+        sp = SignaturePattern()
+
+        self.assertIsNotNone(sp)
+
+    def test_exact_rule(self):
+        """Test creating Exact rules."""
+        # Local application imports
+        import twin4build.core as core
+
+        node1 = Node(cls=core.namespace.S4BLDG.Damper)
+        node2 = Node(cls=core.namespace.S4BLDG.Controller)
+
+        # Create an Exact rule
+        rule = Exact(
+            subject=node1, object=node2, predicate=core.namespace.SAREF.controls
+        )
+
+        self.assertIsNotNone(rule)
+        self.assertEqual(rule.subject, node1)
+        self.assertEqual(rule.object, node2)
+
+    def test_optional_rule(self):
+        """Test creating Optional_ rules."""
+        # Local application imports
+        import twin4build.core as core
+
+        node1 = Node(cls=core.namespace.S4BLDG.Damper)
+        node2 = Node(cls=core.namespace.SAREF.Property)
+
+        # Create an Optional_ rule
+        rule = Optional_(
+            subject=node1, object=node2, predicate=core.namespace.SAREF.hasProperty
+        )
+
+        self.assertIsNotNone(rule)
+        self.assertEqual(rule.subject, node1)
+        self.assertEqual(rule.object, node2)
+
+    def test_add_triple_to_pattern(self):
+        """Test adding triples to signature patterns."""
+        # Local application imports
+        import twin4build.core as core
+
+        damper_node = Node(cls=core.namespace.S4BLDG.Damper)
+        controller_node = Node(cls=core.namespace.S4BLDG.Controller)
+
+        sp = SignaturePattern()
+
+        # Add a triple with an Exact rule
+        sp.add_triple(
+            Exact(
+                subject=controller_node,
+                object=damper_node,
+                predicate=core.namespace.SAREF.controls,
+            )
+        )
+
+        # If no exception, test passed
+        self.assertTrue(True)
+
+    def test_add_input_to_pattern(self):
+        """Test adding inputs to signature patterns."""
+        # Local application imports
+        import twin4build.core as core
+
+        controller_node = Node(cls=core.namespace.S4BLDG.Controller)
+
+        sp = SignaturePattern()
+
+        # Add an input
+        sp.add_input("damperPosition", controller_node, "inputSignal")
+
+        # If no exception, test passed
+        self.assertTrue(True)
+
+    def test_add_parameter_to_pattern(self):
+        """Test adding parameters to signature patterns."""
+        # Local application imports
+        import twin4build.core as core
+
+        float_node = Node(cls=core.namespace.XSD.float)
+
+        sp = SignaturePattern()
+
+        # Add a parameter
+        sp.add_parameter("nominalAirFlowRate", float_node)
+
+        # If no exception, test passed
+        self.assertTrue(True)
+
+    def test_add_modeled_node(self):
+        """Test adding modeled nodes to signature patterns."""
+        # Local application imports
+        import twin4build.core as core
+
+        damper_node = Node(cls=core.namespace.S4BLDG.Damper)
+
+        sp = SignaturePattern()
+
+        # Add a modeled node
+        sp.add_modeled_node(damper_node)
+
+        # If no exception, test passed
+        self.assertTrue(True)
+
+
+if __name__ == "__main__":
+    unittest.main()

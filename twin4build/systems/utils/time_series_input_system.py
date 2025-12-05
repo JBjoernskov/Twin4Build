@@ -1,6 +1,7 @@
 # Standard library imports
 import datetime
 import os
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -15,6 +16,7 @@ from twin4build.utils.data_loaders.load import (
     load_from_spreadsheet,
     sample_from_df,
 )
+from twin4build.utils.deprecation import deprecate_args
 from twin4build.utils.get_main_dir import get_main_dir
 
 
@@ -30,8 +32,8 @@ class TimeSeriesInputSystem(core.System):
         filename: Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
         datecolumn: Index of the date column (0-based). Defaults to 0.
         valuecolumn: Index of the value column (0-based). Defaults to 1.
-        useSpreadsheet: Whether to use a spreadsheet for input. Defaults to False.
-        useDatabase: Whether to use a database for input. Defaults to False.
+        use_spreadsheet: Whether to use a spreadsheet for input. Defaults to False.
+        use_database: Whether to use a database for input. Defaults to False.
         uuid: UUID for database operations.
         dbconfig: Database configuration parameters.
         **kwargs: Additional keyword arguments
@@ -43,8 +45,8 @@ class TimeSeriesInputSystem(core.System):
         filename: Optional[str] = None,
         datecolumn: int = 0,
         valuecolumn: int = 1,
-        useSpreadsheet: bool = False,
-        useDatabase: bool = False,
+        use_spreadsheet: bool = False,
+        use_database: bool = False,
         uuid: Optional[str] = None,
         dbconfig: Optional[Dict[str, Any]] = None,
         cache: Optional[bool] = True,
@@ -57,8 +59,8 @@ class TimeSeriesInputSystem(core.System):
             filename: Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
             datecolumn: Index of the date column (0-based). Defaults to 0.
             valuecolumn: Index of the value column (0-based). Defaults to 1.
-            useSpreadsheet: Whether to use a spreadsheet for input. Defaults to False.
-            useDatabase: Whether to use a database for input. Defaults to False.
+            use_spreadsheet: Whether to use a spreadsheet for input. Defaults to False.
+            use_database: Whether to use a database for input. Defaults to False.
             uuid: UUID for database operations.
             dbconfig: Database configuration parameters.
             **kwargs: Additional keyword arguments passed to parent System class.
@@ -67,9 +69,17 @@ class TimeSeriesInputSystem(core.System):
             AssertionError: If neither df nor filename is provided.
             ValueError: If the specified file cannot be found in any of the search paths.
         """
+        # Handle deprecated camelCase arguments
+        deprecated_args = ["useSpreadsheet", "useDatabase"]
+        new_args = ["use_spreadsheet", "use_database"]
+        positions = [None, None]
+        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
+        use_spreadsheet = value_map.get("use_spreadsheet", use_spreadsheet)
+        use_database = value_map.get("use_database", use_database)
+
         assert (
-            useSpreadsheet == False or useDatabase == False
-        ), "useSpreadsheet and useDatabase cannot both be True."
+            use_spreadsheet == False or use_database == False
+        ), "use_spreadsheet and use_database cannot both be True."
         super().__init__(**kwargs)
         assert (
             df is not None or filename is not None
@@ -84,8 +94,8 @@ class TimeSeriesInputSystem(core.System):
         #         df = []
         self._df_init = df
         self.df = []
-        self._useSpreadsheet = useSpreadsheet
-        self._useDatabase = useDatabase
+        self._use_spreadsheet = use_spreadsheet
+        self._use_database = use_database
         self._filename = filename
         self._datecolumn = datecolumn
         self._valuecolumn = valuecolumn
@@ -207,32 +217,72 @@ class TimeSeriesInputSystem(core.System):
         self._valuecolumn = value
 
     @property
-    def useSpreadsheet(self) -> bool:
+    def use_spreadsheet(self) -> bool:
         """
         Get whether to use a spreadsheet for input.
         """
-        return self._useSpreadsheet
+        return self._use_spreadsheet
 
-    @useSpreadsheet.setter
-    def useSpreadsheet(self, value: bool) -> None:
+    @use_spreadsheet.setter
+    def use_spreadsheet(self, value: bool) -> None:
         """
         Set whether to use a spreadsheet for input.
         """
-        self._useSpreadsheet = value
+        self._use_spreadsheet = value
 
     @property
-    def useDatabase(self) -> bool:
+    def use_database(self) -> bool:
         """
         Get whether to use a database for input.
         """
-        return self._useDatabase
+        return self._use_database
 
-    @useDatabase.setter
-    def useDatabase(self, value: bool) -> None:
+    @use_database.setter
+    def use_database(self, value: bool) -> None:
         """
         Set whether to use a database for input.
         """
-        self._useDatabase = value
+        self._use_database = value
+
+    # ==================== Deprecated Properties (camelCase) ====================
+
+    @property
+    def useSpreadsheet(self) -> bool:
+        """Deprecated: Use use_spreadsheet instead."""
+        warnings.warn(
+            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._use_spreadsheet
+
+    @useSpreadsheet.setter
+    def useSpreadsheet(self, value: bool) -> None:
+        warnings.warn(
+            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._use_spreadsheet = value
+
+    @property
+    def useDatabase(self) -> bool:
+        """Deprecated: Use use_database instead."""
+        warnings.warn(
+            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._use_database
+
+    @useDatabase.setter
+    def useDatabase(self, value: bool) -> None:
+        warnings.warn(
+            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._use_database = value
 
     @property
     def uuid(self) -> Optional[str]:
@@ -300,7 +350,7 @@ class TimeSeriesInputSystem(core.System):
                 # if (start_time_, end_time_, step_size_) not in self._cached_initialize_arguments:
 
                 if self._df_init is None:
-                    if self.useSpreadsheet:
+                    if self.use_spreadsheet:
                         df = load_from_spreadsheet(
                             self.filename,
                             self._datecolumn,
@@ -311,7 +361,7 @@ class TimeSeriesInputSystem(core.System):
                             cache_root=self._cache_root,
                             cache=self.cache,
                         )
-                    elif self.useDatabase:
+                    elif self.use_database:
                         df = load_from_database(
                             config=self.dbconfig,
                             sensor_id=self.uuid,

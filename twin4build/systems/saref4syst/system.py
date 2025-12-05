@@ -199,7 +199,6 @@ class System:
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """
         Initialize the system.
@@ -210,7 +209,14 @@ class System:
             step_size (int): The step size of the simulation in seconds.
             simulator (core.Simulator): The simulator.
         """
-        pass
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        for input in self.input.values():
+            input.initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+        for output in self.output.values():
+            output.initialize(n_timesteps=max_timesteps, batch_size=batch_size)
 
     def do_step(
         self,
