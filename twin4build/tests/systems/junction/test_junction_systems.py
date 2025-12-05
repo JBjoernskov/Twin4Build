@@ -34,6 +34,8 @@ class TestReturnFlowJunctionSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test return flow junction do_step method."""
+        # Set n_input_ports manually since we're testing without connections
+        self.junction.n_input_ports = 2
         start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
         end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
         step_size = [600]
@@ -92,6 +94,8 @@ class TestSupplyFlowJunctionSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test supply flow junction do_step method."""
+        # Set n_input_ports manually since we're testing without connections
+        self.junction.n_input_ports = 3
         start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
         end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
         step_size = [600]

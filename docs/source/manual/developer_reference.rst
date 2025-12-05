@@ -291,6 +291,39 @@ Run with coverage:
     coverage report
     coverage html  # Generate HTML coverage report
 
+Alternatively, you can use pytest which provides cleaner output and better reporting.
+pytest is fully compatible with unittest and requires no code changes.
+
+Install pytest:
+::
+
+    pip install pytest pytest-html pytest-cov
+
+Run the test suite using pytest:
+::
+
+    pytest twin4build/tests/
+
+Run specific test files:
+::
+
+    pytest twin4build/tests/systems/junction/test_junction_systems.py
+
+Run with verbose output:
+::
+
+    pytest twin4build/tests/ -v
+
+Generate HTML test report:
+::
+
+    pytest twin4build/tests/ --html=report.html --self-contained-html
+
+Run with coverage:
+::
+
+    pytest twin4build/tests/ --cov=twin4build --cov-report=html --cov-report=term-missing
+
 Code Quality Validation
 ~~~~~~~~~~~~~~~~~~~~~~
 
