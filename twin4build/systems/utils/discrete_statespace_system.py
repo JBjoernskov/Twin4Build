@@ -588,8 +588,12 @@ class DiscreteStatespaceSystem(core.System):
         M = torch.zeros(
             (batch_size, n + m, n + m), dtype=self._A.dtype, device=self._A.device
         )
-        M[:, :n, :n] = self._A * T  # A block: (batch_size, n, n)
-        M[:, :n, n:] = self._B * T  # B block: (batch_size, n, m)
+        M[:, :n, :n] = (
+            self._A * T
+        )  # A block: (batch_size, n, n) TODO: Implement broadcasting of T for batched simulations. Currently, T is a scalar.
+        M[:, :n, n:] = (
+            self._B * T
+        )  # B block: (batch_size, n, m) TODO: Implement broadcasting of T vector for batched simulations. Currently, T is a scalar.
         ###
 
         ###
@@ -723,8 +727,8 @@ class DiscreteStatespaceSystem(core.System):
             y: (batch_size, n_outputs)
         """
         assert all(
-            step_size_ == step_size[0] for step_size_ in step_size
-        ), "DiscreteStatespaceSystem only supports a single step size for batched simulations"
+            [step_size_ == step_size[0] for step_size_ in step_size]
+        ), "DiscreteStatespaceSystem currently only supports a single step size for batched simulations. But this could be implemented in the future."
         step_size = step_size[0]
         if step_index == 0:
             first_step = True

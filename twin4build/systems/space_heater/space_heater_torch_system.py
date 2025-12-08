@@ -8,6 +8,7 @@ import torch.nn as nn
 from scipy.optimize import fsolve
 
 # Local application imports
+import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build import core
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
@@ -19,7 +20,6 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
-from twin4build.utils.constants import Constants
 
 
 class SpaceHeaterTorchSystem(core.System, nn.Module):
@@ -393,15 +393,12 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """
         n = self.nelements
         C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
-        UA_elem = float(UA_candidate[0]) / n
+        UA_elem = float(UA_candidate.item()) / n
         m_dot = float(
             self.Q_flow_nominal_sh
-            / (
-                Constants.specificHeatCapacity["water"]
-                * (self.T_a_nominal_sh - self.T_b_nominal_sh)
-            )
+            / (constants.CP_WATER * (self.T_a_nominal_sh - self.T_b_nominal_sh))
         )
-        c_p = float(Constants.specificHeatCapacity["water"])
+        c_p = float(constants.CP_WATER)
         # Build A, B
         A = torch.zeros((n, n), dtype=torch.float64)
         B = torch.zeros((n, 3), dtype=torch.float64)
@@ -460,7 +457,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
         C_elem = self.thermalMassHeatCapacity.get() / n
         UA_elem = self.UA.get() / n
-        c_p = Constants.specificHeatCapacity["water"]
+        c_p = constants.CP_WATER
 
         # LTI part: Only UA/C on diagonal
         A = torch.zeros((n, n), dtype=torch.float64)

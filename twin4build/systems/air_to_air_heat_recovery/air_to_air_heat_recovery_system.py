@@ -2,8 +2,12 @@
 import datetime
 from typing import Optional
 
+# Third party imports
+import torch
+
 # Local application imports
 import twin4build.core as core
+import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
     Exact,
@@ -13,7 +17,6 @@ from twin4build.translator.translator import (
     SignaturePattern,
     SinglePath,
 )
-from twin4build.utils.constants import Constants
 
 
 class AirToAirHeatRecoverySystem(core.System):
@@ -94,12 +97,26 @@ class AirToAirHeatRecoverySystem(core.System):
         super().__init__(**kwargs)
 
         # Store attributes as private variables
-        self._eps_75_h = eps_75_h
-        self._eps_100_h = eps_100_h
-        self._eps_75_c = eps_75_c
-        self._eps_100_c = eps_100_c
-        self._primaryAirFlowRateMax = primaryAirFlowRateMax
-        self._secondaryAirFlowRateMax = secondaryAirFlowRateMax
+        self.eps_75_h = tps.Parameter(
+            torch.tensor(eps_75_h, dtype=torch.float64), requires_grad=False
+        )
+        self.eps_100_h = tps.Parameter(
+            torch.tensor(eps_100_h, dtype=torch.float64), requires_grad=False
+        )
+        self.eps_75_c = tps.Parameter(
+            torch.tensor(eps_75_c, dtype=torch.float64), requires_grad=False
+        )
+        self.eps_100_c = tps.Parameter(
+            torch.tensor(eps_100_c, dtype=torch.float64), requires_grad=False
+        )
+        self.primaryAirFlowRateMax = tps.Parameter(
+            torch.tensor(primaryAirFlowRateMax, dtype=torch.float64),
+            requires_grad=False,
+        )
+        self.secondaryAirFlowRateMax = tps.Parameter(
+            torch.tensor(secondaryAirFlowRateMax, dtype=torch.float64),
+            requires_grad=False,
+        )
 
         # Define inputs and outputs as private variables
         self._input = {
@@ -160,96 +177,11 @@ class AirToAirHeatRecoverySystem(core.System):
         """
         return self._output
 
-    @property
-    def eps_75_h(self):
-        """
-        Get the effectiveness at 75% flow in heating mode.
-        """
-        return self._eps_75_h
-
-    @eps_75_h.setter
-    def eps_75_h(self, value):
-        """
-        Set the effectiveness at 75% flow in heating mode.
-        """
-        self._eps_75_h = value
-
-    @property
-    def eps_100_h(self):
-        """
-        Get the effectiveness at 100% flow in heating mode.
-        """
-        return self._eps_100_h
-
-    @eps_100_h.setter
-    def eps_100_h(self, value):
-        """
-        Set the effectiveness at 100% flow in heating mode.
-        """
-        self._eps_100_h = value
-
-    @property
-    def eps_75_c(self):
-        """
-        Get the effectiveness at 75% flow in cooling mode.
-        """
-        return self._eps_75_c
-
-    @eps_75_c.setter
-    def eps_75_c(self, value):
-        """
-        Set the effectiveness at 75% flow in cooling mode.
-        """
-        self._eps_75_c = value
-
-    @property
-    def eps_100_c(self):
-        """
-        Get the effectiveness at 100% flow in cooling mode.
-        """
-        return self._eps_100_c
-
-    @eps_100_c.setter
-    def eps_100_c(self, value):
-        """
-        Set the effectiveness at 100% flow in cooling mode.
-        """
-        self._eps_100_c = value
-
-    @property
-    def primaryAirFlowRateMax(self):
-        """
-        Get the maximum primary (supply) air flow rate.
-        """
-        return self._primaryAirFlowRateMax
-
-    @primaryAirFlowRateMax.setter
-    def primaryAirFlowRateMax(self, value):
-        """
-        Set the maximum primary (supply) air flow rate.
-        """
-        self._primaryAirFlowRateMax = value
-
-    @property
-    def secondaryAirFlowRateMax(self):
-        """
-        Get the maximum secondary (exhaust) air flow rate.
-        """
-        return self._secondaryAirFlowRateMax
-
-    @secondaryAirFlowRateMax.setter
-    def secondaryAirFlowRateMax(self, value):
-        """
-        Set the maximum secondary (exhaust) air flow rate.
-        """
-        self._secondaryAirFlowRateMax = value
-
     def initialize(
         self,
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """Initialize the system for simulation.
 
@@ -261,7 +193,21 @@ class AirToAirHeatRecoverySystem(core.System):
             step_size: Time step size in seconds.
             simulator: Simulation model object.
         """
-        pass
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        for input in self.input.values():
+            input.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
+        for output in self.output.values():
+            output.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
+        self.INITIALIZED = True
 
     def do_step(
         self,
@@ -288,104 +234,86 @@ class AirToAirHeatRecoverySystem(core.System):
             step_size: Time step size in seconds.
             step_index: Current simulation step index.
         """
-        self.output.update(self.input)
         tol = 1e-5
-        if (
-            self.input["primaryAirFlowRate"] > tol
-            and self.input["secondaryAirFlowRate"] > tol
-        ):
-            m_a_max = max(self.primaryAirFlowRateMax, self.secondaryAirFlowRateMax)
-            if (
-                self.input["primaryTemperatureIn"]
-                < self.input["secondaryTemperatureIn"]
-            ):
-                eps_75 = self.eps_75_h
-                eps_100 = self.eps_100_h
-                feasibleMode = "Heating"
-            else:
-                eps_75 = self.eps_75_c
-                eps_100 = self.eps_100_c
-                feasibleMode = "Cooling"
 
-            operationMode = (
-                "Heating"
-                if self.input["primaryTemperatureIn"]
-                < self.input["primaryTemperatureOutSetpoint"]
-                else "Cooling"
-            )
+        # Get input values
+        primary_flow = self.input["primaryAirFlowRate"].get()
+        secondary_flow = self.input["secondaryAirFlowRate"].get()
+        primary_temp_in = self.input["primaryTemperatureIn"].get()
+        secondary_temp_in = self.input["secondaryTemperatureIn"].get()
+        primary_temp_setpoint = self.input["primaryTemperatureOutSetpoint"].get()
 
-            if feasibleMode == operationMode:
-                f_flow = (
-                    0.5
-                    * (
-                        self.input["primaryAirFlowRate"]
-                        + self.input["secondaryAirFlowRate"]
-                    )
-                    / m_a_max
-                )
-                eps_op = eps_75 + (eps_100 - eps_75) * (f_flow - 0.75) / (1 - 0.75)
-                C_sup = (
-                    self.input["primaryAirFlowRate"]
-                    * Constants.specificHeatCapacity["air"]
-                )
-                C_exh = (
-                    self.input["secondaryAirFlowRate"]
-                    * Constants.specificHeatCapacity["air"]
-                )
-                C_min = min(C_sup, C_exh)
-                self.output["primaryTemperatureOut"].set(
-                    self.input["primaryTemperatureIn"]
-                    + eps_op
-                    * (
-                        self.input["secondaryTemperatureIn"]
-                        - self.input["primaryTemperatureIn"]
-                    )
-                    * (C_min / C_sup),
-                    step_index,
-                )
+        # Condition: both flow rates above tolerance
+        has_flow = (primary_flow > tol) & (secondary_flow > tol)
 
-                if (
-                    operationMode == "Heating"
-                    and self.output["primaryTemperatureOut"]
-                    > self.input["primaryTemperatureOutSetpoint"]
-                ):
-                    self.output["primaryTemperatureOut"].set(
-                        self.input["primaryTemperatureOutSetpoint"], step_index
-                    )
-                elif (
-                    operationMode == "Cooling"
-                    and self.output["primaryTemperatureOut"]
-                    < self.input["primaryTemperatureOutSetpoint"]
-                ):
-                    self.output["primaryTemperatureOut"].set(
-                        self.input["primaryTemperatureOutSetpoint"], step_index
-                    )
+        # Determine feasible mode (heating if primary < secondary, else cooling)
+        is_heating_feasible = primary_temp_in < secondary_temp_in
 
-                # Calculate secondaryTemperatureOut using energy conservation
-                primary_delta_T = (
-                    self.output["primaryTemperatureOut"].get()
-                    - self.input["primaryTemperatureIn"].get()
-                )
-                secondary_delta_T = primary_delta_T * (C_sup / C_exh)
-                self.output["secondaryTemperatureOut"].set(
-                    self.input["secondaryTemperatureIn"].get() - secondary_delta_T,
-                    step_index,
-                )
+        # Select effectiveness values based on feasible mode
+        eps_75 = torch.where(
+            is_heating_feasible, self.eps_75_h.get(), self.eps_75_c.get()
+        )
+        eps_100 = torch.where(
+            is_heating_feasible, self.eps_100_h.get(), self.eps_100_c.get()
+        )
 
-            else:
-                self.output["primaryTemperatureOut"].set(
-                    self.input["primaryTemperatureIn"], step_index
-                )
-                self.output["secondaryTemperatureOut"].set(
-                    self.input["secondaryTemperatureIn"], step_index
-                )
-        else:
-            self.output["primaryTemperatureOut"].set(
-                self.input["primaryTemperatureIn"], step_index
-            )
-            self.output["secondaryTemperatureOut"].set(
-                self.input["secondaryTemperatureIn"], step_index
-            )
+        # Determine operation mode (heating if primary < setpoint, else cooling)
+        is_heating_mode = primary_temp_in < primary_temp_setpoint
+
+        # Feasible matches operation mode when both are heating or both are cooling
+        feasible_matches_mode = is_heating_feasible == is_heating_mode
+
+        # Condition for heat recovery: has flow AND feasible matches mode
+        do_heat_recovery = has_flow & feasible_matches_mode
+
+        # Calculate heat recovery values (computed for all, selected later)
+        m_a_max = torch.max(
+            self.primaryAirFlowRateMax.get(), self.secondaryAirFlowRateMax.get()
+        )
+
+        f_flow = 0.5 * (primary_flow + secondary_flow) / m_a_max
+        eps_op = eps_75 + (eps_100 - eps_75) * (f_flow - 0.75) / (1 - 0.75)
+
+        C_sup = primary_flow * constants.CP_AIR
+        C_exh = secondary_flow * constants.CP_AIR
+        C_min = torch.min(C_sup, C_exh)
+
+        # Calculate primary temperature out with heat recovery
+        primary_temp_out_hr = primary_temp_in + eps_op * (
+            secondary_temp_in - primary_temp_in
+        ) * (C_min / C_sup)
+
+        # Clamp to setpoint based on operation mode
+        # In heating mode: clamp if output > setpoint
+        # In cooling mode: clamp if output < setpoint
+        heating_exceeds = is_heating_mode & (
+            primary_temp_out_hr > primary_temp_setpoint
+        )
+        cooling_exceeds = (~is_heating_mode) & (
+            primary_temp_out_hr < primary_temp_setpoint
+        )
+        needs_clamping = heating_exceeds | cooling_exceeds
+
+        primary_temp_out_hr = torch.where(
+            needs_clamping, primary_temp_setpoint, primary_temp_out_hr
+        )
+
+        # Calculate secondary temperature out using energy conservation
+        primary_delta_T = primary_temp_out_hr - primary_temp_in
+        secondary_delta_T = primary_delta_T * (C_sup / C_exh)
+        secondary_temp_out_hr = secondary_temp_in - secondary_delta_T
+
+        # Select final outputs: heat recovery values if conditions met, else pass-through
+        primary_temp_out = torch.where(
+            do_heat_recovery, primary_temp_out_hr, primary_temp_in
+        )
+        secondary_temp_out = torch.where(
+            do_heat_recovery, secondary_temp_out_hr, secondary_temp_in
+        )
+
+        # Set outputs
+        self.output["primaryTemperatureOut"].set(primary_temp_out, step_index)
+        self.output["secondaryTemperatureOut"].set(secondary_temp_out, step_index)
 
 
 def saref_signature_pattern():

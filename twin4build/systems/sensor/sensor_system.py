@@ -1,5 +1,6 @@
 # Standard library imports
 import datetime
+import warnings
 from typing import Any, Dict, List, Optional, Union
 
 # Third party imports
@@ -11,6 +12,8 @@ import twin4build.utils.types as tps
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
+from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
 
 
 def get_signature_pattern_input():
@@ -332,6 +335,7 @@ def get_temperature_after_air_to_air_exhaust_side():
     return sp
 
 
+@autoreset_print
 class SensorSystem(core.System):
     """A system representing a physical or virtual sensor in the building.
 
@@ -375,8 +379,9 @@ class SensorSystem(core.System):
         df: Optional[pd.DataFrame] = None,
         uuid: Optional[str] = None,
         dbconfig: Optional[Dict[str, Any]] = None,
-        useSpreadsheet: bool = False,
-        useDatabase: bool = False,
+        use_spreadsheet: bool = False,
+        use_database: bool = False,
+        use_df: bool = False,
         **kwargs,
     ) -> None:
         """Initialize the sensor system.
@@ -386,19 +391,54 @@ class SensorSystem(core.System):
                 Defaults to None.
             df: DataFrame containing readings.
                 Defaults to None.
-            useSpreadsheet: Whether to use a spreadsheet for input.
+            use_spreadsheet: Whether to use a spreadsheet for input.
                 Defaults to False.
-            useDatabase: Whether to use a database for input.
+            use_database: Whether to use a database for input.
+                Defaults to False.
+            use_df: Whether to use the provided DataFrame for input.
                 Defaults to False.
             **kwargs: Additional keyword arguments passed to parent class.
 
         Note:
             Either filename/df must be provided for physical sensors, or
             the sensor must have connections defined for virtual sensors.
+            Flags are auto-detected if only one data source is provided.
         """
+        # Handle deprecated camelCase arguments
+        deprecated_args = ["useSpreadsheet", "useDatabase", "usedf"]
+        new_args = ["use_spreadsheet", "use_database", "use_df"]
+        positions = [None, None, None]
+        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
+        use_spreadsheet = value_map.get("use_spreadsheet", use_spreadsheet)
+        use_database = value_map.get("use_database", use_database)
+        use_df = value_map.get("use_df", use_df)
+
+        # Count how many data sources are provided
+        has_df = df is not None
+        has_filename = filename is not None
+        has_database = dbconfig is not None or uuid is not None
+        n_sources = sum([has_df, has_filename, has_database])
+        n_flags = sum([use_spreadsheet, use_database, use_df])
+
+        # If multiple sources provided, user must explicitly set a flag
+        assert not (n_sources > 1 and n_flags == 0), (
+            "Multiple data sources provided (df, filename, database). "
+            "You must explicitly set one of use_df=True, use_spreadsheet=True, or use_database=True "
+            "to specify which source to use."
+        )
+
+        # Auto-detect data source if no flags are explicitly set
+        if not use_spreadsheet and not use_database and not use_df:
+            if has_df:
+                use_df = True
+            elif has_filename:
+                use_spreadsheet = True
+            elif has_database:
+                use_database = True
+
         assert (
-            useSpreadsheet == False or useDatabase == False
-        ), "useSpreadsheet and useDatabase cannot both be True."
+            sum([use_spreadsheet, use_database, use_df]) <= 1
+        ), "Only one of use_spreadsheet, use_database, or use_df can be True."
         super().__init__(**kwargs)
 
         # Define inputs and outputs as private variables
@@ -408,8 +448,9 @@ class SensorSystem(core.System):
         }  # TODO: Not necessary to be a leaf scalar, if the sensor has inputs. Need to implement check in initialize()
 
         # Store attributes as private variables
-        self._useSpreadsheet = useSpreadsheet
-        self._useDatabase = useDatabase
+        self._use_spreadsheet = use_spreadsheet
+        self._use_database = use_database
+        self._use_df = use_df
         self._filename = filename
         self._df = df
         self._datecolumn = 0
@@ -420,7 +461,7 @@ class SensorSystem(core.System):
         self._time_series_input = None
 
         self._config = {
-            "parameters": ["useSpreadsheet", "useDatabase"],
+            "parameters": ["use_spreadsheet", "use_database", "use_df"],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
             "database": ["uuid", "dbconfig"],
         }
@@ -462,8 +503,13 @@ class SensorSystem(core.System):
     def filename(self, value: Optional[str]) -> None:
         """
         Set the path to sensor readings file.
+        Automatically sets use_spreadsheet=True if a value is provided.
         """
         self._filename = value
+        if value is not None:
+            self._use_spreadsheet = True
+            self._use_database = False
+            self._use_df = False
 
     @property
     def df(self) -> Optional[pd.DataFrame]:
@@ -476,8 +522,13 @@ class SensorSystem(core.System):
     def df(self, value: Optional[pd.DataFrame]) -> None:
         """
         Set the direct DataFrame input of sensor readings.
+        Automatically sets use_df=True if a value is provided.
         """
         self._df = value
+        if value is not None:
+            self._use_df = True
+            self._use_spreadsheet = False
+            self._use_database = False
 
     @property
     def datecolumn(self) -> int:
@@ -536,32 +587,105 @@ class SensorSystem(core.System):
         self._time_series_input = value
 
     @property
-    def useSpreadsheet(self) -> bool:
+    def use_spreadsheet(self) -> bool:
         """
         Get whether to use a spreadsheet for input.
         """
-        return self._useSpreadsheet
+        return self._use_spreadsheet
 
-    @useSpreadsheet.setter
-    def useSpreadsheet(self, value: bool) -> None:
+    @use_spreadsheet.setter
+    def use_spreadsheet(self, value: bool) -> None:
         """
         Set whether to use a spreadsheet for input.
         """
-        self._useSpreadsheet = value
+        self._use_spreadsheet = value
 
     @property
-    def useDatabase(self) -> bool:
+    def use_database(self) -> bool:
         """
         Get whether to use a database for input.
         """
-        return self._useDatabase
+        return self._use_database
 
-    @useDatabase.setter
-    def useDatabase(self, value: bool) -> None:
+    @use_database.setter
+    def use_database(self, value: bool) -> None:
         """
         Set whether to use a database for input.
         """
-        self._useDatabase = value
+        self._use_database = value
+
+    @property
+    def use_df(self) -> bool:
+        """
+        Get whether to use a DataFrame for input.
+        """
+        return self._use_df
+
+    @use_df.setter
+    def use_df(self, value: bool) -> None:
+        """
+        Set whether to use a DataFrame for input.
+        """
+        self._use_df = value
+
+    # ==================== Deprecated Properties (camelCase) ====================
+
+    @property
+    def useSpreadsheet(self) -> bool:
+        """Deprecated: Use use_spreadsheet instead."""
+        warnings.warn(
+            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._use_spreadsheet
+
+    @useSpreadsheet.setter
+    def useSpreadsheet(self, value: bool) -> None:
+        warnings.warn(
+            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._use_spreadsheet = value
+
+    @property
+    def useDatabase(self) -> bool:
+        """Deprecated: Use use_database instead."""
+        warnings.warn(
+            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._use_database
+
+    @useDatabase.setter
+    def useDatabase(self, value: bool) -> None:
+        warnings.warn(
+            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._use_database = value
+
+    @property
+    def usedf(self) -> bool:
+        """Deprecated: Use use_df instead."""
+        warnings.warn(
+            "Property 'usedf' is deprecated. Use 'use_df' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._use_df
+
+    @usedf.setter
+    def usedf(self, value: bool) -> None:
+        warnings.warn(
+            "Property 'usedf' is deprecated. Use 'use_df' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._use_df = value
 
     @property
     def uuid(self) -> Optional[str]:
@@ -574,8 +698,13 @@ class SensorSystem(core.System):
     def uuid(self, value: Optional[str]) -> None:
         """
         Set the UUID for database operations.
+        Automatically sets use_database=True if a value is provided.
         """
         self._uuid = value
+        if value is not None:
+            self._use_database = True
+            self._use_spreadsheet = False
+            self._use_df = False
 
     @property
     def dbconfig(self) -> Optional[Dict[str, Any]]:
@@ -588,8 +717,13 @@ class SensorSystem(core.System):
     def dbconfig(self, value: Optional[Dict[str, Any]]) -> None:
         """
         Set the database configuration parameters.
+        Automatically sets use_database=True if a value is provided.
         """
         self._dbconfig = value
+        if value is not None:
+            self._use_database = True
+            self._use_spreadsheet = False
+            self._use_df = False
 
     def validate(self, p) -> tuple[bool, bool, bool, bool]:
         """Validate the sensor system configuration.
@@ -622,7 +756,7 @@ class SensorSystem(core.System):
             p(message, status="WARNING")
             validated_for_estimator = False
 
-        self.is_leaf = len(self.connects_at) == 0
+        self.is_leaf = len(self.connects_at) == 0  # No inputs -> leaf scalar
         self.output["measuredValue"].is_leaf = self.is_leaf
 
         return (
@@ -633,7 +767,12 @@ class SensorSystem(core.System):
 
     def validate_connections(self, p) -> bool:
         validated = True
-        if self.is_leaf and self.useSpreadsheet == False and self.useDatabase == False:
+        if (
+            self.is_leaf
+            and self.use_spreadsheet == False
+            and self.use_database == False
+            and self.use_df == False
+        ):
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
             p(message, status="[WARNING]")
             p.add_level()
@@ -659,23 +798,21 @@ class SensorSystem(core.System):
             model (Optional[Any]): Model object (not used in this class).
         """
 
-        if (
-            self.filename is not None
-            or self.df is not None
-            or self.dbconfig is not None
-        ):
-            if self.df is None:
-                assert (
-                    self.useSpreadsheet == True or self.useDatabase == True
-                ), "useSpreadsheet or useDatabase must be True if df is not provided."
+        self.validate(PRINTPROGRESS)
+        self.validate_connections(PRINTPROGRESS)
+
+        if self.use_spreadsheet or self.use_database or self.use_df:
+            if self.use_df:
+                if self.df is None:
+                    raise ValueError("df must be provided when use_df=True.")
             self.time_series_input = TimeSeriesInputSystem(
                 id=f"time series input - {self.id}",
                 df=self.df,
                 filename=self.filename,
                 datecolumn=self.datecolumn,
                 valuecolumn=self.valuecolumn,
-                useSpreadsheet=self.useSpreadsheet,
-                useDatabase=self.useDatabase,
+                use_spreadsheet=self.use_spreadsheet,
+                use_database=self.use_database,
                 uuid=self.uuid,
                 dbconfig=self.dbconfig,
             )
@@ -759,6 +896,6 @@ class SensorSystem(core.System):
         self.initialize(start_time, end_time, step_size)
         assert (
             self.time_series_input is not None
-        ), f'Cannot return physical readings for Sensor with id "{self.id}" as the argument "filename" was not provided when the object was initialized.'
+        ), f'Cannot return physical readings for Sensor with id "{self.id}" as time_series_input is None.\nEither this sensor has not been intialized or the arguments filename/df/dbconfig were not provided when the object was initialized or the sensor is virtual and has no time_series_input.'
         self.time_series_input.initialize(start_time, end_time, step_size)
         return self.time_series_input.df

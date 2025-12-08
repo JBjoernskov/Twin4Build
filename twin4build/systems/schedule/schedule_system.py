@@ -1,6 +1,7 @@
 # Standard library imports
 import datetime
 import random
+import warnings
 from random import randrange
 from typing import Optional
 
@@ -12,6 +13,7 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
+from twin4build.utils.deprecation import deprecate_args
 
 
 class ScheduleSystem(core.System):
@@ -55,8 +57,9 @@ class ScheduleSystem(core.System):
         saturdayRulesetDict: dict = None,
         sundayRulesetDict: dict = None,
         add_noise: bool = False,
-        useSpreadsheet: bool = False,
-        useDatabase: bool = False,
+        use_spreadsheet: bool = False,
+        use_database: bool = False,
+        use_dict: bool = False,
         filename: str = None,
         datecolumn: int = 0,
         valuecolumn: int = 1,
@@ -65,28 +68,73 @@ class ScheduleSystem(core.System):
         dbconfig: dict = None,
         **kwargs,
     ):
+        # Handle deprecated camelCase arguments
+        deprecated_args = ["useSpreadsheet", "useDatabase", "usedict"]
+        new_args = ["use_spreadsheet", "use_database", "use_dict"]
+        positions = [None, None, None]
+        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
+        use_spreadsheet = value_map.get("use_spreadsheet", use_spreadsheet)
+        use_database = value_map.get("use_database", use_database)
+        use_dict = value_map.get("use_dict", use_dict)
+
+        # Count how many data sources are provided
+        has_dict = (
+            weekDayRulesetDict is not None
+            or weekendRulesetDict is not None
+            or mondayRulesetDict is not None
+            or tuesdayRulesetDict is not None
+            or wednesdayRulesetDict is not None
+            or thursdayRulesetDict is not None
+            or fridayRulesetDict is not None
+            or saturdayRulesetDict is not None
+            or sundayRulesetDict is not None
+        )
+        has_filename = filename is not None
+        has_database = dbconfig is not None or uuid is not None or name is not None
+        n_sources = sum([has_dict, has_filename, has_database])
+        n_flags = sum([use_spreadsheet, use_database, use_dict])
+
+        # If multiple sources provided, user must explicitly set a flag
+        assert not (n_sources > 1 and n_flags == 0), (
+            f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Multiple data sources provided (weekDayRulesetDict, filename, database). "
+            "You must explicitly set one of use_dict=True, use_spreadsheet=True, or use_database=True "
+            "to specify which source to use."
+        )
+
+        # Auto-detect data source if no flags are explicitly set
+        if not use_spreadsheet and not use_database and not use_dict:
+            if has_dict:
+                use_dict = True
+            elif has_filename:
+                use_spreadsheet = True
+            elif has_database:
+                use_database = True
+
         super().__init__(**kwargs)
         assert (
-            useSpreadsheet == False or useDatabase == False
-        ), "useSpreadsheet and useDatabase cannot both be True."
-        self.weekDayRulesetDict = weekDayRulesetDict
-        self.weekendRulesetDict = weekendRulesetDict
-        self.mondayRulesetDict = mondayRulesetDict
-        self.tuesdayRulesetDict = tuesdayRulesetDict
-        self.wednesdayRulesetDict = wednesdayRulesetDict
-        self.thursdayRulesetDict = thursdayRulesetDict
-        self.fridayRulesetDict = fridayRulesetDict
-        self.saturdayRulesetDict = saturdayRulesetDict
-        self.sundayRulesetDict = sundayRulesetDict
+            sum([use_spreadsheet, use_database, use_dict]) <= 1
+        ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Only one of use_spreadsheet, use_database, or use_dict can be True."
+
+        # Store as private variables for property access
+        self._weekDayRulesetDict = weekDayRulesetDict
+        self._weekendRulesetDict = weekendRulesetDict
+        self._mondayRulesetDict = mondayRulesetDict
+        self._tuesdayRulesetDict = tuesdayRulesetDict
+        self._wednesdayRulesetDict = wednesdayRulesetDict
+        self._thursdayRulesetDict = thursdayRulesetDict
+        self._fridayRulesetDict = fridayRulesetDict
+        self._saturdayRulesetDict = saturdayRulesetDict
+        self._sundayRulesetDict = sundayRulesetDict
         self.add_noise = add_noise
-        self.useSpreadsheet = useSpreadsheet
-        self.useDatabase = useDatabase
-        self.filename = filename
+        self._use_spreadsheet = use_spreadsheet
+        self._use_database = use_database
+        self._use_dict = use_dict
+        self._filename = filename
         self.datecolumn = datecolumn
         self.valuecolumn = valuecolumn
-        self.uuid = uuid
-        self.name = name
-        self.dbconfig = dbconfig
+        self._uuid = uuid
+        self._name = name
+        self._dbconfig = dbconfig
         random.seed(0)
         self.input = {}
         self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
@@ -102,8 +150,9 @@ class ScheduleSystem(core.System):
                 "saturdayRulesetDict",
                 "sundayRulesetDict",
                 "add_noise",
-                "useSpreadsheet",
-                "useDatabase",
+                "use_spreadsheet",
+                "use_database",
+                "use_dict",
             ],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
             "database": ["uuid", "name", "dbconfig"],
@@ -113,31 +162,306 @@ class ScheduleSystem(core.System):
     def config(self):
         return self._config
 
+    # ==================== Ruleset Dict Properties ====================
+
+    @property
+    def weekDayRulesetDict(self):
+        return self._weekDayRulesetDict
+
+    @weekDayRulesetDict.setter
+    def weekDayRulesetDict(self, value):
+        self._weekDayRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def weekendRulesetDict(self):
+        return self._weekendRulesetDict
+
+    @weekendRulesetDict.setter
+    def weekendRulesetDict(self, value):
+        self._weekendRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def mondayRulesetDict(self):
+        return self._mondayRulesetDict
+
+    @mondayRulesetDict.setter
+    def mondayRulesetDict(self, value):
+        self._mondayRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def tuesdayRulesetDict(self):
+        return self._tuesdayRulesetDict
+
+    @tuesdayRulesetDict.setter
+    def tuesdayRulesetDict(self, value):
+        self._tuesdayRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def wednesdayRulesetDict(self):
+        return self._wednesdayRulesetDict
+
+    @wednesdayRulesetDict.setter
+    def wednesdayRulesetDict(self, value):
+        self._wednesdayRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def thursdayRulesetDict(self):
+        return self._thursdayRulesetDict
+
+    @thursdayRulesetDict.setter
+    def thursdayRulesetDict(self, value):
+        self._thursdayRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def fridayRulesetDict(self):
+        return self._fridayRulesetDict
+
+    @fridayRulesetDict.setter
+    def fridayRulesetDict(self, value):
+        self._fridayRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def saturdayRulesetDict(self):
+        return self._saturdayRulesetDict
+
+    @saturdayRulesetDict.setter
+    def saturdayRulesetDict(self, value):
+        self._saturdayRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def sundayRulesetDict(self):
+        return self._sundayRulesetDict
+
+    @sundayRulesetDict.setter
+    def sundayRulesetDict(self, value):
+        self._sundayRulesetDict = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    # ==================== Data Source Flags ====================
+
+    @property
+    def use_spreadsheet(self):
+        return self._use_spreadsheet
+
+    @use_spreadsheet.setter
+    def use_spreadsheet(self, value):
+        self._use_spreadsheet = value
+
+    @property
+    def use_database(self):
+        return self._use_database
+
+    @use_database.setter
+    def use_database(self, value):
+        self._use_database = value
+
+    @property
+    def use_dict(self):
+        return self._use_dict
+
+    @use_dict.setter
+    def use_dict(self, value):
+        self._use_dict = value
+
+    # ==================== Deprecated Properties (camelCase) ====================
+
+    @property
+    def useSpreadsheet(self):
+        """Deprecated: Use use_spreadsheet instead."""
+        warnings.warn(
+            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._use_spreadsheet
+
+    @useSpreadsheet.setter
+    def useSpreadsheet(self, value):
+        warnings.warn(
+            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._use_spreadsheet = value
+
+    @property
+    def useDatabase(self):
+        """Deprecated: Use use_database instead."""
+        warnings.warn(
+            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._use_database
+
+    @useDatabase.setter
+    def useDatabase(self, value):
+        warnings.warn(
+            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._use_database = value
+
+    @property
+    def usedict(self):
+        """Deprecated: Use use_dict instead."""
+        warnings.warn(
+            "Property 'usedict' is deprecated. Use 'use_dict' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._use_dict
+
+    @usedict.setter
+    def usedict(self, value):
+        warnings.warn(
+            "Property 'usedict' is deprecated. Use 'use_dict' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._use_dict = value
+
+    # ==================== Spreadsheet Properties ====================
+
+    @property
+    def filename(self):
+        return self._filename
+
+    @filename.setter
+    def filename(self, value):
+        self._filename = value
+        if value is not None:
+            self._use_spreadsheet = True
+            self._use_database = False
+            self._use_dict = False
+
+    # ==================== Database Properties ====================
+
+    @property
+    def uuid(self):
+        return self._uuid
+
+    @uuid.setter
+    def uuid(self, value):
+        self._uuid = value
+        if value is not None:
+            self._use_database = True
+            self._use_spreadsheet = False
+            self._use_dict = False
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        self._name = value
+        if value is not None:
+            self._use_database = True
+            self._use_spreadsheet = False
+            self._use_dict = False
+
+    @property
+    def dbconfig(self):
+        return self._dbconfig
+
+    @dbconfig.setter
+    def dbconfig(self, value):
+        self._dbconfig = value
+        if value is not None:
+            self._use_database = True
+            self._use_spreadsheet = False
+            self._use_dict = False
+
     def validate(self, p):
         validated_for_simulator = True
         validated_for_estimator = True
         validated_for_optimizer = True
 
-        if self.useSpreadsheet and self.filename is None:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename must be provided if useSpreadsheet is True to enable use of Simulator, Estimator, and Optimizer."
+        if self.use_spreadsheet and self.filename is None:
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename must be provided if use_spreadsheet is True to enable use of Simulator, Estimator, and Optimizer."
             p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False
 
-        elif self.useDatabase and (self.uuid is None and self.name is None):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid or name must be provided if useDatabase is True to enable use of Simulator, Estimator, and Optimizer."
+        elif self.use_database and (self.uuid is None and self.name is None):
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid or name must be provided if use_database is True to enable use of Simulator, Estimator, and Optimizer."
             p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False
 
-        elif (
-            self.useSpreadsheet == False
-            and self.useDatabase == False
-            and self.weekDayRulesetDict is None
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False to enable use of Simulator, Estimator, and Optimizer."
+        elif self.use_dict:
+            # Check that all days can be covered (either directly or via fallback dicts)
+            missing_days = []
+            if self.mondayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("mondayRulesetDict")
+            if self.tuesdayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("tuesdayRulesetDict")
+            if self.wednesdayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("wednesdayRulesetDict")
+            if self.thursdayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("thursdayRulesetDict")
+            if self.fridayRulesetDict is None and self.weekDayRulesetDict is None:
+                missing_days.append("fridayRulesetDict")
+            if (
+                self.saturdayRulesetDict is None
+                and self.weekendRulesetDict is None
+                and self.weekDayRulesetDict is None
+            ):
+                missing_days.append("saturdayRulesetDict")
+            if (
+                self.sundayRulesetDict is None
+                and self.weekendRulesetDict is None
+                and self.weekDayRulesetDict is None
+            ):
+                missing_days.append("sundayRulesetDict")
+            if missing_days:
+                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: The following ruleset dicts are missing (provide directly or via weekDayRulesetDict/weekendRulesetDict): {', '.join(missing_days)}"
+                p(message, status="WARNING")
+                validated_for_simulator = False
+                validated_for_estimator = False
+                validated_for_optimizer = False
+
+        if not self.use_spreadsheet and not self.use_database and not self.use_dict:
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either weekDayRulesetDict with use_dict=True, use_spreadsheet=True, or use_database=True must be provided to enable use of Simulator, Estimator, and Optimizer."
             p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
@@ -158,16 +482,14 @@ class ScheduleSystem(core.System):
         self.noise = 0
         self.bias = 0
         assert (
-            self.useSpreadsheet and self.filename is None
-        ) == False, "filename must be provided if useSpreadsheet is True."
+            self.use_spreadsheet and self.filename is None
+        ) == False, f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename must be provided if use_spreadsheet is True."
         assert (
-            self.useDatabase and (self.uuid is None and self.name is None)
-        ) == False, "uuid or name must be provided if useDatabase is True."
+            self.use_database and (self.uuid is None and self.name is None)
+        ) == False, f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid or name must be provided if use_database is True."
         assert (
-            self.useSpreadsheet == False
-            and self.useDatabase == False
-            and self.weekDayRulesetDict is None
-        ) == False, "weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False."
+            self.use_spreadsheet or self.use_database or self.use_dict
+        ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: One of use_spreadsheet, use_database, or use_dict must be True."
 
         if self.mondayRulesetDict is None:
             self.mondayRulesetDict = self.weekDayRulesetDict
@@ -189,55 +511,37 @@ class ScheduleSystem(core.System):
                 self.sundayRulesetDict = self.weekDayRulesetDict
             else:
                 self.sundayRulesetDict = self.weekendRulesetDict
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.weekDayRulesetDict is not None, (
-            "weekDayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.mondayRulesetDict is not None, (
-            "mondayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.tuesdayRulesetDict is not None, (
-            "tuesdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.wednesdayRulesetDict is not None, (
-            "wednesdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.thursdayRulesetDict is not None, (
-            "thursdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.fridayRulesetDict is not None, (
-            "fridayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.saturdayRulesetDict is not None, (
-            "saturdayRulesetDict must be provided as argument."
-        )
-        assert (
-            self.useSpreadsheet or self.useDatabase
-        ) or self.sundayRulesetDict is not None, (
-            "sundayRulesetDict must be provided as argument."
-        )
+        if self.use_dict:
+            assert (
+                self.mondayRulesetDict is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: mondayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+            assert (
+                self.tuesdayRulesetDict is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: tuesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+            assert (
+                self.wednesdayRulesetDict is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: wednesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+            assert (
+                self.thursdayRulesetDict is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: thursdayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+            assert (
+                self.fridayRulesetDict is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: fridayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+            assert (
+                self.saturdayRulesetDict is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: saturdayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when use_dict is True."
+            assert (
+                self.sundayRulesetDict is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: sundayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when use_dict is True."
 
-        if self.useSpreadsheet or self.useDatabase:
+        if self.use_spreadsheet or self.use_database:
             time_series_input = TimeSeriesInputSystem(
                 id=f"time series input - {self.id}",
                 filename=self.filename,
                 datecolumn=self.datecolumn,
                 valuecolumn=self.valuecolumn,
-                useSpreadsheet=self.useSpreadsheet,
-                useDatabase=self.useDatabase,
+                use_spreadsheet=self.use_spreadsheet,
+                use_database=self.use_database,
                 uuid=self.uuid,
                 name=self.name,
                 dbconfig=self.dbconfig,
@@ -276,7 +580,7 @@ class ScheduleSystem(core.System):
                         if len_key is not None:
                             assert (
                                 len(rulesetDict[key]) == len_key
-                            ), "All keys in rulesetDict must have the same length."
+                            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: All keys in rulesetDict must have the same length."
                         len_key = len(rulesetDict[key])
                         has_key = True
                 if has_key == False:
@@ -308,7 +612,11 @@ class ScheduleSystem(core.System):
                 # NEW: Compute schedule values for ALL timesteps (including extended dates for shorter periods)
                 # values[batch_index,:] = [self.get_schedule_value(date_time) for date_time in date_time_steps_]
 
-            assert not np.isnan(values).any(), "Values contain NaN."
+            assert not np.isnan(
+                values
+            ).any(), (
+                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Values contain NaN."
+            )
 
             self.output["scheduleValue"].initialize(
                 max_timesteps,

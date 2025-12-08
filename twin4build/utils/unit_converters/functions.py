@@ -67,7 +67,7 @@ Mathematical Formulation:
 from twin4build.utils.rgetattr import rgetattr
 
 
-def do_nothing(x, step_size=None):
+def _do_nothing(x, step_size=None):
     return x
 
 
@@ -115,7 +115,7 @@ class add_attr:
 
 
 class add:
-    def __init__(self, obj, idx, conversion=do_nothing):
+    def __init__(self, obj, idx, conversion=_do_nothing):
         if isinstance(idx, tuple) == False:
             idx = (idx,)
         if isinstance(obj, tuple) == False:
@@ -135,7 +135,7 @@ class add:
 
 
 class multiply:
-    def __init__(self, obj, idx, conversion=do_nothing):
+    def __init__(self, obj, idx, conversion=_do_nothing):
         if isinstance(idx, tuple) == False:
             idx = (idx,)
         if isinstance(obj, tuple) == False:
@@ -155,7 +155,7 @@ class multiply:
 
 
 class get:
-    def __init__(self, obj, idx, conversion=do_nothing):
+    def __init__(self, obj, idx, conversion=_do_nothing):
         self.obj = obj
         self.idx = idx
         self.conversion = conversion
@@ -167,7 +167,7 @@ class get:
 
 
 class integrate:
-    def __init__(self, obj, idx, conversion=do_nothing):
+    def __init__(self, obj, idx, conversion=_do_nothing):
         self.v = 0
         self.obj = obj
         self.idx = idx

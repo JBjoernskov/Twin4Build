@@ -873,7 +873,7 @@ class SemanticObject:
         self._namespace = (None, None)
 
     @property
-    def type(self) -> List[SemanticType]:
+    def types(self) -> List[SemanticType]:
         """Get all types of this instance"""
         if self.is_literal:
             # For literals, return the datatype
@@ -1129,22 +1129,22 @@ class SemanticObject:
                 if self.uri.datatype and c_str == str(self.uri.datatype):
                     return True
                 # Check for XSD.string match with language-tagged literals
-                if self.uri.language and c_str == str(self.model.XSD.string):
+                if self.uri.language and c_str == str(core.namespace.XSD.string):
                     return True
                 # Plain literals (no datatype) match with XSD.string
                 if (
                     not self.uri.datatype
                     and not self.uri.language
-                    and c_str == str(self.model.XSD.string)
+                    and c_str == str(core.namespace.XSD.string)
                 ):
                     return True
             return False
 
-        if self.type:
+        if self.types:
             # super_classes = [str(s) for t in self.type for s in t.super_classes] # No reason to check super classes as they are already checked in the type property
             # Check each class in the tuple against all instance types
             for c in cls:
-                for instance_type in self.type:
+                for instance_type in self.types:
                     if str(c) == str(instance_type.uri):
                         return True
                     # elif str(c) in super_classes:
@@ -1202,18 +1202,18 @@ class SemanticObject:
     def get_most_specific_type(self) -> "SemanticType":
         """
         Get the most specific type of this instance.
-        We find the class in self.type that has ALL the other classes in self.type as super classes.
+        We find the class in self.types that has ALL the other classes in self.types as super classes.
 
-        This is not the same as finding the class in self.type that has none of the other classes in self.type as subclasses. (as initially implemented).
+        This is not the same as finding the class in self.types that has none of the other classes in self.types as subclasses. (as initially implemented).
         This is because ontologies reuse classes from other ontologies by declaring ChildClass -> rdfs:subClassOf -> ParentClass.
         However, the ParentClass in the parent ontology does not necesarily have ChildClass as a subclass as this should be declared by the inheriting ontology.
 
         Note: Equivalent classes (owl:equivalentClass) are filtered out when determining the most specific type,
         as they are at the same level of specificity.
         """
-        for it, t in enumerate(self.type):
+        for it, t in enumerate(self.types):
             # Exclude this type and any equivalent types from consideration
-            types_excluding_this = self.type - {t}
+            types_excluding_this = self.types - {t}
 
             # Also exclude equivalent classes (they're at the same level of specificity)
             equivalent_types_set = set(t.equivalent_classes)
@@ -2416,7 +2416,7 @@ class SemanticModel:
                 col = row.find_all("td")[0]
                 uri = col.string
                 inst = self.get_instance(uri)
-                type_ = inst.type
+                type_ = inst.types
                 most_specific_type = inst.get_most_specific_type()
 
                 # z_ = {e for e in type_ if e.has_subclasses() == False}
@@ -2429,6 +2429,9 @@ class SemanticModel:
                     z = "Unknown class"
                 else:
                     z = most_specific_type.get_short_name()
+                    assert (
+                        z is not None
+                    ), f"get_short_name() returned None for type {most_specific_type}"
 
                 b = soup.new_tag("b", attrs={})
                 b.string = z
@@ -2999,7 +3002,7 @@ class SemanticModel:
         for uri, instance in self._instances.items():
 
             # Added inferred types
-            type_ = instance.type
+            type_ = instance.types
             for type_ in type_:
                 self._instance_graph.add((URIRef(uri), RDF.type, type_.uri))
 
