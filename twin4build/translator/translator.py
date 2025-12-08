@@ -164,6 +164,11 @@ class Translator:
         PRINTPROGRESS("Applying translator", status="")
         PRINTPROGRESS.add_level()
 
+        if semantic_model.count_triples() == 0:
+            raise Exception(
+                "Semantic model provided to translator appears to be empty."
+            )
+
         if systems_ is None:
             systems_ = [
                 cls[1]
@@ -230,6 +235,8 @@ class Translator:
 
         else:
             raise Exception("No matching patterns found.")
+
+        print("length of complete groups: ", len(complete_groups))
 
         # Create component instances
         self._instantiate_components(complete_groups, semantic_model)
@@ -1745,7 +1752,25 @@ class Node:
         self._id = self.make_id()
 
     def make_id(self):
-        return str([str(s) for s in self.cls])
+        # Join class URIs with underscore separator to create a valid URI identifier
+        # This avoids creating invalid URIs like http://twin4build.org/['...', '...']
+        # Extract local names (fragment or last path component) for URI-safe identifiers
+        def get_local_name(uri_str):
+            # Try fragment first (part after #)
+            if "#" in uri_str:
+                return uri_str.split("#")[-1]
+            # Otherwise use last path component
+            return uri_str.split("/")[-1]
+
+        parts = []
+        for s in self.cls:
+            if hasattr(s, "uri"):
+                uri_str = str(s.uri)
+            else:
+                uri_str = str(s)
+            parts.append(get_local_name(uri_str))
+
+        return "_".join(parts)
 
     def set_signature_pattern(self, signature_pattern):
         """Set the signature pattern for this node"""
@@ -2029,15 +2054,15 @@ class SignaturePattern:
     _signatures_reversed = {}
     _signature_instance_count = count()
 
-    def __init__(self, semantic_model_=None, id=None, pedantic=False):
-        if semantic_model_ is None:
-            semantic_model_ = core.SemanticModel()
+    def __init__(self, id=None):
+        # if semantic_model_ is None:
+        #     semantic_model_ = core.SemanticModel()
 
-        assert isinstance(
-            semantic_model_, core.SemanticModel
-        ), 'The "semantic_model_" argument must be an instance of SemanticModel.'
+        # assert isinstance(
+        #     semantic_model_, core.SemanticModel
+        # ), 'The "semantic_model_" argument must be an instance of SemanticModel.'
 
-        self.semantic_model = semantic_model_
+        self.semantic_model = core.SemanticModel()
 
         if id is None:
             id = f"{str(__file__)}_{str(next(SignaturePattern._signature_instance_count))}"

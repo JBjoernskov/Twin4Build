@@ -2,6 +2,9 @@
 import datetime
 from typing import Optional
 
+# Third party imports
+import torch
+
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
@@ -31,13 +34,27 @@ class OnOffControllerSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         """
         This function initializes the FMU component by setting the start_time and fmu_filename attributes,
         and then sets the parameters for the FMU model.
         """
-        pass
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        self.input["actualValue"].initialize(
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
+        )
+        self.input["setpointValue"].initialize(
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
+        )
+        self.output["inputSignal"].initialize(
+            n_timesteps=max_timesteps,
+            batch_size=batch_size,
+        )
 
     def do_step(
         self,
@@ -49,16 +66,20 @@ class OnOffControllerSystem(core.System):
         """
         This function calls the do_step method of the FMU component, and then sets the output of the FMU model.
         """
+        actual_value = self.input["actualValue"].get()
+        setpoint_value = self.input["setpointValue"].get()
+
+        # Determine trigger condition based on reverse mode
+        # Reverse: trigger ON when actual < setpoint
+        # Normal: trigger ON when actual > setpoint
         if self.isReverse:
-            if self.input["actualValue"] < self.input["setpointValue"]:
-                self.output["inputSignal"].set(self.onValue, step_index)
-            else:
-                self.output["inputSignal"].set(self.offValue, step_index)
+            trigger_on = actual_value < setpoint_value
         else:
-            if self.input["actualValue"] > self.input["setpointValue"]:
-                self.output["inputSignal"].set(self.onValue, step_index)
-            else:
-                self.output["inputSignal"].set(self.offValue, step_index)
+            trigger_on = actual_value > setpoint_value
+
+        # Select output signal based on trigger condition
+        output_signal = torch.where(trigger_on, self.onValue, self.offValue)
+        self.output["inputSignal"].set(output_signal, step_index)
 
 
 def saref_signature_pattern():

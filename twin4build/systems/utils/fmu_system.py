@@ -14,7 +14,6 @@ from fmpy.fmi2 import FMU2Slave
 
 # Local application imports
 import twin4build.core as core
-from twin4build.utils.do_nothing import do_nothing
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.rgetattr import rgetattr
 
@@ -37,6 +36,11 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
     else:
         unzipdir = extract(fmu_path, unzipdir=unzipdir)
     return unzipdir
+
+
+def _do_nothing(*args, **kwargs):
+    """Internal placeholder function that does nothing."""
+    pass
 
 
 class fmuSystem(core.System):
@@ -103,7 +107,7 @@ class fmuSystem(core.System):
                 if debug_fmu_errors:
                     callbacks.logger = fmi2.fmi2CallbackLoggerTYPE(fmi2.printLogMessage)
                 else:
-                    callbacks.logger = fmi2.fmi2CallbackLoggerTYPE(do_nothing)
+                    callbacks.logger = fmi2.fmi2CallbackLoggerTYPE(_do_nothing)
                 callbacks.allocateMemory = fmi2.fmi2CallbackAllocateMemoryTYPE(
                     fmi2.calloc
                 )

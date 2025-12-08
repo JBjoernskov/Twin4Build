@@ -28,8 +28,6 @@ from twin4build.utils.dict_utils import (
     merge_dicts,
 )
 from twin4build.utils.get_obj_attr import get_obj_attr
-from twin4build.utils.isnumeric import isnumeric
-from twin4build.utils.istype import istype
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
@@ -37,6 +35,7 @@ from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.simple_cycle import simple_cycles
+from twin4build.utils.validate_period import validate_period
 
 INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
 
@@ -272,6 +271,10 @@ class SimulationModel:
         ), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
         self._id = id
         self._components = {}
+        self._execution_order = []
+        self._flat_execution_order = []
+        self._required_initialization_connections = []
+        self._components_no_cycles = {}
         self._saved_parameters = {}
         self._custom_initial_dict = None
         self._is_loaded = False
@@ -293,6 +296,14 @@ class SimulationModel:
     @property
     def components(self) -> dict:
         return self._components
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._is_loaded
+
+    @property
+    def is_validated(self) -> bool:
+        return self._is_validated
 
     @property
     def dir_conf(self) -> List[str]:
@@ -1019,47 +1030,103 @@ class SimulationModel:
             v for v in dict_.values() if (isinstance(v, class_) and filter(v, class_))
         ]
 
-    def set_custom_initial_dict(
-        self, _custom_initial_dict: Dict[str, Dict[str, Any]]
+    # def set_custom_initial_dict(
+    #     self, _custom_initial_dict: Dict[str, Dict[str, Any]]
+    # ) -> None:
+    #     """
+    #     Set custom initial values for components.
+
+    #     Args:
+    #         _custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+
+    #     Raises:
+    #         AssertionError: If unknown component IDs are provided.
+    #     """
+    #     np_custom_initial_dict_ids = np.array(list(_custom_initial_dict.keys()))
+    #     legal_ids = np.array(
+    #         [dict_id in self._components for dict_id in _custom_initial_dict]
+    #     )
+    #     assert np.all(
+    #         legal_ids
+    #     ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
+    #     self._custom_initial_dict = _custom_initial_dict
+
+    def set_initial_values(
+        self,
+        values: List[Any] = None,
+        components: List[core.System] = None,
+        output_names: List[str] = None,
+        **kwargs,
     ) -> None:
         """
-        Set custom initial values for components.
+        Set initial values for components in the model.
 
         Args:
-            _custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+            values (List[Any]): List of initial values to set.
+            components (List[core.System]): List of components to set initial values for.
+            output_names (List[str]): List of output property names corresponding to the values.
 
         Raises:
-            AssertionError: If unknown component IDs are provided.
+            AssertionError: If a component doesn't have the specified output property.
         """
-        np_custom_initial_dict_ids = np.array(list(_custom_initial_dict.keys()))
-        legal_ids = np.array(
-            [dict_id in self._components for dict_id in _custom_initial_dict]
-        )
-        assert np.all(
-            legal_ids
-        ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
-        self._custom_initial_dict = _custom_initial_dict
+        # Handle deprecated dict-based signature: set_initial_values(dict_)
+        # Old format: dict_ = {component_id: {output_name: value, ...}, ...}
+        old_dict = kwargs.get("dict_", None)
+        if old_dict is None and isinstance(values, dict):
+            old_dict = values
+            values = None
 
-    def set_initial_values(self, dict_: Dict[str, Any]) -> None:
-        """
-        Set initial values for all components in the model.
-        """
-        for component in self._components.values():
-            # Check that all keys in the dictionary are valid output properties
-            for key in dict_[component.id].keys():
-                assert (
-                    key in component.output
-                ), f'Invalid output property "{key}" for component "{component.id}"'
-                assert isinstance(
-                    dict_[component.id][key], component.output[key].__class__
-                ), f'Invalid type for output property "{key}" for component "{component.id}"'
-            component.output.update(dict_[component.id])
+        if old_dict is not None:
+            warnings.warn(
+                "The dict-based signature for set_initial_values(dict_) is deprecated. "
+                "Use set_initial_values(values, components, output_names) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # Convert old dict format to new list format
+            values = []
+            components = []
+            output_names = []
+            for component_id, outputs in old_dict.items():
+                component = self._components[component_id]
+                for output_name, value in outputs.items():
+                    values.append(value)
+                    components.append(component)
+                    output_names.append(output_name)
 
-    def set_parameters_from_array(
+        for v, component, output_name in zip(values, components, output_names):
+            assert (
+                output_name in component.output
+            ), f'Invalid output property "{output_name}" for component "{component.id}"'
+
+            output_obj = component.output[output_name]
+            if v is not None:
+                # Set the tensor value for Scalar or Vector types
+                if isinstance(output_obj, tps.Scalar):
+                    output_obj.tensor = (
+                        v
+                        if isinstance(v, torch.Tensor)
+                        else torch.tensor([v], dtype=torch.float64)
+                    )
+                elif isinstance(output_obj, tps.Vector):
+                    output_obj.tensor = (
+                        v
+                        if isinstance(v, torch.Tensor)
+                        else torch.tensor(v, dtype=torch.float64)
+                    )
+                else:
+                    raise TypeError(
+                        f'Output property "{output_name}" for component "{component.id}" '
+                        f"is not a Scalar or Vector type"
+                    )
+
+    def set_parameters(
         self,
         values: List[Any],
         components: List[core.System],
         parameter_names: List[str],
+        min_values: List[Any] = None,
+        max_values: List[Any] = None,
         normalized: List[bool] = None,
         overwrite: bool = False,
         save_original: bool = False,
@@ -1069,16 +1136,34 @@ class SimulationModel:
 
         Args:
             values (List[Any]): List of parameter values.
-            component_list (List[core.System]): List of components to set parameters for.
-            attr_list (List[str]): List of attribute names corresponding to the parameters.
+            components (List[core.System]): List of components to set parameters for.
+            parameter_names (List[str]): List of attribute names corresponding to the parameters.
+            normalized (List[bool]): List of booleans indicating if values are normalized.
+            overwrite (bool): Whether to overwrite existing parameters.
+            save_original (bool): Whether to save original parameters for later restoration.
 
         Raises:
             AssertionError: If a component doesn't have the specified attribute.
         """
+
         if normalized is None:
             normalized = [False] * len(values)
         elif isinstance(normalized, bool):
             normalized = [normalized] * len(values)
+
+        # assert that min_values and max_values are either both None or both not None
+        assert (min_values is None and max_values is None) or (
+            min_values is not None and max_values is not None
+        ), "min_values and max_values must both be None or both not None"
+
+        if min_values is not None and max_values is not None:
+            # Assert that the min_values and max_values are the same length as the values
+            assert len(min_values) == len(
+                values
+            ), "The length of min_values must be the same as the length of values"
+            assert len(max_values) == len(
+                values
+            ), "The length of max_values must be the same as the length of values"
 
         for i, (v, obj, attr, normalized_) in enumerate(
             zip(values, components, parameter_names, normalized)
@@ -1093,6 +1178,10 @@ class SimulationModel:
                 if isinstance(
                     obj_, tps.Parameter
                 ):  # Only change underlying data in torch.Parameter
+                    if min_values is not None:
+                        obj_.min_value = min_values[i]
+                    if max_values is not None:
+                        obj_.max_value = max_values[i]
                     if overwrite:
                         if save_original:
                             if (
@@ -1116,6 +1205,17 @@ class SimulationModel:
                     obj_.set(v, normalized=normalized_)
                 else:
                     rsetattr(obj, attr, v)
+
+    def set_parameters_from_array(self, *args, **kwargs) -> None:
+        """
+        Deprecated: Use set_parameters instead.
+        """
+        warnings.warn(
+            "Method 'set_parameters_from_array' is deprecated. Use 'set_parameters' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.set_parameters(*args, **kwargs)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
         for obj in self._saved_parameters:
@@ -1179,7 +1279,7 @@ class SimulationModel:
         start_time: List[datetime.datetime],
         end_time: List[datetime.datetime],
         step_size: List[int],
-        simulator: "core.Simulator",
+        # simulator: Optional[core.Simulator] = None,
     ) -> None:
         """
         Initialize the model for simulation.
@@ -1188,15 +1288,17 @@ class SimulationModel:
             start_time (datetime.datetime): Start time for the simulation.
             end_time (datetime.datetime): End time for the simulation.
             step_size (int): Time step size for the simulation.
-            simulator (core.Simulator): Simulator instance.
         """
         assert (
             self._is_loaded
         ), "The model is not loaded and cannot be simulated. Please call the load method first."
 
-        assert isinstance(
-            simulator, core.Simulator
-        ), "simulator must be a core.Simulator object"
+        # assert isinstance(
+        #     simulator, core.Simulator
+        # ), "simulator must be a core.Simulator object"
+
+        # Validate and format as lists if needed
+        # start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
 
         # self.set_initial_values()
         self.check_for_for_missing_initial_values()
@@ -1791,6 +1893,7 @@ class SimulationModel:
                 new_component.connects_at = []
                 new_to_old_mapping[new_component] = component
                 old_to_new_mapping[component] = new_component
+                self.add_component(new_component, _new_components)
             else:
                 new_component = old_to_new_mapping[component]
 
@@ -2055,60 +2158,30 @@ class SimulationModel:
             if ext == ".pickle":
                 with open(filename, "rb") as handle:
                     self._result = pickle.load(handle)
-
-            elif ext == ".npz":
-                if "_ls.npz" in filename:
-                    d = dict(np.load(filename, allow_pickle=True))
-                    d = {
-                        k.replace(".", "_"): v for k, v in d.items()
-                    }  # For backwards compatibility
-                    self._result = estimator.EstimationResult(**d)
-                elif "_mcmc.npz" in filename:
-                    d = dict(np.load(filename, allow_pickle=True))
-                    d = {
-                        k.replace(".", "_"): v for k, v in d.items()
-                    }  # For backwards compatibility
-                    self._result = estimator.EstimationResult(**d)
-                else:
-                    raise Exception(
-                        'The estimation result file is not of a supported type. The file must be a .pickle, .npz file with the name containing "_ls" or "_mcmc".'
-                    )
-
-                for key, value in self._result.items():
-                    self._result[key] = (
-                        1 / self._result["chain_betas"] if key == "chain_T" else value
-                    )
-                    if self._result[key].size == 1 and (
-                        len(self._result[key].shape) == 0
-                        or len(self._result[key].shape) == 1
-                    ):
-                        self._result[key] = value.tolist()
-
-                    elif (
-                        key == "startTime_train"
-                        or key == "endTime_train"
-                        or key == "stepSize_train"
-                    ):
-                        self._result[key] = value.tolist()
             else:
-                raise Exception(
-                    f"The estimation result is of type {type(self._result)}. This type is not supported by the model class."
-                )
+                raise Exception(f"The file {filename} is not a pickle file.")
 
-        if isinstance(self._result, estimator.EstimationResult):
-            theta = self._result["result_x"]
-        else:
-            raise Exception(
-                f"The estimation result is of type {type(self._result)}. This type is not supported by the model class."
-            )
-
+        assert isinstance(
+            self._result, estimator.EstimationResult
+        ), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
+        theta = self._result["result_x"]
         flat_components = [
             self._components[com_id] for com_id in self._result["component_id"]
         ]
         flat_attr_list = self._result["component_attr"]
         theta_mask = self._result["theta_mask"]
-        theta = theta[theta_mask]
-        self.set_parameters_from_array(theta, flat_components, flat_attr_list)
+        min_values = self._result["lb"]
+        min_values = min_values[theta_mask]
+        max_values = self._result["ub"]
+        max_values = max_values[theta_mask]
+
+        self.set_parameters_from_array(
+            theta,
+            flat_components,
+            flat_attr_list,
+            min_values=min_values,
+            max_values=max_values,
+        )
 
     def check_for_for_missing_initial_values(self) -> None:
         """
@@ -2339,7 +2412,6 @@ class SimulationModel:
             core.namespace.S4SYST.System
         ):
             t = sm_instance.get_most_specific_type()
-            print("type: ", t)
             class_name = t.get_short_name()
             cls = getattr(systems, class_name)
             attributes = {}

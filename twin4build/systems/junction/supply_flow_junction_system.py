@@ -1,6 +1,6 @@
 # Standard library imports
 import datetime
-from typing import Optional
+from typing import List, Optional, Union
 
 # Local application imports
 import twin4build.core as core
@@ -58,10 +58,22 @@ class SupplyFlowJunctionSystem(core.System):
         else:
             self.airFlowRateBias = 0
 
+        self._manual_setup_n_input_ports = False
+        self._n_input_ports = 0 #At least one input port is required
+
         self.input = {"airFlowRateOut": tps.Vector()}
         self.output = {"airFlowRateIn": tps.Scalar()}
         self._config = {"parameters": ["airFlowRateBias"]}
 
+    @property
+    def n_input_ports(self):
+        return self._n_input_ports
+
+    @n_input_ports.setter
+    def n_input_ports(self, n_input_ports: int):
+        self._manual_setup_n_input_ports = True
+        self._n_input_ports = n_input_ports
+    
     @property
     def config(self):
         """Get the configuration parameters.
@@ -73,10 +85,9 @@ class SupplyFlowJunctionSystem(core.System):
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-        simulator: core.Simulator,
+        start_time: Union[List[datetime.datetime], datetime.datetime],
+        end_time: Union[List[datetime.datetime], datetime.datetime],
+        step_size: Union[List[int], int],
     ) -> None:
         """Initialize the supply flow junction system.
 
@@ -90,8 +101,35 @@ class SupplyFlowJunctionSystem(core.System):
             step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
-        pass
 
+
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        batch_size = len(start_time)
+        self.setup_variable_inputs()
+        self.input["airFlowRateOut"].initialize(
+            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_input_ports
+        )
+
+        for output in self.output.values():
+            output.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
+
+    
+    def setup_variable_inputs(self):
+        if self._manual_setup_n_input_ports == False:
+            #Assert that the number of input ports is at least 1
+            connection_point = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateOut"]
+            if len(connection_point) == 0:
+                raise ValueError("No input port found for airFlowRateOut")
+            n_input_ports = len(connection_point[0].connects_system_through)
+            self.n_input_ports = n_input_ports
+        
+            
+    
     def do_step(
         self,
         second_time: float,
@@ -112,7 +150,7 @@ class SupplyFlowJunctionSystem(core.System):
             step_index (int, optional): Current simulation step index.
         """
         self.output["airFlowRateIn"].set(
-            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias,
+            (self.input["airFlowRateOut"].get().sum(dim=-1)) + self.airFlowRateBias,
             step_index,
         )
 

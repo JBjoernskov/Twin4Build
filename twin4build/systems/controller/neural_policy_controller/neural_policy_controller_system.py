@@ -105,7 +105,6 @@ class NeuralPolicyControllerSystem(core.System):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         step_size: int,
-        simulator: core.Simulator,
     ) -> None:
         pass
 

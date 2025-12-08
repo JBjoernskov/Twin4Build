@@ -182,21 +182,20 @@ class Simulator:
         self.model = model
 
     @staticmethod
-    def _do_component_timestep(
+    def _assign_component_inputs(
         component: core.System,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
         step_index: int,
     ) -> None:
         """
-        Perform a single timestep for a component.
+        Assign inputs to a component from connected components.
 
         Args:
-            component (core.System): The component to simulate.
+            component (core.System): The component to assign inputs to.
+            step_index (int): The current timestep index.
+            debug_str (List[str], optional): Debug message list for error reporting.
 
         Raises:
-            AssertionError: If any input value is NaN.
+            ValueError: If any input value is NaN.
         """
         # Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connects_at:
@@ -223,16 +222,6 @@ class Simulator:
                         f"Input {connection_point.inputPort} of component {component.id} is NaN"
                     )
 
-                # Removing the nan testing: The new batch simulations where we pad with nans if simulation periods doesnt have the same length/number of time steps.
-                # Therefore, nans are expected and not an error.
-
-        component.do_step(
-            second_time,
-            date_time,
-            step_size,
-            step_index,
-        )
-
     @staticmethod
     def _do_system_time_step(
         model: core.Model,
@@ -240,6 +229,7 @@ class Simulator:
         date_time: List[datetime.datetime],
         step_size: List[int],
         step_index: int,
+        iteration_method: str,
     ) -> None:
         """
         Execute a time step for all components in the model.
@@ -250,6 +240,12 @@ class Simulator:
         2. Updates component states after all executions
         3. Handles both FMU and non-FMU components
 
+        The iteration method (gauss-seidel or jacobi) determines how inputs are assigned:
+        - gauss-seidel: Inputs are assigned immediately before each component executes,
+          allowing later components to use updated outputs from earlier components
+        - jacobi: All components execute first using previous inputs, then all inputs
+          are assigned for the next timestep
+
         Args:
             model (model.Model): The model containing components to simulate.
 
@@ -258,11 +254,30 @@ class Simulator:
             - Component execution order is determined by the model's execution_order attribute
             - Updates are propagated through the flat_execution_order after main execution
         """
-        for component_group in model.execution_order:
-            for component in component_group:
-                Simulator._do_component_timestep(
-                    component, second_time, date_time, step_size, step_index
+        if iteration_method == "gauss-seidel":
+            for component_group in model.execution_order:
+                for component in component_group:
+                    Simulator._assign_component_inputs(component, step_index)
+                    component.do_step(
+                        second_time,
+                        date_time,
+                        step_size,
+                        step_index,
+                    )
+
+        elif iteration_method == "jacobi":
+            # Execute all components first
+            for component in model.components.values():
+                component.do_step(
+                    second_time,
+                    date_time,
+                    step_size,
+                    step_index,
                 )
+
+            # Then assign inputs for next timestep
+            for component in model.components.values():
+                Simulator._assign_component_inputs(component, step_index)
 
     @staticmethod
     def get_simulation_timesteps(
@@ -337,7 +352,7 @@ class Simulator:
         end_time: Union[List[datetime.datetime], datetime.datetime] = None,
         step_size: Union[List[int], int] = None,
         show_progress_bar: bool = True,
-        debug: bool = False,
+        iteration_method: str = "gauss-seidel",
         **kwargs,
     ) -> None:
         """
@@ -354,6 +369,10 @@ class Simulator:
             end_time: End time of the simulation.
             step_size: Step size in seconds.
             show_progress_bar: Whether to show a progress bar during simulation.
+            debug: Whether to enable debug mode.
+            iteration_method: The iteration method to use for component execution.
+                - "gauss-seidel": Components are executed sequentially with immediate input updates (default)
+                - "jacobi": All components execute first, then inputs are assigned
 
         Raises:
             AssertionError: If input parameters are invalid or missing timezone info.
@@ -384,14 +403,16 @@ class Simulator:
         self.start_time = start_time
         self.end_time = end_time
         self.step_size = step_size
-        self.debug = debug
+        self.iteration_method = iteration_method
+        self.get_simulation_timesteps(start_time, end_time, step_size)
+        self.model.initialize(start_time, end_time, step_size)
         second_time_steps, date_time_steps, max_timesteps, _ = (
             Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         )
         self.second_time_steps = second_time_steps
         self.date_time_steps = date_time_steps
         self.n_timesteps = max_timesteps
-        self.model.initialize(start_time, end_time, step_size, self)
+        self.model.initialize(start_time, end_time, step_size)
         if show_progress_bar:
             for step_index in tqdm(
                 range(max_timesteps),
@@ -401,7 +422,12 @@ class Simulator:
                 date_time = date_time_steps[:, step_index]
 
                 self._do_system_time_step(
-                    self.model, second_time, date_time, step_size, step_index
+                    self.model,
+                    second_time,
+                    date_time,
+                    step_size,
+                    step_index,
+                    iteration_method,
                 )
         else:
             for step_index in range(max_timesteps):
@@ -409,112 +435,10 @@ class Simulator:
                 date_time = date_time_steps[:, step_index]
 
                 self._do_system_time_step(
-                    self.model, second_time, date_time, step_size, step_index
+                    self.model,
+                    second_time,
+                    date_time,
+                    step_size,
+                    step_index,
+                    iteration_method,
                 )
-        if self.debug:
-            for s in self.debug_str:
-                print(s)
-
-    def get_simulation_readings(self) -> pd.DataFrame:
-        """
-        Get simulation readings for sensors and meters.
-
-        Collects the simulation results from all sensors and meters in the model
-        and organizes them into a pandas DataFrame with timestamps as index.
-
-        Returns:
-            pd.DataFrame: DataFrame containing simulation readings with columns:
-                - time: Timestamp index
-                - {sensor_id}: Reading values for each sensor
-                - {meter_id}: Reading values for each meter
-        """
-        df_simulation_readings = pd.DataFrame()
-        time = self.date_time_steps
-        df_simulation_readings.insert(0, "time", time)
-        df_simulation_readings = df_simulation_readings.set_index("time")
-        sensor_instances = self.model.get_component_by_class(
-            self.model.components, systems.SensorSystem
-        )
-
-        for sensor in sensor_instances:
-            key = list(sensor.output.keys())[0]
-            simulation_readings = sensor.output[key].history.detach()
-            df_simulation_readings.insert(0, sensor.id, simulation_readings)
-
-        return df_simulation_readings
-
-    def get_actual_readings(
-        self,
-        start_time: datetime,
-        end_time: datetime,
-        step_size: int,
-        reading_type: str = "all",
-    ) -> pd.DataFrame:
-        """
-        Get actual sensor and meter readings from physical devices.
-
-        Retrieves historical data from physical sensors and meters within the specified
-        time period. Currently reads from CSV files, but designed to be extended for
-        other data sources like quantumLeap.
-
-        Args:
-            start_time (date_time): Start time of the readings.
-            end_time (date_time): End time of the readings.
-            step_size (int): Step size in seconds.
-            reading_type (str, optional): Type of readings to retrieve:
-                - "all": Get readings from all devices
-                - "input": Get readings only from input devices
-                Defaults to "all".
-
-        Returns:
-            pd.DataFrame: DataFrame containing actual readings with columns:
-                - time: Timestamp index
-                - {device_id}: Reading values for each device
-
-        Raises:
-            AssertionError: If reading_type is not one of ["all", "input"].
-        """
-        allowed_reading_types = ["all", "input"]
-        assert (
-            reading_type in allowed_reading_types
-        ), f"The \"reading_type\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
-        # print("Collecting actual readings...")
-        """
-        This is a temporary method for retrieving actual sensor readings.
-        Currently it simply reads from csv files containing historic data.
-        """
-        assert isinstance(
-            start_time, datetime.datetime
-        ), "start_time must be a datetime.datetime object"
-        assert isinstance(
-            end_time, datetime.datetime
-        ), "end_time must be a datetime.datetime object"
-        assert isinstance(step_size, int), "step_size must be an integer"
-        second_time_steps, date_time_steps, max_timesteps, _ = (
-            Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-        )
-
-        df_actual_readings = pd.DataFrame()
-        time = date_time_steps[0]
-        df_actual_readings.insert(0, "time", time)
-        df_actual_readings = df_actual_readings.set_index("time")
-        sensor_instances = self.model.get_component_by_class(
-            self.model.components, systems.SensorSystem
-        )
-
-        for sensor in sensor_instances:
-            sensor.initialize([start_time], [end_time], [step_size])
-            # sensor.set_is_physical_system()
-            if sensor.time_series_input is not None:
-                if reading_type == "all":
-                    actual_readings = sensor.get_physical_readings(
-                        [start_time], [end_time], [step_size]
-                    )[0]
-                    df_actual_readings.insert(0, sensor.id, actual_readings)
-                elif reading_type == "input" and sensor.is_leaf:
-                    actual_readings = sensor.get_physical_readings(
-                        [start_time], [end_time], [step_size]
-                    )[0]
-                    df_actual_readings.insert(0, sensor.id, actual_readings)
-
-        return df_actual_readings

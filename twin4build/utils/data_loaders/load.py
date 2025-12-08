@@ -128,13 +128,16 @@ def sample_from_df(
     if preserve_order and has_tz == False:
         # Detect if dates are reverse
         diff_seconds = df.index.to_series().diff().dt.total_seconds()
-        frac_neg = np.sum(diff_seconds < 0) / diff_seconds.size
-        if frac_neg >= 0.95:
-            df = df.iloc[::-1]
-        elif frac_neg > 0.05 and frac_neg < 0.95:
-            raise Exception(
-                '"preserve_order" is true, but the date_time order cannot be determined.'
-            )
+        # Remove NaN values from the calculation
+        diff_seconds_valid = diff_seconds.dropna()
+        if len(diff_seconds_valid) > 0:
+            frac_neg = np.sum(diff_seconds_valid < 0) / len(diff_seconds_valid)
+            if frac_neg >= 0.95:
+                df = df.iloc[::-1]
+            elif frac_neg > 0.05 and frac_neg < 0.95:
+                raise Exception(
+                    '"preserve_order" is true, but the date_time order cannot be determined.'
+                )
     else:
         df = df.sort_index()
 

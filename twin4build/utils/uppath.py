@@ -9,4 +9,6 @@ def uppath(_path, n):
     uppath("C:/Example/test/path/file", 2)
     gives  "C:/Example/test"
     """
+    if n == 0:
+        return _path
     return os.sep.join(_path.split(os.sep)[:-n])
