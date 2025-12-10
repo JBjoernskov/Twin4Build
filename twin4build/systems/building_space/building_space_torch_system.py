@@ -18,6 +18,7 @@ from twin4build.systems.building_space.building_space_thermal_torch_system impor
 from twin4build.translator.translator import (
     Exact,
     MultiPath,
+    Optional_,
     Node,
     SignaturePattern,
     SinglePath,
@@ -360,10 +361,10 @@ def brick_signature_pattern():  # Fits to site A
         SignaturePattern: The BRICK-only signature pattern of the building space component.
     """
 
-    node0 = Node(cls=core.namespace.BRICK.AHU)
+    ahu = Node(cls=core.namespace.BRICK.AHU)
     # node1 = Node(cls=core.namespace.BRICK.Damper)
     # node2 = Node(cls=core.namespace.BRICK.Zone)  # Compatibility with both site A and B (A uses Zone and B uses HVAC_Zone)
-    node3 = Node(
+    space = Node(
         cls=(
             core.namespace.BRICK.Room,
             core.namespace.BRICK.Enclosed_space,
@@ -372,11 +373,11 @@ def brick_signature_pattern():  # Fits to site A
     )  # TODO: 'space' should be 'Office', but the site b ttl file has a bug
     # node4 = Node(cls=core.namespace.BRICK.Air_Temperature_Sensor)
     # node5 = Node(cls=core.namespace.BRICK.CO2_Sensor)
-    node4 = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
-    node6 = Node(cls=core.namespace.BRICK.Weather_Station)  # outdoor temperature sensor
+    damper_position_sensor = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
+    weather_station = Node(cls=core.namespace.BRICK.Weather_Station)  # outdoor temperature sensor
     # node7 = Node(cls=core.namespace.BRICK.AHU) # For site A only
-    node8 = Node(cls=core.namespace.BRICK.Solar_Radiance_Sensor)
-    node9 = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
+    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Solar_Radiance_Sensor)
+    outside_air_temperature_sensor = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
     # node9 = Node(cls=core.namespace.BRICK.
 
     sp = SignaturePattern(
@@ -384,20 +385,20 @@ def brick_signature_pattern():  # Fits to site A
     )
 
     sp.add_triple(
-        MultiPath(subject=node0, object=node3, predicate=core.namespace.BRICK.feeds)
+        MultiPath(subject=ahu, object=space, predicate=core.namespace.BRICK.feeds)
     )
     # sp.add_triple(
     #     Exact(subject=node1, object=node3, predicate=core.namespace.BRICK.feeds)
     # )
     sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.BRICK.hasPoint)
+        Optional_(subject=space, object=damper_position_sensor, predicate=core.namespace.BRICK.hasPoint)
     )
 
     sp.add_triple(
-        Exact(subject=node6, object=node8, predicate=core.namespace.BRICK.hasPoint)
+        Exact(subject=weather_station, object=solar_radiance_sensor, predicate=core.namespace.BRICK.hasPoint)
     )
     sp.add_triple(
-        Exact(subject=node6, object=node9, predicate=core.namespace.BRICK.hasPoint)
+        Exact(subject=weather_station, object=outside_air_temperature_sensor, predicate=core.namespace.BRICK.hasPoint)
     )
 
     # sp.add_triple(
@@ -422,16 +423,16 @@ def brick_signature_pattern():  # Fits to site A
     # heatGain
     # numberOfPeople
 
-    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
-    sp.add_input("exhaustAirFlowRate", node0, "airFlowRate")
+    sp.add_input("supplyAirFlowRate", ahu, "airFlowRate")
+    sp.add_input("exhaustAirFlowRate", ahu, "airFlowRate")
     # sp.add_input("numberOfPeople", node5, "measuredValue")
-    sp.add_input("outdoorTemperature", node6, "measuredValue")
+    sp.add_input("outdoorTemperature", weather_station, "measuredValue")
     # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
     # sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    sp.add_input("supplyAirTemperature", node0)
+    sp.add_input("supplyAirTemperature", ahu)
 
     # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
-    sp.add_modeled_node(node3)
+    sp.add_modeled_node(space)
 
     # sp_eq = SignaturePattern(
     #     id="building_space_signature_pattern_brick_eq",
