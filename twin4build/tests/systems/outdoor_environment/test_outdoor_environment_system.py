@@ -13,6 +13,10 @@ from twin4build.systems.outdoor_environment.outdoor_environment_system import (
     OutdoorEnvironmentSystem,
 )
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestOutdoorEnvironmentSystem(unittest.TestCase):
     def setUp(self):

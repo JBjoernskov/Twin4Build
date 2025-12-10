@@ -9,6 +9,10 @@ import pytz
 # Local application imports
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestScheduleSystem(unittest.TestCase):
     def setUp(self):

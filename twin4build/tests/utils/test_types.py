@@ -7,6 +7,10 @@ import torch
 # Local application imports
 from twin4build.utils.types import Parameter, Scalar, Vector
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestScalar(unittest.TestCase):
     def test_scalar_initialization(self):

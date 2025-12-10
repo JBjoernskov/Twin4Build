@@ -16,6 +16,10 @@ from twin4build.translator.translator import (
 )
 from twin4build.utils.uppath import uppath
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestTranslator(unittest.TestCase):
     def setUp(self):

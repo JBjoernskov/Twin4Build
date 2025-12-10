@@ -18,6 +18,9 @@ from twin4build.simulator.simulator import Simulator
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 
+# Set test flag
+tb._IS_TESTING = True
+
 
 class TestSimulator(unittest.TestCase):
     def setUp(self):

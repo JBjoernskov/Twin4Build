@@ -11,6 +11,10 @@ from twin4build.systems.building_space.building_space_torch_system import (
     BuildingSpaceTorchSystem,
 )
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestBuildingSpaceTorchSystem(unittest.TestCase):
     def setUp(self):

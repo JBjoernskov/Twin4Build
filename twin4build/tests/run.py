@@ -44,6 +44,10 @@ except ImportError:
     print("Install it with: pip install coverage")
     sys.exit(1)
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 def main():
     # Initialize coverage

@@ -18,6 +18,9 @@ from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+
+# Set test flag
+tb._IS_TESTING = True
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
 

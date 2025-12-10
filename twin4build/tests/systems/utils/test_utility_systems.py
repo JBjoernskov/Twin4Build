@@ -17,6 +17,10 @@ from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestTimeSeriesInputSystem(unittest.TestCase):
     def setUp(self):

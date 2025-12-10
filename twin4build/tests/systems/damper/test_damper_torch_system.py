@@ -9,6 +9,10 @@ import torch
 # Local application imports
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestDamperTorchSystem(unittest.TestCase):
     def setUp(self):

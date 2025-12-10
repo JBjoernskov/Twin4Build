@@ -11,6 +11,10 @@ from twin4build.systems.controller.setpoint_controller.pid_controller.pid_contro
     PIDControllerSystem,
 )
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestPIDControllerSystem(unittest.TestCase):
     def setUp(self):

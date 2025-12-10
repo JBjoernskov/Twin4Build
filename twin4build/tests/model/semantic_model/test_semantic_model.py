@@ -8,6 +8,7 @@ import unittest
 from rdflib import RDF, RDFS, XSD, Graph, Literal, Namespace, URIRef
 
 # Local application imports
+import twin4build
 import twin4build.core as core
 from twin4build.model.semantic_model.semantic_model import (
     SemanticModel,
@@ -17,6 +18,9 @@ from twin4build.model.semantic_model.semantic_model import (
     get_short_name,
     parse_wrapper,
 )
+
+# Set test flag
+twin4build._IS_TESTING = True
 
 
 class TestSemanticModel(unittest.TestCase):

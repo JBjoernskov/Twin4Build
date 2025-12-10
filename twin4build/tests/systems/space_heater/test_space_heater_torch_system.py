@@ -11,6 +11,10 @@ from twin4build.systems.space_heater.space_heater_torch_system import (
     SpaceHeaterTorchSystem,
 )
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestSpaceHeaterTorchSystem(unittest.TestCase):
     def setUp(self):

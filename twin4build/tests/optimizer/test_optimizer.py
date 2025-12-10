@@ -17,6 +17,10 @@ from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestOptimizer(unittest.TestCase):
     def setUp(self):

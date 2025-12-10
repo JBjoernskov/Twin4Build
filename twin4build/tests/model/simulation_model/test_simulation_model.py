@@ -10,6 +10,10 @@ from twin4build.systems.junction.supply_flow_junction_system import (
 )
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestSimulationModel(unittest.TestCase):
     def setUp(self):

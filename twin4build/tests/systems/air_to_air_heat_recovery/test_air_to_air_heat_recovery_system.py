@@ -11,6 +11,10 @@ from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system
     AirToAirHeatRecoverySystem,
 )
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestAirToAirHeatRecoverySystem(unittest.TestCase):
     def setUp(self):

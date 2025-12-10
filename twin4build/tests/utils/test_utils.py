@@ -14,6 +14,10 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.uppath import uppath
 from twin4build.utils.validate_period import validate_period
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestUppath(unittest.TestCase):
     def test_uppath_basic(self):

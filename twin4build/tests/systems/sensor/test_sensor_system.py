@@ -10,6 +10,10 @@ import pytz
 # Local application imports
 from twin4build.systems.sensor.sensor_system import SensorSystem
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestSensorSystem(unittest.TestCase):
     def setUp(self):

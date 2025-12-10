@@ -11,6 +11,10 @@ from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off
     OnOffControllerSystem,
 )
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestOnOffControllerSystem(unittest.TestCase):
     def setUp(self):

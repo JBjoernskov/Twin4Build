@@ -9,6 +9,10 @@ import torch
 # Local application imports
 from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestValveTorchSystem(unittest.TestCase):
     def setUp(self):

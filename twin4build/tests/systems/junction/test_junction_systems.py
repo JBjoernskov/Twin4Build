@@ -14,6 +14,10 @@ from twin4build.systems.junction.supply_flow_junction_system import (
     SupplyFlowJunctionSystem,
 )
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestReturnFlowJunctionSystem(unittest.TestCase):
     def setUp(self):

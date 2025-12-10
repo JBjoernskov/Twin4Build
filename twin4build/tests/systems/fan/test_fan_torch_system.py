@@ -9,6 +9,10 @@ import torch
 # Local application imports
 from twin4build.systems.fan.fan_torch_system import FanTorchSystem
 
+# Set test flag
+import twin4build
+twin4build._IS_TESTING = True
+
 
 class TestFanTorchSystem(unittest.TestCase):
     def setUp(self):
