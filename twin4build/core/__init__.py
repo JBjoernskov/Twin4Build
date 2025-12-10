@@ -69,34 +69,5 @@ class ontology:
     S4SYST = "https://saref.etsi.org/saref4syst/"
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     T4B = "http://twin4build.org/"
-    # REC = "https://github.com/RealEstateCore/rec/blob/main/Source/SHACL/RealEstateCore/rec.ttl"
 
 
-# def get_ontologies():
-#     """Retrieve and initialize the semantic model with required ontologies.
-
-#     This function initializes the semantic model with the following ontologies:
-#         - FSO (Facility Smart Objects)
-#         - SAREF (Smart Applications REFerence)
-#         - S4BLDG (SAREF for Building)
-#         - S4SYST (SAREF for System)
-
-#     Returns:
-#         SemanticModel: An initialized semantic model containing all required ontologies.
-
-#     Note:
-#         The FSO and Brick ontology URL is different from the namespace definition due to parsing limitations
-#         with the namespace URL.
-#     """
-#     namespaces = {
-#         "FSO": namespace.FSO,
-#         "SAREF": namespace.SAREF,
-#         "S4BLDG": namespace.S4BLDG,
-#         "S4SYST": namespace.S4SYST,
-#         "BRICK": namespace.BRICK,
-#     }
-#     sm = SemanticModel(namespaces=namespaces)
-#     return sm
-
-
-# ontologies = get_ontologies()
