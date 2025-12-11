@@ -167,6 +167,79 @@ class TestScheduleSystem(unittest.TestCase):
             schedule.useSpreadsheet = False
             self.assertFalse(schedule.useSpreadsheet)
 
+    def test_caching_with_different_datetime_instances(self):
+        """Test that caching works reliably with different datetime instances having same values."""
+        # Standard library imports
+        import os
+        import shutil
+
+        # Third party imports
+        import torch
+
+        # Local application imports
+        import twin4build as tb
+        from twin4build.model.model import Model
+
+        # Set test flag
+        tb._IS_TESTING = True
+
+        # Create model with schedule system that has noise
+        model = Model(id="test_cache_model")
+        schedule = ScheduleSystem(
+            weekDayRulesetDict={
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [0],
+                "ruleset_end_hour": [1],
+                "ruleset_value": [20],
+                "ruleset_default_value": 0,
+            },
+            add_noise=True,
+            id="test_schedule_cache",
+        )
+        model.add_component(schedule)
+        model.load()
+
+        simulator = tb.Simulator(model)
+
+        # First simulation with datetime objects
+        start_time1 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        end_time1 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        step_size1 = 600
+
+        simulator.simulate(
+            start_time=start_time1, end_time=end_time1, step_size=step_size1, show_progress_bar=False
+        )
+
+        # Get results from first simulation
+        history1 = schedule.output["scheduleValue"].history.clone()
+
+        # Second simulation with different datetime instances but same values
+        start_time2 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)  # Different object, same value
+        end_time2 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)    # Different object, same value
+        step_size2 = 600
+
+        # Verify they are different objects but equal values
+        self.assertIsNot(start_time1, start_time2)
+        self.assertEqual(start_time1, start_time2)
+        self.assertIsNot(end_time1, end_time2)
+        self.assertEqual(end_time1, end_time2)
+
+        simulator.simulate(
+            start_time=start_time2, end_time=end_time2, step_size=step_size2, show_progress_bar=False
+        )
+
+        # Get results from second simulation
+        history2 = schedule.output["scheduleValue"].history
+
+        # Verify outputs are identical (caching works with different datetime instances)
+        torch.testing.assert_close(history1, history2,
+            msg="Simulation results differ with different datetime instances: caching not working reliably")
+
+        # Cleanup
+        if os.path.exists("generated_files/models/test_cache_model"):
+            shutil.rmtree("generated_files/models/test_cache_model")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -127,6 +127,7 @@ class ScheduleSystem(core.System):
         self._saturdayRulesetDict = saturdayRulesetDict
         self._sundayRulesetDict = sundayRulesetDict
         self.add_noise = add_noise
+        self.noise_cache = {}
         self.noise_hour_range = float(noise_hour_range)
         self.noise_day_range = float(noise_day_range)
         self._use_spreadsheet = use_spreadsheet
@@ -138,7 +139,7 @@ class ScheduleSystem(core.System):
         self._uuid = uuid
         self._name = name
         self._dbconfig = dbconfig
-        random.seed(0)
+        
         self.input = {}
         self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
         self._config = {
@@ -484,6 +485,7 @@ class ScheduleSystem(core.System):
         end_time: datetime.datetime,
         step_size: int,
     ) -> None:
+        random.seed(0)
         self.noise = 0
         self.bias = 0
         assert (
@@ -606,6 +608,8 @@ class ScheduleSystem(core.System):
             for batch_index, (date_time_steps_, n_timesteps_) in enumerate(
                 zip(date_time_steps, n_timesteps)
             ):
+                
+
                 # OLD: Only compute schedule values for actual timesteps
                 values[batch_index, :n_timesteps_] = [
                     self.get_schedule_value(date_time)
@@ -616,6 +620,13 @@ class ScheduleSystem(core.System):
                 ]
                 # NEW: Compute schedule values for ALL timesteps (including extended dates for shorter periods)
                 # values[batch_index,:] = [self.get_schedule_value(date_time) for date_time in date_time_steps_]
+
+                if self.add_noise:
+                    # cache noise
+                    index = (start_time[batch_index], end_time[batch_index], step_size[batch_index])
+                    if index not in self.noise_cache:
+                        self.noise_cache[index] = self.get_noise(date_time_steps_[:n_timesteps_])
+                    values[batch_index, :n_timesteps_] += self.noise_cache[index]
 
             assert not np.isnan(
                 values
@@ -629,24 +640,43 @@ class ScheduleSystem(core.System):
                 values=values,
             )
 
-    def get_schedule_value(self, date_time):
-
-        if self.add_noise:
+    def get_noise(self, date_time_steps):
+        noise = []
+        for date_time in date_time_steps:
             if (
                 date_time.minute == 0
             ):  # Compute a new noise value if a new hour is entered in the simulation
-                
-                self.noise = random.uniform(
+                noise_hour = random.uniform(
                     -self.noise_hour_range, self.noise_hour_range
                 )
-
             if (
                 date_time.hour == 0 and date_time.minute == 0
             ):  # Compute a new bias value if a new day is entered in the simulation
-                
-                self.bias = random.uniform(
+                noise_day = random.uniform(
                     -self.noise_day_range, self.noise_day_range
                 )
+            noise.append(noise_hour + noise_day)
+        return np.array(noise)
+            
+
+    def get_schedule_value(self, date_time):
+
+        # if self.add_noise:
+        #     if (
+        #         date_time.minute == 0
+        #     ):  # Compute a new noise value if a new hour is entered in the simulation
+                
+        #         self.noise = random.uniform(
+        #             -self.noise_hour_range, self.noise_hour_range
+        #         )
+
+        #     if (
+        #         date_time.hour == 0 and date_time.minute == 0
+        #     ):  # Compute a new bias value if a new day is entered in the simulation
+                
+        #         self.bias = random.uniform(
+        #             -self.noise_day_range, self.noise_day_range
+        #         )
 
         if date_time.weekday() == 0:
             rulesetDict = self.mondayRulesetDict
@@ -690,10 +720,10 @@ class ScheduleSystem(core.System):
 
         if found_match == False:
             schedule_value = rulesetDict["ruleset_default_value"]
-        elif self.add_noise and schedule_value > 0:
-            schedule_value += self.noise + self.bias
-            if schedule_value < 0:
-                schedule_value = 0
+        # elif self.add_noise and schedule_value > 0:
+        #     schedule_value += self.noise + self.bias
+        #     if schedule_value < 0:
+        #         schedule_value = 0
         return schedule_value
 
     def do_step(
