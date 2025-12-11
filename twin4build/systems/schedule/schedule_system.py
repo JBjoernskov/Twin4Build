@@ -2,7 +2,6 @@
 import datetime
 import random
 import warnings
-from random import randrange
 from typing import Optional
 
 # Third party imports
@@ -57,6 +56,8 @@ class ScheduleSystem(core.System):
         saturdayRulesetDict: dict = None,
         sundayRulesetDict: dict = None,
         add_noise: bool = False,
+        noise_hour_range: float = 4.0,
+        noise_day_range: float = 10.0,
         use_spreadsheet: bool = False,
         use_database: bool = False,
         use_dict: bool = False,
@@ -126,6 +127,8 @@ class ScheduleSystem(core.System):
         self._saturdayRulesetDict = saturdayRulesetDict
         self._sundayRulesetDict = sundayRulesetDict
         self.add_noise = add_noise
+        self.noise_hour_range = float(noise_hour_range)
+        self.noise_day_range = float(noise_day_range)
         self._use_spreadsheet = use_spreadsheet
         self._use_database = use_database
         self._use_dict = use_dict
@@ -150,6 +153,8 @@ class ScheduleSystem(core.System):
                 "saturdayRulesetDict",
                 "sundayRulesetDict",
                 "add_noise",
+                "noise_hour_range",
+                "noise_day_range",
                 "use_spreadsheet",
                 "use_database",
                 "use_dict",
@@ -625,15 +630,23 @@ class ScheduleSystem(core.System):
             )
 
     def get_schedule_value(self, date_time):
-        if (
-            date_time.minute == 0
-        ):  # Compute a new noise value if a new hour is entered in the simulation
-            self.noise = randrange(-4, 4)
 
-        if (
-            date_time.hour == 0 and date_time.minute == 0
-        ):  # Compute a new bias value if a new day is entered in the simulation
-            self.bias = randrange(-10, 10)
+        if self.add_noise:
+            if (
+                date_time.minute == 0
+            ):  # Compute a new noise value if a new hour is entered in the simulation
+                
+                self.noise = random.uniform(
+                    -self.noise_hour_range, self.noise_hour_range
+                )
+
+            if (
+                date_time.hour == 0 and date_time.minute == 0
+            ):  # Compute a new bias value if a new day is entered in the simulation
+                
+                self.bias = random.uniform(
+                    -self.noise_day_range, self.noise_day_range
+                )
 
         if date_time.weekday() == 0:
             rulesetDict = self.mondayRulesetDict
