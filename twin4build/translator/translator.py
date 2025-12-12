@@ -5,12 +5,13 @@ import inspect
 import warnings
 from dataclasses import dataclass
 from itertools import count
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Union, Any
 import warnings
 
 
 # Third party imports
 import numpy as np
+from sympy import I
 import torch
 
 # import twin4build.saref4syst.system as system
@@ -437,7 +438,8 @@ class Translator:
         return complete_groups, incomplete_groups
 
     @staticmethod
-    def _deduplicate_modeled_nodes(candidate_maps, signature_pattern, sp_node):
+    @staticmethod
+    def _deduplicate_modeled_nodes(candidate_maps: List[Any], signature_pattern: 'SignaturePattern', sp_node: Node) -> List[Any]:
         """
         Filter candidate mappings to warn about duplicate modeled node matches.
 
@@ -1261,15 +1263,15 @@ class Translator:
         }
 
     @staticmethod
-    def _copy_nodemap(nodemap):
+    def _copy_nodemap(nodemap: Dict[Node, Any]) -> Dict[Node, Any]:
         return {k: v for k, v in nodemap.items()}
 
     @staticmethod
-    def _copy_nodemap_list(nodemap_list):
+    def _copy_nodemap_list(nodemap_list: List[Dict[Node, Any]]) -> List[Dict[Node, Any]]:
         return [Translator._copy_nodemap(nodemap) for nodemap in nodemap_list]
 
     @staticmethod
-    def _log_node(sp_subject, sm_subject):
+    def _log_node(sp_subject: Optional[Node], sm_subject: Optional[Any]) -> str:
         """Format subject node pair for debug logging."""
         sp_id = sp_subject.id.replace(r"\n", "") if sp_subject else "None"
         sm_uri = str(sm_subject.uri) if sm_subject else "None"
@@ -1316,13 +1318,14 @@ class Translator:
         # Process each predicate-object pair required by the SP subject
         for sp_predicate, sp_objects in sp_predicate_objects.items():
             for sp_object in sp_objects:
-                rule = ruleset[(sp_subject, sp_predicate, sp_object)]
+                rule = ruleset[(sp_subject, sp_predicate, sp_object)] # NOTE: What happens if we have added multiple rules for the same subject, predicate, object? This would not be meaningful 
                 
                 # Collect SM objects from ALL predicates in the Predicate (cross-ontology matching)
                 sm_objects = []
-                for pred in rule.predicate.preds:
-                    pred_objects = sm_predicate_objects.get(pred, [])
-                    sm_objects.extend(pred_objects)
+                for predicate in rule._predicate: # Iterate tuple of Predicate objects
+                    for pred in predicate.preds: # Iterate tuple of SemanticPredicate objects
+                        pred_objects = sm_predicate_objects.get(pred, [])
+                        sm_objects.extend(pred_objects)
                 
                 # Remove duplicates while preserving order
                 seen = set()
@@ -1330,12 +1333,12 @@ class Translator:
 
                 # Check if SM subject has any of the predicates with objects
                 if sm_objects:
-                    rule_pairs, _, ruleset = rule.apply(
+                    rule_pairs, _, _, ruleset = rule.apply(
                         sm_subject, sm_objects, ruleset, candidate_maps=candidate_maps
                     )
 
                     match_found = False
-                    for maps_for_pair, matched_sm_object, matched_sp_object, matched_type in rule_pairs:
+                    for maps_for_pair, matched_sm_object, matched_sp_object, matched_type, _ in rule_pairs:
                         # Initialize tracking for matched object
                         feasible.setdefault(matched_sp_object, set())
                         comparison_table.setdefault(matched_sp_object, set())
@@ -1352,7 +1355,7 @@ class Translator:
 
                             if not is_pruned:
                                 # Early stop for SinglePath/MultiPath with Exact match
-                                if (isinstance(rule, (SinglePathRule, MultiPathRule))
+                                if (isinstance(rule, (UniPathRule, MultiPathRule))
                                         and rule.stop_early and matched_type == ExactRule):
                                     valid_maps.extend(child_maps)
                                     match_found = True
@@ -1403,7 +1406,7 @@ class Translator:
         return candidate_maps, feasible, comparison_table, False
 
     @staticmethod
-    def _check_edge_connectivity(source_mapping, target_mapping, reverse=False):
+    def _check_edge_connectivity(source_mapping: Dict[Node, Any], target_mapping: Dict[Node, Any], reverse: bool = False) -> bool:
         """
         Check if two partial mappings share a connecting edge in the semantic model.
 
@@ -1583,7 +1586,7 @@ class Translator:
 class Node:
     node_instance_count = count()
 
-    def __init__(self, cls, graph_name=None, hash_=None):
+    def __init__(self, cls: Union[Any, Tuple[Any, ...], List[Any], str], graph_name: Optional[str] = None, hash_: Optional[Any] = None) -> None:
         self._graph_name = graph_name
         if isinstance(cls, tuple) == False:
             if isinstance(cls, (list, set)):
@@ -1710,7 +1713,7 @@ class Predicate:
     
     predicate_instance_count = count()
 
-    def __init__(self, preds, hash_=None):
+    def __init__(self, preds: Union[Any, Tuple[Any, ...], List[Any], str], hash_: Optional[Any] = None) -> None:
         """
         Initialize a Predicate.
         
@@ -2081,7 +2084,7 @@ class SignaturePattern:
     _signatures_reversed = {}
     _signature_instance_count = count()
 
-    def __init__(self, id=None):
+    def __init__(self, id: Optional[str] = None) -> None:
         # if semantic_model_ is None:
         #     semantic_model_ = core.SemanticModel()
 
@@ -2162,68 +2165,76 @@ class SignaturePattern:
             rule, Rule
         ), f'The "rule" argument must be a subclass of Rule - "{rule.__class__.__name__}" was provided.'
         
-        subject = rule.subject
-        object = rule.object
-        predicate_obj = rule.predicate
+        subject = rule._subject
+        object = rule._object
+        predicate = rule._predicate
+        # self._ruleset[(subject, predicate, object)] = rule
+
+
+        for subj, obj, pred in zip(subject, object, predicate):
+            self._ruleset[(subj, pred, obj)] = rule
         
-        assert subject is not None and object is not None and predicate_obj is not None, \
-            "Rule must have subject, object, and predicate"
+            assert subj is not None and obj is not None and pred is not None, \
+                "Rule must have subject, object, and predicate"
+            
+            assert isinstance(subj, Node) and isinstance(
+                obj, Node
+            ), '"subject" and "object" must be instances of class Node'
+            
+            assert isinstance(pred, Predicate), \
+                '"predicate" must be an instance of class Predicate'
+
+            self._add_node(subj)
+            self._add_node(obj)
+
+            # Set signature pattern on predicate and validate (converts to SemanticPredicate)
+            pred.set_signature_pattern(self)
+            pred.validate_preds()
+
+            # if self._pedantic:
+            #     attributes_a = subject.get_type_attributes()
+            #     assert (
+            #         predicate_obj in attributes_a
+            #     ), f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate_obj}\" was provided."
+
+            # Use Predicate object as key (like Node uses cls tuple)
+            if (
+                pred not in subj.predicate_object_pairs
+            ):  # TODO: should maybe also be added to self.semantic_model.graph for visualization?
+                subj.predicate_object_pairs[pred] = [obj]
+            else:
+                subj.predicate_object_pairs[pred].append(obj)
+
+            subject_instance = core.namespace.T4B.__getitem__(subj.id)
+            object_instance = core.namespace.T4B.__getitem__(obj.id)
+
+            for cls_ in subj.cls:
+                self.semantic_model.instance_graph.add(
+                    (subject_instance, core.namespace.RDF.type, cls_.uri)
+                )
+            for cls_ in obj.cls:
+                self.semantic_model.instance_graph.add(
+                    (object_instance, core.namespace.RDF.type, cls_.uri)
+                )
+
+            # Add triples for all predicates (for visualization)
+            for p in pred.preds:
+                self.semantic_model.instance_graph.add(
+                    (subject_instance, p.uri, object_instance)
+                )
+            
+            
+
+            if isinstance(rule, OptionalRule) == False:
+                if subj not in self._required_nodes:
+                    self._required_nodes.append(subj)
+
+            if isinstance(rule, OptionalRule) == False:
+                if obj not in self._required_nodes:
+                    self._required_nodes.append(obj)
+
+
         
-        assert isinstance(subject, Node) and isinstance(
-            object, Node
-        ), '"subject" and "object" must be instances of class Node'
-        
-        assert isinstance(predicate_obj, Predicate), \
-            '"predicate" must be an instance of class Predicate'
-
-        self._add_node(subject)
-        self._add_node(object)
-
-        # Set signature pattern on predicate and validate (converts to SemanticPredicate)
-        predicate_obj.set_signature_pattern(self)
-        predicate_obj.validate_preds()
-
-        # if self._pedantic:
-        #     attributes_a = subject.get_type_attributes()
-        #     assert (
-        #         predicate_obj in attributes_a
-        #     ), f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate_obj}\" was provided."
-
-        # Use Predicate object as key (like Node uses cls tuple)
-        if (
-            predicate_obj not in subject.predicate_object_pairs
-        ):  # TODO: should maybe also be added to self.semantic_model.graph for visualization?
-            subject.predicate_object_pairs[predicate_obj] = [object]
-        else:
-            subject.predicate_object_pairs[predicate_obj].append(object)
-
-        subject_instance = core.namespace.T4B.__getitem__(subject.id)
-        object_instance = core.namespace.T4B.__getitem__(object.id)
-
-        for cls_ in subject.cls:
-            self.semantic_model.instance_graph.add(
-                (subject_instance, core.namespace.RDF.type, cls_.uri)
-            )
-        for cls_ in object.cls:
-            self.semantic_model.instance_graph.add(
-                (object_instance, core.namespace.RDF.type, cls_.uri)
-            )
-
-        # Add triples for all predicates (for visualization)
-        for pred in predicate_obj.preds:
-            self.semantic_model.instance_graph.add(
-                (subject_instance, pred.uri, object_instance)
-            )
-        
-        self._ruleset[(subject, predicate_obj, object)] = rule
-
-        if isinstance(rule, OptionalRule) == False:
-            if subject not in self._required_nodes:
-                self._required_nodes.append(subject)
-
-        if isinstance(rule, OptionalRule) == False:
-            if object not in self._required_nodes:
-                self._required_nodes.append(object)
 
     def add_input(self, key, node, source_keys=None):
         self._add_node(node)
@@ -2448,11 +2459,10 @@ class Rule:
         The target node in the signature pattern
     predicate : Predicate
         The predicate(s) for this rule (holds tuple of SemanticPredicate like Node holds tuple of SemanticType)
-    PRIORITY : int
         The precedence level for rule application
     """
 
-    def __init__(self, subject: Node = None, object: Node = None, predicate = None):
+    def __init__(self, subject: Union[Node, Tuple[Node, ...]], object: Union[Node, Tuple[Node, ...]], predicate: Union[Predicate, Tuple[Predicate, ...]]) -> None:
         """
         Initialize a Rule.
         
@@ -2461,17 +2471,32 @@ class Rule:
             object: The target Node
             predicate: A Predicate object, or value(s) to wrap in a Predicate
         """
-        self.subject = subject
-        self.object = object
-        
-        # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node)
-        if predicate is None:
-            self.predicate = None
-        elif isinstance(predicate, Predicate):
-            self.predicate = predicate
+        if isinstance(subject, tuple):
+            self._subject = subject
         else:
-            # Auto-wrap in Predicate (handles single value or tuple)
-            self.predicate = Predicate(predicate)
+            self._subject = (subject,)
+        if isinstance(object, tuple):
+            self._object = object
+        else:
+            self._object = (object,)
+        if isinstance(predicate, tuple):
+            self._predicate = predicate
+        else:
+            self._predicate = (predicate,)
+
+
+        new_predicate = []
+        for pred in self._predicate:
+            # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node)
+            if isinstance(pred, Predicate):
+                new_predicate.append(pred)
+            else:
+                # Auto-wrap in Predicate (handles single value or tuple)
+                new_predicate.append(Predicate(pred))
+        self._predicate = tuple(new_predicate)
+
+        assert len(self._subject) == len(self._object) == len(self._predicate), "The number of subjects, objects, and predicates must be the same."
+
 
     def __and__(self, other):
         return And(self, other)
@@ -2479,28 +2504,59 @@ class Rule:
     def __or__(self, other):
         return Or(self, other)
 
+    @property
+    def subject(self):
+        return self._subject
+
+    @property
+    def object(self):
+        return self._object
+
+    @property
+    def predicate(self):
+        return self._predicate
+
+
 
 class And(Rule):
     """Logical AND of two rules - both must match."""
 
-    def __init__(self, rule_a, rule_b):
-        super().__init__()
+    def __init__(self, rule_a: Rule, rule_b: Rule) -> None:
+        # assert (
+        #     rule_a.subject == rule_b.subject
+        # ), "The subject of the two rules must be the same."
+        # assert (
+        #     rule_a.object == rule_b.object
+        # ), "The object of the two rules must be the same."
+        # assert (
+        #     rule_a.predicate == rule_b.predicate
+        # ), "The predicate of the two rules must be the same."
+        # super().__init__(subject=sp_subject, object=sp_object, predicate=sp_predicate)
+        sp_subject = rule_a._subject + rule_b._subject
+        sp_object = rule_a._object + rule_b._object
+        sp_predicate = rule_a._predicate + rule_b._predicate
+        super().__init__(subject=sp_subject, object=sp_object, predicate=sp_predicate)
         self.rule_a = rule_a
         self.rule_b = rule_b
 
     def apply(
-        self, sm_subject, sm_objects, ruleset, candidate_maps=None, master_rule=None
-    ):
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
         if master_rule is None:
             master_rule = self
-        pairs_a, rule_applies_a, ruleset_a = self.rule_a.apply(
+        pairs_a, rule_applies_a, rule_applies_a_vec, ruleset_a = self.rule_a.apply(
             sm_subject,
             sm_objects,
             ruleset,
             candidate_maps=candidate_maps,
             master_rule=master_rule,
         )
-        pairs_b, rule_applies_b, ruleset_b = self.rule_b.apply(
+        pairs_b, rule_applies_b, rule_applies_b_vec, ruleset_b = self.rule_b.apply(
             sm_subject,
             sm_objects,
             ruleset,
@@ -2508,53 +2564,57 @@ class And(Rule):
             master_rule=master_rule,
         )
         if rule_applies_a and rule_applies_b:
-            pairs = []
-            pairs.extend(pairs_a)
-            pairs.extend(pairs_b)
+            mask = rule_applies_a_vec & rule_applies_b_vec
+            pairs = [pairs_a[i] for i in range(len(sm_objects)) if mask[i]]
+            pairs.extend([pairs_b[i] for i in range(len(sm_objects)) if mask[i]])
             ruleset_a.update(ruleset_b)
-            self.PRIORITY = min(self.rule_a.PRIORITY, self.rule_b.PRIORITY)
-            return pairs_a, True, ruleset_a
+            return pairs, True, mask, ruleset_a
 
+        return [], False, np.array([False]*len(sm_objects)), ruleset
 
-        return [], False, ruleset
-
-    def get_sp_object(self):
-        return self.object
+    def reset(self):
+        self.rule_a.reset()
+        self.rule_b.reset()
 
 
 class Or(Rule):
     """Logical OR of two rules - either can match."""
 
-    def __init__(self, rule_a, rule_b):
-        assert (
-            rule_a.subject == rule_b.subject
-        ), "The subject of the two rules must be the same."
-        assert (
-            rule_a.object == rule_b.object
-        ), "The object of the two rules must be the same."
-        assert (
-            rule_a.predicate == rule_b.predicate
-        ), "The predicate of the two rules must be the same."
-        sp_subject = rule_a.subject
-        sp_object = rule_a.object
-        sp_predicate = rule_a.predicate
+    def __init__(self, rule_a: Rule, rule_b: Rule) -> None:
+        # assert (
+        #     rule_a.subject == rule_b.subject
+        # ), "The subject of the two rules must be the same."
+        # assert (
+        #     rule_a.object == rule_b.object
+        # ), "The object of the two rules must be the same."
+        # assert (
+        #     rule_a.predicate == rule_b.predicate
+        # ), "The predicate of the two rules must be the same."
+        sp_subject = rule_a._subject + rule_b._subject
+        sp_object = rule_a._object + rule_b._object
+        sp_predicate = rule_a._predicate + rule_b._predicate
         super().__init__(subject=sp_subject, object=sp_object, predicate=sp_predicate)
         self.rule_a = rule_a
         self.rule_b = rule_b
 
     def apply(
-        self, sm_subject, sm_objects, ruleset, candidate_maps=None, master_rule=None
-    ):
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
         if master_rule is None:
             master_rule = self
-        pairs_a, rule_applies_a, ruleset_a = self.rule_a.apply(
+        pairs_a, rule_applies_a, rule_applies_a_vec, ruleset_a = self.rule_a.apply(
             sm_subject,
             sm_objects,
             ruleset,
             candidate_maps=candidate_maps,
             master_rule=master_rule,
         )
-        pairs_b, rule_applies_b, ruleset_b = self.rule_b.apply(
+        pairs_b, rule_applies_b, rule_applies_b_vec, ruleset_b = self.rule_b.apply(
             sm_subject,
             sm_objects,
             ruleset,
@@ -2564,21 +2624,107 @@ class Or(Rule):
         if rule_applies_a and rule_applies_b:
             pairs_a.extend(pairs_b)
             ruleset_a.update(ruleset_b)
-            return pairs_a, True, ruleset_a
+            return pairs_a, True, rule_applies_a_vec | rule_applies_b_vec, ruleset_a
 
         elif rule_applies_a:
-            self.PRIORITY = self.rule_a.PRIORITY
-            return pairs_a, True, ruleset_a
+            return pairs_a, True, rule_applies_a_vec, ruleset_a
         elif rule_applies_b:
-            self.PRIORITY = self.rule_b.PRIORITY
-            return pairs_b, True, ruleset_b
+            return pairs_b, True, rule_applies_b_vec, ruleset_b
 
-        return [], False, ruleset
+        return [], False, np.array([False]*len(sm_objects)), ruleset
 
     def reset(self):
         self.rule_a.reset()
         self.rule_b.reset()
 
+
+
+class NoExactRule(Rule):
+    r"""
+
+    """
+    def __init__(self, **kwargs):
+        Rule.__init__(self, **kwargs)
+
+
+    @property
+    def subject(self):
+        assert len(self._subject) == 1, "The number of subjects must be 1."
+        return self._subject[0]
+
+    @property
+    def object(self):
+        assert len(self._object) == 1, "The number of objects must be 1."
+        return self._object[0]
+
+    @property
+    def predicate(self):
+        assert len(self._predicate) == 1, "The number of predicates must be 1."
+        return self._predicate[0]
+
+    def apply(
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        """
+        
+        """
+        if master_rule is None:
+            master_rule = self
+        pairs = []
+        rule_applies_vec = np.array([False]*len(sm_objects))
+
+        if len(candidate_maps) == 0:
+            candidate_maps = [None]
+
+        for current_map in candidate_maps:
+            excluded_sm_subjects = []
+            excluded_sm_objects = []
+
+            if current_map is not None:
+                # Find SM objects to exclude (already matched to different SP objects)
+                for (sp_subject, sp_predicate, sp_object), rule in ruleset.items():
+                    if rule.predicate is not None and self.predicate is not None:
+                        if (
+                            sp_object in current_map
+                            and rule.subject == self.subject
+                            and rule.predicate == self.predicate
+                            and rule.object != self.object
+                        ):
+                            excluded_sm_objects.append(current_map[sp_object])
+
+                # Find SM subjects to exclude (already matched to different SP subjects)
+                for (sp_subject, sp_predicate, sp_object), rule in ruleset.items():
+                    if rule.predicate is not None and self.predicate is not None:
+                        if (
+                            sp_subject in current_map
+                            and rule.object == self.object
+                            and rule.predicate == self.predicate
+                            and rule.subject != self.subject
+                        ):
+                            excluded_sm_subjects.append(current_map[sp_subject])
+                maps_for_match = [current_map]
+            else:
+                maps_for_match = []
+
+            # Check each candidate SM object
+            for i, sm_object in enumerate(sm_objects):
+                if (
+                    sm_object.isinstance(self.object.cls)==False
+                    and sm_subject not in excluded_sm_subjects
+                    and sm_object not in excluded_sm_objects
+                ):
+                    pairs.append((maps_for_match, sm_object, self.object, NoExactRule, i))
+                    rule_applies_vec[i] = True
+        rule_applies = np.any(rule_applies_vec)
+        return pairs, rule_applies, rule_applies_vec, ruleset
+
+    def reset(self):
+        pass
 
 class ExactRule(Rule):
     r"""
@@ -2587,8 +2733,6 @@ class ExactRule(Rule):
     The Exact rule is the most restrictive rule type, requiring that the semantic model
     contains exactly the same relationship as specified in the signature pattern. This rule
     is used when you need precise control over the pattern matching process.
-
-    Priority: 10 (highest priority)
 
     Behavior
     --------
@@ -2711,15 +2855,32 @@ class ExactRule(Rule):
     ...     predicate=core.namespace.SAREF.isPropertyOf
     ... )
     """
-
-    PRIORITY = 10
-
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        Rule.__init__(self, **kwargs)
+
+    @property
+    def subject(self):
+        assert len(self._subject) == 1, "The number of subjects must be 1."
+        return self._subject[0]
+
+    @property
+    def object(self):
+        assert len(self._object) == 1, "The number of objects must be 1."
+        return self._object[0]
+
+    @property
+    def predicate(self):
+        assert len(self._predicate) == 1, "The number of predicates must be 1."
+        return self._predicate[0]
 
     def apply(
-        self, sm_subject, sm_objects, ruleset, candidate_maps=None, master_rule=None
-    ):
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
         """
         Apply Exact rule to find matching SM objects.
 
@@ -2737,7 +2898,7 @@ class ExactRule(Rule):
         if master_rule is None:
             master_rule = self
         pairs = []
-        rule_applies = False
+        rule_applies_vec = np.array([False]*len(sm_objects))
 
         if len(candidate_maps) == 0:
             candidate_maps = [None]
@@ -2773,16 +2934,17 @@ class ExactRule(Rule):
                 maps_for_match = []
 
             # Check each candidate SM object
-            for sm_object in sm_objects:
+            for i, sm_object in enumerate(sm_objects):
                 if (
                     sm_object.isinstance(self.object.cls)
                     and sm_subject not in excluded_sm_subjects
                     and sm_object not in excluded_sm_objects
                 ):
-                    pairs.append((maps_for_match, sm_object, self.object, ExactRule))
-                    rule_applies = True
+                    pairs.append((maps_for_match, sm_object, self.object, ExactRule, i))
+                    rule_applies_vec[i] = True
 
-        return pairs, rule_applies, ruleset
+        rule_applies = np.any(rule_applies_vec)
+        return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
         pass
@@ -2790,15 +2952,33 @@ class ExactRule(Rule):
 
 class _SinglePath(Rule):
     """Internal rule for SinglePath traversal (creates intermediate SP nodes)."""
-    PRIORITY = 2
-
     def __init__(self, **kwargs):
         self.first_entry = True
-        super().__init__(**kwargs)
+        Rule.__init__(self, **kwargs)
+
+    @property
+    def subject(self):
+        assert len(self._subject) == 1, "The number of subjects must be 1."
+        return self._subject[0]
+
+    @property
+    def object(self):
+        assert len(self._object) == 1, "The number of objects must be 1."
+        return self._object[0]
+
+    @property
+    def predicate(self):
+        assert len(self._predicate) == 1, "The number of predicates must be 1."
+        return self._predicate[0]
 
     def apply(
-        self, sm_subject, sm_objects, ruleset, candidate_maps=None, master_rule=None
-    ):
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
         """
         Apply SinglePath traversal rule.
 
@@ -2810,16 +2990,16 @@ class _SinglePath(Rule):
             master_rule = self
         pairs = []
         matched_sm_objects = []
-        rule_applies = False
+        rule_applies_vec = np.array([False]*len(sm_objects))
 
         if self.first_entry:
             self.first_entry = False
-            matched_sm_objects.extend(sm_objects)
-            rule_applies = True
+            matched_sm_objects.extend([(i,sm_object) for i, sm_object in enumerate(sm_objects)])
+            rule_applies_vec = np.array([True]*len(sm_objects))
         else:
             # Only allow single-path continuation
             if len(sm_objects) == 1:
-                for sm_object in sm_objects:
+                for i, sm_object in enumerate(sm_objects):
                     predicate_objects = sm_object.get_predicate_object_pairs()
                     # Check all predicates in the Predicate's tuple
                     for pred in self.predicate.preds:
@@ -2827,12 +3007,12 @@ class _SinglePath(Rule):
                             pred in predicate_objects
                             and len(predicate_objects[pred]) == 1
                         ):
-                            matched_sm_objects.append(sm_object)
-                            rule_applies = True
+                            matched_sm_objects.append((i,sm_object))
+                            rule_applies_vec[i] = True
                             break  # Found a valid predicate, no need to check others
-
+        rule_applies = np.any(rule_applies_vec)
         if rule_applies:
-            for sm_object in matched_sm_objects:
+            for i, sm_object in matched_sm_objects:
                 # Create intermediate SP subject node for continued traversal
                 # Hash ensures uniqueness based on context (use predicate's preds tuple)
                 intermediate_sp_subject = Node(
@@ -2843,15 +3023,16 @@ class _SinglePath(Rule):
                 intermediate_sp_subject.validate_cls()
                 intermediate_sp_subject.predicate_object_pairs[self.predicate] = [self.object]
                 ruleset[(intermediate_sp_subject, self.predicate, self.object)] = master_rule
-                pairs.append((candidate_maps, sm_object, intermediate_sp_subject, _SinglePath))
+                pairs.append((candidate_maps, sm_object, intermediate_sp_subject, _SinglePath, i))
 
-        return pairs, rule_applies, ruleset
+        
+        return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
         self.first_entry = True
 
 
-class SinglePathRule(Rule):
+class UniPathRule(Rule):
     r"""
     Rule that allows traversal along a single path in the semantic model.
 
@@ -2981,11 +3162,9 @@ class SinglePathRule(Rule):
     >>> # space1 -> common_equipment -> space2
     >>> # space1 -> thermal_bridge -> space2
     """
-
-    PRIORITY = 1
-
     def __init__(self, stop_early=True, **kwargs):
         # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node)
+        super().__init__(**kwargs)
         if kwargs.get('predicate') is None:
             predicate = None
         elif isinstance(kwargs.get('predicate'), Predicate):
@@ -2999,11 +3178,16 @@ class SinglePathRule(Rule):
         kwargs['predicate'] = predicate
         self.rule = ExactRule(**kwargs) | _SinglePath(**kwargs)  # This order
         self.stop_early = stop_early
-        super().__init__(**kwargs)
+        # super().__init__(**kwargs)
 
     def apply(
-        self, sm_subject, sm_objects, ruleset, candidate_maps=None, master_rule=None
-    ):
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
         """Delegate to internal Exact | _SinglePath rule."""
         if master_rule is None:
             master_rule = self
@@ -3022,15 +3206,33 @@ class SinglePathRule(Rule):
 
 class _MultiPath(Rule):
     """Internal rule for MultiPath traversal (creates intermediate SP nodes)."""
-    PRIORITY = 2
-
     def __init__(self, **kwargs):
         self.first_entry = True
         super().__init__(**kwargs)
 
+    @property
+    def subject(self):
+        assert len(self._subject) == 1, "The number of subjects must be 1."
+        return self._subject[0]
+
+    @property
+    def object(self):
+        assert len(self._object) == 1, "The number of objects must be 1."
+        return self._object[0]
+
+    @property
+    def predicate(self):
+        assert len(self._predicate) == 1, "The number of predicates must be 1."
+        return self._predicate[0]
+
     def apply(
-        self, sm_subject, sm_objects, ruleset, candidate_maps=None, master_rule=None
-    ):
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
         """
         Apply MultiPath traversal rule.
 
@@ -3042,16 +3244,16 @@ class _MultiPath(Rule):
             master_rule = self
         pairs = []
         matched_sm_objects = []
-        rule_applies = False
+        rule_applies_vec = np.array([False]*len(sm_objects))
 
         if self.first_entry:
             self.first_entry = False
-            matched_sm_objects.extend(sm_objects)
-            rule_applies = True
+            matched_sm_objects.extend([(i,sm_object) for i, sm_object in enumerate(sm_objects)])
+            rule_applies_vec = np.array([True]*len(sm_objects))
         else:
             # Allow multi-path continuation (>= 1 child)
             if len(sm_objects) >= 1:
-                for sm_object in sm_objects:
+                for i, sm_object in enumerate(sm_objects):
                     predicate_objects = sm_object.get_predicate_object_pairs()
                     # Check all predicates in the Predicate's tuple
                     for pred in self.predicate.preds:
@@ -3059,21 +3261,22 @@ class _MultiPath(Rule):
                             pred in predicate_objects
                             and len(predicate_objects[pred]) >= 1
                         ):
-                            matched_sm_objects.append(sm_object)
-                            rule_applies = True
+                            matched_sm_objects.append((i,sm_object))
+                            rule_applies_vec[i] = True
                             break  # Found a valid predicate, no need to check others
 
+        rule_applies = np.any(rule_applies_vec)
         if rule_applies:
-            for sm_object in matched_sm_objects:
+            for i, sm_object in matched_sm_objects:
                 # Create intermediate SP subject node for continued traversal
                 intermediate_sp_subject = Node(cls=sm_object.get_most_specific_type())
                 intermediate_sp_subject.set_signature_pattern(self.object.signature_pattern)
                 intermediate_sp_subject.validate_cls()
                 intermediate_sp_subject.predicate_object_pairs[self.predicate] = [self.object]
                 ruleset[(intermediate_sp_subject, self.predicate, self.object)] = master_rule
-                pairs.append((candidate_maps, sm_object, intermediate_sp_subject, _MultiPath))
+                pairs.append((candidate_maps, sm_object, intermediate_sp_subject, _MultiPath, i))
 
-        return pairs, rule_applies, ruleset
+        return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
         self.first_entry = True
@@ -3243,15 +3446,32 @@ class OptionalRule(Rule):
     >>> # - Manual valve with position sensor (no controller)
     >>> # - Automated valve with controller and position feedback
     """
-
-    PRIORITY = 1
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    @property
+    def subject(self):
+        assert len(self._subject) == 1, "The number of subjects must be 1."
+        return self._subject[0]
+
+    @property
+    def object(self):
+        assert len(self._object) == 1, "The number of objects must be 1."
+        return self._object[0]
+
+    @property
+    def predicate(self):
+        assert len(self._predicate) == 1, "The number of predicates must be 1."
+        return self._predicate[0]
+
     def apply(
-        self, sm_subject, sm_objects, ruleset, candidate_maps=None, master_rule=None
-    ):
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
         """
         Apply Optional rule to find matching SM objects.
 
@@ -3261,14 +3481,15 @@ class OptionalRule(Rule):
         if master_rule is None:
             master_rule = self
         pairs = []
-        rule_applies = False
+        rule_applies_vec = np.array([False]*len(sm_objects))
 
-        for sm_object in sm_objects:
+        for i, sm_object in enumerate(sm_objects):
             if sm_object.isinstance(self.object.cls):
-                pairs.append((candidate_maps, sm_object, self.object, OptionalRule))
-                rule_applies = True
+                pairs.append((candidate_maps, sm_object, self.object, OptionalRule, i))
+                rule_applies_vec[i] = True
 
-        return pairs, rule_applies, ruleset
+        rule_applies = np.any(rule_applies_vec)
+        return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
         pass
@@ -3392,9 +3613,6 @@ class MultiPathRule(Rule):
     connections and Optional_ for alternative configurations rather than MultiPath,
     which can cause performance issues in complex semantic models.
     """
-
-    PRIORITY = 1
-
     def __init__(self, stop_early=True, **kwargs):
         # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node)
         if kwargs.get('predicate') is None:
@@ -3413,16 +3631,21 @@ class MultiPathRule(Rule):
         super().__init__(**kwargs)
 
     def apply(
-        self, sm_subject, sm_object, ruleset, candidate_maps=None, master_rule=None
-    ):
-        pairs, rule_applies, ruleset = self.rule.apply(
+        self,
+        sm_subject: core.SemanticObject,
+        sm_objects: List[core.SemanticObject],
+        ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+        candidate_maps: Optional[List[Optional[Any]]] = None,
+        master_rule: Optional[Rule] = None
+    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        pairs, rule_applies, rule_applies_vec, ruleset = self.rule.apply(
             sm_subject,
-            sm_object,
+            sm_objects,
             ruleset,
             candidate_maps=candidate_maps,
             master_rule=master_rule,
         )
-        return pairs, rule_applies, ruleset
+        return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
         self.rule.first_entry = True
@@ -3439,10 +3662,10 @@ class Exact(ExactRule):
         super().__init__(**kwargs)
 
 
-class SinglePath(SinglePathRule):
+class SinglePath(UniPathRule):
     def __init__(self, **kwargs):
         warnings.warn(
-            "The 'SinglePath' class is deprecated. Use 'SinglePathRule' instead.",
+            "The 'SinglePath' class is deprecated. Use 'UniPathRule' instead.",
             DeprecationWarning,
             stacklevel=2
         )
