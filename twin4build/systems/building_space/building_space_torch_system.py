@@ -22,6 +22,8 @@ from twin4build.translator.translator import (
     Node,
     SignaturePattern,
     SinglePath,
+    Predicate,
+    NoExactRule
 )
 
 
@@ -371,8 +373,6 @@ def brick_signature_pattern():  # Fits to site A
             core.namespace.BRICK.Open_space,
         )
     )  # TODO: 'space' should be 'Office', but the site b ttl file has a bug
-    # node4 = Node(cls=core.namespace.BRICK.Air_Temperature_Sensor)
-    # node5 = Node(cls=core.namespace.BRICK.CO2_Sensor)
     damper_position_sensor = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
     weather_station = Node(cls=core.namespace.BRICK.Weather_Station)  # outdoor temperature sensor
     # node7 = Node(cls=core.namespace.BRICK.AHU) # For site A only
@@ -380,12 +380,18 @@ def brick_signature_pattern():  # Fits to site A
     outside_air_temperature_sensor = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
     # node9 = Node(cls=core.namespace.BRICK.
 
+    hvac_equipment = Node(cls=core.namespace.BRICK.HVAC_Equipment) #can be almost anything
+    damper = Node(cls=core.namespace.BRICK.Damper)
+
+
+    feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
+
     sp = SignaturePattern(
         id="building_space_signature_pattern_brick",
     )
 
     sp.add_triple(
-        MultiPath(subject=ahu, object=space, predicate=core.namespace.BRICK.feeds)
+        MultiPath(subject=ahu, object=space, predicate=feeds) & NoExactRule(subject=hvac_equipment, object=damper, predicate=feeds)
     )
     # sp.add_triple(
     #     Exact(subject=node1, object=node3, predicate=core.namespace.BRICK.feeds)
@@ -428,7 +434,7 @@ def brick_signature_pattern():  # Fits to site A
     # sp.add_input("numberOfPeople", node5, "measuredValue")
     sp.add_input("outdoorTemperature", weather_station, "measuredValue")
     # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
-    # sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    sp.add_input("globalIrradiation", weather_station, "globalIrradiation")
     sp.add_input("supplyAirTemperature", ahu)
 
     # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
