@@ -189,251 +189,251 @@ t4b:020B_temperature_sensor a t4b:SensorSystem ;
 
 t4b:138672054328 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "boundaryTemperature" ;
+    t4b:input_port "boundaryTemperature" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138674206956 .
 
 t4b:138672068748 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "indoorTemperature" ;
+    t4b:input_port "indoorTemperature" ;
     s4syst:connectionPointOf t4b:020B_space_heater ;
     s4syst:connectsSystemThrough t4b:138674540449 .
 
 t4b:138672068973 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "supplyAirFlowRate" ;
+    t4b:input_port "supplyAirFlowRate" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138673791287 .
 
 t4b:138672673439 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "scheduleValue" ;
+    t4b:output_port "scheduleValue" ;
     s4syst:connectsSystem t4b:020B_occupancy_profile ;
     s4syst:connectsSystemAt t4b:138674528279 .
 
 t4b:138672674772 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "outdoorTemperature" ;
+    t4b:input_port "outdoorTemperature" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138673118390 .
 
 t4b:138673118372 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "measuredValue" ;
+    t4b:output_port "measuredValue" ;
     s4syst:connectsSystem t4b:BTA004 ;
     s4syst:connectsSystemAt t4b:138673658260 .
 
 t4b:138673118390 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "outdoorTemperature" ;
+    t4b:output_port "outdoorTemperature" ;
     s4syst:connectsSystem t4b:outdoor_environment ;
     s4syst:connectsSystemAt t4b:138672674772 .
 
 t4b:138673279299 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "indoorCO2" ;
+    t4b:output_port "indoorCO2" ;
     s4syst:connectsSystem t4b:020B ;
     s4syst:connectsSystemAt t4b:138674528780 .
 
 t4b:138673615027 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "airFlowRate" ;
+    t4b:output_port "airFlowRate" ;
     s4syst:connectsSystem t4b:020B_room_exhaust_damper ;
     s4syst:connectsSystemAt t4b:138674528417 .
 
 t4b:138673658260 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "supplyAirTemperature" ;
+    t4b:input_port "supplyAirTemperature" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138673118372 .
 
 t4b:138673721763 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "Power" ;
+    t4b:output_port "Power" ;
     s4syst:connectsSystem t4b:020B_space_heater ;
     s4syst:connectsSystemAt t4b:138674528492 .
 
 t4b:138673791287 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "airFlowRate" ;
+    t4b:output_port "airFlowRate" ;
     s4syst:connectsSystem t4b:020B_room_supply_damper ;
     s4syst:connectsSystemAt t4b:138672068973 .
 
 t4b:138674206956 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "scheduleValue" ;
+    t4b:output_port "scheduleValue" ;
     s4syst:connectsSystem t4b:boundary_temp_schedule ;
     s4syst:connectsSystemAt t4b:138672054328 .
 
 t4b:138674528279 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "numberOfPeople" ;
+    t4b:input_port "numberOfPeople" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138672673439 .
 
 t4b:138674528417 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "exhaustAirFlowRate" ;
+    t4b:input_port "exhaustAirFlowRate" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138673615027 .
 
 t4b:138674528492 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "heatGain" ;
+    t4b:input_port "heatGain" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138673721763 .
 
 t4b:138674528726 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "waterFlowRate" ;
+    t4b:output_port "waterFlowRate" ;
     s4syst:connectsSystem t4b:020B_space_heater_valve ;
     s4syst:connectsSystemAt t4b:138674539621 .
 
 t4b:138674528771 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "damperPosition" ;
+    t4b:input_port "damperPosition" ;
     s4syst:connectionPointOf t4b:020B_room_supply_damper ;
     s4syst:connectsSystemThrough t4b:138672069766 .
 
 t4b:138674528780 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "measuredValue" ;
+    t4b:input_port "measuredValue" ;
     s4syst:connectionPointOf t4b:020B_co2_sensor ;
     s4syst:connectsSystemThrough t4b:138673279299 .
 
 t4b:138674528828 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "measuredValue" ;
+    t4b:output_port "measuredValue" ;
     s4syst:connectsSystem t4b:020B_co2_sensor ;
     s4syst:connectsSystemAt t4b:138674539666 .
 
 t4b:138674528963 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "valvePosition" ;
+    t4b:input_port "valvePosition" ;
     s4syst:connectionPointOf t4b:020B_space_heater_valve ;
     s4syst:connectsSystemThrough t4b:138674540194 .
 
 t4b:138674528966 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "scheduleValue" ;
+    t4b:output_port "scheduleValue" ;
     s4syst:connectsSystem t4b:supply_water_schedule ;
     s4syst:connectsSystemAt t4b:138674548906 .
 
 t4b:138674529203 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "outdoorCo2Concentration" ;
+    t4b:output_port "outdoorCo2Concentration" ;
     s4syst:connectsSystem t4b:outdoor_environment ;
     s4syst:connectsSystemAt t4b:138674529209 .
 
 t4b:138674529206 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "globalIrradiation" ;
+    t4b:input_port "globalIrradiation" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138674529254 .
 
 t4b:138674529209 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "outdoorCO2" ;
+    t4b:input_port "outdoorCO2" ;
     s4syst:connectionPointOf t4b:020B ;
     s4syst:connectsSystemThrough t4b:138674529203 .
 
 t4b:138674529254 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "globalIrradiation" ;
+    t4b:output_port "globalIrradiation" ;
     s4syst:connectsSystem t4b:outdoor_environment ;
     s4syst:connectsSystemAt t4b:138674529206 .
 
 t4b:138674539621 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "waterFlowRate" ;
+    t4b:input_port "waterFlowRate" ;
     s4syst:connectionPointOf t4b:020B_space_heater ;
     s4syst:connectsSystemThrough t4b:138674528726 .
 
 t4b:138674539666 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "actualValue" ;
+    t4b:input_port "actualValue" ;
     s4syst:connectionPointOf t4b:020B_co2_controller ;
     s4syst:connectsSystemThrough t4b:138674528828 .
 
 t4b:138674539981 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "damperPosition" ;
+    t4b:input_port "damperPosition" ;
     s4syst:connectionPointOf t4b:020B_room_exhaust_damper ;
     s4syst:connectsSystemThrough t4b:138672069766 .
 
 t4b:138674540071 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "scheduleValue" ;
+    t4b:output_port "scheduleValue" ;
     s4syst:connectsSystem t4b:020B_co2_setpoint ;
     s4syst:connectsSystemAt t4b:138674540128 .
 
 t4b:138674540128 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "setpointValue" ;
+    t4b:input_port "setpointValue" ;
     s4syst:connectionPointOf t4b:020B_co2_controller ;
     s4syst:connectsSystemThrough t4b:138674540071 .
 
 t4b:138674540158 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "measuredValue" ;
+    t4b:output_port "measuredValue" ;
     s4syst:connectsSystem t4b:020B_temperature_sensor ;
     s4syst:connectsSystemAt t4b:138674540164 .
 
 t4b:138674540164 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "actualValue" ;
+    t4b:input_port "actualValue" ;
     s4syst:connectionPointOf t4b:020B_temperature_heating_controller ;
     s4syst:connectsSystemThrough t4b:138674540158 .
 
 t4b:138674540227 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "scheduleValue" ;
+    t4b:output_port "scheduleValue" ;
     s4syst:connectsSystem t4b:020B_temperature_heating_setpoint ;
     s4syst:connectsSystemAt t4b:138674540230 .
 
 t4b:138674540230 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "setpointValue" ;
+    t4b:input_port "setpointValue" ;
     s4syst:connectionPointOf t4b:020B_temperature_heating_controller ;
     s4syst:connectsSystemThrough t4b:138674540227 .
 
 t4b:138674540443 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "measuredValue" ;
+    t4b:input_port "measuredValue" ;
     s4syst:connectionPointOf t4b:020B_damper_position_sensor ;
     s4syst:connectsSystemThrough t4b:138672069766 .
 
 t4b:138674540485 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "measuredValue" ;
+    t4b:input_port "measuredValue" ;
     s4syst:connectionPointOf t4b:020B_temperature_sensor ;
     s4syst:connectsSystemThrough t4b:138674540449 .
 
 t4b:138674548768 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "measuredValue" ;
+    t4b:input_port "measuredValue" ;
     s4syst:connectionPointOf t4b:020B_valve_position_sensor ;
     s4syst:connectsSystemThrough t4b:138674540194 .
 
 t4b:138674548906 a s4syst:ConnectionPoint,
         <neec270fcbb074114bcf24aac70a66530b3> ;
-    t4b:inputPort "supplyWaterTemperature" ;
+    t4b:input_port "supplyWaterTemperature" ;
     s4syst:connectionPointOf t4b:020B_space_heater ;
     s4syst:connectsSystemThrough t4b:138674528966 .
 
@@ -462,7 +462,7 @@ t4b:020B_temperature_heating_controller a t4b:PIDControllerSystem ;
 t4b:138674540194 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "inputSignal" ;
+    t4b:output_port "inputSignal" ;
     s4syst:connectsSystem t4b:020B_temperature_heating_controller ;
     s4syst:connectsSystemAt t4b:138674528963,
         t4b:138674548768 .
@@ -470,7 +470,7 @@ t4b:138674540194 a s4syst:Connection,
 t4b:138674540449 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "indoorTemperature" ;
+    t4b:output_port "indoorTemperature" ;
     s4syst:connectsSystem t4b:020B ;
     s4syst:connectsSystemAt t4b:138672068748,
         t4b:138674540485 .
@@ -515,7 +515,7 @@ t4b:020B_space_heater a t4b:SpaceHeaterTorchSystem ;
 t4b:138672069766 a s4syst:Connection,
         <neec270fcbb074114bcf24aac70a66530b1>,
         <neec270fcbb074114bcf24aac70a66530b2> ;
-    t4b:outputPort "inputSignal" ;
+    t4b:output_port "inputSignal" ;
     s4syst:connectsSystem t4b:020B_co2_controller ;
     s4syst:connectsSystemAt t4b:138674528771,
         t4b:138674539981,
