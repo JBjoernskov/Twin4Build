@@ -17,6 +17,7 @@ Key Components:
         - DamperTorchSystem: Air flow control damper
         - FanTorchSystem: Air handling fan system
         - AirToAirHeatRecoverySystem: Heat recovery system
+        - AirHandlingUnitTorchSystem: Air handling unit system
 
     Control Systems:
         - PIControllerFMUSystem: Proportional-Integral controller
@@ -77,6 +78,8 @@ __all__ = [
     "ReturnFlowJunctionSystem",
     # Air to Air Heat Recovery
     "AirToAirHeatRecoverySystem",
+    # Air Handling Unit
+    "AirHandlingUnitTorchSystem",
     # Damper
     "DamperTorchSystem",
     # Fan
@@ -96,6 +99,9 @@ __all__ = [
 # Air to Air Heat Recovery
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
     AirToAirHeatRecoverySystem,
+)
+from twin4build.systems.air_handling_unit.air_handling_unit_torch_system import (
+    AirHandlingUnitTorchSystem,
 )
 from twin4build.systems.building_space.building_space_mass_torch_system import (
     BuildingSpaceMassTorchSystem,

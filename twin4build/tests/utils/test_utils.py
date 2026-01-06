@@ -1304,6 +1304,9 @@ class TestPrintProgress(unittest.TestCase):
         self.assertFalse(p.enabled)
 
         p.enable()
+        self.assertFalse(p.enabled)
+
+        p._allow_in_tests = True
         self.assertTrue(p.enabled)
 
         p.disable()
@@ -1367,6 +1370,7 @@ class TestPrintProgress(unittest.TestCase):
         from twin4build.utils.print_progress import PrintProgress
 
         p = PrintProgress()
+        p._allow_in_tests = True
         p.enable()  # Enable to test add_level functionality
 
         # Mock only print_lines to prevent terminal manipulation
@@ -1389,6 +1393,7 @@ class TestPrintProgress(unittest.TestCase):
         from twin4build.utils.print_progress import PrintProgress
 
         p = PrintProgress()
+        p._allow_in_tests = True
         p.enable()  # Enable for this test (auto-disabled in test environments)
         p.verbose = 3
 
