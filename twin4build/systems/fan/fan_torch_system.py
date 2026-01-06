@@ -74,13 +74,13 @@ class FanTorchSystem(core.System, nn.Module):
 
     def __init__(
         self,
-        nominalPowerRate: float = None,
-        nominalAirFlowRate: float = None,
-        c1: float = None,
-        c2: float = None,
-        c3: float = None,
-        c4: float = None,
-        f_total: float = None,
+        nominalPowerRate: float = 1000,
+        nominalAirFlowRate: float = 1.0,
+        c1: float = 0,
+        c2: float = 0.8,
+        c3: float = 0.2,
+        c4: float = 0.0,
+        f_total: float = 0.9,
         **kwargs,
     ):
         """

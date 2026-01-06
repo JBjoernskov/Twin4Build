@@ -86,12 +86,12 @@ class AirToAirHeatRecoverySystem(core.System):
 
     def __init__(
         self,
-        eps_75_h=None,
-        eps_100_h=None,
-        eps_75_c=None,
-        eps_100_c=None,
-        primaryAirFlowRateMax=None,
-        secondaryAirFlowRateMax=None,
+        eps_75_h=0.86,
+        eps_100_h=0.8,
+        eps_75_c=0.86,
+        eps_100_c=0.8,
+        primaryAirFlowRateMax=1.0,
+        secondaryAirFlowRateMax=1.0,
         **kwargs,
     ):
         super().__init__(**kwargs)
