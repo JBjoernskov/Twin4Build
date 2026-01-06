@@ -122,7 +122,7 @@ class SupplyFlowJunctionSystem(core.System):
     def setup_variable_inputs(self):
         if self._manual_setup_n_input_ports == False:
             #Assert that the number of input ports is at least 1
-            connection_point = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateOut"]
+            connection_point = [cp for cp in self.connects_at if cp.input_port == "airFlowRateOut"]
             if len(connection_point) == 0:
                 raise ValueError("No input port found for airFlowRateOut")
             n_input_ports = len(connection_point[0].connects_system_through)

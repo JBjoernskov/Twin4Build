@@ -203,8 +203,8 @@ class Simulator:
                 connected_component = connection.connects_system
                 input_port_index = connection_point.input_port_index[connection]
                 output_port_index = connection_point.output_port_index[connection]
-                component.input[connection_point.inputPort].set(
-                    connected_component.output[connection.outputPort].get(
+                component.input[connection_point.input_port].set(
+                    connected_component.output[connection.output_port].get(
                         index=output_port_index
                     ),
                     step_index=step_index,
@@ -213,13 +213,13 @@ class Simulator:
 
                 # Actually, we HAVE to check for nans because it breaks jacobian calculation in optimizer will include nans which breaks scipy solver.
                 if torch.any(
-                    torch.isnan(component.input[connection_point.inputPort].get())
+                    torch.isnan(component.input[connection_point.input_port].get())
                 ):
                     print(
-                        f"Component input: {component.input[connection_point.inputPort].get()}"
+                        f"Component input: {component.input[connection_point.input_port].get()}"
                     )
                     raise ValueError(
-                        f"Input {connection_point.inputPort} of component {component.id} is NaN"
+                        f"Input {connection_point.input_port} of component {component.id} is NaN"
                     )
 
     @staticmethod

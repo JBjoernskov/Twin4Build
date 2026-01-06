@@ -95,14 +95,14 @@ class ReturnFlowJunctionSystem(core.System):
     def setup_variable_inputs(self):
 
         #Check that the number of airFlowRateIn and airTemperatureIn are the same
-        connection_point_airFlowRateIn = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateIn"]
-        connection_point_airTemperatureIn = [cp for cp in self.connects_at if cp.inputPort == "airTemperatureIn"]
+        connection_point_airFlowRateIn = [cp for cp in self.connects_at if cp.input_port == "airFlowRateIn"]
+        connection_point_airTemperatureIn = [cp for cp in self.connects_at if cp.input_port == "airTemperatureIn"]
         if len(connection_point_airFlowRateIn) != len(connection_point_airTemperatureIn):
             raise ValueError("The number of airFlowRateIn and airTemperatureIn must be the same")
         
         if self._manual_setup_n_input_ports == False:
             #Assert that the number of input ports is at least 1
-            connection_point = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateIn"]
+            connection_point = [cp for cp in self.connects_at if cp.input_port == "airFlowRateIn"]
             if len(connection_point) == 0:
                 raise ValueError("No input port found for airFlowRateIn")
             n_input_ports = len(connection_point[0].connects_system_through)

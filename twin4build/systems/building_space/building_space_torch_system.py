@@ -153,7 +153,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
         # Find if boundary temperature is set as input
         connection_point = [
-            cp for cp in self.connects_at if cp.inputPort == "boundaryTemperature"
+            cp for cp in self.connects_at if cp.input_port == "boundaryTemperature"
         ]
         n_boundary_temperature = (
             len(connection_point[0].connects_system_through) if connection_point else 0
@@ -165,7 +165,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
         # Find number of adjacent zones
         connection_point = [
-            cp for cp in self.connects_at if cp.inputPort == "adjacentZoneTemperature"
+            cp for cp in self.connects_at if cp.input_port == "adjacentZoneTemperature"
         ]
         n_adjacent_zones = (
             len(connection_point[0].connects_system_through) if connection_point else 0
@@ -232,13 +232,12 @@ def saref_signature_pattern_sensor():
     node1 = Node(cls=core.namespace.S4BLDG.Damper)  # return damper
     node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
     node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
-    node5 = Node(cls=core.namespace.S4BLDG.Schedule)  # return valve
+    node5 = Node(cls=core.namespace.S4BLDG.Schedule)
     node6 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
     node7 = Node(cls=core.namespace.SAREF.Sensor)
     node8 = Node(cls=core.namespace.SAREF.Temperature)
-    # node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
     sp = SignaturePattern(
-        id="building_space_signature_pattern",
+        id="building_space_signature_pattern_sensor",
     )
 
     sp.add_triple(
@@ -375,11 +374,8 @@ def brick_signature_pattern():  # Fits to site A
     )  # TODO: 'space' should be 'Office', but the site b ttl file has a bug
     damper_position_sensor = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
     weather_station = Node(cls=core.namespace.BRICK.Weather_Station)  # outdoor temperature sensor
-    # node7 = Node(cls=core.namespace.BRICK.AHU) # For site A only
     solar_radiance_sensor = Node(cls=core.namespace.BRICK.Solar_Radiance_Sensor)
     outside_air_temperature_sensor = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    # node9 = Node(cls=core.namespace.BRICK.
-
     hvac_equipment = Node(cls=core.namespace.BRICK.HVAC_Equipment) #can be almost anything
     damper = Node(cls=core.namespace.BRICK.Damper)
 
@@ -391,51 +387,31 @@ def brick_signature_pattern():  # Fits to site A
     )
 
     sp.add_triple(
-        MultiPath(subject=ahu, object=space, predicate=feeds) & NoExactRule(subject=hvac_equipment, object=damper, predicate=feeds)
-    )
-    # sp.add_triple(
-    #     Exact(subject=node1, object=node3, predicate=core.namespace.BRICK.feeds)
-    # )
-    sp.add_triple(
-        Optional_(subject=space, object=damper_position_sensor, predicate=core.namespace.BRICK.hasPoint)
-    )
-
-    sp.add_triple(
-        Exact(subject=weather_station, object=solar_radiance_sensor, predicate=core.namespace.BRICK.hasPoint)
-    )
-    sp.add_triple(
-        Exact(subject=weather_station, object=outside_air_temperature_sensor, predicate=core.namespace.BRICK.hasPoint)
+        MultiPath(subject=ahu, object=space, predicate=feeds) #& NoExactRule(subject=hvac_equipment, object=damper, predicate=feeds)
     )
 
     # sp.add_triple(
-    #     SinglePath(subject=node1, object=node3, predicate=core.namespace.BRICK.feeds)
-    # )
-    # sp.add_triple(
-    #     Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
-    # )
-    # sp.add_triple(
-    #     Exact(subject=node7, predicate=core.namespace.BRICK.hasPart, object=node0)
-    # )
-    # sp.add_triple(
-    #     Exact(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
-    # )
-    # sp.add_triple(
-    #     Exact(subject=node5, object=node3, predicate=core.namespace.BRICK.isPointOf)
+    #     Optional_(subject=space, object=damper_position_sensor, predicate=core.namespace.BRICK.hasPoint)
     # )
 
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
+    # sp.add_triple(
+    #     Exact(subject=weather_station, object=solar_radiance_sensor, predicate=core.namespace.BRICK.hasPoint)
+    # )
+    # sp.add_triple(
+    #     Exact(subject=weather_station, object=outside_air_temperature_sensor, predicate=core.namespace.BRICK.hasPoint)
+    # )
 
-    # Optional
-    # heatGain
-    # numberOfPeople
 
-    sp.add_input("supplyAirFlowRate", ahu, "airFlowRate")
-    sp.add_input("exhaustAirFlowRate", ahu, "airFlowRate")
-    # sp.add_input("numberOfPeople", node5, "measuredValue")
-    sp.add_input("outdoorTemperature", weather_station, "measuredValue")
-    # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
-    sp.add_input("globalIrradiation", weather_station, "globalIrradiation")
-    sp.add_input("supplyAirTemperature", ahu)
+    # sp.add_connection(ahu, "supplyAirFlowRate", "supplyAirFlowRate")
+    # sp.add_connection(ahu, "exhaustAirFlowRate", "exhaustAirFlowRate")
+    # # sp.add_input("numberOfPeople", node5, "measuredValue")
+    # sp.add_connection(weather_station, "measuredValue", "outdoorTemperature")
+    # # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
+    # sp.add_connection(weather_station, "globalIrradiation", "globalIrradiation")
+    # sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
+
+
+
 
     # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
     sp.add_modeled_node(space)
