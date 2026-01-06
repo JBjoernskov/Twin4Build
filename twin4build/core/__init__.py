@@ -65,7 +65,7 @@ class namespace:
 class ontology:
     FSO = "https://alikucukavci.github.io/FSO/fso.ttl"
     SAREF = "https://saref.etsi.org/core/v3.1.1/"
-    S4BLDG = "https://saref.etsi.org/saref4bldg/"
+    S4BLDG = "https://saref.etsi.org/saref4bldg/v1.1.2/"
     S4SYST = "https://saref.etsi.org/saref4syst/"
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     T4B = "http://twin4build.org/"
