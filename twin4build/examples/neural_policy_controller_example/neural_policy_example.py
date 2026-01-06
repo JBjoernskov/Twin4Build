@@ -123,7 +123,7 @@ def insert_neural_policy_in_fcn(
         found = False
         for connection_point in receiving_component.connectsAt:
             if (
-                connection_point.inputPort
+                connection_point.input_port
                 == input_output_dictionary["output"][output_component_key]["signal_key"]
             ):
                 # Remove the connection(s) to the receiving component
@@ -136,8 +136,8 @@ def insert_neural_policy_in_fcn(
                         self.remove_connection(
                             sender_component,
                             receiving_component,
-                            incoming_connection.outputPort,
-                            connection_point.inputPort,
+                            incoming_connection.output_port,
+                            connection_point.input_port,
                         )
                 found = True
                 break
