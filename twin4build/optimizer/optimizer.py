@@ -1372,7 +1372,6 @@ class Optimizer:
             torch.Tensor: Jacobian matrix.
         """
         self.jac = torch.func.jacrev(self.__obj_ad, argnums=0)(theta)
-        print("JACOBIAN: ", self.jac)
         return self.jac
 
     def _jac_ad(self, theta: torch.Tensor) -> torch.Tensor:

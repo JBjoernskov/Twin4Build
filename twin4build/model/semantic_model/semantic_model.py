@@ -28,7 +28,7 @@ from rdflib.tools.rdf2dot import rdf2dot
 import twin4build.core as core
 from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
+from twin4build.utils.print_progress import LOGGER, autoreset_print
 from twin4build.utils.uppath import uppath
 
 DYNAMIC_PARSING = True
@@ -1249,7 +1249,7 @@ class SemanticModel:
             dir_conf: Directory configuration for file storage
         """
         if verbose is not None:
-            PRINTPROGRESS.verbose = verbose
+            LOGGER.verbose = verbose
 
         self.id = id
         self.rdf_file = rdf_file
@@ -1392,7 +1392,7 @@ class SemanticModel:
         # print(f"[DEBUG parse_namespaces] Already parsed: {self.parsed_namespaces}")
         # print(f"[DEBUG parse_namespaces] Already failed: {self.error_namespaces}")
 
-        # PRINTPROGRESS.verbose = 0 # TODO: Remove this
+        # LOGGER.verbose = 0 # TODO: Remove this
 
         overall_success = True
 
@@ -1410,64 +1410,69 @@ class SemanticModel:
 
             success = False
 
-            PRINTPROGRESS(f"Parsing namespace: {prefix.upper()} ({uri})")
-            PRINTPROGRESS.add_level()
+            LOGGER.info("Parsing namespace: %s (%s)", prefix.upper(), uri)
+            LOGGER.add_level()
 
             # First, try to use fallback from core.ontology
             if hasattr(core.ontology, prefix.upper()):
                 fallback_ontology_uri = getattr(core.ontology, prefix.upper())
-                PRINTPROGRESS(
-                    f"Attempting to parse namespace from core.ontology using URI: {fallback_ontology_uri}"
+                LOGGER.info(
+                    "Attempting to parse namespace from core.ontology using URI: %s", fallback_ontology_uri
                 )
                 try:
                     parse_wrapper(self._ontology_graph, source=fallback_ontology_uri)
                     self.parsed_namespaces.add(uri)
-                    status = "[OK]"
+                    LOGGER.ok(
+                    "Attempting to parse namespace from core.ontology using URI: %s", fallback_ontology_uri,
+                    change_status=True,
+                    )
                     success = True
                 except Exception as e:
                     status = "[ERROR]"
                     success = False
-                    PRINTPROGRESS.add_level()
-                    PRINTPROGRESS(f"Error: {str(e)}", status=status)
-                    PRINTPROGRESS.remove_level()
-                PRINTPROGRESS(
+                    LOGGER.add_level()
+                    LOGGER.error("Error: %s", str(e))
+                    LOGGER.remove_level()
+                    LOGGER.error(
                     f"Attempting to parse namespace from core.ontology using URI: {fallback_ontology_uri}",
-                    status=status,
                     change_status=True,
-                )
+                    )
 
             # If no fallback or fallback failed, try parsing namespace directly
             if not success:
-                PRINTPROGRESS(
+                LOGGER.info(
                     f"Attempting to parse namespace directly using URI: {uri}"
                 )
                 try:
                     parse_wrapper(self._ontology_graph, source=namespace)
                     self.parsed_namespaces.add(uri)
-                    status = "[OK]"
                     success = True
                 except HTTPError as http_err:
-                    status = "[ERROR]"
                     success = False
-                    PRINTPROGRESS.add_level()
-                    PRINTPROGRESS(f"HTTPError: {str(http_err)}", status=status)
-                    PRINTPROGRESS(
+                    LOGGER.add_level()
+                    LOGGER.error("HTTPError: %s", str(http_err))
+                    LOGGER.error(
                         f"Sometimes this error occurs when the ontology is not available at the same address as the namespace.",
-                        status=status,
                     )
-                    PRINTPROGRESS.remove_level()
+                    LOGGER.remove_level()
 
                 except Exception as e:
-                    status = "[ERROR]"
                     success = False
-                    PRINTPROGRESS.add_level()
-                    PRINTPROGRESS(f"Error: {str(e)}", status=status)
-                    PRINTPROGRESS.remove_level()
-                PRINTPROGRESS(
-                    f"Attempting to parse namespace directly using URI: {uri}",
-                    status=status,
+                    LOGGER.add_level()
+                    LOGGER.error("Error: %s", str(e))
+                    LOGGER.remove_level()
+
+                if success:
+                    LOGGER.ok(
+                    "Attempting to parse namespace directly using URI: %s", uri,
                     change_status=True,
-                )
+                    )
+                else:
+                    LOGGER.error(
+                        "Attempting to parse namespace directly using URI: %s", uri,
+                        change_status=True,
+                    )
+                    LOGGER.remove_level()
 
             # If both methods failed, add to error namespaces
             if not success:
@@ -1476,56 +1481,14 @@ class SemanticModel:
 
             overall_success = overall_success and success
 
-            PRINTPROGRESS(
-                f"Parsing namespace: {prefix.upper()} ({uri})",
-                status=status,
-                change_status=True,
-            )
-            PRINTPROGRESS.remove_level()
+            if not overall_success:
+                LOGGER.error("Parsing namespace: %s (%s)", prefix.upper(), uri, change_status=True)
+            else:
+                LOGGER.ok("Parsing namespace: %s (%s)", prefix.upper(), uri, change_status=True)
+            LOGGER.remove_level()
 
-        # print(f"[DEBUG parse_namespaces] ✓ Returning True - all namespaces processed")
         return overall_success
 
-    # def _handle_namespace_fallback(self, prefix, namespace):
-    #     """Handle fallback for namespace parsing failures
-
-    #     This method tries to find and parse fallback ontology URIs when the primary
-    #     namespace URI fails to parse.
-
-    #     Note: This method is deprecated and kept for backward compatibility.
-    #     The fallback logic has been moved directly into parse_namespaces.
-    #     """
-    #     success = False
-    #     uri = str(namespace)
-    #     if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
-    #         # Check if we have a fallback namespace in core.ontologies
-    #         if hasattr(core.ontology, prefix.upper()):
-    #             fallback_ontology_uri = getattr(core.ontology, prefix.upper())
-    #             PRINTPROGRESS(f"Trying fallback namespace for {prefix.upper()}")
-    #             PRINTPROGRESS.add_level()
-    #             PRINTPROGRESS(f"Found namespace in core.ontology fallback: {fallback_ontology_uri}")
-    #             try:
-    #                 parse_wrapper(self._ontology_graph, source=fallback_ontology_uri)
-    #                 self.parsed_namespaces.add(str(namespace))
-    #                 # self.namespaces[prefix.upper()] = namespace
-    #                 # self.ontologies[prefix.upper()] = fallback_ontology_uri
-    #                 # setattr(
-    #                 #     self, prefix.upper(), self.namespaces[prefix.upper()]
-    #                 # )
-    #                 PRINTPROGRESS(f"Successfully parsed fallback namespace", status="[OK]")
-    #                 PRINTPROGRESS.remove_level()
-    #                 success = True
-    #             except Exception as e:
-    #                 # If no fallback or fallback failed, add to error namespaces
-    #                 self.error_namespaces.add(uri)
-    #                 PRINTPROGRESS(f"Fallback namespace also failed: {str(e)}", status="[WARNING]")
-    #             PRINTPROGRESS.remove_level()
-
-    #         else:
-    #             # If no fallback or fallback failed, add to error namespaces
-    #             self.error_namespaces.add(uri)
-    #             PRINTPROGRESS(f"No fallback namespace found for {prefix.upper()}")
-    #     return success
 
     def get_dir(
         self, folder_list: List[str] = None, filename: Optional[str] = None
@@ -2658,8 +2621,8 @@ class SemanticModel:
     def parse_spreadsheet(self, spreadsheet, mappings_dir=None):
         """Parse spreadsheet into RDF graph using brickify tool"""
 
-        PRINTPROGRESS.add_level()
-        PRINTPROGRESS("Parsing spreadsheet", status="")
+        LOGGER.add_level()
+        LOGGER.info("Parsing spreadsheet")
 
         # Overwrite typer progress bar to prevent it from printing to the console.
         class Overwriter:
@@ -2769,8 +2732,8 @@ class SemanticModel:
                 except Exception as e:
                     print(f"Error processing sheet {sheet}: {e}")
 
-        PRINTPROGRESS("Parsing spreadsheet", status="[OK]", change_status=True)
-        PRINTPROGRESS.remove_level()
+        LOGGER.ok("Parsing spreadsheet", change_status=True)
+        LOGGER.remove_level()
         return instance_graph, ontology_graph
 
     def reason(self, namespaces=None):
@@ -2795,9 +2758,9 @@ class SemanticModel:
         # print("REASON() METHOD CALLED", file=sys.stderr)
         # print("=" * 80, file=sys.stderr)
 
-        # print(f"CURSES MODE: {PRINTPROGRESS._curses_mode}", file=sys.stderr)
-        PRINTPROGRESS("Reasoning", status="")
-        PRINTPROGRESS.add_level()
+        # print(f"CURSES MODE: {LOGGER._curses_mode}", file=sys.stderr)
+        LOGGER.info("Reasoning")
+        LOGGER.add_level()
 
         if namespaces is None:
             # Convert Namespace objects to URI strings for parse_namespaces
@@ -2824,7 +2787,7 @@ class SemanticModel:
                 new_triples.add(new_triple)
 
         n_triples = len(new_triples)
-        PRINTPROGRESS(f"Added number of inverse triples: {n_triples}")
+        LOGGER.info("Added number of inverse triples: %s", n_triples)
 
         # Handle symmetric properties
         symmetric_props = set(
@@ -2836,7 +2799,7 @@ class SemanticModel:
             for subj, _, obj in self._instance_graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
 
-        PRINTPROGRESS(
+        LOGGER.info(
             f"Added number of symmetric triples: {len(new_triples)-n_triples}"
         )
         n_triples = len(new_triples)
@@ -2856,8 +2819,8 @@ class SemanticModel:
                     if o1 == s2:  # Found a chain
                         new_triples.add((s1, prop, o2))
 
-        PRINTPROGRESS(
-            f"Added number of transitive triples: {len(new_triples)-n_triples}"
+        LOGGER.info(
+            "Added number of transitive triples: %d", len(new_triples)-n_triples
         )
         n_triples = len(new_triples)
 
@@ -2875,7 +2838,7 @@ class SemanticModel:
                 for instance in self._instance_graph.subjects(RDF.type, class_uri):
                     new_triples.add((instance, RDF.type, superclass_type.uri))
 
-        PRINTPROGRESS(f"Added number of subclass triples: {len(new_triples)-n_triples}")
+        LOGGER.info("Added number of subclass triples: %d", len(new_triples)-n_triples)
         n_triples = len(new_triples)
 
         # Handle equivalent classes (owl:equivalentClass)
@@ -2895,8 +2858,8 @@ class SemanticModel:
                 if equiv_class != class_uri:
                     new_triples.add((instance, RDF.type, equiv_class))
 
-        PRINTPROGRESS(
-            f"Added number of equivalent class triples: {len(new_triples)-n_triples}"
+        LOGGER.info(
+            "Added number of equivalent class triples: %d", len(new_triples)-n_triples
         )
         n_triples = len(new_triples)
 
@@ -2913,8 +2876,8 @@ class SemanticModel:
                 if equiv_pred != pred:
                     new_triples.add((subj, equiv_pred, obj))
 
-        PRINTPROGRESS(
-            f"Added number of equivalent property triples: {len(new_triples)-n_triples}"
+        LOGGER.info(
+            "Added number of equivalent property triples: %d", len(new_triples)-n_triples
         )
         n_triples = len(new_triples)
 
@@ -2983,8 +2946,8 @@ class SemanticModel:
         for s, p, o in new_triples:
             self._instance_graph.add((s, p, o))
 
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Reasoning", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Reasoning", change_status=True)
 
     def serialize(
         self,

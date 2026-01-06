@@ -13,7 +13,7 @@ from prettytable import PrettyTable
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
+from twin4build.utils.print_progress import LOGGER, autoreset_print
 
 
 @autoreset_print
@@ -314,8 +314,8 @@ class Model:
         self,
         sender_component: "core.System",
         receiver_component: "core.System",
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
         output_port_index: [int, torch.Tensor] = None,
         input_port_index: [int, torch.Tensor] = None,
     ) -> None:
@@ -325,8 +325,8 @@ class Model:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
@@ -334,8 +334,8 @@ class Model:
         self.simulation_model.add_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
-            outputPort=outputPort,
-            inputPort=inputPort,
+            output_port=output_port,
+            input_port=input_port,
             output_port_index=output_port_index,
             input_port_index=input_port_index,
         )
@@ -344,8 +344,8 @@ class Model:
         self,
         sender_component: "core.System",
         receiver_component: "core.System",
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
     ) -> None:
         """
         Remove a connection between two components in the system.
@@ -353,8 +353,8 @@ class Model:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
 
         Raises:
             ValueError: If the specified connection does not exist.
@@ -362,8 +362,8 @@ class Model:
         self.simulation_model.remove_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
-            outputPort=outputPort,
-            inputPort=inputPort,
+            output_port=output_port,
+            input_port=input_port,
         )
 
     def get_component_by_class(
@@ -634,15 +634,15 @@ class Model:
         #     self.reset()
 
         if verbose is not None:
-            PRINTPROGRESS.verbose = verbose
-        PRINTPROGRESS.logfile = logfile
+            LOGGER.verbose = verbose
+        LOGGER.logfile = logfile
 
-        PRINTPROGRESS("Loading model", status="")
-        PRINTPROGRESS.add_level()
+        LOGGER("Loading model", status="")
+        LOGGER.add_level()
         # self.add_outdoor_environment()
         if semantic_model_filename is not None:
             apply_translator = True
-            PRINTPROGRESS("Parsing semantic model", status="")
+            LOGGER("Parsing semantic model", status="")
             self._semantic_model = core.SemanticModel(
                 rdf_file=semantic_model_filename,
                 namespaces={"T4B": core.namespace.T4B},
@@ -650,17 +650,17 @@ class Model:
                 id=f"{self._id}_semantic_model",
             )
             # self._semantic_model.reason()
-            PRINTPROGRESS("Parsing semantic model", status="[OK]", change_status=True)
+            LOGGER.ok("Parsing semantic model", change_status=True)
             if draw_semantic_model:
                 app_path = shutil.which("dot")
                 assert (
                     app_path is not None
                 ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
-                PRINTPROGRESS("Drawing semantic model", status="")
-                PRINTPROGRESS.add_level()
+                LOGGER("Drawing semantic model", status="")
+                LOGGER.add_level()
                 self._semantic_model.visualize()
-                PRINTPROGRESS.remove_level()
-                PRINTPROGRESS(
+                LOGGER.remove_level()
+                LOGGER(
                     "Drawing semantic model", status="[OK]", change_status=True
                 )
 
@@ -690,16 +690,16 @@ class Model:
                 app_path is not None
             ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
 
-            PRINTPROGRESS("Drawing simulation model", status="")
-            PRINTPROGRESS.add_level()
+            LOGGER("Drawing simulation model", status="")
+            LOGGER.add_level()
             self._simulation_model.visualize()
-            PRINTPROGRESS("Drawing simulation model", status="[OK]", change_status=True)
-            PRINTPROGRESS.remove_level()
+            LOGGER.ok("Drawing simulation model", change_status=True)
+            LOGGER.remove_level()
 
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Loading model", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Loading model", change_status=True)
 
-        # PRINTPROGRESS.reset()
+        # LOGGER.reset()
 
     def fcn(self) -> None:
         """

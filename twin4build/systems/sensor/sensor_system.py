@@ -13,7 +13,7 @@ from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
 from twin4build.utils.deprecation import deprecate_args
-from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
+from twin4build.utils.print_progress import LOGGER, autoreset_print
 
 
 def get_signature_pattern_input():
@@ -798,8 +798,8 @@ class SensorSystem(core.System):
             model (Optional[Any]): Model object (not used in this class).
         """
 
-        self.validate(PRINTPROGRESS)
-        self.validate_connections(PRINTPROGRESS)
+        self.validate(LOGGER)
+        self.validate_connections(LOGGER)
 
         if self.use_spreadsheet or self.use_database or self.use_df:
             if self.use_df:

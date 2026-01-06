@@ -29,7 +29,7 @@ from twin4build.utils.dict_utils import (
 )
 from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
+from twin4build.utils.print_progress import LOGGER, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
@@ -543,8 +543,8 @@ class SimulationModel:
                 self.remove_connection(
                     connection.connects_system,
                     component,
-                    connection.outputPort,
-                    connection_point.inputPort,
+                    connection.output_port,
+                    connection_point.input_port,
                 )
 
         # Connection from component
@@ -553,8 +553,8 @@ class SimulationModel:
                 self.remove_connection(
                     component,
                     connection_point.connection_point_of,
-                    connection.outputPort,
-                    connection_point.inputPort,
+                    connection.output_port,
+                    connection_point.input_port,
                 )
 
         if components is None:
@@ -563,12 +563,55 @@ class SimulationModel:
         del components[component.id]
         self._is_loaded = False
 
+    @staticmethod
+    def _resolve_port_index(
+        port_index: Optional[Union[int, torch.Tensor]],
+        this_port: Union[tps.Scalar, tps.Vector],
+        other_port: Union[tps.Scalar, tps.Vector],
+        this_port_name: str,
+        other_port_name: str,
+    ) -> Optional[Union[int, torch.Tensor]]:
+        """
+        Validate and resolve a port index for connections.
+        
+        Returns the appropriate index value: the provided index if valid,
+        a generated range for vector-to-vector mappings, or None for scalars.
+        """
+        if port_index is not None:
+            assert isinstance(this_port, tps.Vector), (
+                f"If {this_port_name} port index is set, {this_port_name} port must be a vector"
+            )
+            assert isinstance(port_index, (torch.Tensor, int)), (
+                f"If {this_port_name} port index is set, it must either be an integer or a torch.Tensor"
+            )
+            if isinstance(port_index, torch.Tensor):
+                assert isinstance(other_port, tps.Vector), (
+                    f"If {this_port_name} port index is set and is a torch.Tensor, "
+                    f"{other_port_name} port must be a vector"
+                )
+            else:
+                assert isinstance(other_port, tps.Scalar), (
+                    f"If {this_port_name} port index is set and is an integer, "
+                    f"{other_port_name} port must be a scalar"
+                )
+            return port_index
+        else:
+            if isinstance(other_port, tps.Vector) and isinstance(this_port, tps.Vector):
+                return torch.arange(this_port.size)  # Map directly
+            else:
+                assert isinstance(this_port, tps.Scalar), (
+                    f"If {this_port_name} port index is not set, both output and input ports "
+                    f"must be scalars. Got {other_port_name} port type {other_port.__class__.__name__} "
+                    f"and {this_port_name} port type {this_port.__class__.__name__}"
+                )
+                return None
+
     def add_connection(
         self,
         sender_component: core.System,
         receiver_component: core.System,
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
         output_port_index: [int, torch.Tensor] = None,
         input_port_index: [int, torch.Tensor] = None,
         components: Dict[str, core.System] = None,
@@ -579,8 +622,8 @@ class SimulationModel:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
@@ -592,31 +635,31 @@ class SimulationModel:
         self.add_component(receiver_component, components=components)
 
         l = [f"'{k}'" for k in list(sender_component.output.keys())]
-        message = f"The property '{outputPort}' is not a valid output for the component '{sender_component.id}' of type '{type(sender_component)}'.\nThe valid output properties are:\n{' '.join(l)}"
-        assert outputPort in (
+        message = f"The property '{output_port}' is not a valid output for the component '{sender_component.id}' of type '{type(sender_component)}'.\nThe valid output properties are:\n{' '.join(l)}"
+        assert output_port in (
             set(sender_component.output.keys()) | set(sender_component.output.keys())
         ), message  # Before we joined input and output sets
 
         l = [f"'{k}'" for k in list(receiver_component.input.keys())]
-        message = f"The property '{inputPort}' is not a valid input for the component '{receiver_component.id}' of type '{type(receiver_component)}'.\nThe valid input properties are:\n{' '.join(l)}"
-        assert inputPort in receiver_component.input.keys(), message
+        message = f"The property '{input_port}' is not a valid input for the component '{receiver_component.id}' of type '{type(receiver_component)}'.\nThe valid input properties are:\n{' '.join(l)}"
+        assert input_port in receiver_component.input.keys(), message
 
         found_connection_point = False
         # Check if there already is a connectionPoint with the same receiver_property_name
         for receiver_component_connection_point in receiver_component.connects_at:
-            if receiver_component_connection_point.inputPort == inputPort:
+            if receiver_component_connection_point.input_port == input_port:
                 found_connection_point = True
                 break
 
         found_connection = False
         # Check if there already is a connection with the same sender_property_name
         for sender_obj_connection in sender_component.connected_through:
-            if sender_obj_connection.outputPort == outputPort:
+            if sender_obj_connection.output_port == output_port:
                 found_connection = True
                 break
 
         if found_connection_point and found_connection:
-            message = f'core.Connection between "{sender_component.id}" and "{receiver_component.id}" with the properties "{outputPort}" and "{inputPort}" already exists.'
+            message = f'core.Connection between "{sender_component.id}" and "{receiver_component.id}" with the properties "{output_port}" and "{input_port}" already exists.'
             assert (
                 receiver_component_connection_point
                 not in sender_obj_connection.connects_system_at
@@ -624,13 +667,13 @@ class SimulationModel:
 
         if found_connection == False:
             sender_obj_connection = core.Connection(
-                connects_system=sender_component, outputPort=outputPort
+                connects_system=sender_component, output_port=output_port
             )
             sender_component.connected_through.append(sender_obj_connection)
 
         if found_connection_point == False:
             receiver_component_connection_point = core.ConnectionPoint(
-                connection_point_of=receiver_component, inputPort=inputPort
+                connection_point_of=receiver_component, input_port=input_port
             )
             receiver_component.connects_at.append(receiver_component_connection_point)
 
@@ -641,76 +684,23 @@ class SimulationModel:
             sender_obj_connection
         )  # if sender_obj_connection not in receiver_component_connection_point.connects_system_through else None
 
-        if input_port_index is not None:
-            assert isinstance(
-                receiver_component.input[inputPort], tps.Vector
-            ), "If input port index is set, input port must be a vector"
-            assert isinstance(input_port_index, torch.Tensor) or isinstance(
-                input_port_index, int
-            ), "If input port index is set, it must either be an integer or a torch.Tensor"
+        input_idx = self._resolve_port_index(
+            input_port_index,
+            receiver_component.input[input_port],
+            sender_component.output[output_port],
+            "input",
+            "output",
+        )
+        receiver_component_connection_point.set_input_port_index(sender_obj_connection, input_idx)
 
-            if isinstance(input_port_index, torch.Tensor):
-                assert isinstance(
-                    sender_component.output[outputPort], tps.Vector
-                ), "If input port index is set and is a torch.Tensor, output port must be a vector"
-            else:
-                assert isinstance(
-                    sender_component.output[outputPort], tps.Scalar
-                ), "If input port index is set and is an integer, output port must be a scalar"
-            receiver_component_connection_point.set_input_port_index(
-                sender_obj_connection, input_port_index
-            )
-        else:
-            if isinstance(
-                sender_component.output[outputPort], tps.Vector
-            ) and isinstance(receiver_component.input[inputPort], tps.Vector):
-                receiver_component_connection_point.set_input_port_index(
-                    sender_obj_connection,
-                    torch.arange(receiver_component.input[inputPort].size),
-                )  # Map directly
-            else:
-                assert isinstance(
-                    receiver_component.input[inputPort], tps.Scalar
-                ), f"If input port index is not set, both output and input ports must be scalars. Got output port type {sender_component.output[outputPort].__class__.__name__} and input port type {receiver_component.input[inputPort].__class__.__name__}"
-                receiver_component_connection_point.set_input_port_index(
-                    sender_obj_connection, None
-                )
-
-        if output_port_index is not None:
-            assert isinstance(
-                sender_component.output[outputPort], tps.Vector
-            ), "If output port index is set, output port must be a vector"
-            assert isinstance(output_port_index, torch.Tensor) or isinstance(
-                output_port_index, int
-            ), "If output port index is set, it must either be an integer or a torch.Tensor"
-
-            if isinstance(output_port_index, torch.Tensor):
-                assert isinstance(
-                    receiver_component.input[inputPort], tps.Vector
-                ), "If output port index is set and is a torch.Tensor, input port must be a vector"
-            else:
-                assert isinstance(
-                    receiver_component.input[inputPort], tps.Scalar
-                ), "If output port index is set and is an integer, input port must be a scalar"
-
-            receiver_component_connection_point.set_output_port_index(
-                sender_obj_connection, output_port_index
-            )
-        else:
-            if isinstance(
-                receiver_component.input[inputPort], tps.Vector
-            ) and isinstance(sender_component.output[outputPort], tps.Vector):
-                receiver_component_connection_point.set_output_port_index(
-                    sender_obj_connection,
-                    torch.arange(sender_component.output[outputPort].size),
-                )  # Map directly
-            else:
-                assert isinstance(
-                    sender_component.output[outputPort], tps.Scalar
-                ), f"If output port index is not set, both output and input ports must be scalars. Got output port type {sender_component.output[outputPort].__class__.__name__} and input port type {receiver_component.input[inputPort].__class__.__name__}"
-                receiver_component_connection_point.set_output_port_index(
-                    sender_obj_connection, None
-                )
+        output_idx = self._resolve_port_index(
+            output_port_index,
+            sender_component.output[output_port],
+            receiver_component.input[input_port],
+            "output",
+            "input",
+        )
+        receiver_component_connection_point.set_output_port_index(sender_obj_connection, output_idx)
 
         if components == self._components:
             sender_component_uri = self._semantic_model.T4B.__getitem__(
@@ -731,10 +721,10 @@ class SimulationModel:
             )
 
             literal_sender_property = Literal(
-                outputPort
+                output_port
             )  # , datatype=core.namespace.XSD.string)
             literal_receiver_property = Literal(
-                inputPort
+                input_port
             )  # , datatype=core.namespace.XSD.string)
 
             # Add the class of the components to the semantic model
@@ -823,12 +813,12 @@ class SimulationModel:
             )
 
             self._semantic_model.instance_graph.add(
-                (connection_uri, core.namespace.T4B.outputPort, literal_sender_property)
+                (connection_uri, core.namespace.T4B.output_port, literal_sender_property)
             )
             self._semantic_model.instance_graph.add(
                 (
                     connection_point_uri,
-                    core.namespace.T4B.inputPort,
+                    core.namespace.T4B.input_port,
                     literal_receiver_property,
                 )
             )
@@ -839,8 +829,8 @@ class SimulationModel:
         self,
         sender_component: core.System,
         receiver_component: core.System,
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
         components: Dict[str, core.System] = None,
     ) -> None:
         """
@@ -860,22 +850,22 @@ class SimulationModel:
 
         sender_component_connection = None
         for connection in sender_component.connected_through:
-            if connection.outputPort == outputPort:
+            if connection.output_port == output_port:
                 sender_component_connection = connection
                 break
         if sender_component_connection is None:
             raise ValueError(
-                f'The sender component "{sender_component.id}" does not have a connection with the property "{outputPort}"'
+                f'The sender component "{sender_component.id}" does not have a connection with the property "{output_port}"'
             )
 
         receiver_component_connection_point = None
         for connection_point in receiver_component.connects_at:
-            if connection_point.inputPort == inputPort:
+            if connection_point.input_port == input_port:
                 receiver_component_connection_point = connection_point
                 break
         if receiver_component_connection_point is None:
             raise ValueError(
-                f'The receiver component "{receiver_component.id}" does not have a connection point with the property "{inputPort}"'
+                f'The receiver component "{receiver_component.id}" does not have a connection point with the property "{input_port}"'
             )
 
         sender_component_connection.connects_system_at.remove(
@@ -910,12 +900,12 @@ class SimulationModel:
 
             literal_sender_property = list(
                 self._semantic_model.instance_graph.objects(
-                    connection_uri, core.namespace.T4B.outputPort
+                    connection_uri, core.namespace.T4B.output_port
                 )
             )
             literal_receiver_property = list(
                 self._semantic_model.instance_graph.objects(
-                    connection_point_uri, core.namespace.T4B.inputPort
+                    connection_point_uri, core.namespace.T4B.input_port
                 )
             )
             assert (
@@ -961,7 +951,7 @@ class SimulationModel:
                 self._semantic_model.instance_graph.remove(
                     (
                         connection_uri,
-                        core.namespace.T4B.outputPort,
+                        core.namespace.T4B.output_port,
                         literal_sender_property,
                     )
                 )
@@ -984,7 +974,7 @@ class SimulationModel:
                 self._semantic_model.instance_graph.remove(
                     (
                         connection_point_uri,
-                        core.namespace.T4B.inputPort,
+                        core.namespace.T4B.input_port,
                         literal_receiver_property,
                     )
                 )
@@ -1323,14 +1313,14 @@ class SimulationModel:
                     connected_component = connection.connects_system
                     if (
                         isinstance(
-                            component.input[connection_point.inputPort], tps.Vector
+                            component.input[connection_point.input_port], tps.Vector
                         )
                         and self._translator is not None
                         and (
                             component,
                             connected_component,
-                            connection.outputPort,
-                            connection_point.inputPort,
+                            connection.output_port,
+                            connection_point.input_port,
                         )
                         in self._translator.E_conn_to_sp_group
                     ):
@@ -1339,8 +1329,8 @@ class SimulationModel:
                             (
                                 component,
                                 connected_component,
-                                connection.outputPort,
-                                connection_point.inputPort,
+                                connection.output_port,
+                                connection_point.input_port,
                             )
                         ]
                         # Find the group of the connected component
@@ -1359,7 +1349,7 @@ class SimulationModel:
                         group = groups_matched[0]
                         group_hash = hash(group)
 
-                        # component.input[connection_point.inputPort].update(
+                        # component.input[connection_point.input_port].update(
                         #     group_id=group_id
                         # )
 
@@ -1386,10 +1376,10 @@ class SimulationModel:
         """
         Validate the model by checking IDs and connections.
         """
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
 
-        PRINTPROGRESS("Validating components")
-        PRINTPROGRESS.add_level()
+        LOGGER("Validating components")
+        LOGGER.add_level()
         (
             validated_for_simulator_components,
             validated_for_estimator_components,
@@ -1400,15 +1390,15 @@ class SimulationModel:
             and validated_for_estimator_components
             and validated_for_optimizer_components
         ) == False:
-            PRINTPROGRESS(
+            LOGGER(
                 "Validating components", status="[FAILED]", change_status=True
             )
         else:
-            PRINTPROGRESS("Validating components", status="[OK]", change_status=True)
-        PRINTPROGRESS.remove_level()
+            LOGGER.ok("Validating components", change_status=True)
+        LOGGER.remove_level()
 
-        PRINTPROGRESS("Validating connections")
-        PRINTPROGRESS.add_level()
+        LOGGER("Validating connections")
+        LOGGER.add_level()
         (
             validated_for_simulator_connections,
             validated_for_estimator_connections,
@@ -1419,12 +1409,12 @@ class SimulationModel:
             and validated_for_estimator_connections
             and validated_for_optimizer_connections
         ) == False:
-            PRINTPROGRESS(
+            LOGGER(
                 "Validating connections", status="[FAILED]", change_status=True
             )
         else:
-            PRINTPROGRESS("Validating connections", status="[OK]", change_status=True)
-        PRINTPROGRESS.remove_level()
+            LOGGER.ok("Validating connections", change_status=True)
+        LOGGER.remove_level()
 
         self._validated_for_simulator = (
             validated_for_simulator_components and validated_for_simulator_connections
@@ -1441,19 +1431,19 @@ class SimulationModel:
             and self._validated_for_optimizer
         )
 
-        PRINTPROGRESS(
+        LOGGER(
             "Validated for Simulator",
             status="[OK]" if self._validated_for_simulator else "[FAILED]",
         )
-        PRINTPROGRESS(
+        LOGGER(
             "Validated for Estimator",
             status="[OK]" if self._validated_for_estimator else "[FAILED]",
         )
-        PRINTPROGRESS(
+        LOGGER(
             "Validated for Optimizer",
             status="[OK]" if self._validated_for_optimizer else "[FAILED]",
         )
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
         # assert validated, "The model is not valid. See the warnings above."
 
@@ -1475,7 +1465,7 @@ class SimulationModel:
                     validated_for_simulator_,
                     validated_for_estimator_,
                     validated_for_optimizer_,
-                ) = component.validate(PRINTPROGRESS)
+                ) = component.validate(LOGGER)
                 _validated_for_simulator = (
                     _validated_for_simulator and validated_for_simulator_
                 )
@@ -1494,11 +1484,11 @@ class SimulationModel:
                 is_none = [k for k, v in parameters.items() if v is None]
                 if any(is_none):
                     message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing values for the following parameter(s) to enable use of Simulator, and Optimizer:"
-                    PRINTPROGRESS(message, status="[WARNING]")
-                    PRINTPROGRESS.add_level()
+                    LOGGER.warning(message)
+                    LOGGER.add_level()
                     for par in is_none:
-                        PRINTPROGRESS(par)
-                    PRINTPROGRESS.remove_level()
+                        LOGGER(par)
+                    LOGGER.remove_level()
 
                     _validated_for_simulator = False
                     _validated_for_optimizer = False
@@ -1522,7 +1512,7 @@ class SimulationModel:
                         ):  # TODO: Add support for vectors
                             if output.is_leaf == False:
                                 message = f'|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output "{key}" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs.'
-                                PRINTPROGRESS(message, status="[WARNING]")
+                                LOGGER.warning(message)
                                 _validated_for_optimizer = False
 
                             # assert output.is_leaf, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs."
@@ -1535,7 +1525,7 @@ class SimulationModel:
                         ):  # TODO: Add support for vectors
                             if output.is_leaf:
                                 message = f'|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output "{key}" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs.'
-                                PRINTPROGRESS(message, status="[WARNING]")
+                                LOGGER.warning(message)
                                 _validated_for_optimizer = False
                             # assert output.is_leaf==False, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs."
         (
@@ -1577,7 +1567,7 @@ class SimulationModel:
             violated_characters = list(np_id[isvalid == False])
             if not all(isvalid):
                 message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
-                PRINTPROGRESS(message)
+                LOGGER(message)
                 validated = False
         return (validated, validated, validated)
 
@@ -1595,16 +1585,16 @@ class SimulationModel:
             if hasattr(
                 component, "validate_connections"
             ):  # Check if component has validate method
-                validated = component.validate_connections(PRINTPROGRESS)
+                validated = component.validate_connections(LOGGER)
             else:
                 if (
                     len(component.connected_through) == 0
                     and len(component.connects_at) == 0
                 ):
                     message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The component is not connected to any other components."
-                    PRINTPROGRESS(message, status="[WARNING]")
+                    LOGGER.warning(message)
 
-                input_labels = [cp.inputPort for cp in component.connects_at]
+                input_labels = [cp.input_port for cp in component.connects_at]
                 first_input = True
                 for req_input_label in component.input.keys():
                     if (
@@ -1613,13 +1603,13 @@ class SimulationModel:
                     ):
                         if first_input:
                             message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-                            PRINTPROGRESS(message, status="[WARNING]")
+                            LOGGER.warning(message)
                             first_input = False
-                            PRINTPROGRESS.add_level()
-                        PRINTPROGRESS(req_input_label)
+                            LOGGER.add_level()
+                        LOGGER(req_input_label)
                         validated = False
                 if first_input == False:
-                    PRINTPROGRESS.remove_level()
+                    LOGGER.remove_level()
         return (validated, validated, validated)
 
     def _load_parameters(self, force_config_overwrite: bool = False) -> None:
@@ -1631,7 +1621,7 @@ class SimulationModel:
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
         """
 
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
 
         for component in self._components.values():
             assert hasattr(
@@ -1654,15 +1644,15 @@ class SimulationModel:
                 comparison_result = compare_dict_structure(config_, config)
                 if not comparison_result["structures_match"]:
                     message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Config structure mismatch."
-                    PRINTPROGRESS(message, status="[WARNING]")
-                    PRINTPROGRESS.add_level()
+                    LOGGER.warning(message)
+                    LOGGER.add_level()
                     if comparison_result["missing_in_1"]:
                         missing_msg = f"File config has unused parameters: {', '.join(sorted(comparison_result['missing_in_1']))}"
-                        PRINTPROGRESS(missing_msg, status="[WARNING]")
+                        LOGGER.warning(missing_msg)
                     if comparison_result["missing_in_2"]:
                         missing_msg = f"File config is missing the following parameters: {', '.join(sorted(comparison_result['missing_in_2']))}"
-                        PRINTPROGRESS(missing_msg, status="[WARNING]")
-                    PRINTPROGRESS.remove_level()
+                        LOGGER.warning(missing_msg)
+                    LOGGER.remove_level()
 
                 if force_config_overwrite:
                     config_ = merge_dicts(config_, config, prioritize="dict2")
@@ -1676,7 +1666,7 @@ class SimulationModel:
                 with open(filename, "w") as f:
                     json.dump(config_, f, indent=4)
 
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
     def load(
         self,
@@ -1744,25 +1734,25 @@ class SimulationModel:
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
             logfile: Path to the log file.
         """
-        # if not PRINTPROGRESS.is_active:
+        # if not LOGGER.is_active:
         #     reset_PRINTPROGRESS = True
         # else:
         #     reset_PRINTPROGRESS = False
 
         if verbose is not None:
-            PRINTPROGRESS.verbose = verbose
-        PRINTPROGRESS.logfile = logfile
+            LOGGER.verbose = verbose
+        LOGGER.logfile = logfile
 
         if self._is_loaded:
             self._reset()
 
-        PRINTPROGRESS("Loading simulation model")
-        PRINTPROGRESS.add_level()
+        LOGGER("Loading simulation model")
+        LOGGER.add_level()
 
         if rdf_file is not None:
-            PRINTPROGRESS("Loading model from RDF file")
+            LOGGER("Loading model from RDF file")
             self._load_model_from_rdf(rdf_file)
-            PRINTPROGRESS(
+            LOGGER(
                 "Loading model from RDF file", status="[OK]", change_status=True
             )
 
@@ -1770,38 +1760,38 @@ class SimulationModel:
             assert callable(
                 fcn
             ), "The function to be applied during model loading is not callable."
-            PRINTPROGRESS("Applying user defined function")
+            LOGGER("Applying user defined function")
             fcn(self)
-            PRINTPROGRESS(
+            LOGGER(
                 "Applying user defined function", status="[OK]", change_status=True
             )
 
-        PRINTPROGRESS("Prepare for topological sorting")
+        LOGGER("Prepare for topological sorting")
         self._get_components_no_cycles()
-        PRINTPROGRESS(
+        LOGGER(
             "Prepare for topological sorting", status="[OK]", change_status=True
         )
 
-        PRINTPROGRESS("Determining execution order")
+        LOGGER("Determining execution order")
         self._get_execution_order()
-        PRINTPROGRESS("Determining execution order", status="[OK]", change_status=True)
+        LOGGER.ok("Determining execution order", change_status=True)
 
-        PRINTPROGRESS("Loading parameters")
+        LOGGER("Loading parameters")
         self._load_parameters(force_config_overwrite=force_config_overwrite)
-        PRINTPROGRESS("Loading parameters", status="[OK]", change_status=True)
+        LOGGER.ok("Loading parameters", change_status=True)
 
         if validate_model:
-            PRINTPROGRESS("Validating model")
+            LOGGER("Validating model")
             self.validate()
-            PRINTPROGRESS("Validating model", status="[OK]", change_status=True)
+            LOGGER.ok("Validating model", change_status=True)
 
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Loading simulation model", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Loading simulation model", change_status=True)
 
         self._is_loaded = True
 
         # if reset_PRINTPROGRESS:
-        #     PRINTPROGRESS.reset()
+        #     LOGGER.reset()
 
         # if verbose:
         #     print(self)
@@ -1917,8 +1907,8 @@ class SimulationModel:
                     self.add_connection(
                         new_component,
                         new_connected_component,
-                        connection.outputPort,
-                        connection_point.inputPort,
+                        connection.output_port,
+                        connection_point.input_port,
                         output_port_index=connection_point.output_port_index[
                             connection
                         ],
@@ -1934,15 +1924,15 @@ class SimulationModel:
         Create a dictionary of components without cycles using an improved algorithm
         that minimizes the number of edges removed.
         """
-        PRINTPROGRESS.add_level()
-        PRINTPROGRESS("Copying components")
+        LOGGER.add_level()
+        LOGGER("Copying components")
         self._components_no_cycles = self._copy_components()
-        PRINTPROGRESS("Copying components", status="[OK]", change_status=True)
+        LOGGER.ok("Copying components", change_status=True)
         self._required_initialization_connections = []
 
         # Use the improved cycle removal algorithm
         self._remove_cycles()
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
     def _remove_cycles(self) -> None:
         """
@@ -1961,21 +1951,21 @@ class SimulationModel:
         iteration = 0
         max_iterations = 1000  # Safety limit to prevent infinite loops
 
-        PRINTPROGRESS("Detecting cycles")
-        PRINTPROGRESS.add_level()
+        LOGGER.info("Detecting cycles")
+        LOGGER.add_level()
 
         # Calculate all cycles once at the beginning
         cycles = list(self._get_simple_cycles(self._components_no_cycles))
-        PRINTPROGRESS(f"Found {len(cycles)} cycles")
+        LOGGER.info("Found %d cycles", len(cycles))
         if not cycles:
-            PRINTPROGRESS("No cycles found")
-            PRINTPROGRESS.remove_level()
+            LOGGER.info("No cycles found")
+            LOGGER.remove_level()
             return  # No cycles to remove
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Detecting cycles", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Detecting cycles", change_status=True)
 
-        PRINTPROGRESS("Removing cycles")
-        PRINTPROGRESS.add_level()
+        LOGGER.info("Removing cycles")
+        LOGGER.add_level()
         while iteration < max_iterations and cycles:
             iteration += 1
 
@@ -2010,12 +2000,12 @@ class SimulationModel:
             cycles = self._update_cycles_after_edge_removal(cycles, best_edge)
 
         if iteration >= max_iterations:
-            PRINTPROGRESS(
-                "Warning: Cycle removal reached maximum iterations", status="[WARNING]"
+            LOGGER.warning(
+                "Cycle removal reached maximum iterations"
             )
 
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Removing cycles", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Removing cycles", change_status=True)
 
     def _update_cycles_after_edge_removal(self, cycles, removed_edge):
         """
@@ -2070,13 +2060,13 @@ class SimulationModel:
 
         # If multiple edges have the same max count, apply additional criteria
         if len(best_edges) > 1:
-            PRINTPROGRESS(
-                f"Multiple component pairs have the same cycle participation count ({max_cycle_count}):"
+            LOGGER.info(
+                "Multiple component pairs have the same cycle participation count (%d):", max_cycle_count
             )
-            PRINTPROGRESS.add_level()
+            LOGGER.add_level()
             for edge in best_edges:
-                PRINTPROGRESS(f"({edge[0].id}, {edge[1].id})")
-            PRINTPROGRESS.remove_level()
+                LOGGER.info("(%s, %s)", edge[0].id, edge[1].id)
+            LOGGER.remove_level()
 
             # Prefer edges from components with more outgoing connections
             def edge_priority(edge):
@@ -2087,7 +2077,7 @@ class SimulationModel:
 
             best_edges.sort(key=edge_priority, reverse=True)
 
-        PRINTPROGRESS(
+        LOGGER(
             f"Selected component pair: ({best_edges[0][0].id}, {best_edges[0][1].id})"
         )
         return best_edges[0]
@@ -2104,15 +2094,15 @@ class SimulationModel:
             c_from: Source component
             c_to: Target component
         """
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
         # Find and remove all connections from c_from to c_to
         connections_to_remove = []
         for connection in c_from.connected_through:
             for connection_point in connection.connects_system_at:
                 if c_to == connection_point.connection_point_of:
                     connections_to_remove.append((connection, connection_point))
-                    PRINTPROGRESS(
-                        f"Removing connection: {c_from.id}.{connection.outputPort} --> {c_to.id}.{connection_point.inputPort}"
+                    LOGGER(
+                        f"Removing connection: {c_from.id}.{connection.output_port} --> {c_to.id}.{connection_point.input_port}"
                     )
 
         # Remove the identified connections
@@ -2128,7 +2118,7 @@ class SimulationModel:
             # Clean up empty connection
             if len(connection.connects_system_at) == 0:
                 c_from.connected_through.remove(connection)
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
     def load_estimation_result(
         self, filename: Optional[str] = None, result: Optional[Dict] = None
@@ -2192,13 +2182,13 @@ class SimulationModel:
         """
         for connection in self._required_initialization_connections:
             component = connection.connects_system
-            if connection.outputPort not in component.output:
+            if connection.output_port not in component.output:
                 raise Exception(
-                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.outputPort}'
+                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.output_port}'
                 )
-            elif component.output[connection.outputPort].get() is None:
+            elif component.output[connection.output_port].get() is None:
                 raise Exception(
-                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.outputPort}'
+                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.output_port}'
                 )
 
     def _get_execution_order(self) -> None:
@@ -2243,8 +2233,8 @@ class SimulationModel:
             self._execution_order.append(component_group)
             return activeComponents
 
-        PRINTPROGRESS.add_level()
-        PRINTPROGRESS("Running Kahn's algorithm")
+        LOGGER.add_level()
+        LOGGER("Running Kahn's algorithm")
 
         initComponents = [
             v for v in self._components_no_cycles.values() if len(v.connects_at) == 0
@@ -2267,7 +2257,7 @@ class SimulationModel:
             for connection in self._components[
                 no_cycle_connection.connects_system.id
             ].connected_through
-            if connection.outputPort == no_cycle_connection.outputPort
+            if connection.output_port == no_cycle_connection.output_port
         ]
 
         self._flat_execution_order = _flatten(self._execution_order)
@@ -2275,17 +2265,17 @@ class SimulationModel:
             self._components_no_cycles
         ), "Cycles detected in the model. This should not happen. Please report this issue."
 
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
         for i, component_group in enumerate(self._execution_order):
-            PRINTPROGRESS(f"Priority {i}:")
-            PRINTPROGRESS.add_level()
+            LOGGER.info("Priority %d:", i)
+            LOGGER.add_level()
             for component in component_group:
-                PRINTPROGRESS(f"{component.id}")
-            PRINTPROGRESS.remove_level()
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Running Kahn's algorithm", status="[OK]", change_status=True)
+                LOGGER.info("%s", component.id)
+            LOGGER.remove_level()
+        LOGGER.remove_level()
+        LOGGER.ok("Running Kahn's algorithm", change_status=True)
 
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
     def _update_literals(self, component: core.System = None) -> None:
         """
@@ -2376,8 +2366,8 @@ class SimulationModel:
                     FILTER (?p = s4syst:connectsSystemAt || 
                             ?p = s4syst:connectedThrough || 
                             ?p = s4syst:connectionPointOf ||
-                            ?p = t4b:inputPort ||
-                            ?p = t4b:outputPort)
+                            ?p = t4b:input_port ||
+                            ?p = t4b:output_port)
                 }
                 """
         self._semantic_model.visualize(query)
@@ -2390,7 +2380,7 @@ class SimulationModel:
         Args:
             rdf_file (str): Path to the RDF file to load from
         """
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
         self._semantic_model = core.SemanticModel(
             id=self._id,
             rdf_file=rdf_file,
@@ -2398,8 +2388,8 @@ class SimulationModel:
             dir_conf=self._dir_conf + ["semantic_model"],
         )
 
-        PRINTPROGRESS("Instantiating components")
-        PRINTPROGRESS.add_level()
+        LOGGER("Instantiating components")
+        LOGGER.add_level()
 
         # print(f"sm instances: {self._semantic_model.get_instances_of_type(core.namespace.S4SYST.System)}")
 
@@ -2423,17 +2413,17 @@ class SimulationModel:
                             get_short_name(pred, self._semantic_model.namespaces)
                         ] = literal_value
 
-            PRINTPROGRESS(
+            LOGGER(
                 f"Instantiating component: {sm_instance.get_short_name()} with type: {class_name}"
             )
             component = cls(id=sm_instance.get_short_name(), **attributes)
             # Check if the component already exists
             self.add_component(component)
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Instantiating components", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Instantiating components", change_status=True)
 
-        PRINTPROGRESS("Making connections")
-        PRINTPROGRESS.add_level()
+        LOGGER("Making connections")
+        LOGGER.add_level()
         # Go through all the connections (from - to) and add them to the simulation model
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
@@ -2451,8 +2441,8 @@ class SimulationModel:
                     predicate_object_pairs_connection = (
                         connection.get_predicate_object_pairs()
                     )
-                    outputPort = predicate_object_pairs_connection[
-                        core.namespace.T4B.outputPort
+                    output_port = predicate_object_pairs_connection[
+                        core.namespace.T4B.output_port
                     ][
                         0
                     ].uri.value  # There can only be one output port per connection
@@ -2469,8 +2459,8 @@ class SimulationModel:
                         ][
                             0
                         ]  # There can only be one connection point per connection
-                        inputPort = predicate_object_pairs_connection_point[
-                            core.namespace.T4B.inputPort
+                        input_port = predicate_object_pairs_connection_point[
+                            core.namespace.T4B.input_port
                         ][
                             0
                         ].uri.value  # There can only be one input port per connection point
@@ -2478,15 +2468,15 @@ class SimulationModel:
                         receiver_component_id = receiver_component.get_short_name()
                         receiver_component = self._components[receiver_component_id]
 
-                        PRINTPROGRESS(
-                            f"Adding connection: {component.id}.{outputPort} → {receiver_component.id}.{inputPort}"
+                        LOGGER(
+                            f"Adding connection: {component.id}.{output_port} → {receiver_component.id}.{input_port}"
                         )
                         self.add_connection(
                             sender_component=component,
                             receiver_component=receiver_component,
-                            outputPort=outputPort,
-                            inputPort=inputPort,
+                            output_port=output_port,
+                            input_port=input_port,
                         )
 
-        PRINTPROGRESS("Making connections", status="[OK]", change_status=True)
-        PRINTPROGRESS.remove_level()
+        LOGGER.ok("Making connections", change_status=True)
+        LOGGER.remove_level()

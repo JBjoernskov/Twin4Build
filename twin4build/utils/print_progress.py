@@ -17,7 +17,6 @@ from dateutil import tz
 try:
     # Standard library imports
     import curses
-
     CURSES_AVAILABLE = True
 except ImportError:
     CURSES_AVAILABLE = False
@@ -68,7 +67,7 @@ def print_color_palette():
     curses.wrapper(_print_color_palette)
 
 
-class PrintProgress:
+class Logger:
     def __init__(self) -> None:
         self.level_indent = []  # level as function of line number
         self.level = []
@@ -106,6 +105,7 @@ class PrintProgress:
             or os.getenv("TRAVIS")
         )
         self._use_curses = CURSES_AVAILABLE and not self.is_interactive() and not is_ci
+        self._use_threading = True  # Whether to use background thread for scrolling
         self._curses_mode = False
         self._stdscr = None
         self._curses_lines = []  # Store lines for curses display
@@ -138,7 +138,25 @@ class PrintProgress:
         }
         
         self._enabled = True
+        # Allow explicit opt-in to progress output while tests run
+        self._allow_in_tests = False
         self._show_location = True
+
+        # Status filtering
+        self._status_filters = {
+            "debug": True,
+            "warning": True,
+            "error": True,
+            "ok": True,
+            "success": True,
+            "info": True,
+            "default": True
+        }  # True = show, False = hide
+
+        # Caller filtering
+        self._caller_filters = set()  # Set of caller function names
+        self._caller_filter_mode = "whitelist"  # "whitelist" or "blacklist"
+        self._caller_filter_include_stack = True  # Whether to check entire call stack
 
     def __enter__(self):
         """Context manager entry - ensures proper cleanup on exceptions"""
@@ -151,20 +169,248 @@ class PrintProgress:
         return False  # Don't suppress exceptions
 
     @property
+    def allow_in_tests(self):
+        return self._allow_in_tests
+
+    @property
     def enabled(self):
-        # Check _IS_TESTING dynamically to handle cases where it's set after import
-        from twin4build import _IS_TESTING, _IMPORT_COMPLETE
-        if not _IMPORT_COMPLETE:
+        # Optimized: avoid repeated imports by caching module reference
+        if not hasattr(self, '_twin4build_module'):
+            try:
+                import twin4build
+                self._twin4build_module = twin4build
+            except ImportError:
+                self._twin4build_module = None
+                return False
+        
+        if self._twin4build_module is None:
             return False
-        if _IS_TESTING:
+            
+        if not self._twin4build_module._IMPORT_COMPLETE:
+            return False
+        if self._twin4build_module._IS_TESTING and not self.allow_in_tests:
             return False
         return self._enabled
 
     def enable(self):
         self._enabled = True
+        # When explicitly enabled, permit use even under _IS_TESTING
 
     def disable(self):
         self._enabled = False
+
+    def enable_threading(self):
+        """Enable background threading for scrolling (curses mode only).
+        
+        When enabled, a background thread handles input and display updates,
+        allowing smooth scrolling and interactive features in curses mode.
+        This is the default behavior.
+        
+        Example:
+            LOGGER.enable_threading()  # Enable smooth scrolling
+        """
+        self._use_threading = True
+
+    def disable_threading(self):
+        """Disable background threading - will still use curses but without scrolling.
+        
+        When disabled, the display updates synchronously without a background thread.
+        This can be useful for debugging, reducing resource usage, or avoiding
+        threading-related issues. Scrolling and pause features will still work
+        but will only update when new messages are logged.
+        
+        Example:
+            LOGGER.disable_threading()  # Disable background thread
+        """
+        self._use_threading = False
+        # If already in curses mode with threading, stop the thread
+        if self._display_thread is not None and self._display_thread.is_alive():
+            self._stop_thread.set()
+            self._display_thread.join(timeout=1.0)
+            self._display_thread = None
+
+    def enable_status_filter(self, status_type):
+        """Enable showing messages with the given status type"""
+        self._status_filters[status_type.lower()] = True
+
+    def disable_status_filter(self, status_type):
+        """Disable showing messages with the given status type"""
+        self._status_filters[status_type.lower()] = False
+
+    def enable_all_status_filters(self):
+        """Enable showing all status types"""
+        for status in self._status_filters:
+            self._status_filters[status] = True
+
+    def disable_all_status_filters(self):
+        """Disable showing all status types"""
+        for status in self._status_filters:
+            self._status_filters[status] = False
+
+    def enable_level_filter(self, level):
+        """Enable showing messages at the given level"""
+        self._level_filters.add(level)
+
+    def disable_level_filter(self, level):
+        """Disable showing messages at the given level"""
+        self._level_filters.discard(level)
+
+    def enable_all_level_filters(self):
+        """Enable showing all levels (clear level filters)"""
+        self._level_filters.clear()
+
+    def disable_all_level_filters(self):
+        """Disable showing all levels (hide everything)"""
+        # This would hide everything - maybe not useful
+        pass
+
+    def show_only_debug(self):
+        """Show only debug messages"""
+        self.disable_all_status_filters()
+        self.enable_status_filter("debug")
+
+    def show_only_errors(self):
+        """Show only error messages"""
+        self.disable_all_status_filters()
+        self.enable_status_filter("error")
+
+    def show_only_warnings(self):
+        """Show only warning messages"""
+        self.disable_all_status_filters()
+        self.enable_status_filter("warning")
+
+    def hide_debug(self):
+        """Hide debug messages"""
+        self.disable_status_filter("debug")
+
+    def show_all_status_types(self):
+        """Show all status types (default behavior)"""
+        self.enable_all_status_filters()
+
+    def show_only_from_caller(self, caller_name, include_stack=True):
+        """Show messages only from call stacks containing the specified caller function
+
+        Args:
+            caller_name: Name of the function to show messages from
+            include_stack: If True, also show messages from functions called by this function
+        """
+        if self._caller_filter_mode != "whitelist":
+            self._caller_filters.clear()
+            self.set_caller_filter_mode("whitelist")
+        else:
+            self._caller_filters.clear()
+        self._caller_filter_include_stack = include_stack
+        self._caller_filters.add(caller_name)
+
+    def hide_from_caller(self, caller_name):
+        """Hide messages from the specified caller function"""
+        if self._caller_filter_mode != "blacklist":
+            self._caller_filters.clear()
+            self.set_caller_filter_mode("blacklist")
+        self._caller_filters.add(caller_name)
+
+    def show_all_callers(self):
+        """Show messages from all callers (default behavior)"""
+        self._caller_filters.clear()
+        self._caller_filter_mode = "whitelist"
+
+    def set_caller_filter_mode(self, mode):
+        """Set caller filter mode to 'whitelist' or 'blacklist'
+
+        - 'whitelist': Only show messages where the call stack contains a function in the filter set
+        - 'blacklist': Hide messages where the call stack contains a function in the filter set
+        """
+        if mode not in ["whitelist", "blacklist"]:
+            raise ValueError("Mode must be 'whitelist' or 'blacklist'")
+        self._caller_filter_mode = mode
+
+    def hide_caller(self, caller_name, include_stack=True):
+        """Hide messages from the specified caller function
+
+        Args:
+            caller_name: Name of the function to hide messages from
+            include_stack: If True, also hide messages from functions called by this function
+        """
+        if self._caller_filter_mode != "blacklist":
+            self._caller_filters.clear()
+            self.set_caller_filter_mode("blacklist")
+        self._caller_filter_include_stack = include_stack
+        self._caller_filters.add(caller_name)
+
+    def show_caller(self, caller_name, include_stack=True):
+        """Show messages from the specified caller function
+
+        Args:
+            caller_name: Name of the function to show messages from
+            include_stack: If True, also show messages from functions called by this function
+        """
+        self._caller_filter_include_stack = include_stack
+        if self._caller_filter_mode == "whitelist":
+            self._caller_filters.add(caller_name)
+        elif self._caller_filter_mode == "blacklist":
+            self._caller_filters.discard(caller_name)
+
+
+    def _get_caller_function_name(self):
+        """Get the name of the function that called LOGGER"""
+        frame = inspect.currentframe()
+        # Walk back: current -> _get_caller_function_name -> __call__ -> caller...
+        if frame is not None:
+            frame = frame.f_back  # __call__ or internal
+        while frame is not None:
+            func_name = frame.f_code.co_name
+            # Skip internal methods and the __call__ method itself
+            if func_name not in ['__call__', '_get_caller_function_name', '_should_filter_message', 'wait_if_paused', 'wrapper']:
+                return func_name
+            frame = frame.f_back
+        return None
+
+    def _is_caller_in_stack(self, caller_set):
+        """Check if any function in the current call stack is in the caller_set"""
+        frame = inspect.currentframe()
+        # Walk back: current -> _is_caller_in_stack -> _should_filter_message -> __call__ -> caller...
+        if frame is not None:
+            frame = frame.f_back  # _should_filter_message
+        if frame is not None:
+            frame = frame.f_back  # __call__
+        while frame is not None:
+            func_name = frame.f_code.co_name
+            # Skip internal methods
+            if func_name not in ['__call__', '_get_caller_function_name', '_should_filter_message', '_is_caller_in_stack', 'wait_if_paused', 'wrapper']:
+                if func_name in caller_set:
+                    return True
+            frame = frame.f_back
+
+        return False
+
+    def _should_filter_message(self, caller_name=None):
+        """Check if a message should be filtered out based on caller filters.
+        
+        Note: Status filtering is handled by the public methods (debug, info, etc.)
+        before calling __call__, so we don't need to parse status strings here.
+        """
+        # Check caller filter only
+        if self._caller_filters:
+            if self._caller_filter_mode == "whitelist":
+                if self._caller_filter_include_stack:
+                    # Whitelist mode: only show if any caller in stack is in the set
+                    if not self._is_caller_in_stack(self._caller_filters):
+                        return True
+                else:
+                    # Whitelist mode: only show if immediate caller is in the set
+                    if caller_name not in self._caller_filters:
+                        return True
+            elif self._caller_filter_mode == "blacklist":
+                if self._caller_filter_include_stack:
+                    # Blacklist mode: hide if any caller in stack is in the set
+                    if self._is_caller_in_stack(self._caller_filters):
+                        return True
+                else:
+                    # Blacklist mode: hide if immediate caller is in the set
+                    if caller_name in self._caller_filters:
+                        return True
+
+        return False
 
     def wait_if_paused(self, timeout=None):
         """
@@ -187,12 +433,18 @@ class PrintProgress:
         return self._paused
 
     @property
+    def threading_enabled(self):
+        """Check if background threading is enabled"""
+        return self._use_threading
+
+    @property
     def is_active(self):
         return self._is_active
 
     @property
     def verbose(self):
-        return int(self._verbose)
+        # return int(self._verbose)
+        return self._verbose
 
     @verbose.setter
     def verbose(self, value):
@@ -224,20 +476,17 @@ class PrintProgress:
         return char_level
 
     def _get_caller_location(self):
-        """Return 'filename:lineno' for the caller of PRINTPROGRESS"""
-        try:
-            current_file = os.path.abspath(__file__)
-            frame = inspect.currentframe()
-            # Walk back: current -> _get_caller_location -> __call__ -> caller...
-            if frame is not None:
-                frame = frame.f_back  # __call__ or internal
-            while frame is not None:
-                fname = os.path.abspath(frame.f_code.co_filename)
-                if fname != current_file:
-                    return f"{os.path.basename(fname)}:{frame.f_lineno}"
-                frame = frame.f_back
-        except Exception:
-            pass
+        """Return 'filename:lineno' for the caller of LOGGER"""
+        current_file = os.path.abspath(__file__)
+        frame = inspect.currentframe()
+        # Walk back: current -> _get_caller_location -> __call__ -> caller...
+        if frame is not None:
+            frame = frame.f_back  # __call__ or internal
+        while frame is not None:
+            fname = os.path.abspath(frame.f_code.co_filename)
+            if fname != current_file:
+                return f"{os.path.basename(fname)}:{frame.f_lineno}"
+            frame = frame.f_back
         return None
 
     # ANSI escape codes
@@ -262,6 +511,8 @@ class PrintProgress:
             return self.ERROR_COLOR_PAIR
         elif "[warning]" in status_lower or "[warn]" in status_lower:
             return self.WARNING_COLOR_PAIR
+        elif "[debug]" in status_lower:
+            return self.INFO_COLOR_PAIR  # Use blue for debug messages
         else:
             return self.INFO_COLOR_PAIR
 
@@ -317,6 +568,11 @@ class PrintProgress:
                     # Anti-fighting logic: if scrolled up, maintain relative position
                     if self._scroll_offset > 0 and diff > 0:
                         self._scroll_offset += diff
+                
+                # If threading is disabled, update display directly
+                if not self._use_threading:
+                    self._handle_input()
+                    self._update_curses_display()
         else:
             # Use traditional printing
             if self.has_printed:
@@ -359,6 +615,11 @@ class PrintProgress:
                         # Anti-fighting logic
                         if self._scroll_offset > 0 and diff > 0:
                             self._scroll_offset += diff
+                    
+                    # If threading is disabled, update display directly
+                    if not self._use_threading:
+                        self._handle_input()
+                        self._update_curses_display()
 
         if f is not None:
             f.close()
@@ -423,10 +684,11 @@ class PrintProgress:
         self._stdscr.bkgd(' ', curses.color_pair(0))
         self._stdscr.clear()
 
-        # Start the display thread
-        self._stop_thread.clear()
-        self._display_thread = threading.Thread(target=self._display_loop, daemon=True)
-        self._display_thread.start()
+        # Start the display thread only if threading is enabled
+        if self._use_threading:
+            self._stop_thread.clear()
+            self._display_thread = threading.Thread(target=self._display_loop, daemon=True)
+            self._display_thread.start()
 
         # Capture warnings so they are replayed after curses teardown
         self._install_warning_handler()
@@ -452,12 +714,9 @@ class PrintProgress:
         while not self._stop_thread.is_set():
             with self._lock:
                 if self._stdscr and self._curses_mode:
-                    try:
-                        self._handle_input()
-                        # Always update display to show pause status and handle scrolling
-                        self._update_curses_display()
-                    except Exception:
-                        pass
+                    self._handle_input()
+                    # Always update display to show pause status and handle scrolling
+                    self._update_curses_display()
             time.sleep(0.05)  # Update at ~20Hz
 
     def _install_exception_handler(self):
@@ -482,7 +741,7 @@ class PrintProgress:
         self._exception_handler_installed = True
 
     def _install_warning_handler(self):
-        """Redirect warnings to PRINTPROGRESS during curses mode so they persist"""
+        """Redirect warnings to LOGGER during curses mode so they persist"""
         if self._warning_handler_installed:
             return
 
@@ -491,21 +750,16 @@ class PrintProgress:
         def _showwarning(message, category, filename, lineno, file=None, line=None):
             # While in curses, push warnings into the progress log so they are replayed after teardown.
             if self._curses_mode:
-                try:
-                    # Use the filename and lineno provided by Python's warning system
-                    # These are the actual location where warnings.warn() was called
-                    loc = f"{os.path.basename(filename)}:{lineno}"
-                    self(str(message), status="[WARNING]", location=loc)
-                except Exception:
-                    pass
+                # Use the filename and lineno provided by Python's warning system
+                # These are the actual location where warnings.warn() was called
+                loc = f"{os.path.basename(filename)}:{lineno}"
+                self(str(message), status="[WARNING]", location=loc)
 
             # Forward to the original handler when not in curses, or when an explicit
             # target file is provided (e.g., logging to file).
             if (not self._curses_mode) or file is not None:
-                try:
-                    self._original_showwarning(message, category, filename, lineno, file, line)
-                except Exception:
-                    pass
+                self._original_showwarning(message, category, filename, lineno, file, line)
+
 
         warnings.showwarning = _showwarning
         self._warning_handler_installed = True
@@ -513,10 +767,7 @@ class PrintProgress:
     def _restore_warning_handler(self):
         """Restore default warnings.showwarning"""
         if self._warning_handler_installed and self._original_showwarning is not None:
-            try:
-                warnings.showwarning = self._original_showwarning
-            except Exception:
-                pass
+            warnings.showwarning = self._original_showwarning
         self._warning_handler_installed = False
         self._original_showwarning = None
 
@@ -604,19 +855,16 @@ class PrintProgress:
 
         # Handle attributes safely
         if other_attrs and "curses" in globals() and curses is not None:
-            try:
-                if other_attrs & curses.A_BOLD:
-                    ansi_codes.append("1")
-                if other_attrs & curses.A_DIM:
-                    ansi_codes.append("2")
-                if other_attrs & curses.A_UNDERLINE:
-                    ansi_codes.append("4")
-                if other_attrs & curses.A_BLINK:
-                    ansi_codes.append("5")
-                if other_attrs & curses.A_REVERSE:
-                    ansi_codes.append("7")
-            except AttributeError:
-                pass
+            if other_attrs & curses.A_BOLD:
+                ansi_codes.append("1")
+            if other_attrs & curses.A_DIM:
+                ansi_codes.append("2")
+            if other_attrs & curses.A_UNDERLINE:
+                ansi_codes.append("4")
+            if other_attrs & curses.A_BLINK:
+                ansi_codes.append("5")
+            if other_attrs & curses.A_REVERSE:
+                ansi_codes.append("7")
 
         if ansi_codes:
             return f"\033[{';'.join(ansi_codes)}m"
@@ -639,21 +887,15 @@ class PrintProgress:
             # Clean up curses
             # Check if curses is available (it might be None during interpreter shutdown)
             if "curses" in globals() and curses is not None:
-                try:
-                    curses.curs_set(1)
-                    curses.nocbreak()
-                    curses.echo()
-                    curses.endwin()
-                except Exception:
-                    pass
+                curses.curs_set(1)
+                curses.nocbreak()
+                curses.echo()
+                curses.endwin()
 
             # Exit alternate screen buffer if we used it
             # This restores the original terminal content
-            try:
-                sys.stdout.write("\033[?1049l")  # Exit alternate screen
-                sys.stdout.flush()
-            except Exception:
-                pass
+            sys.stdout.write("\033[?1049l")  # Exit alternate screen
+            sys.stdout.flush()
 
             # Display the COMPLETE progress history with colors
             # Only needed when using alternate screen (otherwise output is already visible)
@@ -689,10 +931,7 @@ class PrintProgress:
                         _status = f"...{status_color}{status}{self.ANSI_RESET}"
 
                     # Print the complete colored line
-                    try:
-                        print(f"{colored_output}{_status}", flush=True)
-                    except Exception:
-                        pass
+                    print(f"{colored_output}{_status}", flush=True)
 
             self._stdscr = None
             self._curses_mode = False
@@ -717,42 +956,42 @@ class PrintProgress:
             return
 
         while True:
-            try:
-                key = self._stdscr.getch()
-                if key == curses.ERR:
-                    break
-
-                height, _ = self._stdscr.getmaxyx()
-                max_lines = height - 1
-                total_lines = len(self._curses_lines)
-                max_scroll = max(0, total_lines - max_lines)
-
-                if key == curses.KEY_UP:
-                    self._scroll_offset = min(
-                        self._scroll_offset + self._scroll_step, max_scroll
-                    )
-                elif key == curses.KEY_DOWN:
-                    self._scroll_offset = max(
-                        self._scroll_offset - self._scroll_step, 0
-                    )
-                elif key == curses.KEY_PPAGE:  # Page Up
-                    self._scroll_offset = min(
-                        self._scroll_offset + max_lines, max_scroll
-                    )
-                elif key == curses.KEY_NPAGE:  # Page Down
-                    self._scroll_offset = max(self._scroll_offset - max_lines, 0)
-                elif key == curses.KEY_HOME:
-                    self._scroll_offset = max_scroll
-                elif key == curses.KEY_END:
-                    self._scroll_offset = 0
-                elif key == ord('p') or key == ord('P'):  # Toggle pause
-                    self._paused = not self._paused
-                    if self._paused:
-                        self._pause_event.clear()  # Block execution
-                    else:
-                        self._pause_event.set()  # Resume execution
-            except curses.error:
+            # try:
+            key = self._stdscr.getch()
+            if key == curses.ERR:
                 break
+
+            height, _ = self._stdscr.getmaxyx()
+            max_lines = height - 1
+            total_lines = len(self._curses_lines)
+            max_scroll = max(0, total_lines - max_lines)
+
+            if key == curses.KEY_UP:
+                self._scroll_offset = min(
+                    self._scroll_offset + self._scroll_step, max_scroll
+                )
+            elif key == curses.KEY_DOWN:
+                self._scroll_offset = max(
+                    self._scroll_offset - self._scroll_step, 0
+                )
+            elif key == curses.KEY_PPAGE:  # Page Up
+                self._scroll_offset = min(
+                    self._scroll_offset + max_lines, max_scroll
+                )
+            elif key == curses.KEY_NPAGE:  # Page Down
+                self._scroll_offset = max(self._scroll_offset - max_lines, 0)
+            elif key == curses.KEY_HOME:
+                self._scroll_offset = max_scroll
+            elif key == curses.KEY_END:
+                self._scroll_offset = 0
+            elif key == ord('p') or key == ord('P'):  # Toggle pause
+                self._paused = not self._paused
+                if self._paused:
+                    self._pause_event.clear()  # Block execution
+                else:
+                    self._pause_event.set()  # Resume execution
+            # except curses.error:
+            #     break
 
     def _update_curses_display(self):
         """Update the curses display with current lines"""
@@ -865,37 +1104,35 @@ class PrintProgress:
         if self.verbose == 0 or self.enabled is False:
             return
 
-        if self.level[-1] == 0:
-            return  # "Already at the root level. Cannot remove level."
-
         if self._block_count > 0:
             self._block_count -= 1
             return
 
-        self._current_level_indent = self._current_level_indent - self.level_stack[-1]
-
-        if self.added_level:  # Undo add_level
-            for _ in range(self.level_stack[-1]):
-                self.level.pop()
-                self.level_indent.pop()
-                self.indent.pop()
-                self.message.pop()
-                self.status.pop()
-                self.location.pop()
+        # Check added_level FIRST - if True, we have a pending level to remove
+        # even though no visual lines exist yet (lazy creation)
+        if self.added_level:
+            self._current_level_indent = self._current_level_indent - self.level_stack[-1]
             self.level_stack.pop()
             self.removed_level = False
-        else:
-            if self.removed_level:
-                self.level.pop()
-                self.level_indent.pop()
-                self.indent.pop()
-                self.message.pop()
-                self.status.pop()
-                self.location.pop()
-            self.level_stack.pop()
-            self._remove_level()
-            self.removed_level = True
+            self.added_level = False
+            return
 
+        # Now safe to check level[-1] since we know visual lines exist
+        if not self.level or self.level[-1] == 0:
+            return  # "Already at the root level. Cannot remove level."
+
+        self._current_level_indent = self._current_level_indent - self.level_stack[-1]
+
+        if self.removed_level:
+            self.level.pop()
+            self.level_indent.pop()
+            self.indent.pop()
+            self.message.pop()
+            self.status.pop()
+            self.location.pop()
+        self.level_stack.pop()
+        self._remove_level()
+        self.removed_level = True
         self.added_level = False
 
     def _add_level(self):
@@ -916,8 +1153,7 @@ class PrintProgress:
         else:
             self.level_stack.append(n)  # what about if we just removed a level?
         self._current_level_indent += n
-        for _ in range(n):
-            self._add_level()
+        # Visual lines created lazily in __call__() when message is printed
         self.added_level = True
         self.removed_level = False
 
@@ -956,15 +1192,24 @@ class PrintProgress:
         ignore_no_match=False,
         location=None,
     ):
+        # Early bailout BEFORE any expensive operations
+        if self.verbose == 0 or self.enabled is False:
+            return
+
         assert message is None or isinstance(
             message, str
         ), "Message must be a string or None"
-        if self.verbose == 0 or self.enabled is False:
-            return
         
         # Wait if paused (blocks until resumed)
         self.wait_if_paused()
-        
+
+        # Check if message should be filtered by caller name (only if we have filters)
+        # Note: Status filtering is handled by public methods (debug(), info(), etc.)
+        if self._caller_filters:
+            caller_name = self._get_caller_function_name()
+            if self._should_filter_message(caller_name):
+                return
+
         # change_status = False
         if change_status:
             if self._block_count > 0:
@@ -993,6 +1238,11 @@ class PrintProgress:
                 return
 
             if message is not None:
+                # Lazily create visual indent lines if level was added but no message printed yet
+                if self.added_level:
+                    for _ in range(self.level_stack[-1]):
+                        self._add_level()
+                
                 if location is None and self._show_location:
                     location = self._get_caller_location()
                 indent = self._get_indent()
@@ -1002,6 +1252,188 @@ class PrintProgress:
                 self.removed_level = False
             else:
                 pass
+
+    def is_enabled_for(self, status_type):
+        """Check if a status type is enabled. Use this to avoid expensive string operations.
+        
+        Args:
+            status_type: One of "debug", "info", "warning", "error", "ok", "success", "default"
+            
+        Returns:
+            bool: True if messages of this type will be logged
+            
+        Example:
+            if LOGGER.is_enabled_for("debug"):
+                LOGGER.debug(f"Expensive calculation: {expensive_func()}")
+        """
+        if self.verbose == 0 or self.enabled is False:
+            return False
+        return self._status_filters.get(status_type.lower(), True)
+
+    def debug(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+        """Log a debug message. Filtered out if debug filter is disabled.
+        
+        Args:
+            message: Message string, format string (if args provided), or callable returning string or None
+            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
+            change_status: Whether to change the status of an existing message
+            ignore_no_match: Ignore if no matching message found for status change
+            location: Optional caller location override
+            
+        Examples:
+            LOGGER.debug("Simple message")
+            LOGGER.debug("Value: %s", expensive_func())  # expensive_func() only called if debug enabled
+            LOGGER.debug("Name: %s, Age: %d", name, age)
+            LOGGER.debug("Result: %s", lambda: expensive_calculation())  # lambda only called if debug enabled
+            LOGGER.debug(lambda: f"Complex: {expensive_func()}")  # entire message built only if debug enabled
+            LOGGER.debug(lambda: LOGGER.debug("Nested call") or None)  # callable can execute Logger statements
+        """
+        # Fast filter check - avoid expensive operations if filtered
+        if not self._status_filters.get("debug", True):
+            return
+        # Evaluate callable message if needed
+        if callable(message):
+            message = message()
+            # If callable returns None, it has already logged (or intentionally skipped)
+            if message is None:
+                return
+        # Lazy string formatting - only format if not filtered
+        if args:
+            # Evaluate any callable arguments
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(message, status="[DEBUG]", change_status=change_status, 
+             ignore_no_match=ignore_no_match, location=location)
+
+    def info(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+        """Log an info message. Filtered out if info filter is disabled.
+        
+        Args:
+            message: Message string, format string (if args provided), or callable returning string or None
+            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
+            change_status: Whether to change the status of an existing message
+            ignore_no_match: Ignore if no matching message found for status change
+            location: Optional caller location override
+        """
+        # Fast filter check - avoid expensive operations if filtered
+        if not self._status_filters.get("info", True):
+            return
+        # Evaluate callable message if needed
+        if callable(message):
+            message = message()
+            # If callable returns None, it has already logged (or intentionally skipped)
+            if message is None:
+                return
+        if args:
+            # Evaluate any callable arguments
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(message, status="[INFO]", change_status=change_status, 
+             ignore_no_match=ignore_no_match, location=location)
+
+    def warning(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+        """Log a warning message. Filtered out if warning filter is disabled.
+        
+        Args:
+            message: Message string, format string (if args provided), or callable returning string or None
+            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
+            change_status: Whether to change the status of an existing message
+            ignore_no_match: Ignore if no matching message found for status change
+            location: Optional caller location override
+        """
+        # Fast filter check - avoid expensive operations if filtered
+        if not self._status_filters.get("warning", True):
+            return
+        # Evaluate callable message if needed
+        if callable(message):
+            message = message()
+            # If callable returns None, it has already logged (or intentionally skipped)
+            if message is None:
+                return
+        if args:
+            # Evaluate any callable arguments
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(message, status="[WARNING]", change_status=change_status, 
+             ignore_no_match=ignore_no_match, location=location)
+
+    def error(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+        """Log an error message. Filtered out if error filter is disabled.
+        
+        Args:
+            message: Message string, format string (if args provided), or callable returning string or None
+            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
+            change_status: Whether to change the status of an existing message
+            ignore_no_match: Ignore if no matching message found for status change
+            location: Optional caller location override
+        """
+        # Fast filter check - avoid expensive operations if filtered
+        if not self._status_filters.get("error", True):
+            return
+        # Evaluate callable message if needed
+        if callable(message):
+            message = message()
+            # If callable returns None, it has already logged (or intentionally skipped)
+            if message is None:
+                return
+        if args:
+            # Evaluate any callable arguments
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(message, status="[ERROR]", change_status=change_status, 
+             ignore_no_match=ignore_no_match, location=location)
+
+    def ok(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+        """Log an ok/success message. Filtered out if ok filter is disabled.
+        
+        Args:
+            message: Message string, format string (if args provided), or callable returning string or None
+            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
+            change_status: Whether to change the status of an existing message
+            ignore_no_match: Ignore if no matching message found for status change
+            location: Optional caller location override
+        """
+        # Fast filter check - avoid expensive operations if filtered
+        if not self._status_filters.get("ok", True):
+            return
+        # Evaluate callable message if needed
+        if callable(message):
+            message = message()
+            # If callable returns None, it has already logged (or intentionally skipped)
+            if message is None:
+                return
+        if args:
+            # Evaluate any callable arguments
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(message, status="[OK]", change_status=change_status, 
+             ignore_no_match=ignore_no_match, location=location)
+
+    def success(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+        """Log a success message. Filtered out if success filter is disabled.
+        
+        Args:
+            message: Message string, format string (if args provided), or callable returning string or None
+            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
+            change_status: Whether to change the status of an existing message
+            ignore_no_match: Ignore if no matching message found for status change
+            location: Optional caller location override
+        """
+        # Fast filter check - avoid expensive operations if filtered
+        if not self._status_filters.get("success", True):
+            return
+        # Evaluate callable message if needed
+        if callable(message):
+            message = message()
+            # If callable returns None, it has already logged (or intentionally skipped)
+            if message is None:
+                return
+        if args:
+            # Evaluate any callable arguments
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(message, status="[SUCCESS]", change_status=change_status, 
+             ignore_no_match=ignore_no_match, location=location)
 
     def finalize(self):
         """Finalize the progress display and ensure output persists"""
@@ -1030,6 +1462,18 @@ class PrintProgress:
         self._curses_lines = []
         self._paused = False
         self._pause_event.set()  # Ensure not paused after reset
+        # Don't reset filters - preserve user settings
+        # self._status_filters = {
+        #     "debug": True,
+        #     "warning": True,
+        #     "error": True,
+        #     "ok": True,
+        #     "success": True,
+        #     "info": True,
+        #     "default": True
+        # }
+        # self._caller_filters = set()
+        # self._caller_filter_mode = "whitelist"
         # Note: We don't reset _atexit_registered so cleanup remains registered
 
     def __del__(self):
@@ -1038,26 +1482,51 @@ class PrintProgress:
 
 
 def reset_print(f):
+    """
+    Decorator that resets LOGGER state when call depth returns to 0.
+    
+    IMPORTANT: This decorator breaks profiling tools (cProfile) due to identity
+    collision. All wrapped functions share the same wrapper identity, causing
+    incorrect cumulative time attribution in profiler output.
+    
+    To disable for accurate profiling, set environment variable:
+        DISABLE_AUTORESET_PRINT=1
+    
+    The decorator overhead is negligible (~microseconds), so disabling it for
+    profiling does not significantly change performance characteristics.
+    
+    Examples:
+        PowerShell: $env:DISABLE_AUTORESET_PRINT='1'; python script.py
+        CMD:        set DISABLE_AUTORESET_PRINT=1 && python script.py
+        Bash:       DISABLE_AUTORESET_PRINT=1 python script.py
+    """
+    # Check if decorator should be disabled (for profiling)
+    if os.environ.get('DISABLE_AUTORESET_PRINT', '0') == '1':
+        return f  # Return function unwrapped - transparent to profiler
+    
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        PRINTPROGRESS.call_depth += 1
-        try:
-            result = f(*args, **kwargs)
-        finally:
-            PRINTPROGRESS.call_depth -= 1
-            if PRINTPROGRESS.call_depth == 0:
-                PRINTPROGRESS.reset()
+        LOGGER.call_depth += 1
+        # try:
+        result = f(*args, **kwargs)
+        # finally:
+        LOGGER.call_depth -= 1
+        if LOGGER.call_depth == 0:
+            LOGGER.reset()
         return result
-
+    
     return wrapper
 
 
 def autoreset_print(cls):
     """
     Class decorator that applies @reset_print to all methods in the class.
-    This ensures that PRINTPROGRESS context is managed correctly even when
+    This ensures that LOGGER context is managed correctly even when
     methods are called independently.
     """
+    if os.environ.get('DISABLE_AUTORESET_PRINT', '0') == '1':
+        return cls  # Return class unmodified - transparent to profiler
+
     for name, attr in cls.__dict__.items():
         if isinstance(attr, staticmethod):
             setattr(cls, name, staticmethod(reset_print(attr.__func__)))
@@ -1068,11 +1537,11 @@ def autoreset_print(cls):
     return cls
 
 
-PRINTPROGRESS = PrintProgress()
+LOGGER = Logger()
 # if is_testing():
-#     PRINTPROGRESS.disable()
+#     LOGGER.disable()
 # else:
-#     PRINTPROGRESS.enable()
+#     LOGGER.enable()
 
 if __name__ == "__main__":
 
@@ -1090,7 +1559,7 @@ if __name__ == "__main__":
     # logfile = r"C:\Users\jabj\Documents\python\Twin4Build\twin4build\utils\log.txt"
     # model.load(simulation_model_filename=filename_simulation, verbose=0, logfile=None)
 
-    p = PrintProgress()
+    p = Logger()
     p.verbose = 50
 
     # DEBUG: Test get_char_level method
