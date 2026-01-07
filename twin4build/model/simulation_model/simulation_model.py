@@ -2358,7 +2358,7 @@ class SimulationModel:
         self._update_literals()
         self._semantic_model.serialize()
 
-    def visualize(self, query: str = None, literals: bool = True) -> None:
+    def visualize(self, query: str = None, literals: bool = True, **kwargs) -> None:
         """
         Visualize the simulation model.
         """
@@ -2380,7 +2380,7 @@ class SimulationModel:
                             ?p = t4b:outputPort)
                 }
                 """
-        self._semantic_model.visualize(query)
+        self._semantic_model.visualize(query, **kwargs)
 
     def _load_model_from_rdf(self, rdf_file: str) -> None:
         """
