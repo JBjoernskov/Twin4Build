@@ -2249,7 +2249,7 @@ class SemanticModel:
         traversal_mode=None,
         initial_node=None,
         random_seed=None,
-        format="png",
+        format="svg",
     ):
         """
         Visualize RDF graph with optional class and predicate filtering.
