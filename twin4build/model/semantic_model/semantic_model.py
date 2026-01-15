@@ -2261,13 +2261,13 @@ class SemanticModel:
             slice_uri: If provided, slice the URI string in row 1 (the main URI row). Can be:
                         - An integer: keep the last slice_uri characters
                         - A tuple (start, end): slice the URI using [start:end]
-            dpi: DPI of the visualization
+            dpi: DPI of the visualization. Only used if format is "png".
             limit: Limit the number of triples to visualize
             generate_subgraphs: If True, generate subgraphs for each isolated subgraph
             traversal_mode: Traversal mode to use. Can be "bfs" for breadth-first search or "dfs" for depth-first search
             initial_node: Initial node to start traversal from. If not provided, a random node will be selected from the query results
             random_seed: Random seed to use for random traversal. Use this to get reproducible results when doing random traversal
-            format: Output format for the visualization. Can be "png" or "svg". Default is "png"
+            format: Output format for the visualization. Can be "png" or "svg". Default is "svg".
         """
         # Omit rdf:type triples by default
         if query is None:
