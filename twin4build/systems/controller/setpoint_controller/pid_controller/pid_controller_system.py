@@ -94,32 +94,40 @@ class PIDControllerSystem(core.System, nn.Module):
         self.u_prev = torch.tensor([0], dtype=torch.float64, requires_grad=False)
 
     def asymptotic_smooth_saturation(
-        self, u, lower=0.0, upper=1.0, eps=0, curve_start=0.01, steepness=1
+        self, u, lower=0.0, upper=1.0, eps=0, curve_start=0.1, steepness=1,
+        curve_type='hyperbolic', power_exp=0.5
     ):
         effective_min = lower + eps
         effective_max = upper - eps
-
         lower_curve_point = effective_min + curve_start
         upper_curve_point = effective_max - curve_start
-
+        
+        def curve_function(x):
+            scaled_x = steepness * x / curve_start
+            if curve_type == 'exponential':
+                return 1 - torch.exp(-scaled_x)
+            elif curve_type == 'hyperbolic':
+                return scaled_x / (1 + scaled_x)
+            elif curve_type == 'power':
+                return 1 - 1 / torch.pow(1 + scaled_x, power_exp)
+            elif curve_type == 'sqrt':
+                return 1 - 1 / torch.sqrt(1 + scaled_x)
+            else:
+                return 1 - torch.exp(-scaled_x)
+        
         # Three explicit regions
         result = torch.where(
             u < lower_curve_point,
             # Lower region: curve toward effective_min
-            effective_min
-            + (lower_curve_point - effective_min)
-            * torch.exp(-steepness * (lower_curve_point - u) / curve_start),
+            effective_min + curve_start * (1 - curve_function(lower_curve_point - u)),
             torch.where(
                 u > upper_curve_point,
                 # Upper region: curve toward effective_max
-                effective_max
-                - (effective_max - upper_curve_point)
-                * torch.exp(-steepness * (u - upper_curve_point) / curve_start),
+                effective_max - curve_start * (1 - curve_function(u - upper_curve_point)),
                 # Linear region: perfect passthrough
                 u,
             ),
         )
-
         return result
 
     def do_step(
@@ -138,10 +146,13 @@ class PIDControllerSystem(core.System, nn.Module):
             + self.Td.get() / step_size * self.err_prev_m1
         )
 
+
         u = self.u_prev + du
+        # print("DEBUG: u before saturation: ", u)
         u = self.asymptotic_smooth_saturation(
-            u, lower=0.0, upper=1.0, curve_start=0.05, steepness=1
+            u
         )
+        # print("DEBUG: u after saturation: ", u)
         self.u_prev = u
         self.err_prev_m1 = self.err_prev
         self.err_prev = err

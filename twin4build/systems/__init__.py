@@ -65,8 +65,10 @@ __all__ = [
     # Controllers # TODO: Convert to Torch
     "PIDControllerSystem",
     "OnOffControllerSystem",
+    "OnOffControllerTorchSystem",
     "ClassificationAnnControllerSystem",
     "NeuralPolicyControllerSystem",
+    "ControllerIdentificationTorchSystem",
     # Sensors
     "SensorSystem",
     # Schedules
@@ -123,8 +125,14 @@ from twin4build.systems.controller.classification_ann_controller.classification_
 from twin4build.systems.controller.neural_policy_controller.neural_policy_controller_system import (
     NeuralPolicyControllerSystem,
 )
+from twin4build.systems.controller.controller_identification.controller_identification_torch_system import (
+    ControllerIdentificationTorchSystem,
+)
 from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_system import (
     OnOffControllerSystem,
+)
+from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_torch_system import (
+    OnOffControllerTorchSystem,
 )
 
 # Controllers
