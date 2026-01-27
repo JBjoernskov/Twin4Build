@@ -199,4 +199,4 @@ class NeuralPolicyControllerSystem(core.System):
         # The resulting denormalized output follows the same order as the input schema,
         for idx, key in enumerate(self.input_output_schema["output"]):
             output_key = key + "_input_signal"
-            self.output[output_key].set(denormalized_output[idx], step_index)
+            self.output[output_key]._set(denormalized_output[idx], i_t=step_index)

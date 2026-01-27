@@ -48,8 +48,8 @@ class TestFanTorchSystem(unittest.TestCase):
         )
 
         # Set inputs
-        self.fan.input["airFlowRate"].set(torch.tensor([1.0]), step_index=0)
-        self.fan.input["inletAirTemperature"].set(torch.tensor([20.0]), step_index=0)
+        self.fan.input["airFlowRate"].set(torch.tensor([1.0]), i_t=0)
+        self.fan.input["inletAirTemperature"].set(torch.tensor([20.0]), i_t=0)
 
         # Set required inputs (may vary based on implementation)
         # Execute a time step
@@ -87,23 +87,23 @@ class TestFanTorchSystem(unittest.TestCase):
 
         # Initialize inputs with batch size
         fan_batch.input["airFlowRate"].initialize(
-            n_timesteps=1, batch_size=batch_size, size=1
+            n_t=1, n_s=batch_size, n_v=1
         )
         fan_batch.input["inletAirTemperature"].initialize(
-            n_timesteps=1, batch_size=batch_size, size=1
+            n_t=1, n_s=batch_size, n_v=1
         )
 
         # Set inputs with batch size 2
-        fan_batch.input["airFlowRate"].set(torch.tensor([1.0, 0.8]), step_index=0)
+        fan_batch.input["airFlowRate"].set(torch.tensor([1.0, 0.8]), i_t=0)
         fan_batch.input["inletAirTemperature"].set(
-            torch.tensor([20.0, 22.0]), step_index=0
+            torch.tensor([20.0, 22.0]), i_t=0
         )
 
         fan_batch.output["outletAirTemperature"].initialize(
-            n_timesteps=1, batch_size=batch_size, size=1
+            n_t=1, n_s=batch_size, n_v=1
         )
         fan_batch.output["Power"].initialize(
-            n_timesteps=1, batch_size=batch_size, size=1
+            n_t=1, n_s=batch_size, n_v=1
         )
 
         # Execute a time step

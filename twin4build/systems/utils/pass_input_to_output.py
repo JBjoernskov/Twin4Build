@@ -38,9 +38,9 @@ class PassInputToOutput(core.System):
         )
         batch_size = len(start_time)
         for input in self.input.values():
-            input.initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+            input.initialize(n_t=max_timesteps, n_s=batch_size)
         for output in self.output.values():
-            output.initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+            output.initialize(n_t=max_timesteps, n_s=batch_size)
 
     def do_step(
         self,
@@ -49,4 +49,4 @@ class PassInputToOutput(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        self.output["value"].set(self.input["value"], step_index)
+        self.output["value"]._set(self.input["value"].get(), i_t=step_index)

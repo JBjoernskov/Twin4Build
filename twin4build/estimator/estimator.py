@@ -616,6 +616,11 @@ class Estimator:
             df = measuring_device.get_physical_readings(start_time, end_time, step_size)
             self.actual_readings[measuring_device.id] = df  # list of
 
+
+        measuring_devices = [measuring_device for measuring_device, sd in self._measurements]
+        self.simulator.model.set_save_simulation_result(flag=False)
+        self.simulator.model.set_save_simulation_result(flag=True, c=measuring_devices)
+
         for df_ in df:
             self._n_timesteps += len(df_.index)
 
@@ -863,6 +868,8 @@ class Estimator:
             self._lb = np.array([])
             self._ub = np.array([])
             self._theta_mask = np.array([], dtype=int)
+            self._theta_slices = []  # (start, end) for each unique param in theta
+            self._unique_param_n_c = []  # n_c for each unique param
             self._flat_components_private = []
             self._parameter_names_private = []
             self._flat_components_shared = []
@@ -885,32 +892,15 @@ class Estimator:
         # Build flat lists for private parameters
         self._flat_components_private = [param[0] for param in private_params]
         self._parameter_names_private = [param[1] for param in private_params]
-        private_x0 = [param[2] for param in private_params]
-        private_lb = [
-            param[3] if param[3] is not None else -np.inf for param in private_params
-        ]
-        private_ub = [
-            param[4] if param[4] is not None else np.inf for param in private_params
-        ]
 
         # Build flat lists for shared parameters
-        # For shared params, we only need one entry per shared parameter group
         self._flat_components_shared = []
         self._parameter_names_shared = []
-        shared_x0 = []
-        shared_lb = []
-        shared_ub = []
 
         for components, attr, x0, lb, ub in shared_params:
-            # Add all components for this shared parameter
             for component in components:
                 self._flat_components_shared.append(component)
                 self._parameter_names_shared.append(attr)
-
-            # But only add the parameter values once
-            shared_x0.append(x0)
-            shared_lb.append(lb if lb is not None else -np.inf)
-            shared_ub.append(ub if ub is not None else np.inf)
 
         # Combine all components and parameters
         self._flat_components = (
@@ -920,42 +910,145 @@ class Estimator:
             self._parameter_names_private + self._parameter_names_shared
         )
 
-        # Combine parameter values
-        all_x0 = private_x0 + shared_x0
-        all_lb = private_lb + shared_lb
-        all_ub = private_ub + shared_ub
-
-        self._x0 = np.array(all_x0) if all_x0 else np.array([])
-        self._lb = np.array(all_lb) if all_lb else np.array([])
-        self._ub = np.array(all_ub) if all_ub else np.array([])
-
         # Get parameter objects
         self._flat_parameters = [
             rgetattr(component, attr)
             for component, attr in zip(self._flat_components, self._parameter_names)
         ]
 
-        # Create parameter mask
-        # Private parameters: one-to-one mapping (indices 0, 1, 2, ...)
-        private_mask = np.arange(len(self._flat_components_private), dtype=int)
+        # Build theta with n_c support
+        # theta is flat: [p0_v0, p0_v1, ..., p0_vn_c0, p1_v0, ..., p1_vn_c1, ...]
+        # _theta_slices[i] = (start, end) for unique parameter i
+        # _theta_mask[j] = which unique parameter index flat_parameter[j] maps to
+        
+        self._unique_param_n_c = []  # n_c for each unique parameter
+        self._theta_slices = []  # (start, end) for each unique param in theta
+        theta_offset = 0
+        
+        # Process private parameters (each is unique)
+        private_x0_flat = []
+        private_lb_flat = []
+        private_ub_flat = []
+        
+        for i, (component, attr, x0, lb, ub) in enumerate(private_params):
+            param = rgetattr(component, attr)
+            n_c = param.n_c if hasattr(param, 'n_c') else 1
+            self._unique_param_n_c.append(n_c)
+            self._theta_slices.append((theta_offset, theta_offset + n_c))
+            theta_offset += n_c
+            
+            # Flatten x0, lb, ub for this parameter
+            if isinstance(x0, (list, np.ndarray, torch.Tensor)):
+                x0_vals = np.array(x0).flatten() if not isinstance(x0, torch.Tensor) else x0.detach().numpy().flatten()
+            else:
+                x0_vals = np.full(n_c, x0)
+            
+            lb_val = lb if lb is not None else -np.inf
+            ub_val = ub if ub is not None else np.inf
+            if isinstance(lb_val, (list, np.ndarray, torch.Tensor)):
+                lb_vals = np.array(lb_val).flatten() if not isinstance(lb_val, torch.Tensor) else lb_val.detach().numpy().flatten()
+            else:
+                lb_vals = np.full(n_c, lb_val)
+            if isinstance(ub_val, (list, np.ndarray, torch.Tensor)):
+                ub_vals = np.array(ub_val).flatten() if not isinstance(ub_val, torch.Tensor) else ub_val.detach().numpy().flatten()
+            else:
+                ub_vals = np.full(n_c, ub_val)
+            
+            private_x0_flat.extend(x0_vals)
+            private_lb_flat.extend(lb_vals)
+            private_ub_flat.extend(ub_vals)
 
-        # Shared parameters: components share parameter indices
-        shared_mask = []
-        n_private = len(self._flat_components_private)
-
-        param_idx = n_private  # Start shared parameter indices after private ones
+        # Process shared parameters
+        shared_x0_flat = []
+        shared_lb_flat = []
+        shared_ub_flat = []
+        n_private_unique = len(private_params)
+        
         for components, attr, x0, lb, ub in shared_params:
-            # All components in this group map to the same parameter index
-            for _ in components:
-                shared_mask.append(param_idx)
-            param_idx += 1  # Move to next shared parameter
+            # Get n_c from first component (all shared components should have same n_c)
+            param = rgetattr(components[0], attr)
+            n_c = param.n_c if hasattr(param, 'n_c') else 1
+            self._unique_param_n_c.append(n_c)
+            self._theta_slices.append((theta_offset, theta_offset + n_c))
+            theta_offset += n_c
+            
+            # Flatten x0, lb, ub for this shared parameter
+            if isinstance(x0, (list, np.ndarray, torch.Tensor)):
+                x0_vals = np.array(x0).flatten() if not isinstance(x0, torch.Tensor) else x0.detach().numpy().flatten()
+            else:
+                x0_vals = np.full(n_c, x0)
+            
+            lb_val = lb if lb is not None else -np.inf
+            ub_val = ub if ub is not None else np.inf
+            if isinstance(lb_val, (list, np.ndarray, torch.Tensor)):
+                lb_vals = np.array(lb_val).flatten() if not isinstance(lb_val, torch.Tensor) else lb_val.detach().numpy().flatten()
+            else:
+                lb_vals = np.full(n_c, lb_val)
+            if isinstance(ub_val, (list, np.ndarray, torch.Tensor)):
+                ub_vals = np.array(ub_val).flatten() if not isinstance(ub_val, torch.Tensor) else ub_val.detach().numpy().flatten()
+            else:
+                ub_vals = np.full(n_c, ub_val)
+            
+            shared_x0_flat.extend(x0_vals)
+            shared_lb_flat.extend(lb_vals)
+            shared_ub_flat.extend(ub_vals)
 
-        shared_mask = np.array(shared_mask) if shared_mask else np.array([], dtype=int)
-        self._theta_mask = (
-            np.concatenate((private_mask, shared_mask)).astype(int)
-            if len(private_mask) > 0 or len(shared_mask) > 0
-            else np.array([], dtype=int)
-        )
+        # Combine flattened values
+        self._x0 = np.array(private_x0_flat + shared_x0_flat) if (private_x0_flat or shared_x0_flat) else np.array([])
+        self._lb = np.array(private_lb_flat + shared_lb_flat) if (private_lb_flat or shared_lb_flat) else np.array([])
+        self._ub = np.array(private_ub_flat + shared_ub_flat) if (private_ub_flat or shared_ub_flat) else np.array([])
+
+        # Create theta_mask: maps flat_parameters index -> unique parameter index
+        # Private parameters: one-to-one mapping (indices 0, 1, 2, ...)
+        private_mask = list(range(len(self._flat_components_private)))
+
+        # Shared parameters: components share unique parameter indices
+        shared_mask = []
+        unique_idx = n_private_unique
+        for components, attr, x0, lb, ub in shared_params:
+            for _ in components:
+                shared_mask.append(unique_idx)
+            unique_idx += 1
+
+        self._theta_mask = np.array(private_mask + shared_mask, dtype=int)
+
+    def _theta_to_param_values(self, theta: np.ndarray) -> List[np.ndarray]:
+        """
+        Convert flat theta array to list of parameter values.
+        
+        Args:
+            theta: Flat array of all parameter values
+            
+        Returns:
+            List of arrays, one per flat_parameter, with values from theta
+            (shared parameters get the same values)
+        """
+        values = []
+        for i, param_idx in enumerate(self._theta_mask):
+            start, end = self._theta_slices[param_idx]
+            values.append(theta[start:end])
+        return values
+
+    def _param_values_to_theta(self, values: List[np.ndarray]) -> np.ndarray:
+        """
+        Convert list of parameter values to flat theta array.
+        
+        Only uses the first occurrence of each unique parameter (for shared params).
+        
+        Args:
+            values: List of parameter value arrays
+            
+        Returns:
+            Flat theta array
+        """
+        theta = np.zeros(sum(self._unique_param_n_c))
+        seen_unique = set()
+        for i, (value, param_idx) in enumerate(zip(values, self._theta_mask)):
+            if param_idx not in seen_unique:
+                start, end = self._theta_slices[param_idx]
+                theta[start:end] = value
+                seen_unique.add(param_idx)
+        return theta
 
     def _jac_fd(self, x0: np.ndarray, output: str) -> np.ndarray:
         """
@@ -1399,13 +1492,13 @@ class Estimator:
         - Parameters must be subclasses of tps.Parameter.
         - Bounds are set on the parameter objects for constraint enforcement.
         """
+        # Get per-parameter bounds from flat theta arrays
+        lb_values = self._theta_to_param_values(self._lb)
+        ub_values = self._theta_to_param_values(self._ub)
+        x0_values = self._theta_to_param_values(self._x0)
+
         # Enable gradients for parameters to be estimated
-        for component, attr, lb, ub in zip(
-            self._flat_components,
-            self._parameter_names,
-            self._lb[self._theta_mask],
-            self._ub[self._theta_mask],
-        ):
+        for i, (component, attr) in enumerate(zip(self._flat_components, self._parameter_names)):
             assert isinstance(
                 component, nn.Module
             ), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
@@ -1418,28 +1511,35 @@ class Estimator:
             if normalize == False:
                 lb = 0  # Do nothing
                 ub = 1  # Do nothing
+            else:
+                lb = lb_values[i]
+                ub = ub_values[i]
 
             param.min_value = lb
             param.max_value = ub
-
-        self._lb_norm = np.array(
-            [
-                param.normalize(lb)
-                for param, lb in zip(self._flat_parameters, self._lb[self._theta_mask])
-            ]
-        )
-        self._ub_norm = np.array(
-            [
-                param.normalize(ub)
-                for param, ub in zip(self._flat_parameters, self._ub[self._theta_mask])
-            ]
-        )
-        self._x0_norm = np.array(
-            [
-                param.normalize(x0)
-                for param, x0 in zip(self._flat_parameters, self._x0[self._theta_mask])
-            ]
-        )
+        
+        # Normalize each parameter's values
+        lb_norm_list = []
+        ub_norm_list = []
+        x0_norm_list = []
+        
+        seen_unique = set()
+        for i, (param, param_idx) in enumerate(zip(self._flat_parameters, self._theta_mask)):
+            if param_idx not in seen_unique:
+                # Normalize the values for this unique parameter
+                lb_norm = param.normalize(torch.tensor(lb_values[i], dtype=torch.float64))
+                ub_norm = param.normalize(torch.tensor(ub_values[i], dtype=torch.float64))
+                x0_norm = param.normalize(torch.tensor(x0_values[i], dtype=torch.float64))
+                
+                # Convert to numpy and flatten
+                lb_norm_list.extend(lb_norm.detach().numpy().flatten())
+                ub_norm_list.extend(ub_norm.detach().numpy().flatten())
+                x0_norm_list.extend(x0_norm.detach().numpy().flatten())
+                seen_unique.add(param_idx)
+        
+        self._lb_norm = np.array(lb_norm_list)
+        self._ub_norm = np.array(ub_norm_list)
+        self._x0_norm = np.array(x0_norm_list)
 
     def _scipy_solver(
         self, method: tuple, n_cores: Optional[int] = None, **options
@@ -1468,7 +1568,8 @@ class Estimator:
             If the optimization method is not supported.
         """
         datestr = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = str("{}{}".format(datestr, f"_{str(method)}.pickle"))
+        method_str = "_".join(list(method))
+        filename = str("{}{}".format(datestr, f"_{method_str}.pickle"))
         self.result_savedir_pickle, isfile = self.simulator.model.get_dir(
             folder_list=["model_parameters", "estimation_results"], filename=filename
         )
@@ -1485,15 +1586,8 @@ class Estimator:
                 component, nn.Module
             ), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
 
-        # Set initial parameters
-        self.simulator.model.set_parameters_from_array(
-            self._x0_norm,
-            self._flat_components,
-            self._parameter_names,
-            normalized=True,
-            overwrite=True,
-            save_original=True,
-        )
+
+        
 
         assert len(self._flat_parameters) > 0, "No parameters to optimize"
 
@@ -1502,6 +1596,19 @@ class Estimator:
             start_time=self._start_time,
             end_time=self._end_time,
             step_size=self._stepSize,
+        )
+
+
+
+        # Set initial parameters - convert flat theta to per-parameter values NOTE: moved to herefrom before assert len...
+        x0_param_values = self._theta_to_param_values(self._x0_norm)
+        self.simulator.model.set_parameters(
+            x0_param_values,
+            self._flat_components,
+            self._parameter_names,
+            normalized=True,
+            overwrite=True,
+            save_original=True,
         )
 
         # Disable gradients for history to save memory
@@ -1621,23 +1728,30 @@ class Estimator:
                 )
 
         if method[0] == "scipy":
-           self.simulator.model.restore_parameters(keep_values=True) 
+            self.simulator.model.restore_parameters(keep_values=True)
 
-        # Denormalize result using bounds (lb, ub) and theta_mask
-        # Use theta_mask to obtain the boundaries for each item in result.x array
-        # theta_mask maps each flat parameter to its unique parameter index
-        # For each value in result.x, use the bounds from lb and ub via theta_mask
-        result.x = np.array([
-            x_norm * (self._ub[param_idx] - self._lb[param_idx]) + self._lb[param_idx]
-            for param_idx, x_norm in zip(self._theta_mask, result.x)
-        ])
+        # Denormalize result using parameter's denormalize method
+        # result.x is flat array of all unique parameter values
+        result_x_list = []
+        seen_unique = set()
+        for i, (param, param_idx) in enumerate(zip(self._flat_parameters, self._theta_mask)):
+            if param_idx not in seen_unique:
+                start, end = self._theta_slices[param_idx]
+                x_norm = torch.tensor(result.x[start:end], dtype=torch.float64)
+                x_denorm = param.denormalize(x_norm)
+                result_x_list.extend(x_denorm.detach().numpy().flatten())
+                seen_unique.add(param_idx)
+        result_x = np.array(result_x_list)
 
+        
         # Create and save result
         result = EstimationResult(
-            result_x=result.x,
+            result_x=result_x,
             component_id=[com.id for com in self._flat_components],
             component_attr=[attr for attr in self._parameter_names],
             theta_mask=self._theta_mask,
+            theta_slices=self._theta_slices,
+            unique_param_n_c=self._unique_param_n_c,
             start_time=self._start_time,
             end_time=self._end_time,
             step_size=self._stepSize,
@@ -1680,9 +1794,12 @@ class Estimator:
         ValueError
             If output format is invalid.
         """
-        theta = theta[self._theta_mask]
-        self.simulator.model.set_parameters_from_array(
-            theta,
+        # Convert flat theta to per-parameter values
+        param_values = self._theta_to_param_values(theta)
+        
+        # Set parameters - pass list of arrays (one per flat_parameter)
+        self.simulator.model.set_parameters(
+            param_values,
             self._flat_components,
             self._parameter_names,
             normalized=True,
@@ -1720,10 +1837,11 @@ class Estimator:
 
             # Extract measurements for this period
             for measuring_device, sd in self._measurements:
-                # Get simulation results for this period (batch dimension = period_idx)
-                y_model_period = measuring_device.input["measuredValue"].history[
-                    batch_idx, self._n_warmup : max_timesteps
-                ]
+                # Get simulation results for this period
+                # History uses time-first layout (n_t, n_s, n_c), extract first component
+                y_model_period = measuring_device.input["measuredValue"].history(
+                    i_t=slice(self._n_warmup, max_timesteps), i_s=batch_idx, i_c=0
+                )
 
                 # Filter out NaN values (padding) for shorter periods
                 # valid_mask = ~torch.isnan(y_model_period)
@@ -1950,6 +2068,8 @@ class EstimationResult(dict):
         component_id: Optional[List[str]] = None,
         component_attr: Optional[List[str]] = None,
         theta_mask: Optional[np.ndarray] = None,
+        theta_slices: Optional[List[tuple]] = None,
+        unique_param_n_c: Optional[List[int]] = None,
         start_time: Optional[List[datetime.datetime]] = None,
         end_time: Optional[List[datetime.datetime]] = None,
         step_size: Optional[List[int]] = None,
@@ -1987,6 +2107,8 @@ class EstimationResult(dict):
             component_id=component_id,
             component_attr=component_attr,
             theta_mask=theta_mask,
+            theta_slices=theta_slices,
+            unique_param_n_c=unique_param_n_c,
             start_time=start_time,
             end_time=end_time,
             step_size=step_size,

@@ -1488,5 +1488,196 @@ class TestConstants(unittest.TestCase):
         self.assertAlmostEqual(constants.ABSOLUTE_ZERO_CELSIUS, -273.15, places=2)
 
 
+class TestPrintEstimationResult(unittest.TestCase):
+    """Tests for print_estimation_result function."""
+
+    def setUp(self):
+        """Create test data for estimation results."""
+        # Third party imports
+        import numpy as np
+
+        # Create sample estimation result data
+        self.result_dict = {
+            "result_x": np.array([0.85, 0.92, 1.5, 2.3]),
+            "component_id": ["comp1", "comp2", "comp1", "comp2"],
+            "component_attr": ["efficiency", "efficiency", "power", "temperature"],
+        }
+
+    def test_print_estimation_result_from_dict(self):
+        """Test print_estimation_result with a result dictionary."""
+        # Standard library imports
+        import io
+        import sys
+
+        # Local application imports
+        from twin4build.utils.print_estimation_result import print_estimation_result
+
+        # Capture stdout
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            print_estimation_result(self.result_dict)
+            output = captured_output.getvalue()
+        finally:
+            sys.stdout = sys.__stdout__
+
+        # Verify output contains expected elements
+        self.assertIn("ESTIMATION RESULTS", output)
+        self.assertIn("comp1", output)
+        self.assertIn("comp2", output)
+        self.assertIn("efficiency", output)
+        self.assertIn("power", output)
+        self.assertIn("temperature", output)
+
+    def test_print_estimation_result_from_pickle(self):
+        """Test print_estimation_result with a pickle file."""
+        # Standard library imports
+        import io
+        import pickle
+        import sys
+        import tempfile
+
+        # Local application imports
+        from twin4build.utils.print_estimation_result import print_estimation_result
+
+        # Create a temporary pickle file
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".pickle", delete=False) as f:
+            pickle.dump(self.result_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
+            temp_file = f.name
+
+        try:
+            # Capture stdout
+            captured_output = io.StringIO()
+            sys.stdout = captured_output
+
+            try:
+                print_estimation_result(temp_file)
+                output = captured_output.getvalue()
+            finally:
+                sys.stdout = sys.__stdout__
+
+            # Verify output contains expected elements
+            self.assertIn("ESTIMATION RESULTS", output)
+            self.assertIn("comp1", output)
+            self.assertIn("comp2", output)
+        finally:
+            os.unlink(temp_file)
+
+    def test_print_estimation_result_file_not_found(self):
+        """Test print_estimation_result raises FileNotFoundError for non-existent file."""
+        # Local application imports
+        from twin4build.utils.print_estimation_result import print_estimation_result
+
+        with self.assertRaises(FileNotFoundError):
+            print_estimation_result("nonexistent_file.pickle")
+
+    def test_print_estimation_result_wrong_extension(self):
+        """Test print_estimation_result raises ValueError for wrong file extension."""
+        # Standard library imports
+        import tempfile
+
+        # Local application imports
+        from twin4build.utils.print_estimation_result import print_estimation_result
+
+        # Create a temporary file with wrong extension
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("test content")
+            temp_file = f.name
+
+        try:
+            with self.assertRaises(ValueError) as context:
+                print_estimation_result(temp_file)
+            self.assertIn("pickle file", str(context.exception))
+        finally:
+            os.unlink(temp_file)
+
+    def test_print_estimation_result_missing_key(self):
+        """Test print_estimation_result raises AssertionError for missing keys."""
+        # Local application imports
+        from twin4build.utils.print_estimation_result import print_estimation_result
+
+        # Test missing result_x
+        invalid_dict = {
+            "component_id": ["comp1"],
+            "component_attr": ["efficiency"],
+        }
+        with self.assertRaises(AssertionError) as context:
+            print_estimation_result(invalid_dict)
+        self.assertIn("result_x", str(context.exception))
+
+        # Test missing component_id
+        invalid_dict = {
+            "result_x": [0.85],
+            "component_attr": ["efficiency"],
+        }
+        with self.assertRaises(AssertionError) as context:
+            print_estimation_result(invalid_dict)
+        self.assertIn("component_id", str(context.exception))
+
+        # Test missing component_attr
+        invalid_dict = {
+            "result_x": [0.85],
+            "component_id": ["comp1"],
+        }
+        with self.assertRaises(AssertionError) as context:
+            print_estimation_result(invalid_dict)
+        self.assertIn("component_attr", str(context.exception))
+
+    def test_print_estimation_result_length_mismatch(self):
+        """Test print_estimation_result raises AssertionError for length mismatch."""
+        # Third party imports
+        import numpy as np
+
+        # Local application imports
+        from twin4build.utils.print_estimation_result import print_estimation_result
+
+        # Create dict with mismatched lengths
+        invalid_dict = {
+            "result_x": np.array([0.85, 0.92]),
+            "component_id": ["comp1"],  # Different length
+            "component_attr": ["efficiency", "power"],
+        }
+
+        with self.assertRaises(AssertionError) as context:
+            print_estimation_result(invalid_dict)
+        self.assertIn("same length", str(context.exception))
+
+    def test_print_estimation_result_value_formatting(self):
+        """Test print_estimation_result formats values correctly."""
+        # Standard library imports
+        import io
+        import sys
+
+        # Third party imports
+        import numpy as np
+
+        # Local application imports
+        from twin4build.utils.print_estimation_result import print_estimation_result
+
+        # Create result with various value types
+        result_dict = {
+            "result_x": np.array([0.85, 1e-6, 1e6, 123.456789]),
+            "component_id": ["comp1", "comp2", "comp3", "comp4"],
+            "component_attr": ["normal", "small", "large", "decimal"],
+        }
+
+        # Capture stdout
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            print_estimation_result(result_dict)
+            output = captured_output.getvalue()
+        finally:
+            sys.stdout = sys.__stdout__
+
+        # Verify output contains formatted values
+        self.assertIn("0.850000", output)  # Normal value
+        self.assertIn("1.000000e-06", output)  # Small value (scientific notation)
+        self.assertIn("1.000000e+06", output)  # Large value (scientific notation)
+        self.assertIn("123.456789", output)  # Decimal value
+
+
 if __name__ == "__main__":
     unittest.main()

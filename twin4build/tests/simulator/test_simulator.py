@@ -71,9 +71,10 @@ class TestSimulator(unittest.TestCase):
 
         # Check that history has the correct shape
         # 6 timesteps for 1 hour with 600s step size: 0, 600, 1200, 1800, 2400, 3000
+        # History uses time-first layout (n_t, n_s, n_c), so shape[0] is n_t
         expected_timesteps = 6
         self.assertEqual(
-            schedule.output["scheduleValue"].history.shape[1], expected_timesteps
+            schedule.output["scheduleValue"].history().shape[0], expected_timesteps
         )
 
     def test_simulate_batched(self):
@@ -105,10 +106,11 @@ class TestSimulator(unittest.TestCase):
 
         # Check that batch dimension is correct
         schedule = self.model.components["schedule"]
-        history = schedule.output["scheduleValue"].history
+        history = schedule.output["scheduleValue"].history()  # Now a method
 
-        # Batch size should be 3
-        self.assertEqual(history.shape[0], 3)
+        # History shape is (n_t, n_s, n_c) - time-first layout
+        # Batch size (n_s) should be 3, which is shape[1]
+        self.assertEqual(history.shape[1], 3)
 
     def test_simulate_invalid_time_period(self):
         """Test simulation with invalid time period (start >= end)."""
@@ -161,9 +163,10 @@ class TestSimulator(unittest.TestCase):
         )
 
         # Should have 2 timesteps
+        # History shape is (n_t, n_s, n_c) - time-first layout, so shape[0] is n_t
         schedule = self.model.components["schedule"]
-        history = schedule.output["scheduleValue"].history
-        self.assertEqual(history.shape[1], 2)
+        history = schedule.output["scheduleValue"].history()  # Now a method
+        self.assertEqual(history.shape[0], 2)
 
     def test_simulate_multiple_runs(self):
         """Test running multiple simulations sequentially."""
@@ -198,10 +201,11 @@ class TestSimulator(unittest.TestCase):
         self.simulator.simulate(start_time=start_time, end_time=end_time, step_size=300)
 
         schedule = self.model.components["schedule"]
-        history1 = schedule.output["scheduleValue"].history
+        history1 = schedule.output["scheduleValue"].history()
 
         # Should have 12 timesteps (3600 / 300)
-        self.assertEqual(history1.shape[1], 12)
+        # History uses time-first layout (n_t, n_s, n_c), so shape[0] is n_t
+        self.assertEqual(history1.shape[0], 12)
 
     def test_simulate_result_caching(self):
         """Test that simulation results are properly cached."""
@@ -216,14 +220,14 @@ class TestSimulator(unittest.TestCase):
 
         # Get results
         schedule = self.model.components["schedule"]
-        history1 = schedule.output["scheduleValue"].history.clone()
+        history1 = schedule.output["scheduleValue"].history().clone()
 
         # Run same simulation again
         self.simulator.simulate(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
-        history2 = schedule.output["scheduleValue"].history
+        history2 = schedule.output["scheduleValue"].history()
 
         # Results should be identical
         torch.testing.assert_close(history1, history2)
@@ -408,12 +412,12 @@ class TestSimulator(unittest.TestCase):
         space_jacobi = model_jacobi.components["020B"]
 
         # Get indoor temperature outputs
-        temp_gs = space_gs.output["indoorTemperature"].history.detach().numpy()
-        temp_jacobi = space_jacobi.output["indoorTemperature"].history.detach().numpy()
+        temp_gs = space_gs.output["indoorTemperature"].history().detach().numpy()
+        temp_jacobi = space_jacobi.output["indoorTemperature"].history().detach().numpy()
 
         # Get CO2 concentration outputs
-        co2_gs = space_gs.output["indoorCO2"].history.detach().numpy()
-        co2_jacobi = space_jacobi.output["indoorCO2"].history.detach().numpy()
+        co2_gs = space_gs.output["indoorCO2"].history().detach().numpy()
+        co2_jacobi = space_jacobi.output["indoorCO2"].history().detach().numpy()
 
         # Plotting for debugging
         # tb.plot.plot(simulator_gs.date_time_steps,

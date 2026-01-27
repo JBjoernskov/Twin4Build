@@ -154,13 +154,13 @@ class ValveTorchSystem(core.System, nn.Module):
         batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         self.INITIALIZED = True
 
@@ -197,8 +197,8 @@ class ValveTorchSystem(core.System, nn.Module):
         m_w = u_norm * self.waterFlowRateMax.get()
 
         # Update outputs
-        self.output["valvePosition"].set(valve_position, step_index)
-        self.output["waterFlowRate"].set(m_w, step_index)
+        self.output["valvePosition"]._set(valve_position, i_t=step_index)
+        self.output["waterFlowRate"]._set(m_w, i_t=step_index)
 
 
 def saref_signature_pattern():

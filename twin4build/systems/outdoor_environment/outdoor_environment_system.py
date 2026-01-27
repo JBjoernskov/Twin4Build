@@ -632,18 +632,21 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
             # Initialize outputs using the values from TimeSeriesInputSystem
             self.output["outdoorTemperature"].initialize(
-                time_series_temp.n_timesteps,
-                batch_size=time_series_temp.batch_size,
+                n_t=time_series_temp.n_timesteps,
+                n_s=time_series_temp.batch_size,
+                n_c=1,
                 values=time_series_temp.values,
             )
             self.output["globalIrradiation"].initialize(
-                time_series_irrad.n_timesteps,
-                batch_size=time_series_irrad.batch_size,
+                n_t=time_series_irrad.n_timesteps,
+                n_s=time_series_irrad.batch_size,
+                n_c=1,
                 values=time_series_irrad.values,
             )
             self.output["outdoorCo2Concentration"].initialize(
-                time_series_co2.n_timesteps,
-                batch_size=time_series_co2.batch_size,
+                n_t=time_series_co2.n_timesteps,
+                n_s=time_series_co2.batch_size,
+                n_c=1,
                 values=time_series_co2.values,
             )
         else:
@@ -675,14 +678,14 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         """
         # Set the values for each output
         if self.apply_correction:
-            self._output["outdoorTemperature"].set(
-                step_index=step_index, apply=self._apply
+            self._output["outdoorTemperature"]._set(
+                i_t=step_index, apply=self._apply
             )
         else:
-            self._output["outdoorTemperature"].set(step_index=step_index)
+            self._output["outdoorTemperature"]._set(i_t=step_index)
 
-        self._output["globalIrradiation"].set(step_index=step_index)
-        self._output["outdoorCo2Concentration"].set(step_index=step_index)
+        self._output["globalIrradiation"]._set(i_t=step_index)
+        self._output["outdoorCo2Concentration"]._set(i_t=step_index)
 
 
 def saref_signature_pattern():

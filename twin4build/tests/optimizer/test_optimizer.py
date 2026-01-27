@@ -96,7 +96,8 @@ class TestOptimizer(unittest.TestCase):
 
         # Check that optimization found a low damper position (close to 0)
         # Since we're minimizing airflow, optimal should be minimum damper position
-        optimized_position = self.setpoint.output["value"].history.detach().numpy()[0]
+        # History uses time-first layout (n_t, n_s, n_c), select first batch
+        optimized_position = self.setpoint.output["value"].history(i_s=0).detach().numpy()
 
         # The optimized position should be close to the lower bound (0.0)
         # Note: We use a relaxed threshold as optimization behavior can vary
@@ -145,7 +146,8 @@ class TestOptimizer(unittest.TestCase):
         )
 
         # Check that constraint is satisfied
-        airflow = self.damper.output["airFlowRate"].history.detach().numpy()[0]
+        # History uses time-first layout (n_t, n_s, n_c), select first batch
+        airflow = self.damper.output["airFlowRate"].history(i_s=0).detach().numpy()
         min_airflow = np.min(airflow)
 
         self.assertGreaterEqual(

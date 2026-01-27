@@ -203,12 +203,12 @@ class Simulator:
                 connected_component = connection.connects_system
                 input_port_index = connection_point.input_port_index[connection]
                 output_port_index = connection_point.output_port_index[connection]
-                component.input[connection_point.input_port].set(
-                    connected_component.output[connection.output_port].get(
-                        index=output_port_index
+                component.input[connection_point.inputPort]._set(
+                    connected_component.output[connection.outputPort].get(
+                        i_v=output_port_index
                     ),
-                    step_index=step_index,
-                    index=input_port_index,
+                    i_t=step_index,
+                    i_v=input_port_index,
                 )
 
                 # Actually, we HAVE to check for nans because it breaks jacobian calculation in optimizer will include nans which breaks scipy solver.

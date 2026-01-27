@@ -45,18 +45,18 @@ class TestAirToAirHeatRecoverySystem(unittest.TestCase):
         # Set inputs
         # Supply side (outdoor to indoor)
         self.hr.input["primaryTemperatureIn"].set(
-            torch.tensor([0.0]), step_index=0
+            torch.tensor([0.0]), i_t=0
         )  # Cold outdoor
-        self.hr.input["primaryAirFlowRate"].set(torch.tensor([1.0]), step_index=0)
+        self.hr.input["primaryAirFlowRate"].set(torch.tensor([1.0]), i_t=0)
         self.hr.input["primaryTemperatureOutSetpoint"].set(
-            torch.tensor([20.0]), step_index=0
+            torch.tensor([20.0]), i_t=0
         )
 
         # Exhaust side (indoor to outdoor)
         self.hr.input["secondaryTemperatureIn"].set(
-            torch.tensor([20.0]), step_index=0
+            torch.tensor([20.0]), i_t=0
         )  # Warm return
-        self.hr.input["secondaryAirFlowRate"].set(torch.tensor([1.0]), step_index=0)
+        self.hr.input["secondaryAirFlowRate"].set(torch.tensor([1.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -102,17 +102,17 @@ class TestAirToAirHeatRecoverySystem(unittest.TestCase):
 
         # Set inputs with batch size 2
         hr_batch.input["primaryTemperatureIn"].set(
-            torch.tensor([0.0, -5.0]), step_index=0
+            torch.tensor([0.0, -5.0]), i_t=0
         )
-        hr_batch.input["primaryAirFlowRate"].set(torch.tensor([1.0, 0.8]), step_index=0)
+        hr_batch.input["primaryAirFlowRate"].set(torch.tensor([1.0, 0.8]), i_t=0)
         hr_batch.input["primaryTemperatureOutSetpoint"].set(
-            torch.tensor([20.0, 20.0]), step_index=0
+            torch.tensor([20.0, 20.0]), i_t=0
         )
         hr_batch.input["secondaryTemperatureIn"].set(
-            torch.tensor([20.0, 22.0]), step_index=0
+            torch.tensor([20.0, 22.0]), i_t=0
         )
         hr_batch.input["secondaryAirFlowRate"].set(
-            torch.tensor([1.0, 0.8]), step_index=0
+            torch.tensor([1.0, 0.8]), i_t=0
         )
 
         # Execute a time step

@@ -33,8 +33,8 @@ class ToDegCFromDegK(core.System):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
-        self.input["K"].initialize(n_timesteps=max_timesteps, batch_size=batch_size)
-        self.output["C"].initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+        self.input["K"].initialize(n_t=max_timesteps, n_s=batch_size)
+        self.output["C"].initialize(n_t=max_timesteps, n_s=batch_size)
 
     def do_step(
         self,
@@ -43,4 +43,4 @@ class ToDegCFromDegK(core.System):
         step_size: int,
         step_index: int,
     ):
-        self.output["C"].set(self.input["K"].get() - 273.15, step_index=step_index)
+        self.output["C"]._set(self.input["K"].get() - 273.15, i_t=step_index)

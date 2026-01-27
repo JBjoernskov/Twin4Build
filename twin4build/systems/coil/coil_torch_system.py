@@ -160,13 +160,13 @@ class CoilTorchSystem(core.System, nn.Module):
         batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         self.INITIALIZED = True
 
@@ -214,6 +214,6 @@ class CoilTorchSystem(core.System, nn.Module):
         cooling_power = torch.where(has_flow & (~is_heating_mode), power, zero)
 
         # Update outputs
-        self.output["heatingPower"].set(heating_power, step_index)
-        self.output["coolingPower"].set(cooling_power, step_index)
-        self.output["outletAirTemperature"].set(outlet_air_temp_setpoint, step_index)
+        self.output["heatingPower"]._set(heating_power, i_t=step_index)
+        self.output["coolingPower"]._set(cooling_power, i_t=step_index)
+        self.output["outletAirTemperature"]._set(outlet_air_temp_setpoint, i_t=step_index)

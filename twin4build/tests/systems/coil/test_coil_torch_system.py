@@ -33,11 +33,11 @@ class TestCoilTorchSystem(unittest.TestCase):
         )
 
         # Set inputs
-        self.coil.input["inletAirTemperature"].set(torch.tensor([20.0]), step_index=0)
+        self.coil.input["inletAirTemperature"].set(torch.tensor([20.0]), i_t=0)
         self.coil.input["outletAirTemperatureSetpoint"].set(
-            torch.tensor([22.0]), step_index=0
+            torch.tensor([22.0]), i_t=0
         )
-        self.coil.input["airFlowRate"].set(torch.tensor([1.0]), step_index=0)
+        self.coil.input["airFlowRate"].set(torch.tensor([1.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -70,12 +70,12 @@ class TestCoilTorchSystem(unittest.TestCase):
 
         # Set inputs with batch size 2
         coil_batch.input["inletAirTemperature"].set(
-            torch.tensor([20.0, 25.0]), step_index=0
+            torch.tensor([20.0, 25.0]), i_t=0
         )
         coil_batch.input["outletAirTemperatureSetpoint"].set(
-            torch.tensor([22.0, 23.0]), step_index=0
+            torch.tensor([22.0, 23.0]), i_t=0
         )
-        coil_batch.input["airFlowRate"].set(torch.tensor([1.0, 1.2]), step_index=0)
+        coil_batch.input["airFlowRate"].set(torch.tensor([1.0, 1.2]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)

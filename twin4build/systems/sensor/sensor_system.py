@@ -833,8 +833,9 @@ class SensorSystem(core.System):
             # The batch initialization args are calculated in the TimeSeriesInputSystem.initialize() method.
             # They are stored in the physicalSystem object and reused here.
             self.output["measuredValue"].initialize(
-                n_timesteps=self.time_series_input.n_timesteps,
-                batch_size=self.time_series_input.batch_size,
+                n_t=self.time_series_input.n_timesteps,
+                n_s=self.time_series_input.batch_size,
+                n_c=1,
                 values=self.time_series_input.values,
             )
         else:
@@ -843,12 +844,12 @@ class SensorSystem(core.System):
             )
             batch_size = len(start_time)
             self.input["measuredValue"].initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
             self.output["measuredValue"].initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
 
     def do_step(
@@ -868,9 +869,9 @@ class SensorSystem(core.System):
             step_size (Optional[float]): Time step size in seconds.
         """
         if self.is_leaf:
-            self.output["measuredValue"].set(step_index=step_index)
+            self.output["measuredValue"]._set(i_t=step_index)
         else:
-            self.output["measuredValue"].set(
+            self.output["measuredValue"]._set(
                 self.input["measuredValue"].get(), step_index
             )
 

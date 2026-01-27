@@ -6,6 +6,7 @@ from typing import Optional
 
 # Third party imports
 import numpy as np
+import torch
 
 # Local application imports
 import twin4build.core as core
@@ -558,8 +559,9 @@ class ScheduleSystem(core.System):
             # The batch initialization args are calculated in the time_series_input.initialize() method.
             # They are stored in the time_series_input object and reused here.
             self.output["scheduleValue"].initialize(
-                time_series_input.n_timesteps,
-                batch_size=time_series_input.batch_size,
+                n_t=time_series_input.n_timesteps,
+                n_s=time_series_input.batch_size,
+                n_c=1,
                 values=time_series_input.values,
             )
         else:
@@ -634,9 +636,13 @@ class ScheduleSystem(core.System):
                 f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Values contain NaN."
             )
 
+            # Convert values from (n_s, n_t) to time-first (n_t, n_s, n_c) where n_c=1
+            # First transpose to (n_t, n_s), then unsqueeze to (n_t, n_s, 1)
+            values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(-1)  # (n_t, n_s, 1)
             self.output["scheduleValue"].initialize(
-                max_timesteps,
-                batch_size=len(start_time),
+                n_t=max_timesteps,
+                n_s=len(start_time),
+                n_c=1,
                 values=values,
             )
 
@@ -737,7 +743,7 @@ class ScheduleSystem(core.System):
         simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times.
         It also adds noise and bias to the calculated value.
         """
-        self.output["scheduleValue"].set(step_index=step_index)
+        self.output["scheduleValue"]._set(i_t=step_index)
 
 
 def saref_signature_pattern():

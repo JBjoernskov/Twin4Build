@@ -127,27 +127,149 @@ def main():
         sys.exit(1)
 
 
-def run_specific_tests(patterns: list[str]):
-    """Run tests matching specific patterns.
+def _match_pattern(test_module: str, pattern: str) -> bool:
+    """Check if a test module matches a pattern.
+    
+    Args:
+        test_module: Full module path (e.g., 'optimizer.test_optimizer')
+        pattern: Pattern to match (e.g., 'optimizer', 'test_optimizer')
+        
+    Returns:
+        True if the pattern matches the module path
+    """
+    return (
+        f".{pattern}." in test_module or 
+        test_module.startswith(f"{pattern}.") or
+        test_module.endswith(f".{pattern}") or
+        test_module == pattern
+    )
+
+
+def _filter_tests_including(suite, include_patterns: list[str]) -> unittest.TestSuite:
+    """Recursively filter tests, including only those matching specified patterns.
+    
+    Args:
+        suite: Test suite to filter
+        include_patterns: List of patterns to include (e.g., ['optimizer', 'simulator'])
+        
+    Returns:
+        Filtered test suite containing only matching tests
+    """
+    filtered = unittest.TestSuite()
+    
+    for test in suite:
+        if isinstance(test, unittest.TestSuite):
+            # Recursively filter nested suites
+            filtered.addTests(_filter_tests_including(test, include_patterns))
+        else:
+            # Check if test module path matches any included pattern
+            test_module = test.__class__.__module__
+            should_include = any(
+                _match_pattern(test_module, pattern)
+                for pattern in include_patterns
+            )
+            if should_include:
+                filtered.addTest(test)
+    
+    return filtered
+
+
+def _filter_tests_excluding(suite, exclude_patterns: list[str]) -> unittest.TestSuite:
+    """Recursively filter tests, excluding those matching specified patterns.
+    
+    Args:
+        suite: Test suite to filter
+        exclude_patterns: List of patterns to exclude (e.g., ['examples', 'optimizer'])
+        
+    Returns:
+        Filtered test suite
+    """
+    filtered = unittest.TestSuite()
+    
+    for test in suite:
+        if isinstance(test, unittest.TestSuite):
+            # Recursively filter nested suites
+            filtered.addTests(_filter_tests_excluding(test, exclude_patterns))
+        else:
+            # Check if test module path matches any excluded pattern
+            test_module = test.__class__.__module__
+            should_exclude = any(
+                _match_pattern(test_module, pattern)
+                for pattern in exclude_patterns
+            )
+            if not should_exclude:
+                filtered.addTest(test)
+    
+    return filtered
+
+
+def run_tests_including(include_patterns: list[str]):
+    """Run only tests matching specified patterns.
 
     Args:
-        patterns: List of patterns to match (e.g., ['test_model.py', 'test_simulator.py'])
+        include_patterns: List of patterns to include (e.g., ['optimizer', 'simulator'])
     """
     cov = coverage.Coverage()
     cov.start()
 
     try:
         test_dir = os.path.dirname(os.path.abspath(__file__))
-        tests = unittest.TestSuite()
-
-        for pattern in patterns:
-            suite = unittest.TestLoader().discover(start_dir=test_dir, pattern=pattern)
-            for test_group in suite:
-                tests.addTests(test_group)
-            print(f"Discovered {suite.countTestCases()} tests from {pattern}")
+        loader = unittest.TestLoader()
+        
+        # Discover all tests
+        all_tests = loader.discover(start_dir=test_dir, pattern="test_*.py")
+        total_before = all_tests.countTestCases()
+        
+        # Filter to only included patterns
+        filtered_tests = _filter_tests_including(all_tests, include_patterns)
+        total_after = filtered_tests.countTestCases()
+        
+        print(f"Discovered {total_before} tests, running {total_after} (matching {include_patterns})")
 
         runner = unittest.TextTestRunner(verbosity=2)
-        result = runner.run(tests)
+        result = runner.run(filtered_tests)
+
+        cov.stop()
+        cov.save()
+        cov.report()
+
+        if result.wasSuccessful():
+            sys.exit(0)
+        else:
+            sys.exit(1)
+
+    except Exception as e:
+        cov.stop()
+        cov.save()
+        print(f"\nError occurred: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def run_tests_excluding(exclude_patterns: list[str]):
+    """Run all tests except those matching specified patterns.
+
+    Args:
+        exclude_patterns: List of patterns to exclude (e.g., ['examples', 'optimizer'])
+    """
+    cov = coverage.Coverage()
+    cov.start()
+
+    try:
+        test_dir = os.path.dirname(os.path.abspath(__file__))
+        loader = unittest.TestLoader()
+        
+        # Discover all tests
+        all_tests = loader.discover(start_dir=test_dir, pattern="test_*.py")
+        total_before = all_tests.countTestCases()
+        
+        # Filter out excluded patterns
+        filtered_tests = _filter_tests_excluding(all_tests, exclude_patterns)
+        total_after = filtered_tests.countTestCases()
+        
+        print(f"Discovered {total_before} tests, running {total_after} (excluded {total_before - total_after} matching {exclude_patterns})")
+
+        runner = unittest.TextTestRunner(verbosity=2)
+        result = runner.run(filtered_tests)
 
         cov.stop()
         cov.save()
@@ -167,14 +289,10 @@ def run_specific_tests(patterns: list[str]):
 
 if __name__ == "__main__":
     # To run all tests:
-    main()
+    # main()
 
-    # Run specific tests that were previously failing:
-    # run_specific_tests(
-    #     [
-    #         "test_building_space_torch_system.py",  # BuildingSpaceTorchSystem tests
-    #         "test_utility_systems.py",  # MaxSystem, OnOffSystem, PassInputToOutput, PiecewiseLinearSystem
-    #         "test_utils.py",  # sample_from_df test
-    #         "test_plot.py",  # plot_component tests
-    #     ]
-    # )
+    # Run all tests EXCEPT examples:
+    # run_tests_excluding(["examples"])
+
+    # Run only tests matching patterns:
+    run_tests_including(["optimizer"])

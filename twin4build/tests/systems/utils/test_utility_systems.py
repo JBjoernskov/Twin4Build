@@ -78,14 +78,20 @@ class TestDiscreteStatespaceSystem(unittest.TestCase):
 
     def test_state_property(self):
         """Test get_state and set_state methods."""
+        import datetime
+        # Must initialize before get_state/set_state
+        start_time = [datetime.datetime(2024, 1, 1)]
+        end_time = [datetime.datetime(2024, 1, 2)]
+        self.system.initialize(start_time, end_time, step_size=3600)
+        
         state = self.system.get_state()
         self.assertIsNotNone(state)
 
-        # Set a new state
-        new_state = torch.tensor([[1.5]], dtype=torch.float64)
+        # Set a new state - shape (n_s, n_c, n_states) = (1, 1, 1)
+        new_state = torch.tensor([[[1.5]]], dtype=torch.float64)
         self.system.set_state(new_state)
         retrieved_state = self.system.get_state()
-        self.assertAlmostEqual(retrieved_state[0, 0].item(), 1.5, places=5)
+        self.assertAlmostEqual(retrieved_state[0, 0, 0].item(), 1.5, places=5)
 
 
 class TestPiecewiseLinearSystem(unittest.TestCase):
@@ -123,12 +129,12 @@ class TestMaxSystem(unittest.TestCase):
         step_size = [600]
 
         # Set inputs - initialize with size parameter for Vector type
-        self.system.input["inputs"].initialize(n_timesteps=1, batch_size=1, size=3)
+        self.system.input["inputs"].initialize(n_t=1, n_s=1, n_v=3)
 
         self.system.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-        self.system.input["inputs"].set(torch.tensor([[1.0, 5.0, 3.0]]), step_index=0)
+        self.system.input["inputs"].set(torch.tensor([[1.0, 5.0, 3.0]]), i_t=0)
 
         # Execute
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -163,8 +169,8 @@ class TestOnOffSystem(unittest.TestCase):
         )
 
         # Set inputs: value is the on value, criteriaValue is what we compare
-        self.system.input["value"].set(torch.tensor([100.0]), step_index=0)
-        self.system.input["criteriaValue"].set(torch.tensor([0.8]), step_index=0)
+        self.system.input["value"].set(torch.tensor([100.0]), i_t=0)
+        self.system.input["criteriaValue"].set(torch.tensor([0.8]), i_t=0)
 
         # Execute
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -196,7 +202,7 @@ class TestPassInputToOutput(unittest.TestCase):
         )
 
         # Set input
-        self.system.input["value"].set(torch.tensor([42.0]), step_index=0)
+        self.system.input["value"].set(torch.tensor([42.0]), i_t=0)
 
         # Execute
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)

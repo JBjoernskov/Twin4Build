@@ -1188,7 +1188,6 @@ class SimulationModel:
                         )
                         rdelattr(obj, attr)
                         rsetattr(obj, attr, new_param)
-                        # new_param.set(v, normalized=normalized_)
                     else:
                         obj_.set(v, normalized=normalized_)
                 elif isinstance(obj_, tps.TensorParameter):
@@ -1291,7 +1290,6 @@ class SimulationModel:
         # start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
 
         # self.set_initial_values()
-        self.check_for_for_missing_initial_values()
         for component in self._flat_execution_order:
             # for v in component.input.values():
             #     v.reset()
@@ -1371,6 +1369,9 @@ class SimulationModel:
                 end_time=end_time,
                 step_size=step_size,
             )
+
+        # Check for missing initial values AFTER all components are initialized
+        self.check_for_for_missing_initial_values()
 
     def validate(self) -> None:
         """

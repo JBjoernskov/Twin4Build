@@ -162,13 +162,13 @@ class DamperTorchSystem(core.System, nn.Module):
         batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
 
         # Calculate b and c parameters
@@ -205,8 +205,8 @@ class DamperTorchSystem(core.System, nn.Module):
         air_flow_rate = self.a.get() * torch.exp(self.b * damper_position) + self.c
 
         # Update outputs
-        self.output["damperPosition"].set(damper_position, step_index)
-        self.output["airFlowRate"].set(air_flow_rate, step_index)
+        self.output["damperPosition"]._set(damper_position, i_t=step_index)
+        self.output["airFlowRate"]._set(air_flow_rate, i_t=step_index)
 
 
 def saref_signature_pattern():

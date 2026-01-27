@@ -205,19 +205,21 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         step_index: int,
     ) -> None:
         """Execute a single simulation step for both submodels."""
-        # Set inputs for thermal submodel
-        for k in self.thermal.input:
-            self.thermal.input[k].set(self.input[k].get(), step_index)
-        # Set inputs for mass submodel
-        for k in self.mass.input:
-            self.mass.input[k].set(self.input[k].get(), step_index)
-        self.thermal.do_step(second_time, date_time, step_size, step_index)
-        self.mass.do_step(second_time, date_time, step_size, step_index)
-        # Update outputs from both submodels
-        for k in self.thermal.output:
-            self.output[k].set(self.thermal.output[k].get(), step_index)
-        for k in self.mass.output:
-            self.output[k].set(self.mass.output[k].get(), step_index)
+        # NOTE: self.input/self.output ARE the same objects as self.thermal.input/output
+        # NOTE: They are therefore set by Simulator._assign_component_inputs() before do_step() is called.
+        # # Set inputs for thermal submodel
+        # for k in self.thermal.input:
+        #     self.thermal.input[k]._set(self.input[k].get(), i_t=step_index)
+        # # Set inputs for mass submodel
+        # for k in self.mass.input:
+        #     self.mass.input[k]._set(self.input[k].get(), i_t=step_index)
+        self.thermal.do_step(second_time, date_time, step_size, step_index=step_index)
+        self.mass.do_step(second_time, date_time, step_size, step_index=step_index)
+        # # Update outputs from both submodels
+        # for k in self.thermal.output:
+        #     self.output[k]._set(self.thermal.output[k].get(), i_t=step_index)
+        # for k in self.mass.output:
+        #     self.output[k]._set(self.mass.output[k].get(), i_t=step_index)
 
 
 def saref_signature_pattern_sensor():

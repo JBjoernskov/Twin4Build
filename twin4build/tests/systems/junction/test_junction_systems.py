@@ -47,22 +47,22 @@ class TestReturnFlowJunctionSystem(unittest.TestCase):
             start_time=start_time, end_time=end_time, step_size=step_size
         )
         self.junction.input["airFlowRateIn"].initialize(
-            n_timesteps=1, batch_size=1, size=2
+            n_t=1, n_s=1, n_v=2
         )
         self.junction.input["airTemperatureIn"].initialize(
-            n_timesteps=1, batch_size=1, size=2
+            n_t=1, n_s=1, n_v=2
         )
-        self.junction.output["airFlowRateOut"].initialize(n_timesteps=1, batch_size=1)
+        self.junction.output["airFlowRateOut"].initialize(n_t=1, n_s=1)
         self.junction.output["airTemperatureOut"].initialize(
-            n_timesteps=1, batch_size=1
+            n_t=1, n_s=1
         )
 
         # Set inputs - vector inputs for multiple flows
         self.junction.input["airFlowRateIn"].set(
-            torch.tensor([[0.5, 0.5]]), step_index=0
+            torch.tensor([[0.5, 0.5]]), i_t=0
         )
         self.junction.input["airTemperatureIn"].set(
-            torch.tensor([[20.0, 22.0]]), step_index=0
+            torch.tensor([[20.0, 22.0]]), i_t=0
         )
 
         # Execute a time step
@@ -107,13 +107,13 @@ class TestSupplyFlowJunctionSystem(unittest.TestCase):
             start_time=start_time, end_time=end_time, step_size=step_size
         )
         self.junction.input["airFlowRateOut"].initialize(
-            n_timesteps=1, batch_size=1, size=3
+            n_t=1, n_s=1, n_v=3
         )
-        self.junction.output["airFlowRateIn"].initialize(n_timesteps=1, batch_size=1)
+        self.junction.output["airFlowRateIn"].initialize(n_t=1, n_s=1)
 
         # Set inputs - vector inputs for multiple flows
         self.junction.input["airFlowRateOut"].set(
-            torch.tensor([[0.3, 0.4, 0.3]]), step_index=0
+            torch.tensor([[0.3, 0.4, 0.3]]), i_t=0
         )
 
         # Execute a time step

@@ -55,14 +55,14 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         )
 
         # Set inputs
-        self.space.input["outdoorTemperature"].set(torch.tensor([5.0]), step_index=0)
-        self.space.input["globalIrradiation"].set(torch.tensor([200.0]), step_index=0)
-        self.space.input["supplyAirFlowRate"].set(torch.tensor([0.05]), step_index=0)
-        self.space.input["exhaustAirFlowRate"].set(torch.tensor([0.02]), step_index=0)
-        self.space.input["supplyAirTemperature"].set(torch.tensor([22.0]), step_index=0)
-        self.space.input["numberOfPeople"].set(torch.tensor([3.0]), step_index=0)
-        self.space.input["heatGain"].set(torch.tensor([0.0]), step_index=0)
-        self.space.input["outdoorCO2"].set(torch.tensor([400.0]), step_index=0)
+        self.space.input["outdoorTemperature"].set(torch.tensor([5.0]), i_t=0)
+        self.space.input["globalIrradiation"].set(torch.tensor([200.0]), i_t=0)
+        self.space.input["supplyAirFlowRate"].set(torch.tensor([0.05]), i_t=0)
+        self.space.input["exhaustAirFlowRate"].set(torch.tensor([0.02]), i_t=0)
+        self.space.input["supplyAirTemperature"].set(torch.tensor([22.0]), i_t=0)
+        self.space.input["numberOfPeople"].set(torch.tensor([3.0]), i_t=0)
+        self.space.input["heatGain"].set(torch.tensor([0.0]), i_t=0)
+        self.space.input["outdoorCO2"].set(torch.tensor([400.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -116,23 +116,23 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
 
         # Set inputs with batch size 2
         space_batch.input["outdoorTemperature"].set(
-            torch.tensor([5.0, 8.0]), step_index=0
+            torch.tensor([5.0, 8.0]), i_t=0
         )
         space_batch.input["globalIrradiation"].set(
-            torch.tensor([200.0, 250.0]), step_index=0
+            torch.tensor([200.0, 250.0]), i_t=0
         )
         space_batch.input["supplyAirFlowRate"].set(
-            torch.tensor([0.05, 0.06]), step_index=0
+            torch.tensor([0.05, 0.06]), i_t=0
         )
         space_batch.input["exhaustAirFlowRate"].set(
-            torch.tensor([0.02, 0.03]), step_index=0
+            torch.tensor([0.02, 0.03]), i_t=0
         )
         space_batch.input["supplyAirTemperature"].set(
-            torch.tensor([22.0, 23.0]), step_index=0
+            torch.tensor([22.0, 23.0]), i_t=0
         )
-        space_batch.input["numberOfPeople"].set(torch.tensor([3.0, 5.0]), step_index=0)
-        space_batch.input["heatGain"].set(torch.tensor([0.0, 0.0]), step_index=0)
-        space_batch.input["outdoorCO2"].set(torch.tensor([400.0, 410.0]), step_index=0)
+        space_batch.input["numberOfPeople"].set(torch.tensor([3.0, 5.0]), i_t=0)
+        space_batch.input["heatGain"].set(torch.tensor([0.0, 0.0]), i_t=0)
+        space_batch.input["outdoorCO2"].set(torch.tensor([400.0, 410.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
