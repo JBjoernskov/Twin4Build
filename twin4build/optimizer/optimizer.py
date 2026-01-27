@@ -1078,14 +1078,19 @@ class Optimizer:
             step_size=self._stepSize,
         )
 
-        # Create initial guess vector by flattening all actuators using timestep_mask
-        x0_list = []
+        # Create initial guess vector
+        x0 = []
         bounds_list = []
+
+        n_periods = len(self._start_time)
+
+        # Create flattened vector using vectorized operations, excluding padded values
+        x0_tensors = []
 
         for component, output_name, *bounds in self._variables:
             component.output[output_name].set_requires_grad(True)
 
-            # Get the history tensor for this component
+            # Get the full history tensor for this component
             if component.output[output_name].do_normalization:
                 history_tensor = component.output[
                     output_name
@@ -1093,13 +1098,20 @@ class Optimizer:
             else:
                 history_tensor = component.output[output_name].history().detach()
 
-            # Flatten using timestep_mask - this gives us all valid values for this actuator
-            flattened_values = history_tensor[self._timestep_mask]
-            x0_list.append(flattened_values)
+            # Extract only actual timesteps (no padding) for each period
+            period_tensors = []
+            for period_idx in range(n_periods):
+                actual_timesteps = self._n_timesteps[period_idx]
+                period_data = history_tensor[period_idx, :actual_timesteps]
+                period_tensors.append(period_data)
 
-            # Set bounds for each flattened element
-            n_elements = flattened_values.numel()
-            for _ in range(n_elements):
+            # Concatenate all periods for this variable
+            flattened_history = torch.cat(period_tensors, dim=0)
+            x0_tensors.append(flattened_history)
+
+            # Set bounds for actual timesteps only
+            total_actual_elements = flattened_history.numel()
+            for _ in range(total_actual_elements):
                 if len(bounds) >= 2:
                     lower, upper = bounds[0], bounds[1]
                     if component.output[output_name].do_normalization:
@@ -1117,9 +1129,16 @@ class Optimizer:
                 else:
                     bounds_list.append((None, None))
 
-        # Concatenate all flattened actuator values
-        if x0_list:
-            x0 = torch.cat(x0_list, dim=0).detach().numpy()
+        # Interleave the tensors: [var1_t0, var2_t0, var1_t1, var2_t1, ...]
+        # This matches the expected structure for the theta vector
+        if x0_tensors:
+            # Stack tensors and transpose to interleave
+            stacked = torch.stack(
+                x0_tensors, dim=1
+            )  # Shape: (total_actual_timesteps, n_variables)
+            x0 = (
+                stacked.flatten().detach().numpy()
+            )  # Flatten to get interleaved structure
         else:
             x0 = np.array([])
 
@@ -1249,15 +1268,19 @@ class Optimizer:
         Returns:
             torch.Tensor: Objective value.
         """
-        # Split theta back into individual actuator flattened arrays
+        # Reshape theta using vectorized operations
         n_actuators = len(self._variables)
-        total_valid_elements = self._timestep_mask.sum().item()
+        n_periods = len(self._start_time)
 
-        # Each actuator contributes total_valid_elements to theta
+        # Reshape theta from interleaved format [var1_t0, var2_t0, var1_t1, var2_t1, ...]
+        # to (total_actual_timesteps, n_variables) format
+        total_actual_timesteps = int(len(theta) / n_actuators)
+        theta_matrix = theta.reshape(total_actual_timesteps, n_actuators)
+
+        # Update decision variables for each actuator
         for i, (component, output_name, *bounds) in enumerate(self._variables):
-            start_idx = i * total_valid_elements
-            end_idx = (i + 1) * total_valid_elements
-            actuator_values = theta[start_idx:end_idx]
+            # Extract values for this actuator across all actual timesteps
+            actuator_values = theta_matrix[:, i]
 
             # Construct values tensor in time-first format: (n_t, n_s, n_c)
             # where n_t = max_timesteps, n_s = n_periods, n_c = 1
