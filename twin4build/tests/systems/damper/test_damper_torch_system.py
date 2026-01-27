@@ -30,7 +30,7 @@ class TestDamperTorchSystem(unittest.TestCase):
         )
 
         # Set input
-        self.damper.input["damperPosition"].set(torch.tensor([0.5]), step_index=0)
+        self.damper.input["damperPosition"].set(torch.tensor([0.5]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -53,7 +53,7 @@ class TestDamperTorchSystem(unittest.TestCase):
         )
 
         # At 100% position, should give nominal airflow
-        self.damper.input["damperPosition"].set(torch.tensor([1.0]), step_index=0)
+        self.damper.input["damperPosition"].set(torch.tensor([1.0]), i_t=0)
         self.damper.do_step(
             second_time=0,
             date_time=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
@@ -79,18 +79,18 @@ class TestDamperTorchSystem(unittest.TestCase):
             start_time=start_time, end_time=end_time, step_size=step_size
         )
         damper_batch.input["damperPosition"].initialize(
-            n_timesteps=1, batch_size=batch_size, size=1
+            n_t=1, n_s=batch_size, n_v=1
         )
         damper_batch.output["damperPosition"].initialize(
-            n_timesteps=1, batch_size=batch_size, size=1
+            n_t=1, n_s=batch_size, n_v=1
         )
         damper_batch.output["airFlowRate"].initialize(
-            n_timesteps=1, batch_size=batch_size, size=1
+            n_t=1, n_s=batch_size, n_v=1
         )
 
         # Set input with batch size 3
         damper_batch.input["damperPosition"].set(
-            torch.tensor([0.5, 0.7, 0.3]), step_index=0
+            torch.tensor([0.5, 0.7, 0.3]), i_t=0
         )
 
         # Execute a time step

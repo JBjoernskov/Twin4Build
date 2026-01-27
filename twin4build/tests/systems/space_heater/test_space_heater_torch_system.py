@@ -41,10 +41,10 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
 
         # Set inputs
         self.heater.input["supplyWaterTemperature"].set(
-            torch.tensor([60.0]), step_index=0
+            torch.tensor([60.0]), i_t=0
         )
-        self.heater.input["waterFlowRate"].set(torch.tensor([0.1]), step_index=0)
-        self.heater.input["indoorTemperature"].set(torch.tensor([20.0]), step_index=0)
+        self.heater.input["waterFlowRate"].set(torch.tensor([0.1]), i_t=0)
+        self.heater.input["indoorTemperature"].set(torch.tensor([20.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -87,13 +87,13 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
 
         # Set inputs with batch size 3 (inputs already initialized with correct batch_size by initialize())
         heater_batch.input["supplyWaterTemperature"].set(
-            torch.tensor([60.0, 65.0, 55.0]), step_index=0
+            torch.tensor([60.0, 65.0, 55.0]), i_t=0
         )
         heater_batch.input["waterFlowRate"].set(
-            torch.tensor([0.1, 0.15, 0.08]), step_index=0
+            torch.tensor([0.1, 0.15, 0.08]), i_t=0
         )
         heater_batch.input["indoorTemperature"].set(
-            torch.tensor([20.0, 22.0, 18.0]), step_index=0
+            torch.tensor([20.0, 22.0, 18.0]), i_t=0
         )
 
         # Execute a time step

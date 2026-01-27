@@ -125,14 +125,14 @@ class ReturnFlowJunctionSystem(core.System):
         
         for input in self.input.values():
             input.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
-                size=self.n_input_ports, #both inputs must have the same number of input ports
+                n_t=max_timesteps,
+                n_s=batch_size,
+                n_v=self.n_input_ports, #both inputs must have the same number of input ports
             )
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
 
     def do_step(
@@ -164,8 +164,8 @@ class ReturnFlowJunctionSystem(core.System):
             has_flow, temp_out_flow, torch.full_like(m_dot_in, 20.0)
         )
 
-        self.output["airFlowRateOut"].set(air_flow_rate_out, step_index)
-        self.output["airTemperatureOut"].set(air_temp_out, step_index)
+        self.output["airFlowRateOut"]._set(air_flow_rate_out, i_t=step_index)
+        self.output["airTemperatureOut"]._set(air_temp_out, i_t=step_index)
 
 
 def saref_signature_pattern():

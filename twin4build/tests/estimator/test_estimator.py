@@ -75,7 +75,8 @@ class TestEstimator(unittest.TestCase):
         )
 
         # Extract the simulated air flow rate as "measurement"
-        true_airflow = self.damper.output["airFlowRate"].history.detach().numpy()[0]
+        # History uses time-first layout (n_t, n_s, n_c), use history(i_s=0, i_c=0) to get (n_t,)
+        true_airflow = self.damper.output["airFlowRate"].history(i_s=0, i_c=0).detach().numpy()
 
         # Create a sensor with this "measured" data
         # Note: simulation produces n_timesteps which may not include the end time

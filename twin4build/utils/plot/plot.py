@@ -375,6 +375,10 @@ def get_data(t):
     elif isinstance(data, torch.Tensor):
         data = data.detach().cpu().numpy()
 
+    # Handle new (n_s, n_c, n_t) shape - select first component to get (n_s, n_t)
+    if isinstance(data, np.ndarray) and data.ndim == 3:
+        data = data[:, 0, :]  # Select first component (n_c=0)
+
     if isinstance(data, np.ndarray) and data.ndim == 1:
         data = data.reshape(1, -1)
 
@@ -465,19 +469,31 @@ def get_data_legacy(simulator, t):
             ), "Attribute must be a scalar when input_idx is not provided"
 
     # Extract data
+    # History uses time-first layout (n_t, n_s, n_c) for Scalar and (n_t, n_s, n_c, n_v) for Vector
+    # For plotting, we select the first component (n_c=0) and permute to get (n_s, n_t) or (n_s, n_t, n_v)
     if io_type == "input":
-        data = component.input[attribute].history.detach()
+        # Get history with first component selected: (n_t, n_s) for Scalar, (n_t, n_s, n_v) for Vector
+        data = component.input[attribute].history(i_c=0).detach()
+        # Permute to (n_s, n_t, ...) for plotting
         if input_idx is not None:
-            data = data[:, input_idx]
+            # For Vector: (n_t, n_s, n_v) -> select n_v then permute
+            data = data[:, :, input_idx].permute(1, 0)  # (n_t, n_s) -> (n_s, n_t)
             display_label = f"{attribute}[{input_idx}]"
         else:
+            # For Scalar: (n_t, n_s) -> (n_s, n_t)
+            data = data.permute(1, 0)
             display_label = attribute
     elif io_type == "output":
-        data = component.output[attribute].history.detach()
+        # Get history with first component selected: (n_t, n_s) for Scalar, (n_t, n_s, n_v) for Vector
+        data = component.output[attribute].history(i_c=0).detach()
+        # Permute to (n_s, n_t, ...) for plotting
         if input_idx is not None:
-            data = data[:, input_idx]
+            # For Vector: (n_t, n_s, n_v) -> select n_v then permute
+            data = data[:, :, input_idx].permute(1, 0)  # (n_t, n_s) -> (n_s, n_t)
             display_label = f"{attribute}[{input_idx}]"
         else:
+            # For Scalar: (n_t, n_s) -> (n_s, n_t)
+            data = data.permute(1, 0)
             display_label = attribute
     else:
         m = f"Wrong input output type specification. Got {io_type}, expected 'input' or 'output'"

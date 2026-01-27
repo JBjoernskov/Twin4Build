@@ -17,6 +17,9 @@ from dateutil import tz
 
 # Local application imports
 import twin4build.core as core
+from twin4build.utils.deprecation import deprecate_args
+
+
 
 
 class Vector:
@@ -39,41 +42,48 @@ class Vector:
 
     def __init__(
         self,
-        tensor: Optional[torch.Tensor] = None,
-        n_s: int = 1,
-        n_c: int = 1,
+        tensor: Optional[Union[float, int]] = None,
         n_v: Optional[int] = None,
-        n_t: Optional[int] = None,
         log_history: bool = True,
         is_leaf: bool = False,
         do_normalization: bool = False,
         optional: bool = False,
+        **kwargs,
     ) -> None:
         """
         Initialize a Vector instance.
 
         Args:
-            tensor (Optional[torch.Tensor]): Initial tensor value.
-            n_s (int): Number of simulations. Defaults to 1.
-            n_c (int): Number of parallel components. Defaults to 1.
+            tensor (Optional[Union[float, int]]): Initial value to broadcast. None means zeros.
             n_v (Optional[int]): The size of the vector.
-            n_t (Optional[int]): Number of timesteps.
             log_history (bool): Whether to log history. Defaults to True.
             is_leaf (bool): Whether this vector is a leaf node. Defaults to False.
             do_normalization (bool): Whether to normalize history. Defaults to False.
             optional (bool): Whether this vector is optional. Defaults to False.
         """
-        self._tensor = None
-        self._n_s = n_s
-        self._n_c = n_c
-        self._n_v = n_v
-        self._n_t = n_t
+        # Handle deprecated arguments
+        deprecated_args = ["size", "n_timesteps", "n_s", "n_c", "n_t"]
+        new_args = ["n_v", None, None, None, None]
+        positions = [None, None, None, None, None]
+        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
+        n_v = value_map.get("n_v", n_v)
+        
+        # Only accept float/int/None for tensor arg
+        assert isinstance(
+            tensor, (float, int, type(None))
+        ), "tensor must be a float, int, or None"
+
+        self._tensor = None  # Will be created in initialize()
+        self._n_s = None  # Will be set in initialize()
+        self._n_c = None  # Will be set in initialize()
+        self._n_v = n_v  # Can be set here or in initialize()
+        self._n_t = None  # Will be set in initialize()
         self._log_history = log_history
         self._is_leaf = is_leaf
         self._do_normalization = do_normalization
         self._optional = optional
 
-        self._init_tensor = tensor.clone() if tensor is not None else None
+        self._init_value = tensor  # Store raw value for initialize()
 
         self._history = None
         self._normalized_history = None
@@ -91,6 +101,17 @@ class Vector:
     @tensor.setter
     def tensor(self, value):
         self._tensor = value
+
+    @property
+    def init_value(self):
+        """Initial value used in initialize() to create tensor."""
+        return self._init_value
+
+    @init_value.setter
+    def init_value(self, value: Union[float, int]) -> None:
+        """Set initial value (float/int to broadcast)."""
+        assert isinstance(value, (float, int)), "init_value must be float or int"
+        self._init_value = value
 
     @property
     def n_v(self):
@@ -135,12 +156,29 @@ class Vector:
     def log_history(self, value: bool):
         self._log_history = value
 
-    @property
-    def history(self):
+    def history(
+        self,
+        i_t: Union[int, slice] = slice(None),
+        i_s: Union[int, slice] = slice(None),
+        i_c: Union[int, slice] = slice(None),
+        i_v: Union[int, slice] = slice(None),
+    ) -> torch.Tensor:
+        """Get the history tensor with optional slicing.
+
+        Args:
+            i_t (Union[int, slice]): Time index. Defaults to slice(None) for all.
+            i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
+            i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
+            i_v (Union[int, slice]): Vector index (n_v dimension). Defaults to slice(None) for all.
+
+        Returns:
+            torch.Tensor: History tensor with shape (n_t, n_s, n_c, n_v) or reduced shape if indices specified.
+        """
         assert (
             self._history_is_populated
-        ), "History is not populated. Set log_history to True to populate history."
-        return self._history
+        ), "History is not populated. Set log_history to True to populate history during simulation."
+        # Internal storage is (n_t, n_s, n_c, n_v)
+        return self._history[i_t, i_s, i_c, i_v]
 
     @property
     def normalized_history(self):
@@ -153,8 +191,6 @@ class Vector:
     @is_leaf.setter
     def is_leaf(self, value: bool):
         assert isinstance(value, bool), "is_leaf must be a boolean"
-        if self._is_leaf:
-            raise ("Leaf Vectors are currently not supported.")
         self._is_leaf = value
 
     @property
@@ -170,6 +206,31 @@ class Vector:
     def optional(self):
         return self._optional
 
+    def __str__(self) -> str:
+        """Get string representation of the vector.
+
+        Returns:
+            str: String representation of the tensor value.
+        """
+        return str(self._tensor)
+
+    def set_requires_grad(self, requires_grad: bool):
+        """Set requires_grad for the history tensor (leaf vectors only)."""
+        assert self._is_leaf or not requires_grad, \
+            "Only leaf vectors can have their requires_grad attribute set to True"
+        # If history not yet finalized and setting to False, nothing to do
+        if self._history is None:
+            if not requires_grad:
+                self._requires_reinittialization = True
+                return
+            else:
+                raise ValueError("Cannot set requires_grad=True on unfinalized history")
+        if self._do_normalization:
+            self._normalized_history.requires_grad = requires_grad
+        else:
+            self._history.requires_grad = requires_grad
+        self._requires_reinittialization = not requires_grad
+
     def make_pickable(self):
         if self.tensor is not None:
             if self.n_v > 0:
@@ -179,10 +240,7 @@ class Vector:
             else:
                 self.tensor = torch.tensor([], dtype=torch.float64, requires_grad=False)
 
-        if self._init_tensor is not None:
-            self._init_tensor = torch.tensor(
-                self._init_tensor.item(), dtype=torch.float64, requires_grad=False
-            )
+        # _init_value is already a simple float/int, nothing to do
 
     def __getitem__(self, key: int) -> float:
         """Get value at specified index.
@@ -206,63 +264,59 @@ class Vector:
 
     def initialize(
         self,
-        n_t: int,
+        n_t: int = None,
+        n_s: Optional[int] = 1,
+        n_c: Optional[int] = 1,
         n_v: Optional[int] = None,
-        n_s: Optional[int] = None,
-        n_c: Optional[int] = None,
-        batch_size: Optional[int] = None,
-        n_timesteps: Optional[int] = None,
-        size: Optional[int] = None,
         values: Optional[List[float]] = None,
         force: bool = False,
+        **kwargs,
     ) -> None:
-        """Initialize the vector tensor and sorting indices.
+        """Initialize the vector tensor and history.
 
         Creates the underlying torch tensor with shape (n_s, n_c, n_v).
         History has shape (n_s, n_c, n_t, n_v).
         
         Args:
             n_t (int): Number of timesteps.
-            n_v (Optional[int]): Size of the vector.
             n_s (Optional[int]): Number of simulations.
             n_c (Optional[int]): Number of parallel components.
-            batch_size (Optional[int]): Backward compatible batch_size (sets n_s, keeps n_c=1).
-            n_timesteps (Optional[int]): Backward compatible alias for n_t.
-            size (Optional[int]): Backward compatible alias for n_v.
+            n_v (Optional[int]): Size of the vector.
             values (Optional[List[float]]): Initial values for leaf vectors.
             force (bool): Force reinitialization.
         """
-        # Handle backward compatibility aliases
-        if n_timesteps is not None and n_t is None:
-            n_t = n_timesteps
-        if size is not None and n_v is None:
-            n_v = size
+        # Handle deprecated arguments
+        deprecated_args = ["n_timesteps", "size", "batch_size"]
+        new_args = ["n_t", "n_v", "n_s"]
+        positions = [None, None, None]
+        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
+        n_t = value_map.get("n_t", n_t)
+        n_v = value_map.get("n_v", n_v)
+        n_s = value_map.get("n_s", n_s)
             
         assert isinstance(n_t, int), "n_t must be an integer"
-        if n_t is not None:
-            self._n_t = n_t
+
+        self._n_t = n_t
+        self._n_s = n_s
+        self._n_c = n_c
         if n_v is not None:
             self._n_v = n_v
-        if n_s is not None:
-            self._n_s = n_s
-        if n_c is not None:
-            self._n_c = n_c
-        # Backward compatibility: if batch_size is provided, use it as n_s
-        if batch_size is not None and n_s is None:
-            self._n_s = batch_size
 
-        # Create tensor with shape (n_s, n_c, n_v)
-        if self._init_tensor is None:
+        # Create tensor with shape (n_s, n_c, n_v) from _init_value
+        if self._init_value is None:
             self._tensor = torch.zeros(
                 (self.n_s, self.n_c, self.n_v), dtype=torch.float64
             )
         else:
-            self._tensor = self._init_tensor.clone()
+            # Broadcast init_value to full tensor
+            self._tensor = torch.full(
+                (self.n_s, self.n_c, self.n_v), self._init_value, dtype=torch.float64
+            )
 
         if values is not None:
             values = _expand_to_4D_tensor(values, self.n_s, self.n_c)
 
-        # We return early if this scalar has requires_grad=True.
+        # We return early if this vector has requires_grad=True.
         # This is the case when used in the optimizer.
         # Here we dont want to reinitialize the history as the torch.optim.Optimizer changes this in-place.
         if (
@@ -270,91 +324,151 @@ class Vector:
             and self._requires_reinittialization == False
             and force == False
         ):
+            # For non-leaf vectors, reset history for new simulation run
+            if not self._is_leaf:
+                self._history.zero_()
+                self._history_is_populated = False
             return
 
         if self._is_leaf:
             assert values is not None, "Values must be provided for leaf vectors"
+            # Values expected in time-first format: (n_t, n_s, n_c, n_v)
             assert (
-                values.shape[0] == self.n_s
-            ), f"Values first dim ({values.shape[0]}) must match n_s ({self.n_s})"
+                values.shape[0] == self.n_t
+            ), f"Values first dim ({values.shape[0]}) must match n_t ({self.n_t})"
             assert (
-                values.shape[1] == self.n_c
-            ), f"Values second dim ({values.shape[1]}) must match n_c ({self.n_c})"
+                values.shape[1] == self.n_s
+            ), f"Values second dim ({values.shape[1]}) must match n_s ({self.n_s})"
             assert (
-                values.shape[2] == self.n_t
-            ), f"Values third dim ({values.shape[2]}) must match n_t ({self.n_t})"
+                values.shape[2] == self.n_c
+            ), f"Values third dim ({values.shape[2]}) must match n_c ({self.n_c})"
             assert (
                 values.shape[3] == self.n_v
             ), f"Values fourth dim ({values.shape[3]}) must match n_v ({self.n_v})"
-            # Pre-allocate the history tensor with the correct size
+            # Values already in internal time-first format (n_t, n_s, n_c, n_v)
             self._history = values
             self._history_is_populated = True
             if self._do_normalization:
                 self._normalized_history = self.normalize()
 
         else:
-            # History shape: (n_s, n_c, n_t, n_v)
+            # Pre-allocate history with time-first layout for efficient writes
+            # Internal shape: (n_t, n_s, n_c, n_v)
             self._history = torch.zeros(
-                (self.n_s, self.n_c, self.n_t, self.n_v),
-                dtype=torch.float64,
-                requires_grad=False,
+                self.n_t, self.n_s, self.n_c, self.n_v,
+                dtype=torch.float64, requires_grad=False
             )
             self._history_is_populated = False
 
         self._initialized = True
         return self
 
+    def _set(
+        self,
+        v: torch.Tensor = None,
+        i_t: Optional[int] = None,
+        i_s: Union[int, slice] = slice(None),
+        i_c: Union[int, slice] = slice(None),
+        i_v: Union[int, slice] = slice(None),
+        apply: callable = None,
+    ) -> None:
+        """Private efficient setter - v must be a correctly shaped tensor (or None for leaf).
+        
+        This is the hot path used during simulation. No type conversion or 
+        shape validation is performed.
+        
+        Args:
+            v (torch.Tensor): Pre-shaped tensor matching target slice. None for leaf vectors.
+            i_t (Optional[int]): Step index for history logging (required if log_history=True or is_leaf=True).
+            i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
+            i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
+            i_v (Union[int, slice]): Vector index (n_v dimension). Defaults to slice(None) for all.
+            apply (callable): Optional function to apply to the value.
+        """
+        # Handle leaf vectors (get value from history)
+        if self._is_leaf:
+            assert v is None, "Values cannot be set for leaf vectors"
+            assert i_t is not None, "i_t must be provided for leaf vectors"
+            if self._do_normalization:
+                v = self.denormalize(self._normalized_history[i_t])  # Time-first: (n_t, n_s, n_c, n_v)
+            else:
+                v = self._history[i_t]  # Time-first layout: shape (n_s, n_c, n_v)
+        
+        # Apply transformation if provided
+        if apply is not None:
+            v = apply(v)
+        
+        # Direct assignment - slice(None) acts as ':'
+        self._tensor[i_s, i_c, i_v] = v
+
+        # Log history - direct write to time-first tensor
+        if self._log_history:
+            assert i_t is not None, "i_t must be provided when log_history=True"
+            is_leaf = self._is_leaf
+            if not is_leaf or (is_leaf and self._do_normalization):
+                # Direct write to pre-allocated tensor: _history[i_t, i_s, i_c, i_v]
+                # i_s defaults to slice(None), i_c and i_v can be int or slice
+                self._history[i_t, i_s, i_c, i_v] = v
+
+            if i_t == self.n_t - 1:
+                self._history_is_populated = True
+
     def set(
         self,
-        v: Union[float, torch.Tensor],
-        step_index: Optional[int] = None,
-        index: Optional[int, torch.Tensor] = None,
+        v: Union[float, int, torch.Tensor] = None,
+        i_t: Optional[int] = None,
+        i_s: Union[int, slice] = slice(None),
+        i_c: Union[int, slice] = slice(None),
+        i_v: Union[int, slice] = slice(None),
+        apply: callable = None,
     ) -> None:
-        """Set the next value in the vector.
+        """Public convenient setter - handles type conversion and broadcasting.
 
         Args:
-            v (Union[float, torch.Tensor]): Value to set. Expected shape (n_s, n_c, n_v) or (n_s, n_c).
-            step_index (Optional[int]): Step index to set value at.
-            index (Optional[int, torch.Tensor]): Index within the vector to set value at.
+            v (Union[float, int, torch.Tensor]): Value to set. Can be scalar, 
+                1D, 2D, or 3D tensor. Will be broadcast to match target shape. None for leaf vectors.
+            i_t (Optional[int]): Step index for history logging.
+            i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
+            i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
+            i_v (Union[int, slice]): Vector index (n_v dimension). Defaults to slice(None) for all.
+            apply (callable): Optional function to apply to the value.
         """
-        if index is not None:
-            self._tensor[:, :, index] = v
-        else:
-            self._tensor[:, :, :] = v
+        # For non-leaf, prepare value with unified conversion logic
+        if not self._is_leaf:
+            v = _prepare_value_for_set(
+                v, 
+                target_shape=(self.n_s, self.n_c, self.n_v),
+                indices={'i_s': i_s, 'i_c': i_c, 'i_v': i_v}
+            )
+        
+        # Delegate to efficient private method
+        self._set(v, i_t, i_s, i_c, i_v, apply)
 
-        if self._log_history:
-            assert (
-                step_index is not None
-            ), "step_index must be provided when logging history"
-            if self.is_leaf == False or (self.is_leaf and self._do_normalization):
-                if v.dim() == 3:
-                    # v has shape (n_s, n_c, n_v)
-                    self._history[:, :, step_index, :] = v
-                elif v.dim() == 2:
-                    # v has shape (n_s, n_c) for a specific index
-                    self._history[:, :, step_index, index] = v
-                else:
-                    raise ValueError(f"Unsupported dimension: {v.dim()}, expected 2 or 3")
-
-            if step_index == self._history.shape[2] - 1:
-                self._history_is_populated = True
-            else:
-                self._history_is_populated = False
-
-    def get(self, index: Optional[int, torch.Tensor] = None) -> torch.Tensor:
+    def get(
+        self,
+        i_t: Optional[int] = None,
+        i_s: Union[int, slice] = slice(None),
+        i_c: Union[int, slice] = slice(None),
+        i_v: Union[int, slice, torch.Tensor] = slice(None),
+        **kwargs,
+    ) -> torch.Tensor:
         """Get vector values.
 
         Args:
-            index (Optional[int, torch.Tensor]): Index within the vector to get.
+            i_t (Optional[int]): Time index (for accessing history).
+            i_s (Union[int, slice]): Simulation index within n_s dimension. Defaults to slice(None) for all.
+            i_c (Union[int, slice]): Component index within n_c dimension. Defaults to slice(None) for all.
+            i_v (Union[int, slice, torch.Tensor]): Index within the vector (n_v dimension). Defaults to slice(None) for all.
 
         Returns:
-            torch.Tensor: Tensor of values with shape (n_s, n_c, n_v) or (n_s, n_c) if index specified.
+            torch.Tensor: Tensor of values with shape depending on indices:
+                - (n_s, n_c, n_v) if no indices specified
+                - Various reduced shapes when indices are specified
+                - None if not yet initialized
         """
-        if index is not None:
-            out = self.tensor[:, :, index]
-        else:
-            out = self.tensor
-        return out
+        if self._tensor is None:
+            return None
+        return self._tensor[i_s, i_c, i_v]
 
     def copy(self):
         """Create a copy of the vector.
@@ -362,19 +476,69 @@ class Vector:
         Returns:
             Vector: A new Vector instance with the same data.
         """
-        tensor = self.tensor.clone() if self.tensor is not None else None
         copy = Vector(
-            tensor=tensor,
-            n_s=self.n_s,
-            n_c=self.n_c,
+            tensor=self._init_value,
             n_v=self.n_v,
-            n_t=self.n_t,
             log_history=self.log_history,
             is_leaf=self.is_leaf,
             do_normalization=self.do_normalization,
             optional=self.optional,
         )
         return copy
+
+    def normalize(self, v: torch.Tensor = None):
+        """Normalize values using min-max scaling.
+        
+        Args:
+            v (torch.Tensor, optional): Values to normalize. If None, normalizes history.
+            
+        Returns:
+            torch.Tensor: Normalized values.
+        """
+        assert self._history_is_populated, "History must be populated before normalizing"
+        if v is None:
+            v = self._history
+        v = _expand_to_4D_tensor(v, self.n_s, self.n_c)
+        assert isinstance(v, torch.Tensor), "v must be a torch.Tensor"
+
+        # Cache min/max as Python floats to avoid GradTrackingTensor issues
+        if self._min_history is None:
+            no_nan_history = self._history.detach()
+            no_nan_history = no_nan_history[~torch.isnan(no_nan_history)]
+            self._min_history = torch.min(no_nan_history).item()
+        if self._max_history is None:
+            no_nan_history = self._history.detach()
+            no_nan_history = no_nan_history[~torch.isnan(no_nan_history)]
+            self._max_history = torch.max(no_nan_history).item()
+
+        # Convert cached floats to tensors when needed
+        min_val = torch.tensor(self._min_history, dtype=torch.float64)
+        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+
+        if torch.allclose(min_val, max_val):
+            min_val = torch.tensor(0, dtype=torch.float64)
+            if torch.allclose(max_val, torch.tensor(0, dtype=torch.float64)):
+                max_val = torch.tensor(1, dtype=torch.float64)
+            else:
+                max_val = torch.tensor(1, dtype=torch.float64)
+
+        self._is_normalized = True
+        return (v - min_val) / (max_val - min_val)
+
+    def denormalize(self, v: torch.Tensor):
+        """Denormalize values from min-max scaling.
+        
+        Args:
+            v (torch.Tensor): Normalized values to denormalize.
+            
+        Returns:
+            torch.Tensor: Denormalized values.
+        """
+        assert self._is_normalized, ".normalize() must be called before denormalizing"
+        # Use cached float values and convert to tensors
+        min_val = torch.tensor(self._min_history, dtype=torch.float64)
+        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+        return v * (max_val - min_val) + min_val
 
 
 class Scalar:
@@ -396,51 +560,40 @@ class Scalar:
 
     def __init__(
         self,
-        tensor: Optional[Union[float, int, torch.Tensor]] = None,
-        n_s: int = 1,
-        n_c: int = 1,
-        n_t: Optional[int] = None,
+        tensor: Optional[Union[float, int]] = None,
         log_history: bool = True,
         is_leaf: bool = False,
         do_normalization: bool = False,
         optional: bool = False,
+        **kwargs,
     ) -> None:
         """
         Initialize a Scalar instance.
 
         Args:
-            tensor (Optional[Union[float, int, torch.Tensor]]): Initial tensor value.
-            n_s (int): Number of simulations. Defaults to 1.
-            n_c (int): Number of parallel components. Defaults to 1.
-            n_t (Optional[int]): Number of timesteps.
+            tensor (Optional[Union[float, int]]): Initial value to broadcast. None means zeros.
             log_history (bool): Whether to log history. Defaults to True.
             is_leaf (bool): Whether this scalar is a leaf node. Defaults to False.
             do_normalization (bool): Whether to normalize history. Defaults to False.
             optional (bool): Whether this scalar is optional. Defaults to False.
         """
+        # Handle deprecated arguments
+        deprecated_args = ["scalar", "n_timesteps", "n_s", "n_c", "n_t"]
+        new_args = ["tensor", None, None, None, None]
+        positions = [None, None, None, None, None]
+        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
+        tensor = value_map.get("tensor", tensor)
+        
+        # Only accept float/int/None for tensor arg
         assert isinstance(
-            tensor, (float, int, torch.Tensor, type(None))
-        ), "tensor must be a float, int, torch.Tensor, or None"
+            tensor, (float, int, type(None))
+        ), "tensor must be a float, int, or None"
 
-        if isinstance(tensor, torch.Tensor):
-            assert (
-                tensor.numel() == 1
-            ), f"tensor must be a single value, got {tensor.numel()} values"
-            assert (
-                tensor.dim() == 0 or tensor.dim() == 1
-            ), f"tensor must have 0 or 1 dimensions, got {tensor.dim()} dimensions"
-            if tensor.dim() == 0:
-                tensor = tensor.unsqueeze(0)
-            tensor.requires_grad = False
-
-        elif isinstance(tensor, (float, int)):
-            tensor = torch.tensor([tensor], dtype=torch.float64, requires_grad=False)
-
-        self._tensor = tensor
-        self._n_s = n_s
-        self._n_c = n_c
-        self._n_t = n_t
-        self._init_tensor = tensor
+        self._tensor = None  # Will be created in initialize()
+        self._n_s = None  # Will be set in initialize()
+        self._n_c = None  # Will be set in initialize()
+        self._n_t = None  # Will be set in initialize()
+        self._init_value = tensor  # Store raw value for initialize()
         self._history = None
         self._normalized_history = None
         self._log_history = log_history
@@ -453,6 +606,35 @@ class Scalar:
         self._history_is_populated = False
         self._is_normalized = False
         self._optional = optional
+
+    @property
+    def tensor(self):
+        return self._tensor
+
+    @tensor.setter
+    def tensor(self, value):
+        self._tensor = value
+
+    @property
+    def scalar(self):
+        """Deprecated. Use 'tensor' instead."""
+        warnings.warn(
+            "Property 'scalar' is deprecated. Use 'tensor' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._tensor
+
+    @property
+    def init_value(self):
+        """Initial value used in initialize() to create tensor."""
+        return self._init_value
+
+    @init_value.setter
+    def init_value(self, value: Union[float, int]) -> None:
+        """Set initial value (float/int to broadcast)."""
+        assert isinstance(value, (float, int)), "init_value must be float or int"
+        self._init_value = value
 
     @property
     def n_s(self):
@@ -487,29 +669,27 @@ class Scalar:
     def log_history(self, value: bool):
         self._log_history = value
 
-    @property
-    def tensor(self):
-        return self._tensor
+    def history(
+        self,
+        i_t: Union[int, slice] = slice(None),
+        i_s: Union[int, slice] = slice(None),
+        i_c: Union[int, slice] = slice(None),
+    ) -> torch.Tensor:
+        """Get the history tensor with optional slicing.
 
-    @tensor.setter
-    def tensor(self, value):
-        self._tensor = value
+        Args:
+            i_t (Union[int, slice]): Time index. Defaults to slice(None) for all.
+            i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
+            i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
 
-    @property
-    def scalar(self):
-        warnings.warn(
-            "Property 'scalar' is deprecated. Use 'tensor' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._tensor
-
-    @property
-    def history(self):
+        Returns:
+            torch.Tensor: History tensor with shape (n_t, n_s, n_c) or reduced shape if indices specified.
+        """
         assert (
             self._history_is_populated
-        ), "History is not populated. Set log_history to True to populate history."
-        return self._history
+        ), "History is not populated. Set log_history to True to populate history during simulation."
+        # Internal storage is (n_t, n_s, n_c)
+        return self._history[i_t, i_s, i_c]
 
     @property
     def normalized_history(self):
@@ -545,10 +725,17 @@ class Scalar:
         """
         return str(self._tensor)
 
-    def set_requires_grad(self, requires_grad: bool):  # TODO: Implement this for Vector
-        assert self._is_leaf or (
-            self._is_leaf == False and requires_grad == False
-        ), "Only leaf scalars can have their requires_grad attribute set to True"
+    def set_requires_grad(self, requires_grad: bool):
+        """Set requires_grad for the history tensor (leaf scalars only)."""
+        assert self._is_leaf or not requires_grad, \
+            "Only leaf scalars can have their requires_grad attribute set to True"
+        # If history not yet finalized and setting to False, nothing to do
+        if self._history is None:
+            if not requires_grad:
+                self._requires_reinittialization = True
+                return
+            else:
+                raise ValueError("Cannot set requires_grad=True on unfinalized history")
         if self._do_normalization:
             self._normalized_history.requires_grad = requires_grad
         else:
@@ -557,60 +744,49 @@ class Scalar:
 
     def initialize(
         self,
-        n_t: int,
-        n_s: Optional[int] = None,
-        n_c: Optional[int] = None,
-        batch_size: Optional[int] = None,
-        n_timesteps: Optional[int] = None,
+        n_t: int = None,
+        n_s: Optional[int] = 1,
+        n_c: Optional[int] = 1,
         values: Optional[List[float]] = None,
         force: bool = False,
-        *args,
         **kwargs,
     ) -> None:
-        """Initialize the scalar.
+        """Initialize the scalar tensor and history.
 
         Creates the underlying torch tensor with shape (n_s, n_c).
         History has shape (n_s, n_c, n_t).
-
+        
         Args:
-            n_t (int): The number of timesteps.
+            n_t (int): Number of timesteps.
             n_s (Optional[int]): Number of simulations.
             n_c (Optional[int]): Number of parallel components.
-            batch_size (Optional[int]): Backward compatible batch_size (sets n_s, keeps n_c=1).
-            n_timesteps (Optional[int]): Backward compatible alias for n_t.
-            values (Optional[List[float]]): The values to initialize the scalar with.
-            force (bool): Whether to force the initialization.
+            values (Optional[List[float]]): Initial values for leaf scalars.
+            force (bool): Force reinitialization.
         """
-        # Handle backward compatibility alias
-        if n_timesteps is not None and n_t is None:
-            n_t = n_timesteps
+        # Handle deprecated arguments
+        deprecated_args = ["n_timesteps", "batch_size"]
+        new_args = ["n_t", "n_s"]
+        positions = [None, None]
+        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
+        n_t = value_map.get("n_t", n_t)
+        n_s = value_map.get("n_s", n_s)
             
         assert isinstance(n_t, int), "n_t must be an integer"
 
-        if n_s is not None:
-            self._n_s = n_s
-        if n_c is not None:
-            self._n_c = n_c
-        # Backward compatibility: if batch_size is provided, use it as n_s
-        if batch_size is not None and n_s is None:
-            self._n_s = batch_size
+        self._n_s = n_s
+        self._n_c = n_c
+        self._n_t = n_t
 
-        if n_t is not None:
-            self._n_t = n_t
-
-        # Create tensor with shape (n_s, n_c)
-        if self._init_tensor is None:
+        # Create tensor with shape (n_s, n_c) from _init_value
+        if self._init_value is None:
             self._tensor = torch.zeros((self.n_s, self.n_c), dtype=torch.float64)
         else:
-            self._tensor = self._init_tensor.clone()
-            # Expand to (n_s, n_c) if needed
-            if self._tensor.dim() == 0:
-                self._tensor = self._tensor.expand(self.n_s, self.n_c).clone()
-            elif self._tensor.dim() == 1 and self._tensor.shape[0] == 1:
-                self._tensor = self._tensor.expand(self.n_s, self.n_c).clone()
-            elif self._tensor.dim() == 1:
-                # Assume it's (n_s,) and expand to (n_s, n_c)
-                self._tensor = self._tensor.unsqueeze(1).expand(self.n_s, self.n_c).clone()
+            # Broadcast init_value to full tensor
+            self._tensor = torch.full(
+                (self.n_s, self.n_c), self._init_value, dtype=torch.float64
+            )
+
+
 
         if values is not None:
             values = _expand_to_3D_scalar_tensor(values, self.n_s, self.n_c)
@@ -623,89 +799,147 @@ class Scalar:
             and self._requires_reinittialization == False
             and force == False
         ):
+            # For non-leaf scalars, reset history for new simulation run
+            if not self._is_leaf:
+                self._history.zero_()
+                self._history_is_populated = False
             return
 
         if self._is_leaf:
             assert values is not None, "Values must be provided for leaf scalars"
+            # Values expected in time-first format: (n_t, n_s, n_c)
             assert (
-                values.shape[0] == self.n_s
-            ), f"First dimension of values ({values.shape[0]}) must match n_s ({self.n_s})."
+                values.shape[0] == self.n_t
+            ), f"First dimension of values ({values.shape[0]}) must match n_t ({self.n_t})."
             assert (
-                values.shape[1] == self.n_c
-            ), f"Second dimension of values ({values.shape[1]}) must match n_c ({self.n_c})."
+                values.shape[1] == self.n_s
+            ), f"Second dimension of values ({values.shape[1]}) must match n_s ({self.n_s})."
             assert (
-                values.shape[2] == self.n_t
-            ), f"Third dimension of values ({values.shape[2]}) must match n_t ({self.n_t})."
-            # Pre-allocate the history tensor with the correct size
+                values.shape[2] == self.n_c
+            ), f"Third dimension of values ({values.shape[2]}) must match n_c ({self.n_c})."
+            # Values already in internal time-first format (n_t, n_s, n_c)
             self._history = values
             self._history_is_populated = True
             if self._do_normalization:
                 self._normalized_history = self.normalize()
 
         else:
-            # History shape: (n_s, n_c, n_t)
+            # Pre-allocate history with time-first layout for efficient writes
+            # Internal shape: (n_t, n_s, n_c)
             self._history = torch.zeros(
-                self.n_s,
-                self.n_c,
-                self.n_t,
-                dtype=torch.float64,
-                requires_grad=False,
+                self.n_t, self.n_s, self.n_c,
+                dtype=torch.float64, requires_grad=False
             )
             self._history_is_populated = False
 
         self._initialized = True
 
+    def _set(
+        self,
+        v: torch.Tensor = None,
+        i_t: Optional[int] = None,
+        i_s: Union[int, slice] = slice(None),
+        i_c: Union[int, slice] = slice(None),
+        apply: callable = None,
+        **kwargs,
+    ) -> None:
+        """Private efficient setter - v must be a correctly shaped tensor (or None for leaf).
+        
+        This is the hot path used during simulation. No type conversion or 
+        shape validation is performed.
+        
+        Args:
+            v (torch.Tensor): Pre-shaped tensor matching target slice. None for leaf scalars.
+            i_t (Optional[int]): Step index for history logging (required if log_history=True or is_leaf=True).
+            i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
+            i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
+            apply (callable): Optional function to apply to the value.
+        """
+        # Handle leaf scalars (get value from history)
+        if self._is_leaf:
+            assert v is None, "Values cannot be set for leaf scalars"
+            assert i_t is not None, "i_t must be provided for leaf scalars"
+            if self._do_normalization:
+                v = self.denormalize(self._normalized_history[i_t])  # Time-first: (n_t, n_s, n_c)
+            else:
+                v = self._history[i_t]  # Time-first layout: shape (n_s, n_c)
+        
+        # Apply transformation if provided
+        if apply is not None:
+            v = apply(v)
+        
+        # Direct assignment - slice(None) acts as ':'
+        self._tensor[i_s, i_c] = v
+            
+        # Log history - direct write to time-first tensor
+        if self._log_history:
+            assert i_t is not None, "i_t must be provided when log_history=True"
+            is_leaf = self._is_leaf
+            if not is_leaf or (is_leaf and self._do_normalization):
+                # Direct write to pre-allocated tensor: _history[i_t, i_s, i_c]
+                # i_s defaults to slice(None), i_c can be int or slice
+                self._history[i_t, i_s, i_c] = v
+
+            if i_t == self.n_t - 1:
+                self._history_is_populated = True
+
     def set(
         self,
         v: Union[Scalar, float, int, torch.Tensor] = None,
-        step_index: Optional[int] = None,
+        i_t: Optional[int] = None,
+        i_s: Union[int, slice] = slice(None),
+        i_c: Union[int, slice] = slice(None),
         apply: callable = None,
-        *args,
         **kwargs,
     ) -> None:
-        """Set the scalar value.
+        """Public convenient setter - handles type conversion and broadcasting.
 
         Args:
-            v (Union[Scalar, float, torch.Tensor]): Value to set with shape (n_s, n_c).
-            step_index (Optional[int]): Step index for history logging.
+            v (Union[Scalar, float, torch.Tensor]): Value to set. Can be scalar,
+                1D, or 2D tensor. Will be broadcast to match target shape. None for leaf scalars.
+            i_t (Optional[int]): Step index for history logging.
+            i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
+            i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
             apply (callable): Optional function to apply to the value.
         """
-        if self._is_leaf:
-            assert (
-                v is None
-            ), "Values cannot be set for leaf scalars. Use scalar.set(step_index=step_index) to set value based on history"
-            assert (
-                step_index is not None
-            ), "step_index must be provided for leaf scalars"
-            if self._do_normalization:
-                v = self._normalized_history[:, :, step_index]
-                v = self.denormalize(v)
-            else:
-                v = self._history[:, :, step_index]
-        else:
-            v = _expand_to_2D_scalar_tensor(v, self.n_s, self.n_c)
+        # For non-leaf, prepare value with unified conversion logic
+        if not self._is_leaf:
+            v = _prepare_value_for_set(
+                v,
+                target_shape=(self.n_s, self.n_c),
+                indices={'i_s': i_s, 'i_c': i_c}
+            )
 
-        if apply is not None:
-            v = apply(v)
+        # Delegate to efficient private method
+        self._set(v, i_t, i_s, i_c, apply)
 
-        self._tensor = v
-        if self._log_history:
-            assert (
-                step_index is not None
-            ), "step_index must be provided when logging history"
-            if self.is_leaf == False or (self.is_leaf and self._do_normalization):
-                self._history[:, :, step_index] = v
-
-            if step_index == self._history.shape[2] - 1:
-                self._history_is_populated = True
-
-    def get(self, *args, **kwargs) -> torch.Tensor:
+    def get(
+        self,
+        i_t: Optional[int] = None,
+        i_s: Union[int, slice] = slice(None),
+        i_c: Union[int, slice] = slice(None),
+        i_v: Optional[int] = None,
+        **kwargs,
+    ) -> torch.Tensor:
         """Get the scalar value.
 
+        Args:
+            i_t (Optional[int]): Time index (for accessing history).
+            i_s (Union[int, slice]): Simulation index within n_s dimension. Defaults to slice(None) for all.
+            i_c (Union[int, slice]): Component index within n_c dimension. Defaults to slice(None) for all.
+            i_v (Optional[int]): Unused for Scalar, included for API compatibility.
+
         Returns:
-            torch.Tensor: Scalar value with shape (n_s, n_c).
+            torch.Tensor: Scalar value with shape depending on indices:
+                - (n_s, n_c) if no indices specified
+                - (n_c,) if i_s specified
+                - (n_s,) if i_c specified
+                - scalar if both i_s and i_c specified
+                - None if not yet initialized
         """
-        return self._tensor
+        if self._tensor is None:
+            return None
+        return self._tensor[i_s, i_c]
 
     def normalize(self, v: torch.Tensor = None):
         assert (
@@ -713,8 +947,10 @@ class Scalar:
         ), "History must be populated before normalizing"
         if v is None:
             v = self._history
-        v = _expand_to_3D_scalar_tensor(v, self.n_s, self.n_c)
-        assert isinstance(v, torch.Tensor), "v must be a torch.Tensor"
+        
+        # Handle different input shapes - don't force 3D for scalar inputs
+        if not isinstance(v, torch.Tensor):
+            v = torch.tensor(v, dtype=torch.float64)
 
         # Cache min/max as Python floats to avoid GradTrackingTensor issues
         if self._min_history is None:
@@ -758,18 +994,18 @@ class Scalar:
         return self._tensor.item()
 
     def copy(self):
-        copy = Scalar()
-        copy._tensor = self._tensor
-        copy._init_tensor = self._init_tensor
-        copy._n_s = self._n_s
-        copy._n_c = self._n_c
-        copy._n_t = self._n_t
-        if self._history is None:
-            copy._history = None
-        else:
-            copy._history = self._history.clone()
-        copy._log_history = self._log_history
-        copy._is_leaf = self._is_leaf
+        """Create a copy of the scalar.
+
+        Returns:
+            Scalar: A new Scalar instance with the same data.
+        """
+        copy = Scalar(
+            tensor=self._init_value,
+            log_history=self.log_history,
+            is_leaf=self.is_leaf,
+            do_normalization=self.do_normalization,
+            optional=self.optional,
+        )
         return copy
 
 
@@ -791,23 +1027,23 @@ class Parameter(nn.Parameter):
     """
 
     def __new__(cls, data, min_value=None, max_value=None, requires_grad=True, n_c=None):
-        # Prepare data with n_c handling
+        # Prepare data with n_c handling - data will have shape (n_c,)
         data, n_c = _prepare_parameter_data(data, n_c)
         
-        # Set min and max values with defaults
+        # Set min and max values with defaults - all should have shape (n_c,)
         if min_value is None:
             if torch.all(data < 0):
                 min_value = data.detach().clone()
             else:
-                min_value = torch.tensor(0, dtype=torch.float64)
+                min_value = torch.zeros(n_c, dtype=torch.float64)
         else:
             min_value = _prepare_bound_value(min_value, data.shape, n_c)
 
         if max_value is None:
             if torch.all(data < 0):
-                max_value = torch.tensor(0, dtype=torch.float64)
+                max_value = torch.zeros(n_c, dtype=torch.float64)
             elif torch.allclose(data, torch.zeros_like(data)):
-                max_value = torch.tensor(1, dtype=torch.float64)
+                max_value = torch.ones(n_c, dtype=torch.float64)
             else:
                 max_value = data.detach().clone()
         else:
@@ -910,7 +1146,8 @@ class Parameter(nn.Parameter):
         return (v - self._min_value) / (self._max_value - self._min_value)
 
     def denormalize(self, v: torch.Tensor):
-        return v * (self._max_value - self._min_value) + self._min_value
+        result = v * (self._max_value - self._min_value) + self._min_value
+        return result
 
     def get(self):
         """Get the denormalized value."""
@@ -924,6 +1161,7 @@ class Parameter(nn.Parameter):
             normalized_value = value
         else:
             normalized_value = self.normalize(value)
+        
         self.data.copy_(normalized_value)
     
     def expand_to_n_c(self, n_c: int):
@@ -992,7 +1230,7 @@ class TensorParameter:
         normalized: bool = True,
         n_c: int = None,
     ):
-        # Prepare tensor with n_c handling
+        # Prepare tensor with n_c handling (converts numpy/list to tensor)
         tensor, n_c = _prepare_parameter_data(tensor, n_c)
         self._n_c = n_c
         
@@ -1202,43 +1440,43 @@ def _expand_to_2D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor], n_s:
     
     Args:
         v: Input value to convert.
+           - Scalar: extracts tensor via .get()
+           - float/int: broadcasts to full (n_s, n_c) tensor
+           - Tensor: must be exactly (n_s, n_c) or broadcastable from (1, n_c) or (n_s, 1)
         n_s: Number of samples/scenarios.
         n_c: Number of parallel components.
         
     Returns:
         torch.Tensor with shape (n_s, n_c).
+        
+    Raises:
+        ValueError: If tensor shape is incompatible with (n_s, n_c).
     """
-    if isinstance(v, (list, np.ndarray)):
-        v = torch.tensor(v, dtype=torch.float64)
-    
     if isinstance(v, Scalar):
-        v = v.get()
+        v = v.get()  # Already (n_s, n_c)
     elif isinstance(v, (float, int)):
-        v = torch.tensor(v, dtype=torch.float64)
-    
-    if isinstance(v, torch.Tensor):
+        v = torch.full((n_s, n_c), v, dtype=torch.float64)
+    elif isinstance(v, torch.Tensor):
+        # Handle scalar tensor
         if v.dim() == 0:
             v = v.expand(n_s, n_c).clone()
-        elif v.dim() == 1:
-            # Assume it's (n_s,) or (n_c,) - try to broadcast
-            if v.shape[0] == n_s:
-                v = v.unsqueeze(1).expand(n_s, n_c).clone()
-            elif v.shape[0] == n_c:
-                v = v.unsqueeze(0).expand(n_s, n_c).clone()
-            elif v.shape[0] == 1:
+        elif v.dim() == 2:
+            if v.shape == (n_s, n_c):
+                pass  # Already correct shape
+            elif v.shape == (1, n_c):
+                v = v.expand(n_s, n_c).clone()
+            elif v.shape == (n_s, 1):
                 v = v.expand(n_s, n_c).clone()
             else:
-                raise ValueError(f"Cannot broadcast tensor of shape {v.shape} to ({n_s}, {n_c})")
-        elif v.dim() == 2:
-            if v.shape != (n_s, n_c):
-                # Try broadcasting
-                if v.shape[0] == 1:
-                    v = v.expand(n_s, -1)
-                if v.shape[1] == 1:
-                    v = v.expand(-1, n_c)
-                v = v.clone()
+                raise ValueError(
+                    f"Tensor shape {v.shape} incompatible with target ({n_s}, {n_c}). "
+                    f"Ensure connected components have matching n_c dimensions."
+                )
         else:
-            raise ValueError(f"Expected tensor with <= 2 dimensions, got {v.dim()}")
+            raise ValueError(
+                f"Expected 0D or 2D tensor, got {v.dim()}D with shape {v.shape}. "
+                f"Target shape is ({n_s}, {n_c})."
+            )
     else:
         raise TypeError(f"Unsupported type: {type(v)}")
     
@@ -1247,40 +1485,22 @@ def _expand_to_2D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor], n_s:
 
 def _expand_to_3D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor], n_s: int, n_c: int):
     """
-    Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (n_s, n_c, n_timesteps).
-    
-    Used for Scalar history tensors.
+    Validate a torch.Tensor has shape (n_t, n_s, n_c) for Scalar history (time-first layout).
     
     Args:
-        v: Input value to convert.
+        v: Input value to convert. If Tensor, must have shape (n_t, n_s, n_c).
         n_s: Number of samples/scenarios.
         n_c: Number of parallel components.
         
     Returns:
-        torch.Tensor with shape (n_s, n_c, n_timesteps).
+        torch.Tensor with shape (n_t, n_s, n_c).
     """
     if isinstance(v, (list, np.ndarray)):
         v = torch.tensor(v, dtype=torch.float64)
     
-    if isinstance(v, Scalar):
-        v = v.get()
-    elif isinstance(v, (float, int)):
-        v = torch.tensor([[[v]]], dtype=torch.float64)
-    
     if isinstance(v, torch.Tensor):
-        if v.dim() == 0:
-            v = v.unsqueeze(0).unsqueeze(0).unsqueeze(0)
-        elif v.dim() == 1:
-            # Assume it's (n_timesteps,)
-            v = v.unsqueeze(0).unsqueeze(0).expand(n_s, n_c, -1).clone()
-        elif v.dim() == 2:
-            # Assume it's (n_s, n_timesteps) - old format, add n_c dimension
-            v = v.unsqueeze(1).expand(-1, n_c, -1).clone()
-        elif v.dim() == 3:
-            # Already in correct format (n_s, n_c, n_timesteps)
-            pass
-        else:
-            raise ValueError(f"Expected tensor with <= 3 dimensions, got {v.dim()}")
+        assert v.dim() == 3, f"Expected tensor with 3 dimensions (n_t, n_s, n_c), got {v.dim()}"
+        assert v.shape[1] == n_s and v.shape[2] == n_c, f"Expected shape (n_t, {n_s}, {n_c}), got {v.shape}"
     else:
         raise TypeError(f"Unsupported type: {type(v)}")
     
@@ -1289,43 +1509,22 @@ def _expand_to_3D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor], n_s:
 
 def _expand_to_4D_tensor(v: Union[Vector, float, int, torch.Tensor], n_s: int, n_c: int):
     """
-    Convert a Vector, float, int, or torch.Tensor to torch.Tensor with shape (n_s, n_c, n_timesteps, size).
-    
-    Used for Vector history tensors.
+    Validate a torch.Tensor has shape (n_t, n_s, n_c, n_v) for Vector history (time-first layout).
     
     Args:
-        v: Input value to convert.
+        v: Input value to convert. If Tensor, must have shape (n_t, n_s, n_c, n_v).
         n_s: Number of samples/scenarios.
         n_c: Number of parallel components.
         
     Returns:
-        torch.Tensor with shape (n_s, n_c, n_timesteps, size).
+        torch.Tensor with shape (n_t, n_s, n_c, n_v).
     """
     if isinstance(v, (list, np.ndarray)):
         v = torch.tensor(v, dtype=torch.float64)
     
-    if isinstance(v, Vector):
-        v = v.get()
-    elif isinstance(v, (float, int)):
-        v = torch.tensor([[[[v]]]], dtype=torch.float64)
-    
     if isinstance(v, torch.Tensor):
-        if v.dim() == 0:
-            v = v.unsqueeze(0).unsqueeze(0).unsqueeze(0).unsqueeze(0)
-        elif v.dim() == 1:
-            # Assume it's (size,)
-            v = v.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(n_s, n_c, 1, -1).clone()
-        elif v.dim() == 2:
-            # Assume it's (n_timesteps, size)
-            v = v.unsqueeze(0).unsqueeze(0).expand(n_s, n_c, -1, -1).clone()
-        elif v.dim() == 3:
-            # Assume it's (n_s, n_timesteps, size) - old format, add n_c dimension
-            v = v.unsqueeze(1).expand(-1, n_c, -1, -1).clone()
-        elif v.dim() == 4:
-            # Already in correct format (n_s, n_c, n_timesteps, size)
-            pass
-        else:
-            raise ValueError(f"Expected tensor with <= 4 dimensions, got {v.dim()}")
+        assert v.dim() == 4, f"Expected tensor with 4 dimensions (n_t, n_s, n_c, n_v), got {v.dim()}"
+        assert v.shape[1] == n_s and v.shape[2] == n_c, f"Expected shape (n_t, {n_s}, {n_c}, n_v), got {v.shape}"
     else:
         raise TypeError(f"Unsupported type: {type(v)}")
     
@@ -1370,6 +1569,10 @@ def _to_float64_tensor(v):
         return torch.tensor(v, dtype=torch.float64)
     elif isinstance(v, torch.Tensor):
         return v.to(dtype=torch.float64)
+    elif isinstance(v, np.ndarray):
+        return torch.tensor(v, dtype=torch.float64)
+    elif isinstance(v, (list, tuple)):
+        return torch.tensor(v, dtype=torch.float64)
     else:
         raise TypeError(f"Unsupported type: {type(v)}")
 
@@ -1383,7 +1586,7 @@ def _prepare_parameter_data(data, n_c):
         n_c: Number of parallel components (None to infer from data)
         
     Returns:
-        Tuple of (prepared_data, n_c)
+        Tuple of (prepared_data with shape (n_c,), n_c)
     """
     data = _to_float64_tensor(data)
     
@@ -1394,10 +1597,14 @@ def _prepare_parameter_data(data, n_c):
         elif data.dim() == 1 and data.shape[0] != n_c:
             raise ValueError(f"Data shape {data.shape} does not match n_c={n_c}")
     else:
-        # For scalar case (n_c=None or n_c=1), squeeze to scalar
-        if data.dim() == 1 and data.shape[0] == 1:
-            data = data.squeeze()
-        n_c = data.shape[0] if data.dim() == 1 else 1
+        # Infer n_c from data shape
+        if data.dim() == 0:
+            n_c = 1
+            data = data.unsqueeze(0)  # (1,)
+        elif data.dim() == 1:
+            n_c = data.shape[0]
+        else:
+            raise ValueError(f"Data must be 0D or 1D, got {data.dim()}D")
     
     return data, n_c
 
@@ -1408,25 +1615,98 @@ def _prepare_bound_value(value, data_shape, n_c):
     
     Args:
         value: Bound value (scalar, int, float, or tensor), or None
-        data_shape: Shape of the data tensor
+        data_shape: Shape of the data tensor (should be (n_c,))
         n_c: Number of parallel components
         
     Returns:
-        Prepared bound tensor, or None if input was None
+        Prepared bound tensor with shape (n_c,), or None if input was None
     """
     if value is None:
         return None
     
     value = _to_float64_tensor(value)
     
-    # Broadcast to match data shape if needed
-    if len(data_shape) == 1 and data_shape[0] > 1:
-        if value.dim() == 0:
-            value = value.expand(data_shape[0]).clone()
-        elif value.dim() == 1 and value.shape[0] == 1:
-            value = value.expand(data_shape[0]).clone()
+    # Always expand to match n_c
+    if value.dim() == 0:
+        value = value.expand(n_c).clone()
+    elif value.dim() == 1 and value.shape[0] == 1 and n_c > 1:
+        value = value.expand(n_c).clone()
+    elif value.dim() == 1 and value.shape[0] != n_c:
+        raise ValueError(f"Bound value shape {value.shape} does not match n_c={n_c}")
     
     return value
+
+
+def _prepare_value_for_set(
+    v: Union[float, int, torch.Tensor, "Scalar"],
+    target_shape: tuple,
+    indices: dict = None,
+) -> torch.Tensor:
+    """
+    Prepare a value for setting into a Scalar or Vector tensor.
+    
+    This unified function handles all the conversion and broadcasting logic:
+    1. Converts Python scalars (int, float) to tensors
+    2. Handles Scalar objects by calling .get()
+    3. Expands/broadcasts to match the target shape
+    
+    Args:
+        v: The value to prepare (float, int, tensor, or Scalar)
+        target_shape: The full target shape, e.g. (n_s, n_c) for Scalar or (n_s, n_c, n_v) for Vector
+        indices: Dict of which indices are being set, e.g. {'i_s': 0, 'i_c': slice(None)} or {'i_c': 0, 'i_v': 1}
+                 If an index is slice(None), that dimension is expected in v.
+                 If an index is an int, that dimension is not expected in v.
+    
+    Returns:
+        torch.Tensor with appropriate shape for assignment
+    """
+    indices = indices or {}
+    
+    # Handle Scalar objects
+    if hasattr(v, 'get') and callable(v.get):
+        v = v.get()
+    
+    # Convert Python scalars to tensors
+    if isinstance(v, (int, float)):
+        v = torch.tensor(v, dtype=torch.float64)
+    
+    if not isinstance(v, torch.Tensor):
+        raise TypeError(f"Expected tensor, got {type(v)}")
+    
+    # Determine expected shape based on which indices are set
+    # If index is slice(None), we need that dimension in v
+    # If index is an int, we don't need that dimension in v
+    expected_dims = []
+    dim_names = ['n_s', 'n_c', 'n_v'][:len(target_shape)]
+    idx_map = {'n_s': 'i_s', 'n_c': 'i_c', 'n_v': 'i_v'}
+    
+    for dim_name, dim_size in zip(dim_names, target_shape):
+        idx_name = idx_map.get(dim_name)
+        idx_value = indices.get(idx_name, slice(None))
+        # Include dimension if index is slice(None) (selecting all)
+        if isinstance(idx_value, slice):
+            expected_dims.append(dim_size)
+    
+    # Handle 0D tensor (scalar)
+    if v.dim() == 0:
+        v = v.expand(*expected_dims).clone()
+    # Handle dimension mismatch - try to expand
+    elif v.dim() < len(expected_dims):
+        # Try to unsqueeze missing dimensions
+        while v.dim() < len(expected_dims):
+            # Add dimension at end if it makes sense
+            if v.shape[-1] == expected_dims[v.dim() - 1] if v.dim() > 0 else True:
+                v = v.unsqueeze(-1)
+            else:
+                v = v.unsqueeze(0)
+        # Expand to target shape if needed
+        if v.shape != tuple(expected_dims):
+            try:
+                v = v.expand(*expected_dims).clone()
+            except RuntimeError:
+                pass  # Let it fail later with a clearer error
+    
+    return v
 
 
 def _broadcast_for_n_c(value, n_c):
@@ -1438,11 +1718,15 @@ def _broadcast_for_n_c(value, n_c):
         n_c: Number of parallel components
         
     Returns:
-        Broadcasted tensor
+        Broadcasted tensor with shape (n_c,)
     """
     value = _to_float64_tensor(value)
     
-    if n_c > 1 and value.dim() == 0:
+    if value.dim() == 0:
+        # Always expand to 1D with shape (n_c,)
+        value = value.expand(n_c).clone()
+    elif value.shape[0] == 1 and n_c > 1:
+        # Expand from (1,) to (n_c,)
         value = value.expand(n_c).clone()
     
     return value

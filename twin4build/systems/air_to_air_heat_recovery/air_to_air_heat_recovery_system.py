@@ -199,13 +199,13 @@ class AirToAirHeatRecoverySystem(core.System):
         batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         self.INITIALIZED = True
 
@@ -312,8 +312,8 @@ class AirToAirHeatRecoverySystem(core.System):
         )
 
         # Set outputs
-        self.output["primaryTemperatureOut"].set(primary_temp_out, step_index)
-        self.output["secondaryTemperatureOut"].set(secondary_temp_out, step_index)
+        self.output["primaryTemperatureOut"]._set(primary_temp_out, i_t=step_index)
+        self.output["secondaryTemperatureOut"]._set(secondary_temp_out, i_t=step_index)
 
 
 def saref_signature_pattern():

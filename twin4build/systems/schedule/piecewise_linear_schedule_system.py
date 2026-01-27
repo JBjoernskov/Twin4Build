@@ -132,7 +132,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key].set(self.get_Y(X), step_index)
+        self.output[key]._set(self.get_Y(X), i_t=step_index)
 
 
 def saref_signature_pattern() -> SignaturePattern:

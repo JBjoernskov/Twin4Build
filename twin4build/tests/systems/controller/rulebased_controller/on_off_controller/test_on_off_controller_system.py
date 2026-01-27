@@ -33,8 +33,8 @@ class TestOnOffControllerSystem(unittest.TestCase):
         )
 
         # Set inputs
-        self.controller.input["actualValue"].set(torch.tensor([20.0]), step_index=0)
-        self.controller.input["setpointValue"].set(torch.tensor([22.0]), step_index=0)
+        self.controller.input["actualValue"].set(torch.tensor([20.0]), i_t=0)
+        self.controller.input["setpointValue"].set(torch.tensor([22.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
@@ -67,10 +67,10 @@ class TestOnOffControllerSystem(unittest.TestCase):
 
         # Set inputs with batch size 2
         controller_batch.input["actualValue"].set(
-            torch.tensor([20.0, 23.0]), step_index=0
+            torch.tensor([20.0, 23.0]), i_t=0
         )
         controller_batch.input["setpointValue"].set(
-            torch.tensor([22.0, 22.0]), step_index=0
+            torch.tensor([22.0, 22.0]), i_t=0
         )
 
         # Execute a time step

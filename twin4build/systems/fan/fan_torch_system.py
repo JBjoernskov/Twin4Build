@@ -178,13 +178,13 @@ class FanTorchSystem(core.System, nn.Module):
         batch_size = len(start_time)
         for input in self.input.values():
             input.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         self.INITIALIZED = True
 
@@ -249,5 +249,5 @@ class FanTorchSystem(core.System, nn.Module):
         outlet_temp = inlet_temp + delta_T
 
         # Update outputs
-        self.output["outletAirTemperature"].set(outlet_temp, step_index)
-        self.output["Power"].set(power, step_index)
+        self.output["outletAirTemperature"]._set(outlet_temp, i_t=step_index)
+        self.output["Power"]._set(power, i_t=step_index)

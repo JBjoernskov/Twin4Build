@@ -12,17 +12,25 @@ class TestScalar(unittest.TestCase):
     def test_scalar_initialization(self):
         """Test scalar initialization with and without initial value."""
         s = Scalar()
-        # Default initialization creates None
+        # Tensor is None before initialize() is called
         self.assertIsNone(s.tensor)
+        self.assertIsNone(s.init_value)
 
+        # With initial value - stored in init_value, tensor still None until initialize()
         s = Scalar(tensor=5.0)
-        self.assertEqual(s.tensor.item(), 5.0)
+        self.assertIsNone(s.tensor)  # Not created until initialize()
+        self.assertEqual(s.init_value, 5.0)  # Stored for use in initialize()
+        
+        # After initialize(), tensor is created and init_value is broadcast
+        s.initialize(n_t=5, n_s=1, n_c=1)
+        self.assertEqual(s.tensor[0, 0].item(), 5.0)
 
     def test_scalar_tensor(self):
-        """Test that scalar values are stored as tensors."""
+        """Test that scalar values are stored as tensors after initialize()."""
         s = Scalar(tensor=5.0)
+        s.initialize(n_t=5, n_s=1, n_c=1)
         self.assertTrue(torch.is_tensor(s.tensor))
-        self.assertEqual(s.tensor.item(), 5.0)
+        self.assertEqual(s.tensor[0, 0].item(), 5.0)
 
     def test_scalar_set_get(self):
         """Test setting and getting scalar values."""
@@ -30,13 +38,13 @@ class TestScalar(unittest.TestCase):
         s.initialize(n_t=5, n_s=2, n_c=1)
 
         # Set a value - shape (n_s, n_c) = (2, 1)
-        s.set(3.5, step_index=0)
+        s.set(3.5, i_t=0)
         result = s.get()
         self.assertEqual(result.shape, (2, 1))
         self.assertAlmostEqual(result[0, 0].item(), 3.5, places=5)
 
         # Set another value
-        s.set(torch.tensor(7.2), step_index=0)
+        s.set(torch.tensor(7.2), i_t=0)
         self.assertAlmostEqual(s.get()[0, 0].item(), 7.2, places=5)
 
     def test_scalar_history(self):
@@ -46,20 +54,20 @@ class TestScalar(unittest.TestCase):
         s.initialize(n_t=5, n_s=1, n_c=1)
 
         # Set multiple values to build history
-        # History shape: (n_s, n_c, n_t) = (1, 1, 5)
+        # History shape: (n_t, n_s, n_c) = (5, 1, 1) - time-first layout
         values = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], dtype=torch.float64)
         for i in range(n_t):
             val = values[i]
-            s.set(val, step_index=i)
+            s.set(val, i_t=i)
 
         # Check history
         self.assertTrue(s._history_is_populated)
-        history = s.history
-        # History shape is (n_s, n_c, n_t)
-        self.assertEqual(history.shape, (1, 1, 5))
-        self.assertEqual(history.shape[2], 5)  # 5 timesteps
+        history = s.history()  # Now a method with optional slice args
+        # History shape is (n_t, n_s, n_c) - time-first layout
+        self.assertEqual(history.shape, (5, 1, 1))
+        self.assertEqual(history.shape[0], 5)  # 5 timesteps
 
-        expected = values.reshape(1, 1, 5)
+        expected = values.reshape(5, 1, 1)
         torch.testing.assert_close(history, expected)
 
     def test_scalar_batch_dimensions(self):
@@ -68,8 +76,8 @@ class TestScalar(unittest.TestCase):
         s.initialize(n_t=10, n_s=3, n_c=1)
 
         # Set batched values - shape (n_s, n_c) = (3, 1)
-        batched_value = torch.tensor([[1.0], [2.0], [3.0]])
-        s.set(batched_value, step_index=0)
+        batched_value = torch.tensor([[1.0], [2.0], [3.0]], dtype=torch.float64)
+        s.set(batched_value, i_t=0)
 
         result = s.get()
         self.assertEqual(result.shape, (3, 1))  # (n_s, n_c)
@@ -81,8 +89,8 @@ class TestScalar(unittest.TestCase):
         s.initialize(n_t=10, n_s=2, n_c=3)
 
         # Set batched values - shape (n_s, n_c) = (2, 3)
-        batched_value = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        s.set(batched_value, step_index=0)
+        batched_value = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float64)
+        s.set(batched_value, i_t=0)
 
         result = s.get()
         self.assertEqual(result.shape, (2, 3))  # (n_s, n_c)
@@ -95,7 +103,7 @@ class TestScalar(unittest.TestCase):
 
         # Run 'simulation'
         for i in range(5):
-            s.set(i, step_index=i)
+            s.set(i, i_t=i)
 
         val = 3
         val_normalized = s.normalize(val)
@@ -122,7 +130,7 @@ class TestVector(unittest.TestCase):
 
         # Set a vector value - shape (n_s, n_c, n_v) = (1, 1, 3)
         test_vec = torch.tensor([[[1.0, 2.0, 3.0]]], dtype=torch.float64)
-        v.set(test_vec, step_index=0)
+        v.set(test_vec, i_t=0)
         result = v.get()
 
         torch.testing.assert_close(result, test_vec)
@@ -131,7 +139,7 @@ class TestVector(unittest.TestCase):
         """Test vector tensor property and that n_v is overwritten by initialize."""
         v = Vector(n_v=4)
         v.initialize(n_t=5, n_s=1, n_c=1)
-        v.set(torch.tensor([[[1.0, 2.0, 3.0, 4.0]]]), step_index=0)
+        v.set(torch.tensor([[[1.0, 2.0, 3.0, 4.0]]]), i_t=0)
 
         tensor = v.tensor
         self.assertTrue(torch.is_tensor(tensor))
@@ -144,17 +152,17 @@ class TestVector(unittest.TestCase):
         v.initialize(n_t=5, n_s=1, n_c=1)
 
         # Set multiple values to build history
-        # History shape: (n_s, n_c, n_t, n_v) = (1, 1, 5, 2)
+        # History shape: (n_t, n_s, n_c, n_v) = (5, 1, 1, 2) - time-first layout
         for i in range(5):
             val = torch.tensor([[[float(i*2+1), float(i*2+2)]]])
-            v.set(val, step_index=i)
+            v.set(val, i_t=i)
 
         # Check history
         self.assertTrue(v._history_is_populated)
-        history = v.history
-        # Shape is (n_s, n_c, n_t, n_v)
-        self.assertEqual(history.shape, (1, 1, 5, 2))
-        self.assertEqual(history.shape[2], 5)  # 5 timesteps
+        history = v.history()  # Now a method with optional slice args
+        # Shape is (n_t, n_s, n_c, n_v) - time-first layout
+        self.assertEqual(history.shape, (5, 1, 1, 2))
+        self.assertEqual(history.shape[0], 5)  # 5 timesteps
         self.assertEqual(history.shape[3], 2)  # n_v=2
 
     def test_vector_batch_dimensions(self):
@@ -167,7 +175,7 @@ class TestVector(unittest.TestCase):
             [[[1.0, 2.0, 3.0]], [[4.0, 5.0, 6.0]], [[7.0, 8.0, 9.0]], [[10.0, 11.0, 12.0]]],
             dtype=torch.float64,
         )
-        v.set(batched_value, step_index=0)
+        v.set(batched_value, i_t=0)
 
         result = v.get()
         self.assertEqual(result.shape[0], 4)  # n_s
@@ -186,7 +194,7 @@ class TestVector(unittest.TestCase):
              [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]]],
             dtype=torch.float64,
         )
-        v.set(batched_value, step_index=0)
+        v.set(batched_value, i_t=0)
 
         result = v.get()
         self.assertEqual(result.shape, (2, 3, 2))  # (n_s, n_c, n_v)
@@ -319,7 +327,7 @@ class TestVectorAdvanced(unittest.TestCase):
         v.initialize(n_t=5, n_s=1, n_c=1)
 
         # Set a value first
-        v.set(torch.tensor([[[1.0, 2.0, 3.0]]]), step_index=0)
+        v.set(torch.tensor([[[1.0, 2.0, 3.0]]]), i_t=0)
 
         # Get via getitem - returns tensor
         result = v[0]

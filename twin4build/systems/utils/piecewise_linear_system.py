@@ -195,4 +195,4 @@ class PiecewiseLinearSystem(core.System):
                 Defaults to None.
         """
         X = self.input["x"].get()
-        self.output["y"].set(self._get_Y(X), step_index)
+        self.output["y"]._set(self._get_Y(X), i_t=step_index)

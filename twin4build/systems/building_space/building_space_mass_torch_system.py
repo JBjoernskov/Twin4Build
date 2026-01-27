@@ -204,13 +204,13 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
 
         if not self.INITIALIZED:
@@ -233,81 +233,73 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
             self.ss_model.set_state(x0_tensor)
 
     def _get_initial_state_tensor(self):
-        # Get batch size from indoorCO2 which should be initialized with correct batch size
+        # Get dimensions from indoorCO2
+        # Scalar.get() returns shape (n_s, n_c)
         co2_indoor = self.output["indoorCO2"].get()
-        batch_size = co2_indoor.shape[0] if co2_indoor.dim() > 0 else 1
+        n_s = co2_indoor.shape[0]
+        n_c = co2_indoor.shape[1]
 
-        x0 = torch.zeros((batch_size, 1), dtype=torch.float64)
+        # x0 shape: (n_s, n_c, n_states) where n_states = 1
+        x0 = torch.zeros((n_s, n_c, 1), dtype=torch.float64)
 
-        # Handle indoor CO2
-        co2_indoor_val = co2_indoor
-        if co2_indoor_val.dim() == 0:
-            co2_indoor_val = co2_indoor_val.expand(batch_size)
-
-        x0[:, 0] = co2_indoor_val
+        x0[:, :, 0] = co2_indoor
 
         return x0
 
     def _create_state_space_model(self):
-        """Create the state space model matrices using PyTorch tensors."""
+        """Create the state space model matrices using PyTorch tensors.
+        
+        Matrices have shape (n_c, n_states, n_states/n_inputs) to support
+        different parameter values per component.
+        """
         # Single state for CO2 concentration
         n_states = 1
         n_inputs = len(self.input)
 
-        # Initialize A and B matrices with zeros
-        A = torch.zeros((n_states, n_states), dtype=torch.float64)
-        B = torch.zeros((n_states, n_inputs), dtype=torch.float64)
+        # Get parameter values - shape (n_c,)
+        V = self.V.get()
+        G_occ = self.G_occ.get()
+        m_inf = self.m_inf.get()
+        n_c = V.shape[0]
 
         # Calculate air mass from volume and density
-        # We use the density of air from constants to convert volume to mass
-        # This ensures unit consistency (flows are in kg/s, concentration in ppm)
         density_air = constants.RHO_AIR
-        air_mass = self.V.get() * density_air
+        air_mass = V * density_air  # (n_c,)
+
+        # Initialize A and B matrices with zeros - shape (n_c, n_states, n_states/n_inputs)
+        A = torch.zeros((n_c, n_states, n_states), dtype=torch.float64)
+        B = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
 
         # State matrix A: -sum of all flow rates / air_mass
-        A[0, 0] = -(self.m_inf.get() / air_mass)  # Base coefficient from infiltration
+        A[:, 0, 0] = -(m_inf / air_mass)  # Base coefficient from infiltration
 
         # Input matrix B coefficients
-        # Note: Supply and Exhaust flow rate effects are bilinear and handled in E/F matrices
-        # We only set linear terms here.
-
         # Outdoor CO2 (from infiltration)
-        # Term: m_inf * C_out / air_mass
-        # This is equivalent to (V_inf/V) * C_out assuming constant density ratio
-        B[0, 2] = self.m_inf.get() / air_mass  # outdoorCO2 coefficient
+        B[:, 0, 2] = m_inf / air_mass  # outdoorCO2 coefficient
 
         # Number of people
-        # Term: G_occ * N_occ / air_mass * conversion
-        # G_occ is in kg_CO2/s. We need output in ppmv (volume fraction * 1e6).
-        # For ideal gases, ppmv = ppm-moles (molar fraction * 1e6).
-        # 1. Convert kg_CO2/s to kg_CO2/kg_air/s (mass fraction rate): G_occ / air_mass
-        # 2. Convert mass fraction to volume fraction: * (M_air / M_CO2)
-        # 3. Convert to ppmv: * 1e6
-        B[0, 3] = (
-            (self.G_occ.get() / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6
-        )  # numberOfPeople coefficient
+        B[:, 0, 3] = (G_occ / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6  # numberOfPeople coefficient
 
         # Output matrix C - Identity matrix for direct observation
-        C = torch.eye(n_states, dtype=torch.float64)
+        # Shape: (n_c, n_states, n_states)
+        C = torch.eye(n_states, dtype=torch.float64).unsqueeze(0).expand(n_c, -1, -1).clone()
 
-        # Feedthrough matrix D (no direct feedthrough)
-        D = torch.zeros((n_states, n_inputs), dtype=torch.float64)
+        # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
+        D = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
 
-        # Initial state - use first batch element for system definition
-        x0_tensor = self._get_initial_state_tensor()
-        x0 = x0_tensor[0]
+        # Initial state - shape (n_c, n_states)
+        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
+        x0 = x0_tensor[0, :, :]  # Take first simulation, all components: (n_c, n_states)
 
-        # E matrix for input-state coupling: shape (n_inputs, n_states, n_states)
-        E = torch.zeros((n_inputs, n_states, n_states), dtype=torch.float64)
+        # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
+        E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=torch.float64)
         # -m_ex*C (input 1, state 0)
-        # dC/dt term: -(m_exh * C) / air_mass
-        E[1, 0, 0] = -1 / air_mass  # exhaustAirFlowRate * C
+        E[:, 1, 0, 0] = -1 / air_mass  # exhaustAirFlowRate * C
 
-        # F matrix for input-input coupling: shape (n_inputs, n_states, n_inputs)
-        F = torch.zeros((n_inputs, n_states, n_inputs), dtype=torch.float64)
+        # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
+        F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=torch.float64)
         # m_sup*C_sup (inputs 0 and 2)
-        # dC/dt term: (m_sup * C_sup) / air_mass
-        F[0, 0, 2] = 1 / air_mass  # supplyAirFlowRate * supplyAirCO2
+        F[:, 0, 0, 2] = 1 / air_mass  # supplyAirFlowRate * supplyAirCO2
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -336,6 +328,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     ) -> None:
         """Execute a single simulation step using the state-space model."""
         # Build input vector u
+        # Stack along dim=2 to get shape (n_s, n_c, n_v) from (n_s, n_c) scalars
         u = torch.stack(
             [
                 self.input["supplyAirFlowRate"].get(),
@@ -343,10 +336,11 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
                 self.input["outdoorCO2"].get(),
                 self.input["numberOfPeople"].get(),
             ],
-            dim=1,
+            dim=2,
         )
 
-        self.ss_model.input["u"].set(u, step_index)
+        self.ss_model.input["u"]._set(u, i_t=step_index)
         self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
-        y = self.ss_model.output["y"].get()
-        self.output["indoorCO2"].set(y[:, 0], step_index)
+        y = self.ss_model.output["y"].get()  # Shape: (n_s, n_c, n_v)
+        # y[:, :, 0] gives (n_s, n_c) which is correct for Scalar._set()
+        self.output["indoorCO2"]._set(y[:, :, 0], i_t=step_index)
