@@ -38,14 +38,6 @@ dict\_utils module
    :show-inheritance:
    :undoc-members:
 
-do\_nothing module
-------------------
-
-.. automodule:: twin4build.utils._do_nothing
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 get\_main\_dir module
 ---------------------
 
@@ -70,26 +62,18 @@ get\_object\_properties module
    :show-inheritance:
    :undoc-members:
 
-isnumeric module
-----------------
-
-.. automodule:: twin4build.utils.isnumeric
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-istype module
--------------
-
-.. automodule:: twin4build.utils.istype
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 mkdir\_in\_root module
 ----------------------
 
 .. automodule:: twin4build.utils.mkdir_in_root
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+print\_estimation\_result module
+--------------------------------
+
+.. automodule:: twin4build.utils.print_estimation_result
    :members:
    :show-inheritance:
    :undoc-members:

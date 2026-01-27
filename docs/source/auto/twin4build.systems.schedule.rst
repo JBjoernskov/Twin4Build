@@ -1,14 +1,6 @@
 schedule
 ========
 
-Package
----------
-
-.. toctree::
-   :maxdepth: 1
-
-   twin4build.systems.schedule.occupancy
-
 Modules
 -------
 
