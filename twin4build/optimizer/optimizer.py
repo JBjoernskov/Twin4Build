@@ -1099,10 +1099,12 @@ class Optimizer:
                 history_tensor = component.output[output_name].history().detach()
 
             # Extract only actual timesteps (no padding) for each period
+            # History shape is (n_t, n_s, n_c) - time-first layout
             period_tensors = []
             for period_idx in range(n_periods):
                 actual_timesteps = self._n_timesteps[period_idx]
-                period_data = history_tensor[period_idx, :actual_timesteps]
+                # Slice time dimension, index scenario dimension, keep all components
+                period_data = history_tensor[:actual_timesteps, period_idx, :]
                 period_tensors.append(period_data)
 
             # Concatenate all periods for this variable
