@@ -573,10 +573,10 @@ class Optimizer:
         )
 
         timestep_mask = torch.ones(
-            len(self._start_time), self._max_timesteps, dtype=torch.bool
+            self._max_timesteps, len(self._start_time), dtype=torch.bool
         )
-        for batch_index, n_timesteps in enumerate(self._n_timesteps):
-            timestep_mask[batch_index, n_timesteps:] = False
+        for i_s, n_timesteps in enumerate(self._n_timesteps):
+            timestep_mask[n_timesteps:, i_s] = False
         self._timestep_mask = timestep_mask  # .bool()
 
         # Check that we have something to optimize
@@ -1099,10 +1099,12 @@ class Optimizer:
                 history_tensor = component.output[output_name].history().detach()
 
             # Extract only actual timesteps (no padding) for each period
+            # History shape is (n_t, n_s, n_c) - time-first layout
             period_tensors = []
             for period_idx in range(n_periods):
                 actual_timesteps = self._n_timesteps[period_idx]
-                period_data = history_tensor[period_idx, :actual_timesteps]
+                # Slice time dimension, index scenario dimension, keep all components
+                period_data = history_tensor[:actual_timesteps, period_idx, :]
                 period_tensors.append(period_data)
 
             # Concatenate all periods for this variable
@@ -1327,14 +1329,15 @@ class Optimizer:
         k = 100
 
         # Handle equality constraints
+        # Use boolean mask (n_t, n_s) to index 3D tensors (n_t, n_s, n_c) -> (num_valid, n_c)
+        mask = self._timestep_mask
+        
         if self._eq_cons is not None:
             for constraint in self._eq_cons:
                 component, output_name, desired_value = constraint
-                # History has shape (n_t, n_s, n_c) - time-first layout, apply mask to time dimension (first)
-                y = component.output[output_name].history(i_t=self._timestep_mask[0, :])
-                desired_tensor = self.equality_constraint_values[
-                    component, output_name
-                ][self._timestep_mask[0, :], :, :]
+                # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
+                y = component.output[output_name].history()[mask]
+                desired_tensor = self.equality_constraint_values[component, output_name][mask]
                 y_norm = component.output[output_name].normalize(y)
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
@@ -1347,11 +1350,11 @@ class Optimizer:
             ineq_lower_term = torch.tensor(0.0, dtype=torch.float64)
             for constraint in self._ineq_cons:
                 component, output_name, constraint_type, desired_value = constraint
-                # History has shape (n_t, n_s, n_c) - time-first layout, apply mask to time dimension (first)
-                y = component.output[output_name].history(i_t=self._timestep_mask[0, :])
+                # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
+                y = component.output[output_name].history()[mask]
                 desired_tensor = self.inequality_constraint_values[
                     (component, output_name, constraint_type)
-                ][self._timestep_mask[0, :], :, :]
+                ][mask]
                 y_norm = component.output[output_name].normalize(y)
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
@@ -1360,21 +1363,19 @@ class Optimizer:
                 if constraint_type == "upper":
                     # Penalize when y > desired_value
                     constraint_violations = torch.relu(y_norm - desired_tensor_norm)
-                    term = torch.mean(k * constraint_violations)
-                    ineq_upper_term += term
+                    ineq_upper_term += torch.mean(k * constraint_violations)
                 elif constraint_type == "lower":
                     # Penalize when y < desired_value
                     constraint_violations = torch.relu(desired_tensor_norm - y_norm)
-                    term = torch.mean(k * constraint_violations)
-                    ineq_lower_term += term
+                    ineq_lower_term += torch.mean(k * constraint_violations)
 
             loss += ineq_upper_term + ineq_lower_term
 
         # Handle minimization objectives
         if self._objectives is not None:
             for component, output_name, objective_type in self._objectives:
-                # History has shape (n_t, n_s, n_c) - time-first layout, apply mask to time dimension (first)
-                y = component.output[output_name].history(i_t=self._timestep_mask[0, :])
+                # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
+                y = component.output[output_name].history()[mask]
                 y_norm = component.output[output_name].normalize(y)
                 if objective_type == "min":
                     loss += torch.mean(y_norm)

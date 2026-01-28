@@ -168,6 +168,14 @@ class Entry:
             )
             fmt = linestyle
 
+        # Check for common mistake: passing a method instead of calling it
+        if callable(data):
+            raise TypeError(
+                "The 'data' parameter appears to be a callable (method/function). "
+                "Did you forget to call .history()? "
+                "Use .history() instead of .history to get the data array."
+            )
+
         # Convert data to numpy array if necessary
         if isinstance(data, (list, pd.Series)):
             data = np.array(data)
@@ -375,9 +383,10 @@ def get_data(t):
     elif isinstance(data, torch.Tensor):
         data = data.detach().cpu().numpy()
 
-    # Handle new (n_s, n_c, n_t) shape - select first component to get (n_s, n_t)
+    # Handle 3D data - history() returns (n_t, n_s, n_c), need (n_s, n_t) for plotting
     if isinstance(data, np.ndarray) and data.ndim == 3:
-        data = data[:, 0, :]  # Select first component (n_c=0)
+        # History format: (n_t, n_s, n_c) - select first component and transpose to (n_s, n_t)
+        data = data[:, :, 0].T  # Select n_c=0, then transpose (n_t, n_s) -> (n_s, n_t)
 
     if isinstance(data, np.ndarray) and data.ndim == 1:
         data = data.reshape(1, -1)
