@@ -40,6 +40,74 @@ from twin4build.utils.validate_period import validate_period
 INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
 
 
+def _convert_literal_value(value):
+    """
+    Convert an RDF literal value to its appropriate Python type.
+
+    When RDF literals are loaded without explicit datatypes, they come back as strings.
+    This function attempts to convert them to the appropriate Python type.
+    Also unwraps single-element lists to scalar values for backward compatibility.
+
+    Args:
+        value: The literal value to convert (typically a string, but may already be parsed)
+
+    Returns:
+        The converted value with appropriate Python type (int, float, bool, dict, list, or str)
+    """
+    if value is None:
+        return None
+
+    # If it's already a list (e.g., rdflib parsed JSON), unwrap single-element lists
+    if isinstance(value, list):
+        if len(value) == 1:
+            return value[0]
+        return value
+
+    # If it's another non-string type (dict, int, float, bool), return as-is
+    if not isinstance(value, str):
+        return value
+
+    # Try to parse as JSON first (for dicts/lists)
+    if value.startswith("{") or value.startswith("["):
+        try:
+            parsed = json.loads(value)
+            # Unwrap single-element lists to scalar values for backward compatibility
+            # This handles cases where tensor Parameters were serialized as [value]
+            # but the component constructor expects a scalar
+            if isinstance(parsed, list) and len(parsed) == 1:
+                return parsed[0]
+            return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Handle boolean values
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+
+    # Handle None
+    if value == "None":
+        return None
+
+    # Try to convert to int first (more specific)
+    try:
+        # Check if it's a valid integer representation
+        if "." not in value and "e" not in value.lower():
+            return int(value)
+    except ValueError:
+        pass
+
+    # Try to convert to float
+    try:
+        return float(value)
+    except ValueError:
+        pass
+
+    # Return as string if no conversion succeeded
+    return value
+
+
 @autoreset_print
 class SimulationModel:
     r"""
@@ -2296,7 +2364,8 @@ class SimulationModel:
         def _update_literals_for_component(component: core.System) -> None:
             component_uri = self._semantic_model.T4B.__getitem__(component.id)
             for key, value in flatten_dict(component.populate_config(), component):
-                if isinstance(value, dict):
+                if isinstance(value, (dict, list)):
+                    # Serialize dicts and lists as JSON with datatype
                     value_ = json.dumps(value)
                     datatype = core.namespace.RDF.JSON
                 else:
@@ -2420,6 +2489,8 @@ class SimulationModel:
                 for obj_ in obj:
                     if obj_.is_literal:
                         literal_value = obj_.uri.value
+                        # Convert string literals to appropriate Python types
+                        literal_value = _convert_literal_value(literal_value)
                         attributes[
                             get_short_name(pred, self._semantic_model.namespaces)
                         ] = literal_value

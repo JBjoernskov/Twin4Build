@@ -246,7 +246,9 @@ class System:
 
         def extract_value(value):
             if hasattr(value, "detach") and hasattr(value, "numpy"):
-                return list(value.get().detach().numpy().flatten())
+                # Use .tolist() to convert numpy types to Python native types
+                # This ensures values like np.float64(1.0) become 1.0
+                return value.get().detach().numpy().flatten().tolist()
             else:  # isinstance(value, (int, float, type(None))):
                 return value
 
