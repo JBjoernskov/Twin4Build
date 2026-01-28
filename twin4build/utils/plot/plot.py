@@ -168,6 +168,14 @@ class Entry:
             )
             fmt = linestyle
 
+        # Check for common mistake: passing a method instead of calling it
+        if callable(data):
+            raise TypeError(
+                "The 'data' parameter appears to be a callable (method/function). "
+                "Did you forget to call .history()? "
+                "Use .history() instead of .history to get the data array."
+            )
+
         # Convert data to numpy array if necessary
         if isinstance(data, (list, pd.Series)):
             data = np.array(data)
