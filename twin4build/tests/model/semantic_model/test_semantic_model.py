@@ -2059,10 +2059,10 @@ class TestSemanticModel(unittest.TestCase):
         self._setup_visualize_data()
         self.model.visualize()
 
-        png_path, _ = self.model.get_dir(
-            folder_list=["graphs"], filename="semantic_model.png"
+        svg_path, _ = self.model.get_dir(
+            folder_list=["graphs"], filename="semantic_model.svg"
         )
-        self.assertTrue(os.path.exists(png_path), f"Expected PNG file at {png_path}")
+        self.assertTrue(os.path.exists(svg_path), f"Expected SVG file at {svg_path}")
 
     def test_visualize_with_custom_query(self):
         """Test visualize with custom CONSTRUCT query."""
