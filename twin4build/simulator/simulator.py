@@ -203,8 +203,8 @@ class Simulator:
                 connected_component = connection.connects_system
                 input_port_index = connection_point.input_port_index[connection]
                 output_port_index = connection_point.output_port_index[connection]
-                component.input[connection_point.inputPort]._set(
-                    connected_component.output[connection.outputPort].get(
+                component.input[connection_point.input_port]._set(
+                    connected_component.output[connection.output_port].get(
                         i_v=output_port_index
                     ),
                     i_t=step_index,
