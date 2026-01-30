@@ -173,8 +173,8 @@ def generate_data_with_twin4build(
     
     # Extract results
     timestamps = [start_time + datetime.timedelta(seconds=i * step_size) for i in range(n_timesteps)]
-    temperature = building_space.output["indoorTemperature"].history[0].detach().numpy()
-    actuator = pi_controller.output["inputSignal"].history[0].detach().numpy()
+    temperature = building_space.output["indoorTemperature"].history(i_s=0, i_c=0).detach().numpy()
+    actuator = pi_controller.output["inputSignal"].history(i_s=0, i_c=0).detach().numpy()
     setpoint = weather['setpoint']['value'].values
     
     df_temperature = pd.DataFrame({'datetime': timestamps, 'value': temperature})
@@ -450,7 +450,7 @@ def run_multi_signal_identification_example():
     print("\n6. Running initial simulation...")
     simulator.simulate(start_time=start_time, end_time=end_time, step_size=step_size)
     
-    initial_predictions = actuator_sensor.input["measuredValue"].history[0].detach().numpy()
+    initial_predictions = actuator_sensor.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
     actual_actuator = df_actuator['value'].values
     
     print(f"\n   Initial weights:")
@@ -520,7 +520,7 @@ def run_multi_signal_identification_example():
     # =========================================================================
     print("\n8. Generating result plots...")
     
-    final_predictions = actuator_sensor.input["measuredValue"].history[0].detach().numpy()
+    final_predictions = actuator_sensor.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
     
     fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
     

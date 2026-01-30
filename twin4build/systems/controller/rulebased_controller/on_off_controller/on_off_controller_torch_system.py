@@ -17,7 +17,7 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
 
     This class implements a differentiable on-off (bang-bang) controller that can be
     used for gradient-based parameter estimation. Instead of a hard switch, it uses
-    a sigmoid function to create a smooth transition between off and on states.
+    a power law function to create a smooth transition between off and on states.
 
     Mathematical Formulation
     ------------------------

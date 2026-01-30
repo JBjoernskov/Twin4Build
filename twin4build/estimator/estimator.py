@@ -288,6 +288,8 @@ class Estimator:
         method: Union[str, Tuple[str, str, str]] = "scipy",
         n_cores: Optional[int] = None,
         options: Optional[Dict] = None,
+        regularization_lambda: float = 0.0,
+        regularization_components: Optional[List[core.System]] = None,
         **kwargs: Dict,
     ) -> EstimationResult:
         """
@@ -403,6 +405,16 @@ class Estimator:
                     - "gtol": Gradient tolerance (default: 1e-8)
                     - "maxiter": Maximum iterations
                     - "verbose": Verbosity level
+
+            regularization_lambda: Weight for the binarization penalty term. The penalty
+                P(x) = x(1-x) encourages selection weights toward discrete values (0 or 1).
+                Set to 0.0 to disable (default). Typical values range from 0.1 to 10.0.
+                The penalty is computed by calling `compute_binarization_penalty()` on
+                each component in `regularization_components`.
+
+            regularization_components: List of components that have a `compute_binarization_penalty()`
+                method. If None and regularization_lambda > 0, will auto-detect components
+                with this method from the parameter components.
 
         Returns
         -------
@@ -593,6 +605,10 @@ class Estimator:
             end_time = [end_time]
         if not isinstance(step_size, list):
             step_size = [step_size] * len(start_time)
+
+        # Set up regularization (binarization penalty)
+        self._regularization_lambda = regularization_lambda
+        self._regularization_components = regularization_components
 
         # Validate time periods
         for startTime_, endTime_, stepSize_ in zip(start_time, end_time, step_size):
@@ -1877,6 +1893,12 @@ class Estimator:
             if self._mse_scaled is None:
                 self._mse_scaled = mse.detach().item() / 100
             self._loglike = mse / self._mse_scaled
+            
+            # Add binarization penalty if regularization is enabled
+            if self._regularization_lambda > 0:
+                penalty = self._compute_regularization_penalty()
+                self._loglike = self._loglike + self._regularization_lambda * penalty
+                
         elif output == "vector":
             res_flat = res.flatten()
             if self._mse_scaled is None:
@@ -1884,10 +1906,41 @@ class Estimator:
                     torch.mean(res_flat**2).detach().item() / 100
                 ) ** 0.5  # We take squareroot because of the scipy least squares method which expects a residual vector which will later be squared
             self._loglike = res_flat / self._mse_scaled
+            # Note: Regularization not supported for vector output (least squares methods)
         else:
             raise ValueError(f"Invalid output: {output}")
 
         return self._loglike
+
+    def _compute_regularization_penalty(self) -> torch.Tensor:
+        """
+        Compute the binarization penalty P(x) = x(1-x) for all regularization components.
+
+        The penalty encourages selection weights toward discrete values (0 or 1).
+        Components must implement a `compute_binarization_penalty()` method.
+
+        Returns
+        -------
+        torch.Tensor
+            Total binarization penalty summed across all regularization components.
+        """
+        penalty = torch.tensor(0.0, dtype=torch.float64)
+        
+        # If no specific components provided, auto-detect from parameter components
+        if self._regularization_components is None:
+            components_to_check = set()
+            for comp in self._flat_components:
+                if hasattr(comp, 'compute_binarization_penalty'):
+                    components_to_check.add(comp)
+        else:
+            components_to_check = self._regularization_components
+        
+        # Sum penalties from all components
+        for comp in components_to_check:
+            if hasattr(comp, 'compute_binarization_penalty'):
+                penalty = penalty + comp.compute_binarization_penalty()
+        
+        return penalty
 
     def _obj_ad(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:
         """

@@ -133,50 +133,52 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 controller = CtrlClass(id=ctrl_id, **ctrl_kwargs)
                 setattr(self, f"candidate_{a}_{c}", controller)
 
-        # Selection weights (alpha) - one per candidate per actuator
-        # α_a,c selects candidate c for actuator a
-        # Initialize uniformly: 1/n_candidates
-        alpha_init = 1.0 / self.n_candidates
+        # Selection weights - all per-actuator:
+        # - alpha_a: selects among candidates for actuator a (n_c = n_candidates)
+        # - beta_a: selects feedback sensors for actuator a (n_c = n_sensors)
+        # - gamma_a: selects setpoint signals for actuator a (n_c = n_setpoints)
+        # All initialized uniformly
+        alpha_init = 0.5
+        beta_init = 0.5
+        gamma_init = 0.5
+        
         for a in range(n_actuators):
-            for c in range(self.n_candidates):
-                setattr(
-                    self,
-                    f"alpha_{a}_{c}",
-                    tps.Parameter(
-                        torch.tensor(alpha_init, dtype=torch.float64),
-                        min_value=0.0,
-                        max_value=1.0,
-                        requires_grad=False,
-                    ),
-                )
-
-        # Feedback sensor weights (beta) - one per sensor
-        # Initialize uniformly: 1/n_sensors
-        beta_init = 1.0 / n_sensors
-        for i in range(n_sensors):
+            # Alpha: candidate controller selection
             setattr(
                 self,
-                f"beta_{i}",
+                f"alpha_{a}",
                 tps.Parameter(
-                    torch.tensor(beta_init, dtype=torch.float64),
+                    torch.full((self.n_candidates,), alpha_init, dtype=torch.float64),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
+                    n_c=self.n_candidates,
                 ),
             )
-
-        # Setpoint signal weights (gamma) - one per setpoint
-        # Initialize uniformly: 1/n_setpoints
-        gamma_init = 1.0 / n_setpoints
-        for j in range(n_setpoints):
+            
+            # Beta: feedback sensor selection (per-actuator)
             setattr(
                 self,
-                f"gamma_{j}",
+                f"beta_{a}",
                 tps.Parameter(
-                    torch.tensor(gamma_init, dtype=torch.float64),
+                    torch.full((n_sensors,), beta_init, dtype=torch.float64),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
+                    n_c=n_sensors,
+                ),
+            )
+            
+            # Gamma: setpoint signal selection (per-actuator)
+            setattr(
+                self,
+                f"gamma_{a}",
+                tps.Parameter(
+                    torch.full((n_setpoints,), gamma_init, dtype=torch.float64),
+                    min_value=0.0,
+                    max_value=1.0,
+                    requires_grad=False,
+                    n_c=n_setpoints,
                 ),
             )
 
@@ -225,15 +227,27 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
 
     def _get_alpha(self, actuator: int, candidate: int) -> torch.Tensor:
         """Get alpha parameter for candidate c of actuator a."""
-        return getattr(self, f"alpha_{actuator}_{candidate}").get()
+        return getattr(self, f"alpha_{actuator}").get()[candidate]
 
-    def _get_beta(self, i: int) -> torch.Tensor:
-        """Get beta parameter for sensor i."""
-        return getattr(self, f"beta_{i}").get()
+    def _get_beta(self, actuator: int, sensor: int) -> torch.Tensor:
+        """Get beta parameter for sensor i of actuator a."""
+        return getattr(self, f"beta_{actuator}").get()[sensor]
 
-    def _get_gamma(self, j: int) -> torch.Tensor:
-        """Get gamma parameter for setpoint j."""
-        return getattr(self, f"gamma_{j}").get()
+    def _get_gamma(self, actuator: int, setpoint: int) -> torch.Tensor:
+        """Get gamma parameter for setpoint j of actuator a."""
+        return getattr(self, f"gamma_{actuator}").get()[setpoint]
+    
+    def _get_alpha_vector(self, actuator: int) -> torch.Tensor:
+        """Get full alpha vector for actuator a."""
+        return getattr(self, f"alpha_{actuator}").get()
+    
+    def _get_beta_vector(self, actuator: int) -> torch.Tensor:
+        """Get full beta vector for actuator a."""
+        return getattr(self, f"beta_{actuator}").get()
+    
+    def _get_gamma_vector(self, actuator: int) -> torch.Tensor:
+        """Get full gamma vector for actuator a."""
+        return getattr(self, f"gamma_{actuator}").get()
 
     def initialize(
         self,
@@ -267,30 +281,39 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
 
         self.INITIALIZED = True
 
-    def _compute_weighted_signals(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Compute the weighted sensor and setpoint signals.
+    def _compute_weighted_signals(self, actuator: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Compute the weighted sensor and setpoint signals for a specific actuator.
+
+        Uses vectorized operations with the per-actuator beta and gamma vectors.
+        Weights are normalized by their sum so that selecting a single signal
+        (e.g., gamma=[1,0,0,...]) gives 100% of that signal's value.
+
+        Args:
+            actuator: The actuator index to compute signals for.
 
         Returns:
-            Tuple of (weighted_setpoint, weighted_feedback) tensors, each shape (batch,)
+            Tuple of (weighted_setpoint, weighted_feedback) tensors, each shape (n_s, n_c)
         """
-        sensor_values = self.input["sensorValue"].get()
-        setpoint_values = self.input["setpointValue"].get()
+        # Tensor shapes: (n_s, n_c, n_v) where n_v is n_sensors or n_setpoints
+        sensor_values = self.input["sensorValue"].get()  # (n_s, n_c, n_sensors)
+        setpoint_values = self.input["setpointValue"].get()  # (n_s, n_c, n_setpoints)
         
-        batch_size = sensor_values.shape[0]
+        # Get per-actuator weight vectors and normalize by sum
+        gamma = self._get_gamma_vector(actuator)  # (n_setpoints,)
+        gamma_sum = torch.sum(gamma) + 1e-8
+        
+        beta = self._get_beta_vector(actuator)  # (n_sensors,)
+        beta_sum = torch.sum(beta) + 1e-8
 
-        # Weighted setpoint: sum_j(gamma_j * sp_jt)
-        weighted_setpoint = torch.zeros(batch_size, dtype=sensor_values.dtype, device=sensor_values.device)
-        for j in range(self.n_setpoints):
-            sp = setpoint_values[:, j] if setpoint_values.dim() > 1 else setpoint_values.squeeze()
-            gamma = self._get_gamma(j)
-            weighted_setpoint = weighted_setpoint + gamma * sp
+        # Weighted setpoint: sum_j(gamma_j * sp_jt) / sum(gamma)
+        # gamma broadcasts: (n_setpoints,) with (n_s, n_c, n_setpoints) -> (n_s, n_c, n_setpoints)
+        # Sum over the last dimension (n_v = n_setpoints)
+        weighted_setpoint = torch.sum(gamma * setpoint_values, dim=-1) / gamma_sum  # (n_s, n_c)
 
-        # Weighted sensor feedback: sum_i(beta_i * y_it)
-        weighted_feedback = torch.zeros(batch_size, dtype=sensor_values.dtype, device=sensor_values.device)
-        for i in range(self.n_sensors):
-            y = sensor_values[:, i] if sensor_values.dim() > 1 else sensor_values.squeeze()
-            beta = self._get_beta(i)
-            weighted_feedback = weighted_feedback + beta * y
+        # Weighted sensor feedback: sum_i(beta_i * y_it) / sum(beta)
+        # beta broadcasts: (n_sensors,) with (n_s, n_c, n_sensors) -> (n_s, n_c, n_sensors)
+        # Sum over the last dimension (n_v = n_sensors)
+        weighted_feedback = torch.sum(beta * sensor_values, dim=-1) / beta_sum  # (n_s, n_c)
             
         return weighted_setpoint, weighted_feedback
 
@@ -304,65 +327,86 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         """Perform one simulation step.
 
         For each actuator:
-        1. Compute weighted setpoint and feedback signals
-        2. Run all candidate controllers
-        3. Combine outputs using alpha weights
+        1. Compute per-actuator weighted setpoint and feedback signals
+        2. Run all candidate controllers with actuator-specific error signal
+        3. Combine outputs using normalized alpha weights
         """
-        # Compute weighted signals
-        weighted_setpoint, weighted_feedback = self._compute_weighted_signals()
-        batch_size = weighted_setpoint.shape[0]
+        # Get dimensions from input signals
+        sensor_values = self.input["sensorValue"].get()
+        if sensor_values.dim() <= 1:
+            n_s, n_c = 1, 1
+        elif sensor_values.dim() == 2:
+            n_s = sensor_values.shape[0]
+            n_c = 1
+        else:
+            n_s, n_c = sensor_values.shape[0], sensor_values.shape[1]
 
         # Process each actuator
-        actuator_outputs = torch.zeros(batch_size, self.n_actuators, dtype=torch.float64)
+        actuator_outputs = torch.zeros(n_s, n_c, self.n_actuators, dtype=torch.float64)
 
         for a in range(self.n_actuators):
-            # Combined output for this actuator
-            combined_output = torch.zeros(batch_size, dtype=torch.float64)
-
+            # Compute per-actuator weighted signals (each actuator has own beta/gamma)
+            weighted_setpoint, weighted_feedback = self._compute_weighted_signals(a)
+            
+            # Run all candidate controllers and collect outputs
+            candidate_outputs = []
             for c in range(self.n_candidates):
                 ctrl = self._get_candidate(a, c)
                 
-                # Set inputs for candidate controller
+                # Set inputs for candidate controller (same error signal for all candidates)
                 ctrl.input["setpointValue"].set(weighted_setpoint, step_index)
                 ctrl.input["actualValue"].set(weighted_feedback, step_index)
                 
                 # Run candidate controller step
                 ctrl.do_step(second_time, date_time, step_size, step_index)
                 
-                # Get candidate output and weight it
-                candidate_output = ctrl.output["inputSignal"].get()
-                alpha = self._get_alpha(a, c)
-                combined_output = combined_output + alpha * candidate_output
+                # Collect candidate output - shape (n_s, n_c)
+                candidate_outputs.append(ctrl.output["inputSignal"].get())
+            
+            # Stack outputs: (n_candidates, n_s, n_c)
+            candidate_outputs = torch.stack(candidate_outputs, dim=0)
+            
+            # Flatten to (n_candidates, n_s * n_c) for einsum
+            orig_shape = candidate_outputs.shape[1:]  # (n_s, n_c) or similar
+            candidate_outputs_flat = candidate_outputs.reshape(self.n_candidates, -1)
+            
+            # Vectorized weighted sum using normalized alpha vector
+            # Normalization ensures alpha=[1,0] gives 100% candidate 0, not 50%
+            alpha = self._get_alpha_vector(a)
+            alpha_sum = torch.sum(alpha) + 1e-8
+            combined_output = torch.einsum('c,cb->b', alpha, candidate_outputs_flat) / alpha_sum
+            
+            # Reshape back and store
+            combined_output = combined_output.reshape(orig_shape)
+            actuator_outputs[..., a] = combined_output
 
-            # Store output for this actuator
-            actuator_outputs[:, a] = combined_output/self.n_candidates # take average of all candidates
-
-        # Set final output
+        # Set final output - shape (n_s, n_c, n_actuators)
         self.output["inputSignal"].set(actuator_outputs, step_index)
 
     def compute_binarization_penalty(self) -> torch.Tensor:
         """Compute the binarization penalty P(x) = x(1-x) for all selection weights.
+
+        Uses vectorized operations for efficient computation.
+        All weights (alpha, beta, gamma) are per-actuator.
 
         Returns:
             torch.Tensor: Total binarization penalty
         """
         penalty = torch.tensor(0.0, dtype=torch.float64)
 
-        # Alpha penalties (per actuator, per candidate)
+        # All weights are per-actuator
         for a in range(self.n_actuators):
-            for c in range(self.n_candidates):
-                x = self._get_alpha(a, c)
-                penalty = penalty + x * (1 - x)
-
-        # Beta penalties
-        for i in range(self.n_sensors):
-            x = self._get_beta(i)
-            penalty = penalty + x * (1 - x)
-
-        # Gamma penalties
-        for j in range(self.n_setpoints):
-            x = self._get_gamma(j)
-            penalty = penalty + x * (1 - x)
+            # Alpha penalties - vectorized
+            alpha = self._get_alpha_vector(a)  # (n_candidates,)
+            penalty = penalty + torch.sum(alpha * (1 - alpha))
+            
+            # Beta penalties - vectorized
+            beta = self._get_beta_vector(a)  # (n_sensors,)
+            penalty = penalty + torch.sum(beta * (1 - beta))
+            
+            # Gamma penalties - vectorized
+            gamma = self._get_gamma_vector(a)  # (n_setpoints,)
+            penalty = penalty + torch.sum(gamma * (1 - gamma))
 
         return penalty
 
@@ -378,21 +422,36 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         return self.compute_binarization_penalty()
 
     def get_selection_weights(self) -> Dict[str, torch.Tensor]:
-        """Get all selection weights as a dictionary."""
+        """Get all selection weights as a dictionary.
+        
+        All weights are per-actuator:
+        - alpha_{a}_{c}: Individual alpha weights per actuator/candidate
+        - alpha_{a}: Full alpha vector for actuator a
+        - beta_{a}_{i}: Individual beta weights per actuator/sensor
+        - beta_{a}: Full beta vector for actuator a
+        - gamma_{a}_{j}: Individual gamma weights per actuator/setpoint
+        - gamma_{a}: Full gamma vector for actuator a
+        """
         weights = {}
         
-        # Alpha weights
         for a in range(self.n_actuators):
+            # Alpha weights - individual and vector
+            alpha_vec = self._get_alpha_vector(a)
+            weights[f"alpha_{a}"] = alpha_vec.detach().clone()
             for c in range(self.n_candidates):
-                weights[f"alpha_{a}_{c}"] = self._get_alpha(a, c).detach().clone()
+                weights[f"alpha_{a}_{c}"] = alpha_vec[c].detach().clone()
 
-        # Beta weights
-        for i in range(self.n_sensors):
-            weights[f"beta_{i}"] = self._get_beta(i).detach().clone()
+            # Beta weights - individual and vector (per-actuator)
+            beta_vec = self._get_beta_vector(a)
+            weights[f"beta_{a}"] = beta_vec.detach().clone()
+            for i in range(self.n_sensors):
+                weights[f"beta_{a}_{i}"] = beta_vec[i].detach().clone()
 
-        # Gamma weights
-        for j in range(self.n_setpoints):
-            weights[f"gamma_{j}"] = self._get_gamma(j).detach().clone()
+            # Gamma weights - individual and vector (per-actuator)
+            gamma_vec = self._get_gamma_vector(a)
+            weights[f"gamma_{a}"] = gamma_vec.detach().clone()
+            for j in range(self.n_setpoints):
+                weights[f"gamma_{a}_{j}"] = gamma_vec[j].detach().clone()
 
         return weights
 
@@ -432,15 +491,23 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                     })
             structure["actuators"][a] = active_candidates
 
-        # Identify active sensors
-        for i in range(self.n_sensors):
-            if weights.get(f"beta_{i}", torch.tensor(0)).item() > threshold:
-                structure["sensors"].append(i)
+        # Identify active sensors per actuator
+        structure["sensors"] = {}
+        for a in range(self.n_actuators):
+            active_sensors = []
+            for i in range(self.n_sensors):
+                if weights.get(f"beta_{a}_{i}", torch.tensor(0)).item() > threshold:
+                    active_sensors.append(i)
+            structure["sensors"][a] = active_sensors
 
-        # Identify active setpoints
-        for j in range(self.n_setpoints):
-            if weights.get(f"gamma_{j}", torch.tensor(0)).item() > threshold:
-                structure["setpoints"].append(j)
+        # Identify active setpoints per actuator
+        structure["setpoints"] = {}
+        for a in range(self.n_actuators):
+            active_setpoints = []
+            for j in range(self.n_setpoints):
+                if weights.get(f"gamma_{a}_{j}", torch.tensor(0)).item() > threshold:
+                    active_setpoints.append(j)
+            structure["setpoints"][a] = active_setpoints
 
         return structure
 
@@ -482,15 +549,19 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 val = weights[f"alpha_{a}_{c}"].item()
                 lines.append(f"    α_{a},{c} ({ctrl.__class__.__name__}): {val:.4f}")
         
-        lines.append("  Beta (sensor selection):")
-        for i in range(self.n_sensors):
-            val = weights[f"beta_{i}"].item()
-            lines.append(f"    β_{i}: {val:.4f}")
+        lines.append("  Beta (sensor selection per actuator):")
+        for a in range(self.n_actuators):
+            lines.append(f"    Actuator {a}:")
+            for i in range(self.n_sensors):
+                val = weights[f"beta_{a}_{i}"].item()
+                lines.append(f"      β_{a},{i}: {val:.4f}")
         
-        lines.append("  Gamma (setpoint selection):")
-        for j in range(self.n_setpoints):
-            val = weights[f"gamma_{j}"].item()
-            lines.append(f"    γ_{j}: {val:.4f}")
+        lines.append("  Gamma (setpoint selection per actuator):")
+        for a in range(self.n_actuators):
+            lines.append(f"    Actuator {a}:")
+            for j in range(self.n_setpoints):
+                val = weights[f"gamma_{a}_{j}"].item()
+                lines.append(f"      γ_{a},{j}: {val:.4f}")
 
         # Candidate controller parameters
         lines.append("\nCandidate Controller Parameters:")
@@ -517,10 +588,12 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         # Identified structure
         structure = self.get_identified_structure()
         lines.append("\nIdentified Structure (threshold=0.5):")
-        lines.append(f"  Active sensors: {structure['sensors']}")
-        lines.append(f"  Active setpoints: {structure['setpoints']}")
-        for a, candidates in structure['actuators'].items():
-            lines.append(f"  Actuator {a} active controllers: {[c['class'] for c in candidates]}")
+        for a in range(self.n_actuators):
+            lines.append(f"  Actuator {a}:")
+            lines.append(f"    Active sensors: {structure['sensors'].get(a, [])}")
+            lines.append(f"    Active setpoints: {structure['setpoints'].get(a, [])}")
+            candidates = structure['actuators'].get(a, [])
+            lines.append(f"    Active controllers: {[c['class'] for c in candidates]}")
 
         lines.append("=" * 60)
         return "\n".join(lines)
@@ -529,10 +602,13 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         """Get parameter specifications for use with twin4build Estimator.
 
         Returns a list of parameter tuples for all selection weights and
-        candidate controller parameters.
+        candidate controller parameters. Uses vector Parameters with n_c
+        dimension for efficient handling of multiple weights.
 
         Returns:
             List of tuples: [(component, attr, x0, lb, ub), ...]
+                - x0 can be scalar (broadcast to n_c) or array of shape (n_c,)
+                - lb, ub can be scalar (broadcast) or array of shape (n_c,)
         """
         params = []
 
@@ -540,22 +616,18 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         weight_ub = 1.0
 
         # Initial values: uniform distribution (1/n)
-        alpha_x0 = 1.0 / self.n_candidates
-        beta_x0 = 1.0 / self.n_sensors
-        gamma_x0 = 1.0 / self.n_setpoints
+        alpha_x0 = 0.5
+        beta_x0 = 0.5
+        gamma_x0 = 0.5
 
-        # Selection weights (alpha) - per actuator, per candidate
+        # All selection weights are per-actuator:
+        # - alpha_{a}: candidate selection (n_c = n_candidates)
+        # - beta_{a}: sensor selection (n_c = n_sensors)  
+        # - gamma_{a}: setpoint selection (n_c = n_setpoints)
         for a in range(self.n_actuators):
-            for c in range(self.n_candidates):
-                params.append((self, f"alpha_{a}_{c}", alpha_x0, weight_lb, weight_ub))
-
-        # Beta weights (sensor selection)
-        for i in range(self.n_sensors):
-            params.append((self, f"beta_{i}", beta_x0, weight_lb, weight_ub))
-
-        # Gamma weights (setpoint selection)
-        for j in range(self.n_setpoints):
-            params.append((self, f"gamma_{j}", gamma_x0, weight_lb, weight_ub))
+            params.append((self, f"alpha_{a}", alpha_x0, weight_lb, weight_ub))
+            params.append((self, f"beta_{a}", beta_x0, weight_lb, weight_ub))
+            params.append((self, f"gamma_{a}", gamma_x0, weight_lb, weight_ub))
 
         # Candidate controller parameters - accessed through parent using dot notation
         for a in range(self.n_actuators):
@@ -586,6 +658,9 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         larger than controller parameters due to directly multiplying signals.
         This method returns scaling factors that balance the gradients.
         
+        Note: With vector Parameters, the scales are per-parameter (not per-element).
+        The Estimator handles expanding scales to match n_c dimensions internally.
+        
         Args:
             weight_scale: Scaling factor for selection weight gradients.
                 Default 0.01 reduces weight gradients by 100x.
@@ -604,11 +679,12 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         """
         scales = []
         
-        # Selection weights - apply weight_scale
-        n_weights = (self.n_actuators * self.n_candidates +  # alpha
-                     self.n_sensors +  # beta
-                     self.n_setpoints)  # gamma
-        scales.extend([weight_scale] * n_weights)
+        # Selection weights - all per-actuator, apply weight_scale
+        # For each actuator: alpha, beta, gamma (3 parameters)
+        for _ in range(self.n_actuators):
+            scales.append(weight_scale)  # alpha
+            scales.append(weight_scale)  # beta
+            scales.append(weight_scale)  # gamma
         
         # Controller parameters - no scaling (1.0)
         for a in range(self.n_actuators):

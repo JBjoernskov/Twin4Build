@@ -19,8 +19,11 @@ True controllers:
 """
 
 # Standard library imports
+import cProfile
 import datetime
+import io
 import os
+import pstats
 import tempfile
 import shutil
 
@@ -42,17 +45,16 @@ from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off
 
 
 def create_weather_data(
-    n_timesteps: int,
-    step_size: float,
     start_time: datetime.datetime,
+    end_time: datetime.datetime,
+    step_size: int,
 ) -> dict:
     """Create realistic weather data for the simulation."""
+    n_timesteps = int((end_time - start_time).total_seconds() / step_size)
     timestamps = [start_time + datetime.timedelta(seconds=i * step_size) 
                   for i in range(n_timesteps)]
     
-    hours = np.array([(start_time + datetime.timedelta(seconds=i * step_size)).hour 
-                      + (start_time + datetime.timedelta(seconds=i * step_size)).minute / 60
-                      for i in range(n_timesteps)])
+    hours = np.array([ts.hour + ts.minute / 60 for ts in timestamps])
     
     # Outdoor temperature: cold winter day with diurnal cycle
     outdoor_temp = -3.0 + 5.0 * np.sin(2 * np.pi * (hours - 14) / 24)
@@ -89,9 +91,9 @@ def create_weather_data(
 
 
 def generate_single_controller_data(
-    n_timesteps: int,
-    step_size: int,
     start_time: datetime.datetime,
+    end_time: datetime.datetime,
+    step_size: int,
     weather: dict,
     controller_type: str,  # "pi" or "onoff"
     pi_kp: float = 0.15,
@@ -104,7 +106,6 @@ def generate_single_controller_data(
     Args:
         controller_type: "pi" or "onoff"
     """
-    end_time = start_time + datetime.timedelta(seconds=n_timesteps * step_size)
     
     temp_dir = tempfile.mkdtemp()
     file_paths = {}
@@ -117,7 +118,7 @@ def generate_single_controller_data(
     
     # Building space with thermal dynamics
     building_space = tb.BuildingSpaceThermalTorchSystem(
-        C_air=5e5, C_wall=2e6, C_int=1e5,
+        C_air=3e6, C_wall=2e6, C_int=1e5,
         R_out=0.01, R_in=0.01, R_int=0.02,
         f_wall=0.4, f_air=0.2, Q_occ_gain=80.0,
         id="room"
@@ -150,7 +151,7 @@ def generate_single_controller_data(
     
     supply_water_temp_data = pd.DataFrame({
         'datetime': weather['outdoor_temp']['datetime'],
-        'value': np.ones(n_timesteps) * 55.0
+        'value': np.ones(len(weather['outdoor_temp'])) * 55.0
     })
     supply_water_temp_file = os.path.join(temp_dir, "supply_water_temp.csv")
     supply_water_temp_data.to_csv(supply_water_temp_file, index=False)
@@ -183,10 +184,10 @@ def generate_single_controller_data(
     simulator = tb.Simulator(model)
     simulator.simulate(start_time=start_time, end_time=end_time, step_size=step_size)
     
-    # Extract results
-    timestamps = [start_time + datetime.timedelta(seconds=i * step_size) for i in range(n_timesteps)]
-    temperature = building_space.output["indoorTemperature"].history[0].detach().numpy()
-    actuator = controller.output["inputSignal"].history[0].detach().numpy()
+    # Extract results using ACTUAL simulation timesteps
+    timestamps = simulator.date_time_steps[0]
+    temperature = building_space.output["indoorTemperature"].history(i_s=0, i_c=0).detach().numpy()
+    actuator = controller.output["inputSignal"].history(i_s=0, i_c=0).detach().numpy()
     
     df_temperature = pd.DataFrame({'datetime': timestamps, 'value': temperature})
     df_actuator = pd.DataFrame({'datetime': timestamps, 'value': actuator})
@@ -198,7 +199,8 @@ def generate_single_controller_data(
 
 
 def generate_dual_actuator_data(
-    n_timesteps: int = 2880,  # 2 days
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
     step_size: int = 60,
     # PI controller parameters (actuator 0)
     pi_kp: float = 0.15,
@@ -217,18 +219,15 @@ def generate_dual_actuator_data(
     """
     print("   Setting up dual-actuator data generation...")
     
-    start_time = datetime.datetime(2024, 1, 15, 0, 0, 0, tzinfo=tz.UTC)
-    end_time = start_time + datetime.timedelta(seconds=n_timesteps * step_size)
-    
     # Create shared weather data
-    weather = create_weather_data(n_timesteps, step_size, start_time)
+    weather = create_weather_data(start_time, end_time, step_size)
     
     # Generate PI controller data
     print("   Running PI controller simulation...")
     df_temp_pi, df_actuator_pi = generate_single_controller_data(
-        n_timesteps=n_timesteps,
-        step_size=step_size,
         start_time=start_time,
+        end_time=end_time,
+        step_size=step_size,
         weather=weather,
         controller_type="pi",
         pi_kp=pi_kp,
@@ -238,9 +237,9 @@ def generate_dual_actuator_data(
     # Generate On-Off controller data
     print("   Running On-Off controller simulation...")
     df_temp_onoff, df_actuator_onoff = generate_single_controller_data(
-        n_timesteps=n_timesteps,
-        step_size=step_size,
         start_time=start_time,
+        end_time=end_time,
+        step_size=step_size,
         weather=weather,
         controller_type="onoff",
         onoff_steepness=onoff_steepness,
@@ -257,7 +256,7 @@ def generate_dual_actuator_data(
     actuator_pi = df_actuator_pi['value'].values
     actuator_onoff = df_actuator_onoff['value'].values
     
-    print(f"   Generated {n_timesteps} timesteps of data")
+    print(f"   Generated {len(df_temp_pi)} timesteps of data")
     print(f"   PI Temperature range: {temp_pi.min():.1f}°C to {temp_pi.max():.1f}°C")
     print(f"   On-Off Temperature range: {temp_onoff.min():.1f}°C to {temp_onoff.max():.1f}°C")
     print(f"   PI Actuator range: {actuator_pi.min():.2f} to {actuator_pi.max():.2f}")
@@ -268,10 +267,10 @@ def generate_dual_actuator_data(
         'onoff': {'offValue': 0.0, 'onValue': 1.0, 'steepness': onoff_steepness}
     }
     
-    return df_temp_pi, df_temp_onoff, df_setpoint, df_actuator_pi, df_actuator_onoff, weather, start_time, end_time, true_params
+    return df_temp_pi, df_temp_onoff, df_setpoint, df_actuator_pi, df_actuator_onoff, weather, true_params
 
 
-def create_complex_decoy_signals(df_temp_pi, df_temp_onoff, df_setpoint, weather, n_timesteps):
+def create_complex_decoy_signals(df_temp_pi, df_temp_onoff, df_setpoint, weather):
     """
     Create complex decoy sensor and setpoint signals.
     
@@ -292,7 +291,9 @@ def create_complex_decoy_signals(df_temp_pi, df_temp_onoff, df_setpoint, weather
         4: Outdoor-following (DECOY) - follows outdoor
         5: Random walk setpoint (DECOY) - random pattern
     """
-    timestamps = df_temp_pi['datetime'].values
+    # Keep timezone info - don't use .values which strips timezone
+    timestamps = df_temp_pi['datetime'].tolist()  # Preserves timezone-aware datetime objects
+    n_timesteps = len(timestamps)
     indoor_temp_pi = df_temp_pi['value'].values
     indoor_temp_onoff = df_temp_onoff['value'].values
     outdoor_temp = weather['outdoor_temp']['value'].values
@@ -422,7 +423,7 @@ def create_controller_candidates():
     
     controller_kwargs = [
         # Candidate 0: PID - will learn Kp, Ti, Td (Td should go to 0 for PI behavior)
-        {"kp": 0.2, "Ti": 10.0, "Td": 0.0, "isReverse": True},
+        {"kp": 1e-3, "Ti": 10.0, "Td": 0.0, "isReverse": True},
         
         # Candidate 1: On-Off controller (differentiable version)
         {"offValue": 0.0, "onValue": 1.0, "steepness": 10.0, "isReverse": True},
@@ -453,11 +454,13 @@ def run_complex_identification_example():
     print("PHASE 1: Data Generation with Known Controllers")
     print("=" * 80)
     
-    step_size = 60  # 1 minute
-    n_timesteps = 2880  # 2 days
+    # Configure simulation time
+    start_time = datetime.datetime(2024, 1, 15, 0, 0, 0, tzinfo=tz.UTC)
+    end_time = datetime.datetime(2024, 1, 17, 0, 0, 0, tzinfo=tz.UTC)  # 2 days
+    step_size = 600  # 10 minutes
     
     # True controller parameters
-    true_pi_kp = 0.15
+    true_pi_kp = 1e-3
     true_pi_Ti = 8.0
     true_onoff_steepness = 100
     
@@ -465,8 +468,9 @@ def run_complex_identification_example():
     print(f"   Actuator 1: On-Off controller with steepness={true_onoff_steepness}")
     
     (df_temp_pi, df_temp_onoff, df_setpoint, df_actuator_pi, df_actuator_onoff, 
-     weather, start_time, end_time, true_params) = generate_dual_actuator_data(
-        n_timesteps=n_timesteps,
+     weather, true_params) = generate_dual_actuator_data(
+        start_time=start_time,
+        end_time=end_time,
         step_size=step_size,
         pi_kp=true_pi_kp,
         pi_Ti=true_pi_Ti,
@@ -478,7 +482,7 @@ def run_complex_identification_example():
     # =========================================================================
     print("\n2. Creating complex decoy signals...")
     sensors, setpoints = create_complex_decoy_signals(
-        df_temp_pi, df_temp_onoff, df_setpoint, weather, n_timesteps
+        df_temp_pi, df_temp_onoff, df_setpoint, weather
     )
     
     print("\n   SENSORS (7 candidates - 2 TRUE, 5 DECOY):")
@@ -517,6 +521,7 @@ def run_complex_identification_example():
     # =========================================================================
     print("\n3. Plotting all signals...")
     
+    n_timesteps = len(df_temp_pi)  # Derive from actual data
     time_hours = np.arange(n_timesteps) * step_size / 3600
     
     fig, axes = plt.subplots(5, 1, figsize=(16, 16), sharex=True)
@@ -577,7 +582,8 @@ def run_complex_identification_example():
     ax5.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig("twin4build/examples/complex_dual_actuator_data.png", dpi=150)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    plt.savefig(os.path.join(script_dir, "complex_dual_actuator_data.png"), dpi=150)
     plt.show()
     
     # =========================================================================
@@ -671,6 +677,69 @@ def run_complex_identification_example():
     simulator = tb.Simulator(model)
     parameters = controller.get_estimator_parameters()
     
+    # Override x0 values to be VERY CLOSE to optimal solution for debugging
+    # Expected optimal (per-actuator) - from true_pi_kp, true_pi_Ti, true_onoff_steepness:
+    #   - alpha_0: [1.0, 0.0] (PI for actuator 0)
+    #   - beta_0: [1.0, 0, 0, 0, 0, 0, 0] (sensor 0 = PI_TRUE for actuator 0)
+    #   - gamma_0: [1.0, 0, 0, 0, 0, 0] (TRUE setpoint)
+    #   - alpha_1: [0.0, 1.0] (On-Off for actuator 1)
+    #   - beta_1: [0, 1.0, 0, 0, 0, 0, 0] (sensor 1 = ONOFF_TRUE for actuator 1)
+    #   - gamma_1: [1.0, 0, 0, 0, 0, 0] (TRUE setpoint)
+    #   - PI params: kp=0.001, Ti=8.0, Td=0.0  (kp is at lower bound!)
+    #   - On-Off params: offValue=0.0, onValue=1.0, steepness=100
+    
+    parameters_exact_optimal = []
+    for comp, attr, x0, lb, ub in parameters:
+        if attr == "alpha_0":
+            x0 = [0.5, 0.5]  # EXACT: PI selected for actuator 0
+        elif attr == "beta_0":
+            x0 = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]  # EXACT: Sensor 0 for actuator 0
+        elif attr == "gamma_0":
+            x0 = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]  # EXACT: TRUE setpoint for actuator 0
+        elif attr == "alpha_1":
+            x0 = [0.5, 0.5]  # EXACT: On-Off selected for actuator 1
+        elif attr == "beta_1":
+            x0 = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]  # EXACT: Sensor 1 for actuator 1
+        elif attr == "gamma_1":
+            x0 = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]  # EXACT: TRUE setpoint for actuator 1
+        elif "kp" in attr:
+            x0 = true_pi_kp*3  # EXACT: 0.001
+        elif "Ti" in attr:
+            x0 = true_pi_Ti/2  # EXACT: 8.0
+        elif "Td" in attr:
+            x0 = 0.0  # EXACT: 0
+        elif "offValue" in attr:
+            x0 = 0.0  # EXACT: 0
+        elif "onValue" in attr:
+            x0 = 1.0  # EXACT: 1
+        elif "steepness" in attr:
+            x0 = true_onoff_steepness/2  # EXACT: 100
+        parameters_exact_optimal.append((comp, attr, x0, lb, ub))
+    
+    # Initialize weights at 0.5 as per the formulation
+    # This is key: at x=0.5, the binarization penalty gradient is zero,
+    # so initial direction is determined purely by data fit
+    parameters_init_half = []
+    for comp, attr, x0, lb, ub in parameters:
+        if 'alpha' in attr or 'beta' in attr or 'gamma' in attr:
+            # Selection weights: initialize at 0.5
+            if isinstance(x0, (list, np.ndarray)):
+                x0 = [0.5] * len(x0)
+            else:
+                x0 = 0.5
+        parameters_init_half.append((comp, attr, x0, lb, ub))
+    parameters = parameters_init_half
+    print("   Using x0=0.5 for selection weights (as per formulation)")
+    
+    # Debug: verify x0 values
+    print("\n   Verifying x0 values for selection weights:")
+    for comp, attr, x0, lb, ub in parameters:
+        if 'alpha' in attr or 'beta' in attr or 'gamma' in attr:
+            print(f"     {attr}: x0={x0}")
+
+
+    parameters = parameters_exact_optimal
+    
     print(f"   Number of parameters to estimate: {len(parameters)}")
     
     # Count parameter types
@@ -679,9 +748,9 @@ def run_complex_identification_example():
     n_gamma = sum(1 for p in parameters if 'gamma' in p[1])
     n_ctrl = sum(1 for p in parameters if 'candidate' in p[1])
     
-    print(f"   - Alpha (controller selection): {n_alpha} (2 actuators × 5 candidates)")
-    print(f"   - Beta (sensor selection): {n_beta}")
-    print(f"   - Gamma (setpoint selection): {n_gamma}")
+    print(f"   - Alpha (controller selection): {n_alpha} (2 actuators × 2 candidates)")
+    print(f"   - Beta (sensor selection): {n_beta} (2 actuators × 7 sensors)")
+    print(f"   - Gamma (setpoint selection): {n_gamma} (2 actuators × 6 setpoints)")
     print(f"   - Controller parameters: {n_ctrl}")
     
     # Measurements: both actuator sensors
@@ -694,31 +763,237 @@ def run_complex_identification_example():
     print("\n6. Running initial simulation...")
     simulator.simulate(start_time=start_time, end_time=end_time, step_size=step_size)
     
-    initial_pred_pi = actuator_sensor_pi.input["measuredValue"].history[0].detach().numpy()
-    initial_pred_onoff = actuator_sensor_onoff.input["measuredValue"].history[0].detach().numpy()
+    initial_pred_pi = actuator_sensor_pi.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
+    initial_pred_onoff = actuator_sensor_onoff.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
     actual_pi = df_actuator_pi['value'].values
     actual_onoff = df_actuator_onoff['value'].values
     
     print(f"\n   Initial weights:")
-    print(f"     Beta (sensors):     {[f'{controller._get_beta(i).item():.3f}' for i in range(len(sensors))]}")
-    print(f"     Gamma (setpoints):  {[f'{controller._get_gamma(i).item():.3f}' for i in range(len(setpoints))]}")
     print(f"     Alpha Act.0:        {[f'{controller._get_alpha(0, c).item():.3f}' for c in range(len(controller_classes))]}")
+    print(f"     Beta Act.0:         {[f'{controller._get_beta(0, i).item():.3f}' for i in range(len(sensors))]}")
+    print(f"     Gamma Act.0:        {[f'{controller._get_gamma(0, i).item():.3f}' for i in range(len(setpoints))]}")
     print(f"     Alpha Act.1:        {[f'{controller._get_alpha(1, c).item():.3f}' for c in range(len(controller_classes))]}")
+    print(f"     Beta Act.1:         {[f'{controller._get_beta(1, i).item():.3f}' for i in range(len(sensors))]}")
+    print(f"     Gamma Act.1:        {[f'{controller._get_gamma(1, i).item():.3f}' for i in range(len(setpoints))]}")
     
     # =========================================================================
     # Run Estimation
     # =========================================================================
     print("\n7. Running parameter estimation...")
-    print("   Using regularization_lambda=0.01 for binarization penalty")
+    print("   Using regularization_lambda=1.0 for binarization penalty P(x)=x(1-x)")
     
     estimator = tb.Estimator(simulator)
     
+    # Debug: Print parameter mapping
+    print("\n   [DEBUG] Parameter mapping (theta index -> parameter):")
+    theta_idx = 0
+    for comp, attr, x0, lb, ub in parameters:
+        if isinstance(x0, (list, np.ndarray)):
+            n_vals = len(x0)
+        else:
+            n_vals = 1
+        print(f"     theta[{theta_idx}:{theta_idx+n_vals}] -> {attr} (x0={x0}, lb={lb}, ub={ub})")
+        theta_idx += n_vals
+    
+    # =========================================================================
+    # TEST: Verify near-optimal x0 produces good fit BEFORE estimation
+    # =========================================================================
+    print("\n   [TEST] Setting parameters to x0 and running simulation...")
+    
+    # Extract x0 values and set them
+    x0_values = [x0 for (comp, attr, x0, lb, ub) in parameters]
+    components = [comp for (comp, attr, x0, lb, ub) in parameters]
+    attrs = [attr for (comp, attr, x0, lb, ub) in parameters]
+    
+    # Set parameters using the same method as estimator
+    model.set_parameters(
+        values=x0_values,
+        components=components,
+        parameter_names=attrs,
+        normalized=False,  # x0 values are already in physical units
+    )
+    
+    # Print controller params after setting x0
+    print("\n   [DEBUG] Controller params AFTER setting x0:")
+    for a in range(2):
+        alpha = controller._get_alpha_vector(a)
+        beta = controller._get_beta_vector(a)
+        gamma = controller._get_gamma_vector(a)
+        print(f"     Actuator {a}:")
+        print(f"       alpha: {alpha.detach().numpy()}")
+        print(f"       beta:  {beta.detach().numpy()}")
+        print(f"       gamma: {gamma.detach().numpy()}")
+    
+    # Print PI controller params
+    ctrl_pi_0 = controller._get_candidate(0, 0)
+    ctrl_onoff_1 = controller._get_candidate(1, 1)
+    print(f"\n     PI Controller (Act.0, Cand.0):")
+    print(f"       kp = {ctrl_pi_0.kp.get().item():.6f}")
+    print(f"       Ti = {ctrl_pi_0.Ti.get().item():.6f}")
+    print(f"       Td = {ctrl_pi_0.Td.get().item():.6f}")
+    print(f"     OnOff Controller (Act.1, Cand.1):")
+    print(f"       offValue = {ctrl_onoff_1.offValue.get().item():.6f}")
+    print(f"       onValue = {ctrl_onoff_1.onValue.get().item():.6f}")
+    print(f"       steepness = {ctrl_onoff_1.steepness.get().item():.6f}")
+    
+    # Run simulation with x0 parameters
+    print("\n   Running simulation with x0 parameters...")
+    simulator.simulate(start_time=start_time, end_time=end_time, step_size=step_size)
+    
+    # Get predictions
+    x0_pred_pi = actuator_sensor_pi.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
+    x0_pred_onoff = actuator_sensor_onoff.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
+    
+    # Compute and print MSE
+    mse_pi = np.mean((x0_pred_pi - actual_pi)**2)
+    mse_onoff = np.mean((x0_pred_onoff - actual_onoff)**2)
+    print(f"\n   [TEST RESULTS] MSE with x0 parameters:")
+    print(f"     Actuator 0 (PI):    {mse_pi:.6f}")
+    print(f"     Actuator 1 (OnOff): {mse_onoff:.6f}")
+    print(f"     Total MSE:          {mse_pi + mse_onoff:.6f}")
+    
+    # Print predictions vs actual
+    print(f"\n   [TEST] Predictions vs Actual (first 20 timesteps):")
+    print(f"     Act.0 (PI) pred:   {x0_pred_pi[:20]}")
+    print(f"     Act.0 (PI) actual: {actual_pi[:20]}")
+    print(f"     Act.1 (OnOff) pred:   {x0_pred_onoff[:20]}")
+    print(f"     Act.1 (OnOff) actual: {actual_onoff[:20]}")
+    
+    # Plot x0 test results
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+    time_hours = np.arange(len(actual_pi)) * step_size / 3600
+    
+    axes[0].plot(time_hours, actual_pi, 'b-', label='Actual', linewidth=2)
+    axes[0].plot(time_hours, x0_pred_pi, 'r--', label='Prediction (x0)', linewidth=2)
+    axes[0].set_ylabel('Actuator 0 (PI)')
+    axes[0].set_title(f'Actuator 0: MSE = {mse_pi:.6f}')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+    
+    axes[1].plot(time_hours, actual_onoff, 'b-', label='Actual', linewidth=2)
+    axes[1].plot(time_hours, x0_pred_onoff, 'r--', label='Prediction (x0)', linewidth=2)
+    axes[1].set_ylabel('Actuator 1 (OnOff)')
+    axes[1].set_xlabel('Time (hours)')
+    axes[1].set_title(f'Actuator 1: MSE = {mse_onoff:.6f}')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(script_dir, 'x0_test_results.png'), dpi=150)
+    plt.close()
+    print(f"\n   [TEST] Saved x0 test plot to x0_test_results.png")
+    
+    # =========================================================================
+    # Continue with estimation
+    # =========================================================================
+    
+    # Debug: Print initial controller params BEFORE optimization
+    print("\n   [DEBUG] Controller params BEFORE estimation:")
+    for a in range(2):
+        alpha = controller._get_alpha_vector(a)
+        beta = controller._get_beta_vector(a)
+        gamma = controller._get_gamma_vector(a)
+        print(f"     Actuator {a}:")
+        print(f"       alpha: {alpha.detach().numpy()}")
+        print(f"       beta:  {beta.detach().numpy()}")
+        print(f"       gamma: {gamma.detach().numpy()}")
+    
     options = {
-        "maxiter": 2000,
+        "maxiter": 5,  # More iterations for default x0
         "ftol": 1e-10,
         "disp": True,
-        "verbose": 2
     }
+    
+    # Add debug wrapper to print obj and jac during optimization
+    _orig_obj_ad = estimator._obj_ad
+    _orig_jac_ad = estimator._jac_ad
+    _orig_obj = estimator._obj  # The internal objective that sets params
+    _debug_iter = [0]  # Use list for mutable counter in closure
+    
+    def _debug_obj(theta_tensor, output="scalar"):
+        """Wrap _obj to print controller params AFTER they're set."""
+        result = _orig_obj(theta_tensor, output)
+        
+        # Only print on first iteration to see predictions vs actual
+        if _debug_iter[0] == 0:
+            print(f"\n  [CONTROLLER PARAMS after theta applied (iter {_debug_iter[0]})]:")
+            # Per-actuator weights
+            for a in range(2):
+                alpha = controller._get_alpha_vector(a)
+                beta = controller._get_beta_vector(a)
+                gamma = controller._get_gamma_vector(a)
+                print(f"    Actuator {a}:")
+                print(f"      alpha: {alpha.detach().numpy()}")
+                print(f"      beta:  {beta.detach().numpy()}")
+                print(f"      gamma: {gamma.detach().numpy()}")
+            
+            # Print predictions vs actual data
+            print(f"\n  [PREDICTIONS vs ACTUAL (first 20 timesteps)]:")
+            pred_pi = actuator_sensor_pi.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
+            pred_onoff = actuator_sensor_onoff.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
+            print(f"    Actuator 0 (PI) predictions:     {pred_pi[:20]}")
+            print(f"    Actuator 0 (PI) actual:          {actual_pi[:20]}")
+            print(f"    Actuator 1 (OnOff) predictions:  {pred_onoff[:20]}")
+            print(f"    Actuator 1 (OnOff) actual:       {actual_onoff[:20]}")
+            
+            # Print MSE for each actuator
+            mse_pi = np.mean((pred_pi - actual_pi)**2)
+            mse_onoff = np.mean((pred_onoff - actual_onoff)**2)
+            print(f"\n    MSE Actuator 0 (PI):    {mse_pi:.6f}")
+            print(f"    MSE Actuator 1 (OnOff): {mse_onoff:.6f}")
+            print(f"    Total MSE:              {mse_pi + mse_onoff:.6f}")
+            
+            # Print the weighted signals being fed to controllers
+            print(f"\n  [WEIGHTED SIGNALS (what controllers see)]:")
+            # Get the input signals
+            sensor_vals = controller.input["sensorValue"].history(i_s=0, i_c=0).detach().numpy()
+            setpoint_vals = controller.input["setpointValue"].history(i_s=0, i_c=0).detach().numpy()
+            print(f"    Raw sensor input shape:   {sensor_vals.shape}")
+            print(f"    Raw setpoint input shape: {setpoint_vals.shape}")
+            print(f"    Sensor[0] (first 10):     {sensor_vals[:10, 0] if sensor_vals.ndim > 1 else sensor_vals[:10]}")
+            print(f"    Setpoint[0] (first 10):   {setpoint_vals[:10, 0] if setpoint_vals.ndim > 1 else setpoint_vals[:10]}")
+        
+        return result
+    
+    estimator._obj = _debug_obj
+    
+    # Build parameter names for debug output
+    _param_names = []
+    for comp, attr, x0, lb, ub in parameters:
+        if isinstance(x0, (list, np.ndarray)):
+            for i in range(len(x0)):
+                _param_names.append(f"{attr}[{i}]")
+        else:
+            _param_names.append(attr)
+    
+    def _debug_obj_ad(theta, output="scalar"):
+        result = _orig_obj_ad(theta, output)
+        _debug_iter[0] += 1
+        print(f"\n[DEBUG iter {_debug_iter[0]}] obj = {result:.6f}")
+        
+        # Print theta with parameter names
+        print(f"  theta ({len(theta)} params):")
+        for i, (name, val) in enumerate(zip(_param_names, theta)):
+            print(f"    {name:25s} = {val:10.6f}")
+        return result
+    
+    def _debug_jac_ad(theta, output="scalar"):
+        result = _orig_jac_ad(theta, output)
+        grad_norm = np.linalg.norm(result)
+        print(f"  |grad| = {grad_norm:.6f}")
+        
+        # Print gradients with parameter names
+        print(f"  grad ({len(result)} params):")
+        for i, (name, val) in enumerate(zip(_param_names, result)):
+            print(f"    {name:25s} = {val:10.6f}")
+        return result
+    
+    estimator._obj_ad = _debug_obj_ad
+    estimator._jac_ad = _debug_jac_ad
+    
+    # Profile the estimate method
+    profiler = cProfile.Profile()
+    profiler.enable()
     
     result = estimator.estimate(
         start_time=start_time,
@@ -728,9 +1003,35 @@ def run_complex_identification_example():
         measurements=measurements,
         n_warmup=10,
         method=("scipy", "SLSQP", "ad"),
-        # regularization_lambda=0.01,  # Binarization penalty
+        regularization_lambda=0.01,  # Binarization penalty: P(x) = x(1-x)
         options=options,
     )
+    
+    # Restore original methods
+    estimator._obj = _orig_obj
+    estimator._obj_ad = _orig_obj_ad
+    estimator._jac_ad = _orig_jac_ad
+    
+    
+    profiler.disable()
+    
+    # Print profiling results
+    print("\n" + "=" * 80)
+    print("PROFILING RESULTS")
+    print("=" * 80)
+    
+    # Sort by cumulative time and show top 30 functions
+    stream = io.StringIO()
+    stats = pstats.Stats(profiler, stream=stream)
+    stats.sort_stats('time')
+    stats.print_stats(30)
+    print(stream.getvalue())
+    
+    # Also save to file for detailed analysis
+    profile_path = os.path.join(script_dir, "control_identification_profile.prof")
+    profiler.dump_stats(profile_path)
+    print(f"Full profile saved to: {profile_path}")
+    print(f"View with: python -m snakeviz {profile_path}")
     
     # =========================================================================
     # Results
@@ -744,21 +1045,27 @@ def run_complex_identification_example():
     # Detailed analysis
     print("\n   SIGNAL SELECTION ANALYSIS:")
     
-    print("\n   Beta weights (sensor selection - shared by both actuators):")
-    for i, (df, name) in enumerate(sensors):
-        beta = controller._get_beta(i).item()
-        expected = "≈1.0" if "TRUE" in name else "≈0.0"
-        correct = ("TRUE" in name and beta > 0.5) or ("DECOY" in name and beta < 0.5)
-        status = "✓ CORRECT" if correct else "✗ WRONG"
-        print(f"     β_{i} = {beta:.4f} (expected {expected}) [{name}] {status}")
+    # Expected: Actuator 0 uses sensor 0 (PI_TRUE), Actuator 1 uses sensor 1 (ONOFF_TRUE)
+    for a in range(2):
+        print(f"\n   Actuator {a} Beta weights (sensor selection):")
+        # For actuator 0, expect sensor 0 (PI_TRUE) to be selected
+        # For actuator 1, expect sensor 1 (ONOFF_TRUE) to be selected
+        expected_sensor = a  # 0 for actuator 0, 1 for actuator 1
+        for i, (df, name) in enumerate(sensors):
+            beta = controller._get_beta(a, i).item()
+            expected = "≈1.0" if i == expected_sensor else "≈0.0"
+            correct = (i == expected_sensor and beta > 0.5) or (i != expected_sensor and beta < 0.5)
+            status = "✓ CORRECT" if correct else "✗ WRONG"
+            print(f"     β_{a},{i} = {beta:.4f} (expected {expected}) [{name}] {status}")
     
-    print("\n   Gamma weights (setpoint selection - shared by both actuators):")
-    for i, (df, name) in enumerate(setpoints):
-        gamma = controller._get_gamma(i).item()
-        expected = "≈1.0" if "TRUE" in name else "≈0.0"
-        correct = ("TRUE" in name and gamma > 0.5) or ("DECOY" in name and gamma < 0.5)
-        status = "✓ CORRECT" if correct else "✗ WRONG"
-        print(f"     γ_{i} = {gamma:.4f} (expected {expected}) [{name}] {status}")
+    for a in range(2):
+        print(f"\n   Actuator {a} Gamma weights (setpoint selection):")
+        for i, (df, name) in enumerate(setpoints):
+            gamma = controller._get_gamma(a, i).item()
+            expected = "≈1.0" if "TRUE" in name else "≈0.0"
+            correct = ("TRUE" in name and gamma > 0.5) or ("DECOY" in name and gamma < 0.5)
+            status = "✓ CORRECT" if correct else "✗ WRONG"
+            print(f"     γ_{a},{i} = {gamma:.4f} (expected {expected}) [{name}] {status}")
     
     print("\n   Alpha weights (controller selection per actuator):")
     print("\n   Actuator 0 (True = PI, candidate 0):")
@@ -810,8 +1117,8 @@ def run_complex_identification_example():
     # =========================================================================
     print("\n8. Generating result plots...")
     
-    final_pred_pi = actuator_sensor_pi.input["measuredValue"].history[0].detach().numpy()
-    final_pred_onoff = actuator_sensor_onoff.input["measuredValue"].history[0].detach().numpy()
+    final_pred_pi = actuator_sensor_pi.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
+    final_pred_onoff = actuator_sensor_onoff.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
     
     fig = plt.figure(figsize=(18, 16))
     gs = fig.add_gridspec(5, 2, height_ratios=[1, 1, 1, 1, 1.5])
@@ -836,30 +1143,32 @@ def run_complex_identification_example():
     ax2.set_title('Actuator 1: On-Off Controller Identification')
     ax2.grid(True, alpha=0.3)
     
-    # Plot 3: Beta weights (sensor selection)
+    # Plot 3: Beta weights (sensor selection) for Actuator 0
     ax3 = fig.add_subplot(gs[2, 0])
-    beta_vals = [controller._get_beta(i).item() for i in range(len(sensors))]
-    colors = ['green' if 'TRUE' in s[1] else 'gray' for s in sensors]
-    ax3.bar(range(len(sensors)), beta_vals, color=colors, alpha=0.7)
+    beta_vals_0 = [controller._get_beta(0, i).item() for i in range(len(sensors))]
+    # Actuator 0 should select sensor 0 (PI_TRUE)
+    colors = ['green' if i == 0 else 'gray' for i in range(len(sensors))]
+    ax3.bar(range(len(sensors)), beta_vals_0, color=colors, alpha=0.7)
     ax3.set_xticks(range(len(sensors)))
-    ax3.set_xticklabels([f"β{i}" for i in range(len(sensors))])
+    ax3.set_xticklabels([f"β0,{i}" for i in range(len(sensors))])
     ax3.axhline(y=0.5, color='red', linestyle='--', alpha=0.5)
     ax3.set_ylabel('Weight Value')
     ax3.set_ylim(0, 1.1)
-    ax3.set_title('Beta (Sensor Selection)')
+    ax3.set_title('Beta Act.0 (Expected: sensor 0)')
     ax3.grid(True, alpha=0.3, axis='y')
     
-    # Plot 4: Gamma weights (setpoint selection)
+    # Plot 4: Beta weights (sensor selection) for Actuator 1
     ax4 = fig.add_subplot(gs[2, 1])
-    gamma_vals = [controller._get_gamma(j).item() for j in range(len(setpoints))]
-    colors = ['green' if 'TRUE' in s[1] else 'gray' for s in setpoints]
-    ax4.bar(range(len(setpoints)), gamma_vals, color=colors, alpha=0.7)
-    ax4.set_xticks(range(len(setpoints)))
-    ax4.set_xticklabels([f"γ{j}" for j in range(len(setpoints))])
+    beta_vals_1 = [controller._get_beta(1, i).item() for i in range(len(sensors))]
+    # Actuator 1 should select sensor 1 (ONOFF_TRUE)
+    colors = ['green' if i == 1 else 'gray' for i in range(len(sensors))]
+    ax4.bar(range(len(sensors)), beta_vals_1, color=colors, alpha=0.7)
+    ax4.set_xticks(range(len(sensors)))
+    ax4.set_xticklabels([f"β1,{i}" for i in range(len(sensors))])
     ax4.axhline(y=0.5, color='red', linestyle='--', alpha=0.5)
     ax4.set_ylabel('Weight Value')
     ax4.set_ylim(0, 1.1)
-    ax4.set_title('Gamma (Setpoint Selection)')
+    ax4.set_title('Beta Act.1 (Expected: sensor 1)')
     ax4.grid(True, alpha=0.3, axis='y')
     
     # Plot 5: Alpha weights for Actuator 0
@@ -901,7 +1210,7 @@ def run_complex_identification_example():
     ax7.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig("twin4build/examples/complex_dual_actuator_results.png", dpi=150)
+    plt.savefig(os.path.join(script_dir, "complex_dual_actuator_results.png"), dpi=150)
     plt.show()
     
     # =========================================================================
@@ -911,13 +1220,26 @@ def run_complex_identification_example():
     print("SUCCESS METRICS")
     print("=" * 80)
     
-    # Count correct selections
-    n_correct_sensors = sum(1 for i, (df, name) in enumerate(sensors) 
-                           if (("TRUE" in name and beta_vals[i] > 0.5) or 
-                               ("DECOY" in name and beta_vals[i] < 0.5)))
-    n_correct_setpoints = sum(1 for i, (df, name) in enumerate(setpoints)
-                             if (("TRUE" in name and gamma_vals[i] > 0.5) or 
-                                 ("DECOY" in name and gamma_vals[i] < 0.5)))
+    # Count correct selections (per-actuator)
+    # Actuator 0 should select sensor 0, Actuator 1 should select sensor 1
+    n_correct_beta_0 = sum(1 for i in range(len(sensors))
+                          if ((i == 0 and beta_vals_0[i] > 0.5) or 
+                              (i != 0 and beta_vals_0[i] < 0.5)))
+    n_correct_beta_1 = sum(1 for i in range(len(sensors))
+                          if ((i == 1 and beta_vals_1[i] > 0.5) or 
+                              (i != 1 and beta_vals_1[i] < 0.5)))
+    n_correct_sensors = n_correct_beta_0 + n_correct_beta_1
+    
+    # Gamma (setpoint) - both actuators should select setpoint 0 (TRUE)
+    gamma_vals_0 = [controller._get_gamma(0, j).item() for j in range(len(setpoints))]
+    gamma_vals_1 = [controller._get_gamma(1, j).item() for j in range(len(setpoints))]
+    n_correct_gamma_0 = sum(1 for i, (df, name) in enumerate(setpoints)
+                           if (("TRUE" in name and gamma_vals_0[i] > 0.5) or 
+                               ("DECOY" in name and gamma_vals_0[i] < 0.5)))
+    n_correct_gamma_1 = sum(1 for i, (df, name) in enumerate(setpoints)
+                           if (("TRUE" in name and gamma_vals_1[i] > 0.5) or 
+                               ("DECOY" in name and gamma_vals_1[i] < 0.5)))
+    n_correct_setpoints = n_correct_gamma_0 + n_correct_gamma_1
     
     # Actuator 0: Should select candidate 0 (PI)
     n_correct_ctrl_0 = sum(1 for c in range(len(controller_classes))
@@ -929,13 +1251,13 @@ def run_complex_identification_example():
                           if ((c == 1 and alpha_vals_1[c] > 0.5) or 
                               (c != 1 and alpha_vals_1[c] < 0.5)))
     
-    print(f"\n   Sensor selection:       {n_correct_sensors}/{len(sensors)} correct")
-    print(f"   Setpoint selection:     {n_correct_setpoints}/{len(setpoints)} correct")
+    print(f"\n   Beta selection (sensors): {n_correct_sensors}/{2 * len(sensors)} correct (2 actuators)")
+    print(f"   Gamma selection (setpoints): {n_correct_setpoints}/{2 * len(setpoints)} correct (2 actuators)")
     print(f"   Actuator 0 controller:  {n_correct_ctrl_0}/{len(controller_classes)} correct")
     print(f"   Actuator 1 controller:  {n_correct_ctrl_1}/{len(controller_classes)} correct")
     
     total_correct = n_correct_sensors + n_correct_setpoints + n_correct_ctrl_0 + n_correct_ctrl_1
-    total_possible = len(sensors) + len(setpoints) + 2 * len(controller_classes)
+    total_possible = 2 * len(sensors) + 2 * len(setpoints) + 2 * len(controller_classes)
     print(f"\n   Overall: {total_correct}/{total_possible} ({100*total_correct/total_possible:.1f}%)")
     
     # Final MAE

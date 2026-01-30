@@ -248,9 +248,9 @@ def generate_data_with_twin4build(
     timestamps = [start_time + datetime.timedelta(seconds=i * step_size) 
                   for i in range(n_timesteps)]
     
-    temperature = building_space.output["indoorTemperature"].history[0].detach().numpy()
-    actuator = pi_controller.output["inputSignal"].history[0].detach().numpy()
-    heater_power = space_heater.output["Power"].history[0].detach().numpy()
+    temperature = building_space.output["indoorTemperature"].history(i_s=0, i_c=0).detach().numpy()
+    actuator = pi_controller.output["inputSignal"].history(i_s=0, i_c=0).detach().numpy()
+    heater_power = space_heater.output["Power"].history(i_s=0, i_c=0).detach().numpy()
     setpoint = weather['setpoint']['value'].values
     
     # Create output DataFrames (no noise added to outputs - noise only in inputs/weather)
@@ -474,7 +474,7 @@ def run_controller_identification_example():
     )
     
     # Store initial predictions for comparison
-    initial_predictions = actuator_sensor.input["measuredValue"].history[0].detach().numpy()
+    initial_predictions = actuator_sensor.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
     actual_actuator = df_actuator['value'].values
     
     # Run estimation using TWO-STAGE approach
@@ -551,7 +551,7 @@ def run_controller_identification_example():
     # =========================================================================
     print("\n5. Generating plots...")
     
-    final_predictions = actuator_sensor.input["measuredValue"].history[0].detach().numpy()
+    final_predictions = actuator_sensor.input["measuredValue"].history(i_s=0, i_c=0).detach().numpy()
     actual_actuator = df_actuator['value'].values
     time_hours = np.arange(n_timesteps) * step_size / 3600
     

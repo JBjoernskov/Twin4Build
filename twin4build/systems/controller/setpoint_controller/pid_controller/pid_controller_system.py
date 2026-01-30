@@ -120,7 +120,7 @@ class PIDControllerSystem(core.System, nn.Module):
 
     def asymptotic_smooth_saturation(
         self, u, lower=0.0, upper=1.0, eps=0, curve_start=0.1, steepness=1,
-        curve_type='hyperbolic', power_exp=0.5
+        curve_type='power', power_exp=0.5
     ):
         """
         Smooth saturation function with asymptotic behavior at bounds.
