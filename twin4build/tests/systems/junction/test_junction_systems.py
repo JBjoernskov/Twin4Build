@@ -3,7 +3,7 @@ import datetime
 import unittest
 
 # Third party imports
-import pytz
+from dateutil import tz
 import torch
 
 # Local application imports
@@ -40,8 +40,8 @@ class TestReturnFlowJunctionSystem(unittest.TestCase):
         """Test return flow junction do_step method."""
         # Set n_input_ports manually since we're testing without connections
         self.junction.n_input_ports = 2
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.junction.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -66,7 +66,7 @@ class TestReturnFlowJunctionSystem(unittest.TestCase):
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.junction.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -100,8 +100,8 @@ class TestSupplyFlowJunctionSystem(unittest.TestCase):
         """Test supply flow junction do_step method."""
         # Set n_input_ports manually since we're testing without connections
         self.junction.n_input_ports = 3
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.junction.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -117,7 +117,7 @@ class TestSupplyFlowJunctionSystem(unittest.TestCase):
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.junction.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
