@@ -3,7 +3,7 @@ import datetime
 import unittest
 
 # Third party imports
-import pytz
+from dateutil import tz
 import torch
 
 # Local application imports
@@ -25,8 +25,8 @@ class TestCoilTorchSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test coil system do_step method."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.coil.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -40,7 +40,7 @@ class TestCoilTorchSystem(unittest.TestCase):
         self.coil.input["airFlowRate"].set(torch.tensor([1.0]), i_t=0)
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.coil.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -61,8 +61,8 @@ class TestCoilTorchSystem(unittest.TestCase):
 
         batch_size = 2
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)] * 2
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)] * 2
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)] * 2
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)] * 2
         step_size = [600] * 2
         coil_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -78,7 +78,7 @@ class TestCoilTorchSystem(unittest.TestCase):
         coil_batch.input["airFlowRate"].set(torch.tensor([1.0, 1.2]), i_t=0)
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         coil_batch.do_step(
             second_time=0, date_time=datetime_val, step_size=step_size, step_index=0
         )

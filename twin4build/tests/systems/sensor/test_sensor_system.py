@@ -5,7 +5,7 @@ import warnings
 
 # Third party imports
 import pandas as pd
-import pytz
+from dateutil import tz
 
 # Local application imports
 from twin4build.systems.sensor.sensor_system import SensorSystem
@@ -18,7 +18,7 @@ twin4build._IS_TESTING = True
 class TestSensorSystem(unittest.TestCase):
     def setUp(self):
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -32,15 +32,15 @@ class TestSensorSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test sensor system do_step method."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.sensor.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 10, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 10, 0, tzinfo=tz.UTC)
         self.sensor.do_step(
             second_time=600, date_time=datetime_val, step_size=600, step_index=1
         )
@@ -53,22 +53,22 @@ class TestSensorSystem(unittest.TestCase):
     def test_do_step_batch(self):
         """Test sensor system do_step method with batch size > 1."""
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
         df = pd.DataFrame({"value": [20.0] * 10}, index=dates)
         sensor_batch = SensorSystem(id="test_sensor_batch", df=df)
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         sensor_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 10, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 10, 0, tzinfo=tz.UTC)
         sensor_batch.do_step(
             second_time=600, date_time=datetime_val, step_size=600, step_index=1
         )
@@ -86,7 +86,7 @@ class TestSensorSystem(unittest.TestCase):
     def test_deprecated_usedf_constructor_warning(self):
         """Test that usedf in constructor shows deprecation warning."""
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -119,7 +119,7 @@ class TestSensorSystem(unittest.TestCase):
     def test_only_one_flag_allowed(self):
         """Test that only one of use_spreadsheet, use_database, use_df can be True."""
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -135,7 +135,7 @@ class TestSensorSystem(unittest.TestCase):
     def test_df_property_auto_sets_use_df(self):
         """Test that setting df property auto-sets use_df=True."""
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -149,7 +149,7 @@ class TestSensorSystem(unittest.TestCase):
     def test_backward_compat_camelcase(self):
         """Test that old camelCase code still works."""
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )

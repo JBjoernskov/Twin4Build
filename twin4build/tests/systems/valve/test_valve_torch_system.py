@@ -3,7 +3,7 @@ import datetime
 import unittest
 
 # Third party imports
-import pytz
+from dateutil import tz
 import torch
 
 # Local application imports
@@ -27,8 +27,8 @@ class TestValveTorchSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test valve system do_step method."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.valve.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -38,7 +38,7 @@ class TestValveTorchSystem(unittest.TestCase):
         self.valve.input["valvePosition"].set(torch.tensor([0.5]), i_t=0)
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.valve.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -55,8 +55,8 @@ class TestValveTorchSystem(unittest.TestCase):
 
         batch_size = 3
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         valve_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -77,7 +77,7 @@ class TestValveTorchSystem(unittest.TestCase):
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         valve_batch.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )

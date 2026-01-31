@@ -2212,6 +2212,7 @@ class SemanticModel:
         traversal_mode=None,
         initial_node=None,
         random_seed=None,
+        format="svg",
     ):
         """
         Visualize RDF graph with optional class and predicate filtering.
@@ -2223,12 +2224,13 @@ class SemanticModel:
             slice_uri: If provided, slice the URI string in row 1 (the main URI row). Can be:
                         - An integer: keep the last slice_uri characters
                         - A tuple (start, end): slice the URI using [start:end]
-            dpi: DPI of the visualization
+            dpi: DPI of the visualization. Only used if format is "png".
             limit: Limit the number of triples to visualize
             generate_subgraphs: If True, generate subgraphs for each isolated subgraph
             traversal_mode: Traversal mode to use. Can be "bfs" for breadth-first search or "dfs" for depth-first search
             initial_node: Initial node to start traversal from. If not provided, a random node will be selected from the query results
             random_seed: Random seed to use for random traversal. Use this to get reproducible results when doing random traversal
+            format: Output format for the visualization. Can be "png" or "svg". Default is "svg".
         """
         # Omit rdf:type triples by default
         if query is None:
@@ -2558,7 +2560,7 @@ class SemanticModel:
                 dot_filename_dot = os.path.join(
                     dirname_ccomps, filename.replace("ccomps", "dot")
                 )
-                dot_filename_ccomps_png = dot_filename_ccomps.replace(".dot", ".png")
+                dot_filename_ccomps_output = dot_filename_ccomps.replace(".dot", f".{format}")
                 args = [
                     app_path,
                     "-q",
@@ -2571,9 +2573,9 @@ class SemanticModel:
                 if generate_subgraphs:
                     args = [
                         app_path,
-                        "-Tpng",
+                        f"-T{format}",
                         "-q",
-                        f"-o{dot_filename_ccomps_png}",
+                        f"-o{dot_filename_ccomps_output}",
                         f"{dot_filename_ccomps}",
                     ]
                     subprocess.run(
@@ -2600,20 +2602,20 @@ class SemanticModel:
         subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         ### neato ###
-        semantic_model_png, _ = self.get_dir(
-            folder_list=["graphs"], filename="semantic_model.png"
+        semantic_model_output, _ = self.get_dir(
+            folder_list=["graphs"], filename=f"semantic_model.{format}"
         )
         app_path = shutil.which("neato")
         assert app_path is not None, "neato not found"
         args = [
             app_path,
-            "-Tpng",
+            f"-T{format}",
             "-n2",
             "-Gsize=10!",
             f"-Gdpi={dpi}",
             "-q",
             # "-v", # verbose
-            f"-o{semantic_model_png}",
+            f"-o{semantic_model_output}",
             f"{dot_filename_gvpack}",
         ]
         subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

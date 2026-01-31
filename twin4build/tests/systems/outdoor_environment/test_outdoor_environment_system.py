@@ -5,7 +5,7 @@ import warnings
 
 # Third party imports
 import pandas as pd
-import pytz
+from dateutil import tz
 import torch
 
 # Local application imports
@@ -30,7 +30,7 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
     def test_initialization_with_df(self):
         """Test outdoor environment system with DataFrame."""
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -69,7 +69,7 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
     def test_do_step_without_correction(self):
         """Test outdoor environment system do_step method without correction."""
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -84,8 +84,8 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
 
         outdoor_env = OutdoorEnvironmentSystem(id="test_outdoor_step", df=df)
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
         step_size = [600]
 
         outdoor_env.initialize(
@@ -93,7 +93,7 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         outdoor_env.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -110,7 +110,7 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
     def test_do_step_with_correction(self):
         """Test outdoor environment system do_step with linear correction applied."""
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -132,8 +132,8 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
             apply_correction=True,
         )
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
         step_size = [600]
 
         outdoor_env.initialize(
@@ -141,7 +141,7 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         outdoor_env.do_step(
             second_time=0, date_time=datetime_val, step_size=step_size, step_index=0
         )
@@ -155,8 +155,8 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
         """Test that initialize raises error when no data source is provided."""
         outdoor_env = OutdoorEnvironmentSystem(id="test_no_data")
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
         step_size = [600]
 
         with self.assertRaises(ValueError):

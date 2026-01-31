@@ -3,7 +3,7 @@ import datetime
 import unittest
 
 # Third party imports
-import pytz
+from dateutil import tz
 import torch
 
 # Local application imports
@@ -26,8 +26,8 @@ class TestDamperTorchSystem(unittest.TestCase):
     def test_do_step(self):
         """Test damper system do_step method."""
         # Initialize
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.damper.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -37,7 +37,7 @@ class TestDamperTorchSystem(unittest.TestCase):
         self.damper.input["damperPosition"].set(torch.tensor([0.5]), i_t=0)
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.damper.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -49,8 +49,8 @@ class TestDamperTorchSystem(unittest.TestCase):
 
     def test_airflow_calculation(self):
         """Test that damper calculates airflow correctly."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.damper.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -60,7 +60,7 @@ class TestDamperTorchSystem(unittest.TestCase):
         self.damper.input["damperPosition"].set(torch.tensor([1.0]), i_t=0)
         self.damper.do_step(
             second_time=0,
-            date_time=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            date_time=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             step_size=600,
             step_index=0,
         )
@@ -76,8 +76,8 @@ class TestDamperTorchSystem(unittest.TestCase):
 
         batch_size = 3
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         damper_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -98,7 +98,7 @@ class TestDamperTorchSystem(unittest.TestCase):
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         damper_batch.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
