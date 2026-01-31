@@ -6,7 +6,7 @@ import warnings
 # Third party imports
 import numpy as np
 import pandas as pd
-import pytz
+from dateutil import tz
 import torch
 
 # Local application imports
@@ -21,7 +21,7 @@ from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSys
 class TestTimeSeriesInputSystem(unittest.TestCase):
     def setUp(self):
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -35,15 +35,15 @@ class TestTimeSeriesInputSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test time series input system do_step method."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.ts_input.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 10, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 10, 0, tzinfo=tz.UTC)
         self.ts_input.do_step(
             second_time=600, date_time=datetime_val, step_size=600, step_index=1
         )
@@ -114,8 +114,8 @@ class TestMaxSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test max system do_step method."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
         step_size = [600]
 
         # Set inputs - initialize with size parameter for Vector type
@@ -127,7 +127,7 @@ class TestMaxSystem(unittest.TestCase):
         self.system.input["inputs"].set(torch.tensor([[1.0, 5.0, 3.0]]), step_index=0)
 
         # Execute
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.system.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -151,8 +151,8 @@ class TestOnOffSystem(unittest.TestCase):
 
     def test_do_step_on(self):
         """Test on/off system when signal is ON (> 0.5)."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.system.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -163,7 +163,7 @@ class TestOnOffSystem(unittest.TestCase):
         self.system.input["criteriaValue"].set(torch.tensor([0.8]), step_index=0)
 
         # Execute
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.system.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -184,8 +184,8 @@ class TestPassInputToOutput(unittest.TestCase):
 
     def test_do_step(self):
         """Test pass input to output system do_step method."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.system.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -195,7 +195,7 @@ class TestPassInputToOutput(unittest.TestCase):
         self.system.input["value"].set(torch.tensor([42.0]), step_index=0)
 
         # Execute
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.system.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )

@@ -4,7 +4,7 @@ import os
 import unittest
 
 # Third party imports
-import pytz
+from dateutil import tz
 
 # Local application imports
 from twin4build.utils.rdelattr import rdelattr
@@ -118,8 +118,8 @@ class TestRecursiveAttributeOperations(unittest.TestCase):
 class TestValidatePeriod(unittest.TestCase):
     def test_validate_period_single_datetime(self):
         """Test validate_period with single datetime objects."""
-        start = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end = datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=pytz.UTC)
+        start = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end = datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=tz.UTC)
         step = 600
 
         start_out, end_out, step_out = validate_period(start, end, step)
@@ -134,12 +134,12 @@ class TestValidatePeriod(unittest.TestCase):
     def test_validate_period_list_datetime(self):
         """Test validate_period with list of datetime objects."""
         starts = [
-            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
-            datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=pytz.UTC),
+            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
+            datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=tz.UTC),
         ]
         ends = [
-            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC),
-            datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=pytz.UTC),
+            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC),
+            datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=tz.UTC),
         ]
         steps = [600, 300]
 
@@ -155,12 +155,12 @@ class TestValidatePeriod(unittest.TestCase):
     def test_validate_period_list_with_single_step(self):
         """Test validate_period with list of datetimes but single step size."""
         starts = [
-            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
-            datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=pytz.UTC),
+            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
+            datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=tz.UTC),
         ]
         ends = [
-            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC),
-            datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=pytz.UTC),
+            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC),
+            datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=tz.UTC),
         ]
         step = 600
 
@@ -174,28 +174,28 @@ class TestValidatePeriod(unittest.TestCase):
     def test_validate_period_invalid_start_type(self):
         """Test validate_period with invalid start time type."""
         with self.assertRaises(AssertionError):
-            validate_period("invalid", datetime.datetime.now(pytz.UTC), 600)
+            validate_period("invalid", datetime.datetime.now(tz.UTC), 600)
 
     def test_validate_period_invalid_end_type(self):
         """Test validate_period with invalid end time type."""
         with self.assertRaises(AssertionError):
-            validate_period(datetime.datetime.now(pytz.UTC), "invalid", 600)
+            validate_period(datetime.datetime.now(tz.UTC), "invalid", 600)
 
     def test_validate_period_invalid_step_type(self):
         """Test validate_period with invalid step size type."""
         with self.assertRaises(AssertionError):
             validate_period(
-                datetime.datetime.now(pytz.UTC),
-                datetime.datetime.now(pytz.UTC),
+                datetime.datetime.now(tz.UTC),
+                datetime.datetime.now(tz.UTC),
                 "invalid",
             )
 
     def test_validate_period_mismatched_list_lengths(self):
         """Test validate_period with mismatched list lengths."""
-        starts = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
+        starts = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
         ends = [
-            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC),
-            datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=pytz.UTC),
+            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC),
+            datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=tz.UTC),
         ]
         steps = [600]
 
@@ -204,8 +204,8 @@ class TestValidatePeriod(unittest.TestCase):
 
     def test_validate_period_mixed_types(self):
         """Test validate_period with mixed types (should fail)."""
-        start = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        ends = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)]
+        start = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        ends = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
         step = 600
 
         with self.assertRaises(AssertionError):
@@ -271,14 +271,14 @@ class TestDataLoaders(unittest.TestCase):
 
         # Create test DataFrame
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="1h",
         )
         df = pd.DataFrame({"date_time": dates, "value": [i * 10.0 for i in range(10)]})
 
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=tz.UTC)
 
         result = sample_from_df(
             df,
@@ -305,14 +305,14 @@ class TestDataLoaders(unittest.TestCase):
 
         # Create test DataFrame
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=5,
             freq="2h",
         )
         df = pd.DataFrame({"date_time": dates, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
 
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 6, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 6, 0, 0, tzinfo=tz.UTC)
 
         result = sample_from_df(
             df,
@@ -342,14 +342,14 @@ class TestDataLoaders(unittest.TestCase):
 
         # Create test DataFrame
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=5,
             freq="1h",
         )
         df = pd.DataFrame({"date_time": dates, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
 
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 3, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 3, 0, 0, tzinfo=tz.UTC)
 
         result = sample_from_df(
             df,
@@ -376,15 +376,15 @@ class TestDataLoaders(unittest.TestCase):
 
         # Create test DataFrame with timezone-aware dates
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=5,
             freq="1h",
             tz="UTC",
         )
         df = pd.DataFrame({"date_time": dates, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
 
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=tz.UTC)
 
         result = sample_from_df(
             df,
@@ -410,7 +410,7 @@ class TestDataLoaders(unittest.TestCase):
 
         # Create test DataFrame with multiple value columns
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=5,
             freq="1h",
         )
@@ -422,8 +422,8 @@ class TestDataLoaders(unittest.TestCase):
             }
         )
 
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=tz.UTC)
 
         # When valuecolumn is None, all columns should be converted to numeric
         result = sample_from_df(
@@ -463,8 +463,8 @@ class TestDataLoaders(unittest.TestCase):
             }
         )
 
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 4, 0, 0, tzinfo=tz.UTC)
 
         result = sample_from_df(
             df,
@@ -618,8 +618,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             temp_file = f.name
 
         try:
-            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=tz.UTC)
 
             result = load_from_spreadsheet(
                 filename=temp_file,
@@ -669,8 +669,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             temp_file = f.name
 
         try:
-            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=tz.UTC)
 
             # First load - creates cache
             result1 = load_from_spreadsheet(
@@ -737,8 +737,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
         df.to_excel(temp_file, index=False)
 
         try:
-            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=tz.UTC)
 
             result = load_from_spreadsheet(
                 filename=temp_file,
@@ -773,8 +773,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             temp_file = f.name
 
         try:
-            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=pytz.UTC)
+            start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+            end_time = datetime.datetime(2023, 1, 1, 5, 0, 0, tzinfo=tz.UTC)
 
             with self.assertRaises(Exception):
                 load_from_spreadsheet(
