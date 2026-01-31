@@ -6,7 +6,6 @@ import unittest
 
 # Third party imports
 import numpy as np
-import pytz
 import torch
 from dateutil import tz
 
@@ -50,8 +49,8 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate(self):
         """Test basic single period simulation."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.simulator.simulate(
@@ -78,16 +77,16 @@ class TestSimulator(unittest.TestCase):
         # Define multiple simulation periods
         periods = [
             (
-                datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
-                datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC),
+                datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
+                datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC),
             ),
             (
-                datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=pytz.UTC),
-                datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=pytz.UTC),
+                datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=tz.UTC),
+                datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=tz.UTC),
             ),
             (
-                datetime.datetime(2023, 1, 3, 0, 0, 0, tzinfo=pytz.UTC),
-                datetime.datetime(2023, 1, 3, 1, 0, 0, tzinfo=pytz.UTC),
+                datetime.datetime(2023, 1, 3, 0, 0, 0, tzinfo=tz.UTC),
+                datetime.datetime(2023, 1, 3, 1, 0, 0, tzinfo=tz.UTC),
             ),
         ]
         step_size = 600
@@ -109,9 +108,9 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate_invalid_time_period(self):
         """Test simulation with invalid time period (start >= end)."""
-        start_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         end_time = datetime.datetime(
-            2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC
+            2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC
         )  # Before start
         step_size = 600
 
@@ -123,8 +122,8 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate_zero_step_size(self):
         """Test simulation with zero step size."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = 0
 
         # Should raise an error
@@ -135,8 +134,8 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate_negative_step_size(self):
         """Test simulation with negative step size."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = -600
 
         # Should raise an error
@@ -147,9 +146,9 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate_very_short_period(self):
         """Test simulation with very short time period."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         end_time = datetime.datetime(
-            2023, 1, 1, 0, 0, 10, tzinfo=pytz.UTC
+            2023, 1, 1, 0, 0, 10, tzinfo=tz.UTC
         )  # 10 seconds
         step_size = 5  # 5 second steps
 
@@ -164,11 +163,11 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate_multiple_runs(self):
         """Test running multiple simulations sequentially."""
-        start_time1 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time1 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time1 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time1 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
 
-        start_time2 = datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time2 = datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time2 = datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=tz.UTC)
+        end_time2 = datetime.datetime(2023, 1, 2, 1, 0, 0, tzinfo=tz.UTC)
 
         step_size = 600
 
@@ -188,8 +187,8 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate_with_different_step_sizes(self):
         """Test simulations with different step sizes."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
 
         # Test with 300 second steps
         self.simulator.simulate(start_time=start_time, end_time=end_time, step_size=300)
@@ -202,8 +201,8 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate_result_caching(self):
         """Test that simulation results are properly cached."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = 600
 
         # Run simulation
@@ -227,8 +226,8 @@ class TestSimulator(unittest.TestCase):
 
     def test_simulate_without_progress_bar(self):
         """Test simulation without progress bar."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = 600
 
         # Run simulation without progress bar
@@ -245,8 +244,8 @@ class TestSimulator(unittest.TestCase):
 
     def test_set_simulation_timesteps(self):
         """Test set_simulation_timesteps method."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.simulator.set_simulation_timesteps(start_time, end_time, step_size)
@@ -260,8 +259,8 @@ class TestSimulator(unittest.TestCase):
 
     def test_get_simulation_timesteps_static(self):
         """Test the static get_simulation_timesteps method."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = 600
 
         second_steps, date_steps, max_timesteps, n_timesteps = (
@@ -275,12 +274,12 @@ class TestSimulator(unittest.TestCase):
     def test_get_simulation_timesteps_batched(self):
         """Test get_simulation_timesteps with multiple periods of different lengths."""
         start_times = [
-            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
-            datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=pytz.UTC),
+            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
+            datetime.datetime(2023, 1, 2, 0, 0, 0, tzinfo=tz.UTC),
         ]
         end_times = [
-            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC),  # 6 steps
-            datetime.datetime(2023, 1, 2, 0, 30, 0, tzinfo=pytz.UTC),  # 3 steps
+            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC),  # 6 steps
+            datetime.datetime(2023, 1, 2, 0, 30, 0, tzinfo=tz.UTC),  # 3 steps
         ]
         step_size = [600, 600]
 

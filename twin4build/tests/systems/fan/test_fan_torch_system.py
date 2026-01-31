@@ -3,7 +3,7 @@ import datetime
 import unittest
 
 # Third party imports
-import pytz
+from dateutil import tz
 import torch
 
 # Local application imports
@@ -25,8 +25,8 @@ class TestFanTorchSystem(unittest.TestCase):
 
     def test_initialization(self):
         """Test fan system initialization."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.fan.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -36,8 +36,8 @@ class TestFanTorchSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test fan system do_step method."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.fan.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -49,7 +49,7 @@ class TestFanTorchSystem(unittest.TestCase):
 
         # Set required inputs (may vary based on implementation)
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.fan.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -74,8 +74,8 @@ class TestFanTorchSystem(unittest.TestCase):
 
         batch_size = 2
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         fan_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -103,7 +103,7 @@ class TestFanTorchSystem(unittest.TestCase):
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         fan_batch.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )

@@ -4,7 +4,7 @@ import unittest
 import warnings
 
 # Third party imports
-import pytz
+from dateutil import tz
 
 # Local application imports
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
@@ -32,15 +32,15 @@ class TestScheduleSystem(unittest.TestCase):
     def test_do_step(self):
         """Test schedule system do_step method."""
         # Initialize
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.schedule.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         self.schedule.do_step(
             second_time=1800, date_time=datetime_val, step_size=600, step_index=3
         )
@@ -62,15 +62,15 @@ class TestScheduleSystem(unittest.TestCase):
             id="test_schedule_batch",
         )
 
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         schedule_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         schedule_batch.do_step(
             second_time=1800, date_time=datetime_val, step_size=600, step_index=3
         )

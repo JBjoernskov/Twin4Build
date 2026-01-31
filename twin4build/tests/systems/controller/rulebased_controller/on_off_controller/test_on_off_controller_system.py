@@ -3,7 +3,7 @@ import datetime
 import unittest
 
 # Third party imports
-import pytz
+from dateutil import tz
 import torch
 
 # Local application imports
@@ -25,8 +25,8 @@ class TestOnOffControllerSystem(unittest.TestCase):
 
     def test_do_step(self):
         """Test on/off controller do_step method."""
-        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)]
-        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)]
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
         self.controller.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -37,7 +37,7 @@ class TestOnOffControllerSystem(unittest.TestCase):
         self.controller.input["setpointValue"].set(torch.tensor([22.0]), step_index=0)
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         self.controller.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )
@@ -55,10 +55,10 @@ class TestOnOffControllerSystem(unittest.TestCase):
         batch_size = 2
 
         start_time = [
-            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+            datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         ] * batch_size
         end_time = [
-            datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=pytz.UTC)
+            datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)
         ] * batch_size
         step_size = [600] * batch_size
         controller_batch.initialize(
@@ -74,7 +74,7 @@ class TestOnOffControllerSystem(unittest.TestCase):
         )
 
         # Execute a time step
-        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         controller_batch.do_step(
             second_time=0, date_time=datetime_val, step_size=600, step_index=0
         )

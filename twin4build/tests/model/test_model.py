@@ -436,7 +436,7 @@ class TestModelMethods(unittest.TestCase):
         import datetime
 
         # Third party imports
-        import pytz
+        from dateutil import tz
 
         schedule = ScheduleSystem(
             weekDayRulesetDict={
@@ -452,8 +452,8 @@ class TestModelMethods(unittest.TestCase):
         self.model.add_component(schedule)
         self.model.load()
 
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
 
         # Should not raise any errors
         self.model.cache(
