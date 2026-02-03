@@ -370,7 +370,7 @@ class Vector:
         i_s: Union[int, slice] = slice(None),
         i_c: Union[int, slice] = slice(None),
         i_v: Union[int, slice] = slice(None),
-        apply: callable = None,
+        transformation: callable = None,
     ) -> None:
         """Private efficient setter - v must be a correctly shaped tensor (or None for leaf).
         
@@ -383,7 +383,7 @@ class Vector:
             i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
             i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
             i_v (Union[int, slice]): Vector index (n_v dimension). Defaults to slice(None) for all.
-            apply (callable): Optional function to apply to the value.
+            transformation (callable): Optional function to transform to the value.
         """
         # Handle leaf vectors (get value from history)
         if self._is_leaf:
@@ -395,8 +395,8 @@ class Vector:
                 v = self._history[i_t]  # Time-first layout: shape (n_s, n_c, n_v)
         
         # Apply transformation if provided
-        if apply is not None:
-            v = apply(v)
+        if transformation is not None:
+            v = transformation(v)
         
         # Direct assignment - slice(None) acts as ':'
         self._tensor[i_s, i_c, i_v] = v
@@ -420,7 +420,7 @@ class Vector:
         i_s: Union[int, slice] = slice(None),
         i_c: Union[int, slice] = slice(None),
         i_v: Union[int, slice] = slice(None),
-        apply: callable = None,
+        transformation: callable = None,
     ) -> None:
         """Public convenient setter - handles type conversion and broadcasting.
 
@@ -431,7 +431,7 @@ class Vector:
             i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
             i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
             i_v (Union[int, slice]): Vector index (n_v dimension). Defaults to slice(None) for all.
-            apply (callable): Optional function to apply to the value.
+            transformation (callable): Optional function to transform the value.
         """
         # For non-leaf, prepare value with unified conversion logic
         if not self._is_leaf:
@@ -442,7 +442,7 @@ class Vector:
             )
         
         # Delegate to efficient private method
-        self._set(v, i_t, i_s, i_c, i_v, apply)
+        self._set(v, i_t, i_s, i_c, i_v, transformation)
 
     def get(
         self,
@@ -840,7 +840,7 @@ class Scalar:
         i_t: Optional[int] = None,
         i_s: Union[int, slice] = slice(None),
         i_c: Union[int, slice] = slice(None),
-        apply: callable = None,
+        transformation: callable = None,
         **kwargs,
     ) -> None:
         """Private efficient setter - v must be a correctly shaped tensor (or None for leaf).
@@ -853,7 +853,7 @@ class Scalar:
             i_t (Optional[int]): Step index for history logging (required if log_history=True or is_leaf=True).
             i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
             i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
-            apply (callable): Optional function to apply to the value.
+            transformation (callable): Optional function to transform the value.
         """
         # Handle leaf scalars (get value from history)
         if self._is_leaf:
@@ -865,8 +865,8 @@ class Scalar:
                 v = self._history[i_t]  # Time-first layout: shape (n_s, n_c)
         
         # Apply transformation if provided
-        if apply is not None:
-            v = apply(v)
+        if transformation is not None:
+            v = transformation(v)
         
         # Direct assignment - slice(None) acts as ':'
         self._tensor[i_s, i_c] = v
@@ -889,7 +889,7 @@ class Scalar:
         i_t: Optional[int] = None,
         i_s: Union[int, slice] = slice(None),
         i_c: Union[int, slice] = slice(None),
-        apply: callable = None,
+        transformation: callable = None,
         **kwargs,
     ) -> None:
         """Public convenient setter - handles type conversion and broadcasting.
@@ -900,7 +900,7 @@ class Scalar:
             i_t (Optional[int]): Step index for history logging.
             i_s (Union[int, slice]): Simulation index (n_s dimension). Defaults to slice(None) for all.
             i_c (Union[int, slice]): Component index (n_c dimension). Defaults to slice(None) for all.
-            apply (callable): Optional function to apply to the value.
+            transformation (callable): Optional function to transform the value.
         """
         # For non-leaf, prepare value with unified conversion logic
         if not self._is_leaf:
@@ -911,7 +911,7 @@ class Scalar:
             )
 
         # Delegate to efficient private method
-        self._set(v, i_t, i_s, i_c, apply)
+        self._set(v, i_t, i_s, i_c, transformation)
 
     def get(
         self,
@@ -1018,17 +1018,22 @@ class Parameter(nn.Parameter):
     parameter to have different values for multiple parallel instances.
     
     Args:
-        data: The parameter value(s). Can be a scalar or 1D tensor of shape (n_c,).
-        min_value: Minimum value for normalization. Can be scalar (broadcast) or per-component.
-        max_value: Maximum value for normalization. Can be scalar (broadcast) or per-component.
+        data: The parameter value (scalar or 1D tensor). Created as scalar initially,
+              use expand_to_n_c() in initialize() to expand to multiple components.
+        min_value: Minimum value for normalization.
+        max_value: Maximum value for normalization.
         requires_grad: Whether to track gradients for this parameter.
-        n_c: Number of parallel components. If None, inferred from data shape.
-             If data is scalar and n_c > 1, the scalar is broadcast to all components.
+    
+    Note:
+        n_c (number of parallel components) is not specified at construction time.
+        Use expand_to_n_c() method during initialize() when n_c is known.
     """
 
     def __new__(cls, data, min_value=None, max_value=None, requires_grad=True, n_c=None):
-        # Prepare data with n_c handling - data will have shape (n_c,)
-        data, n_c = _prepare_parameter_data(data, n_c)
+        if n_c is not None:
+            data = _broadcast_for_n_c(data, n_c)
+        # Prepare data - convert to tensor with shape (n_c,) where n_c is inferred
+        data, n_c = _prepare_parameter_data(data)
         
         # Set min and max values with defaults - all should have shape (n_c,)
         if min_value is None:
@@ -1168,7 +1173,7 @@ class Parameter(nn.Parameter):
         """
         Expand this parameter to support n_c parallel components.
         
-        If the parameter is currently scalar, it will be broadcast to a tensor of shape (n_c,).
+        If the parameter is currently scalar (n_c=1), it will be broadcast to shape (n_c,).
         If already has n_c components, this is a no-op.
         
         Args:
@@ -1182,25 +1187,27 @@ class Parameter(nn.Parameter):
         if self._n_c != 1:
             raise ValueError(f"Cannot expand parameter with n_c={self._n_c} to n_c={n_c}")
         
-        # Get denormalized value and expand
+        # Get denormalized value and expand to shape (n_c,)
         denorm_value = self.get()
-        if denorm_value.dim() == 0:
+        if denorm_value.dim() == 1 and denorm_value.shape[0] == 1:
+            denorm_value = denorm_value.expand(n_c).clone()
+        elif denorm_value.dim() == 0:
             denorm_value = denorm_value.expand(n_c).clone()
         
-        # Expand min/max values
+        # Expand min/max values to shape (n_c,)
         min_val = self._min_value
         max_val = self._max_value
-        if min_val.dim() == 0:
+        if min_val.dim() == 1 and min_val.shape[0] == 1:
             min_val = min_val.expand(n_c).clone()
-        if max_val.dim() == 0:
+        if max_val.dim() == 1 and max_val.shape[0] == 1:
             max_val = max_val.expand(n_c).clone()
         
+        # n_c is inferred from denorm_value shape in constructor
         return Parameter(
             denorm_value,
             min_value=min_val,
             max_value=max_val,
             requires_grad=self.requires_grad,
-            n_c=n_c
         )
 
 
@@ -1210,16 +1217,18 @@ class TensorParameter:
 
     This class is used to represent model parameters as a Tensor when we calculate the Jacobian analytically as the jac = torch.nn.functional.Jacobian() has the signature jac(f: callable, input: Tensor) -> Tensor.
     
-    Supports an optional `n_c` dimension for parallel components, allowing the same
-    parameter to have different values for multiple parallel instances.
+    Supports an `n_c` dimension for parallel components via expand_to_n_c() method.
     
     Args:
-        tensor: The parameter value(s). Can be a scalar or 1D tensor of shape (n_c,).
-        min_value: Minimum value for normalization. Can be scalar (broadcast) or per-component.
-        max_value: Maximum value for normalization. Can be scalar (broadcast) or per-component.
+        tensor: The parameter value (scalar or 1D tensor). Created as scalar initially,
+                use expand_to_n_c() in initialize() to expand to multiple components.
+        min_value: Minimum value for normalization.
+        max_value: Maximum value for normalization.
         normalized: Whether the input tensor is already normalized.
-        n_c: Number of parallel components. If None, inferred from tensor shape.
-             If tensor is scalar and n_c > 1, the scalar is broadcast to all components.
+    
+    Note:
+        n_c (number of parallel components) is not specified at construction time.
+        Use expand_to_n_c() method during initialize() when n_c is known.
     """
 
     def __init__(
@@ -1228,10 +1237,9 @@ class TensorParameter:
         min_value=None,
         max_value=None,
         normalized: bool = True,
-        n_c: int = None,
     ):
-        # Prepare tensor with n_c handling (converts numpy/list to tensor)
-        tensor, n_c = _prepare_parameter_data(tensor, n_c)
+        # Prepare tensor (converts numpy/list to tensor), infer n_c from shape
+        tensor, n_c = _prepare_parameter_data(tensor)
         self._n_c = n_c
         
         # Process min/max values with broadcasting
@@ -1311,7 +1319,7 @@ class TensorParameter:
         """
         Expand this parameter to support n_c parallel components.
         
-        If the parameter is currently scalar, it will be broadcast to a tensor of shape (n_c,).
+        If the parameter is currently scalar (n_c=1), it will be broadcast to shape (n_c,).
         If already has n_c components, this is a no-op.
         
         Args:
@@ -1325,25 +1333,33 @@ class TensorParameter:
         if self._n_c != 1:
             raise ValueError(f"Cannot expand parameter with n_c={self._n_c} to n_c={n_c}")
         
-        # Get current value and expand
+        # Get current value and expand to shape (n_c,)
         current_value = self.tensor
-        if current_value.dim() == 0:
+        if current_value.dim() == 1 and current_value.shape[0] == 1:
+            current_value = current_value.expand(n_c).clone()
+        elif current_value.dim() == 0:
             current_value = current_value.expand(n_c).clone()
         
-        # Expand min/max values if they exist
+        # Expand min/max values to shape (n_c,)
         min_val = self._min_value
         max_val = self._max_value
-        if min_val is not None and min_val.dim() == 0:
-            min_val = min_val.expand(n_c).clone()
-        if max_val is not None and max_val.dim() == 0:
-            max_val = max_val.expand(n_c).clone()
+        if min_val is not None:
+            if min_val.dim() == 1 and min_val.shape[0] == 1:
+                min_val = min_val.expand(n_c).clone()
+            elif min_val.dim() == 0:
+                min_val = min_val.expand(n_c).clone()
+        if max_val is not None:
+            if max_val.dim() == 1 and max_val.shape[0] == 1:
+                max_val = max_val.expand(n_c).clone()
+            elif max_val.dim() == 0:
+                max_val = max_val.expand(n_c).clone()
         
+        # n_c is inferred from current_value shape in constructor
         return TensorParameter(
             current_value,
             min_value=min_val,
             max_value=max_val,
             normalized=False,  # Value is already denormalized
-            n_c=n_c
         )
 
 
@@ -1577,34 +1593,26 @@ def _to_float64_tensor(v):
         raise TypeError(f"Unsupported type: {type(v)}")
 
 
-def _prepare_parameter_data(data, n_c):
+def _prepare_parameter_data(data):
     """
-    Prepare parameter data with n_c dimension handling.
+    Prepare parameter data, converting to tensor with shape (n_c,).
     
     Args:
         data: Input data (scalar, int, float, or tensor)
-        n_c: Number of parallel components (None to infer from data)
         
     Returns:
-        Tuple of (prepared_data with shape (n_c,), n_c)
+        Tuple of (prepared_data with shape (n_c,), n_c inferred from data)
     """
     data = _to_float64_tensor(data)
     
-    if n_c is not None and n_c > 1:
-        # If data is scalar and n_c > 1, broadcast to all components
-        if data.dim() == 0 or (data.dim() == 1 and data.shape[0] == 1):
-            data = data.expand(n_c).clone()
-        elif data.dim() == 1 and data.shape[0] != n_c:
-            raise ValueError(f"Data shape {data.shape} does not match n_c={n_c}")
+    # Infer n_c from data shape
+    if data.dim() == 0:
+        n_c = 1
+        data = data.unsqueeze(0)  # (1,)
+    elif data.dim() == 1:
+        n_c = data.shape[0]
     else:
-        # Infer n_c from data shape
-        if data.dim() == 0:
-            n_c = 1
-            data = data.unsqueeze(0)  # (1,)
-        elif data.dim() == 1:
-            n_c = data.shape[0]
-        else:
-            raise ValueError(f"Data must be 0D or 1D, got {data.dim()}D")
+        raise ValueError(f"Data must be 0D or 1D, got {data.dim()}D")
     
     return data, n_c
 
