@@ -877,7 +877,7 @@ class Logger:
 
         # Stop the display thread
         if self._display_thread is not None and self._display_thread.is_alive():
-            self._stop_thread._set()
+            self._stop_thread.set()
             self._display_thread.join(timeout=1.0)
 
         # Restore warning handler regardless of curses state
