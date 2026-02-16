@@ -1023,13 +1023,21 @@ class Parameter(nn.Parameter):
         min_value: Minimum value for normalization.
         max_value: Maximum value for normalization.
         requires_grad: Whether to track gradients for this parameter.
+        scaling: Normalization scaling mode. ``"linear"`` (default) uses standard
+            min-max normalization. ``"log"`` uses logarithmic normalization so that
+            equal steps in normalized [0, 1] space correspond to equal multiplicative
+            changes in the physical value. Log scaling requires ``min_value > 0``.
     
     Note:
         n_c (number of parallel components) is not specified at construction time.
         Use expand_to_n_c() method during initialize() when n_c is known.
     """
 
-    def __new__(cls, data, min_value=None, max_value=None, requires_grad=True, n_c=None):
+    def __new__(cls, data, min_value=None, max_value=None, requires_grad=True, n_c=None, scaling="linear"):
+        assert scaling in ("linear", "log"), (
+            f"scaling must be 'linear' or 'log', got '{scaling}'"
+        )
+
         if n_c is not None:
             data = _broadcast_for_n_c(data, n_c)
         # Prepare data - convert to tensor with shape (n_c,) where n_c is inferred
@@ -1058,8 +1066,17 @@ class Parameter(nn.Parameter):
             max_value > min_value
         ), "max_value must be greater than min_value"
 
-        # Normalize the data
-        normalized_data = (data - min_value) / (max_value - min_value)
+        if scaling == "log":
+            assert torch.all(min_value > 0), (
+                "min_value must be > 0 for log scaling"
+            )
+            # Normalize in log-space: (log(v) - log(min)) / (log(max) - log(min))
+            normalized_data = (torch.log(data) - torch.log(min_value)) / (
+                torch.log(max_value) - torch.log(min_value)
+            )
+        else:
+            # Normalize the data (linear)
+            normalized_data = (data - min_value) / (max_value - min_value)
 
         # Create the parameter using the parent's __new__ method
         instance = super().__new__(cls, normalized_data, requires_grad)
@@ -1068,6 +1085,7 @@ class Parameter(nn.Parameter):
         instance._min_value = min_value
         instance._max_value = max_value
         instance._n_c = n_c
+        instance._scaling = scaling
 
         return instance
 
@@ -1089,6 +1107,7 @@ class Parameter(nn.Parameter):
         state["_min_value"] = self._min_value
         state["_max_value"] = self._max_value
         state["_n_c"] = self._n_c
+        state["_scaling"] = self._scaling
         state["_is_tps_parameter"] = True
 
         # Use our own rebuild functions
@@ -1116,6 +1135,11 @@ class Parameter(nn.Parameter):
     def n_c(self):
         """Number of parallel components."""
         return self._n_c
+
+    @property
+    def scaling(self):
+        """Normalization scaling mode ('linear' or 'log')."""
+        return self._scaling
 
     @min_value.setter
     def min_value(self, value):
@@ -1148,11 +1172,21 @@ class Parameter(nn.Parameter):
         assert (
             torch.allclose(min_value, max_value) == False
         ), "min_value and max_value must be different"
-        return (v - self._min_value) / (self._max_value - self._min_value)
+
+        if self._scaling == "log":
+            return (torch.log(v) - torch.log(self._min_value)) / (
+                torch.log(self._max_value) - torch.log(self._min_value)
+            )
+        else:
+            return (v - self._min_value) / (self._max_value - self._min_value)
 
     def denormalize(self, v: torch.Tensor):
-        result = v * (self._max_value - self._min_value) + self._min_value
-        return result
+        if self._scaling == "log":
+            log_min = torch.log(self._min_value)
+            log_range = torch.log(self._max_value) - log_min
+            return torch.exp(v * log_range + log_min)
+        else:
+            return v * (self._max_value - self._min_value) + self._min_value
 
     def get(self):
         """Get the denormalized value."""
@@ -1208,6 +1242,7 @@ class Parameter(nn.Parameter):
             min_value=min_val,
             max_value=max_val,
             requires_grad=self.requires_grad,
+            scaling=self._scaling,
         )
 
 
@@ -1225,6 +1260,10 @@ class TensorParameter:
         min_value: Minimum value for normalization.
         max_value: Maximum value for normalization.
         normalized: Whether the input tensor is already normalized.
+        scaling: Normalization scaling mode. ``"linear"`` (default) uses standard
+            min-max normalization. ``"log"`` uses logarithmic normalization so that
+            equal steps in normalized [0, 1] space correspond to equal multiplicative
+            changes in the physical value. Log scaling requires ``min_value > 0``.
     
     Note:
         n_c (number of parallel components) is not specified at construction time.
@@ -1237,14 +1276,25 @@ class TensorParameter:
         min_value=None,
         max_value=None,
         normalized: bool = True,
+        scaling: str = "linear",
     ):
+        assert scaling in ("linear", "log"), (
+            f"scaling must be 'linear' or 'log', got '{scaling}'"
+        )
+
         # Prepare tensor (converts numpy/list to tensor), infer n_c from shape
         tensor, n_c = _prepare_parameter_data(tensor)
         self._n_c = n_c
+        self._scaling = scaling
         
         # Process min/max values with broadcasting
         self._min_value = _prepare_bound_value(min_value, tensor.shape, n_c)
         self._max_value = _prepare_bound_value(max_value, tensor.shape, n_c)
+
+        if scaling == "log" and self._min_value is not None:
+            assert torch.all(self._min_value > 0), (
+                "min_value must be > 0 for log scaling"
+            )
 
         self.set(tensor, normalized=normalized)
 
@@ -1260,6 +1310,11 @@ class TensorParameter:
     def n_c(self):
         """Number of parallel components."""
         return self._n_c
+
+    @property
+    def scaling(self):
+        """Normalization scaling mode ('linear' or 'log')."""
+        return self._scaling
 
     @min_value.setter
     def min_value(self, value):
@@ -1292,10 +1347,21 @@ class TensorParameter:
         assert (
             torch.allclose(min_value, max_value) == False
         ), "min_value and max_value must be different"
-        return (v - self._min_value) / (self._max_value - self._min_value)
+
+        if self._scaling == "log":
+            return (torch.log(v) - torch.log(self._min_value)) / (
+                torch.log(self._max_value) - torch.log(self._min_value)
+            )
+        else:
+            return (v - self._min_value) / (self._max_value - self._min_value)
 
     def denormalize(self, v: torch.Tensor):
-        return v * (self._max_value - self._min_value) + self._min_value
+        if self._scaling == "log":
+            log_min = torch.log(self._min_value)
+            log_range = torch.log(self._max_value) - log_min
+            return torch.exp(v * log_range + log_min)
+        else:
+            return v * (self._max_value - self._min_value) + self._min_value
 
     def get(self):
         """Get the denormalized value."""
@@ -1360,6 +1426,7 @@ class TensorParameter:
             min_value=min_val,
             max_value=max_val,
             normalized=False,  # Value is already denormalized
+            scaling=self._scaling,
         )
 
 
