@@ -640,9 +640,8 @@ def run_complex_identification_example():
         n_sensors=len(sensors),
         n_setpoints=len(setpoints),
         n_actuators=2,  # TWO ACTUATORS
-        candidate_controllers=controller_classes,
-        candidate_controller_kwargs=controller_kwargs,
-        isReverse=True,
+        # candidate_controllers=controller_classes,
+        # candidate_controller_kwargs=controller_kwargs,
         id="identified_controller",
     )
     model.add_component(controller)
@@ -689,7 +688,7 @@ def run_complex_identification_example():
     #   - On-Off params: offValue=0.0, onValue=1.0, steepness=100
     
     parameters_exact_optimal = []
-    for comp, attr, x0, lb, ub in parameters:
+    for comp, attr, x0, lb, ub, *_ in parameters:
         if attr == "alpha_0":
             x0 = [0.5, 0.5]  # EXACT: PI selected for actuator 0
         elif attr == "beta_0":
@@ -720,7 +719,7 @@ def run_complex_identification_example():
     # This is key: at x=0.5, the binarization penalty gradient is zero,
     # so initial direction is determined purely by data fit
     parameters_init_half = []
-    for comp, attr, x0, lb, ub in parameters:
+    for comp, attr, x0, lb, ub, *_ in parameters:
         if 'alpha' in attr or 'beta' in attr or 'gamma' in attr:
             # Selection weights: initialize at 0.5
             if isinstance(x0, (list, np.ndarray)):
@@ -733,7 +732,7 @@ def run_complex_identification_example():
     
     # Debug: verify x0 values
     print("\n   Verifying x0 values for selection weights:")
-    for comp, attr, x0, lb, ub in parameters:
+    for comp, attr, x0, lb, ub, *_ in parameters:
         if 'alpha' in attr or 'beta' in attr or 'gamma' in attr:
             print(f"     {attr}: x0={x0}")
 
@@ -787,7 +786,7 @@ def run_complex_identification_example():
     # Debug: Print parameter mapping
     print("\n   [DEBUG] Parameter mapping (theta index -> parameter):")
     theta_idx = 0
-    for comp, attr, x0, lb, ub in parameters:
+    for comp, attr, x0, lb, ub, *_ in parameters:
         if isinstance(x0, (list, np.ndarray)):
             n_vals = len(x0)
         else:
@@ -831,10 +830,10 @@ def run_complex_identification_example():
     print(f"       kp = {ctrl_pi_0.kp.get().item():.6f}")
     print(f"       Ti = {ctrl_pi_0.Ti.get().item():.6f}")
     print(f"       Td = {ctrl_pi_0.Td.get().item():.6f}")
-    print(f"     OnOff Controller (Act.1, Cand.1):")
-    print(f"       offValue = {ctrl_onoff_1.offValue.get().item():.6f}")
-    print(f"       onValue = {ctrl_onoff_1.onValue.get().item():.6f}")
-    print(f"       steepness = {ctrl_onoff_1.steepness.get().item():.6f}")
+    # print(f"     OnOff Controller (Act.1, Cand.1):")
+    # print(f"       offValue = {ctrl_onoff_1.offValue.get().item():.6f}")
+    # print(f"       onValue = {ctrl_onoff_1.onValue.get().item():.6f}")
+    # print(f"       steepness = {ctrl_onoff_1.steepness.get().item():.6f}")
     
     # Run simulation with x0 parameters
     print("\n   Running simulation with x0 parameters...")
@@ -899,7 +898,7 @@ def run_complex_identification_example():
         print(f"       gamma: {gamma.detach().numpy()}")
     
     options = {
-        "maxiter": 5,  # More iterations for default x0
+        "maxiter": 5000,  # More iterations for default x0
         "ftol": 1e-10,
         "disp": True,
     }
@@ -959,7 +958,7 @@ def run_complex_identification_example():
     
     # Build parameter names for debug output
     _param_names = []
-    for comp, attr, x0, lb, ub in parameters:
+    for comp, attr, x0, lb, ub, *_ in parameters:
         if isinstance(x0, (list, np.ndarray)):
             for i in range(len(x0)):
                 _param_names.append(f"{attr}[{i}]")
@@ -992,8 +991,8 @@ def run_complex_identification_example():
     estimator._jac_ad = _debug_jac_ad
     
     # Profile the estimate method
-    profiler = cProfile.Profile()
-    profiler.enable()
+    # profiler = cProfile.Profile()
+    # profiler.enable()
     
     result = estimator.estimate(
         start_time=start_time,
@@ -1013,25 +1012,25 @@ def run_complex_identification_example():
     estimator._jac_ad = _orig_jac_ad
     
     
-    profiler.disable()
+    # profiler.disable()
     
-    # Print profiling results
-    print("\n" + "=" * 80)
-    print("PROFILING RESULTS")
-    print("=" * 80)
+    # # Print profiling results
+    # print("\n" + "=" * 80)
+    # print("PROFILING RESULTS")
+    # print("=" * 80)
     
-    # Sort by cumulative time and show top 30 functions
-    stream = io.StringIO()
-    stats = pstats.Stats(profiler, stream=stream)
-    stats.sort_stats('time')
-    stats.print_stats(30)
-    print(stream.getvalue())
+    # # Sort by cumulative time and show top 30 functions
+    # stream = io.StringIO()
+    # stats = pstats.Stats(profiler, stream=stream)
+    # stats.sort_stats('time')
+    # stats.print_stats(30)
+    # print(stream.getvalue())
     
-    # Also save to file for detailed analysis
-    profile_path = os.path.join(script_dir, "control_identification_profile.prof")
-    profiler.dump_stats(profile_path)
-    print(f"Full profile saved to: {profile_path}")
-    print(f"View with: python -m snakeviz {profile_path}")
+    # # Also save to file for detailed analysis
+    # profile_path = os.path.join(script_dir, "control_identification_profile.prof")
+    # profiler.dump_stats(profile_path)
+    # print(f"Full profile saved to: {profile_path}")
+    # print(f"View with: python -m snakeviz {profile_path}")
     
     # =========================================================================
     # Results
@@ -1102,15 +1101,15 @@ def run_complex_identification_example():
                 if hasattr(ctrl, 'Td'):
                     print(f"       Td = {ctrl.Td.get().item():.6f}")
                 # On-Off controller parameters
-                if hasattr(ctrl, 'offValue'):
-                    true_off = true_params['onoff']['offValue'] if a == 1 else "N/A"
-                    print(f"       offValue = {ctrl.offValue.get().item():.6f} (true: {true_off})")
-                if hasattr(ctrl, 'onValue'):
-                    true_on = true_params['onoff']['onValue'] if a == 1 else "N/A"
-                    print(f"       onValue = {ctrl.onValue.get().item():.6f} (true: {true_on})")
-                if hasattr(ctrl, 'steepness'):
-                    true_k = true_params['onoff']['steepness'] if a == 1 else "N/A"
-                    print(f"       steepness = {ctrl.steepness.get().item():.6f} (true: {true_k})")
+                # if hasattr(ctrl, 'offValue'):
+                #     true_off = true_params['onoff']['offValue'] if a == 1 else "N/A"
+                #     print(f"       offValue = {ctrl.offValue.get().item():.6f} (true: {true_off})")
+                # if hasattr(ctrl, 'onValue'):
+                #     true_on = true_params['onoff']['onValue'] if a == 1 else "N/A"
+                #     print(f"       onValue = {ctrl.onValue.get().item():.6f} (true: {true_on})")
+                # if hasattr(ctrl, 'steepness'):
+                #     true_k = true_params['onoff']['steepness'] if a == 1 else "N/A"
+                #     print(f"       steepness = {ctrl.steepness.get().item():.6f} (true: {true_k})")
     
     # =========================================================================
     # Plot Results
