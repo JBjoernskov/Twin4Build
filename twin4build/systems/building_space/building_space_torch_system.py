@@ -372,6 +372,7 @@ def brick_signature_pattern():  # Fits to site A
             core.namespace.BRICK.Room,
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
+            core.namespace.BRICK.HVAC_Zone,
         )
     )  # TODO: 'space' should be 'Office', but the site b ttl file has a bug
     damper_position_sensor = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
@@ -404,13 +405,13 @@ def brick_signature_pattern():  # Fits to site A
     # )
 
 
-    # sp.add_connection(ahu, "supplyAirFlowRate", "supplyAirFlowRate")
-    # sp.add_connection(ahu, "exhaustAirFlowRate", "exhaustAirFlowRate")
+    sp.add_connection(ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space)
+    sp.add_connection(ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space)
     # # sp.add_input("numberOfPeople", node5, "measuredValue")
-    # sp.add_connection(weather_station, "measuredValue", "outdoorTemperature")
+    sp.add_connection(outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature")
     # # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
-    # sp.add_connection(weather_station, "globalIrradiation", "globalIrradiation")
-    # sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
+    # sp.add_connection(solar_radiance_sensor, "globalIrradiation", "globalIrradiation")
+    sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
 
 
 

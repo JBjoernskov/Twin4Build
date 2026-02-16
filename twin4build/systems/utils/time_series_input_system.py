@@ -51,6 +51,7 @@ class TimeSeriesInputSystem(core.System):
         uuid: Optional[str] = None,
         dbconfig: Optional[Dict[str, Any]] = None,
         cache: Optional[bool] = True,
+        transformation: Optional[callable] = None,
         **kwargs,
     ) -> None:
         """Initialize the TimeSeriesInputSystem.
@@ -83,8 +84,8 @@ class TimeSeriesInputSystem(core.System):
         ), "use_spreadsheet and use_database cannot both be True."
         super().__init__(**kwargs)
         assert (
-            df is not None or filename is not None
-        ), 'Either "df" or "filename" must be provided as argument.'
+            df is not None or filename is not None or uuid is not None
+        ), f'Either "df" or "filename" or "uuid" must be provided as argument.'
 
         # # Store attributes as private variables
         # if isinstance(df, pd.DataFrame):
@@ -104,7 +105,8 @@ class TimeSeriesInputSystem(core.System):
         self._dbconfig = dbconfig
         self._cached_initialize_arguments = []
         self._cache_root = get_main_dir()
-        self.cache = cache
+        self._cache = cache
+        self._transformation = transformation
 
         # Define inputs and outputs as private variables
         self._input = {}
@@ -360,17 +362,17 @@ class TimeSeriesInputSystem(core.System):
                             start_time=start_time_,
                             end_time=end_time_,
                             cache_root=self._cache_root,
-                            cache=self.cache,
+                            cache=self._cache,
                         )
                     elif self.use_database:
                         df = load_from_database(
-                            config=self.dbconfig,
-                            sensor_id=self.uuid,
                             step_size=step_size_,
                             start_time=start_time_,
                             end_time=end_time_,
                             cache_root=self._cache_root,
-                            cache=self.cache,
+                            cache=self._cache,
+                            sensor_id=self.uuid,
+                            **self.dbconfig,
                         )
                 else:
                     df_ = self._df_init.copy()
@@ -391,6 +393,8 @@ class TimeSeriesInputSystem(core.System):
                 self._cached_initialize_arguments.append(
                     (start_time_, end_time_, step_size_)
                 )
+                if self._transformation is not None:
+                    df = df.apply(self._transformation)
                 self.df.append(df)
 
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(

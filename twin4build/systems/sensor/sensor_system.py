@@ -382,6 +382,7 @@ class SensorSystem(core.System):
         use_spreadsheet: bool = False,
         use_database: bool = False,
         use_df: bool = False,
+        transformation: Optional[callable] = None,
         **kwargs,
     ) -> None:
         """Initialize the sensor system.
@@ -397,6 +398,8 @@ class SensorSystem(core.System):
                 Defaults to False.
             use_df: Whether to use the provided DataFrame for input.
                 Defaults to False.
+            transformation: Optional function to transform the value.
+                Defaults to None.
             **kwargs: Additional keyword arguments passed to parent class.
 
         Note:
@@ -459,6 +462,7 @@ class SensorSystem(core.System):
         self._dbconfig = dbconfig
         self._is_leaf = None
         self._time_series_input = None
+        self._transformation = transformation
 
         self._config = {
             "parameters": ["use_spreadsheet", "use_database", "use_df"],
@@ -744,15 +748,15 @@ class SensorSystem(core.System):
         validated_for_estimator = True
         validated_for_optimizer = True
 
-        if len(self.connects_at) == 0 and self.filename is None:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df must be provided to enable use of Simulator, Estimator, and Optimizer."
+        if len(self.connects_at) == 0 and self.filename is None and self.df is None and self.uuid is None:
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df or uuid must be provided to enable use of Simulator, Estimator, and Optimizer."
             p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False
 
-        elif len(self.connects_at) > 0 and self.filename is None:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df must be provided to enable use of Estimator."
+        elif len(self.connects_at) > 0 and self.filename is None and self.df is None and self.uuid is None:
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df or uuid must be provided to enable use of Estimator."
             p(message, status="WARNING")
             validated_for_estimator = False
 
@@ -815,6 +819,7 @@ class SensorSystem(core.System):
                 use_database=self.use_database,
                 uuid=self.uuid,
                 dbconfig=self.dbconfig,
+                transformation=self._transformation,
             )
             self.time_series_input.initialize(
                 start_time=start_time,
