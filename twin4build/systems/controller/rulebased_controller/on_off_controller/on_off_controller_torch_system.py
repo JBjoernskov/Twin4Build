@@ -129,6 +129,11 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
             batch_size=batch_size,
         )
 
+        # Expand parameters to n_c dimension for vectorization
+        self.offValue = self.offValue.expand_to_n_c(self.n_c)
+        self.onValue = self.onValue.expand_to_n_c(self.n_c)
+        self.steepness = self.steepness.expand_to_n_c(self.n_c)
+
     def power_law_saturation(
         self,
         error: torch.Tensor,

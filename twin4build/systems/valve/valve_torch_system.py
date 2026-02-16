@@ -162,6 +162,11 @@ class ValveTorchSystem(core.System, nn.Module):
                 n_t=max_timesteps,
                 n_s=batch_size,
             )
+
+        # Expand parameters to n_c dimension for vectorization
+        self.waterFlowRateMax = self.waterFlowRateMax.expand_to_n_c(self.n_c)
+        self.valveAuthority = self.valveAuthority.expand_to_n_c(self.n_c)
+
         self.INITIALIZED = True
 
     def do_step(

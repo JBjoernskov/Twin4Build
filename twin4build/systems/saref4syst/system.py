@@ -114,6 +114,7 @@ class System:
         self._input = input
         self._output = output
         self._id = id
+        self._n_c = 1  # Number of parallel components (for vectorization)
 
     @classmethod
     def add_signature_pattern(cls, signature_pattern: core.SignaturePattern) -> None:
@@ -193,6 +194,48 @@ class System:
         Set the id of the system.
         """
         self._id = value
+
+    @property
+    def n_c(self) -> int:
+        """
+        Get the number of parallel components (for n_c vectorization).
+        """
+        return self._n_c
+
+    @n_c.setter
+    def n_c(self, value: int) -> None:
+        """
+        Set the number of parallel components (for n_c vectorization).
+        """
+        self._n_c = value
+
+    def get_n_v_from_connections(self, input_port_name: str) -> int:
+        """
+        Determine the required n_v (vector size) for a given input port by examining
+        connection points and finding the largest input_port_index.
+
+        Args:
+            input_port_name: Name of the input port to check.
+
+        Returns:
+            int: Required n_v (max index + 1), or 1 if no connections found.
+        """
+        max_index = 0
+        found_connection = False
+
+        for cp in self.connects_at:
+            if cp.input_port == input_port_name:
+                # Get all indices from the input_port_index dict
+                for index in cp.input_port_index.values():
+                    found_connection = True
+                    # Index is always a tensor (scalar or array) - get max value
+                    idx_val = index.max().item()
+                    max_index = max(max_index, idx_val)
+
+        n_v =  max_index + 1
+        if found_connection==False:
+            n_v = None
+        return n_v  # Default to None if no connections
 
     def initialize(
         self,

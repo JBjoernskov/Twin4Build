@@ -187,6 +187,16 @@ class FanTorchSystem(core.System, nn.Module):
                 n_t=max_timesteps,
                 n_s=batch_size,
             )
+
+        # Expand parameters to n_c dimension for vectorization
+        self.nominalPowerRate = self.nominalPowerRate.expand_to_n_c(self.n_c)
+        self.nominalAirFlowRate = self.nominalAirFlowRate.expand_to_n_c(self.n_c)
+        self.c1 = self.c1.expand_to_n_c(self.n_c)
+        self.c2 = self.c2.expand_to_n_c(self.n_c)
+        self.c3 = self.c3.expand_to_n_c(self.n_c)
+        self.c4 = self.c4.expand_to_n_c(self.n_c)
+        self.f_total = self.f_total.expand_to_n_c(self.n_c)
+
         self.INITIALIZED = True
 
     def do_step(

@@ -410,6 +410,19 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 n_s=batch_size,
             )
 
+        # Expand parameters to n_c dimension for vectorization
+        self.C_air = self.C_air.expand_to_n_c(self.n_c)
+        self.C_wall = self.C_wall.expand_to_n_c(self.n_c)
+        self.C_int = self.C_int.expand_to_n_c(self.n_c)
+        self.C_boundary = self.C_boundary.expand_to_n_c(self.n_c)
+        self.R_out = self.R_out.expand_to_n_c(self.n_c)
+        self.R_in = self.R_in.expand_to_n_c(self.n_c)
+        self.R_int = self.R_int.expand_to_n_c(self.n_c)
+        self.R_boundary = self.R_boundary.expand_to_n_c(self.n_c)
+        self.f_wall = self.f_wall.expand_to_n_c(self.n_c)
+        self.f_air = self.f_air.expand_to_n_c(self.n_c)
+        self.Q_occ_gain = self.Q_occ_gain.expand_to_n_c(self.n_c)
+
         if not self.INITIALIZED:
             # First initialization
             self._create_state_space_model()

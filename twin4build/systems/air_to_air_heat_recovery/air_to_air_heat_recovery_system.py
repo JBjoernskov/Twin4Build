@@ -207,6 +207,15 @@ class AirToAirHeatRecoverySystem(core.System):
                 n_t=max_timesteps,
                 n_s=batch_size,
             )
+
+        # Expand parameters to n_c dimension for vectorization
+        self.eps_75_h = self.eps_75_h.expand_to_n_c(self.n_c)
+        self.eps_100_h = self.eps_100_h.expand_to_n_c(self.n_c)
+        self.eps_75_c = self.eps_75_c.expand_to_n_c(self.n_c)
+        self.eps_100_c = self.eps_100_c.expand_to_n_c(self.n_c)
+        self.primaryAirFlowRateMax = self.primaryAirFlowRateMax.expand_to_n_c(self.n_c)
+        self.secondaryAirFlowRateMax = self.secondaryAirFlowRateMax.expand_to_n_c(self.n_c)
+
         self.INITIALIZED = True
 
     def do_step(

@@ -352,6 +352,10 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
                 n_s=batch_size,
             )
 
+        # Expand parameters to n_c dimension for vectorization
+        self.UA = self.UA.expand_to_n_c(self.n_c)
+        self.thermalMassHeatCapacity = self.thermalMassHeatCapacity.expand_to_n_c(self.n_c)
+
         if not self.INITIALIZED:
             # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh
             UA0 = float(

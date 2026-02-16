@@ -213,6 +213,11 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
                 n_s=batch_size,
             )
 
+        # Expand parameters to n_c dimension for vectorization
+        self.V = self.V.expand_to_n_c(self.n_c)
+        self.G_occ = self.G_occ.expand_to_n_c(self.n_c)
+        self.m_inf = self.m_inf.expand_to_n_c(self.n_c)
+
         if not self.INITIALIZED:
             # First initialization
             self._create_state_space_model()
