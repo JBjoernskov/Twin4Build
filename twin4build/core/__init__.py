@@ -60,6 +60,8 @@ class namespace:
     REC = rdflib.Namespace("https://w3id.org/rec#")
     OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#")
     FPO = rdflib.Namespace("https://w3id.org/fpo#")
+    SENAPS = rdflib.Namespace("http://senaps.io/schema/1.0/senaps#")
+    BRICKREF = rdflib.Namespace("https://brickschema.org/schema/Brick/ref#")
 
 
 class ontology:

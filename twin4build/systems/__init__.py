@@ -64,8 +64,13 @@ __all__ = [
     "CoilTorchSystem",
     # Controllers # TODO: Convert to Torch
     "PIDControllerSystem",
+    "CascadeControllerSystem",
+    "CascadePIDControllerSystem",  # backward-compatible alias
     "OnOffControllerSystem",
     "OnOffControllerTorchSystem",
+    "ScheduleSwitchControllerTorchSystem",
+    "SATLinearRuleSystem",
+    "SATCompensatedControllerTorchSystem",
     "ClassificationAnnControllerSystem",
     "NeuralPolicyControllerSystem",
     "ControllerIdentificationTorchSystem",
@@ -134,10 +139,21 @@ from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off
 from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_torch_system import (
     OnOffControllerTorchSystem,
 )
+from twin4build.systems.controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_torch_system import (
+    ScheduleSwitchControllerTorchSystem,
+)
+from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_torch_system import (
+    SATLinearRuleSystem,
+    SATCompensatedControllerTorchSystem,
+)
 
 # Controllers
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
+)
+from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
+    CascadeControllerSystem,
+    CascadePIDControllerSystem,  # backward-compatible alias
 )
 
 # Damper
