@@ -17,7 +17,7 @@ import torch.multiprocessing as multiprocessing
 import torch.nn as nn
 from fmpy.fmi1 import FMICallException
 from scipy._lib._array_api import array_namespace
-from scipy.optimize import Bounds, least_squares, minimize
+from scipy.optimize import Bounds, dual_annealing, basinhopping, least_squares, minimize
 
 # Local application imports
 import twin4build.core as core
@@ -290,6 +290,7 @@ class Estimator:
         options: Optional[Dict] = None,
         regularization_lambda: float = 0.0,
         regularization_components: Optional[List[core.System]] = None,
+        lambda_schedule: Optional[List[Tuple[float, Optional[Dict]]]] = None,
         **kwargs: Dict,
     ) -> EstimationResult:
         """
@@ -368,13 +369,28 @@ class Estimator:
 
                 Supported optimizers by mode:
 
-                Automatic Differentiation (AD) mode:
+                Automatic Differentiation (AD) mode — local optimizers:
                 - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
                 - "L-BFGS-B": Limited-memory BFGS with bounds
                 - "TNC": Truncated Newton algorithm with bounds
                 - "trust-constr": Trust-region constrained optimization
                 - "trf": Trust Region Reflective (for least-squares problems)
                 - "dogbox": Dogleg algorithm (for least-squares problems)
+
+                Automatic Differentiation (AD) mode — global optimizers:
+                - "dual_annealing": Generalized simulated annealing. Explores broadly at
+                  high temperature to find the right basin, then anneals and polishes with
+                  a local gradient-based minimizer (SLSQP by default). Good for non-convex
+                  landscapes with many local minima.
+                  Options: ``initial_temp`` (default 5230), ``restart_temp_ratio`` (default 2e-5),
+                  ``visit`` (default 2.62), ``accept`` (default -5.0), ``maxiter`` (default 1000),
+                  ``maxfun`` (default 1e7), ``no_local_search`` (default False),
+                  ``local_search_method`` (default "SLSQP").
+                - "basinhopping": Random perturbation + local minimization with Metropolis
+                  acceptance criterion. At each iteration: perturb the current solution,
+                  run gradient-based local optimization, accept/reject based on temperature.
+                  Options: ``niter`` (default 100), ``T`` (temperature, default 1.0),
+                  ``stepsize`` (default 0.5), ``local_search_method`` (default "SLSQP").
 
                 Finite Difference (FD) mode:
                 - "trf": Trust Region Reflective (for least-squares problems)
@@ -386,6 +402,8 @@ class Estimator:
 
                 Examples:
                 - ("scipy", "SLSQP", "ad"): Preferred for most PyTorch models
+                - ("scipy", "dual_annealing", "ad"): For non-convex problems with many local minima
+                - ("scipy", "basinhopping", "ad"): Alternative global optimizer with basin-hopping
                 - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
                 - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
 
@@ -415,6 +433,36 @@ class Estimator:
             regularization_components: List of components that have a `compute_binarization_penalty()`
                 method. If None and regularization_lambda > 0, will auto-detect components
                 with this method from the parameter components.
+
+            lambda_schedule: Optional continuation schedule for regularization_lambda.
+
+                A list of tuples.  When provided, the estimator runs multiple
+                optimisation phases sequentially, each with a different
+                regularization strength.  Each phase warm-starts from the
+                solution of the previous phase.
+
+                Each tuple can be:
+
+                - ``(lambda_value,)``
+                - ``(lambda_value, phase_options)``
+
+                Where:
+
+                - ``lambda_value`` (float): The regularization_lambda for this phase.
+                - ``phase_options`` (dict or None): Per-phase overrides for ``options``.
+                  If None, the top-level ``options`` dict is used.
+
+                The ``regularization_lambda`` argument is ignored when a schedule is
+                provided.
+
+                Example::
+
+                    lambda_schedule = [
+                        (0.0,   {"maxiter": 200}),  # Phase 1: no penalty, find good fit
+                        (0.001, {"maxiter": 100}),   # Phase 2: gentle push toward binary
+                        (0.01,  {"maxiter": 100}),   # Phase 3: stronger push
+                        (0.1,   {"maxiter": 50}),    # Phase 4: hard binary
+                    ]
 
         Returns
         -------
@@ -526,6 +574,8 @@ class Estimator:
             ("scipy", "SLSQP", "ad"),
             ("scipy", "trust-constr", "fd"),
             ("scipy", "trust-constr", "ad"),
+            ("scipy", "dual_annealing", "ad"),
+            ("scipy", "basinhopping", "ad"),
         ]
         default_none_method = ("scipy", "SLSQP", "ad")
         default_methods = [("scipy", "SLSQP", "ad")]
@@ -652,12 +702,85 @@ class Estimator:
         self._set_bounds(normalize=True)
 
         # Run optimization based on method
-        if method[0] == "scipy":
-            if options is None:
-                options = {}
-            return self._scipy_solver(method=method, n_cores=n_cores, **options)
-        else:
+        if method[0] != "scipy":
             raise ValueError(f"Unsupported library: {method[0]}")
+
+        if options is None:
+            options = {}
+
+        # --- Lambda scheduling (continuation method) ---
+        if lambda_schedule is not None:
+            return self._run_lambda_schedule(
+                lambda_schedule=lambda_schedule,
+                method=method,
+                n_cores=n_cores,
+                base_options=options,
+            )
+
+        # Single-phase optimisation
+        return self._scipy_solver(method=method, n_cores=n_cores, **options)
+
+    def _run_lambda_schedule(
+        self,
+        lambda_schedule: List[Tuple],
+        method: tuple,
+        n_cores: Optional[int],
+        base_options: Dict,
+    ) -> "EstimationResult":
+        """Run multi-phase optimisation with increasing regularization_lambda.
+
+        Each phase warm-starts from the previous phase's solution by updating
+        ``self._x0_norm`` in-place before calling the solver.
+
+        Parameters
+        ----------
+        lambda_schedule : list of tuples
+            Each entry is ``(lambda_value,)`` or ``(lambda_value, phase_options)``.
+
+            - ``lambda_value`` (float): regularization strength for this phase.
+            - ``phase_options`` (dict or None): per-phase optimizer option overrides.
+
+        method : solver method tuple
+        n_cores : number of CPU cores (for FD mode)
+        base_options : default options dict (used when phase_options is None)
+
+        Returns
+        -------
+        EstimationResult
+            Result from the **final** phase (includes the fully regularised solution).
+        """
+        n_phases = len(lambda_schedule)
+        result = None
+
+        for phase_idx, entry in enumerate(lambda_schedule):
+            lam = entry[0]
+            phase_opts = entry[1] if len(entry) > 1 and entry[1] is not None else {}
+
+            # Merge: base_options as defaults, phase_opts as overrides
+            merged_options = {**base_options, **phase_opts}
+
+            # Update lambda for this phase
+            self._regularization_lambda = lam
+
+            # Reset MSE scaling so each phase rescales from its own initial MSE
+            self._mse_scaled = None
+
+            phase_label = f"Phase {phase_idx + 1}/{n_phases}"
+            print(f"\n{'='*60}")
+            print(f"  {phase_label}: λ = {lam}")
+            print(f"{'='*60}")
+
+            result = self._scipy_solver(method=method, n_cores=n_cores, **merged_options)
+
+            # Warm-start next phase: set x0 to the normalised solution
+            self._x0_norm = self._last_x_norm.copy()
+
+            obj_val = result.get("final_objective", None)
+            print(f"  {phase_label} done — objective = {obj_val}")
+
+        # The final _scipy_solver call already saved the result and set
+        # parameters on the model, so we can return it directly.
+        return result
 
     def _validate_list_format(self, parameters_list: List[Tuple]) -> List[Tuple]:
         """
@@ -1700,6 +1823,109 @@ class Estimator:
                     method=method[1],
                     **options,
                 )
+        elif method[1] == "dual_annealing":
+            # Global optimization via generalized simulated annealing.
+            # High temperature explores broadly to find the right basin,
+            # then anneals and polishes with a local gradient-based minimizer.
+            bounds_list = list(zip(self.bounds.lb, self.bounds.ub))
+
+            # Separate dual_annealing kwargs from local minimizer options
+            da_keys = {
+                "maxiter", "initial_temp", "restart_temp_ratio",
+                "visit", "accept", "maxfun", "seed", "no_local_search",
+                "callback",
+            }
+            da_kwargs = {k: v for k, v in options.items() if k in da_keys}
+            local_opts = {k: v for k, v in options.items() if k not in da_keys}
+
+            # The local minimizer uses SLSQP with AD gradients by default.
+            # Users can override via local_search_method in options.
+            local_method = local_opts.pop("local_search_method", "SLSQP")
+            minimizer_kwargs = {
+                "method": local_method,
+                "jac": self._jac_ad,
+                "args": ("scalar",),
+                "bounds": self.bounds,
+                "options": local_opts if local_opts else None,
+            }
+
+            result = dual_annealing(
+                func=self._obj_ad,
+                bounds=bounds_list,
+                args=("scalar",),
+                x0=self._x0_norm,
+                minimizer_kwargs=minimizer_kwargs,
+                **da_kwargs,
+            )
+
+        elif method[1] == "basinhopping":
+            # Global optimization via random perturbation + local minimization.
+            # At each step: perturb current solution, run local optimizer,
+            # accept/reject via Metropolis criterion at temperature T.
+
+            # Separate basinhopping kwargs from local minimizer options
+            bh_keys = {
+                "niter", "T", "stepsize", "seed",
+                "niter_success", "target_accept_rate", "stepwise_factor",
+                "callback",
+            }
+            bh_kwargs = {k: v for k, v in options.items() if k in bh_keys}
+            local_opts = {k: v for k, v in options.items() if k not in bh_keys}
+
+            local_method = local_opts.pop("local_search_method", "SLSQP")
+            minimizer_kwargs = {
+                "method": local_method,
+                "jac": self._jac_ad,
+                "args": ("scalar",),
+                "bounds": self.bounds,
+                "options": local_opts if local_opts else None,
+            }
+
+            # Bounded perturbation step function.
+            # The default scipy RandomDisplacement adds uniform noise in
+            # [-stepsize, +stepsize] but does NOT clip to bounds, so the
+            # local optimizer starts from infeasible points.  This wrapper
+            # clips the perturbed vector back to [lb, ub], preserving the
+            # "explore nearby basins" philosophy of basinhopping while
+            # keeping all starts feasible.
+            #
+            # Tuning stepsize:
+            #   - Parameters are normalized to [0, 1].
+            #   - stepsize=0.5  → conservative, stays close to current best
+            #   - stepsize=1.0  → moderate, can flip most schedule weights
+            #   - stepsize=2.0+ → aggressive, nearly a random restart but
+            #                     still biased toward the current best for
+            #                     parameters near the interior of [0, 1]
+            lb_arr = np.asarray(self.bounds.lb, dtype=np.float64)
+            ub_arr = np.asarray(self.bounds.ub, dtype=np.float64)
+            seed = bh_kwargs.pop("seed", None)
+            rng = np.random.default_rng(seed)
+            _stepsize = bh_kwargs.pop("stepsize", 0.5)
+
+            class _BoundedStep:
+                """Uniform perturbation clipped to parameter bounds."""
+                def __init__(self, stepsize, lb, ub, rng):
+                    self.stepsize = stepsize
+                    self.lb = lb
+                    self.ub = ub
+                    self.rng = rng
+
+                def __call__(self, x):
+                    x_new = x + self.rng.uniform(
+                        -self.stepsize, self.stepsize, size=x.shape
+                    )
+                    return np.clip(x_new, self.lb, self.ub)
+
+            take_step = _BoundedStep(_stepsize, lb_arr, ub_arr, rng)
+
+            result = basinhopping(
+                func=self._obj_ad,
+                x0=self._x0_norm,
+                minimizer_kwargs=minimizer_kwargs,
+                take_step=take_step,
+                **bh_kwargs,
+            )
+
         else:
             if method[1] in [
                 "newton-cg",
@@ -1745,6 +1971,9 @@ class Estimator:
 
         if method[0] == "scipy":
             self.simulator.model.restore_parameters(keep_values=True)
+
+        # Store the normalised solution for warm-starting (used by lambda scheduling)
+        self._last_x_norm = result.x.copy()
 
         # Denormalize result using parameter's denormalize method
         # result.x is flat array of all unique parameter values
@@ -1879,12 +2108,14 @@ class Estimator:
 
             n_time_prev += n_time
 
-        # Compute residuals
+        # Compute residuals (normalized by sd) and raw residuals
         res = torch.zeros((self._n_timesteps, len(self._measurements)))
+        res_raw = torch.zeros((self._n_timesteps, len(self._measurements)))
         for j, (measuring_device, sd) in enumerate(self._measurements):
             simulation_readings_ = simulation_readings[measuring_device.id]
             actual_readings_ = actual_readings[measuring_device.id]
-            res[:, j] = (actual_readings_ - simulation_readings_) / sd
+            res_raw[:, j] = actual_readings_ - simulation_readings_
+            res[:, j] = res_raw[:, j] / sd
 
         # Return appropriate output format.
         # We scale the objective function to 100 initially for numerical stability.
@@ -1893,11 +2124,19 @@ class Estimator:
             if self._mse_scaled is None:
                 self._mse_scaled = mse.detach().item() / 100
             self._loglike = mse / self._mse_scaled
-            
+
+            # Store diagnostics: raw MSE (in measurement units) and RMSE
+            raw_mse = torch.mean(res_raw.flatten() ** 2).detach().item()
+            self._last_mse = raw_mse
+            self._last_rmse = raw_mse ** 0.5
+
             # Add binarization penalty if regularization is enabled
             if self._regularization_lambda > 0:
                 penalty = self._compute_regularization_penalty()
+                self._last_penalty = penalty.detach().item()
                 self._loglike = self._loglike + self._regularization_lambda * penalty
+            else:
+                self._last_penalty = 0.0
                 
         elif output == "vector":
             res_flat = res.flatten()
