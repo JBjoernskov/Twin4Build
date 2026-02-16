@@ -760,28 +760,34 @@ def plot(
     alignYaxes(axes, nticks_list, roundto_list, yoffset_list, align_zero=align_zero)
 
     for ax in axes:
-        mylocator = mdates.HourLocator(interval=6, tz=None)
-        ax.xaxis.set_minor_locator(mylocator)
-        myFmt = mdates.DateFormatter("%H")
-        ax.xaxis.set_minor_formatter(myFmt)
+        # mylocator = mdates.HourLocator(interval=6, tz=None)
+        # ax.xaxis.set_minor_locator(mylocator)
+        # myFmt = mdates.DateFormatter("%H")
+        # ax.xaxis.set_minor_formatter(myFmt)
 
-        mylocator = mdates.WeekdayLocator(
-            byweekday=[
-                mdates.MO,
-                mdates.TU,
-                mdates.WE,
-                mdates.TH,
-                mdates.FR,
-                mdates.SA,
-                mdates.SU,
-            ],
-            interval=1,
-            tz=None,
-        )
-        ax.xaxis.set_major_locator(mylocator)
-        myFmt = mdates.DateFormatter("%a")
-        ax.xaxis.set_major_formatter(myFmt)
-        ax.tick_params(axis="x", which="major", pad=10)  # move the tick labels
+        # mylocator = mdates.WeekdayLocator(
+        #     byweekday=[
+        #         mdates.MO,
+        #         mdates.TU,
+        #         mdates.WE,
+        #         mdates.TH,
+        #         mdates.FR,
+        #         mdates.SA,
+        #         mdates.SU,
+        #     ],
+        #     interval=1,
+        #     tz=None,
+        # )
+        # ax.xaxis.set_major_locator(mylocator)
+        # myFmt = mdates.DateFormatter("%a")
+        # ax.xaxis.set_major_formatter(myFmt)
+        # ax.tick_params(axis="x", which="major", pad=10)  # move the tick labels
+
+
+
+        locator = mdates.AutoDateLocator()
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(mdates.AutoDateFormatter(locator, tz=t[0].tzinfo))
 
     # Save and show plot
     # component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]
