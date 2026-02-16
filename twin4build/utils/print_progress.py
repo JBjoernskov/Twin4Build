@@ -83,6 +83,7 @@ class Logger:
         self._current_level_indent = 0
         self._block_count = 0
         self.logfile = None
+        self._last_file_content = ""  # Cache for atomic file updates
         self._is_active = False
         self.call_depth = 0
         self._scroll_offset = 0
@@ -455,9 +456,21 @@ class Logger:
     def current_level(self):
         return len(self.level_stack) - 1
 
-    def get_log(self):
+    def _get_logfile_path(self):
+        """Get the logfile path without opening the file.
+        
+        Returns the path string if output should go to a file, None for stdout.
+        """
         if self.logfile is not None:
-            f = open(self.logfile, "w")
+            return self.logfile
+        if self.is_interactive():
+            return "progress.log"
+        return None
+
+    def get_log(self):
+        logfile = self._get_logfile_path()
+        if logfile is not None:
+            f = open(logfile, "w")
         else:
             f = None
         return f
@@ -538,97 +551,83 @@ class Logger:
         self.level.append(self.current_level)
         self._is_active = True
 
-    def print_lines(self):
-        f = self.get_log()
-
-        # Initialize curses if needed and we're not logging to file
-        if self._use_curses and f is None and not self._curses_mode:
-            self._init_curses()
-
-        if self._curses_mode and f is None:
-            # In curses mode, update the data structure. The display thread handles drawing.
-            # This simulates the clearing behavior of traditional printing
-            with self._lock:
-                # Skip updating if paused
-                if not self._paused:
-                    # Store current lines to calculate diff for anti-fighting logic
-                    current_len = len(self._curses_lines)
-
-                    # Rebuild the list of lines
-                    temp_lines = []
-                    for indent, message, status, level, location in zip(
-                        self.indent, self.message, self.status, self.level, self.location
-                    ):
-                        temp_lines.append((indent, message, status, level, location))
-
-                    self._curses_lines = temp_lines
-                    new_len = len(self._curses_lines)
-                    diff = new_len - current_len
-
-                    # Anti-fighting logic: if scrolled up, maintain relative position
-                    if self._scroll_offset > 0 and diff > 0:
-                        self._scroll_offset += diff
-                
-                # If threading is disabled, update display directly
-                if not self._use_threading:
-                    self._handle_input()
-                    self._update_curses_display()
-        else:
-            # Use traditional printing
-            if self.has_printed:
-                self.clear_lines(self.n_printed)
-
-            # Use ANSI colors if outputting to terminal (not to file)
-            use_ansi = f is None and sys.stdout.isatty()
-            
-            self.n_printed = 0
+    def _update_lines(self):
+        """Update the canonical _curses_lines data structure from current state.
+        
+        This is the single source of truth for all output modes
+        (curses display, file, stdout).
+        """
+        with self._lock:
+            if self._paused:
+                return
+            current_len = len(self._curses_lines)
+            temp_lines = []
             for indent, message, status, level, location in zip(
                 self.indent, self.message, self.status, self.level, self.location
             ):
-                # if level+1 <= self.verbose:
+                temp_lines.append((indent, message, status, level, location))
+            self._curses_lines = temp_lines
+            new_len = len(self._curses_lines)
+            diff = new_len - current_len
+            if self._scroll_offset > 0 and diff > 0:
+                self._scroll_offset += diff
+
+    def print_lines(self):
+        logfile_path = self._get_logfile_path()
+        is_file_mode = logfile_path is not None
+
+        # Initialize curses if needed and we're not logging to file
+        if self._use_curses and not is_file_mode and not self._curses_mode:
+            self._init_curses()
+
+        # Always update canonical line data
+        self._update_lines()
+
+        if self._curses_mode and not is_file_mode:
+            # Curses display - thread handles rendering, or update directly
+            if not self._use_threading:
+                with self._lock:
+                    self._handle_input()
+                    self._update_curses_display()
+        elif is_file_mode:
+            # File output - overwrite in place so the file is never empty.
+            # Using "r+" mode: seek to start, write, truncate excess.
+            # This avoids the "w" mode problem where open() truncates
+            # the file to zero bytes before writing.
+            lines = []
+            for indent, message, status, level, location in self._curses_lines:
+                _status = "..." + status if status != "" else ""
+                display_message = self._format_message(message, location, use_ansi_colors=False)
+                lines.append(indent + display_message + _status)
+            content = "\n".join(lines)
+            if lines:
+                content += "\n"
+            if content and content != self._last_file_content:
+                try:
+                    with open(logfile_path, "r+") as f:
+                        f.seek(0)
+                        f.write(content)
+                        f.truncate()
+                except FileNotFoundError:
+                    with open(logfile_path, "w") as f:
+                        f.write(content)
+                self._last_file_content = content
+        else:
+            # Stdout output
+            if self.has_printed:
+                self.clear_lines(self.n_printed)
+
+            use_ansi = sys.stdout.isatty()
+
+            self.n_printed = 0
+            for indent, message, status, level, location in self._curses_lines:
                 _status = "..." + status if status != "" else ""
                 display_message = self._format_message(message, location, use_ansi_colors=use_ansi)
                 s = indent + display_message + _status
-                print(s, flush=True, file=f)
+                print(s, flush=True)
                 self.n_printed += 1
 
-                # time.sleep(0.2)
-
-            # Also update curses lines for potential final output
-            # This ensures the final state matches what's currently visible
-            if self._use_curses:
-                with self._lock:
-                    # Skip updating if paused
-                    if not self._paused:
-                        current_len = len(self._curses_lines)
-
-                        temp_lines = []
-                        for indent, message, status, level, location in zip(
-                            self.indent, self.message, self.status, self.level, self.location
-                        ):
-                            temp_lines.append((indent, message, status, level, location))
-
-                        self._curses_lines = temp_lines
-                        new_len = len(self._curses_lines)
-                        diff = new_len - current_len
-
-                        # Anti-fighting logic
-                        if self._scroll_offset > 0 and diff > 0:
-                            self._scroll_offset += diff
-                    
-                    # If threading is disabled, update display directly
-                    if not self._use_threading:
-                        self._handle_input()
-                        self._update_curses_display()
-
-        if f is not None:
-            f.close()
         self.has_printed = True
-
-        # time.sleep(0.7)
-
-        # self.added_level = False
-        # self.removed_level = False
 
     def is_interactive(self):
         return not hasattr(__main__, "__file__")
@@ -1078,23 +1077,8 @@ class Logger:
         self._stdscr.refresh()
 
     def clear_lines(self, n_lines):
-        # time.sleep(3)
-        if self.is_interactive() and self.get_log() is None:
-            # Third party imports
-            from IPython.display import clear_output
-
-            clear_output()
-        elif self._curses_mode:
-            # Curses handles clearing automatically - no need to do anything
-            pass
-        else:
-            f = self.get_log()
-
-            if f is not None:
-                f.close()
-
-        # self.added_level = False
-        # self.removed_level = False
+        # Only used for stdout mode (curses and file modes handle clearing differently)
+        pass
 
     def _remove_level(self):
         indent = self._get_indent(remove_level=True)
@@ -1458,6 +1442,7 @@ class Logger:
         self._current_level_indent = 0
         self._block_count = 0
         self.logfile = None
+        self._last_file_content = ""
         self._is_active = False
         self._curses_lines = []
         self._paused = False
