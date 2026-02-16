@@ -1276,7 +1276,7 @@ class SemanticModel:
         self._predicates = {}
 
         if dir_conf is None:
-            self.dir_conf = ["generated_files", "models", self.id]
+            self.dir_conf = ["generated_files", "models", self.id, "semantic_model"]
         else:
             self.dir_conf = dir_conf
 

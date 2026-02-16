@@ -326,7 +326,7 @@ class SimulationModel:
         """
         self._id = id
         if dir_conf is None:
-            self._dir_conf = ["generated_files", "models", self._id]
+            self._dir_conf = ["generated_files", "models", self._id, "simulation_model"]
         else:
             self._dir_conf = dir_conf
 
@@ -436,7 +436,7 @@ class SimulationModel:
             ), f'The component with id "{component.id}" already exists in the model.'
 
         if components == self._components:
-            self._update_literals(component)
+            self._update_literals([component])
 
         self._is_loaded = False
 
@@ -880,16 +880,49 @@ class SimulationModel:
                 )
             )
 
-            self._semantic_model.instance_graph.add(
-                (connection_uri, core.namespace.T4B.output_port, literal_sender_property)
-            )
-            self._semantic_model.instance_graph.add(
-                (
-                    connection_point_uri,
-                    core.namespace.T4B.input_port,
-                    literal_receiver_property,
-                )
-            )
+            self._update_literals(components=[sender_component, receiver_component], connections=[sender_obj_connection], connection_points=[receiver_component_connection_point])
+
+            # self._semantic_model.instance_graph.add(
+            #     (connection_uri, core.namespace.T4B.output_port, literal_sender_property)
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.input_port,
+            #         literal_receiver_property,
+            #     )
+            # )
+
+            # # Add the input_port_index and output_port_index literals
+            # # Serialize indices as JSON with connection hash as keys
+            # input_port_index_dict = {
+            #     str(hash(conn)): int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+            #     for conn, idx in receiver_component_connection_point.input_port_index.items()
+            # }
+            # output_port_index_dict = {
+            #     str(hash(conn)): int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+            #     for conn, idx in receiver_component_connection_point.output_port_index.items()
+            # }
+            # literal_input_port_index = Literal(
+            #     json.dumps(input_port_index_dict), datatype=core.namespace.RDF.JSON
+            # )
+            # literal_output_port_index = Literal(
+            #     json.dumps(output_port_index_dict), datatype=core.namespace.RDF.JSON
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.input_port_index,
+            #         literal_input_port_index,
+            #     )
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.output_port_index,
+            #         literal_output_port_index,
+            #     )
+            # )
 
         self._is_loaded = False
 
@@ -1218,10 +1251,10 @@ class SimulationModel:
             # Assert that the min_values and max_values are the same length as the values
             assert len(min_values) == len(
                 values
-            ), "The length of min_values must be the same as the length of values"
+            ), f"The length of min_values must be the same as the length of values. Got {len(min_values)} and {len(values)}"
             assert len(max_values) == len(
                 values
-            ), "The length of max_values must be the same as the length of values"
+            ), f"The length of max_values must be the same as the length of values. Got {len(max_values)} and {len(values)}"
 
         for i, (v, obj, attr, normalized_) in enumerate(
             zip(values, components, parameter_names, normalized)
@@ -1253,6 +1286,7 @@ class SimulationModel:
                             min_value=obj_.min_value,
                             max_value=obj_.max_value,
                             normalized=normalized_,
+                            scaling=getattr(obj_, '_scaling', 'linear'),
                         )
                         rdelattr(obj, attr)
                         rsetattr(obj, attr, new_param)
@@ -1367,70 +1401,71 @@ class SimulationModel:
 
             # Make the inputs and outputs aware of the execution order.
             # This is important to ensure that input tps.Vectors have the same order, allowing for instance element-wise operations.
-            for i, connection_point in enumerate(component.connects_at):
+            # for i, connection_point in enumerate(component.connects_at):
 
-                update_input_port_index = False
-                hash_array = torch.arange(
-                    len(connection_point.connects_system_through), dtype=torch.int64
-                )
-                for j, connection in enumerate(
-                    connection_point.connects_system_through
-                ):
-                    connected_component = connection.connects_system
-                    if (
-                        isinstance(
-                            component.input[connection_point.input_port], tps.Vector
-                        )
-                        and self._translator is not None
-                        and (
-                            component,
-                            connected_component,
-                            connection.output_port,
-                            connection_point.input_port,
-                        )
-                        in self._translator.E_conn_to_sp_group
-                    ):
-                        update_input_port_index = True
-                        sp, groups = self._translator.E_conn_to_sp_group[
-                            (
-                                component,
-                                connected_component,
-                                connection.output_port,
-                                connection_point.input_port,
-                            )
-                        ]
-                        # Find the group of the connected component
-                        modeled_match_nodes_ = self._translator.sim2sem_map[
-                            connected_component
-                        ]
-                        groups_matched = [
-                            g
-                            for g in groups
-                            if len(modeled_match_nodes_.intersection(set(g.values())))
-                            > 0
-                        ]
-                        assert (
-                            len(groups_matched) == 1
-                        ), "Only one group is allowed for each component."
-                        group = groups_matched[0]
-                        group_hash = hash(group)
+            #     update_input_port_index = False
+            #     hash_array = torch.arange(
+            #         len(connection_point.connects_system_through), dtype=torch.int64
+            #     )
+            #     for j, connection in enumerate(
+            #         connection_point.connects_system_through
+            #     ):
+            #         connected_component = connection.connects_system
+            #         if (
+            #             isinstance(
+            #                 component.input[connection_point.input_port], tps.Vector
+            #             )
+            #             and self._translator is not None
+            #             and (
+            #                 component,
+            #                 connected_component,
+            #                 connection.output_port,
+            #                 connection_point.input_port,
+            #             )
+            #             in self._translator.E_conn_to_sp_group
+            #         ):
+            #             update_input_port_index = True
+            #             sp, groups = self._translator.E_conn_to_sp_group[
+            #                 (
+            #                     component,
+            #                     connected_component,
+            #                     connection.output_port,
+            #                     connection_point.input_port,
+            #                 )
+            #             ]
+            #             # Find the group of the connected component
+            #             modeled_match_nodes_ = self._translator.sim2sem_map[
+            #                 connected_component
+            #             ]
+            #             groups_matched = [
+            #                 g
+            #                 for g in groups
+            #                 if len(modeled_match_nodes_.intersection(set(g.values())))
+            #                 > 0
+            #             ]
+            #             assert (
+            #                 len(groups_matched) == 1
+            #             ), "Only one group is allowed for each component."
+            #             group = groups_matched[0]
+            #             group_hash = hash(group)
 
-                        # component.input[connection_point.input_port].update(
-                        #     group_id=group_id
-                        # )
+            #             # component.input[connection_point.input_port].update(
+            #             #     group_id=group_id
+            #             # )
 
-                        ###########################
-                        hash_array[j] = group_hash
-                        # for idx, group_id in self.id_map.items():
-                        #     id_array[idx] = group_id
-                        # self.sorted_id_indices = torch.argsort(id_array)
-                        #########################################
+            #             ###########################
+            #             hash_array[j] = group_hash
+            #             # for idx, group_id in self.id_map.items():
+            #             #     id_array[idx] = group_id
+            #             # self.sorted_id_indices = torch.argsort(id_array)
+            #             #########################################
 
-                if update_input_port_index:
-                    for index, connection in zip(
-                        hash_array, connection_point.connects_system_through
-                    ):
-                        connection_point.set_input_port_index(connection, index)
+            #     if update_input_port_index:
+            #         for index, connection in zip(
+            #             hash_array, connection_point.connects_system_through
+            #         ):
+            #             connection_point.set_input_port_index(connection, index)
+
 
             component.initialize(
                 start_time=start_time,
@@ -2223,19 +2258,30 @@ class SimulationModel:
         assert isinstance(
             self._result, estimator.EstimationResult
         ), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
-        theta = self._result["result_x"]
+        result_x = self._result["result_x"]
         flat_components = [
             self._components[com_id] for com_id in self._result["component_id"]
         ]
         flat_attr_list = self._result["component_attr"]
         theta_mask = self._result["theta_mask"]
-        min_values = self._result["lb"]
-        min_values = min_values[theta_mask]
-        max_values = self._result["ub"]
-        max_values = max_values[theta_mask]
+        theta_slices = self._result["theta_slices"]
+        lb = self._result["lb"]
+        ub = self._result["ub"]
 
-        self.set_parameters_from_array(
-            theta,
+        # Use theta_slices to properly map from the flat unique-parameter
+        # arrays (result_x, lb, ub) back to per-component values.
+        # This correctly handles parameters with n_c > 1 and shared parameters.
+        values = []
+        min_values = []
+        max_values = []
+        for param_idx in theta_mask:
+            start, end = theta_slices[param_idx]
+            values.append(result_x[start:end])
+            min_values.append(lb[start:end])
+            max_values.append(ub[start:end])
+
+        self.set_parameters(
+            values,
             flat_components,
             flat_attr_list,
             min_values=min_values,
@@ -2346,12 +2392,12 @@ class SimulationModel:
 
         LOGGER.remove_level()
 
-    def _update_literals(self, component: core.System = None) -> None:
+    def _update_literals(self, components: List[core.System] = None, connections: List[core.Connection] = None, connection_points: List[core.ConnectionPoint] = None) -> None:
         """
         Update the literals in the semantic model.
         """
 
-        def _update_literals_for_component(component: core.System) -> None:
+        def _update_literals_for_component(component: core.System, connection: core.Connection = None, connection_point: core.ConnectionPoint = None) -> None:
             component_uri = self._semantic_model.T4B.__getitem__(component.id)
             for key, value in flatten_dict(component.populate_config(), component):
                 if isinstance(value, (dict, list)):
@@ -2405,39 +2451,255 @@ class SimulationModel:
                         f'The component with id: "{component.id}" has more than one output port.'
                     )
 
-        if component is None:
+        def _update_literals_for_connection(connection: core.Connection) -> None:
+            """
+            Update the literals for a connection in the semantic model.
+            Updates output_port.
+            """
+            connection_uri = self._semantic_model.T4B.__getitem__(
+                str(hash(connection))
+            )
+
+            # Define the literals to update
+            literals_to_update = {
+                "output_port": connection.output_port,
+            }
+
+            for key, value in literals_to_update.items():
+                if isinstance(value, (dict, list)):
+                    # Serialize dicts and lists as JSON with datatype
+                    value_ = json.dumps(value)
+                    datatype = core.namespace.RDF.JSON
+                else:
+                    value_ = value
+                    datatype = None
+
+                # Check if the property is already in the semantic model
+                literal_property = list(
+                    self._semantic_model.instance_graph.objects(
+                        connection_uri, core.namespace.T4B.__getitem__(key)
+                    )
+                )
+                if len(literal_property) == 0:
+                    # No literal in the semantic model.
+                    # Add the literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                elif len(literal_property) == 1:
+                    # There is one literal in the semantic model.
+                    literal_property = literal_property[0]
+                    # Remove the literal from the semantic model.
+                    self._semantic_model.instance_graph.remove(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                    # Add the new literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                else:
+                    # There are more than one literal in the semantic model.
+                    raise Exception(
+                        f'The connection has more than one literal for "{key}".'
+                    )
+
+        def _update_literals_for_connection_point(connection_point: core.ConnectionPoint) -> None:
+            """
+            Update the literals for a connection point in the semantic model.
+            Updates input_port, input_port_index, and output_port_index.
+            """
+            connection_point_uri = self._semantic_model.T4B.__getitem__(
+                str(hash(connection_point))
+            )
+
+            # Define the literals to update
+            literals_to_update = {
+                "input_port": connection_point.input_port,
+                "input_port_index": {
+                    str(hash(conn)): int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+                    for conn, idx in connection_point.input_port_index.items()
+                },
+                "output_port_index": {
+                    str(hash(conn)): int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+                    for conn, idx in connection_point.output_port_index.items()
+                },
+            }
+
+            for key, value in literals_to_update.items():
+                if isinstance(value, (dict, list)):
+                    # Serialize dicts and lists as JSON with datatype
+                    value_ = json.dumps(value)
+                    datatype = core.namespace.RDF.JSON
+                else:
+                    value_ = value
+                    datatype = None
+
+                # Check if the property is already in the semantic model
+                literal_property = list(
+                    self._semantic_model.instance_graph.objects(
+                        connection_point_uri, core.namespace.T4B.__getitem__(key)
+                    )
+                )
+                if len(literal_property) == 0:
+                    # No literal in the semantic model.
+                    # Add the literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                elif len(literal_property) == 1:
+                    # There is one literal in the semantic model.
+                    literal_property = literal_property[0]
+                    # Remove the literal from the semantic model.
+                    self._semantic_model.instance_graph.remove(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                    # Add the new literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                else:
+                    # There are more than one literal in the semantic model.
+                    raise Exception(
+                        f'The connection point has more than one literal for "{key}".'
+                    )
+
+        if components is None and connections is None and connection_points is None:
             for component in self._components.values():
                 _update_literals_for_component(component)
-        else:
-            _update_literals_for_component(component)
+                # Also update literals for all connections of this component
+                for connection in component.connected_through:
+                    _update_literals_for_connection(connection)
+                # Also update literals for all connection points of this component
+                for connection_point in component.connects_at:
+                    _update_literals_for_connection_point(connection_point)
+
+
+        if components is not None:
+            for component in components:
+                _update_literals_for_component(component)
+
+        if connections is not None:
+            for connection in connections:
+                _update_literals_for_connection(connection)
+        if connection_points is not None:
+            for connection_point in connection_points:
+                _update_literals_for_connection_point(connection_point)
+
 
     def serialize(self):
         """
         Serialize the simulation model.
         """
+        # dummy_start_time = [datetime.datetime.now()] * len(self._components)
+        # dummy_end_time = [datetime.datetime.now()] * len(self._components)
+        # dummy_step_size = [1]
+        # self.load(verbose=False)
+        # self.initialize(dummy_start_time, dummy_end_time, dummy_step_size)
         self._update_literals()
         self._semantic_model.serialize()
 
-    def visualize(self, query: str = None, literals: bool = True, **kwargs) -> None:
+    def visualize(self, query: str = None, literals: bool = True, forward_only: bool = False, **kwargs) -> None:
         """
         Visualize the simulation model.
+
+        Args:
+            query: Custom SPARQL CONSTRUCT query. If None, a default query is used.
+            literals: If True, include all literals. If False, only include connection-related properties.
+            forward_only: If True, only include forward flow (System -> Connection -> ConnectionPoint -> System).
+                         If False, include both forward and reverse relationships.
+            **kwargs: Additional arguments passed to semantic_model.visualize().
         """
+        # dummy_start_time = [datetime.datetime.now()] * len(self._components)
+        # dummy_end_time = [datetime.datetime.now()] * len(self._components)
+        # dummy_step_size = [1]
+        # self.load(verbose=False)
+        # self.initialize(dummy_start_time, dummy_end_time, dummy_step_size)
         self._update_literals()
         if query is None:
-            if literals:
-                query = None
-            else:
+            if forward_only and literals:
+                # Forward flow + all literals
+                # Forward: connectedThrough, connectsSystemAt, connectionPointOf
+                # All literals except rdf:type and rdfs:subClassOf
+                # Exclude reverse relationships: connectsSystem, connectsSystemThrough, connectsAt
                 query = """
                 CONSTRUCT {
                     ?s ?p ?o
                 }
                 WHERE {
                     ?s ?p ?o .
-                    FILTER (?p = s4syst:connectsSystemAt || 
-                            ?p = s4syst:connectedThrough || 
+                    FILTER (?p != rdf:type && 
+                            ?p != rdfs:subClassOf &&
+                            ?p != s4syst:connectsSystem &&
+                            ?p != s4syst:connectsSystemThrough &&
+                            ?p != s4syst:connectsAt)
+                }
+                """
+            elif forward_only and not literals:
+                # Forward flow + only port literals
+                query = """
+                CONSTRUCT {
+                    ?s ?p ?o
+                }
+                WHERE {
+                    ?s ?p ?o .
+                    FILTER (?p = s4syst:connectedThrough || 
+                            ?p = s4syst:connectsSystemAt || 
                             ?p = s4syst:connectionPointOf ||
                             ?p = t4b:input_port ||
-                            ?p = t4b:output_port)
+                            ?p = t4b:output_port ||
+                            ?p = t4b:input_port_index ||
+                            ?p = t4b:output_port_index)
+                }
+                """
+            elif not forward_only and literals:
+                # All relationships + all literals
+                query = None
+            else:
+                # All relationships + only port literals
+                query = """
+                CONSTRUCT {
+                    ?s ?p ?o
+                }
+                WHERE {
+                    ?s ?p ?o .
+                    FILTER (?p = s4syst:connectedThrough || 
+                            ?p = s4syst:connectsSystemAt || 
+                            ?p = s4syst:connectionPointOf ||
+                            ?p = s4syst:connectsSystem ||
+                            ?p = s4syst:connectsSystemThrough ||
+                            ?p = s4syst:connectsAt ||
+                            ?p = t4b:input_port ||
+                            ?p = t4b:output_port ||
+                            ?p = t4b:input_port_index ||
+                            ?p = t4b:output_port_index)
                 }
                 """
         self._semantic_model.visualize(query, **kwargs)
