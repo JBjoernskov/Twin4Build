@@ -171,8 +171,8 @@ class Translator:
 
 
         # Set start time for timeout checks
-        Translator.start_time = time.time() ###
-        Translator.timeout = 200 ###
+        # Translator.start_time = time.time() ###
+        # Translator.timeout = 200 ###
 
         if semantic_model.count_triples() == 0:
             raise Exception(
@@ -255,9 +255,7 @@ class Translator:
         result = self._solve_milp()
         if result["success"]:
             # Initialize simulation model
-            dir_conf = semantic_model.dir_conf.copy()
-            dir_conf[-1] = "simulation_model"
-            sim_model = core.SimulationModel(id="simulation_model", dir_conf=dir_conf)
+            sim_model = core.SimulationModel(id=semantic_model.id)
 
             # Connect components
             self._connect_components(result["connections"], sim_model)
@@ -350,8 +348,8 @@ class Translator:
                 candidate_sm_nodes = semantic_model.get_instances_of_type(sp_node.cls)
 
                 for sm_node in candidate_sm_nodes:  
-                    if time.time() - Translator.start_time > Translator.timeout: ###
-                        break ###
+                    # if time.time() - Translator.start_time > Translator.timeout: ###
+                    #     break ###
                     
                     # Initialize tracking structures for this DFS traversal
                     initial_map = {n: None for n in signature_pattern.nodes}
@@ -397,8 +395,8 @@ class Translator:
                                         complete_matches, signature_pattern,
                                     )
 
-                if time.time() - Translator.start_time > Translator.timeout: ###
-                    break ###
+                # if time.time() - Translator.start_time > Translator.timeout: ###
+                #     break ###
 
             # ===================================================================
             # PHASE 4: Merge incomplete groups with each other
@@ -464,10 +462,10 @@ class Translator:
                 #                 complete_groups[component_cls][signature_pattern].append(new_node_map)
                 LOGGER.remove_level()
 
-                if time.time() - Translator.start_time > Translator.timeout: ###
-                    break ###
-            if time.time() - Translator.start_time > Translator.timeout: ###
-                break ###½
+            #     if time.time() - Translator.start_time > Translator.timeout: ###
+            #         break ###
+            # if time.time() - Translator.start_time > Translator.timeout: ###
+            #     break ###½
 
 
                 
@@ -516,8 +514,8 @@ class Translator:
                 LOGGER.remove_level()
                 break
             LOGGER.remove_level()
-            if time.time() - Translator.start_time > Translator.timeout: ###
-                break ###
+            # if time.time() - Translator.start_time > Translator.timeout: ###
+            #     break ###
         if not merge_found:
             LOGGER.debug("No merge found, adding as new incomplete group")
             updated_incomplete.append(new_mapping)
@@ -663,10 +661,9 @@ class Translator:
                     else:
                         failed_pairs.add(pair_key)
 
-                if time.time() - Translator.start_time > Translator.timeout: ###
-                    break ###
-            if time.time() - Translator.start_time > Translator.timeout: ###
-                break ###
+                # if time.time() - Translator.start_time > Translator.timeout: ###
+                #     break ###
+            # if time.time() - Translator.start_time > Translator.timeout: ###
 
             incomplete_matches = updated_incomplete
 
@@ -743,51 +740,62 @@ class Translator:
                     print(("{:" + str(col_maxes[i]) + fmt + "}").format(y), end="  ")
                 print("")
 
-        def resolve_port_indices(groups_source, groups_target, output_port_index, input_port_index, sm_subject):
+        def resolve_port_indices(groups_source, groups_target, output_port_index, input_port_index, sm_for_index):
             """
             Resolve Node-based port indices to integer indices using group matching.
             
-            For vector connections, this determines which slot in the target input
-            should receive data from the source output by finding the group that
-            contains the specific semantic model subject (sm_subject).
+            Both output_port_index and input_port_index Nodes are from the TARGET's
+            signature pattern. This function finds which group index corresponds to
+            the given semantic model instance.
+            
+            - input_port_index=Node (Scalar→Vector, Vector→Vector):
+              Find which slot in groups_target contains the matching semantic instance.
+              The Node specifies how the target's input vector is indexed.
+              
+            - output_port_index=Node (Vector→Scalar):
+              Find which slot in groups_source contains the matching semantic instance.
+              The Node specifies which element to pick from source's output vector.
             
             Args:
                 groups_source: List of group dicts from the source component
                 groups_target: List of group dicts from the target component
-                output_port_index: Node instance or None
-                input_port_index: Node instance or None
-                sm_subject: The specific semantic model node connecting source to target
+                output_port_index: Node instance or None (from target's pattern)
+                input_port_index: Node instance or None (from target's pattern)
+                sm_for_index: The semantic model instance to search for:
+                    - For output_port_index: semantic instance from target group
+                    - For input_port_index: semantic instance from target group
             
             Returns:
                 tuple: (resolved_output_port_index, resolved_input_port_index)
                     - For scalar connections: (None, None)
-                    - For vector->scalar: (int, None) 
-                    - For scalar->vector: (None, int)
+                    - For Vector→Scalar: (int, None) - index into source's output
+                    - For Scalar→Vector: (None, int) - index into target's input
             """
-            # Determine which Node to use for matching groups
-            if isinstance(output_port_index, Node):
-                match_node = output_port_index
-            elif isinstance(input_port_index, Node):
-                match_node = input_port_index
-            else:
-                # Scalar -> Scalar: no group matching needed
+            if not isinstance(output_port_index, Node) and not isinstance(input_port_index, Node):
+                # Scalar → Scalar: no group matching needed
                 return output_port_index, input_port_index
             
             if isinstance(input_port_index, Node):
-                # Scalar -> Vector: find which target slot corresponds to sm_subject
+                # Scalar→Vector or Vector→Vector: find which target slot matches
+                # Search groups_target for the group where input_port_index maps to sm_for_index
                 for i_target, group_target in enumerate(groups_target):
-                    if match_node in group_target and group_target[match_node] == sm_subject:
+                    if input_port_index in group_target and group_target[input_port_index] == sm_for_index:
                         return None, i_target
                 # No match found - this shouldn't happen
+                LOGGER.warning("Could not resolve input_port_index: %s not found mapping to %s", 
+                             input_port_index, sm_for_index)
                 return None, None
             
             elif isinstance(output_port_index, Node):
-                # Vector -> Scalar: find which source slot corresponds to sm_subject
+                # Vector→Scalar: find which source slot matches
+                # Search groups_source for the group containing sm_for_index
                 for i_source, group_source in enumerate(groups_source):
                     for sp_node, sm_node in group_source.items():
-                        if sm_node == sm_subject:
+                        if sm_node == sm_for_index:
                             return i_source, None
                 # No match found - this shouldn't happen
+                LOGGER.warning("Could not resolve output_port_index: %s not found in source groups", 
+                             sm_for_index)
                 return None, None
             
             return output_port_index, input_port_index
@@ -876,8 +884,35 @@ class Translator:
 
                                     if b:
                                         # Resolve Node-based port indices to integer indices
+                                        # Both output_port_index and input_port_index Nodes are from
+                                        # the TARGET's signature pattern. We need to find their semantic
+                                        # instances from the target groups to search in source/target groups.
+                                        #
+                                        # - output_port_index=Node (Vector→Scalar): find which slot in
+                                        #   groups_source maps to the matching semantic instance
+                                        # - input_port_index=Node (Scalar→Vector, Vector→Vector): find
+                                        #   which slot in groups_target matches the semantic instance
+                                        
+                                        sm_for_index = sm_subject  # Default: sender's semantic instance
+                                        
+                                        if isinstance(output_port_index, Node):
+                                            # Vector→Scalar: need semantic instance of output_port_index
+                                            # from target groups to search in source groups
+                                            for group in groups:
+                                                if output_port_index in group:
+                                                    sm_for_index = group[output_port_index]
+                                                    break
+                                        elif isinstance(input_port_index, Node):
+                                            # Scalar→Vector: need semantic instance of input_port_index
+                                            # from target groups to search in target groups
+                                            # (Often input_port_index == sp_subject, so sm_subject is correct)
+                                            for group in groups:
+                                                if input_port_index in group:
+                                                    sm_for_index = group[input_port_index]
+                                                    break
+                                        
                                         resolved_output_idx, resolved_input_idx = resolve_port_indices(
-                                            p_groups, groups, output_port_index, input_port_index, sm_subject
+                                            p_groups, groups, output_port_index, input_port_index, sm_for_index
                                         )
                                         
                                         # Add this potential connection with resolved indices
@@ -1744,8 +1779,12 @@ class Translator:
 
         If merge succeeds and is complete:
         - merged_group is added to complete_matches
-        - group_a is removed from incomplete_matches
-        - group_b is also removed if it's in incomplete_matches
+        - For connected merges: both groups are removed from incomplete_matches
+        - For disconnected merges: groups WITHOUT modeled_node filled are preserved
+        
+        Disconnected merges preserve groups that don't have the modeled_node filled,
+        as these represent shared resources (like Weather_Station) that should be
+        reusable across many instances of the modeled entity (like spaces).
 
         Args:
             group_a: First partial SP→SM mapping
@@ -1755,7 +1794,7 @@ class Translator:
             incomplete_matches: List of incomplete mappings (mutated if merge completes)
 
         Returns:
-            bool: True if merge was successful
+            bool: True if merge was successful, False otherwise.
         """
         LOGGER.debug("Matching groups")
         LOGGER.add_level()
@@ -1807,6 +1846,11 @@ class Translator:
         )
         LOGGER.debug("Edge connectivity - B->A: %s, A->B: %s", has_edge_b_to_a, has_edge_a_to_b)
 
+        # Track whether we used a connected or disconnected merge strategy
+        # and which groups contain only isolated nodes (can be reused for other merges)
+        used_disconnected_merge = False
+        groups_to_preserve = []  # Will contain groups with only isolated nodes
+        
         if has_edge_b_to_a or has_edge_a_to_b:
             LOGGER.debug("Attempting connected merge validation")
             if Translator._validate_merge(group_a, nodes_b, signature_pattern):
@@ -1819,6 +1863,25 @@ class Translator:
         if merged_group is None:
             LOGGER.debug("Attempting disconnected merge")
             merged_group = dict(group_a)
+            used_disconnected_merge = True
+            
+            # For disconnected merges, only preserve groups that DON'T have the modeled_node filled.
+            # Groups with modeled_node filled represent unique instances (like a specific space)
+            # and should be consumed. Groups without it (like weather_station) represent shared
+            # resources that can be reused across many spaces.
+            modeled_nodes = signature_pattern.modeled_nodes
+            groups_to_preserve = []
+            
+            # Check if group_a has any modeled_node filled - if not, it's a shared resource
+            a_has_modeled = any(group_a.get(mn) is not None for mn in modeled_nodes)
+            b_has_modeled = any(group_b.get(mn) is not None for mn in modeled_nodes)
+            
+            if not a_has_modeled:
+                groups_to_preserve.append(group_a)
+                LOGGER.debug("Group A has no modeled_node filled, preserving for reuse")
+            if not b_has_modeled:
+                groups_to_preserve.append(group_b)
+                LOGGER.debug("Group B has no modeled_node filled, preserving for reuse")
 
             for sp_node, sm_node in nodes_b.items():
                 # Use cached sp_nodes instead of signature_pattern.nodes
@@ -1831,6 +1894,8 @@ class Translator:
 
                 if is_pruned:
                     merged_group = None
+                    used_disconnected_merge = False
+                    groups_to_preserve = []
                     break
 
                 # Only add if actually matched (not skipped by Optional_ rule)
@@ -1841,12 +1906,19 @@ class Translator:
         if merged_group is not None:
             LOGGER.debug("Merge successful, checking completeness")
 
-            # Remove groups a and b from incomplete_matches to add the new merged group in either complete or incomplete matches
-            if group_a in incomplete_matches: # NOTE
+            # Remove groups from incomplete_matches, but preserve groups from disconnected merges
+            # (e.g., one Weather_Station subgraph can be reused for many spaces)
+            if group_a in incomplete_matches and group_a not in groups_to_preserve:
                 incomplete_matches.remove(group_a)
-            # Also remove group_b if it's in incomplete (happens in _merge_incomplete_groups)
-            if group_b in incomplete_matches:  # NOTE
+            if group_b in incomplete_matches and group_b not in groups_to_preserve:
                 incomplete_matches.remove(group_b)
+            
+            # Ensure preserved groups are in incomplete_matches (they might not have been added yet,
+            # e.g., new_mapping in _try_merge_with_incomplete)
+            for group in groups_to_preserve:
+                if group not in incomplete_matches:
+                    incomplete_matches.append(group)
+                    LOGGER.debug("Added preserved group to incomplete_matches for reuse")
 
 
             is_complete = all(
@@ -2676,14 +2748,14 @@ class SignaturePattern:
             input_port=input_port
         )
 
-    def _add_node(self, node, rule=None):
+    def _add_node(self, node, rule=None, optional=False):
         if isinstance(rule, NoExactRule)==False:
             if node not in self._nodes:
                 self._nodes.append(node)
                 node.set_signature_pattern(self)
                 node.validate_cls()
 
-            if isinstance(rule, OptionalRule) == False:
+            if isinstance(rule, OptionalRule) == False and optional == False:
                 if node not in self._required_nodes:
                     self._required_nodes.append(node)
         else:
@@ -2698,17 +2770,18 @@ class SignaturePattern:
         
 
     def add_parameter(self, key, node):
-        self._add_node(node)
+        self._add_node(node, optional=True)
         cls = list(node.cls)
         # allowed_classes = (float, int)
         allowed_classes = (
             core.namespace.XSD.float,
             core.namespace.XSD.int,
             core.namespace.XSD.boolean,
+            core.namespace.XSD.string,
         )
         assert any(
             n.istype(allowed_classes) for n in cls
-        ), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
+        ), f"The class of the \"node\" argument must be a subclass of {', '.join([c.get_short_name() for c in allowed_classes])} - {', '.join([c.get_short_name() for c in cls])} was provided."
         # assert any(issubclass(n, allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
         self._parameters[key] = node
 
