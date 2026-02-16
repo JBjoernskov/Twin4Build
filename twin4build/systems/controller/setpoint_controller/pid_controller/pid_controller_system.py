@@ -42,6 +42,8 @@ class PIDControllerSystem(core.System, nn.Module):
         kp: Proportional gain
         Ti: Integral time constant
         Td: Derivative time constant
+        output_min: Lower saturation limit for the controller output
+        output_max: Upper saturation limit for the controller output
         isReverse: Boolean flag to indicate if the controller is reverse
     """
 
@@ -50,6 +52,8 @@ class PIDControllerSystem(core.System, nn.Module):
         kp=0.001,
         Ti=10,
         Td=0.0,
+        output_min=0.0,
+        output_max=1.0,
         isReverse=False,
         **kwargs,
     ):
@@ -58,25 +62,43 @@ class PIDControllerSystem(core.System, nn.Module):
         self.isReverse = isReverse
 
         kp = abs(kp)
-
-        if isReverse == False:
-            kp = -kp
         Ti = abs(Ti)
         Td = abs(Td)
 
         self.kp = tps.Parameter(
-            torch.tensor(kp, dtype=torch.float64), requires_grad=False
+            torch.tensor(kp, dtype=torch.float64),
+            min_value=0.001,
+            max_value=10.0,
+            requires_grad=False,
+            scaling="log",
         )
         self.Ti = tps.Parameter(
-            torch.tensor(Ti, dtype=torch.float64), requires_grad=False
+            torch.tensor(Ti, dtype=torch.float64),
+            min_value=0.1,
+            max_value=100,
+            requires_grad=False,
+            scaling="log",
         )
         self.Td = tps.Parameter(
             torch.tensor(Td, dtype=torch.float64), requires_grad=False
         )
 
+        self.output_min = tps.Parameter(
+            torch.tensor(output_min, dtype=torch.float64),
+            min_value=0.0,
+            max_value=1.0,
+            requires_grad=False,
+        )
+        self.output_max = tps.Parameter(
+            torch.tensor(output_max, dtype=torch.float64),
+            min_value=0.0,
+            max_value=1.0,
+            requires_grad=False,
+        )
+
         self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar(0)}
-        self._config = {"parameters": ["kp", "Ti", "Td", "isReverse"]}
+        self._config = {"parameters": ["kp", "Ti", "Td", "output_min", "output_max", "isReverse"]}
 
     @property
     def config(self):
@@ -104,6 +126,14 @@ class PIDControllerSystem(core.System, nn.Module):
             n_t=max_timesteps,
             n_s=batch_size,
         )
+
+        # Expand parameters to n_c dimension for vectorization
+        self.kp = self.kp.expand_to_n_c(self.n_c)
+        self.Ti = self.Ti.expand_to_n_c(self.n_c)
+        self.Td = self.Td.expand_to_n_c(self.n_c)
+        self.output_min = self.output_min.expand_to_n_c(self.n_c)
+        self.output_max = self.output_max.expand_to_n_c(self.n_c)
+
         self.err_prev = torch.zeros((batch_size, 1), dtype=torch.float64, requires_grad=False)
         self.err_prev_m1 = torch.zeros((batch_size, 1), dtype=torch.float64, requires_grad=False)
         self.u_prev = torch.zeros((batch_size, 1), dtype=torch.float64, requires_grad=False)
@@ -211,6 +241,8 @@ class PIDControllerSystem(core.System, nn.Module):
         
         # Compute error
         err = self.input["setpointValue"].get() - self.input["actualValue"].get()
+        if self.isReverse == False:
+            err = -err
         
         # Compute control increment using pre-computed coefficients
         # This reduces multiple tensor operations to just 3 multiplications + 2 additions
@@ -220,8 +252,15 @@ class PIDControllerSystem(core.System, nn.Module):
         u = self.u_prev + du
         # print("DEBUG: u before saturation: ", u)
         u = self.asymptotic_smooth_saturation(
-            u
+            u,
+            lower=self.output_min.get(),
+            upper=self.output_max.get(),
         )
+
+        # if date_time[0].hour<5 or (date_time[0].hour==5 and date_time[0].minute==0) or date_time[0].hour>17:
+        #     u = u*0
+
+
         # print("DEBUG: u after saturation: ", u)
         self.u_prev = u
         self.err_prev_m1 = self.err_prev
