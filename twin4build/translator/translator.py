@@ -169,11 +169,6 @@ class Translator:
         LOGGER("Applying translator", status="")
         LOGGER.add_level()
 
-
-        # Set start time for timeout checks
-        Translator.start_time = time.time() ###
-        Translator.timeout = 200 ###
-
         if semantic_model.count_triples() == 0:
             raise Exception(
                 "Semantic model provided to translator appears to be empty."
@@ -350,8 +345,6 @@ class Translator:
                 candidate_sm_nodes = semantic_model.get_instances_of_type(sp_node.cls)
 
                 for sm_node in candidate_sm_nodes:  
-                    if time.time() - Translator.start_time > Translator.timeout: ###
-                        break ###
                     
                     # Initialize tracking structures for this DFS traversal
                     initial_map = {n: None for n in signature_pattern.nodes}
@@ -396,9 +389,6 @@ class Translator:
                                         mapping, incomplete_matches,
                                         complete_matches, signature_pattern,
                                     )
-
-                if time.time() - Translator.start_time > Translator.timeout: ###
-                    break ###
 
             # ===================================================================
             # PHASE 4: Merge incomplete groups with each other
@@ -464,11 +454,6 @@ class Translator:
                 #                 complete_groups[component_cls][signature_pattern].append(new_node_map)
                 LOGGER.remove_level()
 
-                if time.time() - Translator.start_time > Translator.timeout: ###
-                    break ###
-            if time.time() - Translator.start_time > Translator.timeout: ###
-                break ###½
-
 
                 
 
@@ -516,8 +501,7 @@ class Translator:
                 LOGGER.remove_level()
                 break
             LOGGER.remove_level()
-            if time.time() - Translator.start_time > Translator.timeout: ###
-                break ###
+
         if not merge_found:
             LOGGER.debug("No merge found, adding as new incomplete group")
             updated_incomplete.append(new_mapping)
@@ -662,11 +646,6 @@ class Translator:
                         break
                     else:
                         failed_pairs.add(pair_key)
-
-                if time.time() - Translator.start_time > Translator.timeout: ###
-                    break ###
-            if time.time() - Translator.start_time > Translator.timeout: ###
-                break ###
 
             incomplete_matches = updated_incomplete
 
@@ -1486,15 +1465,14 @@ class Translator:
     @staticmethod
     def _get_node_string(sp_subject: Optional[Node], sm_subject: Optional[Any]):
         """Format subject node pair for debug logging."""
-        ss = sm_subject.get_short_name if sm_subject is not None else None # provide callable
-        # LOGGER.debug(f"{sp_subject.id}: {ss}")
+        ss = sm_subject.get_short_name() if sm_subject is not None else None
         return f"{sp_subject.id}: {ss}"
 
     @staticmethod
     def _get_map_string(l):
         LOGGER.add_level()
         for sp, sm in l.items():
-            ss = sm.get_short_name if sm is not None else None # provide callable
+            ss = sm.get_short_name() if sm is not None else None
             LOGGER.debug("%s: %s", sp.id, ss)
         LOGGER.remove_level()
 
@@ -1504,7 +1482,7 @@ class Translator:
             LOGGER.debug("MAP %d:", i)
             LOGGER.add_level()
             for sp, sm in l.items():
-                ss = sm.get_short_name if sm is not None else None # provide callable
+                ss = sm.get_short_name() if sm is not None else None
                 LOGGER.debug("%s: %s", sp.id, ss)
             LOGGER.remove_level()
 
@@ -3079,7 +3057,7 @@ class Or(Rule):
                 LOGGER.debug("MATCHED: %s (%s) IS (%s)", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), c)
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
-            return pairs_a, True, rule_applies_a_vec | rule_applies_b_vec, ruleset_a
+            return pairs, True, rule_applies_a_vec | rule_applies_b_vec, ruleset_a
 
         elif rule_applies_a:
             for pair in pairs_a:
