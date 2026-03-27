@@ -163,7 +163,7 @@ def sample_from_df(
 
     # Duplicate dates can occur either due to measuring/logging malfunctions
     # or due to change of daylight saving time where an hour occurs twice in fall.
-    df = df.groupby(level=0).mean()
+    df = df.groupby(level=0).mean(numeric_only=True)
 
     if start_time.tzinfo is None:
         start_time = start_time.astimezone(tz=tz)
@@ -225,7 +225,8 @@ def load_from_spreadsheet(
         # Check if file is cached
         startTime_str = start_time.strftime("%d-%m-%Y %H-%M-%S")
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S")
-        cached_filename = f"name({os.path.basename(name)})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
+        col_suffix = f"_col({valuecolumn})" if valuecolumn is not None else ""
+        cached_filename = f"name({os.path.basename(name)})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str}){col_suffix}_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,

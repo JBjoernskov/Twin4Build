@@ -117,7 +117,7 @@ class TimeSeriesInputSystem(core.System):
                 self._filename = filename
             else:  # Check if relative path to root was provided
                 filename = filename.lstrip("/\\")
-                filename_ = os.path.join(self.cache_root, filename)
+                filename_ = os.path.join(self._cache_root, filename)
                 if os.path.isfile(filename_) == False:
                     raise (
                         ValueError(
@@ -415,7 +415,17 @@ class TimeSeriesInputSystem(core.System):
                 # Forward-fill: repeat the last value for extended timesteps
                 values[batch_index, size:] = df.values[-1]
 
-        assert not np.isnan(values).any(), "Values contain NaN."
+        nan_mask = np.isnan(values)
+        if nan_mask.any():
+            nan_count = int(nan_mask.sum())
+            nan_pct = nan_count / values.size * 100
+            batch_indices = np.where(nan_mask.any(axis=1))[0]
+            raise AssertionError(
+                f"Values contain {nan_count} NaN(s) ({nan_pct:.1f}%) in "
+                f"TimeSeriesInput '{self.id}' "
+                f"(file: {self.filename}, batch indices: {batch_indices.tolist()}). "
+                f"Check the source data for missing values in the queried date range."
+            )
 
         self.n_timesteps = max_timesteps
         self.batch_size = len(start_time)

@@ -379,6 +379,8 @@ class SensorSystem(core.System):
         df: Optional[pd.DataFrame] = None,
         uuid: Optional[str] = None,
         dbconfig: Optional[Dict[str, Any]] = None,
+        datecolumn: int = 0,
+        valuecolumn: int = 1,
         use_spreadsheet: bool = False,
         use_database: bool = False,
         use_df: bool = False,
@@ -392,6 +394,10 @@ class SensorSystem(core.System):
                 Defaults to None.
             df: DataFrame containing readings.
                 Defaults to None.
+            datecolumn: Column index containing date/time information.
+                Defaults to 0.
+            valuecolumn: Column index containing sensor values.
+                Defaults to 1.
             use_spreadsheet: Whether to use a spreadsheet for input.
                 Defaults to False.
             use_database: Whether to use a database for input.
@@ -456,8 +462,8 @@ class SensorSystem(core.System):
         self._use_df = use_df
         self._filename = filename
         self._df = df
-        self._datecolumn = 0
-        self._valuecolumn = 1
+        self._datecolumn = datecolumn
+        self._valuecolumn = valuecolumn
         self._uuid = uuid
         self._dbconfig = dbconfig
         self._is_leaf = None
