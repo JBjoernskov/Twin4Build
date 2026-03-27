@@ -25,6 +25,11 @@ class MaxSystem(core.System):
 
         self.input = {"inputs": tps.Vector()}
         self.output = {"value": tps.Scalar()}
+        self._config = {"parameters": []}
+
+    @property
+    def config(self):
+        return self._config
 
     def initialize(
         self,
@@ -36,8 +41,10 @@ class MaxSystem(core.System):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
-        for input in self.input.values():
-            input.initialize(n_t=max_timesteps, n_s=batch_size)
+
+        n_v = self.get_n_v_from_connections("inputs")
+        self.input["inputs"].initialize(n_t=max_timesteps, n_s=batch_size, n_v=n_v)
+
         for output in self.output.values():
             output.initialize(n_t=max_timesteps, n_s=batch_size)
 
@@ -48,6 +55,7 @@ class MaxSystem(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        self.output["value"]._set(
-            torch.max(self.input["inputs"].get(), dim=-1).values, step_index
-        )
+        inputs = self.input["inputs"].get()
+        k = 50.0
+        smooth_max = torch.logsumexp(k * inputs, dim=-1) / k
+        self.output["value"]._set(smooth_max, step_index)

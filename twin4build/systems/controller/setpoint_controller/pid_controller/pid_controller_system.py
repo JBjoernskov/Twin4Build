@@ -9,6 +9,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.systems.utils.smooth_saturation import smooth_saturation
 from twin4build.translator.translator import (
     Exact,
     Node,
@@ -148,49 +149,16 @@ class PIDControllerSystem(core.System, nn.Module):
         self._cached_Ti = None
         self._cached_Td = None
 
+    @staticmethod
     def asymptotic_smooth_saturation(
-        self, u, lower=0.0, upper=1.0, eps=0, curve_start=0.1, steepness=1,
+        u, lower=0.0, upper=1.0, eps=0, curve_start=0.1, steepness=1,
         curve_type='power', power_exp=0.5
     ):
-        """
-        Smooth saturation function with asymptotic behavior at bounds.
-        
-        Optimized to only compute expensive exp() for values in saturation regions.
-        For typical PID control, most values are in the linear passthrough region [curve_start, 1-curve_start],
-        making this optimization very effective (4-5x speedup in benchmarks).
-        """
-        effective_min = lower + eps
-        effective_max = upper - eps
-        lower_curve_point = effective_min + curve_start
-        upper_curve_point = effective_max - curve_start
-        
-        def curve_function(x):
-            scaled_x = steepness * x / curve_start
-            if curve_type == 'exponential':
-                return 1 - torch.exp(-scaled_x)
-            elif curve_type == 'hyperbolic':
-                return scaled_x / (1 + scaled_x)
-            elif curve_type == 'power':
-                return 1 - 1 / torch.pow(1 + scaled_x, power_exp)
-            elif curve_type == 'sqrt':
-                return 1 - 1 / torch.sqrt(1 + scaled_x)
-            else:
-                return 1 - torch.exp(-scaled_x)
-        
-        # Three explicit regions
-        result = torch.where(
-            u < lower_curve_point,
-            # Lower region: curve toward effective_min
-            effective_min + curve_start * (1 - curve_function(lower_curve_point - u)),
-            torch.where(
-                u > upper_curve_point,
-                # Upper region: curve toward effective_max
-                effective_max - curve_start * (1 - curve_function(u - upper_curve_point)),
-                # Linear region: perfect passthrough
-                u,
-            ),
+        """Delegate to :func:`smooth_saturation` (kept for backward compat)."""
+        return smooth_saturation(
+            u, lower=lower, upper=upper, eps=eps, curve_start=curve_start,
+            steepness=steepness, curve_type=curve_type, power_exp=power_exp,
         )
-        return result
 
 
     def _compute_pid_coefficients(self, kp, Ti, Td, step_size):
@@ -255,6 +223,7 @@ class PIDControllerSystem(core.System, nn.Module):
             u,
             lower=self.output_min.get(),
             upper=self.output_max.get(),
+            curve_start=0.05
         )
 
         # if date_time[0].hour<5 or (date_time[0].hour==5 and date_time[0].minute==0) or date_time[0].hour>17:

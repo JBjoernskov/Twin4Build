@@ -9,6 +9,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.systems.utils.smooth_saturation import smooth_saturation
 
 
 class OnOffControllerTorchSystem(core.System, nn.Module):
@@ -134,8 +135,8 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         self.onValue = self.onValue.expand_to_n_c(self.n_c)
         self.steepness = self.steepness.expand_to_n_c(self.n_c)
 
+    @staticmethod
     def power_law_saturation(
-        self,
         error: torch.Tensor,
         off_value: float = 0.0,
         on_value: float = 1.0,
@@ -144,50 +145,16 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         a: float = 1.0,
         power_exp: float = 0.5,
     ) -> torch.Tensor:
+        """Differentiable on/off switching via :func:`smooth_saturation`.
+
+        Maps *error* → ``[off_value, on_value]``:
+        ``error << 0`` → *off_value*,  ``error >> 0`` → *on_value*.
         """
-        Differentiable saturation function with linear passthrough and power law asymptotes.
-        
-        Maps error to output signal [off_value, on_value]:
-            - error << 0 → off_value
-            - error = 0 → midpoint between off_value and on_value
-            - error >> 0 → on_value
-        
-        Args:
-            error: Input error signal (setpoint - actual for reverse mode)
-            off_value: Output value when controller is OFF
-            on_value: Output value when controller is ON
-            steepness: Slope/gain in the linear region (higher = sharper transition)
-            curve_start: Width of linear region in normalized [0, 1] space
-            a: Controls rate of asymptotic decay
-            power_exp: Power law exponent (smaller = slower gradient decay)
-        
-        Returns:
-            Output signal in [off_value, on_value]
-        """
-        # Compute switch signal in [0, 1]
         u = 0.5 + error * steepness
-        
-        lower_curve_point = curve_start
-        upper_curve_point = 1.0 - curve_start
-        
-        def curve_function(x: torch.Tensor) -> torch.Tensor:
-            scaled_x = a * x / curve_start
-            return 1 - 1 / torch.pow(1 + scaled_x, power_exp)
-        
-        switch_signal = torch.where(
-            u < lower_curve_point,
-            # Lower region: curve toward 0
-            curve_start * (1 - curve_function(lower_curve_point - u)),
-            torch.where(
-                u > upper_curve_point,
-                # Upper region: curve toward 1
-                1.0 - curve_start * (1 - curve_function(u - upper_curve_point)),
-                # Linear region: passthrough
-                u,
-            ),
+        switch_signal = smooth_saturation(
+            u, lower=0.0, upper=1.0, curve_start=curve_start,
+            steepness=a, power_exp=power_exp,
         )
-    
-        # Scale from [0, 1] to [off_value, on_value]
         return off_value + switch_signal * (on_value - off_value)
 
     def do_step(
