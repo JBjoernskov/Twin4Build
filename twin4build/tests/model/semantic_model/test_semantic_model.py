@@ -12,8 +12,12 @@ import twin4build
 import twin4build.core as core
 from twin4build.model.semantic_model.semantic_model import (
     SemanticModel,
+    SemanticEntity,
     SemanticObject,
+    SemanticInstance,
+    SemanticLiteral,
     SemanticProperty,
+    SemanticPredicate,
     SemanticType,
     get_short_name,
     parse_wrapper,
@@ -84,7 +88,7 @@ class TestSemanticModel(unittest.TestCase):
         literal = self.semantic_model.get_instance(
             literal_val, datatype="http://www.w3.org/2001/XMLSchema#string"
         )
-        self.assertTrue(literal.is_literal)
+        self.assertIsInstance(literal, SemanticLiteral)
 
     def test_get_property(self):
         """Test get_property method."""
@@ -271,17 +275,18 @@ class TestSemanticModel(unittest.TestCase):
         self.assertIsNotNone(namespaces)
 
     def test_instance_is_literal(self):
-        """Test literal instance creation."""
+        """Test literal instance creation returns SemanticLiteral."""
         literal = self.semantic_model.get_instance(
             "test_value", datatype="http://www.w3.org/2001/XMLSchema#string"
         )
-        self.assertTrue(literal.is_literal)
+        self.assertIsInstance(literal, SemanticLiteral)
 
     def test_instance_not_literal(self):
-        """Test non-literal instance."""
+        """Test non-literal instance returns SemanticInstance."""
         uri = "http://example.org/instance"
         instance = self.semantic_model.get_instance(uri)
-        self.assertFalse(instance.is_literal)
+        self.assertIsInstance(instance, SemanticInstance)
+        self.assertNotIsInstance(instance, SemanticLiteral)
 
     def test_parse_namespaces(self):
         """Test parse_namespaces method."""
@@ -444,7 +449,7 @@ class TestSemanticModel(unittest.TestCase):
         literal_value = Literal("42", datatype=XSD.integer)
         literal_obj = self.model.get_instance(literal_value)
 
-        self.assertTrue(literal_obj.is_literal)
+        self.assertIsInstance(literal_obj, SemanticLiteral)
         types = literal_obj.types
 
         self.assertIsNotNone(types)
@@ -456,7 +461,7 @@ class TestSemanticModel(unittest.TestCase):
         literal_value = Literal("plain text")
         literal_obj = self.model.get_instance(literal_value)
 
-        self.assertTrue(literal_obj.is_literal)
+        self.assertIsInstance(literal_obj, SemanticLiteral)
         types = literal_obj.types
 
         self.assertIsNotNone(types)
@@ -691,9 +696,14 @@ class TestSemanticModel(unittest.TestCase):
         self.assertIsNone(short_name)
 
     def test_invalid_property_uri(self):
-        """Test creating property with invalid URI raises error."""
-        with self.assertRaises(ValueError):
-            self.model.get_property("http://example.org/not_a_real_property_12345")
+        """Test creating property with unknown URI still returns a predicate.
+
+        Since SemanticProperty is now an alias for SemanticPredicate (which does not
+        validate), get_property no longer raises ValueError for unknown URIs.
+        """
+        prop = self.model.get_property("http://example.org/not_a_real_property_12345")
+        self.assertIsNotNone(prop)
+        self.assertIsInstance(prop, SemanticPredicate)
 
     # ==================== SemanticPredicate Tests ====================
 

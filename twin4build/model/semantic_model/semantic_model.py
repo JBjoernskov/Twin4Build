@@ -57,105 +57,63 @@ def get_short_name(uri: Union[str, URIRef], namespaces: Dict[str, Namespace]):
     return None
 
 
-@autoreset_print
-class SemanticProperty:
-    """Represents an ontology property"""
+class SemanticEntity:
+    """Base class for all semantic entities (types, instances, predicates).
 
-    def __init__(self, uri: Union[str, URIRef], model: "SemanticModel"):
-        # Convert string URI to URIRef if needed
+    Provides shared URI handling, namespace resolution, and comparison methods.
+    """
+
+    def __init__(self, uri: Union[str, URIRef, Literal], model: "SemanticModel"):
         self.uri = URIRef(uri) if isinstance(uri, str) else uri
         self.model = model
-        self._ontology_graph = model.ontology_graph
+        self._namespace = (None, None)
 
-        # Property types to check for
-        property_types = {
-            URIRef("http://www.w3.org/2002/07/owl#ObjectProperty"),
-            URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
-            URIRef("http://www.w3.org/2002/07/owl#DatatypeProperty"),
-            URIRef("http://www.w3.org/2002/07/owl#AnnotationProperty"),
-            URIRef("http://www.w3.org/2002/07/owl#FunctionalProperty"),
-        }
+    def get_short_name(self) -> Optional[str]:
+        """Get the local name (without namespace prefix)"""
+        for namespace in self.model.namespaces.values():
+            if str(namespace) in str(self.uri):
+                return str(self.uri).split(str(namespace))[-1]
+        return None
 
-        # Check if URI represents a valid property
-        is_property = any(
-            (self.uri, RDF.type, prop_type) in self._ontology_graph
-            for prop_type in property_types
-        )
-        is_used_as_predicate = any(self._ontology_graph.triples((None, self.uri, None)))
+    def get_namespace(self) -> Tuple[Optional[str], Optional[Namespace]]:
+        """Get the namespace prefix and URI for this entity"""
+        if self._namespace == (None, None):
+            d = get_obj_attr(core.namespace)
+            tup = [(k, v) for k, v in d.items() if v in str(self.uri)]
+            if len(tup) > 0:
+                self._namespace = tup[0]
+                return self._namespace
 
-        if not (is_property or is_used_as_predicate):
-            raise ValueError(
-                f"URI '{self.uri}' is not a valid property in the ontology"
-            )
+            tup = [
+                (prefix, namespace)
+                for prefix, namespace in self.model.ontology_graph.namespaces()
+                if str(namespace) in str(self.uri)
+            ]
+            if len(tup) > 0:
+                self._namespace = tup[0]
+                return self._namespace
 
-        self._domain = None
-        self._range = None
+        return self._namespace
 
-    @property
-    def domain(self) -> List[URIRef]:
-        """Get the domain (valid subject types) of this property"""
-        if self._domain is None:
-            self._domain = set(self._ontology_graph.objects(self.uri, RDFS.domain))
-        return self._domain
-
-    @property
-    def range(self) -> List[URIRef]:
-        """Get the range (valid object types) of this property"""
-        if self._range is None:
-            self._range = set(self._ontology_graph.objects(self.uri, RDFS.range))
-        return self._range
-
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.uri)
 
-    def __repr__(self):
-        return f"SemanticProperty({str(self.uri)})"
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({str(self.uri)})"
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(str(self.uri))
 
-    def __eq__(self, other):
-        if isinstance(other, SemanticProperty):
+    def __eq__(self, other) -> bool:
+        if isinstance(other, SemanticEntity):
             return str(self.uri) == str(other.uri)
-        elif isinstance(other, (str, URIRef)):
+        elif isinstance(other, (str, URIRef, Literal)):
             return str(self.uri) == str(other)
         return False
 
-    def get_short_name(self):
-        for namespace in self.model.namespaces.values():
-            if namespace in str(self.uri):
-                return str(self.uri).split(namespace)[-1]
-        return None
-
-    def isproperty(
-        self,
-        cls: Union[
-            str,
-            "SemanticProperty",
-            Tuple[Union[str, "SemanticProperty"], ...],
-            List[Union[str, "SemanticProperty"]],
-        ],
-    ) -> bool:
-        """Check if this instance is of any of the given property types (including inheritance)
-
-        Args:
-            property: Single property or tuple/list of properties to check against
-
-        Returns:
-            True if instance matches any of the specified properties
-        """
-        if not isinstance(cls, (tuple, list)):
-            cls = (cls,)
-
-        # Check each class in the tuple against all instance types
-        for c in cls:
-            if str(c) == str(self.uri):
-                return True
-        return False
-
 
 @autoreset_print
-class SemanticPredicate:
+class SemanticPredicate(SemanticEntity):
     """Represents an ontology predicate (property used in relationships)
 
     This class wraps predicates (properties) used in RDF triples and provides
@@ -166,34 +124,8 @@ class SemanticPredicate:
     """
 
     def __init__(self, uri: Union[str, URIRef], model: "SemanticModel"):
-        # Convert string URI to URIRef if needed
-        self.uri = URIRef(uri) if isinstance(uri, str) else uri
-        self.model = model
+        super().__init__(uri, model)
         self._ontology_graph = model.ontology_graph
-
-        # Property types to check for
-        # property_types = {
-        #     URIRef("http://www.w3.org/2002/07/owl#ObjectProperty"),
-        #     URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
-        #     URIRef("http://www.w3.org/2002/07/owl#DatatypeProperty"),
-        #     URIRef("http://www.w3.org/2002/07/owl#AnnotationProperty"),
-        #     URIRef("http://www.w3.org/2002/07/owl#FunctionalProperty"),
-        # }
-
-        # # Check if URI represents a valid property/predicate
-        # is_property = any(
-        #     (self.uri, RDF.type, prop_type) in self._ontology_graph
-        #     for prop_type in property_types
-        # )
-        # is_used_as_predicate = any(
-        #     self._ontology_graph.triples((None, self.uri, None))
-        # ) or any(self.model.instance_graph.triples((None, self.uri, None)))
-
-        # if not (is_property or is_used_as_predicate):
-        #     warnings.warn(
-        #         f"URI '{self.uri}' is not a valid property/predicate in the ontology"
-        #     )
-
         self._domain = None
         self._range = None
         self._inverse_properties = None
@@ -204,7 +136,6 @@ class SemanticPredicate:
         self._is_transitive = None
         self._is_functional = None
         self._is_inverse_functional = None
-        self._namespace = (None, None)
 
     @property
     def domain(self) -> Set[URIRef]:
@@ -359,48 +290,20 @@ class SemanticPredicate:
             ) in self._ontology_graph
         return self._is_inverse_functional
 
-    def __str__(self):
-        return str(self.uri)
+    def isproperty(
+        self,
+        cls: Union[
+            str,
+            "SemanticPredicate",
+            Tuple[Union[str, "SemanticPredicate"], ...],
+            List[Union[str, "SemanticPredicate"]],
+        ],
+    ) -> bool:
+        """Backward-compatible alias for ispredicate().
 
-    def __repr__(self):
-        return f"SemanticPredicate({str(self.uri)})"
-
-    def __hash__(self):
-        return hash(str(self.uri))
-
-    def __eq__(self, other):
-        if isinstance(other, SemanticPredicate):
-            return str(self.uri) == str(other.uri)
-        elif isinstance(other, (str, URIRef)):
-            return str(self.uri) == str(other)
-        return False
-
-    def get_short_name(self) -> str:
-        """Get the short name of the predicate (without namespace)"""
-        for namespace in self.model.namespaces.values():
-            if str(namespace) in str(self.uri):
-                return str(self.uri).split(namespace)[-1]
-        return None
-
-    def get_namespace(self) -> Tuple[str, Namespace]:
-        """Get the namespace prefix and URI for this predicate"""
-        if self._namespace == (None, None):
-            d = get_obj_attr(core.namespace)
-            tup = [(k, v) for k, v in d.items() if str(v) in str(self.uri)]
-            if len(tup) > 0:
-                self._namespace = tup[0]
-                return self._namespace
-
-            tup = [
-                (prefix, namespace)
-                for prefix, namespace in self.model.ontology_graph.namespaces()
-                if str(namespace) in str(self.uri)
-            ]
-            if len(tup) > 0:
-                self._namespace = tup[0]
-                return self._namespace
-
-        return self._namespace
+        Previously on the now-removed SemanticProperty class.
+        """
+        return self.ispredicate(cls)
 
     def parse_ontology(self):
         """Parse the ontology for this predicate's namespace
@@ -453,14 +356,16 @@ class SemanticPredicate:
         return False
 
 
+# Backward compatibility: SemanticProperty is now SemanticPredicate
+SemanticProperty = SemanticPredicate
+
+
 @autoreset_print
-class SemanticType:
+class SemanticType(SemanticEntity):
     """Represents an ontology class with inheritance"""
 
     def __init__(self, uri: Union[str, URIRef], model: "SemanticModel", validate=False):
-        # Convert string URI to URIRef if needed
-        self.uri = URIRef(uri) if isinstance(uri, str) else uri
-        self.model = model
+        super().__init__(uri, model)
         self._ontology_graph = model.ontology_graph
 
         if validate:
@@ -691,51 +596,6 @@ class SemanticType:
 
         return self._attributes
 
-    def __str__(self):
-        return str(self.uri)
-
-    def __repr__(self):
-        return f"SemanticType({str(self.uri)})"
-
-    def __hash__(self):
-        return hash(str(self.uri))
-
-    def __eq__(self, other):
-        if isinstance(other, SemanticType):
-            return str(self.uri) == str(other.uri)
-        elif isinstance(other, (str, URIRef)):
-            return str(self.uri) == str(other)
-        return False
-
-    def get_short_name(self) -> str:
-        for namespace in self.model.namespaces.values():
-            if str(namespace) in str(self.uri):
-                return str(self.uri).split(namespace)[-1]
-        return None
-
-    def get_namespace(self) -> Tuple[str, Namespace]:
-        if self._namespace == (None, None):
-            # TODO maybe cache length or something to check it is has changed since last check
-            # uri = self.uri.defrag()
-            # if str(uri) != str(self.uri):
-
-            d = get_obj_attr(core.namespace)
-            tup = [(k, v) for k, v in d.items() if v in str(self.uri)]
-            if len(tup) > 0:
-                self._namespace = tup[0]
-                return self._namespace
-
-            tup = [
-                (prefix, namespace)
-                for prefix, namespace in self.model.ontology_graph.namespaces()
-                if str(namespace) in str(self.uri)
-            ]
-            if len(tup) > 0:
-                self._namespace = tup[0]
-                return self._namespace
-
-        return self._namespace
-
     def istype(
         self,
         cls: Union[
@@ -798,117 +658,90 @@ class SemanticType:
             print("[DEBUG parse_ontology] DYNAMIC PARSING IS DISABLED")
 
 
-@autoreset_print
-class SemanticObject:
-    """Class to represent an ontology instance or literal"""
+class SemanticObject(SemanticEntity):
+    """Base class for semantic instances and literals.
 
-    def __init__(
-        self,
-        value: Union[str, URIRef, Literal],
-        model: "SemanticModel",
-        datatype: Optional[URIRef] = None,
-        lang: Optional[str] = None,
-    ):
-        """
-        Initialize a semantic object representing either a URI resource or a literal
+    This is the base type used in type annotations throughout the codebase.
+    Use SemanticInstance for URI resources and SemanticLiteral for literal values.
+    The factory method SemanticModel.get_instance() returns the appropriate subclass.
 
-        Args:
-            value: The URI or literal value
-            model: The semantic model this object belongs to
-            datatype: Optional datatype URI for literals. If provided (not None), the value is treated as a literal.
-            lang: Optional language tag for literals. If provided (not None), the value is treated as a literal.
-        """
-        self.model = model
-
-        # Handle different input types
-        if isinstance(value, Literal):
-
-            # Special handling for rdf:JSON literals since rdflib doesn't recognize this datatype
-            if value.datatype and value.datatype == core.namespace.RDF.JSON:
-                datatype = value.datatype
-                # Extract JSON from the lexical form since rdflib couldn't parse it
-                lexical_form = str(value)
-                # Remove the datatype suffix if present
-                if lexical_form.endswith("^^rdf:JSON"):
-                    json_str = lexical_form[:-9]  # Remove '^^rdf:JSON'
-                else:
-                    json_str = lexical_form
-                # Create a new literal with the parsed JSON value
-                value = json.loads(json_str)
-
-            # Handle the case where rdflib serializes None as 'None' string
-            elif str(value) == "None":
-                value = None
-                datatype = value.datatype if hasattr(value, "datatype") else None
-
-            # Already a Literal object
-            self.uri = Literal(value, datatype=datatype)
-            self.is_literal = True
-
-        elif datatype is not None or lang is not None:
-            # String that should be treated as a literal
-            if datatype and datatype == core.namespace.RDF.JSON:
-                # Extract JSON from the lexical form since rdflib couldn't parse it
-                lexical_form = str(value)
-                # Remove the datatype suffix if present
-                if lexical_form.endswith("^^rdf:JSON"):
-                    json_str = lexical_form[:-9]  # Remove '^^rdf:JSON'
-                else:
-                    json_str = lexical_form
-                # Create a new literal with the parsed JSON value
-                value = json.loads(json_str)
-            # Handle the case where rdflib serializes None as 'None' string
-            elif str(value) == "None":
-                value = None
-
-            self.uri = Literal(value, datatype=datatype, lang=lang)
-            self.is_literal = True
-        else:
-            # URI reference
-            self.uri = URIRef(value) if isinstance(value, str) else value
-            self.is_literal = False
-
-        self._types = None
-        self._attributes = None
-        self._namespace = (None, None)
+    To check if an object is a literal, use isinstance(obj, SemanticLiteral).
+    """
 
     @property
-    def types(self) -> List[SemanticType]:
-        """Get all types of this instance"""
-        if self.is_literal:
-            # For literals, return the datatype
-            if self._types is None:
-                if self.uri.datatype:
-                    self._types = {self.model.get_type(self.uri.datatype)}
-                else:
-                    # Plain literals without datatype
-                    self._types = {self.model.get_type(RDFS.Literal)}
-            return self._types
+    def types(self) -> Set[SemanticType]:
+        """Get all types of this object (overridden by subclasses)"""
+        return set()
 
-        if self._types is None:
-            # First check direct RDF.type assertions in instance graph
-            direct_types = set(self.model.instance_graph.objects(self.uri, RDF.type))
+    @property
+    def direct_types(self) -> Set[SemanticType]:
+        """Get only the explicitly asserted types (no superclass expansion)"""
+        return set()
 
-            # Then check for type through owl:sameAs relations
+    def get_predicate_object_pairs(
+        self,
+    ) -> Dict["SemanticPredicate", List[Union["SemanticObject", "SemanticType"]]]:
+        """Return all attributes of this instance (empty for literals)"""
+        return {}
+
+    def isinstance(
+        self,
+        cls: Union[
+            str,
+            SemanticType,
+            Tuple[Union[str, SemanticType], ...],
+            List[Union[str, SemanticType]],
+        ],
+    ) -> bool:
+        """Check if this object is of any of the given class types (including inheritance)"""
+        return False
+
+    def get_most_specific_type(self) -> Optional["SemanticType"]:
+        """Get the most specific type of this object (overridden by subclasses)"""
+        return None
+
+
+@autoreset_print
+class SemanticInstance(SemanticObject):
+    """Represents a URI resource / OWL Individual in the semantic model."""
+
+    def __init__(self, uri: Union[str, URIRef], model: "SemanticModel"):
+        super().__init__(uri, model)
+        self._types = None
+        self._direct_types = None
+        self._attributes = None
+
+    @property
+    def direct_types(self) -> Set[SemanticType]:
+        """Get only the explicitly asserted rdf:type values (no superclass expansion).
+
+        This is cheaper than types and sufficient when you just need the declared type.
+        """
+        if self._direct_types is None:
+            direct = set(self.model.instance_graph.objects(self.uri, RDF.type))
+
+            # Also check types through owl:sameAs relations
             same_as = set(
                 self.model.instance_graph.objects(
                     self.uri, URIRef("http://www.w3.org/2002/07/owl#sameAs")
                 )
             )
             for same_as_uri in same_as:
-                same_as_types = set(
-                    self.model.instance_graph.objects(same_as_uri, RDF.type)
+                direct.update(
+                    set(self.model.instance_graph.objects(same_as_uri, RDF.type))
                 )
-                direct_types.update(same_as_types)
 
-            # Convert all direct types to SemanticType objects and include their parent types
+            self._direct_types = {self.model.get_type(t) for t in direct}
+        return self._direct_types
+
+    @property
+    def types(self) -> Set[SemanticType]:
+        """Get all types of this instance (including superclasses and equivalent classes)"""
+        if self._types is None:
             types_ = set()
-            for t in direct_types:
-                # Add the direct type
-                type_obj = self.model.get_type(t)
+            for type_obj in self.direct_types:
                 types_.add(type_obj)
 
-                # Add parent types (from ontology graph)
                 for super_class in type_obj.super_classes:
                     types_.add(self.model.get_type(super_class.uri))
 
@@ -917,6 +750,19 @@ class SemanticObject:
 
             self._types = types_
         return self._types
+
+    def _is_class_uri(self, obj: URIRef) -> bool:
+        """Check if a URI represents a class rather than an instance.
+
+        Checks both instance and ontology graphs, and whether the URI is used as a type.
+        """
+        OWL_CLASS = URIRef("http://www.w3.org/2002/07/owl#Class")
+        return (
+            any(self.model.instance_graph.triples((obj, RDF.type, OWL_CLASS)))
+            or any(self.model.instance_graph.triples((obj, RDF.type, RDFS.Class)))
+            or any(self.model.ontology_graph.triples((obj, RDF.type, OWL_CLASS)))
+            or any(self.model.ontology_graph.triples((obj, RDF.type, RDFS.Class)))
+        )
 
     def get_predicate_object_pairs(
         self,
@@ -928,52 +774,27 @@ class SemanticObject:
         Returns:
             Dictionary mapping SemanticPredicate objects to lists of SemanticObject or SemanticType instances
         """
-        if self.is_literal:
-            # Literals don't have properties
-            return {}
-
         if self._attributes is None:
             self._attributes = {}
 
             # Parse ontologies for all predicates used by this instance
-            # This ensures that property characteristics (inverse, symmetric, transitive,
-            # equivalent properties) are available in the ontology_graph for reasoning
             predicates_used = set()
 
-            # Collect all predicates used where this instance is the subject
             for pred, _ in self.model.instance_graph.predicate_objects(self.uri):
                 predicates_used.add(pred)
 
-            # Collect all predicates used where this instance is the object
             for _, pred, _ in self.model.instance_graph.triples((None, None, self.uri)):
                 predicates_used.add(pred)
 
-            # Parse the ontology for each predicate
             for pred in predicates_used:
                 pred_obj = self.model.get_predicate(pred)
                 pred_obj.parse_ontology()
 
             #########################################################
-            # Truly on-demand reasoning for this specific instance
-            # We infer additional predicate-object pairs based on OWL property characteristics
-            #
-            # DESIGN NOTE: This uses truly on-demand reasoning - we only check property
-            # characteristics (inverse/symmetric/transitive/equivalent) for properties actually used by
-            # THIS INSTANCE, not for all properties in the ontology.
-            #
-            # Cost per instance: O(properties used by this instance × ontology lookups)
-            # - Much cheaper than scanning entire ontology if instance uses few properties
-            # - Much cheaper than materializing all inferences if querying few instances
-            #
-            # This is efficient when:
-            # - Working with small subsets of the graph (typical use case)
-            # - Instances use a small fraction of available properties
-            #
-            # For bulk operations on most instances, consider materializing inferences upfront.
+            # On-demand reasoning for this specific instance
             #########################################################
 
-            # Only check characteristics for properties used by THIS instance
-            inferred_pairs = []  # List of (predicate, object) tuples
+            inferred_pairs = []
 
             owl_inverse_of = URIRef("http://www.w3.org/2002/07/owl#inverseOf")
             owl_symmetric = URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")
@@ -982,91 +803,63 @@ class SemanticObject:
                 "http://www.w3.org/2002/07/owl#equivalentProperty"
             )
 
-            # 1. Inverse properties: If (other -p-> self) exists and p has inverse p', add (self -p'-> other)
-            #    Only checks edges WHERE THIS INSTANCE is the object
+            # 1. Inverse properties
             for other, pred, _ in self.model.instance_graph.triples(
                 (None, None, self.uri)
             ):
-                # Check if THIS property has an inverse (targeted query, not full ontology scan)
                 for inverse_pred in self.model.ontology_graph.objects(
                     pred, owl_inverse_of
                 ):
                     inferred_pairs.append((inverse_pred, other))
-                # owl:inverseOf is symmetric, check reverse direction too
                 for inverse_pred in self.model.ontology_graph.subjects(
                     owl_inverse_of, pred
                 ):
                     inferred_pairs.append((inverse_pred, other))
 
-            # 2. Symmetric properties: If (other -p-> self) exists and p is symmetric, infer (self -p-> other)
-            #    Only checks edges WHERE THIS INSTANCE is the object
+            # 2. Symmetric properties
             for other, pred, _ in self.model.instance_graph.triples(
                 (None, None, self.uri)
             ):
-                # Check if THIS property is symmetric (targeted query)
                 is_symmetric = (
-                    pred,
-                    RDF.type,
-                    owl_symmetric,
+                    pred, RDF.type, owl_symmetric,
                 ) in self.model.ontology_graph
                 if is_symmetric:
-                    # If (other -p-> self) and p is symmetric, add (self -p-> other)
                     inferred_pairs.append((pred, other))
 
-            # 3. Transitive properties: If (self -p-> x) and (x -p-> y), add (self -p-> y)
-            #    Only traverses paths starting FROM THIS INSTANCE
+            # 3. Transitive properties
             for pred, obj in self.model.instance_graph.predicate_objects(self.uri):
-                # Check if THIS property is transitive (targeted query)
                 is_transitive = (
-                    pred,
-                    RDF.type,
-                    owl_transitive,
+                    pred, RDF.type, owl_transitive,
                 ) in self.model.ontology_graph
                 if is_transitive:
-                    # Recursively find all objects reachable through this transitive property
                     for transitive_obj in self.model.instance_graph.transitive_objects(
                         obj, pred
                     ):
-                        if (
-                            transitive_obj != obj
-                        ):  # Don't add the direct connection again
+                        if transitive_obj != obj:
                             inferred_pairs.append((pred, transitive_obj))
 
-            # 4. Equivalent properties: If (self -p-> obj) exists and p has equivalent property p', add (self -p'-> obj)
-            #    Only checks properties used by THIS INSTANCE
+            # 4. Equivalent properties
             for pred, obj in self.model.instance_graph.predicate_objects(self.uri):
-                # Check if THIS property has equivalent properties (targeted query)
                 for equiv_pred in self.model.ontology_graph.objects(
                     pred, owl_equivalent_property
                 ):
-                    if equiv_pred != pred:  # Don't add the same property
+                    if equiv_pred != pred:
                         inferred_pairs.append((equiv_pred, obj))
-                # owl:equivalentProperty is symmetric, check reverse direction too
                 for equiv_pred in self.model.ontology_graph.subjects(
                     owl_equivalent_property, pred
                 ):
-                    if equiv_pred != pred:  # Don't add the same property
+                    if equiv_pred != pred:
                         inferred_pairs.append((equiv_pred, obj))
 
             ####################################################
 
             # Collect direct predicate-object pairs from the graph
             for pred, obj in self.model.instance_graph.predicate_objects(self.uri):
-                is_class = any(
-                    self.model.instance_graph.triples(
-                        (obj, RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
-                    )
-                ) or any(self.model.instance_graph.triples((obj, RDF.type, RDFS.Class)))
-
-                if is_class:
+                if self._is_class_uri(obj):
                     obj_instance = self.model.get_type(obj)
                 else:
                     obj_instance = self.model.get_instance(obj)
 
-                # if pred != RDF.type: #It is not necessary to include the type triples when used with signature pattern as the type explicitly defined in the signature pattern
-                # Handle both URI and literal objects
-
-                # Convert predicate URIRef to SemanticPredicate for consistent API
                 pred_obj = self.model.get_predicate(pred)
 
                 if pred_obj in self._attributes:
@@ -1076,22 +869,14 @@ class SemanticObject:
 
             # Add inferred predicate-object pairs from reasoning
             for pred, obj in inferred_pairs:
-                is_class = any(
-                    self.model.instance_graph.triples(
-                        (obj, RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
-                    )
-                ) or any(self.model.instance_graph.triples((obj, RDF.type, RDFS.Class)))
-
-                if is_class:
+                if self._is_class_uri(obj):
                     obj_instance = self.model.get_type(obj)
                 else:
                     obj_instance = self.model.get_instance(obj)
 
-                # Convert predicate URIRef to SemanticPredicate for consistent API
                 pred_obj = self.model.get_predicate(pred)
 
                 if pred_obj in self._attributes:
-                    # Avoid duplicates
                     if obj_instance not in self._attributes[pred_obj]:
                         self._attributes[pred_obj].append(obj_instance)
                 else:
@@ -1108,122 +893,155 @@ class SemanticObject:
             List[Union[str, SemanticType]],
         ],
     ) -> bool:
-        """Check if this instance is of any of the given class types (including inheritance)
-
-        Args:
-            cls: Single class or tuple/list of classes to check against
-
-        Returns:
-            True if instance matches any of the specified classes
-        """
-        # Convert single class to tuple for consistent handling
+        """Check if this instance is of any of the given class types (including inheritance)"""
         if not isinstance(cls, (tuple, list)):
             cls = (cls,)
 
-        # Handle literals differently
-        if self.is_literal:
-            # Check each class in the tuple against the literal's datatype
-            for c in cls:
-                c_str = str(c)
-                # Direct datatype match
-                if self.uri.datatype and c_str == str(self.uri.datatype):
-                    return True
-                # Check for XSD.string match with language-tagged literals
-                if self.uri.language and c_str == str(core.namespace.XSD.string):
-                    return True
-                # Plain literals (no datatype) match with XSD.string
-                if (
-                    not self.uri.datatype
-                    and not self.uri.language
-                    and c_str == str(core.namespace.XSD.string)
-                ):
-                    return True
-            return False
-
         if self.types:
-            # super_classes = [str(s) for t in self.type for s in t.super_classes] # No reason to check super classes as they are already checked in the type property
-            # Check each class in the tuple against all instance types
             for c in cls:
                 for instance_type in self.types:
                     if str(c) == str(instance_type.uri):
                         return True
-                    # elif str(c) in super_classes:
-                    #     return True
         return False
 
-    def __str__(self) -> str:
-        return str(self.uri)
-
-    def __repr__(self):
-        if self.is_literal:
-            return f"SemanticObject(Literal({repr(self.uri.value)}))"
-        else:
-            return f"SemanticObject({str(self.uri)})"
-
-    def __hash__(self):
-        return hash(str(self.uri))
-
-    def __eq__(self, other):
-        if isinstance(other, SemanticObject):
-            return str(self.uri) == str(other.uri)
-        elif isinstance(other, (str, URIRef, Literal)):
-            return str(self.uri) == str(other)
-        return False
-
-    def get_short_name(self) -> str:
-        for namespace in self.model.namespaces.values():
-            if str(namespace) in str(self.uri):
-                return str(self.uri).split(namespace)[-1]
-        return None
-
-    def get_namespace(self) -> Tuple[str, Namespace]:
-        if self._namespace == (None, None):
-            # TODO maybe cache length or something to check it is has changed since last check
-            # uri = self.uri.defrag()
-            # if str(uri) != str(self.uri):
-
-            d = get_obj_attr(core.namespace)
-            tup = [(k, v) for k, v in d.items() if v in str(self.uri)]
-            if len(tup) > 0:
-                self._namespace = tup[0]
-                return self._namespace
-
-            tup = [
-                (prefix, namespace)
-                for prefix, namespace in self.model.ontology_graph.namespaces()
-                if str(namespace) in str(self.uri)
-            ]
-            if len(tup) > 0:
-                self._namespace = tup[0]
-                return self._namespace
-
-        return self._namespace
-
-    def get_most_specific_type(self) -> "SemanticType":
+    def get_most_specific_type(self) -> Optional["SemanticType"]:
         """
         Get the most specific type of this instance.
         We find the class in self.types that has ALL the other classes in self.types as super classes.
 
-        This is not the same as finding the class in self.types that has none of the other classes in self.types as subclasses. (as initially implemented).
-        This is because ontologies reuse classes from other ontologies by declaring ChildClass -> rdfs:subClassOf -> ParentClass.
-        However, the ParentClass in the parent ontology does not necesarily have ChildClass as a subclass as this should be declared by the inheriting ontology.
+        This is not the same as finding the class in self.types that has none of the other
+        classes in self.types as subclasses. (as initially implemented).
+        This is because ontologies reuse classes from other ontologies by declaring
+        ChildClass -> rdfs:subClassOf -> ParentClass. However, the ParentClass in the parent
+        ontology does not necessarily have ChildClass as a subclass as this should be declared
+        by the inheriting ontology.
 
-        Note: Equivalent classes (owl:equivalentClass) are filtered out when determining the most specific type,
-        as they are at the same level of specificity.
+        Note: Equivalent classes (owl:equivalentClass) are filtered out when determining the
+        most specific type, as they are at the same level of specificity.
+
+        Anonymous / Skolemized blank-node types (those without a recognized namespace) are
+        excluded from the comparison, as they represent OWL restrictions or similar constructs
+        that don't participate in the named class hierarchy.
         """
-        for it, t in enumerate(self.types):
-            # Exclude this type and any equivalent types from consideration
-            types_excluding_this = self.types - {t}
+        if not self.types:
+            return None
 
-            # Also exclude equivalent classes (they're at the same level of specificity)
+        # Filter to named types only (those with a recognized namespace)
+        named_types = {t for t in self.types if t.get_short_name() is not None}
+        if not named_types:
+            return None
+
+        for t in named_types:
+            types_excluding_this = named_types - {t}
+
             equivalent_types_set = set(t.equivalent_classes)
             types_excluding_this = types_excluding_this - equivalent_types_set
 
-            # Check if all remaining types are superclasses of this type (meaning it's the most specific)
-            if all([t_ in t.super_classes for t_ in types_excluding_this]):
+            if all(t_ in t.super_classes for t_ in types_excluding_this):
                 return t
 
         warnings.warn(f"No most specific type found for {self.get_short_name()}")
+        return None
+
+
+class SemanticLiteral(SemanticObject):
+    """Represents an RDF Literal value in the semantic model."""
+
+    def __init__(
+        self,
+        value: Union[str, Literal],
+        model: "SemanticModel",
+        datatype: Optional[URIRef] = None,
+        lang: Optional[str] = None,
+    ):
+        # Don't call SemanticEntity.__init__ since we need a Literal, not a URIRef
+        self.model = model
+        self._namespace = (None, None)
+
+        if isinstance(value, Literal):
+            # Special handling for rdf:JSON literals
+            if value.datatype and value.datatype == core.namespace.RDF.JSON:
+                datatype = value.datatype
+                lexical_form = str(value)
+                if lexical_form.endswith("^^rdf:JSON"):
+                    json_str = lexical_form[:-9]
+                else:
+                    json_str = lexical_form
+                value = json.loads(json_str)
+
+            elif str(value) == "None":
+                value = None
+                datatype = value.datatype if hasattr(value, "datatype") else None
+
+            self.uri = Literal(value, datatype=datatype)
+
+        elif datatype is not None or lang is not None:
+            if datatype and datatype == core.namespace.RDF.JSON:
+                lexical_form = str(value)
+                if lexical_form.endswith("^^rdf:JSON"):
+                    json_str = lexical_form[:-9]
+                else:
+                    json_str = lexical_form
+                value = json.loads(json_str)
+            elif str(value) == "None":
+                value = None
+
+            self.uri = Literal(value, datatype=datatype, lang=lang)
+        else:
+            self.uri = Literal(value)
+
+        self._types = None
+
+    @property
+    def direct_types(self) -> Set[SemanticType]:
+        """For literals, the direct type is the datatype."""
+        return self.types
+
+    @property
+    def types(self) -> Set[SemanticType]:
+        """For literals, return the datatype as the type."""
+        if self._types is None:
+            if self.uri.datatype:
+                self._types = {self.model.get_type(self.uri.datatype)}
+            else:
+                self._types = {self.model.get_type(RDFS.Literal)}
+        return self._types
+
+    def isinstance(
+        self,
+        cls: Union[
+            str,
+            SemanticType,
+            Tuple[Union[str, SemanticType], ...],
+            List[Union[str, SemanticType]],
+        ],
+    ) -> bool:
+        """Check if this literal's datatype matches any of the given types."""
+        if not isinstance(cls, (tuple, list)):
+            cls = (cls,)
+
+        for c in cls:
+            c_str = str(c)
+            if self.uri.datatype and c_str == str(self.uri.datatype):
+                return True
+            if self.uri.language and c_str == str(core.namespace.XSD.string):
+                return True
+            if (
+                not self.uri.datatype
+                and not self.uri.language
+                and c_str == str(core.namespace.XSD.string)
+            ):
+                return True
+        return False
+
+    def get_most_specific_type(self) -> Optional["SemanticType"]:
+        """For literals, the most specific type is the datatype."""
+        if self.types:
+            return next(iter(self.types))
+        return None
+
+    def __repr__(self) -> str:
+        return f"SemanticLiteral({repr(self.uri.value)})"
 
 
 @autoreset_print
@@ -1472,7 +1290,6 @@ class SemanticModel:
                         "Attempting to parse namespace directly using URI: %s", uri,
                         change_status=True,
                     )
-                    LOGGER.remove_level()
 
             # If both methods failed, add to error namespaces
             if not success:
@@ -2033,10 +1850,14 @@ class SemanticModel:
             else:
                 keep_triples = initial_triples
 
-            # Remove triples not in keep_triples
-            for s, p, o in new_graph.triples((None, None, None)):
-                if (s, p, o) not in keep_triples:
-                    new_graph.remove((s, p, o))
+            # Remove triples not in keep_triples.
+            # Collect first to avoid modifying the graph during iteration.
+            to_remove = [
+                (s, p, o) for s, p, o in new_graph.triples((None, None, None))
+                if (s, p, o) not in keep_triples
+            ]
+            for triple in to_remove:
+                new_graph.remove(triple)
 
             # Count unique nodes in final graph
             final_nodes = set()
@@ -2053,30 +1874,29 @@ class SemanticModel:
         lang: Optional[str] = None,
     ) -> SemanticObject:
         """
-        Get a specific instance by URI or create a literal
+        Get a specific instance by URI or create a literal.
+
+        Factory method that returns SemanticInstance for URIs or SemanticLiteral for literals.
 
         Args:
             value: The URI or literal value
-            is_literal: Flag to indicate if the value should be treated as a literal
             datatype: Optional datatype URI for literals
             lang: Optional language tag for literals
 
         Returns:
-            SemanticObject representing the URI or Literal
+            SemanticInstance for URI resources, SemanticLiteral for literal values
         """
         # Handle literals
         if isinstance(value, Literal) or datatype is not None or lang is not None:
-            # Create a new literal object (we don't cache literals)
             if isinstance(value, Literal):
-                return SemanticObject(value, self)
+                return SemanticLiteral(value, self)
             else:
-                return SemanticObject(value, self, datatype=datatype, lang=lang)
+                return SemanticLiteral(value, self, datatype=datatype, lang=lang)
 
         # Handle URIs
-        # uri = URIRef(value) if isinstance(value, str) else value
         uri = str(value)
         if uri not in self._instances:
-            self._instances[uri] = SemanticObject(uri, self)
+            self._instances[uri] = SemanticInstance(uri, self)
         return self._instances[uri]
 
     def get_type(self, uri: Union[str, URIRef]) -> SemanticType:
@@ -2087,13 +1907,12 @@ class SemanticModel:
             self._types[uri] = SemanticType(uri, self)
         return self._types[uri]
 
-    def get_property(self, uri: Union[str, URIRef]) -> SemanticProperty:
-        """Get a specific property by URI"""
-        # uri = URIRef(uri) if isinstance(uri, str) else uri
-        uri = str(uri)
-        if uri not in self._properties:
-            self._properties[uri] = SemanticProperty(uri, self)
-        return self._properties[uri]
+    def get_property(self, uri: Union[str, URIRef]) -> "SemanticPredicate":
+        """Get a specific property by URI.
+
+        Deprecated: Use get_predicate() instead. This is a backward-compatible alias.
+        """
+        return self.get_predicate(uri)
 
     def get_predicate(self, uri: Union[str, URIRef]) -> SemanticPredicate:
         """Get a specific predicate by URI
@@ -2213,6 +2032,9 @@ class SemanticModel:
         initial_node=None,
         random_seed=None,
         format="svg",
+        instance_style=None,
+        deduplicate_inverse=True,
+        pydot_transform=None,
     ):
         """
         Visualize RDF graph with optional class and predicate filtering.
@@ -2231,6 +2053,33 @@ class SemanticModel:
             initial_node: Initial node to start traversal from. If not provided, a random node will be selected from the query results
             random_seed: Random seed to use for random traversal. Use this to get reproducible results when doing random traversal
             format: Output format for the visualization. Can be "png" or "svg". Default is "svg".
+            instance_style: Optional dict mapping instance URIs (str or URIRef) to style overrides.
+                Per-instance styles take priority over type-based defaults.
+                Each value is a dict with any of the following keys:
+
+                - ``fill_color``: list of 4 colors ``[header, name_row, uri_row, literals]``
+                - ``font_color``: list of 4 colors (same row order)
+                - ``font_size``: list of 4 ints (same row order)
+                - ``font_bold``: list of 4 bools (same row order)
+
+                ``None`` entries inherit from the type-based defaults.
+
+                Example::
+
+                    instance_style = {
+                        "http://example.org/myDamper1": {
+                            "fill_color": ["#FF0000", "#FF0000", None, None],
+                            "font_bold": [True, True, None, None],
+                        }
+                    }
+
+            deduplicate_inverse: If True (default), when two instances are connected
+                by both a predicate and its owl:inverseOf, only one edge is kept.
+                The predicate with the lexicographically smaller URI is retained.
+                This reduces visual clutter for ontologies that define inverse pairs
+                (e.g. s4syst:connectedThrough / s4syst:connectsSystem).
+            pydot_transform: Optional callable that receives the pydotplus graph
+                object after node styling and can modify it in place before rendering.
         """
         # Omit rdf:type triples by default
         if query is None:
@@ -2245,33 +2094,51 @@ class SemanticModel:
             }
             """
 
+        # --- Color palette (Paired / ColorBrewer) ---
+        # Full palette for cycling; unmapped types pick from non-hardcoded colors
+        dark_rose = "#8B4A6B"
+        pink = "#FB9A99"
+        dark_teal = "#2B7A78"
+        light_purple = "#CAB2D6"
+        purple = "#5B5EA6"
+        brown = "#7A6855"
+        white = "#FFFFFF"
+
+        # Named aliases (easy to swap)
         light_black = "#3B3838"
         dark_blue = "#44546A"
-        orange = "#DC8665"  # "#C55A11"
+        orange = "#DC8665"
         red = "#873939"
         grey = "#666666"
         light_blue = "#8497B0"
-        green = "#83AF9B"  # "#BF9000"
         green = "#83AF9B"
-        white = "#FFFFFF"
+        magenta = "#660066"
 
-        # Here we set the attributes for the tables.
-        # The lists are indexed by the row number.
-        # The first element is the attribute for the first row, i.e. the class
-        # The second element is the attribute for the second row, i.e. the instance name
-        # The third element is the attribute for the third row, i.e. the full uri
-        # The fourth element is the attribute all the literals
+        fill_color_cycle = [
+            light_black,
+            light_blue,
+            dark_blue,
+            dark_rose,
+            green,
+            pink,
+            red,
+            dark_teal,
+            orange,
+            light_purple,
+            purple,
+            brown,
+        ]
+
+        # Style lists are indexed by visual row order:
+        #   [0] = Class type header       (e.g. "Damper")
+        #   [1] = Short name              (e.g. "space42")
+        #   [2] = Full URI                (e.g. "http://example.org/space42")
+        #   [3] = Literal property rows   (e.g. "airFlowRateMax: 0.5")
 
         fill_color_map = {
-            "default": [light_black, light_black, None, None],
             core.namespace.S4BLDG.BuildingSpace: [light_black, light_black, None, None],
             core.namespace.S4BLDG.Controller: [orange, orange, None, None],
-            core.namespace.S4BLDG.AirToAirHeatRecovery: [
-                dark_blue,
-                dark_blue,
-                None,
-                None,
-            ],
+            core.namespace.S4BLDG.AirToAirHeatRecovery: [dark_blue, dark_blue, None, None],
             core.namespace.S4BLDG.Coil: [red, red, None, None],
             core.namespace.S4BLDG.Damper: [dark_blue, dark_blue, None, None],
             core.namespace.S4BLDG.Valve: [red, red, None, None],
@@ -2279,69 +2146,72 @@ class SemanticModel:
             core.namespace.S4BLDG.SpaceHeater: [red, red, None, None],
             core.namespace.SAREF.Sensor: [green, green, None, None],
             core.namespace.SAREF.Meter: [green, green, None, None],
-            core.namespace.S4BLDG.Schedule: [grey, grey, None, None],
+            core.namespace.SAREF.Property: [light_purple, light_purple, None, None],
+            core.namespace.S4BLDG.Schedule: [brown, brown, None, None],
             core.namespace.S4BLDG.Pump: [red, red, None, None],
-            core.namespace.S4SYST.System: [green, green, None, None],
-            core.namespace.S4SYST.Connection: [light_blue, light_blue, None, None],
-            core.namespace.S4SYST.ConnectionPoint: [light_blue, light_blue, None, None],
+            core.namespace.S4SYST.Connection: [grey, grey, None, None],
+            core.namespace.S4SYST.ConnectionPoint: [grey, grey, None, None],
+
+            core.namespace.T4B.BuildingSpaceTorchSystem: [light_black, light_black, None, None],
+            core.namespace.T4B.PIDControllerSystem: [orange, orange, None, None],
+            core.namespace.T4B.AirToAirHeatRecovery: [dark_blue, dark_blue, None, None],
+            core.namespace.T4B.CoilTorchSystem: [red, red, None, None],
+            core.namespace.T4B.DamperTorchSystem: [dark_blue, dark_blue, None, None],
+            core.namespace.T4B.ValveTorchSystem: [red, red, None, None],
+            core.namespace.T4B.FanTorchSystem: [dark_blue, dark_blue, None, None],
+            core.namespace.T4B.SpaceHeaterTorchSystem: [red, red, None, None],
+            core.namespace.T4B.SensorSystem: [green, green, None, None],
+            core.namespace.T4B.ScheduleSystem: [brown, brown, None, None],
+            core.namespace.T4B.PumpTorchSystem: [red, red, None, None],
         }
 
+        # Remove colors already used by hardcoded mappings so the cycle only uses fresh ones
+        _used_colors = {entry[0] for entry in fill_color_map.values()}
+        _available_cycle = [c for c in fill_color_cycle if c not in _used_colors]
+        if not _available_cycle:
+            _available_cycle = fill_color_cycle  # fallback if all colors are taken
+
+        def _cycle_color(type_uri):
+            """Pick a fill color from the remaining (non-hardcoded) palette colors."""
+            idx = hash(str(type_uri)) % len(_available_cycle)
+            c = _available_cycle[idx]
+            return [c, c, None, None]
+
+        # Defaults for font color, size, bold (used when type is not in the map)
+        _default_font_color = [white, white, None, None]
+        _default_font_size = [10, 8, 8, 6]
+        _default_font_bold = [True, True, None, None]
+
         font_color_map = {
-            "default": [white, white, None, None],
-            core.namespace.S4BLDG.BuildingSpace: [white, white, None, None],
-            core.namespace.S4BLDG.Controller: [white, white, None, None],
-            core.namespace.S4BLDG.AirToAirHeatRecovery: [white, white, None, None],
-            core.namespace.S4BLDG.Coil: [white, white, None, None],
-            core.namespace.S4BLDG.Damper: [white, white, None, None],
-            core.namespace.S4BLDG.Valve: [white, white, None, None],
-            core.namespace.S4BLDG.Fan: [white, white, None, None],
-            core.namespace.S4BLDG.SpaceHeater: [white, white, None, None],
-            core.namespace.SAREF.Sensor: [white, white, None, None],
-            core.namespace.SAREF.Meter: [white, white, None, None],
-            core.namespace.S4BLDG.Schedule: [white, white, None, None],
-            core.namespace.S4BLDG.Pump: [white, white, None, None],
-            core.namespace.S4SYST.System: [white, white, None, None],
-            core.namespace.S4SYST.Connection: [white, white, None, None],
-            core.namespace.S4SYST.ConnectionPoint: [white, white, None, None],
+            # All types currently use white; add per-type overrides here as needed
         }
 
         font_size_map = {
-            "default": [10, 8, 8, 6],
-            core.namespace.S4BLDG.BuildingSpace: [10, 8, 8, 6],
-            core.namespace.S4BLDG.Controller: [10, 8, 8, 6],
-            core.namespace.S4BLDG.AirToAirHeatRecovery: [10, 8, 8, 6],
-            core.namespace.S4BLDG.Coil: [10, 8, 8, 6],
-            core.namespace.S4BLDG.Damper: [10, 8, 8, 6],
-            core.namespace.S4BLDG.Valve: [10, 8, 8, 6],
-            core.namespace.S4BLDG.Fan: [10, 8, 8, 6],
-            core.namespace.S4BLDG.SpaceHeater: [10, 8, 8, 6],
-            core.namespace.SAREF.Sensor: [10, 8, 8, 6],
-            core.namespace.SAREF.Meter: [10, 8, 8, 6],
-            core.namespace.S4BLDG.Schedule: [10, 8, 8, 6],
-            core.namespace.S4BLDG.Pump: [10, 8, 8, 6],
-            core.namespace.S4SYST.System: [10, 8, 8, 6],
             core.namespace.S4SYST.Connection: [7, 6, 6, 5],
             core.namespace.S4SYST.ConnectionPoint: [7, 6, 6, 5],
         }
 
         font_bold_map = {
-            "default": [True, True, None, None],
-            core.namespace.S4BLDG.BuildingSpace: [True, True, None, None],
-            core.namespace.S4BLDG.Controller: [True, True, None, None],
-            core.namespace.S4BLDG.AirToAirHeatRecovery: [True, True, None, None],
-            core.namespace.S4BLDG.Coil: [True, True, None, None],
-            core.namespace.S4BLDG.Damper: [True, True, None, None],
-            core.namespace.S4BLDG.Valve: [True, True, None, None],
-            core.namespace.S4BLDG.Fan: [True, True, None, None],
-            core.namespace.S4BLDG.SpaceHeater: [True, True, None, None],
-            core.namespace.SAREF.Sensor: [True, True, None, None],
-            core.namespace.SAREF.Meter: [True, True, None, None],
-            core.namespace.S4BLDG.Schedule: [True, True, None, None],
-            core.namespace.S4BLDG.Pump: [True, True, None, None],
-            core.namespace.S4SYST.System: [True, True, None, None],
             core.namespace.S4SYST.Connection: [False, False, None, None],
             core.namespace.S4SYST.ConnectionPoint: [False, False, None, None],
         }
+
+        # Build per-instance style overrides keyed by URI string
+        _instance_fill = {}
+        _instance_font_color = {}
+        _instance_font_size = {}
+        _instance_font_bold = {}
+        if instance_style is not None:
+            for inst_uri, style in instance_style.items():
+                key = str(inst_uri)
+                if "fill_color" in style:
+                    _instance_fill[key] = style["fill_color"]
+                if "font_color" in style:
+                    _instance_font_color[key] = style["font_color"]
+                if "font_size" in style:
+                    _instance_font_size[key] = style["font_size"]
+                if "font_bold" in style:
+                    _instance_font_bold[key] = style["font_bold"]
 
         # Filter graph
         graph = self.filter_graph(
@@ -2352,7 +2222,31 @@ class SemanticModel:
             initial_node=initial_node,
             random_seed=random_seed,
         )
-        # graph = self.graph # TODO: Remove this
+
+        # Deduplicate inverse predicate pairs
+        if deduplicate_inverse:
+            owl_inverse_of = URIRef("http://www.w3.org/2002/07/owl#inverseOf")
+
+            # Build a set of (p, p_inv) pairs from the ontology
+            inverse_pairs = set()
+            for p, _, p_inv in self.ontology_graph.triples((None, owl_inverse_of, None)):
+                inverse_pairs.add((p, p_inv))
+                inverse_pairs.add((p_inv, p))
+
+            if inverse_pairs:
+                triples_to_remove = []
+                for s, p, o in graph:
+                    for p_kept, p_dropped in inverse_pairs:
+                        if p == p_dropped and (o, p_kept, s) in graph:
+                            # Both (s, p_dropped, o) and (o, p_kept, s) exist.
+                            # Keep the one whose predicate URI is lexicographically smaller.
+                            if str(p_dropped) > str(p_kept):
+                                triples_to_remove.append((s, p, o))
+                            break
+
+                for triple in triples_to_remove:
+                    graph.remove(triple)
+
         stream = io.StringIO()
         rdf2dot(graph, stream)
 
@@ -2398,18 +2292,66 @@ class SemanticModel:
                         z is not None
                     ), f"get_short_name() returned None for type {most_specific_type}"
 
+                # Resolve the matching type key for this node (most specific first, then all types)
+                matched_type_uri = None
+                if most_specific_type is not None and most_specific_type.uri in fill_color_map:
+                    matched_type_uri = most_specific_type.uri
+                else:
+                    for t in type_:
+                        if t.uri in fill_color_map:
+                            matched_type_uri = t.uri
+                            break
+
+                # Resolve effective style lists for this node.
+                # Priority: instance_style > type-based map > cycle palette / defaults
+                uri_str = str(uri)
+                type_for_cycle = most_specific_type.uri if most_specific_type is not None else uri
+
+                def _get_fill(key):
+                    if key is not None and key in fill_color_map:
+                        return fill_color_map[key]
+                    return _cycle_color(type_for_cycle)
+
+                def _resolve_fill(inst_map):
+                    base = _get_fill(matched_type_uri)
+                    if uri_str not in inst_map:
+                        return base
+                    override = inst_map[uri_str]
+                    return [o if o is not None else b for o, b in zip(override, base)]
+
+                def _resolve(inst_map, type_map, default):
+                    """Merge instance override with type default (None entries inherit)."""
+                    base = type_map.get(matched_type_uri, default) if matched_type_uri else default
+                    if uri_str not in inst_map:
+                        return base
+                    override = inst_map[uri_str]
+                    return [o if o is not None else b for o, b in zip(override, base)]
+
+                eff_fill = _resolve_fill(_instance_fill)
+
+                eff_fc = _resolve(_instance_font_color, font_color_map, _default_font_color)
+                eff_fs = _resolve(_instance_font_size, font_size_map, _default_font_size)
+                eff_fb = _resolve(_instance_font_bold, font_bold_map, _default_font_bold)
+
                 b = soup.new_tag("b", attrs={})
                 b.string = z
+                header_bgcolor = eff_fill[0]
+                header_font_color = eff_fc[0]
+                if header_font_color is not None:
+                    header_font = soup.new_tag("font", attrs={"color": header_font_color})
+                    header_font.append(b)
+                else:
+                    header_font = b
                 new_col = soup.new_tag(
                     "td",
                     attrs={
-                        "BGCOLOR": "grey",
+                        "BGCOLOR": header_bgcolor or "grey",
                         "COLSPAN": "2",
                         "ALIGN": "CENTER",
                         "VALIGN": "MIDDLE",
                     },
                 )
-                new_col.append(b)
+                new_col.append(header_font)
                 new_row = soup.new_tag("tr", attrs={})
                 new_row.append(new_col)
                 first_row = soup.find_all("tr")[0]
@@ -2418,53 +2360,54 @@ class SemanticModel:
                 for i, row in enumerate(
                     soup.find_all("tr")
                 ):  # [:-1]: #All except the last row, which is the full inst URI (small blue text)
-                    # Skip the first row (grey header with class type) as it's already styled
+                    # Skip the first row (header with class type) as it's already styled above
                     if i == 0:
                         continue
 
-                    for col in row.find_all("td"):
-                        attrs = {}
-                        bold = False
+                    cols_in_row = row.find_all("td")
 
+                    for col in cols_in_row:
                         i_ = i if i < 4 else 3
 
-                        for t in type_:
-                            if t.uri in fill_color_map:
-                                # print(col.attrs)
-                                if t.uri in fill_color_map:
-                                    if fill_color_map[t.uri][i_] is not None:
-                                        col.attrs["BGCOLOR"] = fill_color_map[t.uri][i_]
-                                elif fill_color_map["default"][i_] is not None:
-                                    col.attrs["BGCOLOR"] = fill_color_map["default"][i_]
+                        # Build uppercase TD attrs (BS4 html.parser lowercases them,
+                        # but Graphviz HTML-like labels require uppercase).
+                        td_attrs = {k.upper(): v for k, v in col.attrs.items()}
+                        # Ensure single-cell rows span both columns
+                        if len(cols_in_row) == 1:
+                            td_attrs["COLSPAN"] = "2"
+                        if eff_fill[i_] is not None:
+                            td_attrs["BGCOLOR"] = eff_fill[i_]
 
-                                if t.uri in font_color_map:
-                                    if font_color_map[t.uri][i_] is not None:
-                                        attrs["color"] = font_color_map[t.uri][i_]
-                                elif font_color_map["default"][i_] is not None:
-                                    attrs["color"] = font_color_map["default"][i_]
+                        # Build <font> attributes
+                        font_attrs = {}
+                        bold = False
 
-                                if t.uri in font_size_map:
-                                    if font_size_map[t.uri][i_] is not None:
-                                        attrs["point-size"] = font_size_map[t.uri][i_]
-                                elif font_size_map["default"][i_] is not None:
-                                    attrs["point-size"] = font_size_map["default"][i_]
+                        fc = eff_fc
+                        if fc[i_] is not None:
+                            font_attrs["color"] = fc[i_]
 
-                                if t.uri in font_bold_map:
-                                    if font_bold_map[t.uri][i_] is not None:
-                                        bold = font_bold_map[t.uri][i_]
-                                elif font_bold_map["default"][i_] is not None:
-                                    bold = font_bold_map["default"][i_]
+                        fs = eff_fs
+                        if fs[i_] is not None:
+                            font_attrs["point-size"] = fs[i_]
 
-                        font = soup.new_tag("font", attrs=attrs)
+                        fb = eff_fb
+                        if fb[i_] is not None:
+                            bold = fb[i_]
 
-                        if col.string:
-                            s = col.string
-                            new_col = soup.new_tag("td", attrs=col.attrs)
-                            col.replace_with(new_col)
-                            new_col.append(font)
-                        elif col.find("b"):
+                        font = soup.new_tag("font", attrs=font_attrs)
+
+                        # Extract text content from cell
+                        if col.find("b"):
                             s = col.find("b").string
-                            col.find("b").replace_with(font)
+                        elif col.string:
+                            s = col.string
+                        else:
+                            s = col.get_text()
+
+                        # Replace old cell with a clean new <td> (uppercase attrs)
+                        new_col = soup.new_tag("td", attrs=td_attrs)
+                        col.replace_with(new_col)
+                        new_col.append(font)
 
                         if bold:
                             s_ = soup.new_tag("b", attrs={})
@@ -2525,6 +2468,9 @@ class SemanticModel:
                 node.obj_dict["attributes"]["label"] = (
                     str(soup).replace("&lt;", "<").replace("&gt;", ">")
                 )
+
+        if pydot_transform is not None:
+            pydot_transform(dg)
 
         def del_dir(dirname):
             for filename in os.listdir(dirname):
@@ -2602,6 +2548,12 @@ class SemanticModel:
         subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         ### neato ###
+        # Clean stale output files from previous runs (e.g. .svg when now rendering .png)
+        graphs_dir, _ = self.get_dir(folder_list=["graphs"])
+        for old_file in os.listdir(graphs_dir):
+            if old_file.startswith("semantic_model.") and os.path.isfile(os.path.join(graphs_dir, old_file)):
+                os.remove(os.path.join(graphs_dir, old_file))
+
         semantic_model_output, _ = self.get_dir(
             folder_list=["graphs"], filename=f"semantic_model.{format}"
         )
@@ -2613,6 +2565,7 @@ class SemanticModel:
             "-n2",
             "-Gsize=10!",
             f"-Gdpi={dpi}",
+            "-Grankdir=RL",
             "-q",
             # "-v", # verbose
             f"-o{semantic_model_output}",

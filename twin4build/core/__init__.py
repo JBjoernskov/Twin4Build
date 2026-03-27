@@ -24,7 +24,10 @@ from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.model.semantic_model.semantic_model import (
     SemanticModel,
+    SemanticEntity,
     SemanticObject,
+    SemanticInstance,
+    SemanticLiteral,
     SemanticProperty,
     SemanticType,
     SemanticPredicate,
