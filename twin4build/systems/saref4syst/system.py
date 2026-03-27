@@ -13,7 +13,7 @@ import twin4build.core as core
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 
-
+import torch
 class System:
     """
     A base-class representing a component model used as part of a simulation model.
@@ -228,8 +228,12 @@ class System:
                 # Get all indices from the input_port_index dict
                 for index in cp.input_port_index.values():
                     found_connection = True
-                    # Index is always a tensor (scalar or array) - get max value
-                    idx_val = index.max().item()
+                    if isinstance(index, int):
+                        idx_val = index
+                    elif hasattr(index, 'max'):
+                        idx_val = int(index.max().item())
+                    else:
+                        idx_val = int(index)
                     max_index = max(max_index, idx_val)
 
         n_v =  max_index + 1

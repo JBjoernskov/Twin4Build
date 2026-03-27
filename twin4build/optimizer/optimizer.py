@@ -531,17 +531,13 @@ class Optimizer:
             "startTime",
             "endTime",
             "stepSize",
-            "variables",
-            "objectives",
         ]
-        new_args = ["start_time", "end_time", "step_size", "variables", "objectives"]
+        new_args = ["start_time", "end_time", "step_size"]
         position = [1, 2, 3, 4, 5]
         value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
         start_time = value_map.get("start_time", start_time)
         end_time = value_map.get("end_time", end_time)
         step_size = value_map.get("step_size", step_size)
-        variables = value_map.get("variables", variables)
-        objectives = value_map.get("objectives", objectives)
 
         self._variables = variables or []
         self._objectives = objectives or []
@@ -1045,6 +1041,10 @@ class Optimizer:
                     - "ad": Automatic differentiation using PyTorch (recommended)
                     - "fd": Finite difference (not yet implemented)
             **options: Additional options passed to the SciPy optimizer:
+                - "constraint_penalty": Penalty weight for soft constraint violations.
+                  Higher values enforce constraints more strictly at the cost of slower
+                  convergence. Increase when constraints are violated in the solution.
+                  Defaults to 100.
                 - "verbose": Verbosity level (0-3) for optimization output
                 - "maxiter": Maximum number of iterations
                 - "gtol": Gradient tolerance for convergence
@@ -1062,6 +1062,8 @@ class Optimizer:
         """
         if method is None:
             method = ("scipy", "SLSQP", "ad")
+
+        self._constraint_penalty = options.pop("constraint_penalty", 100)
 
         for component in self.simulator.model.components.values():
             if isinstance(component, nn.Module):
@@ -1326,7 +1328,7 @@ class Optimizer:
 
         # Compute loss - initialize as tensor to avoid NaN propagation issues
         loss = torch.tensor(0.0, dtype=torch.float64)
-        k = 100
+        k = self._constraint_penalty
 
         # Handle equality constraints
         # Use boolean mask (n_t, n_s) to index 3D tensors (n_t, n_s, n_c) -> (num_valid, n_c)
@@ -1342,7 +1344,7 @@ class Optimizer:
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
                 )
-                loss += torch.mean(torch.abs(y_norm - desired_tensor_norm))
+                loss += k*torch.mean(torch.abs(y_norm - desired_tensor_norm))
 
         # Handle inequality constraints
         if self._ineq_cons is not None:
@@ -1363,13 +1365,13 @@ class Optimizer:
                 if constraint_type == "upper":
                     # Penalize when y > desired_value
                     constraint_violations = torch.relu(y_norm - desired_tensor_norm)
-                    ineq_upper_term += torch.mean(k * constraint_violations)
+                    ineq_upper_term += torch.mean(constraint_violations)
                 elif constraint_type == "lower":
                     # Penalize when y < desired_value
                     constraint_violations = torch.relu(desired_tensor_norm - y_norm)
-                    ineq_lower_term += torch.mean(k * constraint_violations)
+                    ineq_lower_term += torch.mean(constraint_violations)
 
-            loss += ineq_upper_term + ineq_lower_term
+            loss += k*(ineq_upper_term + ineq_lower_term)
 
         # Handle minimization objectives
         if self._objectives is not None:

@@ -640,8 +640,8 @@ def run_complex_identification_example():
         n_sensors=len(sensors),
         n_setpoints=len(setpoints),
         n_actuators=2,  # TWO ACTUATORS
-        # candidate_controllers=controller_classes,
-        # candidate_controller_kwargs=controller_kwargs,
+        candidate_controllers=controller_classes,
+        candidate_controller_kwargs=controller_kwargs,
         id="identified_controller",
     )
     model.add_component(controller)
