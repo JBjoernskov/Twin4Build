@@ -401,8 +401,9 @@ class TestTensorParameter(unittest.TestCase):
         from twin4build.utils.types import TensorParameter
 
         tp = TensorParameter(
-            tensor=torch.tensor(5.0), min_value=0.0, max_value=10.0, normalized=False, n_c=3
+            tensor=torch.tensor(5.0), min_value=0.0, max_value=10.0, normalized=False
         )
+        tp = tp.expand_to_n_c(3)
         self.assertEqual(tp.n_c, 3)
         result = tp.get()
         self.assertEqual(result.shape[0], 3)

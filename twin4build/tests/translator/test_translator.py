@@ -1,7 +1,6 @@
 # Standard library imports
 import os
 import unittest
-from tkinter import E
 
 # Local application imports
 from twin4build.model.semantic_model.semantic_model import SemanticModel

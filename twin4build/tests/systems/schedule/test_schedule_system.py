@@ -203,8 +203,8 @@ class TestScheduleSystem(unittest.TestCase):
         simulator = tb.Simulator(model)
 
         # First simulation with datetime objects
-        start_time1 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time1 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time1 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time1 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size1 = 600
 
         simulator.simulate(
@@ -212,11 +212,11 @@ class TestScheduleSystem(unittest.TestCase):
         )
 
         # Get results from first simulation
-        history1 = schedule.output["scheduleValue"].history.clone()
+        history1 = schedule.output["scheduleValue"].history().clone()
 
         # Second simulation with different datetime instances but same values
-        start_time2 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)  # Different object, same value
-        end_time2 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)    # Different object, same value
+        start_time2 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)  # Different object, same value
+        end_time2 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)    # Different object, same value
         step_size2 = 600
 
         # Verify they are different objects but equal values
@@ -230,7 +230,7 @@ class TestScheduleSystem(unittest.TestCase):
         )
 
         # Get results from second simulation
-        history2 = schedule.output["scheduleValue"].history
+        history2 = schedule.output["scheduleValue"].history()
 
         # Verify outputs are identical (caching works with different datetime instances)
         torch.testing.assert_close(history1, history2,
