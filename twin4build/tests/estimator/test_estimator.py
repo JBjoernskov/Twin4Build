@@ -330,26 +330,25 @@ class TestEstimator(unittest.TestCase):
             model.load(simulation_model_filename=filename_simulation, verbose=0)
 
             # Configure file paths for sensors
-            model.components["020B_temperature_sensor"].filename = utils.get_path(
-                ["estimator_example", "temperature_sensor.csv"]
-            )
-            model.components["020B_co2_sensor"].filename = utils.get_path(
-                ["estimator_example", "co2_sensor.csv"]
-            )
-            model.components["020B_valve_position_sensor"].filename = utils.get_path(
-                ["estimator_example", "valve_position_sensor.csv"]
-            )
-            model.components["020B_damper_position_sensor"].filename = utils.get_path(
-                ["estimator_example", "damper_position_sensor.csv"]
-            )
-            model.components["BTA004"].filename = utils.get_path(
-                ["estimator_example", "supply_air_temperature.csv"]
-            )
-            model.components["020B_temperature_heating_setpoint"].filename = (
+            for sensor_id, csv_name in [
+                ("office_temperature_sensor", "temperature_sensor.csv"),
+                ("office_co2_sensor", "co2_sensor.csv"),
+                ("office_valve_position_sensor", "valve_position_sensor.csv"),
+                ("office_damper_position_sensor", "damper_position_sensor.csv"),
+                ("supply_air_temperature_sensor", "supply_air_temperature.csv"),
+            ]:
+                model.components[sensor_id].filename = utils.get_path(
+                    ["estimator_example", csv_name]
+                )
+                model.components[sensor_id].datecolumn = 0
+                model.components[sensor_id].valuecolumn = 1
+            model.components["office_temperature_heating_setpoint"].filename = (
                 utils.get_path(
                     ["estimator_example", "temperature_heating_setpoint.csv"]
                 )
             )
+            model.components["office_temperature_heating_setpoint"].datecolumn = 0
+            model.components["office_temperature_heating_setpoint"].valuecolumn = 1
             model.components["outdoor_environment"].filename_outdoorTemperature = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
             )
@@ -412,9 +411,9 @@ class TestEstimator(unittest.TestCase):
             ]
 
             # Step 3: Identify key components
-            space = model.components["020B"]
-            space_heater = model.components["020B_space_heater"]
-            heating_controller = model.components["020B_temperature_heating_controller"]
+            space = model.components["office"]
+            space_heater = model.components["office_space_heater"]
+            heating_controller = model.components["office_temperature_heating_controller"]
 
             # Step 4: Define parameters for estimation (simplified set for faster testing)
             parameters = [
@@ -430,8 +429,8 @@ class TestEstimator(unittest.TestCase):
             # Step 5: Configure measuring devices
             percentile = 2
             measurements = [
-                (model.components["020B_temperature_sensor"], 0.1 / percentile),
-                (model.components["020B_co2_sensor"], 30 / percentile),
+                (model.components["office_temperature_sensor"], 0.1 / percentile),
+                (model.components["office_co2_sensor"], 30 / percentile),
             ]
 
             # Step 6: Create estimator
@@ -479,26 +478,25 @@ class TestEstimator(unittest.TestCase):
             model2.load(simulation_model_filename=filename_simulation, verbose=0)
 
             # Configure file paths for the new model
-            model2.components["020B_temperature_sensor"].filename = utils.get_path(
-                ["estimator_example", "temperature_sensor.csv"]
-            )
-            model2.components["020B_co2_sensor"].filename = utils.get_path(
-                ["estimator_example", "co2_sensor.csv"]
-            )
-            model2.components["020B_valve_position_sensor"].filename = utils.get_path(
-                ["estimator_example", "valve_position_sensor.csv"]
-            )
-            model2.components["020B_damper_position_sensor"].filename = utils.get_path(
-                ["estimator_example", "damper_position_sensor.csv"]
-            )
-            model2.components["BTA004"].filename = utils.get_path(
-                ["estimator_example", "supply_air_temperature.csv"]
-            )
-            model2.components["020B_temperature_heating_setpoint"].filename = (
+            for sensor_id, csv_name in [
+                ("office_temperature_sensor", "temperature_sensor.csv"),
+                ("office_co2_sensor", "co2_sensor.csv"),
+                ("office_valve_position_sensor", "valve_position_sensor.csv"),
+                ("office_damper_position_sensor", "damper_position_sensor.csv"),
+                ("supply_air_temperature_sensor", "supply_air_temperature.csv"),
+            ]:
+                model2.components[sensor_id].filename = utils.get_path(
+                    ["estimator_example", csv_name]
+                )
+                model2.components[sensor_id].datecolumn = 0
+                model2.components[sensor_id].valuecolumn = 1
+            model2.components["office_temperature_heating_setpoint"].filename = (
                 utils.get_path(
                     ["estimator_example", "temperature_heating_setpoint.csv"]
                 )
             )
+            model2.components["office_temperature_heating_setpoint"].datecolumn = 0
+            model2.components["office_temperature_heating_setpoint"].valuecolumn = 1
             model2.components["outdoor_environment"].filename_outdoorTemperature = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
             )
@@ -561,7 +559,7 @@ class TestEstimator(unittest.TestCase):
 
             # Step 14: Verify that the simulation produced results
             # Check that the space component has output values
-            space_loaded = model2.components["020B"]
+            space_loaded = model2.components["office"]
             self.assertIsNotNone(
                 space_loaded.output,
                 "Space component should have output after simulation",
@@ -584,7 +582,7 @@ class TestEstimator(unittest.TestCase):
                 delta=0.1 * space.thermal.C_wall,
             )
 
-            heater_loaded = model2.components["020B_space_heater"]
+            heater_loaded = model2.components["office_space_heater"]
             self.assertAlmostEqual(
                 heater_loaded.thermalMassHeatCapacity,
                 space_heater.thermalMassHeatCapacity,

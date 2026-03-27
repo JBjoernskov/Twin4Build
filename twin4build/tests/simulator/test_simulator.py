@@ -320,25 +320,25 @@ class TestSimulator(unittest.TestCase):
         )
         model.load(simulation_model_filename=filename_simulation, verbose=0)
 
-        # Configure file paths for sensors
-        model.components["020B_temperature_sensor"].filename = utils.get_path(
-            ["estimator_example", "temperature_sensor.csv"]
-        )
-        model.components["020B_co2_sensor"].filename = utils.get_path(
-            ["estimator_example", "co2_sensor.csv"]
-        )
-        model.components["020B_valve_position_sensor"].filename = utils.get_path(
-            ["estimator_example", "valve_position_sensor.csv"]
-        )
-        model.components["020B_damper_position_sensor"].filename = utils.get_path(
-            ["estimator_example", "damper_position_sensor.csv"]
-        )
-        model.components["BTA004"].filename = utils.get_path(
-            ["estimator_example", "supply_air_temperature.csv"]
-        )
-        model.components["020B_temperature_heating_setpoint"].filename = utils.get_path(
+        # Configure file paths and column indices for sensors
+        # (instance_graph uses datecolumn=2/valuecolumn=4 for original large CSVs;
+        #  the test CSVs have only 2 columns: datecolumn=0, valuecolumn=1)
+        for sensor_id, csv_name in [
+            ("office_temperature_sensor", "temperature_sensor.csv"),
+            ("office_co2_sensor", "co2_sensor.csv"),
+            ("office_valve_position_sensor", "valve_position_sensor.csv"),
+            ("office_damper_position_sensor", "damper_position_sensor.csv"),
+            ("supply_air_temperature_sensor", "supply_air_temperature.csv"),
+        ]:
+            model.components[sensor_id].filename = utils.get_path(["estimator_example", csv_name])
+            model.components[sensor_id].datecolumn = 0
+            model.components[sensor_id].valuecolumn = 1
+
+        model.components["office_temperature_heating_setpoint"].filename = utils.get_path(
             ["estimator_example", "temperature_heating_setpoint.csv"]
         )
+        model.components["office_temperature_heating_setpoint"].datecolumn = 0
+        model.components["office_temperature_heating_setpoint"].valuecolumn = 1
         model.components["outdoor_environment"].filename_outdoorTemperature = (
             utils.get_path(["estimator_example", "outdoor_environment.csv"])
         )
@@ -407,8 +407,8 @@ class TestSimulator(unittest.TestCase):
         )
 
         # Compare results for key outputs
-        space_gs = model_gs.components["020B"]
-        space_jacobi = model_jacobi.components["020B"]
+        space_gs = model_gs.components["office"]
+        space_jacobi = model_jacobi.components["office"]
 
         # Get indoor temperature outputs
         temp_gs = space_gs.output["indoorTemperature"].history().detach().numpy()
@@ -499,7 +499,7 @@ class TestSimulator(unittest.TestCase):
         )
 
         # Verify simulation produced outputs
-        space = model.components["020B"]
+        space = model.components["office"]
         self.assertIn(
             "indoorTemperature",
             space.output,
