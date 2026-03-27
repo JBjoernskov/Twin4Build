@@ -78,6 +78,7 @@ __all__ = [
     "SensorSystem",
     # Schedules
     "ScheduleSystem",
+    "PiecewiseLinearScheduleSystem",
     # Outdoor Environment
     "OutdoorEnvironmentSystem",
     # Junction
@@ -100,6 +101,9 @@ __all__ = [
     "MaxSystem",
     "OnOffSystem",
     "DiscreteStatespaceSystem",
+    "ScalarProductSystem",
+    "OccupancySystem",
+    "OccupancyDetectorSystem",
 ]
 
 # Local application imports
@@ -177,6 +181,9 @@ from twin4build.systems.outdoor_environment.outdoor_environment_system import (
 
 # Schedules
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
+from twin4build.systems.schedule.piecewise_linear_schedule_system import (
+    PiecewiseLinearScheduleSystem,
+)
 
 # Sensors
 from twin4build.systems.sensor.sensor_system import SensorSystem
@@ -195,6 +202,9 @@ from twin4build.systems.utils.fmu_system import fmuSystem
 from twin4build.systems.utils.max_system import MaxSystem
 from twin4build.systems.utils.on_off_system import OnOffSystem
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
+from twin4build.systems.utils.scalar_product_system import ScalarProductSystem
+from twin4build.systems.utils.occupancy_system import OccupancySystem
+from twin4build.systems.utils.occupancy_detector_system import OccupancyDetectorSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 
 # Valves

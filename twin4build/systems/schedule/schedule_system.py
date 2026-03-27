@@ -499,26 +499,26 @@ class ScheduleSystem(core.System):
             self.use_spreadsheet or self.use_database or self.use_dict
         ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: One of use_spreadsheet, use_database, or use_dict must be True."
 
-        if self.mondayRulesetDict is None:
-            self.mondayRulesetDict = self.weekDayRulesetDict
-        if self.tuesdayRulesetDict is None:
-            self.tuesdayRulesetDict = self.weekDayRulesetDict
-        if self.wednesdayRulesetDict is None:
-            self.wednesdayRulesetDict = self.weekDayRulesetDict
-        if self.thursdayRulesetDict is None:
-            self.thursdayRulesetDict = self.weekDayRulesetDict
-        if self.fridayRulesetDict is None:
-            self.fridayRulesetDict = self.weekDayRulesetDict
-        if self.saturdayRulesetDict is None:
-            if self.weekendRulesetDict is None:
-                self.saturdayRulesetDict = self.weekDayRulesetDict
+        if self._mondayRulesetDict is None:
+            self._mondayRulesetDict = self._weekDayRulesetDict
+        if self._tuesdayRulesetDict is None:
+            self._tuesdayRulesetDict = self._weekDayRulesetDict
+        if self._wednesdayRulesetDict is None:
+            self._wednesdayRulesetDict = self._weekDayRulesetDict
+        if self._thursdayRulesetDict is None:
+            self._thursdayRulesetDict = self._weekDayRulesetDict
+        if self._fridayRulesetDict is None:
+            self._fridayRulesetDict = self._weekDayRulesetDict
+        if self._saturdayRulesetDict is None:
+            if self._weekendRulesetDict is None:
+                self._saturdayRulesetDict = self._weekDayRulesetDict
             else:
-                self.saturdayRulesetDict = self.weekendRulesetDict
-        if self.sundayRulesetDict is None:
-            if self.weekendRulesetDict is None:
-                self.sundayRulesetDict = self.weekDayRulesetDict
+                self._saturdayRulesetDict = self._weekendRulesetDict
+        if self._sundayRulesetDict is None:
+            if self._weekendRulesetDict is None:
+                self._sundayRulesetDict = self._weekDayRulesetDict
             else:
-                self.sundayRulesetDict = self.weekendRulesetDict
+                self._sundayRulesetDict = self._weekendRulesetDict
         if self.use_dict:
             assert (
                 self.mondayRulesetDict is not None
