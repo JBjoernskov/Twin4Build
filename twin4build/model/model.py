@@ -710,7 +710,8 @@ class Model:
         self.simulation_model.set_save_simulation_result(flag=flag, c=c)
 
     def load_estimation_result(
-        self, filename: Optional[str] = None, result: Optional[Dict] = None
+        self, filename: Optional[str] = None, result: Optional[Dict] = None,
+        verbose: int = 0,
     ) -> None:
         """
         Load a chain log from a file or dictionary.
@@ -718,11 +719,14 @@ class Model:
         Args:
             filename (Optional[str]): The filename to load the chain log from.
             result (Optional[Dict]): The chain log dictionary to load.
+            verbose (int): If > 0, print applied parameter values for verification.
 
         Raises:
             AssertionError: If invalid arguments are provided.
         """
-        self.simulation_model.load_estimation_result(filename=filename, result=result)
+        self.simulation_model.load_estimation_result(
+            filename=filename, result=result, verbose=verbose,
+        )
 
     def check_for_for_missing_initial_values(self) -> None:
         """
@@ -760,3 +764,10 @@ class Model:
         """
         self._semantic_model.serialize()
         self._simulation_model.serialize()
+
+    def visualize(self) -> None:
+        """
+        Visualize the model.
+        """
+        self._semantic_model.visualize()
+        self._simulation_model.visualize()

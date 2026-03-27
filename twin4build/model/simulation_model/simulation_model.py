@@ -391,6 +391,7 @@ class SimulationModel:
             isinstance(x, str) for x in dir_conf
         ), f"The set value must be of type {list} and contain strings"
         self._dir_conf = dir_conf
+        self._semantic_model.dir_conf = dir_conf + ["semantic_model"]
 
     def get_dir(
         self, folder_list: List[str] = [], filename: Optional[str] = None
@@ -627,6 +628,11 @@ class SimulationModel:
 
         if components is None:
             components = self._components
+
+        if components is self._components:
+            component_uri = self._semantic_model.T4B.__getitem__(component.id)
+            self._semantic_model.instance_graph.remove((component_uri, None, None))
+            self._semantic_model.instance_graph.remove((None, None, component_uri))
 
         del components[component.id]
         self._is_loaded = False
@@ -1275,11 +1281,10 @@ class SimulationModel:
                         obj_.max_value = max_values[i]
                     if overwrite:
                         if save_original:
-                            if (
-                                obj.id not in self._saved_parameters
-                            ):  # Save the original parameter if we later need to restore it
-                                self._saved_parameters[obj.id] = {}
-                            self._saved_parameters[obj.id][attr] = obj_
+                            obj_key = id(obj)
+                            if obj_key not in self._saved_parameters:
+                                self._saved_parameters[obj_key] = {"__ref__": obj}
+                            self._saved_parameters[obj_key][attr] = obj_
 
                         new_param = tps.TensorParameter(
                             v,
@@ -1309,13 +1314,17 @@ class SimulationModel:
         return self.set_parameters(*args, **kwargs)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
-        for obj in self._saved_parameters:
-            for attr in self._saved_parameters[obj]:
-                old_obj = rgetattr(self._components[obj], attr)
+        for obj_key in self._saved_parameters:
+            saved = self._saved_parameters[obj_key]
+            component = saved["__ref__"]
+            for attr in saved:
+                if attr == "__ref__":
+                    continue
+                old_obj = rgetattr(component, attr)
                 v = old_obj.get()
-                new_obj = self._saved_parameters[obj][attr]
-                rdelattr(self._components[obj], attr)
-                rsetattr(self._components[obj], attr, new_obj)
+                new_obj = saved[attr]
+                rdelattr(component, attr)
+                rsetattr(component, attr, new_obj)
                 if keep_values:
                     new_obj.set(v, normalized=False)
 
@@ -2225,7 +2234,8 @@ class SimulationModel:
         LOGGER.remove_level()
 
     def load_estimation_result(
-        self, filename: Optional[str] = None, result: Optional[Dict] = None
+        self, filename: Optional[str] = None, result: Optional[Dict] = None,
+        verbose: int = 0,
     ) -> None:
         """
         Load a chain log from a file or dictionary.
@@ -2233,6 +2243,7 @@ class SimulationModel:
         Args:
             filename (Optional[str]): The filename to load the chain log from.
             result (Optional[Dict]): The chain log dictionary to load.
+            verbose (int): If > 0, print applied parameter values for verification.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -2259,8 +2270,25 @@ class SimulationModel:
             self._result, estimator.EstimationResult
         ), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
         result_x = self._result["result_x"]
+
+        # Build extended lookup including nested sub-objects (e.g.
+        # OccupancySystem._DamperParams) that have their own id but are
+        # not registered as top-level components.  nn.Module stores
+        # child modules in _modules rather than __dict__, so we use
+        # .modules() to walk the full hierarchy.
+        component_lookup = dict(self._components)
+        for comp in self._components.values():
+            if isinstance(comp, torch.nn.Module):
+                for child in comp.modules():
+                    if child is not comp and hasattr(child, "id") and child.id not in component_lookup:
+                        component_lookup[child.id] = child
+            else:
+                for attr_val in vars(comp).values():
+                    if hasattr(attr_val, "id") and attr_val.id not in component_lookup:
+                        component_lookup[attr_val.id] = attr_val
+
         flat_components = [
-            self._components[com_id] for com_id in self._result["component_id"]
+            component_lookup[com_id] for com_id in self._result["component_id"]
         ]
         flat_attr_list = self._result["component_attr"]
         theta_mask = self._result["theta_mask"]
@@ -2287,6 +2315,20 @@ class SimulationModel:
             min_values=min_values,
             max_values=max_values,
         )
+
+        if verbose > 0:
+            theta_mask = self._result["theta_mask"]
+            theta_slices = self._result["theta_slices"]
+            print("─── load_estimation_result: applied parameters ───")
+            for comp, attr, param_idx in zip(
+                flat_components, flat_attr_list, theta_mask
+            ):
+                start, end = theta_slices[param_idx]
+                raw = result_x[start:end]
+                obj = rgetattr(comp, attr)
+                actual = obj.get() if hasattr(obj, "get") else obj
+                print(f"  {comp.id}.{attr}  pickle={raw}  actual={actual}")
+            print("──────────────────────────────────────────────────")
 
     def check_for_for_missing_initial_values(self) -> None:
         """
@@ -2626,7 +2668,7 @@ class SimulationModel:
         self._update_literals()
         self._semantic_model.serialize()
 
-    def visualize(self, query: str = None, literals: bool = True, forward_only: bool = False, **kwargs) -> None:
+    def visualize(self, query: str = None, literals: bool = True, forward_only: bool = False, compressed: bool = False, **kwargs) -> None:
         """
         Visualize the simulation model.
 
@@ -2635,14 +2677,14 @@ class SimulationModel:
             literals: If True, include all literals. If False, only include connection-related properties.
             forward_only: If True, only include forward flow (System -> Connection -> ConnectionPoint -> System).
                          If False, include both forward and reverse relationships.
+            compressed: If True, remove intermediate Connection and ConnectionPoint nodes
+                       and show direct edges between system components with port labels
+                       like ``"output: YYY\\ninput: XXX"``.
             **kwargs: Additional arguments passed to semantic_model.visualize().
         """
-        # dummy_start_time = [datetime.datetime.now()] * len(self._components)
-        # dummy_end_time = [datetime.datetime.now()] * len(self._components)
-        # dummy_step_size = [1]
-        # self.load(verbose=False)
-        # self.initialize(dummy_start_time, dummy_end_time, dummy_step_size)
         self._update_literals()
+        if compressed:
+            forward_only = True
         if query is None:
             if forward_only and literals:
                 # Forward flow + all literals
@@ -2702,7 +2744,145 @@ class SimulationModel:
                             ?p = t4b:output_port_index)
                 }
                 """
+        if compressed:
+            kwargs["pydot_transform"] = self._build_compressed_transform()
         self._semantic_model.visualize(query, **kwargs)
+
+    @staticmethod
+    def _build_compressed_transform():
+        """Build a pydot_transform callback that collapses Connection/ConnectionPoint
+        nodes into direct edges labelled with port names."""
+
+        def _compress(dg):
+            import pydotplus as pdp
+            from bs4 import BeautifulSoup
+
+            def _unquote(name):
+                """Strip surrounding double-quotes that pydotplus may add."""
+                s = name.strip()
+                if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+                    return s[1:-1]
+                return s
+
+            def _find_prop(props, prop_name):
+                """Find a property value whose key ends with exactly *prop_name*."""
+                for key, val in props.items():
+                    k = key.strip()
+                    if k == prop_name or k.endswith(":" + prop_name) or k.endswith("/" + prop_name):
+                        return val.strip('"')
+                return "?"
+
+            # --- 1. Parse node labels ----------------------------------------
+            node_info = {}   # norm_name -> {type, props, orig_name}
+            conn_nodes = set()
+            cp_nodes = set()
+            all_headers = set()
+
+            for node in dg.get_nodes():
+                orig_name = node.get_name()
+                name = _unquote(orig_name)
+                attrs = node.obj_dict.get("attributes", {})
+                if "label" not in attrs:
+                    continue
+                soup = BeautifulSoup(attrs["label"], "html.parser")
+                rows = soup.find_all("tr")
+                if not rows:
+                    continue
+
+                header = rows[0].get_text().strip()
+                all_headers.add(header)
+                props = {}
+                for row in rows:
+                    cols = row.find_all("td")
+                    if len(cols) == 2:
+                        props[cols[0].get_text().strip()] = cols[1].get_text().strip()
+
+                node_info[name] = {"type": header, "props": props, "orig": orig_name}
+                if header == "Connection":
+                    conn_nodes.add(name)
+                elif header == "ConnectionPoint":
+                    cp_nodes.add(name)
+
+            intermediate = conn_nodes | cp_nodes
+            if not intermediate:
+                warnings.warn(
+                    f"compressed=True: found 0 Connection/ConnectionPoint nodes. "
+                    f"Node type headers present: {all_headers}",
+                    stacklevel=4,
+                )
+                return
+
+            # --- 2. Build adjacency using normalised names --------------------
+            outgoing = {}  # norm_src -> [norm_dst, ...]
+            incoming = {}  # norm_dst -> [norm_src, ...]
+            norm_to_orig = {}
+
+            for orig_src, orig_dst in dg.obj_dict["edges"]:
+                ns, nd = _unquote(orig_src), _unquote(orig_dst)
+                outgoing.setdefault(ns, []).append(nd)
+                incoming.setdefault(nd, []).append(ns)
+                norm_to_orig.setdefault(ns, orig_src)
+                norm_to_orig.setdefault(nd, orig_dst)
+
+            for nname, info in node_info.items():
+                norm_to_orig.setdefault(nname, info["orig"])
+
+            # --- 3. Trace chains and collect new direct edges -----------------
+            new_edges = []
+            for conn in conn_nodes:
+                output_port = _find_prop(node_info[conn]["props"], "output_port")
+                senders = [s for s in incoming.get(conn, []) if s not in intermediate]
+                cps = [d for d in outgoing.get(conn, []) if d in cp_nodes]
+
+                for cp in cps:
+                    input_port = _find_prop(node_info[cp]["props"], "input_port")
+                    receivers = [d for d in outgoing.get(cp, []) if d not in intermediate]
+
+                    for sender in senders:
+                        for receiver in receivers:
+                            label = f"output: {output_port}\\ninput: {input_port}"
+                            new_edges.append((sender, receiver, label))
+
+            # Deduplicate in case the RDF graph contained redundant paths
+            seen = set()
+            unique_edges = []
+            for entry in new_edges:
+                if entry not in seen:
+                    seen.add(entry)
+                    unique_edges.append(entry)
+            new_edges = unique_edges
+
+            if not new_edges:
+                warnings.warn(
+                    f"compressed=True: found {len(conn_nodes)} Connection and "
+                    f"{len(cp_nodes)} ConnectionPoint nodes but could not trace "
+                    f"any complete chains. Check edge directions.",
+                    stacklevel=4,
+                )
+
+            # --- 4. Remove intermediate edges and nodes -----------------------
+            dg.obj_dict["edges"] = {
+                (src, dst): edge_list
+                for (src, dst), edge_list in dg.obj_dict["edges"].items()
+                if _unquote(src) not in intermediate and _unquote(dst) not in intermediate
+            }
+
+            for name in intermediate:
+                orig = node_info[name]["orig"]
+                if orig in dg.obj_dict["nodes"]:
+                    del dg.obj_dict["nodes"][orig]
+
+            # --- 5. Add new direct edges --------------------------------------
+            for sender, receiver, label in new_edges:
+                orig_src = norm_to_orig.get(sender, sender)
+                orig_dst = norm_to_orig.get(receiver, receiver)
+                edge = pdp.Edge(orig_src, orig_dst)
+                edge.obj_dict["attributes"]["label"] = f'"{label}"'
+                edge.obj_dict["attributes"]["fontsize"] = "7"
+                edge.obj_dict["attributes"]["fontname"] = "Courier"
+                dg.add_edge(edge)
+
+        return _compress
 
     def _load_model_from_rdf(self, rdf_file: str) -> None:
         """
@@ -2739,7 +2919,7 @@ class SimulationModel:
             attributes = {}
             for pred, obj in sm_instance.get_predicate_object_pairs().items():
                 for obj_ in obj:
-                    if obj_.is_literal:
+                    if isinstance(obj_, core.SemanticLiteral):
                         literal_value = obj_.uri.value
                         # Convert string literals to appropriate Python types
                         literal_value = _convert_literal_value(literal_value)
@@ -2758,59 +2938,95 @@ class SimulationModel:
 
         LOGGER("Making connections")
         LOGGER.add_level()
-        # Go through all the connections (from - to) and add them to the simulation model
+
+        # Step 1: Read all connection info from the RDF graph while the
+        # original Connection / ConnectionPoint triples are still present.
+        pending_connections = []
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
         ):
             component = self._components[sm_instance.get_short_name()]
             predicate_object_pairs = sm_instance.get_predicate_object_pairs()
-            if (
-                core.namespace.S4SYST.connectedThrough in predicate_object_pairs
-            ):  # You can have a System without connections so we need to check
-                connections = predicate_object_pairs[
-                    core.namespace.S4SYST.connectedThrough
+            if core.namespace.S4SYST.connectedThrough not in predicate_object_pairs:
+                continue
+
+            connections = predicate_object_pairs[
+                core.namespace.S4SYST.connectedThrough
+            ]
+
+            for connection in connections:
+                predicate_object_pairs_connection = (
+                    connection.get_predicate_object_pairs()
+                )
+                output_port = predicate_object_pairs_connection[
+                    core.namespace.T4B.output_port
+                ][0].uri.value
+                connection_points = predicate_object_pairs_connection[
+                    core.namespace.S4SYST.connectsSystemAt
                 ]
 
-                for connection in connections:
-                    predicate_object_pairs_connection = (
-                        connection.get_predicate_object_pairs()
+                for connection_point in connection_points:
+                    predicate_object_pairs_connection_point = (
+                        connection_point.get_predicate_object_pairs()
                     )
-                    output_port = predicate_object_pairs_connection[
-                        core.namespace.T4B.output_port
-                    ][
-                        0
-                    ].uri.value  # There can only be one output port per connection
-                    connection_points = predicate_object_pairs_connection[
-                        core.namespace.S4SYST.connectsSystemAt
-                    ]
+                    receiver_component = predicate_object_pairs_connection_point[
+                        core.namespace.S4SYST.connectionPointOf
+                    ][0]
+                    input_port = predicate_object_pairs_connection_point[
+                        core.namespace.T4B.input_port
+                    ][0].uri.value
 
-                    for connection_point in connection_points:
-                        predicate_object_pairs_connection_point = (
-                            connection_point.get_predicate_object_pairs()
-                        )
-                        receiver_component = predicate_object_pairs_connection_point[
-                            core.namespace.S4SYST.connectionPointOf
-                        ][
-                            0
-                        ]  # There can only be one connection point per connection
-                        input_port = predicate_object_pairs_connection_point[
-                            core.namespace.T4B.input_port
-                        ][
-                            0
-                        ].uri.value  # There can only be one input port per connection point
+                    conn_key = connection.get_short_name()
+                    input_port_index = None
+                    output_port_index = None
+                    if core.namespace.T4B.input_port_index in predicate_object_pairs_connection_point:
+                        raw = predicate_object_pairs_connection_point[core.namespace.T4B.input_port_index][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict) and parsed:
+                            input_port_index = parsed.get(conn_key)
+                    if core.namespace.T4B.output_port_index in predicate_object_pairs_connection_point:
+                        raw = predicate_object_pairs_connection_point[core.namespace.T4B.output_port_index][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict) and parsed:
+                            output_port_index = parsed.get(conn_key)
 
-                        receiver_component_id = receiver_component.get_short_name()
-                        receiver_component = self._components[receiver_component_id]
+                    receiver_component_id = receiver_component.get_short_name()
+                    receiver_component = self._components[receiver_component_id]
 
-                        LOGGER(
-                            f"Adding connection: {component.id}.{output_port} → {receiver_component.id}.{input_port}"
-                        )
-                        self.add_connection(
-                            sender_component=component,
-                            receiver_component=receiver_component,
-                            output_port=output_port,
-                            input_port=input_port,
-                        )
+                    pending_connections.append({
+                        "sender": component,
+                        "receiver": receiver_component,
+                        "output_port": output_port,
+                        "input_port": input_port,
+                        "input_port_index": input_port_index,
+                        "output_port_index": output_port_index,
+                    })
+
+        # Step 2: Remove old Connection / ConnectionPoint instances and
+        # their triples.  add_connection() will recreate them with fresh
+        # Python-object hashes.  Without this cleanup the graph would
+        # contain BOTH the original URIs from the file AND new URIs from
+        # add_connection, duplicating every edge.
+        ig = self._semantic_model.instance_graph
+        for conn_type in (core.namespace.S4SYST.Connection,
+                          core.namespace.S4SYST.ConnectionPoint):
+            for subj in list(ig.subjects(RDF.type, conn_type)):
+                ig.remove((subj, None, None))
+                ig.remove((None, None, subj))
+
+        # Step 3: Rebuild connections (adds Python objects + fresh RDF triples)
+        for data in pending_connections:
+            LOGGER(
+                f"Adding connection: {data['sender'].id}.{data['output_port']} → {data['receiver'].id}.{data['input_port']}"
+            )
+            self.add_connection(
+                sender_component=data["sender"],
+                receiver_component=data["receiver"],
+                output_port=data["output_port"],
+                input_port=data["input_port"],
+                input_port_index=data["input_port_index"],
+                output_port_index=data["output_port_index"],
+            )
 
         LOGGER.ok("Making connections", change_status=True)
         LOGGER.remove_level()
