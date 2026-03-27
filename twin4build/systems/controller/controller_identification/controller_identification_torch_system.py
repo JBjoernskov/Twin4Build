@@ -9,15 +9,17 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
-    PIDControllerSystem,
+from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_torch_system import (
+    SATCompensatedControllerTorchSystem,
+)
+from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
+    CascadePIDControllerSystem,  # backward-compatible alias
 )
 from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
     CascadeControllerSystem,
-    CascadePIDControllerSystem,  # backward-compatible alias
 )
-from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_torch_system import (
-    SATCompensatedControllerTorchSystem,
+from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
+    PIDControllerSystem,
 )
 from twin4build.translator.translator import (
     MultiPath,
@@ -129,15 +131,26 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 {"kp": 0.3, "Ti": 5.0, "Td": 0.0, "isReverse": True},
                 {"kp": 0.3, "Ti": 5.0, "Td": 0.0, "isReverse": False},
                 {
-                    "kp_a": 0.1, "Ti_a": 10.0, "Td_a": 0.0,
-                    "kp_b": 0.5, "Ti_b": 5.0, "Td_b": 0.0,
-                    "isReverse_a": True, "isReverse_b": True,
+                    "kp_a": 0.1,
+                    "Ti_a": 10.0,
+                    "Td_a": 0.0,
+                    "kp_b": 0.5,
+                    "Ti_b": 5.0,
+                    "Td_b": 0.0,
+                    "isReverse_a": True,
+                    "isReverse_b": True,
                 },
                 {
-                    "base_position": 0.3, "sat_design": 13.0, "gain": 0.05,
-                    "output_min_a": 0.0, "output_max_a": 1.0,
-                    "kp_b": 0.5, "Ti_b": 5.0, "Td_b": 0.0,
-                    "output_min_b": 0.0, "output_max_b": 1.0,
+                    "base_position": 0.3,
+                    "sat_design": 13.0,
+                    "gain": 0.05,
+                    "output_min_a": 0.0,
+                    "output_max_a": 1.0,
+                    "kp_b": 0.5,
+                    "Ti_b": 5.0,
+                    "Td_b": 0.0,
+                    "output_min_b": 0.0,
+                    "output_max_b": 1.0,
                     "isReverse_b": True,
                 },
             ]
@@ -147,9 +160,10 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
 
         if candidate_controller_kwargs is None:
             candidate_controller_kwargs = [{} for _ in candidate_controllers]
-        
-        assert len(candidate_controller_kwargs) == self.n_candidates, \
-            "candidate_controller_kwargs must match candidate_controllers length"
+
+        assert (
+            len(candidate_controller_kwargs) == self.n_candidates
+        ), "candidate_controller_kwargs must match candidate_controllers length"
 
         # Store kwargs for later use
         self._candidate_controller_kwargs = candidate_controller_kwargs
@@ -172,7 +186,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         alpha_init = 0.5
         beta_init = 0.5
         gamma_init = 0.5
-        
+
         for a in range(n_actuators):
             # Alpha: candidate controller selection
             setattr(
@@ -186,7 +200,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                     n_c=self.n_candidates,
                 ),
             )
-            
+
             # Beta: feedback sensor selection (per-actuator)
             setattr(
                 self,
@@ -199,7 +213,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                     n_c=n_sensors,
                 ),
             )
-            
+
             # Gamma: setpoint signal selection (per-actuator)
             setattr(
                 self,
@@ -217,8 +231,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         # If so, create per-actuator beta_b weights to select B-loop feedback
         # from the same sensor pool as beta (no separate input needed)
         self._has_cascade = any(
-            issubclass(cls, CascadeControllerSystem)
-            for cls in candidate_controllers
+            issubclass(cls, CascadeControllerSystem) for cls in candidate_controllers
         )
         if self._has_cascade:
             for a in range(n_actuators):
@@ -253,8 +266,8 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         for a in range(n_actuators):
             for c in range(self.n_candidates):
                 ctrl = getattr(self, f"candidate_{a}_{c}")
-                if hasattr(ctrl, '_config') and 'parameters' in ctrl._config:
-                    for param in ctrl._config['parameters']:
+                if hasattr(ctrl, "_config") and "parameters" in ctrl._config:
+                    for param in ctrl._config["parameters"]:
                         config_params.append(f"candidate_{a}_{c}.{param}")
 
         self._config = {"parameters": config_params}
@@ -287,15 +300,15 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
     def _get_gamma(self, actuator: int, setpoint: int) -> torch.Tensor:
         """Get gamma parameter for setpoint j of actuator a."""
         return getattr(self, f"gamma_{actuator}").get()[setpoint]
-    
+
     def _get_alpha_vector(self, actuator: int) -> torch.Tensor:
         """Get full alpha vector for actuator a."""
         return getattr(self, f"alpha_{actuator}").get()
-    
+
     def _get_beta_vector(self, actuator: int) -> torch.Tensor:
         """Get full beta vector for actuator a."""
         return getattr(self, f"beta_{actuator}").get()
-    
+
     def _get_gamma_vector(self, actuator: int) -> torch.Tensor:
         """Get full gamma vector for actuator a."""
         return getattr(self, f"gamma_{actuator}").get()
@@ -361,7 +374,9 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         beta_norm = beta / (torch.sum(beta) + 1e-8)
 
         # Weighted setpoint: sum_j gamma_norm_j * sp_jt
-        weighted_setpoint = torch.sum(gamma_norm * setpoint_values, dim=-1)  # (n_s, n_c)
+        weighted_setpoint = torch.sum(
+            gamma_norm * setpoint_values, dim=-1
+        )  # (n_s, n_c)
 
         # Weighted sensor feedback: sum_i beta_norm_i * y_it
         weighted_feedback = torch.sum(beta_norm * sensor_values, dim=-1)  # (n_s, n_c)
@@ -370,7 +385,9 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             # Cascade B-loop feedback: second selection from the SAME sensor pool
             beta_b = self._get_beta_b_vector(actuator)  # (n_sensors,)
             beta_b_norm = beta_b / (torch.sum(beta_b) + 1e-8)
-            weighted_feedback_b = torch.sum(beta_b_norm * sensor_values, dim=-1)  # (n_s, n_c)
+            weighted_feedback_b = torch.sum(
+                beta_b_norm * sensor_values, dim=-1
+            )  # (n_s, n_c)
             return weighted_setpoint, weighted_feedback, weighted_feedback_b
 
         return weighted_setpoint, weighted_feedback
@@ -401,12 +418,12 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             weighted_setpoint = signals[0]
             weighted_feedback = signals[1]
             weighted_feedback_b = signals[2] if len(signals) > 2 else None
-            
+
             # Run all candidate controllers and collect outputs
             candidate_outputs = []
             for c in range(self.n_candidates):
                 ctrl = self._get_candidate(a, c)
-                
+
                 # Route signals depending on controller type
                 if "actualValue_b" in ctrl.input:
                     # Cascade controller: A loop gets setpoint/feedback, B loop gets beta_b selection
@@ -421,25 +438,27 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                     # Standard controller (PID, on-off, etc.)
                     ctrl.input["setpointValue"].set(weighted_setpoint, step_index)
                     ctrl.input["actualValue"].set(weighted_feedback, step_index)
-                
+
                 # Run candidate controller step
                 ctrl.do_step(second_time, date_time, step_size, step_index)
-                
+
                 # Collect candidate output - shape (n_s, n_c)
                 candidate_outputs.append(ctrl.output["inputSignal"].get())
-            
+
             # Stack outputs: (n_candidates, n_s, n_c)
             candidate_outputs = torch.stack(candidate_outputs, dim=0)
-            
+
             # Flatten to (n_candidates, n_s * n_c) for einsum
             orig_shape = candidate_outputs.shape[1:]  # (n_s, n_c) or similar
             candidate_outputs_flat = candidate_outputs.reshape(self.n_candidates, -1)
-            
+
             # Ratio-normalised weighted sum of candidate outputs
             alpha = self._get_alpha_vector(a)
             alpha_norm = alpha / (torch.sum(alpha) + 1e-8)
-            combined_output = torch.einsum('c,cb->b', alpha_norm, candidate_outputs_flat)
-            
+            combined_output = torch.einsum(
+                "c,cb->b", alpha_norm, candidate_outputs_flat
+            )
+
             # Reshape back and store
             combined_output = combined_output.reshape(orig_shape)
             actuator_outputs[..., a] = combined_output
@@ -545,11 +564,13 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             for c in range(self.n_candidates):
                 if weights.get(f"alpha_{a}_{c}", torch.tensor(0)).item() > threshold:
                     ctrl = self._get_candidate(a, c)
-                    active_candidates.append({
-                        "index": c,
-                        "class": ctrl.__class__.__name__,
-                        "id": ctrl.id,
-                    })
+                    active_candidates.append(
+                        {
+                            "index": c,
+                            "class": ctrl.__class__.__name__,
+                            "id": ctrl.id,
+                        }
+                    )
             structure["actuators"][a] = active_candidates
 
         # Identify active sensors per actuator
@@ -576,7 +597,10 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             for a in range(self.n_actuators):
                 active_sensors_b = []
                 for i in range(self.n_sensors):
-                    if weights.get(f"beta_b_{a}_{i}", torch.tensor(0)).item() > threshold:
+                    if (
+                        weights.get(f"beta_b_{a}_{i}", torch.tensor(0)).item()
+                        > threshold
+                    ):
                         active_sensors_b.append(i)
                 structure["sensors_b"][a] = active_sensors_b
 
@@ -588,14 +612,14 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             for c in range(self.n_candidates):
                 ctrl = self._get_candidate(a, c)
                 # Cascade controllers handle their own sub-PID reset
-                if hasattr(ctrl, 'reset_state'):
+                if hasattr(ctrl, "reset_state"):
                     ctrl.reset_state()
                 # Reset PID controller state (direct PID candidates)
-                if hasattr(ctrl, 'err_prev'):
+                if hasattr(ctrl, "err_prev"):
                     ctrl.err_prev = torch.zeros_like(ctrl.err_prev)
-                if hasattr(ctrl, 'err_prev_m1'):
+                if hasattr(ctrl, "err_prev_m1"):
                     ctrl.err_prev_m1 = torch.zeros_like(ctrl.err_prev_m1)
-                if hasattr(ctrl, 'u_prev'):
+                if hasattr(ctrl, "u_prev"):
                     ctrl.u_prev = torch.zeros_like(ctrl.u_prev)
 
     def summary(self) -> str:
@@ -613,7 +637,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         # Selection weights
         lines.append("\nSelection Weights:")
         weights = self.get_selection_weights()
-        
+
         # Group by type
         lines.append("  Alpha (candidate selection):")
         for a in range(self.n_actuators):
@@ -621,14 +645,14 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 ctrl = self._get_candidate(a, c)
                 val = weights[f"alpha_{a}_{c}"].item()
                 lines.append(f"    α_{a},{c} ({ctrl.__class__.__name__}): {val:.4f}")
-        
+
         lines.append("  Beta (sensor selection per actuator):")
         for a in range(self.n_actuators):
             lines.append(f"    Actuator {a}:")
             for i in range(self.n_sensors):
                 val = weights[f"beta_{a}_{i}"].item()
                 lines.append(f"      β_{a},{i}: {val:.4f}")
-        
+
         lines.append("  Gamma (setpoint selection per actuator):")
         for a in range(self.n_actuators):
             lines.append(f"    Actuator {a}:")
@@ -651,58 +675,78 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             for c in range(self.n_candidates):
                 ctrl = self._get_candidate(a, c)
                 lines.append(f"    Candidate {c} ({ctrl.__class__.__name__}):")
-                if hasattr(ctrl, 'ctrl_a'):
+                if hasattr(ctrl, "ctrl_a"):
                     # Composed cascade controller -- display both sub-controllers
-                    for sub_name in ('ctrl_a', 'ctrl_b'):
+                    for sub_name in ("ctrl_a", "ctrl_b"):
                         sub = getattr(ctrl, sub_name)
                         lines.append(f"      {sub_name} ({sub.__class__.__name__}):")
                         # PID parameters
-                        if hasattr(sub, 'kp'):
+                        if hasattr(sub, "kp"):
                             lines.append(f"        kp: {sub.kp.get().item():.6f}")
-                        if hasattr(sub, 'Ti'):
+                        if hasattr(sub, "Ti"):
                             lines.append(f"        Ti: {sub.Ti.get().item():.6f}")
-                        if hasattr(sub, 'Td'):
+                        if hasattr(sub, "Td"):
                             lines.append(f"        Td: {sub.Td.get().item():.6f}")
-                        if hasattr(sub, 'output_min'):
-                            lines.append(f"        output_min: {sub.output_min.get().item():.6f}")
-                        if hasattr(sub, 'output_max'):
-                            lines.append(f"        output_max: {sub.output_max.get().item():.6f}")
-                        if hasattr(sub, 'isReverse'):
+                        if hasattr(sub, "output_min"):
+                            lines.append(
+                                f"        output_min: {sub.output_min.get().item():.6f}"
+                            )
+                        if hasattr(sub, "output_max"):
+                            lines.append(
+                                f"        output_max: {sub.output_max.get().item():.6f}"
+                            )
+                        if hasattr(sub, "isReverse"):
                             lines.append(f"        isReverse: {sub.isReverse}")
                         # SAT-compensated parameters
-                        if hasattr(sub, 'base_position'):
-                            lines.append(f"        base_position: {sub.base_position.get().item():.6f}")
-                        if hasattr(sub, 'sat_design'):
-                            lines.append(f"        sat_design: {sub.sat_design.get().item():.6f}")
-                        if hasattr(sub, 'gain'):
+                        if hasattr(sub, "base_position"):
+                            lines.append(
+                                f"        base_position: {sub.base_position.get().item():.6f}"
+                            )
+                        if hasattr(sub, "sat_design"):
+                            lines.append(
+                                f"        sat_design: {sub.sat_design.get().item():.6f}"
+                            )
+                        if hasattr(sub, "gain"):
                             lines.append(f"        gain: {sub.gain.get().item():.6f}")
                 else:
                     # Standard controllers (PID, on-off, etc.)
-                    if hasattr(ctrl, 'kp'):
+                    if hasattr(ctrl, "kp"):
                         lines.append(f"      kp: {ctrl.kp.get().item():.6f}")
-                    if hasattr(ctrl, 'Ti'):
+                    if hasattr(ctrl, "Ti"):
                         lines.append(f"      Ti: {ctrl.Ti.get().item():.6f}")
-                    if hasattr(ctrl, 'Td'):
+                    if hasattr(ctrl, "Td"):
                         lines.append(f"      Td: {ctrl.Td.get().item():.6f}")
-                    if hasattr(ctrl, 'output_min'):
-                        lines.append(f"      output_min: {ctrl.output_min.get().item():.6f}")
-                    if hasattr(ctrl, 'output_max'):
-                        lines.append(f"      output_max: {ctrl.output_max.get().item():.6f}")
-                    if hasattr(ctrl, 'isReverse'):
+                    if hasattr(ctrl, "output_min"):
+                        lines.append(
+                            f"      output_min: {ctrl.output_min.get().item():.6f}"
+                        )
+                    if hasattr(ctrl, "output_max"):
+                        lines.append(
+                            f"      output_max: {ctrl.output_max.get().item():.6f}"
+                        )
+                    if hasattr(ctrl, "isReverse"):
                         lines.append(f"      isReverse: {ctrl.isReverse}")
                     # On-Off controller parameters
-                    if hasattr(ctrl, 'offValue'):
-                        lines.append(f"      offValue: {ctrl.offValue.get().item():.6f}")
-                    if hasattr(ctrl, 'onValue'):
+                    if hasattr(ctrl, "offValue"):
+                        lines.append(
+                            f"      offValue: {ctrl.offValue.get().item():.6f}"
+                        )
+                    if hasattr(ctrl, "onValue"):
                         lines.append(f"      onValue: {ctrl.onValue.get().item():.6f}")
-                    if hasattr(ctrl, 'steepness'):
-                        lines.append(f"      steepness: {ctrl.steepness.get().item():.6f}")
+                    if hasattr(ctrl, "steepness"):
+                        lines.append(
+                            f"      steepness: {ctrl.steepness.get().item():.6f}"
+                        )
                     # SAT-compensated controller parameters
-                    if hasattr(ctrl, 'base_position'):
-                        lines.append(f"      base_position: {ctrl.base_position.get().item():.6f}")
-                    if hasattr(ctrl, 'sat_design'):
-                        lines.append(f"      sat_design: {ctrl.sat_design.get().item():.6f}")
-                    if hasattr(ctrl, 'gain'):
+                    if hasattr(ctrl, "base_position"):
+                        lines.append(
+                            f"      base_position: {ctrl.base_position.get().item():.6f}"
+                        )
+                    if hasattr(ctrl, "sat_design"):
+                        lines.append(
+                            f"      sat_design: {ctrl.sat_design.get().item():.6f}"
+                        )
+                    if hasattr(ctrl, "gain"):
                         lines.append(f"      gain: {ctrl.gain.get().item():.6f}")
 
         # Identified structure
@@ -713,8 +757,10 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             lines.append(f"    Active sensors: {structure['sensors'].get(a, [])}")
             lines.append(f"    Active setpoints: {structure['setpoints'].get(a, [])}")
             if self._has_cascade:
-                lines.append(f"    Active B-loop sensors: {structure.get('sensors_b', {}).get(a, [])}")
-            candidates = structure['actuators'].get(a, [])
+                lines.append(
+                    f"    Active B-loop sensors: {structure.get('sensors_b', {}).get(a, [])}"
+                )
+            candidates = structure["actuators"].get(a, [])
             lines.append(f"    Active controllers: {[c['class'] for c in candidates]}")
 
         lines.append("=" * 60)
@@ -744,14 +790,20 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
 
         # All selection weights are per-actuator:
         # - alpha_{a}: candidate selection (n_c = n_candidates)
-        # - beta_{a}: sensor selection (n_c = n_sensors)  
+        # - beta_{a}: sensor selection (n_c = n_sensors)
         # - gamma_{a}: setpoint selection (n_c = n_setpoints)
-        for a in range(self.n_actuators): # NOTE: Commented out Temporary
-            params.append((self, f"alpha_{a}", alpha_x0, weight_lb, weight_ub, "private"))
+        for a in range(self.n_actuators):  # NOTE: Commented out Temporary
+            params.append(
+                (self, f"alpha_{a}", alpha_x0, weight_lb, weight_ub, "private")
+            )
             params.append((self, f"beta_{a}", beta_x0, weight_lb, weight_ub, "private"))
-            params.append((self, f"gamma_{a}", gamma_x0, weight_lb, weight_ub, "private"))
+            params.append(
+                (self, f"gamma_{a}", gamma_x0, weight_lb, weight_ub, "private")
+            )
             if self._has_cascade:
-                params.append((self, f"beta_b_{a}", beta_x0, weight_lb, weight_ub, "private"))
+                params.append(
+                    (self, f"beta_b_{a}", beta_x0, weight_lb, weight_ub, "private")
+                )
 
         # Candidate controller parameters - accessed through parent using dot notation
         for a in range(self.n_actuators):
@@ -759,76 +811,136 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 ctrl = self._get_candidate(a, c)
                 prefix = f"candidate_{a}_{c}"
 
-                if hasattr(ctrl, 'ctrl_a'):
+                if hasattr(ctrl, "ctrl_a"):
                     # Composed cascade controller -- expose both sub-controller params
                     # ctrl_a saturation = intermediate clamp, ctrl_b saturation = final output
-                    for sub_name in ('ctrl_a', 'ctrl_b'):
+                    for sub_name in ("ctrl_a", "ctrl_b"):
                         sub = getattr(ctrl, sub_name)
                         sub_prefix = f"{prefix}.{sub_name}"
                         # PID parameters
-                        if hasattr(sub, 'kp'):
-                            params.append((self, f"{sub_prefix}.kp", 0.1, 0.001, 10, "private"))
-                        if hasattr(sub, 'Ti'):
-                            params.append((self, f"{sub_prefix}.Ti", 10, 1.0, 100, "private"))
-                        if hasattr(sub, 'Td'):
-                            params.append((self, f"{sub_prefix}.Td", 0.0, 0.0, 0.0001, "private"))
-                        if hasattr(sub, 'output_min'):
-                            params.append((self, f"{sub_prefix}.output_min", 0.0, 0.0, 1.0, "private"))
-                        if hasattr(sub, 'output_max'):
-                            params.append((self, f"{sub_prefix}.output_max", 1.0, 0.0, 1.0, "private"))
+                        if hasattr(sub, "kp"):
+                            params.append(
+                                (self, f"{sub_prefix}.kp", 0.1, 0.001, 10, "private")
+                            )
+                        if hasattr(sub, "Ti"):
+                            params.append(
+                                (self, f"{sub_prefix}.Ti", 10, 1.0, 100, "private")
+                            )
+                        if hasattr(sub, "Td"):
+                            params.append(
+                                (self, f"{sub_prefix}.Td", 0.0, 0.0, 0.0001, "private")
+                            )
+                        if hasattr(sub, "output_min"):
+                            params.append(
+                                (
+                                    self,
+                                    f"{sub_prefix}.output_min",
+                                    0.0,
+                                    0.0,
+                                    1.0,
+                                    "private",
+                                )
+                            )
+                        if hasattr(sub, "output_max"):
+                            params.append(
+                                (
+                                    self,
+                                    f"{sub_prefix}.output_max",
+                                    1.0,
+                                    0.0,
+                                    1.0,
+                                    "private",
+                                )
+                            )
                         # SAT-compensated parameters
-                        if hasattr(sub, 'base_position'):
-                            params.append((self, f"{sub_prefix}.base_position", 0.3, 0.0, 1.0, "private"))
-                        if hasattr(sub, 'sat_design'):
-                            params.append((self, f"{sub_prefix}.sat_design", 13.0, 0.0, 30.0, "private"))
-                        if hasattr(sub, 'gain'):
-                            params.append((self, f"{sub_prefix}.gain", 0.05, -0.5, 0.5, "private"))
+                        if hasattr(sub, "base_position"):
+                            params.append(
+                                (
+                                    self,
+                                    f"{sub_prefix}.base_position",
+                                    0.3,
+                                    0.0,
+                                    1.0,
+                                    "private",
+                                )
+                            )
+                        if hasattr(sub, "sat_design"):
+                            params.append(
+                                (
+                                    self,
+                                    f"{sub_prefix}.sat_design",
+                                    13.0,
+                                    0.0,
+                                    30.0,
+                                    "private",
+                                )
+                            )
+                        if hasattr(sub, "gain"):
+                            params.append(
+                                (self, f"{sub_prefix}.gain", 0.05, -0.5, 0.5, "private")
+                            )
                 else:
                     # Standard controllers (PID, on-off, etc.)
-                    if hasattr(ctrl, 'kp'):
+                    if hasattr(ctrl, "kp"):
                         params.append((self, f"{prefix}.kp", 0.01, 0.001, 1, "private"))
-                    if hasattr(ctrl, 'Ti'):
+                    if hasattr(ctrl, "Ti"):
                         params.append((self, f"{prefix}.Ti", 10, 1.0, 100, "private"))
-                    if hasattr(ctrl, 'Td'):
-                        params.append((self, f"{prefix}.Td", 0.0, 0.0, 0.0001, "private"))
-                    if hasattr(ctrl, 'output_min'):
-                        params.append((self, f"{prefix}.output_min", 0.5, 0.0, 1.0, "private"))
+                    if hasattr(ctrl, "Td"):
+                        params.append(
+                            (self, f"{prefix}.Td", 0.0, 0.0, 0.0001, "private")
+                        )
+                    if hasattr(ctrl, "output_min"):
+                        params.append(
+                            (self, f"{prefix}.output_min", 0.5, 0.0, 1.0, "private")
+                        )
                     # if hasattr(ctrl, 'output_max'):
                     #     params.append((self, f"{prefix}.output_max", 1.0, 0.0, 1.0, "private"))
                     # On-Off controller parameters
-                    if hasattr(ctrl, 'offValue'):
-                        params.append((self, f"{prefix}.offValue", 0.0, 0, 1.0, "private"))
-                    if hasattr(ctrl, 'onValue'):
-                        params.append((self, f"{prefix}.onValue", 1.0, 0.0, 1.0, "private"))
-                    if hasattr(ctrl, 'steepness'):
-                        params.append((self, f"{prefix}.steepness", 100, 1, 100.0, "private"))
+                    if hasattr(ctrl, "offValue"):
+                        params.append(
+                            (self, f"{prefix}.offValue", 0.0, 0, 1.0, "private")
+                        )
+                    if hasattr(ctrl, "onValue"):
+                        params.append(
+                            (self, f"{prefix}.onValue", 1.0, 0.0, 1.0, "private")
+                        )
+                    if hasattr(ctrl, "steepness"):
+                        params.append(
+                            (self, f"{prefix}.steepness", 100, 1, 100.0, "private")
+                        )
                     # SAT-compensated controller parameters
-                    if hasattr(ctrl, 'base_position'):
-                        params.append((self, f"{prefix}.base_position", 0.3, 0.0, 1.0, "private"))
-                    if hasattr(ctrl, 'sat_design'):
-                        params.append((self, f"{prefix}.sat_design", 13.0, 0.0, 30.0, "private"))
-                    if hasattr(ctrl, 'gain'):
-                        params.append((self, f"{prefix}.gain", 0.05, -0.5, 0.5, "private"))
+                    if hasattr(ctrl, "base_position"):
+                        params.append(
+                            (self, f"{prefix}.base_position", 0.3, 0.0, 1.0, "private")
+                        )
+                    if hasattr(ctrl, "sat_design"):
+                        params.append(
+                            (self, f"{prefix}.sat_design", 13.0, 0.0, 30.0, "private")
+                        )
+                    if hasattr(ctrl, "gain"):
+                        params.append(
+                            (self, f"{prefix}.gain", 0.05, -0.5, 0.5, "private")
+                        )
 
         return params
 
     def get_gradient_scales(self, weight_scale: float = 0.01) -> List[float]:
         """Get recommended gradient scaling factors for each parameter.
-        
-        Selection weights (alpha, beta, gamma) typically have gradients ~100x 
+
+        Selection weights (alpha, beta, gamma) typically have gradients ~100x
         larger than controller parameters due to directly multiplying signals.
         This method returns scaling factors that balance the gradients.
-        
+
         Note: With vector Parameters, the scales are per-parameter (not per-element).
         The Estimator handles expanding scales to match n_c dimensions internally.
-        
+
         Args:
             weight_scale: Scaling factor for selection weight gradients.
                 Default 0.01 reduces weight gradients by 100x.
-        
+
         Returns:
             List of gradient scales matching the order from get_estimator_parameters()
-            
+
         Example:
             >>> params = controller.get_estimator_parameters()
             >>> scales = controller.get_gradient_scales()
@@ -839,7 +951,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             ... )
         """
         scales = []
-        
+
         # Selection weights - all per-actuator, apply weight_scale
         # For each actuator: alpha, beta, gamma[, beta_b]
         for _ in range(self.n_actuators):
@@ -848,64 +960,72 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             scales.append(weight_scale)  # gamma
             if self._has_cascade:
                 scales.append(weight_scale)  # beta_b
-        
+
         # Controller parameters - no scaling (1.0)
         # Must match the order and count of get_estimator_parameters()
         for a in range(self.n_actuators):
             for c in range(self.n_candidates):
                 ctrl = self._get_candidate(a, c)
 
-                if hasattr(ctrl, 'ctrl_a'):
+                if hasattr(ctrl, "ctrl_a"):
                     # Composed cascade: count sub-controller params dynamically
-                    for sub_name in ('ctrl_a', 'ctrl_b'):
+                    for sub_name in ("ctrl_a", "ctrl_b"):
                         sub = getattr(ctrl, sub_name)
-                        for attr_name in ('kp', 'Ti', 'Td', 'output_min', 'output_max',
-                                          'base_position', 'sat_design', 'gain'):
+                        for attr_name in (
+                            "kp",
+                            "Ti",
+                            "Td",
+                            "output_min",
+                            "output_max",
+                            "base_position",
+                            "sat_design",
+                            "gain",
+                        ):
                             if hasattr(sub, attr_name):
                                 scales.append(1.0)
                 else:
                     # Standard controllers - must mirror get_estimator_parameters()
-                    if hasattr(ctrl, 'kp'):
+                    if hasattr(ctrl, "kp"):
                         scales.append(1.0)
-                    if hasattr(ctrl, 'Ti'):
+                    if hasattr(ctrl, "Ti"):
                         scales.append(1.0)
-                    if hasattr(ctrl, 'Td'):
+                    if hasattr(ctrl, "Td"):
                         scales.append(1.0)
-                    if hasattr(ctrl, 'output_min'):
+                    if hasattr(ctrl, "output_min"):
                         scales.append(1.0)
                     # On-Off controller parameters
-                    if hasattr(ctrl, 'offValue'):
+                    if hasattr(ctrl, "offValue"):
                         scales.append(1.0)
-                    if hasattr(ctrl, 'onValue'):
+                    if hasattr(ctrl, "onValue"):
                         scales.append(1.0)
-                    if hasattr(ctrl, 'steepness'):
+                    if hasattr(ctrl, "steepness"):
                         scales.append(1.0)
                     # SAT-compensated controller parameters
-                    if hasattr(ctrl, 'base_position'):
+                    if hasattr(ctrl, "base_position"):
                         scales.append(1.0)
-                    if hasattr(ctrl, 'sat_design'):
+                    if hasattr(ctrl, "sat_design"):
                         scales.append(1.0)
-                    if hasattr(ctrl, 'gain'):
+                    if hasattr(ctrl, "gain"):
                         scales.append(1.0)
-        
+
         return scales
 
 
 # def brick_signature_pattern():
 #     """
 #     BRICK signature pattern for AHU damper control identification.
-    
+
 #     Since BRICK doesn't include explicit control descriptions, this pattern
 #     matches an AHU feeding spaces and creates a controller identification
 #     system to infer the control logic from data.
-    
+
 #     The controller:
 #     - Observes zone temperatures (sensorValue) from the fed spaces
 #     - Tracks temperature setpoints (setpointValue)
 #     - Outputs damper positions (inputSignal) to the AHU
 #     """
 #     sp = SignaturePattern(id="controller_identification_ahu_damper_brick")
-    
+
 #     # Match AHU that feeds spaces
 #     ahu = Node(cls=core.namespace.BRICK.AHU)
 #     spaces = Node(
@@ -915,22 +1035,22 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
 #             core.namespace.BRICK.Open_space,
 #         )
 #     )
-    
+
 #     feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
-    
+
 #     sp.add_triple(
 #         MultiPathRule(subject=ahu, object=spaces, predicate=feeds)
 #     )
-    
+
 #     # Connect space temperatures to controller's sensorValue (Vector input)
 #     sp.add_connection(spaces, "indoorTemperature", "sensorValue", input_port_index=spaces)
-    
+
 #     # Connect controller's output to AHU's damper positions
 #     sp.add_connection("inputSignal", ahu, "supplyDamperPosition", output_port_index=spaces)
 #     sp.add_connection("inputSignal", ahu, "exhaustDamperPosition", output_port_index=spaces)
-    
+
 #     sp.add_modeled_node(ahu)  # Controller is created for each AHU
-    
+
 #     return sp
 
 

@@ -9,8 +9,8 @@ import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
 import twin4build.utils.constants as constants
+import twin4build.utils.types as tps
 
 
 class FanTorchSystem(core.System, nn.Module):

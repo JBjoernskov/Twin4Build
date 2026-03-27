@@ -361,7 +361,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
         # Expand parameters to n_c dimension for vectorization
         self.UA = self.UA.expand_to_n_c(self.n_c)
-        self.thermalMassHeatCapacity = self.thermalMassHeatCapacity.expand_to_n_c(self.n_c)
+        self.thermalMassHeatCapacity = self.thermalMassHeatCapacity.expand_to_n_c(
+            self.n_c
+        )
 
         if not self.INITIALIZED and self.initialize_UA:
             # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh.
@@ -457,7 +459,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """
         n = self.nelements
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
-        
+
         # Get parameters - shape (n_c,)
         C_elem = self.thermalMassHeatCapacity.get() / n  # (n_c,)
         UA_elem = self.UA.get() / n  # (n_c,)
@@ -492,7 +494,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
         # Initial state - shape (n_c, n_states)
         x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[0, :, :]  # Take first simulation, all components: (n_c, n_states)
+        x0 = x0_tensor[
+            0, :, :
+        ]  # Take first simulation, all components: (n_c, n_states)
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -540,20 +544,24 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         )
         self.ss_model.input["u"]._set(u, i_t=step_index)
         self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
-        
+
         # y shape: (n_s, n_c, n_outputs)
         y = self.ss_model.output["y"].get()
         outletWaterTemperature = y[:, :, 0]  # (n_s, n_c)
-        
+
         # Calculate power: UA_elem * sum(T_i - T_zone) for all elements
         # UA_elem shape: (n_c,), temps shape: (n_s, n_c, n_states), u[:,:,2] shape: (n_s, n_c)
         UA_elem = self.UA.get() / self.nelements  # (n_c,)
         temps = self.ss_model.get_state()  # (n_s, n_c, n_states)
         T_zone = u[:, :, 2]  # (n_s, n_c)
         # Expand T_zone to match temps: (n_s, n_c, 1) for broadcasting
-        Power = UA_elem.unsqueeze(0) * torch.sum(temps - T_zone.unsqueeze(2), dim=2)  # (n_s, n_c)
-        
-        self.output["outletWaterTemperature"]._set(outletWaterTemperature, i_t=step_index)
+        Power = UA_elem.unsqueeze(0) * torch.sum(
+            temps - T_zone.unsqueeze(2), dim=2
+        )  # (n_s, n_c)
+
+        self.output["outletWaterTemperature"]._set(
+            outletWaterTemperature, i_t=step_index
+        )
         self.output["Power"]._set(Power, i_t=step_index)
 
 

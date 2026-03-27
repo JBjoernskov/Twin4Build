@@ -5,6 +5,8 @@ import datetime
 from typing import List, Union
 
 # Third party imports
+import torch
+
 # from twin4build.utils.plot.simulation_result import SimulationResult
 from prettytable import PrettyTable
 
@@ -13,7 +15,7 @@ import twin4build.core as core
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 
-import torch
+
 class System:
     """
     A base-class representing a component model used as part of a simulation model.
@@ -230,14 +232,14 @@ class System:
                     found_connection = True
                     if isinstance(index, int):
                         idx_val = index
-                    elif hasattr(index, 'max'):
+                    elif hasattr(index, "max"):
                         idx_val = int(index.max().item())
                     else:
                         idx_val = int(index)
                     max_index = max(max_index, idx_val)
 
-        n_v =  max_index + 1
-        if found_connection==False:
+        n_v = max_index + 1
+        if found_connection == False:
             n_v = None
         return n_v  # Default to None if no connections
 

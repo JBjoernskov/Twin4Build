@@ -7,12 +7,11 @@ import torch
 from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.air_handling_unit.air_handling_unit_torch_system import (
     AirHandlingUnitTorchSystem,
 )
-
-# Set test flag
-import twin4build
 
 twin4build._IS_TESTING = True
 
@@ -56,25 +55,17 @@ class TestAirHandlingUnitTorchSystem(unittest.TestCase):
         start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
         end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
         step_size = [600]
-        self.ahu.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        self.ahu.initialize(
+            start_time=start_time, end_time=end_time, step_size=step_size
+        )
 
         # Set vector inputs for two branches
-        self.ahu.input["supplyDamperPosition"].set(
-            torch.tensor([[1, 1]]), i_t=0
-        )
-        self.ahu.input["exhaustDamperPosition"].set(
-            torch.tensor([[0.9, 0.9]]), i_t=0
-        )
-        self.ahu.input["exhaustTemperature"].set(
-            torch.tensor([[22.0, 22.0]]), i_t=0
-        )
+        self.ahu.input["supplyDamperPosition"].set(torch.tensor([[1, 1]]), i_t=0)
+        self.ahu.input["exhaustDamperPosition"].set(torch.tensor([[0.9, 0.9]]), i_t=0)
+        self.ahu.input["exhaustTemperature"].set(torch.tensor([[22.0, 22.0]]), i_t=0)
         # Scalars
-        self.ahu.input["supplyAirTemperatureSetpoint"].set(
-            torch.tensor([18.0]), i_t=0
-        )
-        self.ahu.input["outdoorAirTemperature"].set(
-            torch.tensor([10.0]), i_t=0
-        )
+        self.ahu.input["supplyAirTemperatureSetpoint"].set(torch.tensor([18.0]), i_t=0)
+        self.ahu.input["outdoorAirTemperature"].set(torch.tensor([10.0]), i_t=0)
 
         self.ahu.do_step(
             second_time=0,
@@ -102,5 +93,3 @@ class TestAirHandlingUnitTorchSystem(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-

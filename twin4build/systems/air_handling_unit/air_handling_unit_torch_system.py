@@ -20,13 +20,13 @@ from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system
 )
 from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+from twin4build.systems.fan.fan_torch_system import FanTorchSystem
 from twin4build.systems.junction.return_flow_junction_system import (
     ReturnFlowJunctionSystem,
 )
 from twin4build.systems.junction.supply_flow_junction_system import (
     SupplyFlowJunctionSystem,
 )
-from twin4build.systems.fan.fan_torch_system import FanTorchSystem
 from twin4build.translator.translator import (
     MultiPathRule,
     Node,
@@ -118,7 +118,7 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
 
         assert "id" in kwargs, "id is required for AirHandlingUnitTorchSystem"
         ahu_id = kwargs["id"]
-        
+
         # Make sure each subcomponent has a unique id
         if "id" not in supply_damper_kwargs:
             supply_damper_kwargs["id"] = f"{ahu_id}_supply_damper"
@@ -130,7 +130,7 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
             heat_recovery_kwargs["id"] = f"{ahu_id}_heat_recovery"
         if "id" not in junction_kwargs:
             junction_kwargs["id"] = f"{ahu_id}_return_junction"
-        
+
         # Create separate kwargs for supply junction with unique id
         supply_junction_kwargs = junction_kwargs.copy()
         supply_junction_kwargs["id"] = f"{ahu_id}_supply_junction"
@@ -182,25 +182,27 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         }
 
         # Parameter configuration for calibration
-        damper_params = (
-            [f"supply_damper.{p}" for p in self.supply_damper._config["parameters"]]
-            + [f"exhaust_damper.{p}" for p in self.exhaust_damper._config["parameters"]]
-        )
+        damper_params = [
+            f"supply_damper.{p}" for p in self.supply_damper._config["parameters"]
+        ] + [f"exhaust_damper.{p}" for p in self.exhaust_damper._config["parameters"]]
         coil_params = [f"coil.{p}" for p in self.coil._config["parameters"]]
         hr_params = [
             f"heat_recovery.{p}" for p in self.heat_recovery._config["parameters"]
         ]
-        junction_params = (
-            [f"supply_junction.{p}" for p in self.supply_junction._config["parameters"]]
-            + [f"return_junction.{p}" for p in self.return_junction._config["parameters"]]
-        )
-        fan_params = [f"supply_fan.{p}" for p in self.supply_fan._config["parameters"]] + [
-            f"exhaust_fan.{p}" for p in self.exhaust_fan._config["parameters"]
-        ]
+        junction_params = [
+            f"supply_junction.{p}" for p in self.supply_junction._config["parameters"]
+        ] + [f"return_junction.{p}" for p in self.return_junction._config["parameters"]]
+        fan_params = [
+            f"supply_fan.{p}" for p in self.supply_fan._config["parameters"]
+        ] + [f"exhaust_fan.{p}" for p in self.exhaust_fan._config["parameters"]]
         self._config = {
-            "parameters": damper_params + coil_params + hr_params + junction_params + fan_params
+            "parameters": damper_params
+            + coil_params
+            + hr_params
+            + junction_params
+            + fan_params
         }
-        
+
         self.INITIALIZED = False
 
     @property
@@ -229,7 +231,7 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
-        
+
         # Initialize input ports - derive n_v from connection points for Vector inputs
         for name, input_port in self.input.items():
             if isinstance(input_port, tps.Vector):
@@ -242,7 +244,7 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
                 )
             else:
                 input_port.initialize(n_t=max_timesteps, n_s=batch_size)
-        
+
         # Initialize output ports - use same n_v as corresponding inputs
         # Supply outputs use supply input n_v, exhaust outputs use exhaust input n_v
         n_v_supply = self.input["supplyDamperPosition"].n_v
@@ -268,13 +270,13 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         self.exhaust_damper.n_c = self.n_c * n_v_exhaust
         self.supply_damper.initialize(start_time, end_time, step_size)
         self.exhaust_damper.initialize(start_time, end_time, step_size)
-        
+
         # Initialize junction subcomponents - set n_input_ports based on n_v
         self.supply_junction.n_input_ports = n_v_supply
         self.return_junction.n_input_ports = n_v_exhaust
         self.supply_junction.initialize(start_time, end_time, step_size)
         self.return_junction.initialize(start_time, end_time, step_size)
-        
+
         # Initialize other subcomponents
         self.coil.initialize(start_time, end_time, step_size)
         self.heat_recovery.initialize(start_time, end_time, step_size)
@@ -291,20 +293,24 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
     ) -> None:
         """
         Perform one simulation step for the AHU using vectorized damper objects.
-        
+
         All damper calculations are performed in parallel across branches via
         the vectorized DamperTorchSystem objects.
         """
         # 1) Supply damper: vectorized position -> flow calculation
         # Vector input shape: (n_s, n_c, n_v) -> reshape to (n_s, n_c*n_v) for damper n_c
         supply_pos_vec = self.input["supplyDamperPosition"].get()
-        supply_pos_flat = supply_pos_vec.reshape(supply_pos_vec.shape[0], -1)  # (n_s, n_c*n_v)
+        supply_pos_flat = supply_pos_vec.reshape(
+            supply_pos_vec.shape[0], -1
+        )  # (n_s, n_c*n_v)
         self.supply_damper.input["damperPosition"].set(supply_pos_flat, step_index)
         self.supply_damper.do_step(second_time, date_time, step_size, step_index)
-        supply_flow_flat = self.supply_damper.output["airFlowRate"].get()  # (n_s, n_c*n_v)
+        supply_flow_flat = self.supply_damper.output[
+            "airFlowRate"
+        ].get()  # (n_s, n_c*n_v)
         # Reshape back to (n_s, n_c, n_v) for Vector outputs
         supply_flow_vec = supply_flow_flat.reshape(supply_pos_vec.shape)
-        
+
         # 2) Supply junction: sum branch flows
         self.supply_junction.input["airFlowRateOut"].set(supply_flow_vec, step_index)
         self.supply_junction.do_step(second_time, date_time, step_size, step_index)
@@ -312,10 +318,14 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
 
         # 3) Exhaust damper: vectorized position -> flow calculation
         exhaust_pos_vec = self.input["exhaustDamperPosition"].get()
-        exhaust_pos_flat = exhaust_pos_vec.reshape(exhaust_pos_vec.shape[0], -1)  # (n_s, n_c*n_v)
+        exhaust_pos_flat = exhaust_pos_vec.reshape(
+            exhaust_pos_vec.shape[0], -1
+        )  # (n_s, n_c*n_v)
         self.exhaust_damper.input["damperPosition"].set(exhaust_pos_flat, step_index)
         self.exhaust_damper.do_step(second_time, date_time, step_size, step_index)
-        exhaust_flow_flat = self.exhaust_damper.output["airFlowRate"].get()  # (n_s, n_c*n_v)
+        exhaust_flow_flat = self.exhaust_damper.output[
+            "airFlowRate"
+        ].get()  # (n_s, n_c*n_v)
         # Reshape back to (n_s, n_c, n_v) for Vector outputs
         exhaust_flow_vec = exhaust_flow_flat.reshape(exhaust_pos_vec.shape)
 
@@ -335,12 +345,16 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         exhaust_fan_power = self.exhaust_fan.output["Power"].get()
 
         # 6) Heat recovery
-        self.heat_recovery.input["primaryAirFlowRate"].set(supply_flow_total, step_index)
+        self.heat_recovery.input["primaryAirFlowRate"].set(
+            supply_flow_total, step_index
+        )
         self.heat_recovery.input["secondaryAirFlowRate"].set(secondary_flow, step_index)
         self.heat_recovery.input["primaryTemperatureIn"].set(
             self.input["outdoorAirTemperature"].get(), step_index
         )
-        self.heat_recovery.input["secondaryTemperatureIn"].set(return_temp_fan, step_index)
+        self.heat_recovery.input["secondaryTemperatureIn"].set(
+            return_temp_fan, step_index
+        )
         self.heat_recovery.input["primaryTemperatureOutSetpoint"].set(
             self.input["supplyAirTemperatureSetpoint"].get(), step_index
         )
@@ -400,11 +414,11 @@ def brick_signature_pattern():
 
     feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
 
-    sp.add_triple(
-        MultiPathRule(subject=ahu, object=spaces, predicate=feeds)
-    )
+    sp.add_triple(MultiPathRule(subject=ahu, object=spaces, predicate=feeds))
 
-    sp.add_connection(spaces, "indoorTemperature", "exhaustTemperature", input_port_index=spaces)
+    sp.add_connection(
+        spaces, "indoorTemperature", "exhaustTemperature", input_port_index=spaces
+    )
 
     sp.add_modeled_node(ahu)
 

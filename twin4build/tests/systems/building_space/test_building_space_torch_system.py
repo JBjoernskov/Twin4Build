@@ -3,16 +3,16 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.building_space.building_space_torch_system import (
     BuildingSpaceTorchSystem,
 )
 
-# Set test flag
-import twin4build
 twin4build._IS_TESTING = True
 
 
@@ -106,30 +106,18 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         start_time = [
             datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         ] * batch_size
-        end_time = [
-            datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
-        ] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)] * batch_size
         step_size = [600] * batch_size
         space_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
         # Set inputs with batch size 2
-        space_batch.input["outdoorTemperature"].set(
-            torch.tensor([5.0, 8.0]), i_t=0
-        )
-        space_batch.input["globalIrradiation"].set(
-            torch.tensor([200.0, 250.0]), i_t=0
-        )
-        space_batch.input["supplyAirFlowRate"].set(
-            torch.tensor([0.05, 0.06]), i_t=0
-        )
-        space_batch.input["exhaustAirFlowRate"].set(
-            torch.tensor([0.02, 0.03]), i_t=0
-        )
-        space_batch.input["supplyAirTemperature"].set(
-            torch.tensor([22.0, 23.0]), i_t=0
-        )
+        space_batch.input["outdoorTemperature"].set(torch.tensor([5.0, 8.0]), i_t=0)
+        space_batch.input["globalIrradiation"].set(torch.tensor([200.0, 250.0]), i_t=0)
+        space_batch.input["supplyAirFlowRate"].set(torch.tensor([0.05, 0.06]), i_t=0)
+        space_batch.input["exhaustAirFlowRate"].set(torch.tensor([0.02, 0.03]), i_t=0)
+        space_batch.input["supplyAirTemperature"].set(torch.tensor([22.0, 23.0]), i_t=0)
         space_batch.input["numberOfPeople"].set(torch.tensor([3.0, 5.0]), i_t=0)
         space_batch.input["heatGain"].set(torch.tensor([0.0, 0.0]), i_t=0)
         space_batch.input["outdoorCO2"].set(torch.tensor([400.0, 410.0]), i_t=0)

@@ -9,6 +9,7 @@ The function is safe for reverse-mode AD (``jacrev``): the ``torch.clamp`` insid
 non-selected ``torch.where`` branches, avoiding the ``0 * NaN = NaN`` issue.
 """
 
+# Third party imports
 import torch
 
 

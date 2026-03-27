@@ -2,6 +2,8 @@
 import unittest
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.model.simulation_model.simulation_model import SimulationModel
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 from twin4build.systems.fan.fan_torch_system import FanTorchSystem
@@ -10,8 +12,6 @@ from twin4build.systems.junction.supply_flow_junction_system import (
 )
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 
-# Set test flag
-import twin4build
 twin4build._IS_TESTING = True
 
 

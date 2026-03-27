@@ -9,11 +9,14 @@ Each sensor's time series is saved as a CSV file named by its database UUID.
 A metadata CSV (index.csv) maps UUIDs to human-readable descriptions.
 """
 
+# Standard library imports
 import os
 import sys
+
+# Third party imports
+import pandas as pd
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import pandas as pd
 
 # ==========================================================================
 # CONFIGURATION
@@ -65,6 +68,7 @@ ALL_SENSORS = {**ROOM_SENSORS, **AHU_SENSORS}
 # EXTRACTION
 # ==========================================================================
 
+
 def extract_data():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -76,7 +80,9 @@ def extract_data():
         f"password={db_config['db_password']}"
     )
 
-    print(f"Connecting to database: {db_config['db_host']}:{db_config['db_port']}/{db_config['db_name']}")
+    print(
+        f"Connecting to database: {db_config['db_host']}:{db_config['db_port']}/{db_config['db_name']}"
+    )
     conn = psycopg2.connect(conn_string)
     cursor = conn.cursor(cursor_factory=RealDictCursor)
 
@@ -100,20 +106,24 @@ def extract_data():
             FROM {table}
             WHERE uuid = %s
             ORDER BY time
-        """.format(table=TABLE_NAME)
+        """.format(
+            table=TABLE_NAME
+        )
 
         cursor.execute(query, (uuid,))
         rows = cursor.fetchall()
 
         if not rows:
             print(f"NO DATA")
-            index_rows.append({
-                "uuid": uuid,
-                "description": description,
-                "rows": 0,
-                "time_min": None,
-                "time_max": None,
-            })
+            index_rows.append(
+                {
+                    "uuid": uuid,
+                    "description": description,
+                    "rows": 0,
+                    "time_min": None,
+                    "time_max": None,
+                }
+            )
             continue
 
         df = pd.DataFrame(rows)
@@ -122,13 +132,15 @@ def extract_data():
 
         print(f"{len(df)} rows  [{df['time'].min()} .. {df['time'].max()}]")
 
-        index_rows.append({
-            "uuid": uuid,
-            "description": description,
-            "rows": len(df),
-            "time_min": str(df["time"].min()),
-            "time_max": str(df["time"].max()),
-        })
+        index_rows.append(
+            {
+                "uuid": uuid,
+                "description": description,
+                "rows": len(df),
+                "time_min": str(df["time"].min()),
+                "time_max": str(df["time"].max()),
+            }
+        )
 
     conn.close()
 

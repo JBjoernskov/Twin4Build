@@ -9,18 +9,21 @@ Usage:
     python plot_optimization_results.py
 """
 
+# Standard library imports
 import datetime
 import os
 import pickle
 
+# Third party imports
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
-import matplotlib.pyplot as plt
 from dateutil import tz
+from plot_calibration_results import add_hourly_ticks, compute_metrics, move_legend
 
+# Local application imports
 import twin4build as tb
 import twin4build.examples.utils as utils
-from plot_calibration_results import compute_metrics, move_legend, add_hourly_ticks
 
 # ── Configuration ─────────────────────────────────────────────────────────
 ESTIMATION_PICKLE = (
@@ -32,7 +35,7 @@ ESTIMATION_PICKLE = (
 OPT_RESULT_PICKLE = (
     r"generated_files\models\full_workflow_example"
     r"\optimization_results"
-    r"\20260326_023323_optimization.pickle"
+    r"\20260326_225247_optimization.pickle"
 )
 
 
@@ -55,10 +58,12 @@ def main():
     valve_csv_path = utils.get_path(
         ["estimator_example", "optimized_valve_position.csv"]
     )
-    valve_df = pd.DataFrame({
-        "time": dt[0],
-        "value": saved_valve[:, 0, 0].numpy(),
-    })
+    valve_df = pd.DataFrame(
+        {
+            "time": dt[0],
+            "value": saved_valve[:, 0, 0].numpy(),
+        }
+    )
     valve_df.to_csv(valve_csv_path, index=False)
 
     # ── 3. Load model & apply calibrated parameters ───────────────────────
@@ -119,9 +124,15 @@ def main():
     irradiation = space.input["globalIrradiation"].history().detach()
 
     print(f"Peak power      : {power[:, 0, 0].max():.1f} W")
-    print(f"Temp range      : {indoor_temp[:, 0, 0].min():.1f} – {indoor_temp[:, 0, 0].max():.1f} °C")
-    print(f"Supply air range: {supply_air_temp[:, 0, 0].min():.1f} – {supply_air_temp[:, 0, 0].max():.1f} °C")
-    print(f"Outdoor range   : {outdoor_temp[:, 0, 0].min():.1f} – {outdoor_temp[:, 0, 0].max():.1f} °C")
+    print(
+        f"Temp range      : {indoor_temp[:, 0, 0].min():.1f} – {indoor_temp[:, 0, 0].max():.1f} °C"
+    )
+    print(
+        f"Supply air range: {supply_air_temp[:, 0, 0].min():.1f} – {supply_air_temp[:, 0, 0].max():.1f} °C"
+    )
+    print(
+        f"Outdoor range   : {outdoor_temp[:, 0, 0].min():.1f} – {outdoor_temp[:, 0, 0].max():.1f} °C"
+    )
     print(f"Max occupancy   : {n_people[:, 0, 0].max():.1f}")
 
     tz_cph = tz.gettz("Europe/Copenhagen")
@@ -135,9 +146,19 @@ def main():
     fig1, axes1 = tb.plot.plot(
         dt,
         [
-            tb.plot.Entry(indoor_temp, label="Temperature simulated", color="#d95f02", linewidth=2),
-            tb.plot.Entry(valve,       label="Valve simulated",       color="#e7298a", linewidth=2, axis=2),
-            tb.plot.Entry(heating_sp,  label="Heating setpoint",      color=C.black, linewidth=1.5, fmt=":"),
+            tb.plot.Entry(
+                indoor_temp, label="Temperature simulated", color="#d95f02", linewidth=2
+            ),
+            tb.plot.Entry(
+                valve, label="Valve simulated", color="#e7298a", linewidth=2, axis=2
+            ),
+            tb.plot.Entry(
+                heating_sp,
+                label="Heating setpoint",
+                color=C.black,
+                linewidth=1.5,
+                fmt=":",
+            ),
         ],
         ylim_1axis=(18.4, 23.6),
         ylim_2axis=(0, 1.5),
@@ -155,10 +176,25 @@ def main():
     fig2, axes2 = tb.plot.plot(
         dt,
         [
-            tb.plot.Entry(indoor_temp,     label="Indoor temperature",     color="#d95f02", linewidth=2),
-            tb.plot.Entry(supply_air_temp,  label="Supply air temperature", color="#1b9e77", linewidth=2),
-            tb.plot.Entry(outdoor_temp,     label="Outdoor temperature",    color="#7570b3", linewidth=2),
-            tb.plot.Entry(heating_sp,       label="Heating setpoint",       color=C.black, linewidth=1.5, fmt=":"),
+            tb.plot.Entry(
+                indoor_temp, label="Indoor temperature", color="#d95f02", linewidth=2
+            ),
+            tb.plot.Entry(
+                supply_air_temp,
+                label="Supply air temperature",
+                color="#1b9e77",
+                linewidth=2,
+            ),
+            tb.plot.Entry(
+                outdoor_temp, label="Outdoor temperature", color="#7570b3", linewidth=2
+            ),
+            tb.plot.Entry(
+                heating_sp,
+                label="Heating setpoint",
+                color=C.black,
+                linewidth=1.5,
+                fmt=":",
+            ),
         ],
         ylabel_1axis=r"Temperature [$^\circ$C]",
         title="Diagnostic: temperatures (supply air above indoor = AHU heating)",
@@ -174,10 +210,26 @@ def main():
     fig3, axes3 = tb.plot.plot(
         dt,
         [
-            tb.plot.Entry(heat_gain,   label="Space heater power",   color="#d95f02", linewidth=2),
-            tb.plot.Entry(irradiation, label="Solar irradiation",    color="#e6ab02", linewidth=1.5, fmt="--"),
-            tb.plot.Entry(supply_air_flow, label="Supply air flow rate", color="#1b9e77", linewidth=2, axis=2),
-            tb.plot.Entry(n_people,    label="Number of people",     color="#7570b3", linewidth=2, axis=3),
+            tb.plot.Entry(
+                heat_gain, label="Space heater power", color="#d95f02", linewidth=2
+            ),
+            tb.plot.Entry(
+                irradiation,
+                label="Solar irradiation",
+                color="#e6ab02",
+                linewidth=1.5,
+                fmt="--",
+            ),
+            tb.plot.Entry(
+                supply_air_flow,
+                label="Supply air flow rate",
+                color="#1b9e77",
+                linewidth=2,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                n_people, label="Number of people", color="#7570b3", linewidth=2, axis=3
+            ),
         ],
         ylabel_1axis=r"Power [W] / Irradiation [W/m$^2$]",
         ylabel_2axis="Air flow [kg/s]",
@@ -222,8 +274,10 @@ def main():
         print(f"  Setpoint    : {sp_1d[t_worst]:.2f} °C")
         print(f"  Gap         : {violations[t_worst]:.2f} °C")
         print(f"  Valve       : {saved_valve[t_worst, 0, 0]:.4f}")
-        print(f"\nPerturbing valve → 1.0 for t={t_start}–{t_end - 1}  "
-              f"({dt[0][t_start]:%a %H:%M} – {dt[0][t_end - 1]:%a %H:%M})")
+        print(
+            f"\nPerturbing valve → 1.0 for t={t_start}–{t_end - 1}  "
+            f"({dt[0][t_start]:%a %H:%M} – {dt[0][t_end - 1]:%a %H:%M})"
+        )
 
         perturbed_valve = saved_valve[:, 0, 0].clone()
         perturbed_valve[t_start:t_end] = 1.0
@@ -273,8 +327,12 @@ def main():
         sep = "-" * 74
         print(hdr)
         print(sep)
-        print(f"{'Objective (norm. mean power)':34s} {b_obj:12.6f} {p_obj:12.6f} {p_obj - b_obj:+12.6f}")
-        print(f"{'Lower-constraint penalty (k=1000)':34s} {b_pen:12.6f} {p_pen:12.6f} {p_pen - b_pen:+12.6f}")
+        print(
+            f"{'Objective (norm. mean power)':34s} {b_obj:12.6f} {p_obj:12.6f} {p_obj - b_obj:+12.6f}"
+        )
+        print(
+            f"{'Lower-constraint penalty (k=1000)':34s} {b_pen:12.6f} {p_pen:12.6f} {p_pen - b_pen:+12.6f}"
+        )
         print(f"{'Total loss':34s} {b_tot:12.6f} {p_tot:12.6f} {p_tot - b_tot:+12.6f}")
         print(sep)
 
@@ -289,24 +347,32 @@ def main():
 
         # Physical summary around perturbation window
         print(f"\nPhysical changes (perturbed block t={t_start}–{t_end - 1}):")
-        print(f"  Mean power : {power_1d[t_start:t_end].mean():.1f} → "
-              f"{pert_power[t_start:t_end].mean():.1f} W  "
-              f"(Δ = {pert_power[t_start:t_end].mean() - power_1d[t_start:t_end].mean():+.1f})")
-        print(f"  Mean temp  : {temp_1d[t_start:t_end].mean():.2f} → "
-              f"{pert_temp[t_start:t_end].mean():.2f} °C  "
-              f"(Δ = {pert_temp[t_start:t_end].mean() - temp_1d[t_start:t_end].mean():+.3f})")
-        print(f"  Mean viol. : {violations[t_start:t_end].mean():.3f} → "
-              f"{pert_violations[t_start:t_end].mean():.3f} °C  "
-              f"(Δ = {pert_violations[t_start:t_end].mean() - violations[t_start:t_end].mean():+.3f})")
+        print(
+            f"  Mean power : {power_1d[t_start:t_end].mean():.1f} → "
+            f"{pert_power[t_start:t_end].mean():.1f} W  "
+            f"(Δ = {pert_power[t_start:t_end].mean() - power_1d[t_start:t_end].mean():+.1f})"
+        )
+        print(
+            f"  Mean temp  : {temp_1d[t_start:t_end].mean():.2f} → "
+            f"{pert_temp[t_start:t_end].mean():.2f} °C  "
+            f"(Δ = {pert_temp[t_start:t_end].mean() - temp_1d[t_start:t_end].mean():+.3f})"
+        )
+        print(
+            f"  Mean viol. : {violations[t_start:t_end].mean():.3f} → "
+            f"{pert_violations[t_start:t_end].mean():.3f} °C  "
+            f"(Δ = {pert_violations[t_start:t_end].mean() - violations[t_start:t_end].mean():+.3f})"
+        )
 
         print(f"\nTimestep-level detail:")
         for t in range(t_start, min(t_end + 6, n_t)):
             tag = " *" if t_start <= t < t_end else ""
-            print(f"  t={t:3d} {dt[0][t]:%a %H:%M}  "
-                  f"T={temp_1d[t]:5.2f}→{pert_temp[t]:5.2f} "
-                  f"(Δ{pert_temp[t] - temp_1d[t]:+.3f})  "
-                  f"sp={sp_1d[t]:5.1f}  "
-                  f"viol={violations[t]:.2f}→{pert_violations[t]:.2f}{tag}")
+            print(
+                f"  t={t:3d} {dt[0][t]:%a %H:%M}  "
+                f"T={temp_1d[t]:5.2f}→{pert_temp[t]:5.2f} "
+                f"(Δ{pert_temp[t] - temp_1d[t]:+.3f})  "
+                f"sp={sp_1d[t]:5.1f}  "
+                f"viol={violations[t]:.2f}→{pert_violations[t]:.2f}{tag}"
+            )
 
 
 if __name__ == "__main__":

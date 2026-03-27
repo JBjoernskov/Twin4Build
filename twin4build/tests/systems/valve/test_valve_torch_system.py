@@ -3,14 +3,14 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
-from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
-
 # Set test flag
 import twin4build
+from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
+
 twin4build._IS_TESTING = True
 
 
@@ -61,20 +61,12 @@ class TestValveTorchSystem(unittest.TestCase):
         valve_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-        valve_batch.input["valvePosition"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
-        valve_batch.output["waterFlowRate"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
-        valve_batch.output["valvePosition"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
+        valve_batch.input["valvePosition"].initialize(n_t=1, n_s=batch_size, n_v=1)
+        valve_batch.output["waterFlowRate"].initialize(n_t=1, n_s=batch_size, n_v=1)
+        valve_batch.output["valvePosition"].initialize(n_t=1, n_s=batch_size, n_v=1)
 
         # Set inputs with batch size 3
-        valve_batch.input["valvePosition"].set(
-            torch.tensor([0.5, 0.7, 0.3]), i_t=0
-        )
+        valve_batch.input["valvePosition"].set(torch.tensor([0.5, 0.7, 0.3]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)

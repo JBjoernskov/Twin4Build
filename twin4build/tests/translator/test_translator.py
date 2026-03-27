@@ -3,6 +3,8 @@ import os
 import unittest
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.model.semantic_model.semantic_model import SemanticModel
 from twin4build.translator.translator import (
     Exact,
@@ -15,8 +17,6 @@ from twin4build.translator.translator import (
 )
 from twin4build.utils.uppath import uppath
 
-# Set test flag
-import twin4build
 twin4build._IS_TESTING = True
 
 

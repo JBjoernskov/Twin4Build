@@ -7,10 +7,10 @@ import warnings
 from dateutil import tz
 
 # Local application imports
-from twin4build.systems.schedule.schedule_system import ScheduleSystem
-
 # Set test flag
 import twin4build
+from twin4build.systems.schedule.schedule_system import ScheduleSystem
+
 twin4build._IS_TESTING = True
 
 
@@ -208,15 +208,22 @@ class TestScheduleSystem(unittest.TestCase):
         step_size1 = 600
 
         simulator.simulate(
-            start_time=start_time1, end_time=end_time1, step_size=step_size1, show_progress_bar=False
+            start_time=start_time1,
+            end_time=end_time1,
+            step_size=step_size1,
+            show_progress_bar=False,
         )
 
         # Get results from first simulation
         history1 = schedule.output["scheduleValue"].history().clone()
 
         # Second simulation with different datetime instances but same values
-        start_time2 = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)  # Different object, same value
-        end_time2 = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)    # Different object, same value
+        start_time2 = datetime.datetime(
+            2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC
+        )  # Different object, same value
+        end_time2 = datetime.datetime(
+            2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC
+        )  # Different object, same value
         step_size2 = 600
 
         # Verify they are different objects but equal values
@@ -226,15 +233,21 @@ class TestScheduleSystem(unittest.TestCase):
         self.assertEqual(end_time1, end_time2)
 
         simulator.simulate(
-            start_time=start_time2, end_time=end_time2, step_size=step_size2, show_progress_bar=False
+            start_time=start_time2,
+            end_time=end_time2,
+            step_size=step_size2,
+            show_progress_bar=False,
         )
 
         # Get results from second simulation
         history2 = schedule.output["scheduleValue"].history()
 
         # Verify outputs are identical (caching works with different datetime instances)
-        torch.testing.assert_close(history1, history2,
-            msg="Simulation results differ with different datetime instances: caching not working reliably")
+        torch.testing.assert_close(
+            history1,
+            history2,
+            msg="Simulation results differ with different datetime instances: caching not working reliably",
+        )
 
         # Cleanup
         if os.path.exists("generated_files/models/test_cache_model"):

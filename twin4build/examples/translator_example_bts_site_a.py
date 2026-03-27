@@ -1,9 +1,14 @@
 # Standard library imports
+import cProfile
+import io
 import os
+import pstats
+
 # os.environ['DISABLE_AUTORESET_PRINT'] = '1'
 # os.environ['LINE_PROFILE'] = '1'
 import sys
 from datetime import datetime, timezone
+from pstats import SortKey
 
 # Third party imports
 # import juliacall
@@ -20,8 +25,6 @@ import twin4build as tb
 import twin4build.core as core
 from twin4build.utils.data_loaders.load import load_from_database
 from twin4build.utils.print_progress import LOGGER
-import cProfile, pstats, io
-from pstats import SortKey
 
 if __name__ == "__main__":
     # Load the semantic model
@@ -43,9 +46,6 @@ if __name__ == "__main__":
     #     rdf_file=file_path, id="site_b", verbose=10
     # )
 
-    
-
-    
     # PRINTPROGRESS._use_curses = False
     # PRINTPROGRESS.disable()
     # PRINTPROGRESS.set_caller_filter_mode("blacklist")
@@ -56,14 +56,17 @@ if __name__ == "__main__":
     LOGGER.show_caller("_connect_components", include_stack=True)
     pr = cProfile.Profile()
 
-
     sm = tb.SemanticModel(rdf_file=file_path, id="site_a", verbose=1500)
 
     # Site A
     weather_station_class = core.namespace.BRICK.Weather_Station
-    custom_class = URIRef("https://brickschema.org/schema/Brick#ec2ab3b8_518f_41d7_81c4_3b396f0d9d23")
+    custom_class = URIRef(
+        "https://brickschema.org/schema/Brick#ec2ab3b8_518f_41d7_81c4_3b396f0d9d23"
+    )
     # Add the equivalentClass relationship to the ontology graph
-    sm.ontology_graph.add((custom_class, core.namespace.OWL.equivalentClass, weather_station_class))
+    sm.ontology_graph.add(
+        (custom_class, core.namespace.OWL.equivalentClass, weather_station_class)
+    )
     # sm.reason()
 
     # HTR
@@ -74,21 +77,22 @@ if __name__ == "__main__":
     # sm.ontology_graph.add((fso_feeds_fluid_to, core.namespace.OWL.equivalentProperty, brick_feeds))
     # print(f"Added equivalence: fso:feedsFluidTo ≡ brick:feeds")
 
-
-
-
-
-
     # pr.enable()
 
-
     translator = tb.Translator()
-    sim_model = translator.translate(sm, systems_=[tb.BuildingSpaceTorchSystem, tb.AirHandlingUnitTorchSystem, tb.OutdoorEnvironmentSystem], verbose=1000)
+    sim_model = translator.translate(
+        sm,
+        systems_=[
+            tb.BuildingSpaceTorchSystem,
+            tb.AirHandlingUnitTorchSystem,
+            tb.OutdoorEnvironmentSystem,
+        ],
+        verbose=1000,
+    )
     # sim_model = translator.translate(sm, systems_=[tb.BuildingSpaceTorchSystem, tb.AirHandlingUnitTorchSystem], verbose=9)
 
     sim_model.serialize()
     sim_model.visualize(forward_only=True)
-
 
     # pr.disable()
     # LOGGER.reset()
@@ -98,10 +102,3 @@ if __name__ == "__main__":
     # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
     # ps.print_stats()
     # print(s.getvalue())
-
-
-
-
-
-
-

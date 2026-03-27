@@ -18,12 +18,12 @@ from twin4build.systems.building_space.building_space_thermal_torch_system impor
 from twin4build.translator.translator import (
     Exact,
     MultiPath,
-    Optional_,
     Node,
+    NoExactRule,
+    Optional_,
+    Predicate,
     SignaturePattern,
     SinglePath,
-    Predicate,
-    NoExactRule
 )
 
 
@@ -376,12 +376,17 @@ def brick_signature_pattern():  # Fits to site A
         )
     )  # TODO: 'space' should be 'Office', but the site b ttl file has a bug
     damper_position_sensor = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
-    weather_station = Node(cls=core.namespace.BRICK.Weather_Station)  # outdoor temperature sensor
+    weather_station = Node(
+        cls=core.namespace.BRICK.Weather_Station
+    )  # outdoor temperature sensor
     solar_radiance_sensor = Node(cls=core.namespace.BRICK.Solar_Radiance_Sensor)
-    outside_air_temperature_sensor = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    hvac_equipment = Node(cls=core.namespace.BRICK.HVAC_Equipment) #can be almost anything
+    outside_air_temperature_sensor = Node(
+        cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
+    )
+    hvac_equipment = Node(
+        cls=core.namespace.BRICK.HVAC_Equipment
+    )  # can be almost anything
     damper = Node(cls=core.namespace.BRICK.Damper)
-
 
     feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
 
@@ -390,7 +395,9 @@ def brick_signature_pattern():  # Fits to site A
     )
 
     sp.add_triple(
-        MultiPath(subject=ahu, object=space, predicate=feeds) #& NoExactRule(subject=hvac_equipment, object=damper, predicate=feeds)
+        MultiPath(
+            subject=ahu, object=space, predicate=feeds
+        )  # & NoExactRule(subject=hvac_equipment, object=damper, predicate=feeds)
     )
 
     # sp.add_triple(
@@ -404,17 +411,19 @@ def brick_signature_pattern():  # Fits to site A
     #     Exact(subject=weather_station, object=outside_air_temperature_sensor, predicate=core.namespace.BRICK.hasPoint)
     # )
 
-
-    sp.add_connection(ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space)
-    sp.add_connection(ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space)
+    sp.add_connection(
+        ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space
+    )
+    sp.add_connection(
+        ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space
+    )
     # # sp.add_input("numberOfPeople", node5, "measuredValue")
-    sp.add_connection(outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature")
+    sp.add_connection(
+        outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"
+    )
     # # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
     # sp.add_connection(solar_radiance_sensor, "globalIrradiation", "globalIrradiation")
     sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
-
-
-
 
     # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
     sp.add_modeled_node(space)

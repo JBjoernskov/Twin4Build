@@ -13,15 +13,15 @@ Steps:
 """
 
 # Standard library imports
-import os
 import glob
+import os
 import pickle
 from datetime import datetime, timezone
 
 # Third party imports
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import torch
 
 # Local application imports
@@ -51,12 +51,12 @@ step_size = 600  # 10 minutes
 # Identification used: 2017-01-16 to 2017-01-19
 # Validation: a longer window covering weeks before and after
 start_time = [
-    datetime(2017, 1, 9, 0, 0, tzinfo=timezone_utc),   # Week before training
-    datetime(2017, 1, 19, 0, 0, tzinfo=timezone_utc),   # Continues after training
+    datetime(2017, 1, 9, 0, 0, tzinfo=timezone_utc),  # Week before training
+    datetime(2017, 1, 19, 0, 0, tzinfo=timezone_utc),  # Continues after training
 ]
 end_time = [
-    datetime(2017, 1, 16, 0, 0, tzinfo=timezone_utc),   # Up to training start
-    datetime(2017, 2, 26, 0, 0, tzinfo=timezone_utc),   # Week after training
+    datetime(2017, 1, 16, 0, 0, tzinfo=timezone_utc),  # Up to training start
+    datetime(2017, 2, 26, 0, 0, tzinfo=timezone_utc),  # Week after training
 ]
 
 # ==========================================================================
@@ -64,14 +64,14 @@ end_time = [
 # ==========================================================================
 
 ROOM_SENSORS = {
-    'zone_temp': 'a2b6510f-cf4f-4edd-a080-b8f4b35968d9',
-    'zone_control_temp': '59b93fef-a0ab-4f2d-a036-01c62bfa8a4a',
-    'zone_temp_setpoint': '2cb39f2b-27e0-4611-a663-2de371007ff7',
-    'damper_position': '13954408-3b78-4483-8b18-dc0471207943',
-    'reheat_valve': 'be8ce19d-5e81-4f43-be16-8d95366d2d1a',
-    'supply_air_flow': '037993e1-31fc-4212-aaf1-8465a9481bf8',
-    'percent_air_flow': '778b01e9-8022-4134-a29c-1b9d0106328e',
-    'supply_air_temp': '6ff31387-db42-48a8-a675-2876e9d95639',
+    "zone_temp": "a2b6510f-cf4f-4edd-a080-b8f4b35968d9",
+    "zone_control_temp": "59b93fef-a0ab-4f2d-a036-01c62bfa8a4a",
+    "zone_temp_setpoint": "2cb39f2b-27e0-4611-a663-2de371007ff7",
+    "damper_position": "13954408-3b78-4483-8b18-dc0471207943",
+    "reheat_valve": "be8ce19d-5e81-4f43-be16-8d95366d2d1a",
+    "supply_air_flow": "037993e1-31fc-4212-aaf1-8465a9481bf8",
+    "percent_air_flow": "778b01e9-8022-4134-a29c-1b9d0106328e",
+    "supply_air_temp": "6ff31387-db42-48a8-a675-2876e9d95639",
 }
 
 # ==========================================================================
@@ -88,25 +88,25 @@ transformation_temp = lambda x: (x - 32) * 5 / 9
 transformation_pct = lambda x: x / 100.0
 
 zone_temp_sensor = tb.SensorSystem(
-    uuid=ROOM_SENSORS['zone_temp'],
+    uuid=ROOM_SENSORS["zone_temp"],
     id="zone_temp_sensor",
     dbconfig=db_config,
     transformation=transformation_temp,
 )
 zone_temp_setpoint_sensor = tb.SensorSystem(
-    uuid=ROOM_SENSORS['zone_temp_setpoint'],
+    uuid=ROOM_SENSORS["zone_temp_setpoint"],
     id="zone_temp_setpoint_sensor",
     dbconfig=db_config,
     transformation=transformation_temp,
 )
 damper_actuator = tb.SensorSystem(
-    uuid=ROOM_SENSORS['damper_position'],
+    uuid=ROOM_SENSORS["damper_position"],
     id="damper_actuator",
     dbconfig=db_config,
     transformation=transformation_pct,
 )
 reheat_valve_actuator = tb.SensorSystem(
-    uuid=ROOM_SENSORS['reheat_valve'],
+    uuid=ROOM_SENSORS["reheat_valve"],
     id="reheat_valve_actuator",
     dbconfig=db_config,
     transformation=transformation_pct,
@@ -149,17 +149,37 @@ model.add_component(schedule_switch_damper)
 model.add_component(schedule_switch_reheat)
 
 for i, sensor in enumerate(sensors):
-    model.add_connection(sensor, controller, "measuredValue", "sensorValue", input_port_index=i)
+    model.add_connection(
+        sensor, controller, "measuredValue", "sensorValue", input_port_index=i
+    )
 for i, setpoint in enumerate(setpoints):
-    model.add_connection(setpoint, controller, "measuredValue", "setpointValue", input_port_index=i)
+    model.add_connection(
+        setpoint, controller, "measuredValue", "setpointValue", input_port_index=i
+    )
 
 # controller -> schedule_switch_damper -> damper_actuator
-model.add_connection(controller, schedule_switch_damper, "inputSignal", "inputSignal", output_port_index=0)
-model.add_connection(schedule_switch_damper, damper_actuator, "inputSignal", "measuredValue")
+model.add_connection(
+    controller,
+    schedule_switch_damper,
+    "inputSignal",
+    "inputSignal",
+    output_port_index=0,
+)
+model.add_connection(
+    schedule_switch_damper, damper_actuator, "inputSignal", "measuredValue"
+)
 
 # controller -> schedule_switch_reheat -> reheat_valve_actuator
-model.add_connection(controller, schedule_switch_reheat, "inputSignal", "inputSignal", output_port_index=1)
-model.add_connection(schedule_switch_reheat, reheat_valve_actuator, "inputSignal", "measuredValue")
+model.add_connection(
+    controller,
+    schedule_switch_reheat,
+    "inputSignal",
+    "inputSignal",
+    output_port_index=1,
+)
+model.add_connection(
+    schedule_switch_reheat, reheat_valve_actuator, "inputSignal", "measuredValue"
+)
 
 print("  Model rebuilt with same structure and connections")
 
@@ -265,7 +285,9 @@ total_days = sum(
 print(f"\n  {n_periods} simulation period(s), {total_days:.0f} days total:")
 for j, (st, et) in enumerate(zip(start_time, end_time)):
     days = (et - st).total_seconds() / 86400
-    print(f"    Period {j}: {st.strftime('%Y-%m-%d')} to {et.strftime('%Y-%m-%d')} ({days:.0f} days)")
+    print(
+        f"    Period {j}: {st.strftime('%Y-%m-%d')} to {et.strftime('%Y-%m-%d')} ({days:.0f} days)"
+    )
 
 simulator = tb.Simulator(model)
 simulator.simulate(start_time=start_time, end_time=end_time, step_size=step_size)
@@ -303,7 +325,9 @@ print("GENERATING VALIDATION PLOTS")
 print("=" * 80)
 
 zone_temp_data = zone_temp_sensor.time_series_input.values[:, :, 0].detach().numpy().T
-zone_setpoint_data = zone_temp_setpoint_sensor.time_series_input.values[:, :, 0].detach().numpy().T
+zone_setpoint_data = (
+    zone_temp_setpoint_sensor.time_series_input.values[:, :, 0].detach().numpy().T
+)
 
 for i in range(len(actuator_sensors)):
     mae = np.mean(np.abs(predictions[i] - actual_values[i]))
@@ -312,7 +336,9 @@ for i in range(len(actuator_sensors)):
         tb.plot.Entry(actual_values[i], label=f"Actual {actuator_names[i]}"),
         tb.plot.Entry(predictions[i], label=f"Identified Model"),
         tb.plot.Entry(zone_temp_data, label="Zone Temperature", axis=2),
-        tb.plot.Entry(zone_setpoint_data, label="Zone Setpoint", axis=2, linestyle="--"),
+        tb.plot.Entry(
+            zone_setpoint_data, label="Zone Setpoint", axis=2, linestyle="--"
+        ),
     ]
 
     tb.plot.plot(

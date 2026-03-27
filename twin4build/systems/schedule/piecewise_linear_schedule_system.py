@@ -62,7 +62,10 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     ) -> None:
         # Auto-create a scalar weekDayRulesetDict when only defaultX/Y given.
         if defaultX is not None and defaultY is not None:
-            if "weekDayRulesetDict" not in kwargs or kwargs["weekDayRulesetDict"] is None:
+            if (
+                "weekDayRulesetDict" not in kwargs
+                or kwargs["weekDayRulesetDict"] is None
+            ):
                 kwargs["weekDayRulesetDict"] = copy.deepcopy(_EMPTY_RULESET)
 
         super().__init__(**kwargs)
@@ -172,7 +175,11 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         """
         schedule_value = self.get_schedule_value(date_time)
 
-        if isinstance(schedule_value, dict) and "X" in schedule_value and "Y" in schedule_value:
+        if (
+            isinstance(schedule_value, dict)
+            and "X" in schedule_value
+            and "Y" in schedule_value
+        ):
             return (
                 torch.tensor(schedule_value["X"], dtype=torch.float64),
                 torch.tensor(schedule_value["Y"], dtype=torch.float64),
@@ -211,4 +218,6 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         x_input = self.input["x"].get()
         original_shape = x_input.shape
         y_output = self._get_Y(x_input.reshape(-1))
-        self.output["scheduleValue"]._set(y_output.reshape(original_shape), i_t=step_index)
+        self.output["scheduleValue"]._set(
+            y_output.reshape(original_shape), i_t=step_index
+        )

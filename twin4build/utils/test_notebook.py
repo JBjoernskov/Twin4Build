@@ -28,7 +28,7 @@ def test_notebook(notebook_path):
 
         # Execute the notebook
         ep.preprocess(nb, {"metadata": {"path": os.path.dirname(notebook_path)}})
-        
+
         return True
     except CellExecutionError as e:
         print(f"Error executing notebook {notebook_path}:")

@@ -74,5 +74,3 @@ class ontology:
     S4SYST = "https://saref.etsi.org/saref4syst/"
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     T4B = "http://twin4build.org/"
-
-

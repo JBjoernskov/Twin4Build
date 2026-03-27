@@ -725,28 +725,58 @@ def brick_signature_pattern():
     # node3 = Node(cls=core.namespace.BRICK.Outdoor_CO2_Concentration_Sensor)
     sp = SignaturePattern(id="outdoor_environment_signature_pattern_brick")
     sp.add_triple(
-        Optional_(subject=weather_station, object=temp, predicate=core.namespace.BRICK.hasPoint)
+        Optional_(
+            subject=weather_station,
+            object=temp,
+            predicate=core.namespace.BRICK.hasPoint,
+        )
     )
     sp.add_triple(
-        Optional_(subject=weather_station, object=irrad, predicate=core.namespace.BRICK.hasPoint)
+        Optional_(
+            subject=weather_station,
+            object=irrad,
+            predicate=core.namespace.BRICK.hasPoint,
+        )
     )
     sp.add_triple(
-        Optional_(subject=temp, object=externalref_temp, predicate=core.namespace.BRICKREF.hasExternalReference) #Used in mortar
+        Optional_(
+            subject=temp,
+            object=externalref_temp,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )  # Used in mortar
     )
     sp.add_triple(
-        Optional_(subject=irrad, object=externalref_irrad, predicate=core.namespace.BRICKREF.hasExternalReference) #Used in mortar
+        Optional_(
+            subject=irrad,
+            object=externalref_irrad,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )  # Used in mortar
     )
     sp.add_triple(
-        Optional_(subject=externalref_temp, object=timeseriesid_temp, predicate=core.namespace.BRICKREF.hasTimeseriesId) #Used in mortar
+        Optional_(
+            subject=externalref_temp,
+            object=timeseriesid_temp,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )  # Used in mortar
     )
     sp.add_triple(
-        Optional_(subject=externalref_irrad, object=timeseriesid_irrad, predicate=core.namespace.BRICKREF.hasTimeseriesId) #Used in mortar
+        Optional_(
+            subject=externalref_irrad,
+            object=timeseriesid_irrad,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )  # Used in mortar
     )
     sp.add_triple(
-        Optional_(subject=temp, object=senaps_temp, predicate=core.namespace.SENAPS.senaps_id) #Used in bts
+        Optional_(
+            subject=temp, object=senaps_temp, predicate=core.namespace.SENAPS.senaps_id
+        )  # Used in bts
     )
     sp.add_triple(
-        Optional_(subject=irrad, object=senaps_irrad, predicate=core.namespace.SENAPS.senaps_id) #Used in bts
+        Optional_(
+            subject=irrad,
+            object=senaps_irrad,
+            predicate=core.namespace.SENAPS.senaps_id,
+        )  # Used in bts
     )
     sp.add_modeled_node(temp)
     # sp.add_modeled_node(irrad)
@@ -754,7 +784,7 @@ def brick_signature_pattern():
     sp.add_parameter("_uuid_globalIrradiation", senaps_irrad)
     sp.add_parameter("_uuid_outdoorTemperature", timeseriesid_temp)
     sp.add_parameter("_uuid_globalIrradiation", timeseriesid_irrad)
-  
+
     return sp
 
 

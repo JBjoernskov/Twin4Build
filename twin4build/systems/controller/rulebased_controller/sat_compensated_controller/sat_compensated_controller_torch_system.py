@@ -9,13 +9,13 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.systems.utils.smooth_saturation import smooth_saturation
-from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
-    PIDControllerSystem,
-)
 from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
     CascadeControllerSystem,
 )
+from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
+    PIDControllerSystem,
+)
+from twin4build.systems.utils.smooth_saturation import smooth_saturation
 
 
 class SATLinearRuleSystem(core.System, nn.Module):
@@ -187,7 +187,9 @@ class SATLinearRuleSystem(core.System, nn.Module):
         deviation = sat - design
         raw_output = base + k * deviation
 
-        output = smooth_saturation(raw_output, lower=o_min, upper=o_max, curve_start=0.05)
+        output = smooth_saturation(
+            raw_output, lower=o_min, upper=o_max, curve_start=0.05
+        )
 
         self.output["inputSignal"].set(output, step_index)
 

@@ -20,6 +20,7 @@ from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 
 # Set test flag
 tb._IS_TESTING = True
+# Local application imports
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
 
@@ -78,7 +79,9 @@ class TestEstimator(unittest.TestCase):
 
         # Extract the simulated air flow rate as "measurement"
         # History uses time-first layout (n_t, n_s, n_c), use history(i_s=0, i_c=0) to get (n_t,)
-        true_airflow = self.damper.output["airFlowRate"].history(i_s=0, i_c=0).detach().numpy()
+        true_airflow = (
+            self.damper.output["airFlowRate"].history(i_s=0, i_c=0).detach().numpy()
+        )
 
         # Create a sensor with this "measured" data
         # Note: simulation produces n_timesteps which may not include the end time
@@ -413,7 +416,9 @@ class TestEstimator(unittest.TestCase):
             # Step 3: Identify key components
             space = model.components["office"]
             space_heater = model.components["office_space_heater"]
-            heating_controller = model.components["office_temperature_heating_controller"]
+            heating_controller = model.components[
+                "office_temperature_heating_controller"
+            ]
 
             # Step 4: Define parameters for estimation (simplified set for faster testing)
             parameters = [

@@ -122,8 +122,11 @@ class CascadeControllerSystem(core.System, nn.Module):
         else:
             # Legacy: build PID from individual kwargs
             self.ctrl_a = PIDControllerSystem(
-                kp=kp_a, Ti=Ti_a, Td=Td_a,
-                output_min=output_min_a, output_max=output_max_a,
+                kp=kp_a,
+                Ti=Ti_a,
+                Td=Td_a,
+                output_min=output_min_a,
+                output_max=output_max_a,
                 isReverse=isReverse_a,
                 id=f"{base_id}_ctrl_a",
             )
@@ -137,8 +140,11 @@ class CascadeControllerSystem(core.System, nn.Module):
         else:
             # Legacy: build PID from individual kwargs
             self.ctrl_b = PIDControllerSystem(
-                kp=kp_b, Ti=Ti_b, Td=Td_b,
-                output_min=output_min_b, output_max=output_max_b,
+                kp=kp_b,
+                Ti=Ti_b,
+                Td=Td_b,
+                output_min=output_min_b,
+                output_max=output_max_b,
                 isReverse=isReverse_b,
                 id=f"{base_id}_ctrl_b",
             )
@@ -150,16 +156,16 @@ class CascadeControllerSystem(core.System, nn.Module):
         # --- External I/O ---
         self.input = {
             "setpointValue_a": tps.Scalar(),  # setpoint for controller A (unused by direct-signal controllers)
-            "actualValue_a": tps.Scalar(),    # feedback for A / direct signal for A
-            "actualValue_b": tps.Scalar(),    # feedback for controller B
+            "actualValue_a": tps.Scalar(),  # feedback for A / direct signal for A
+            "actualValue_b": tps.Scalar(),  # feedback for controller B
         }
         self.output = {"inputSignal": tps.Scalar(0)}
 
         # Config: enumerate sub-controller parameters with prefixes
         self._config = {"parameters": []}
         for prefix, ctrl in [("ctrl_a", self.ctrl_a), ("ctrl_b", self.ctrl_b)]:
-            if hasattr(ctrl, '_config') and 'parameters' in ctrl._config:
-                for param in ctrl._config['parameters']:
+            if hasattr(ctrl, "_config") and "parameters" in ctrl._config:
+                for param in ctrl._config["parameters"]:
                     self._config["parameters"].append(f"{prefix}.{param}")
 
     @property
@@ -249,7 +255,7 @@ class CascadeControllerSystem(core.System, nn.Module):
     def reset_state(self) -> None:
         """Reset the state of both sub-controllers."""
         for ctrl in (self.ctrl_a, self.ctrl_b):
-            if hasattr(ctrl, 'reset_state'):
+            if hasattr(ctrl, "reset_state"):
                 ctrl.reset_state()
 
 

@@ -4,16 +4,19 @@ in the SensorSystem folder. Helps identify good candidate rooms for parameter
 estimation and optimization by visualizing thermal dynamics.
 """
 
-import os
-import json
+# Standard library imports
 import datetime
+import json
+import os
 from collections import defaultdict
 
-import pandas as pd
-import matplotlib.pyplot as plt
+# Third party imports
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import pandas as pd
 from dateutil import tz
 
+# Local application imports
 from twin4build.utils.data_loaders.load import load_from_spreadsheet
 
 SENSOR_SYSTEM_DIR = os.path.join(os.path.dirname(__file__), "SensorSystem")
@@ -35,19 +38,25 @@ SENSOR_LABELS = {
 def resolve_csv_path(json_path):
     relative = json_path.lstrip("/")
     if relative.startswith("data/"):
-        relative = relative[len("data/"):]
+        relative = relative[len("data/") :]
     return os.path.join(DATA_ROOT, relative)
 
 
 def load_sensor_csv(csv_path, datecolumn, valuecolumn, time_shift_hours=0):
     """Load CSV using load_from_spreadsheet with the datecolumn/valuecolumn from JSON."""
     df = load_from_spreadsheet(
-        filename=csv_path, datecolumn=datecolumn, valuecolumn=valuecolumn,
-        step_size=STEP_SIZE, start_time=START_TIME, end_time=END_TIME, cache=False,
+        filename=csv_path,
+        datecolumn=datecolumn,
+        valuecolumn=valuecolumn,
+        step_size=STEP_SIZE,
+        start_time=START_TIME,
+        end_time=END_TIME,
+        cache=False,
     )
     if time_shift_hours != 0:
         df.index = df.index + pd.Timedelta(hours=time_shift_hours)
     return df
+
 
 TEMP_SHIFT_HOURS = 0
 
@@ -106,7 +115,11 @@ def main():
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 4 * n_rows), sharex=True)
     axes = axes.flatten()
 
-    colors = {"temperature_sensor": "tab:red", "valve_position_sensor": "tab:blue", "damper_position_sensor": "tab:green"}
+    colors = {
+        "temperature_sensor": "tab:red",
+        "valve_position_sensor": "tab:blue",
+        "damper_position_sensor": "tab:green",
+    }
 
     for i, room_id in enumerate(room_ids):
         ax = axes[i]
@@ -124,8 +137,10 @@ def main():
                 )
                 target_ax = ax if sensor_type == "temperature_sensor" else ax_twin
                 target_ax.plot(
-                    df.index, df.values,
-                    linewidth=0.6, alpha=0.8,
+                    df.index,
+                    df.values,
+                    linewidth=0.6,
+                    alpha=0.8,
                     color=colors[sensor_type],
                     label=SENSOR_LABELS[sensor_type],
                 )
@@ -144,20 +159,24 @@ def main():
         if i == 0:
             lines_1, labels_1 = ax.get_legend_handles_labels()
             lines_2, labels_2 = ax_twin.get_legend_handles_labels()
-            ax.legend(lines_1 + lines_2, labels_1 + labels_2, loc="upper right", fontsize=7)
+            ax.legend(
+                lines_1 + lines_2, labels_1 + labels_2, loc="upper right", fontsize=7
+            )
 
     for j in range(len(room_ids), len(axes)):
         axes[j].set_visible(False)
 
     fig.suptitle(
         "Room Thermal Dynamics Overview (Oct 2023 - Jan 2024)",
-        fontsize=14, fontweight="bold",
+        fontsize=14,
+        fontweight="bold",
     )
     fig.autofmt_xdate(rotation=30)
     fig.tight_layout()
     plt.savefig(
         os.path.join(os.path.dirname(__file__), "room_overview.png"),
-        dpi=150, bbox_inches="tight",
+        dpi=150,
+        bbox_inches="tight",
     )
     plt.show()
     print("Saved to room_overview.png")

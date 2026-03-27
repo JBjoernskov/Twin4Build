@@ -44,17 +44,17 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 # Third party imports
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import torch
 
 # Local application imports
 import twin4build as tb
-from twin4build.utils.data_loaders.load import load_from_database
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
+from twin4build.utils.data_loaders.load import load_from_database
 
 # ==========================================================================
 # CONFIGURATION
@@ -105,54 +105,54 @@ end_time = [
 # ==========================================================================
 
 ROOM_SENSORS = {
-    'zone_temp': 'a2b6510f-cf4f-4edd-a080-b8f4b35968d9',              # Zone_Air_Temp
-    'zone_control_temp': '59b93fef-a0ab-4f2d-a036-01c62bfa8a4a',      # Zone_Air_Control_Temp
-    'zone_temp_setpoint': '2cb39f2b-27e0-4611-a663-2de371007ff7',     # Zone_Air_Temp_Setpoint
-    'damper_position': '13954408-3b78-4483-8b18-dc0471207943',        # Zone_Air_Damper_Command
-    'reheat_valve': 'be8ce19d-5e81-4f43-be16-8d95366d2d1a',           # Zone_Reheat_Valve_Command
-    'supply_air_flow': '037993e1-31fc-4212-aaf1-8465a9481bf8',        # Zone_Supply_Air_Flow
-    'percent_air_flow': '778b01e9-8022-4134-a29c-1b9d0106328e',       # Zone_Percent_Air_Flow
-    'supply_air_temp': '6ff31387-db42-48a8-a675-2876e9d95639',        # Zone_Supply_Air_Temp (VAV discharge)
+    "zone_temp": "a2b6510f-cf4f-4edd-a080-b8f4b35968d9",  # Zone_Air_Temp
+    "zone_control_temp": "59b93fef-a0ab-4f2d-a036-01c62bfa8a4a",  # Zone_Air_Control_Temp
+    "zone_temp_setpoint": "2cb39f2b-27e0-4611-a663-2de371007ff7",  # Zone_Air_Temp_Setpoint
+    "damper_position": "13954408-3b78-4483-8b18-dc0471207943",  # Zone_Air_Damper_Command
+    "reheat_valve": "be8ce19d-5e81-4f43-be16-8d95366d2d1a",  # Zone_Reheat_Valve_Command
+    "supply_air_flow": "037993e1-31fc-4212-aaf1-8465a9481bf8",  # Zone_Supply_Air_Flow
+    "percent_air_flow": "778b01e9-8022-4134-a29c-1b9d0106328e",  # Zone_Percent_Air_Flow
+    "supply_air_temp": "6ff31387-db42-48a8-a675-2876e9d95639",  # Zone_Supply_Air_Temp (VAV discharge)
 }
 
 # ==========================================================================
 # BUILD IDENTIFICATION MODEL
 # ==========================================================================
 
-print("="*80)
+print("=" * 80)
 print("BUILDING CONTROLLER IDENTIFICATION MODEL FOR MORTAR bldg1 RM107A (v2)")
 print("  - No schedule switch controllers")
 print("  - Domain-informed x0 initial guesses")
-print("="*80)
+print("=" * 80)
 
 # Create sensors using tb.SensorSystem with real stream UUIDs
 print("\nCreating sensor systems...")
 
 # Temperature transformation: Fahrenheit to Celsius
-transformation_temp = lambda x: (x - 32) * 5/9
+transformation_temp = lambda x: (x - 32) * 5 / 9
 
 # Primary sensor: Zone temperature (sensor index 0)
 zone_temp_sensor = tb.SensorSystem(
-    uuid=ROOM_SENSORS['zone_temp'],
+    uuid=ROOM_SENSORS["zone_temp"],
     id="zone_temp_sensor",
     dbconfig=db_config,
-    transformation=transformation_temp
+    transformation=transformation_temp,
 )
 
 # Zone air control temperature (alternate feedback sensor)
 zone_control_temp_sensor = tb.SensorSystem(
-    uuid=ROOM_SENSORS['zone_control_temp'],
+    uuid=ROOM_SENSORS["zone_control_temp"],
     id="zone_control_temp_sensor",
     dbconfig=db_config,
-    transformation=transformation_temp
+    transformation=transformation_temp,
 )
 
 # Setpoint sensor
 zone_temp_setpoint_sensor = tb.SensorSystem(
-    uuid=ROOM_SENSORS['zone_temp_setpoint'],
+    uuid=ROOM_SENSORS["zone_temp_setpoint"],
     id="zone_temp_setpoint_sensor",
     dbconfig=db_config,
-    transformation=transformation_temp
+    transformation=transformation_temp,
 )
 
 # Transform damper/valve positions from percentage (0-100) to fraction (0-1)
@@ -160,36 +160,36 @@ transformation_pct = lambda x: x / 100.0
 
 # Actuators: Damper position and Reheat valve
 damper_actuator = tb.SensorSystem(
-    uuid=ROOM_SENSORS['damper_position'],
+    uuid=ROOM_SENSORS["damper_position"],
     id="damper_actuator",
     dbconfig=db_config,
-    transformation=transformation_pct
+    transformation=transformation_pct,
 )
 
 reheat_valve_actuator = tb.SensorSystem(
-    uuid=ROOM_SENSORS['reheat_valve'],
+    uuid=ROOM_SENSORS["reheat_valve"],
     id="reheat_valve_actuator",
     dbconfig=db_config,
-    transformation=transformation_pct
+    transformation=transformation_pct,
 )
 
 # Percent air flow sensor (sensor index 1)
 # Used by cascade controller's B-loop via beta_b weights
 # Already measured as 0-100%, normalize to 0-1 fraction
 supply_air_flow_sensor = tb.SensorSystem(
-    uuid=ROOM_SENSORS['percent_air_flow'],
+    uuid=ROOM_SENSORS["percent_air_flow"],
     id="supply_air_flow_sensor",
     dbconfig=db_config,
-    transformation=transformation_pct
+    transformation=transformation_pct,
 )
 
 # AHU supply air temperature sensor (sensor index 2)
 # Used by SAT-compensated controller candidate; also useful for diagnostics
 ahu_supply_air_temp_sensor = tb.SensorSystem(
-    uuid='469e6e6f-c54b-4a58-a5e5-fae1442e04bd',  # AHU01 Supply_Air_Temp (bldg1)
+    uuid="469e6e6f-c54b-4a58-a5e5-fae1442e04bd",  # AHU01 Supply_Air_Temp (bldg1)
     id="ahu_supply_air_temp_sensor",
     dbconfig=db_config,
-    transformation=transformation_temp
+    transformation=transformation_temp,
 )
 
 actuator_sensors = [damper_actuator, reheat_valve_actuator]
@@ -247,16 +247,28 @@ model.add_component(controller)
 
 # Connect sensors to controller (feedback)
 for i, sensor in enumerate(sensors):
-    model.add_connection(sensor, controller, "measuredValue", "sensorValue", input_port_index=i)
+    model.add_connection(
+        sensor, controller, "measuredValue", "sensorValue", input_port_index=i
+    )
 
 # Connect setpoints to controller
 for i, setpoint in enumerate(setpoints):
-    model.add_connection(setpoint, controller, "measuredValue", "setpointValue", input_port_index=i)
+    model.add_connection(
+        setpoint, controller, "measuredValue", "setpointValue", input_port_index=i
+    )
 
 # Connect controller directly to actuators (no schedule switch!)
 # output_port_index 0 = damper, 1 = reheat
-model.add_connection(controller, damper_actuator, "inputSignal", "measuredValue", output_port_index=0)
-model.add_connection(controller, reheat_valve_actuator, "inputSignal", "measuredValue", output_port_index=1)
+model.add_connection(
+    controller, damper_actuator, "inputSignal", "measuredValue", output_port_index=0
+)
+model.add_connection(
+    controller,
+    reheat_valve_actuator,
+    "inputSignal",
+    "measuredValue",
+    output_port_index=1,
+)
 
 print("  Model connections established")
 print("  Signal flow: controller --[damper]--> damper_actuator")
@@ -268,11 +280,19 @@ model.load()
 
 # Verify data was loaded for all sensors
 print("\nVerifying loaded data:")
-all_sensors = [zone_temp_sensor, supply_air_flow_sensor, ahu_supply_air_temp_sensor,
-               zone_temp_setpoint_sensor, damper_actuator, reheat_valve_actuator]
+all_sensors = [
+    zone_temp_sensor,
+    supply_air_flow_sensor,
+    ahu_supply_air_temp_sensor,
+    zone_temp_setpoint_sensor,
+    damper_actuator,
+    reheat_valve_actuator,
+]
 for sensor in all_sensors:
-    if hasattr(sensor, 'df') and sensor.df is not None:
-        print(f"  {sensor.id}: {len(sensor.df)} rows, range: {sensor.df.index.min()} to {sensor.df.index.max()}")
+    if hasattr(sensor, "df") and sensor.df is not None:
+        print(
+            f"  {sensor.id}: {len(sensor.df)} rows, range: {sensor.df.index.min()} to {sensor.df.index.max()}"
+        )
     else:
         print(f"  {sensor.id}: No data loaded (df is None or missing)")
 
@@ -280,11 +300,12 @@ for sensor in all_sensors:
 # SETUP PARAMETERS WITH DOMAIN-INFORMED x0 START GUESSES
 # ==========================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("SETTING UP PARAMETERS WITH DOMAIN-INFORMED x0")
-print("="*80)
+print("=" * 80)
 
-print("""
+print(
+    """
   Domain knowledge for VAV box RM107A:
   
   Candidates: 0=PID(rev), 1=PID(non-rev), 2=Cascade PID, 3=SAT-Compensated
@@ -305,12 +326,14 @@ print("""
     → beta_1  = [1, 0, 0]           (uses temperature = sensor 0)
     → beta_b_1 = [0.33, 0.33, 0.34] (irrelevant, cascade not selected)
     → gamma_1 = [1]                 (uses temp setpoint)
-""")
+"""
+)
 
+# Local application imports
 from twin4build.utils.rgetattr import rgetattr
 
 # Get parameters from the controller only (no schedule switches)
-parameters = model.components['identified_vav_controller'].get_estimator_parameters()
+parameters = model.components["identified_vav_controller"].get_estimator_parameters()
 
 # Override x0 with domain-informed values
 parameters_updated = []
@@ -347,47 +370,47 @@ for p in parameters:
 
     # --- Cascade PID parameter overrides for damper (actuator 0, candidate 2) ---
     elif attr == "candidate_0_2.ctrl_a.kp":
-        x0 = 0.1    # Outer loop: moderate proportional gain
+        x0 = 0.1  # Outer loop: moderate proportional gain
     elif attr == "candidate_0_2.ctrl_a.Ti":
-        x0 = 20.0   # Outer loop: slow integral (temperature is slow)
+        x0 = 20.0  # Outer loop: slow integral (temperature is slow)
     elif attr == "candidate_0_2.ctrl_a.output_min":
-        x0 = 0.2    # Minimum flow fraction (~20% of design)
+        x0 = 0.2  # Minimum flow fraction (~20% of design)
     elif attr == "candidate_0_2.ctrl_a.output_max":
-        x0 = 1.0    # Maximum flow fraction
+        x0 = 1.0  # Maximum flow fraction
     elif attr == "candidate_0_2.ctrl_b.kp":
-        x0 = 0.5    # Inner loop: faster proportional gain
+        x0 = 0.5  # Inner loop: faster proportional gain
     elif attr == "candidate_0_2.ctrl_b.Ti":
-        x0 = 5.0    # Inner loop: faster integral (flow responds quickly)
+        x0 = 5.0  # Inner loop: faster integral (flow responds quickly)
     elif attr == "candidate_0_2.ctrl_b.output_min":
-        x0 = 0.0    # Damper can close fully
+        x0 = 0.0  # Damper can close fully
 
     # --- SAT-compensated cascade overrides for damper (actuator 0, candidate 3) ---
     # ctrl_a = SAT linear rule (SAT → flow setpoint)
     elif attr == "candidate_0_3.ctrl_a.base_position":
-        x0 = 0.3    # 30% flow at design SAT
+        x0 = 0.3  # 30% flow at design SAT
     elif attr == "candidate_0_3.ctrl_a.sat_design":
-        x0 = 13.0   # ~55°F design supply air temp
+        x0 = 13.0  # ~55°F design supply air temp
     elif attr == "candidate_0_3.ctrl_a.gain":
-        x0 = 0.05   # +5% flow setpoint per °C above design
+        x0 = 0.05  # +5% flow setpoint per °C above design
     elif attr == "candidate_0_3.ctrl_a.output_min":
-        x0 = 0.1    # Minimum flow setpoint
+        x0 = 0.1  # Minimum flow setpoint
     elif attr == "candidate_0_3.ctrl_a.output_max":
-        x0 = 1.0    # Maximum flow setpoint
+        x0 = 1.0  # Maximum flow setpoint
     # ctrl_b = PID (flow error → damper position)
     elif attr == "candidate_0_3.ctrl_b.kp":
-        x0 = 0.5    # Inner loop: fast response to flow error
+        x0 = 0.5  # Inner loop: fast response to flow error
     elif attr == "candidate_0_3.ctrl_b.Ti":
-        x0 = 5.0    # Inner loop: moderate integral time
+        x0 = 5.0  # Inner loop: moderate integral time
     elif attr == "candidate_0_3.ctrl_b.output_min":
-        x0 = 0.0    # Damper can close fully
+        x0 = 0.0  # Damper can close fully
 
     # --- PID reverse parameter overrides for reheat (actuator 1, candidate 0) ---
     elif attr == "candidate_1_0.kp":
-        x0 = 0.1    # Moderate proportional gain
+        x0 = 0.1  # Moderate proportional gain
     elif attr == "candidate_1_0.Ti":
-        x0 = 10.0   # PI control with reasonable integral time
+        x0 = 10.0  # PI control with reasonable integral time
     elif attr == "candidate_1_0.output_min":
-        x0 = 0.0    # Valve can close fully
+        x0 = 0.0  # Valve can close fully
 
     parameters_updated.append((comp, attr, x0, lb, ub) + tuple(rest))
 
@@ -408,15 +431,21 @@ for p in parameters:
 
 
 # Remove alpha, beta, gamma, beta_b parameters
-parameters = [p for p in parameters if not p[1].startswith('alpha_') and not p[1].startswith('beta_') and not p[1].startswith('gamma_')]
+parameters = [
+    p
+    for p in parameters
+    if not p[1].startswith("alpha_")
+    and not p[1].startswith("beta_")
+    and not p[1].startswith("gamma_")
+]
 
 # ==========================================================================
 # RUN INITIAL SIMULATION (with x0 start guesses applied)
 # ==========================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("RUNNING INITIAL SIMULATION (with x0 start guesses)")
-print("="*80)
+print("=" * 80)
 
 # Create simulator
 simulator = tb.Simulator(model)
@@ -432,7 +461,7 @@ actuator_names = ["Damper Position", "Reheat Valve"]
 print("\nInitial predictions vs actual:")
 for i, actuator in enumerate(actuator_sensors):
     pred = actuator.input["measuredValue"].history(i_c=0).detach().numpy().T
-    actual = actuator.time_series_input.values[:,:,0].detach().numpy().T
+    actual = actuator.time_series_input.values[:, :, 0].detach().numpy().T
 
     initial_predictions.append(pred)
     actual_values.append(actual)
@@ -450,23 +479,31 @@ for i, actuator in enumerate(actuator_sensors):
 # Plot initial results
 print("\nPlotting initial predictions (x0 start guess)...")
 
-zone_temp_data = zone_temp_sensor.time_series_input.values[:,:,0].detach().numpy().T
-zone_setpoint_data = zone_temp_setpoint_sensor.time_series_input.values[:,:,0].detach().numpy().T
-supply_air_temp_data = ahu_supply_air_temp_sensor.time_series_input.values[:,:,0].detach().numpy().T
+zone_temp_data = zone_temp_sensor.time_series_input.values[:, :, 0].detach().numpy().T
+zone_setpoint_data = (
+    zone_temp_setpoint_sensor.time_series_input.values[:, :, 0].detach().numpy().T
+)
+supply_air_temp_data = (
+    ahu_supply_air_temp_sensor.time_series_input.values[:, :, 0].detach().numpy().T
+)
 for i in range(len(actuator_sensors)):
     entry = [
         tb.plot.Entry(actual_values[i], label=f"Actual {actuator_names[i]}"),
         tb.plot.Entry(initial_predictions[i], label=f"Prediction (x0 start guess)"),
         tb.plot.Entry(zone_temp_data, label=f"Zone Temperature", axis=2),
-        tb.plot.Entry(zone_setpoint_data, label=f"Zone Setpoint", axis=2, linestyle="--"),
-        tb.plot.Entry(supply_air_temp_data, label=f"Supply Air Temp", axis=2, linestyle="-.")
+        tb.plot.Entry(
+            zone_setpoint_data, label=f"Zone Setpoint", axis=2, linestyle="--"
+        ),
+        tb.plot.Entry(
+            supply_air_temp_data, label=f"Supply Air Temp", axis=2, linestyle="-."
+        ),
     ]
     tb.plot.plot(
         simulator.date_time_steps,
         entry,
         title=f"{actuator_names[i]} ({actuator_sensors[i].id}): x0 Start Guess vs Actual",
         ylabel_1axis="Position (0-1)",
-        ylabel_2axis="Temperature (°C)"
+        ylabel_2axis="Temperature (°C)",
     )
 
 plt.show()
@@ -475,9 +512,9 @@ plt.show()
 # SETUP ESTIMATOR WITH PARAMETERS
 # ==========================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("SETTING UP PARAMETER ESTIMATION")
-print("="*80)
+print("=" * 80)
 
 print(f"\n  Total parameters to estimate: {len(parameters)}")
 
@@ -491,18 +528,26 @@ for p in parameters:
     else:
         n_vals = 1
     grp = p[6] if len(p) > 6 else None
-    print(f"    theta[{theta_idx}:{theta_idx+n_vals}] -> {attr} (x0={x0}, lb={lb}, ub={ub}, group={grp})")
+    print(
+        f"    theta[{theta_idx}:{theta_idx+n_vals}] -> {attr} (x0={x0}, lb={lb}, ub={ub}, group={grp})"
+    )
     theta_idx += n_vals
 
 # Count parameter types
-n_alpha = sum(1 for p in parameters if 'alpha' in p[1])
-n_beta = sum(1 for p in parameters if 'beta' in p[1])
-n_gamma = sum(1 for p in parameters if 'gamma' in p[1])
-n_ctrl = sum(1 for p in parameters if 'candidate' in p[1])
+n_alpha = sum(1 for p in parameters if "alpha" in p[1])
+n_beta = sum(1 for p in parameters if "beta" in p[1])
+n_gamma = sum(1 for p in parameters if "gamma" in p[1])
+n_ctrl = sum(1 for p in parameters if "candidate" in p[1])
 
-print(f"\n  - Alpha (candidate selection): {n_alpha} ({len(actuator_sensors)} actuators × {len(controller.candidate_controller_classes)} candidates)")
-print(f"\n  - Beta (sensor selection): {n_beta} ({len(actuator_sensors)} actuators × {len(sensors)} sensors)")
-print(f"  - Gamma (setpoint selection): {n_gamma} ({len(actuator_sensors)} actuators × {len(setpoints)} setpoints)")
+print(
+    f"\n  - Alpha (candidate selection): {n_alpha} ({len(actuator_sensors)} actuators × {len(controller.candidate_controller_classes)} candidates)"
+)
+print(
+    f"\n  - Beta (sensor selection): {n_beta} ({len(actuator_sensors)} actuators × {len(sensors)} sensors)"
+)
+print(
+    f"  - Gamma (setpoint selection): {n_gamma} ({len(actuator_sensors)} actuators × {len(setpoints)} setpoints)"
+)
 print(f"  - Controller PID parameters: {n_ctrl}")
 
 # Setup measurements: all actuator sensors with measurement uncertainty
@@ -533,37 +578,53 @@ for a in range(len(actuator_sensors)):
     for c in range(controller.n_candidates):
         ctrl = controller._get_candidate(a, c)
         print(f"      Candidate {c} ({ctrl.__class__.__name__}):")
-        if hasattr(ctrl, 'ctrl_a'):
-            for sub_name in ('ctrl_a', 'ctrl_b'):
+        if hasattr(ctrl, "ctrl_a"):
+            for sub_name in ("ctrl_a", "ctrl_b"):
                 sub = getattr(ctrl, sub_name)
                 print(f"        {sub_name} ({sub.__class__.__name__}):")
-                if hasattr(sub, 'kp'):
-                    print(f"          kp={sub.kp.get().item():.6f}, Ti={sub.Ti.get().item():.6f}, Td={sub.Td.get().item():.6f}")
-                    print(f"          output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}, isReverse={sub.isReverse}")
-                if hasattr(sub, 'base_position'):
-                    print(f"          base_position={sub.base_position.get().item():.6f}, sat_design={sub.sat_design.get().item():.6f}, gain={sub.gain.get().item():.6f}")
-                    print(f"          output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}")
-        elif hasattr(ctrl, 'base_position'):
-            print(f"        base_position={ctrl.base_position.get().item():.6f}, sat_design={ctrl.sat_design.get().item():.6f}, gain={ctrl.gain.get().item():.6f}")
-            print(f"          output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}")
+                if hasattr(sub, "kp"):
+                    print(
+                        f"          kp={sub.kp.get().item():.6f}, Ti={sub.Ti.get().item():.6f}, Td={sub.Td.get().item():.6f}"
+                    )
+                    print(
+                        f"          output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}, isReverse={sub.isReverse}"
+                    )
+                if hasattr(sub, "base_position"):
+                    print(
+                        f"          base_position={sub.base_position.get().item():.6f}, sat_design={sub.sat_design.get().item():.6f}, gain={sub.gain.get().item():.6f}"
+                    )
+                    print(
+                        f"          output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}"
+                    )
+        elif hasattr(ctrl, "base_position"):
+            print(
+                f"        base_position={ctrl.base_position.get().item():.6f}, sat_design={ctrl.sat_design.get().item():.6f}, gain={ctrl.gain.get().item():.6f}"
+            )
+            print(
+                f"          output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}"
+            )
         else:
-            print(f"        kp={ctrl.kp.get().item():.6f}, Ti={ctrl.Ti.get().item():.6f}, Td={ctrl.Td.get().item():.6f}")
-            print(f"        output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}, isReverse={ctrl.isReverse}")
+            print(
+                f"        kp={ctrl.kp.get().item():.6f}, Ti={ctrl.Ti.get().item():.6f}, Td={ctrl.Td.get().item():.6f}"
+            )
+            print(
+                f"        output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}, isReverse={ctrl.isReverse}"
+            )
 
 # ==========================================================================
 # RUN ESTIMATION WITH REGULARIZATION
 # ==========================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("RUNNING PARAMETER ESTIMATION")
-print("="*80)
+print("=" * 80)
 
 estimator = tb.Estimator(simulator)
 
 # Lambda scheduling (continuation method for binarization penalty)
 lambda_schedule = [
     # --- Smooth exploration: no penalty ---
-    (0.0,   {"maxiter": 200, "disp": True}),   # Phase 1: pure fit, no penalty
+    (0.0, {"maxiter": 200, "disp": True}),  # Phase 1: pure fit, no penalty
     # --- Mild push toward binary ---
     # (0.001, {"maxiter": 100, "disp": True}),   # Phase 2: gentle push
     # # --- Stronger push ---
@@ -585,37 +646,46 @@ for i, entry in enumerate(lambda_schedule):
     mi = opts.get("maxiter", "default") if opts else "default"
     print(f"    Phase {i+1}: λ={lam}, maxiter={mi}")
 
+# Standard library imports
 # Progress wrapper: prints eval-by-eval improvements
 import time as _time
+
 _orig_obj_ad = estimator._obj_ad
 _orig_jac_ad = estimator._jac_ad
 _debug_iter = [0]
 _best_obj = [float("inf")]
 _last_print_time = [_time.time()]
 
+
 def _debug_obj_ad(theta, output="scalar"):
     result = _orig_obj_ad(theta, output)
     _debug_iter[0] += 1
     now = _time.time()
     is_new_best = result < _best_obj[0]
-    rmse = getattr(estimator, '_last_rmse', float('nan'))
-    pen = getattr(estimator, '_last_penalty', 0.0)
-    lam = getattr(estimator, '_regularization_lambda', 0.0)
+    rmse = getattr(estimator, "_last_rmse", float("nan"))
+    pen = getattr(estimator, "_last_penalty", 0.0)
+    lam = getattr(estimator, "_regularization_lambda", 0.0)
     pen_str = f"  λ·pen={lam*pen:.4f}" if lam > 0 else ""
     if is_new_best:
         _best_obj[0] = result
-        print(f"  [eval {_debug_iter[0]:5d}] obj={result:.4f}  RMSE={rmse:.4f}{pen_str}  (best)")
+        print(
+            f"  [eval {_debug_iter[0]:5d}] obj={result:.4f}  RMSE={rmse:.4f}{pen_str}  (best)"
+        )
         _last_print_time[0] = now
     elif now - _last_print_time[0] > 15.0:
-        print(f"  [eval {_debug_iter[0]:5d}] obj={result:.4f}  RMSE={rmse:.4f}{pen_str}  (best={_best_obj[0]:.4f})")
+        print(
+            f"  [eval {_debug_iter[0]:5d}] obj={result:.4f}  RMSE={rmse:.4f}{pen_str}  (best={_best_obj[0]:.4f})"
+        )
         _last_print_time[0] = now
     return result
+
 
 def _debug_jac_ad(theta, output="scalar"):
     result = _orig_jac_ad(theta, output)
     grad_norm = np.linalg.norm(result)
     print(f"    [jac {_debug_iter[0]:5d}] |grad| = {grad_norm:.4f}")
     return result
+
 
 estimator._obj_ad = _debug_obj_ad
 estimator._jac_ad = _debug_jac_ad
@@ -647,12 +717,14 @@ print(f"  Message: {result['message']}")
 # PRINT ALL ESTIMATED PARAMETER VALUES
 # ==========================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("ALL ESTIMATED PARAMETER VALUES")
-print("="*80)
+print("=" * 80)
 
+# Standard library imports
 # Group parameters by component for clearer output
 from collections import OrderedDict
+
 _param_groups_display = OrderedDict()
 for p in parameters:
     comp, attr, x0, lb, ub = p[:5]
@@ -689,9 +761,9 @@ print()
 # FINAL SIMULATION
 # ==========================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("RUNNING FINAL SIMULATION (AFTER IDENTIFICATION)")
-print("="*80)
+print("=" * 80)
 
 simulator.simulate(start_time=start_time, end_time=end_time, step_size=step_size)
 
@@ -717,15 +789,24 @@ for i, actuator in enumerate(actuator_sensors):
 # ANALYZE IDENTIFIED CONTROLLER
 # ==========================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("IDENTIFIED CONTROLLER STRUCTURE")
-print("="*80)
+print("=" * 80)
 
-sensor_names = ["zone_temp (sensor 0)", "percent_air_flow (sensor 1)", "AHU_SAT (sensor 2)"]
+sensor_names = [
+    "zone_temp (sensor 0)",
+    "percent_air_flow (sensor 1)",
+    "AHU_SAT (sensor 2)",
+]
 setpoint_names = ["zone_temp_setpoint (setpoint 0)"]
 
 print("\nALPHA WEIGHTS (Candidate Selection):")
-candidate_names = ["PID (reverse)", "PID (non-reverse)", "Cascade PID", "SAT-Compensated"]
+candidate_names = [
+    "PID (reverse)",
+    "PID (non-reverse)",
+    "Cascade PID",
+    "SAT-Compensated",
+]
 for a in range(len(actuator_sensors)):
     print(f"\n  Actuator {a} ({actuator_names[a]}):")
     alpha_vals = controller._get_alpha_vector(a)
@@ -773,35 +854,53 @@ for a in range(len(actuator_sensors)):
         selected_str = " *** SELECTED ***" if alpha > 0.5 else " (not selected)"
         print(f"\n    Candidate {c} ({candidate_names[c]}) α={alpha:.4f}{selected_str}")
 
-        if hasattr(ctrl, 'ctrl_a'):
-            for sub_name in ('ctrl_a', 'ctrl_b'):
+        if hasattr(ctrl, "ctrl_a"):
+            for sub_name in ("ctrl_a", "ctrl_b"):
                 sub = getattr(ctrl, sub_name)
                 print(f"      {sub_name} ({sub.__class__.__name__}):")
-                if hasattr(sub, 'kp'):
-                    print(f"        kp={sub.kp.get().item():.6f}, Ti={sub.Ti.get().item():.6f}, Td={sub.Td.get().item():.6f}")
-                    print(f"        output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}, isReverse={sub.isReverse}")
-                if hasattr(sub, 'base_position'):
-                    print(f"        base_position={sub.base_position.get().item():.6f}, sat_design={sub.sat_design.get().item():.6f}, gain={sub.gain.get().item():.6f}")
-                    print(f"        output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}")
-        elif hasattr(ctrl, 'base_position'):
+                if hasattr(sub, "kp"):
+                    print(
+                        f"        kp={sub.kp.get().item():.6f}, Ti={sub.Ti.get().item():.6f}, Td={sub.Td.get().item():.6f}"
+                    )
+                    print(
+                        f"        output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}, isReverse={sub.isReverse}"
+                    )
+                if hasattr(sub, "base_position"):
+                    print(
+                        f"        base_position={sub.base_position.get().item():.6f}, sat_design={sub.sat_design.get().item():.6f}, gain={sub.gain.get().item():.6f}"
+                    )
+                    print(
+                        f"        output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}"
+                    )
+        elif hasattr(ctrl, "base_position"):
             # SAT-compensated controller (standalone)
-            print(f"      base_position={ctrl.base_position.get().item():.6f}, sat_design={ctrl.sat_design.get().item():.6f}, gain={ctrl.gain.get().item():.6f}")
-            print(f"      output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}")
+            print(
+                f"      base_position={ctrl.base_position.get().item():.6f}, sat_design={ctrl.sat_design.get().item():.6f}, gain={ctrl.gain.get().item():.6f}"
+            )
+            print(
+                f"      output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}"
+            )
         else:
-            print(f"      kp={ctrl.kp.get().item():.6f}, Ti={ctrl.Ti.get().item():.6f}, Td={ctrl.Td.get().item():.6f}")
-            print(f"      output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}, isReverse={ctrl.isReverse}")
+            print(
+                f"      kp={ctrl.kp.get().item():.6f}, Ti={ctrl.Ti.get().item():.6f}, Td={ctrl.Td.get().item():.6f}"
+            )
+            print(
+                f"      output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}, isReverse={ctrl.isReverse}"
+            )
 
 # ==========================================================================
 # PLOT RESULTS
 # ==========================================================================
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("GENERATING FINAL COMPARISON PLOTS")
-print("="*80)
+print("=" * 80)
 
 # Refresh data for plotting
-zone_temp_data = zone_temp_sensor.time_series_input.values[:,:,0].detach().numpy().T
-zone_setpoint_data = zone_temp_setpoint_sensor.time_series_input.values[:,:,0].detach().numpy().T
+zone_temp_data = zone_temp_sensor.time_series_input.values[:, :, 0].detach().numpy().T
+zone_setpoint_data = (
+    zone_temp_setpoint_sensor.time_series_input.values[:, :, 0].detach().numpy().T
+)
 
 # Plot final results with all three: actual, initial, and identified
 for i in range(len(actuator_sensors)):
@@ -814,7 +913,9 @@ for i in range(len(actuator_sensors)):
         tb.plot.Entry(initial_predictions[i], label=f"Initial Prediction"),
         tb.plot.Entry(final_predictions[i], label=f"Identified Prediction"),
         tb.plot.Entry(zone_temp_data, label=f"Zone Temperature", axis=2),
-        tb.plot.Entry(zone_setpoint_data, label=f"Zone Setpoint", axis=2, linestyle="--")
+        tb.plot.Entry(
+            zone_setpoint_data, label=f"Zone Setpoint", axis=2, linestyle="--"
+        ),
     ]
 
     tb.plot.plot(
@@ -822,14 +923,14 @@ for i in range(len(actuator_sensors)):
         entry,
         title=f"{actuator_names[i]}: Initial MAE={mae_initial:.4f}, Final MAE={mae_final:.4f}",
         ylabel_1axis="Position (0-1)",
-        ylabel_2axis="Temperature (°C)"
+        ylabel_2axis="Temperature (°C)",
     )
 
 plt.show()
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("CONTROLLER IDENTIFICATION COMPLETE")
-print("="*80)
+print("=" * 80)
 print("\nSummary:")
 print(f"  Optimization success: {result['success']}")
 print(f"  Final objective: {result['final_objective']:.6f}")
@@ -837,13 +938,18 @@ print(f"\n  Average improvement per actuator:")
 for i in range(len(actuator_sensors)):
     mae_initial = np.mean(np.abs(initial_predictions[i] - actual_values[i]))
     mae_final = np.mean(np.abs(final_predictions[i] - actual_values[i]))
-    improvement = (mae_initial - mae_final) / mae_initial * 100 if mae_initial > 0 else 0
-    print(f"    {actuator_names[i]}: {improvement:.1f}% improvement (MAE: {mae_initial:.4f} → {mae_final:.4f})")
+    improvement = (
+        (mae_initial - mae_final) / mae_initial * 100 if mae_initial > 0 else 0
+    )
+    print(
+        f"    {actuator_names[i]}: {improvement:.1f}% improvement (MAE: {mae_initial:.4f} → {mae_final:.4f})"
+    )
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("VAV CONTROL INTERPRETATION FOR bldg1 RM107A (v2)")
-print("="*80)
-print("""
+print("=" * 80)
+print(
+    """
 Candidate Control Hypotheses (Room RM107A, AHU01):
 
   Damper Position -- Hypothesis A: SAT-Compensated (rule-based):
@@ -863,4 +969,5 @@ The identified parameters reveal:
   - Which controller type best fits each actuator (alpha weights)
   - Which sensors drive each control loop (beta/gamma/beta_b weights)
   - The PID/SAT-compensated parameters that explain the observed behavior
-""")
+"""
+)

@@ -114,9 +114,7 @@ class TestSimulator(unittest.TestCase):
     def test_simulate_invalid_time_period(self):
         """Test simulation with invalid time period (start >= end)."""
         start_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
-        end_time = datetime.datetime(
-            2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC
-        )  # Before start
+        end_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)  # Before start
         step_size = 600
 
         # Should raise an error
@@ -152,9 +150,7 @@ class TestSimulator(unittest.TestCase):
     def test_simulate_very_short_period(self):
         """Test simulation with very short time period."""
         start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
-        end_time = datetime.datetime(
-            2023, 1, 1, 0, 0, 10, tzinfo=tz.UTC
-        )  # 10 seconds
+        end_time = datetime.datetime(2023, 1, 1, 0, 0, 10, tzinfo=tz.UTC)  # 10 seconds
         step_size = 5  # 5 second steps
 
         self.simulator.simulate(
@@ -330,12 +326,14 @@ class TestSimulator(unittest.TestCase):
             ("office_damper_position_sensor", "damper_position_sensor.csv"),
             ("supply_air_temperature_sensor", "supply_air_temperature.csv"),
         ]:
-            model.components[sensor_id].filename = utils.get_path(["estimator_example", csv_name])
+            model.components[sensor_id].filename = utils.get_path(
+                ["estimator_example", csv_name]
+            )
             model.components[sensor_id].datecolumn = 0
             model.components[sensor_id].valuecolumn = 1
 
-        model.components["office_temperature_heating_setpoint"].filename = utils.get_path(
-            ["estimator_example", "temperature_heating_setpoint.csv"]
+        model.components["office_temperature_heating_setpoint"].filename = (
+            utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"])
         )
         model.components["office_temperature_heating_setpoint"].datecolumn = 0
         model.components["office_temperature_heating_setpoint"].valuecolumn = 1
@@ -412,7 +410,9 @@ class TestSimulator(unittest.TestCase):
 
         # Get indoor temperature outputs
         temp_gs = space_gs.output["indoorTemperature"].history().detach().numpy()
-        temp_jacobi = space_jacobi.output["indoorTemperature"].history().detach().numpy()
+        temp_jacobi = (
+            space_jacobi.output["indoorTemperature"].history().detach().numpy()
+        )
 
         # Get CO2 concentration outputs
         co2_gs = space_gs.output["indoorCO2"].history().detach().numpy()

@@ -3,14 +3,14 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
-
 # Set test flag
 import twin4build
+from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+
 twin4build._IS_TESTING = True
 
 
@@ -82,20 +82,12 @@ class TestDamperTorchSystem(unittest.TestCase):
         damper_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-        damper_batch.input["damperPosition"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
-        damper_batch.output["damperPosition"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
-        damper_batch.output["airFlowRate"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
+        damper_batch.input["damperPosition"].initialize(n_t=1, n_s=batch_size, n_v=1)
+        damper_batch.output["damperPosition"].initialize(n_t=1, n_s=batch_size, n_v=1)
+        damper_batch.output["airFlowRate"].initialize(n_t=1, n_s=batch_size, n_v=1)
 
         # Set input with batch size 3
-        damper_batch.input["damperPosition"].set(
-            torch.tensor([0.5, 0.7, 0.3]), i_t=0
-        )
+        damper_batch.input["damperPosition"].set(torch.tensor([0.5, 0.7, 0.3]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)

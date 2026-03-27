@@ -2,16 +2,14 @@ from __future__ import annotations
 
 # Standard library imports
 import inspect
+import time  # ##
 import warnings
 from dataclasses import dataclass
 from itertools import count
-from typing import Dict, List, Tuple, Optional, Union, Any
-import warnings
-
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
 import numpy as np
-from sympy import I
 import torch
 
 # import twin4build.saref4syst.system as system
@@ -20,6 +18,7 @@ import torch
 import torch.nn as nn
 from rdflib import Literal, URIRef
 from scipy.optimize import Bounds, LinearConstraint, milp
+from sympy import I
 
 # Local application imports
 import twin4build.core as core
@@ -29,8 +28,6 @@ from twin4build.utils.print_progress import LOGGER, autoreset_print
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
 
-import time ###
-from line_profiler import profile
 
 @autoreset_print
 class Translator:
@@ -196,7 +193,9 @@ class Translator:
 
                 for sp in complete_groups[component_cls].keys():
                     LOGGER.info(
-                        "Signature pattern: %s, %d matches found", sp.id, len(complete_groups[component_cls][sp])
+                        "Signature pattern: %s, %d matches found",
+                        sp.id,
+                        len(complete_groups[component_cls][sp]),
                     )
                     LOGGER.add_level()
                     for i, group in enumerate(complete_groups[component_cls][sp]):
@@ -217,7 +216,9 @@ class Translator:
 
                 for sp in incomplete_groups[component_cls].keys():
                     LOGGER.info(
-                        "INCOMPLETE signature patterns: %s, %d", sp.id, len(incomplete_groups[component_cls][sp])
+                        "INCOMPLETE signature patterns: %s, %d",
+                        sp.id,
+                        len(incomplete_groups[component_cls][sp]),
                     )
                     LOGGER.add_level()
                     for i, group in enumerate(incomplete_groups[component_cls][sp]):
@@ -335,15 +336,14 @@ class Translator:
             complete_matches = complete_groups[component_cls][signature_pattern]
             incomplete_matches = incomplete_groups[component_cls][signature_pattern]
 
-            
             # ===================================================================
             # PHASE 1: Find candidate mappings using depth-first search
             # ===================================================================
-            for sp_node in signature_pattern.nodes:                
+            for sp_node in signature_pattern.nodes:
                 candidate_sm_nodes = semantic_model.get_instances_of_type(sp_node.cls)
 
-                for sm_node in candidate_sm_nodes:  
-                    
+                for sm_node in candidate_sm_nodes:
+
                     # Initialize tracking structures for this DFS traversal
                     initial_map = {n: None for n in signature_pattern.nodes}
                     feasible = {n: set() for n in signature_pattern.nodes}
@@ -354,15 +354,18 @@ class Translator:
                     if sm_node not in comparison_table[sp_node]:
                         # signature_pattern.reset_ruleset()
                         candidate_maps, _, _, is_pruned = Translator._prune_recursive(
-                            sm_node, sp_node, candidate_maps,
-                            feasible, comparison_table, signature_pattern,
+                            sm_node,
+                            sp_node,
+                            candidate_maps,
+                            feasible,
+                            comparison_table,
+                            signature_pattern,
                         )
 
                         # ===================================================================
                         # PHASE 2: Process valid (non-pruned) mappings
                         # ===================================================================
                         if not is_pruned:
-                            
 
                             # ===================================================================
                             # PHASE 3: Categorize as complete or incomplete
@@ -382,17 +385,23 @@ class Translator:
                                 if is_complete:
                                     complete_matches.append(mapping)
                                 else:
-                                    
-                                    incomplete_matches = Translator._try_merge_with_incomplete(
-                                        mapping, incomplete_matches,
-                                        complete_matches, signature_pattern,
+
+                                    incomplete_matches = (
+                                        Translator._try_merge_with_incomplete(
+                                            mapping,
+                                            incomplete_matches,
+                                            complete_matches,
+                                            signature_pattern,
+                                        )
                                     )
 
             # ===================================================================
             # PHASE 4: Merge incomplete groups with each other
             # ===================================================================
             incomplete_matches = Translator._merge_incomplete_groups(
-                incomplete_matches, complete_matches, signature_pattern,
+                incomplete_matches,
+                complete_matches,
+                signature_pattern,
             )
 
             # ===================================================================
@@ -409,7 +418,6 @@ class Translator:
             # ]
             # complete_matches.extend(newly_complete)
             # incomplete_matches[:] = still_incomplete
-
 
         # ===================================================================
         # MAIN LOOP: Process each component class and its patterns
@@ -428,17 +436,18 @@ class Translator:
             complete_groups[component_cls] = {}
             incomplete_groups[component_cls] = {}
 
-            
-            
-
             for signature_pattern in component_cls.sp:
                 LOGGER.debug(f"Matching signature pattern: %s", signature_pattern.id)
                 LOGGER.add_level()
                 # Ensure semantic model has all namespaces from the pattern
-                semantic_model.add_namespaces(signature_pattern.semantic_model.namespaces)
+                semantic_model.add_namespaces(
+                    signature_pattern.semantic_model.namespaces
+                )
 
                 # Match this pattern against the semantic model
-                _match_single_pattern(component_cls, signature_pattern, complete_groups, incomplete_groups)
+                _match_single_pattern(
+                    component_cls, signature_pattern, complete_groups, incomplete_groups
+                )
 
                 # NOTE: Equivalent pattern matching is disabled but preserved for future use.
                 # This would allow falling back to alternative patterns if the main one fails.
@@ -451,9 +460,6 @@ class Translator:
                 #                 new_node_map = equivalent_pattern.apply_changes(semantic_model, eq_group)
                 #                 complete_groups[component_cls][signature_pattern].append(new_node_map)
                 LOGGER.remove_level()
-
-
-                
 
             LOGGER.remove_level()
 
@@ -488,11 +494,16 @@ class Translator:
         merge_found = False
 
         for existing_group in incomplete_matches:
-            LOGGER.debug("Checking merge with existing group (%d nodes)", len(existing_group))
+            LOGGER.debug(
+                "Checking merge with existing group (%d nodes)", len(existing_group)
+            )
             LOGGER.add_level()
             if Translator._match(
-                existing_group, new_mapping, signature_pattern,
-                complete_matches, updated_incomplete
+                existing_group,
+                new_mapping,
+                signature_pattern,
+                complete_matches,
+                updated_incomplete,
             ):
                 merge_found = True
                 LOGGER.debug("Merge successful")
@@ -512,7 +523,7 @@ class Translator:
         """
         Quick compatibility check: two groups can merge only if they don't
         map the same SP node to different SM nodes.
-        
+
         Returns:
             Tuple of (is_compatible: bool, has_new_contributions: bool)
         """
@@ -530,7 +541,7 @@ class Translator:
     def _build_compatibility_index(incomplete_matches):
         """
         Build an index to quickly find groups that might conflict.
-        
+
         Returns:
             node_to_groups: dict mapping sp_node -> dict of {sm_node: set of group indices}
         """
@@ -550,14 +561,14 @@ class Translator:
         """
         Find indices of groups that are potentially compatible with the given group.
         Uses the index to eliminate groups with conflicting mappings.
-        
+
         Returns:
             Set of candidate group indices (excludes self and incompatible groups)
         """
         # Start with all groups as candidates
         candidates = set(range(num_groups))
         candidates.discard(group_idx)
-        
+
         # Remove groups that map any sp_node to a different sm_node
         for sp_node, sm_node in group.items():
             if sm_node is not None and sp_node in node_to_groups:
@@ -567,7 +578,7 @@ class Translator:
                         candidates -= other_groups
                         if not candidates:
                             return candidates  # Early exit if no candidates left
-        
+
         return candidates
 
     @staticmethod
@@ -576,7 +587,7 @@ class Translator:
     ):
         """
         Iteratively merge incomplete groups until no more progress.
-        
+
         Uses indexing to reduce O(n²) comparisons:
         1. Builds an index mapping (sp_node, sm_node) -> group indices
         2. Uses index to find only compatible candidates (eliminates conflicting pairs)
@@ -592,52 +603,55 @@ class Translator:
         """
         LOGGER.debug("Merging incomplete groups")
         LOGGER.add_level()
-        
+
         if len(incomplete_matches) <= 1:
             LOGGER.remove_level()
             return incomplete_matches
-        
-        previous_count = float('inf')
+
+        previous_count = float("inf")
 
         while len(incomplete_matches) < previous_count:
             LOGGER.debug("Iteration with %d incomplete groups", len(incomplete_matches))
             previous_count = len(incomplete_matches)
             updated_incomplete = incomplete_matches.copy()
-            
+
             # Build index for fast compatibility checking
             node_to_groups = Translator._build_compatibility_index(incomplete_matches)
-            
+
             # Track pairs that failed the expensive _match in this iteration
             # (keyed by sorted tuple of list indices to avoid duplicate checks)
             failed_pairs = set()
-            
+
             merge_found = False
             for i, group_i in enumerate(incomplete_matches):
                 if merge_found:
                     break
-                
+
                 # Get only compatible candidates using the index
                 candidates = Translator._find_compatible_candidates(
                     i, group_i, node_to_groups, len(incomplete_matches)
                 )
-                
+
                 for j in candidates:
                     # Create canonical pair key
                     pair_key = (i, j) if i < j else (j, i)
                     if pair_key in failed_pairs:
                         continue
-                    
+
                     group_j = incomplete_matches[j]
-                    
+
                     # Quick check: does group_j contribute new mappings?
                     _, has_new = Translator._are_groups_compatible(group_i, group_j)
                     if not has_new:
                         failed_pairs.add(pair_key)
                         continue
-                    
+
                     if Translator._match(
-                        group_i, group_j, signature_pattern,
-                        complete_matches, updated_incomplete
+                        group_i,
+                        group_j,
+                        signature_pattern,
+                        complete_matches,
+                        updated_incomplete,
                     ):
                         merge_found = True
                         LOGGER.debug("Merge found, restarting iteration")
@@ -720,22 +734,28 @@ class Translator:
                     print(("{:" + str(col_maxes[i]) + fmt + "}").format(y), end="  ")
                 print("")
 
-        def resolve_port_indices(groups_source, groups_target, output_port_index, input_port_index, sm_for_index):
+        def resolve_port_indices(
+            groups_source,
+            groups_target,
+            output_port_index,
+            input_port_index,
+            sm_for_index,
+        ):
             """
             Resolve Node-based port indices to integer indices using group matching.
-            
+
             Both output_port_index and input_port_index Nodes are from the TARGET's
             signature pattern. This function finds which group index corresponds to
             the given semantic model instance.
-            
+
             - input_port_index=Node (Scalar→Vector, Vector→Vector):
               Find which slot in groups_target contains the matching semantic instance.
               The Node specifies how the target's input vector is indexed.
-              
+
             - output_port_index=Node (Vector→Scalar):
               Find which slot in groups_source contains the matching semantic instance.
               The Node specifies which element to pick from source's output vector.
-            
+
             Args:
                 groups_source: List of group dicts from the source component
                 groups_target: List of group dicts from the target component
@@ -744,28 +764,36 @@ class Translator:
                 sm_for_index: The semantic model instance to search for:
                     - For output_port_index: semantic instance from target group
                     - For input_port_index: semantic instance from target group
-            
+
             Returns:
                 tuple: (resolved_output_port_index, resolved_input_port_index)
                     - For scalar connections: (None, None)
                     - For Vector→Scalar: (int, None) - index into source's output
                     - For Scalar→Vector: (None, int) - index into target's input
             """
-            if not isinstance(output_port_index, Node) and not isinstance(input_port_index, Node):
+            if not isinstance(output_port_index, Node) and not isinstance(
+                input_port_index, Node
+            ):
                 # Scalar → Scalar: no group matching needed
                 return output_port_index, input_port_index
-            
+
             if isinstance(input_port_index, Node):
                 # Scalar→Vector or Vector→Vector: find which target slot matches
                 # Search groups_target for the group where input_port_index maps to sm_for_index
                 for i_target, group_target in enumerate(groups_target):
-                    if input_port_index in group_target and group_target[input_port_index] == sm_for_index:
+                    if (
+                        input_port_index in group_target
+                        and group_target[input_port_index] == sm_for_index
+                    ):
                         return None, i_target
                 # No match found - this shouldn't happen
-                LOGGER.warning("Could not resolve input_port_index: %s not found mapping to %s", 
-                             input_port_index, sm_for_index)
+                LOGGER.warning(
+                    "Could not resolve input_port_index: %s not found mapping to %s",
+                    input_port_index,
+                    sm_for_index,
+                )
                 return None, None
-            
+
             elif isinstance(output_port_index, Node):
                 # Vector→Scalar: find which source slot matches
                 # Search groups_source for the group containing sm_for_index
@@ -774,10 +802,12 @@ class Translator:
                         if sm_node == sm_for_index:
                             return i_source, None
                 # No match found - this shouldn't happen
-                LOGGER.warning("Could not resolve output_port_index: %s not found in source groups", 
-                             sm_for_index)
+                LOGGER.warning(
+                    "Could not resolve output_port_index: %s not found in source groups",
+                    sm_for_index,
+                )
                 return None, None
-            
+
             return output_port_index, input_port_index
 
         # def print_problem(problem_info):
@@ -813,11 +843,14 @@ class Translator:
                 )
 
                 # Process required inputs for this component
-                for key, (sp_subject, source_keys, output_port_index, input_port_index) in sp.inputs.items():
+                for key, (
+                    sp_subject,
+                    source_keys,
+                    output_port_index,
+                    input_port_index,
+                ) in sp.inputs.items():
 
                     # _map_port_indices()
-
-
 
                     if key not in required_inputs[component]:
                         required_inputs[component][key] = []
@@ -872,15 +905,17 @@ class Translator:
                                         #   groups_source maps to the matching semantic instance
                                         # - input_port_index=Node (Scalar→Vector, Vector→Vector): find
                                         #   which slot in groups_target matches the semantic instance
-                                        
+
                                         sm_for_index = sm_subject  # Default: sender's semantic instance
-                                        
+
                                         if isinstance(output_port_index, Node):
                                             # Vector→Scalar: need semantic instance of output_port_index
                                             # from target groups to search in source groups
                                             for group in groups:
                                                 if output_port_index in group:
-                                                    sm_for_index = group[output_port_index]
+                                                    sm_for_index = group[
+                                                        output_port_index
+                                                    ]
                                                     break
                                         elif isinstance(input_port_index, Node):
                                             # Scalar→Vector: need semantic instance of input_port_index
@@ -888,13 +923,21 @@ class Translator:
                                             # (Often input_port_index == sp_subject, so sm_subject is correct)
                                             for group in groups:
                                                 if input_port_index in group:
-                                                    sm_for_index = group[input_port_index]
+                                                    sm_for_index = group[
+                                                        input_port_index
+                                                    ]
                                                     break
-                                        
-                                        resolved_output_idx, resolved_input_idx = resolve_port_indices(
-                                            p_groups, groups, output_port_index, input_port_index, sm_for_index
+
+                                        resolved_output_idx, resolved_input_idx = (
+                                            resolve_port_indices(
+                                                p_groups,
+                                                groups,
+                                                output_port_index,
+                                                input_port_index,
+                                                sm_for_index,
+                                            )
                                         )
-                                        
+
                                         # Add this potential connection with resolved indices
                                         conn = (
                                             provider_component,
@@ -909,7 +952,12 @@ class Translator:
                                                 conn, E_idx_to_conn, E_conn_to_idx, N_E
                                             )
                                         )
-                                        self.E_conn_to_sp_group[conn] = (sp, groups, p_sp, p_groups)
+                                        self.E_conn_to_sp_group[conn] = (
+                                            sp,
+                                            groups,
+                                            p_sp,
+                                            p_groups,
+                                        )
                                         if (
                                             provider_component,
                                             source_key,
@@ -917,7 +965,12 @@ class Translator:
                                             resolved_input_idx,
                                         ) not in required_inputs[component][key]:
                                             required_inputs[component][key].append(
-                                                (provider_component, source_key, resolved_output_idx, resolved_input_idx)
+                                                (
+                                                    provider_component,
+                                                    source_key,
+                                                    resolved_output_idx,
+                                                    resolved_input_idx,
+                                                )
                                             )
                                     else:
                                         raise Exception(
@@ -944,8 +997,20 @@ class Translator:
                     row[N_E + component_idx] = 1  # Coefficient for component i
 
                     edge_indices = []
-                    for provider_component, source_key, output_port_index, input_port_index in providers:
-                        conn = (provider_component, component, source_key, input_key, output_port_index, input_port_index)
+                    for (
+                        provider_component,
+                        source_key,
+                        output_port_index,
+                        input_port_index,
+                    ) in providers:
+                        conn = (
+                            provider_component,
+                            component,
+                            source_key,
+                            input_key,
+                            output_port_index,
+                            input_port_index,
+                        )
                         edge_idx = E_conn_to_idx[conn]
                         row[edge_idx] = -1  # Negative coefficient for the edge
                         edge_indices.append(edge_idx)
@@ -1035,8 +1100,10 @@ class Translator:
         # Group by (target_component, target_key, slot_index) where slot_index is:
         #   - None for scalar inputs
         #   - int for vector input slots
-        conn_by_slot = {}  # {(target_component, target_key, slot_index): [edge_indices]}
-        
+        conn_by_slot = (
+            {}
+        )  # {(target_component, target_key, slot_index): [edge_indices]}
+
         for e_idx, (
             _,
             target_component,
@@ -1052,7 +1119,11 @@ class Translator:
             conn_by_slot[key].append(e_idx)
 
         one_input_constraints = []
-        for (target_comp, target_key, slot_idx), slot_connections in conn_by_slot.items():
+        for (
+            target_comp,
+            target_key,
+            slot_idx,
+        ), slot_connections in conn_by_slot.items():
             if (
                 len(slot_connections) > 1
             ):  # Only need constraint if multiple potential connections to same slot
@@ -1203,7 +1274,14 @@ class Translator:
         for i in range(N_E):
             if res.x[i] == 1:
                 connections.append(E_idx_to_conn[i])
-                source, target, source_key, target_key, output_port_index, input_port_index = E_idx_to_conn[i]
+                (
+                    source,
+                    target,
+                    source_key,
+                    target_key,
+                    output_port_index,
+                    input_port_index,
+                ) = E_idx_to_conn[i]
                 left_part = f"  E_{i} = 1: ({source.__class__.__name__}){source.id}.{source_key}"
                 right_part = f"({target.__class__.__name__}){target.id}.{target_key}"
                 active_conn_strings.append((left_part, right_part))
@@ -1239,7 +1317,14 @@ class Translator:
         inactive_conn_strings = []
         for i in range(N_E):
             if res.x[i] == 0:
-                source, target, source_key, target_key, output_port_index, input_port_index = E_idx_to_conn[i]
+                (
+                    source,
+                    target,
+                    source_key,
+                    target_key,
+                    output_port_index,
+                    input_port_index,
+                ) = E_idx_to_conn[i]
                 left_part = f"  E_{i} = 0: ({source.__class__.__name__}){source.id}.{source_key}"
                 right_part = f"({target.__class__.__name__}){target.id}.{target_key}"
                 inactive_conn_strings.append((left_part, right_part))
@@ -1295,7 +1380,9 @@ class Translator:
         class_to_instance_map = {}
         self._sim2sem_map = {}
         self._sem2sim_map = {}
-        self._sim2group_map = {}  # Maps components to their matched signature patterns and groups
+        self._sim2group_map = (
+            {}
+        )  # Maps components to their matched signature patterns and groups
         self.modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             LOGGER.info("Class: %s", component_cls.__name__)
@@ -1345,7 +1432,6 @@ class Translator:
                         ), f"Component {component.id} already exists in class {component_cls}"
                         class_to_instance_map[component_cls][component.id] = component
 
-
                         if len(sp.parameters) > 0:
                             LOGGER.add_level()
                             LOGGER.info(
@@ -1365,7 +1451,9 @@ class Translator:
                                             component,
                                             key,
                                             tps.Parameter(
-                                                torch.tensor(value, dtype=torch.float64),
+                                                torch.tensor(
+                                                    value, dtype=torch.float64
+                                                ),
                                                 requires_grad=False,
                                             ),
                                         )
@@ -1412,7 +1500,14 @@ class Translator:
         new_E_conn_to_sp_group = {}
         used_components = set()
         for conn in connections:
-            source, target, source_key, target_key, output_port_index, input_port_index = conn
+            (
+                source,
+                target,
+                source_key,
+                target_key,
+                output_port_index,
+                input_port_index,
+            ) = conn
 
             # sp, groups = self.E_conn_to_sp_group[conn]
             used_components.add(source)
@@ -1425,44 +1520,66 @@ class Translator:
         # Find which signature patterns are actually used for this component
         new_sim2group_map = {}
         for conn in connections:
-            source, target, source_key, target_key, output_port_index, input_port_index = conn
-            sp_target, groups_target, sp_source, groups_source = self.E_conn_to_sp_group[conn]
+            (
+                source,
+                target,
+                source_key,
+                target_key,
+                output_port_index,
+                input_port_index,
+            ) = conn
+            sp_target, groups_target, sp_source, groups_source = (
+                self.E_conn_to_sp_group[conn]
+            )
 
             if target not in new_sim2group_map:
                 new_sim2group_map[target] = {}
             if sp_target not in new_sim2group_map[target]:
                 new_sim2group_map[target][sp_target] = groups_target
             else:
-                assert groups_target == new_sim2group_map[target][sp_target], "Groups target do not match"
+                assert (
+                    groups_target == new_sim2group_map[target][sp_target]
+                ), "Groups target do not match"
 
             if source not in new_sim2group_map:
                 new_sim2group_map[source] = {}
             if sp_source not in new_sim2group_map[source]:
                 new_sim2group_map[source][sp_source] = groups_source
             else:
-                assert groups_source == new_sim2group_map[source][sp_source], "Groups source do not match"
+                assert (
+                    groups_source == new_sim2group_map[source][sp_source]
+                ), "Groups source do not match"
 
             # new_sim2group_map[source]
 
-                # used_sps.add(sp)
-                # used_sps.add(p_sp)
+            # used_sps.add(sp)
+            # used_sps.add(p_sp)
 
         self._sim2group_map = new_sim2group_map
 
-
-
         for conn in connections:
-            source, target, source_key, target_key, output_port_index, input_port_index = conn
+            (
+                source,
+                target,
+                source_key,
+                target_key,
+                output_port_index,
+                input_port_index,
+            ) = conn
             conn_str = f"({source.__class__.__name__}){source.id}.{source_key}[{output_port_index}] → ({target.__class__.__name__}){target.id}.{target_key}[{input_port_index}]"
             LOGGER.info("Adding connection: %s", conn_str)
 
             # Indices are pre-resolved during MILP setup:
             # - None for scalar ports
             # - int for vector port slots
-            sim_model.add_connection(source, target, source_key, target_key, output_port_index, input_port_index)
-            
-
-
+            sim_model.add_connection(
+                source,
+                target,
+                source_key,
+                target_key,
+                output_port_index,
+                input_port_index,
+            )
 
         # 3. Update _sim2sem_map
         self._sim2sem_map = {
@@ -1495,7 +1612,9 @@ class Translator:
         return {k: v for k, v in nodemap.items()}
 
     @staticmethod
-    def _copy_nodemap_list(nodemap_list: List[Dict[Node, Any]]) -> List[Dict[Node, Any]]:
+    def _copy_nodemap_list(
+        nodemap_list: List[Dict[Node, Any]],
+    ) -> List[Dict[Node, Any]]:
         return [Translator._copy_nodemap(nodemap) for nodemap in nodemap_list]
 
     @staticmethod
@@ -1514,7 +1633,7 @@ class Translator:
 
     @staticmethod
     def _get_maps_string(maps):
-        for i,l in enumerate(maps):
+        for i, l in enumerate(maps):
             LOGGER.debug("MAP %d:", i)
             LOGGER.add_level()
             for sp, sm in l.items():
@@ -1523,16 +1642,35 @@ class Translator:
             LOGGER.remove_level()
 
     @staticmethod
-    def _prune_recursive(sm_subject, sp_subject, candidate_maps, feasible, comparison_table,
-        signature_pattern, verbose=False,):
+    def _prune_recursive(
+        sm_subject,
+        sp_subject,
+        candidate_maps,
+        feasible,
+        comparison_table,
+        signature_pattern,
+        verbose=False,
+    ):
         signature_pattern.reset_ruleset()
-        return Translator.__prune_recursive(sm_subject, sp_subject, candidate_maps, feasible, comparison_table,
-        signature_pattern, verbose=verbose)
+        return Translator.__prune_recursive(
+            sm_subject,
+            sp_subject,
+            candidate_maps,
+            feasible,
+            comparison_table,
+            signature_pattern,
+            verbose=verbose,
+        )
 
     @staticmethod
     def __prune_recursive(
-        sm_subject, sp_subject, candidate_maps, feasible, comparison_table,
-        signature_pattern, verbose=False,
+        sm_subject,
+        sp_subject,
+        candidate_maps,
+        feasible,
+        comparison_table,
+        signature_pattern,
+        verbose=False,
     ):
         """
         Recursively match a signature pattern node against a semantic model node (DFS).
@@ -1556,7 +1694,7 @@ class Translator:
         LOGGER.debug("Entering prune_recursive")
         LOGGER.add_level()
         LOGGER.debug(lambda: Translator._get_node_string(sp_subject, sm_subject))
-        
+
         # Initialize tracking sets for current subject
         feasible.setdefault(sp_subject, set()).add(sm_subject)
         comparison_table.setdefault(sp_subject, set()).add(sm_subject)
@@ -1570,17 +1708,21 @@ class Translator:
         # Process each predicate-object pair required by the SP subject
         for sp_predicate, sp_objects in sp_predicate_objects.items():
             for sp_object in sp_objects:
-                rule = ruleset[(sp_subject, sp_predicate, sp_object)] # NOTE: Q: What happens if we have added multiple rules for the same subject, predicate, object? A: This would not be meaningful 
+                rule = ruleset[
+                    (sp_subject, sp_predicate, sp_object)
+                ]  # NOTE: Q: What happens if we have added multiple rules for the same subject, predicate, object? A: This would not be meaningful
 
                 LOGGER.debug("Rule: %s", rule.__class__.__name__)
-                
+
                 # Collect SM objects from ALL predicates in the Predicate (cross-ontology matching)
                 sm_objects = []
-                for predicate in rule._predicate: # Iterate tuple of Predicate objects
-                    for pred in predicate.preds: # Iterate tuple of SemanticPredicate objects
+                for predicate in rule._predicate:  # Iterate tuple of Predicate objects
+                    for (
+                        pred
+                    ) in predicate.preds:  # Iterate tuple of SemanticPredicate objects
                         pred_objects = sm_predicate_objects.get(pred, [])
                         sm_objects.extend(pred_objects)
-                
+
                 # Remove duplicates while preserving order
                 seen = set()
                 sm_objects = [x for x in sm_objects if not (x in seen or seen.add(x))]
@@ -1592,9 +1734,19 @@ class Translator:
                     )
 
                     match_found = False
-                    for maps_for_pair, matched_sm_object, matched_sp_object, matched_type, _ in rule_pairs:
+                    for (
+                        maps_for_pair,
+                        matched_sm_object,
+                        matched_sp_object,
+                        matched_type,
+                        _,
+                    ) in rule_pairs:
                         LOGGER.debug("Entered inner loop")
-                        LOGGER.debug(lambda: Translator._get_node_string(matched_sp_object, matched_sm_object))
+                        LOGGER.debug(
+                            lambda: Translator._get_node_string(
+                                matched_sp_object, matched_sm_object
+                            )
+                        )
                         # Initialize tracking for matched object
                         feasible.setdefault(matched_sp_object, set())
                         comparison_table.setdefault(matched_sp_object, set())
@@ -1604,15 +1756,23 @@ class Translator:
                             comparison_table[matched_sp_object].add(matched_sm_object)
                             child_maps, feasible, comparison_table, is_pruned = (
                                 Translator.__prune_recursive(
-                                    matched_sm_object, matched_sp_object, maps_for_pair,
-                                    feasible, comparison_table, signature_pattern, verbose
+                                    matched_sm_object,
+                                    matched_sp_object,
+                                    maps_for_pair,
+                                    feasible,
+                                    comparison_table,
+                                    signature_pattern,
+                                    verbose,
                                 )
                             )
 
                             if not is_pruned:
                                 # Early stop for SinglePath/MultiPath with Exact match
-                                if (isinstance(rule, (UniPathRule, MultiPathRule))
-                                        and rule.stop_early and matched_type == ExactRule):
+                                if (
+                                    isinstance(rule, (UniPathRule, MultiPathRule))
+                                    and rule.stop_early
+                                    and matched_type == ExactRule
+                                ):
                                     valid_maps.extend(child_maps)
                                     match_found = True
                                     break
@@ -1635,7 +1795,9 @@ class Translator:
                     if not match_found and not isinstance(rule, OptionalRule):
                         feasible[sp_subject].discard(sm_subject)
                         LOGGER.debug("PRUNED (no match found)")
-                        LOGGER.debug(lambda: Translator._get_node_string(sp_subject, sm_subject))
+                        LOGGER.debug(
+                            lambda: Translator._get_node_string(sp_subject, sm_subject)
+                        )
                         LOGGER.remove_level()
                         return candidate_maps, feasible, comparison_table, True
 
@@ -1646,7 +1808,9 @@ class Translator:
                     if not isinstance(rule, OptionalRule):
                         feasible[sp_subject].discard(sm_subject)
                         LOGGER.debug("PRUNED (missing predicate): %s", sp_predicate)
-                        LOGGER.debug(lambda: Translator._get_node_string(sp_subject, sm_subject))
+                        LOGGER.debug(
+                            lambda: Translator._get_node_string(sp_subject, sm_subject)
+                        )
                         LOGGER.remove_level()
                         return candidate_maps, feasible, comparison_table, True
 
@@ -1668,7 +1832,11 @@ class Translator:
         return candidate_maps, feasible, comparison_table, False
 
     @staticmethod
-    def _check_edge_connectivity(source_mapping: Dict[Node, Any], target_mapping: Dict[Node, Any], reverse: bool = False) -> bool:
+    def _check_edge_connectivity(
+        source_mapping: Dict[Node, Any],
+        target_mapping: Dict[Node, Any],
+        reverse: bool = False,
+    ) -> bool:
         """
         Check if two partial mappings share a connecting edge in the semantic model.
 
@@ -1719,7 +1887,7 @@ class Translator:
         """
         # feasible = {n: set() for n in signature_pattern.nodes}
         # comparison_table = {n: set() for n in signature_pattern.nodes}
-        
+
         for sp_node, sm_node in nodes_to_add.items():
             if sm_node is None:
                 continue
@@ -1728,15 +1896,18 @@ class Translator:
             comparison_table = {n: set() for n in signature_pattern.nodes}
 
             _, _, _, is_pruned = Translator._prune_recursive(
-                sm_node, sp_node, [],
-                feasible, comparison_table, signature_pattern,
+                sm_node,
+                sp_node,
+                [],
+                feasible,
+                comparison_table,
+                signature_pattern,
             )
 
             if is_pruned:
                 return False
 
         return True
-
 
     # @profile
     @staticmethod
@@ -1760,7 +1931,7 @@ class Translator:
         - merged_group is added to complete_matches
         - For connected merges: both groups are removed from incomplete_matches
         - For disconnected merges: groups WITHOUT modeled_node filled are preserved
-        
+
         Disconnected merges preserve groups that don't have the modeled_node filled,
         as these represent shared resources (like Weather_Station) that should be
         reusable across many instances of the modeled entity (like spaces).
@@ -1778,10 +1949,10 @@ class Translator:
         LOGGER.debug("Matching groups")
         LOGGER.add_level()
         LOGGER.debug(lambda: Translator._get_maps_string([group_a, group_b]))
-        
+
         # Cache nodes list once (avoid repeated property access with assertion)
         sp_nodes = signature_pattern._nodes
-        
+
         # Check compatibility and count new contributions in a single pass
         # Avoids multiple dict lookups per node and allows early exit
         is_compatible = True
@@ -1795,9 +1966,9 @@ class Translator:
                     break  # Early exit - incompatible means no merge possible
             elif val_a is None and val_b is not None:
                 new_contributions += 1
-        
-        LOGGER.debug("Compatibility check: %s", 'PASS' if is_compatible else 'FAIL')
-        
+
+        LOGGER.debug("Compatibility check: %s", "PASS" if is_compatible else "FAIL")
+
         # Early exit if incompatible - no merge possible
         if not is_compatible:
             LOGGER.remove_level()
@@ -1823,13 +1994,15 @@ class Translator:
         has_edge_a_to_b = Translator._check_edge_connectivity(
             nodes_a, group_b, reverse=True
         )
-        LOGGER.debug("Edge connectivity - B->A: %s, A->B: %s", has_edge_b_to_a, has_edge_a_to_b)
+        LOGGER.debug(
+            "Edge connectivity - B->A: %s, A->B: %s", has_edge_b_to_a, has_edge_a_to_b
+        )
 
         # Track whether we used a connected or disconnected merge strategy
         # and which groups contain only isolated nodes (can be reused for other merges)
         used_disconnected_merge = False
         groups_to_preserve = []  # Will contain groups with only isolated nodes
-        
+
         if has_edge_b_to_a or has_edge_a_to_b:
             LOGGER.debug("Attempting connected merge validation")
             if Translator._validate_merge(group_a, nodes_b, signature_pattern):
@@ -1843,18 +2016,18 @@ class Translator:
             LOGGER.debug("Attempting disconnected merge")
             merged_group = dict(group_a)
             used_disconnected_merge = True
-            
+
             # For disconnected merges, only preserve groups that DON'T have the modeled_node filled.
             # Groups with modeled_node filled represent unique instances (like a specific space)
             # and should be consumed. Groups without it (like weather_station) represent shared
             # resources that can be reused across many spaces.
             modeled_nodes = signature_pattern.modeled_nodes
             groups_to_preserve = []
-            
+
             # Check if group_a has any modeled_node filled - if not, it's a shared resource
             a_has_modeled = any(group_a.get(mn) is not None for mn in modeled_nodes)
             b_has_modeled = any(group_b.get(mn) is not None for mn in modeled_nodes)
-            
+
             if not a_has_modeled:
                 groups_to_preserve.append(group_a)
                 LOGGER.debug("Group A has no modeled_node filled, preserving for reuse")
@@ -1867,8 +2040,12 @@ class Translator:
                 feasible = {n: set() for n in sp_nodes}
                 comparison_table = {n: set() for n in sp_nodes}
                 result_maps, _, _, is_pruned = Translator._prune_recursive(
-                    sm_node, sp_node, [],
-                    feasible, comparison_table, signature_pattern,
+                    sm_node,
+                    sp_node,
+                    [],
+                    feasible,
+                    comparison_table,
+                    signature_pattern,
                 )
 
                 if is_pruned:
@@ -1891,20 +2068,23 @@ class Translator:
                 incomplete_matches.remove(group_a)
             if group_b in incomplete_matches and group_b not in groups_to_preserve:
                 incomplete_matches.remove(group_b)
-            
+
             # Ensure preserved groups are in incomplete_matches (they might not have been added yet,
             # e.g., new_mapping in _try_merge_with_incomplete)
             for group in groups_to_preserve:
                 if group not in incomplete_matches:
                     incomplete_matches.append(group)
-                    LOGGER.debug("Added preserved group to incomplete_matches for reuse")
-
+                    LOGGER.debug(
+                        "Added preserved group to incomplete_matches for reuse"
+                    )
 
             is_complete = all(
                 merged_group.get(n) is not None
                 for n in signature_pattern.required_nodes
             )
-            LOGGER.debug("Merged group is %s", 'COMPLETE' if is_complete else 'INCOMPLETE')
+            LOGGER.debug(
+                "Merged group is %s", "COMPLETE" if is_complete else "INCOMPLETE"
+            )
 
             if is_complete:
                 complete_matches.append(merged_group)
@@ -1923,7 +2103,12 @@ class Translator:
 class Node:
     node_instance_count = count()
 
-    def __init__(self, cls: Union[Any, Tuple[Any, ...], List[Any], str], graph_name: Optional[str] = None, hash_: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        cls: Union[Any, Tuple[Any, ...], List[Any], str],
+        graph_name: Optional[str] = None,
+        hash_: Optional[Any] = None,
+    ) -> None:
         self._graph_name = graph_name
         if isinstance(cls, tuple) == False:
             if isinstance(cls, (list, set)):
@@ -1963,7 +2148,7 @@ class Node:
         return self.id
 
     def __repr__(self):
-        return f"Node({str(self.id)})" # NOTE: 
+        return f"Node({str(self.id)})"  # NOTE:
 
     def validate_cls(self):
         if self._signature_pattern is None:
@@ -2024,39 +2209,43 @@ class Node:
 class Predicate:
     """
     Represents a predicate (relationship type) in a signature pattern graph.
-    
+
     Mirrors the Node class structure but for predicates instead of types.
     Holds a tuple of SemanticPredicate objects for multi-predicate matching,
-    enabling cross-ontology patterns where the same relationship might be 
+    enabling cross-ontology patterns where the same relationship might be
     expressed using different predicates (e.g., SAREF vs BRICK).
-    
+
     Attributes
     ----------
     preds : Tuple[SemanticPredicate]
         All predicates this can match against (tuple for consistency with Node.cls)
-    
+
     Examples
     --------
     Single predicate (standard usage):
-    
+
     >>> pred = Predicate(core.namespace.FSO.suppliesFluidTo)
     >>> pred.preds  # Returns (FSO.suppliesFluidTo,)
-    
+
     Multiple predicates (cross-ontology matching):
-    
+
     >>> pred = Predicate((
     ...     core.namespace.FSO.suppliesFluidTo,  # SAREF/FSO
     ...     core.namespace.BRICK.feeds,           # BRICK
     ... ))
     >>> pred.preds  # Returns (FSO.suppliesFluidTo, BRICK.feeds)
     """
-    
+
     predicate_instance_count = count()
 
-    def __init__(self, preds: Union[Any, Tuple[Any, ...], List[Any], str], hash_: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        preds: Union[Any, Tuple[Any, ...], List[Any], str],
+        hash_: Optional[Any] = None,
+    ) -> None:
         """
         Initialize a Predicate.
-        
+
         Args:
             preds: A predicate or tuple of predicates (URIRef, str, or SemanticPredicate)
             hash_: Optional hash value for custom equality comparison
@@ -2101,10 +2290,10 @@ class Predicate:
     def validate_preds(self):
         """
         Convert all predicates to SemanticPredicate objects.
-        
+
         Similar to Node.validate_cls(), this converts URIRef and str predicates
         to SemanticPredicate objects using the signature pattern's semantic model.
-        
+
         Raises:
             ValueError: If no signature pattern is set or invalid predicate type
         """
@@ -2120,10 +2309,14 @@ class Predicate:
             if isinstance(p, core.SemanticPredicate):
                 preds_.append(p)
             elif isinstance(p, URIRef):
-                preds_.append(core.SemanticPredicate(p, self.signature_pattern.semantic_model))
+                preds_.append(
+                    core.SemanticPredicate(p, self.signature_pattern.semantic_model)
+                )
             elif isinstance(p, str):
                 preds_.append(
-                    core.SemanticPredicate(URIRef(p), self.signature_pattern.semantic_model)
+                    core.SemanticPredicate(
+                        URIRef(p), self.signature_pattern.semantic_model
+                    )
                 )
             else:
                 raise ValueError(f"Invalid predicate type: {type(p)}")
@@ -2133,6 +2326,7 @@ class Predicate:
 
     def make_id(self):
         """Create a unique identifier from predicate URIs."""
+
         def get_local_name(uri_str):
             if "#" in uri_str:
                 return uri_str.split("#")[-1]
@@ -2509,7 +2703,7 @@ class SignaturePattern:
         assert isinstance(
             rule, Rule
         ), f'The "rule" argument must be a subclass of Rule - "{rule.__class__.__name__}" was provided.'
-        
+
         subject = rule._subject
         object = rule._object
         predicate = rule._predicate
@@ -2517,20 +2711,20 @@ class SignaturePattern:
         if rule not in self._rules:
             self._rules.append(rule)
 
-
         for subj, obj, pred, rule_ in zip(subject, object, predicate, rule.rules):
             self._ruleset[(subj, pred, obj)] = rule
-            
-        
-            assert subj is not None and obj is not None and pred is not None, \
-                "Rule must have subject, object, and predicate"
-            
+
+            assert (
+                subj is not None and obj is not None and pred is not None
+            ), "Rule must have subject, object, and predicate"
+
             assert isinstance(subj, Node) and isinstance(
                 obj, Node
             ), '"subject" and "object" must be instances of class Node'
-            
-            assert isinstance(pred, Predicate), \
-                '"predicate" must be an instance of class Predicate'
+
+            assert isinstance(
+                pred, Predicate
+            ), '"predicate" must be an instance of class Predicate'
 
             self._add_node(subj, rule_)
             self._add_node(obj, rule_)
@@ -2538,8 +2732,6 @@ class SignaturePattern:
             # if any(isinstance(r, NoExactRule) for r in rule.sub_rules):
             #     self._remove_node(subj)
             #     self._remove_node(obj)
-                
-            
 
             # Set signature pattern on predicate and validate (converts to SemanticPredicate)
             pred.set_signature_pattern(self)
@@ -2576,8 +2768,6 @@ class SignaturePattern:
                 self.semantic_model.instance_graph.add(
                     (subject_instance, p.uri, object_instance)
                 )
-            
-            
 
             # if isinstance(rule, OptionalRule) == False:
             #     if subj not in self._required_nodes:
@@ -2587,87 +2777,89 @@ class SignaturePattern:
             #     if obj not in self._required_nodes:
             #         self._required_nodes.append(obj)
 
-
-        
-    def add_connection(self, 
-                    sender_node: Node, 
-                    output_port: Union[str, Tuple[str]], 
-                    input_port: str, 
-                    output_port_index: Union[int, Tuple[int], Tuple[Node], Tuple[torch.Tensor]] = None,
-                    input_port_index: Union[int, Node, torch.Tensor] = None):
+    def add_connection(
+        self,
+        sender_node: Node,
+        output_port: Union[str, Tuple[str]],
+        input_port: str,
+        output_port_index: Union[
+            int, Tuple[int], Tuple[Node], Tuple[torch.Tensor]
+        ] = None,
+        input_port_index: Union[int, Node, torch.Tensor] = None,
+    ):
         """
         Define a connection from a sender component to this component's input port.
-        
-        This method specifies how outputs from components matching the sender_node 
-        should be connected to this component's input. The connection can handle 
-        scalar-to-scalar, scalar-to-vector, vector-to-scalar, and vector-to-vector 
+
+        This method specifies how outputs from components matching the sender_node
+        should be connected to this component's input. The connection can handle
+        scalar-to-scalar, scalar-to-vector, vector-to-scalar, and vector-to-vector
         mappings using index parameters.
-        
+
         Parameters
         ----------
         sender_node : Node
-            The signature pattern Node representing the source component(s) that 
+            The signature pattern Node representing the source component(s) that
             will send data to this component.
-        
+
         output_port : str or tuple of str
-            The name of the output port on the sender component. If the sender_node 
-            can match multiple classes, a tuple can be provided to specify different 
+            The name of the output port on the sender component. If the sender_node
+            can match multiple classes, a tuple can be provided to specify different
             output port names for each class.
-        
+
         input_port : str
-            The name of the input port on this (target) component that will receive 
+            The name of the input port on this (target) component that will receive
             the connection.
-        
+
         output_port_index : int, Node, torch.Tensor, or tuple thereof, optional
             Specifies which element(s) to select from the sender's output vector.
-            
+
             - None: Use the full output (default for scalar outputs)
             - int: Select a single element at this index
-            - Node: For Vector→Scalar connections. The Node must be from this 
-            (target) signature pattern and must map to semantic instances shared 
-            with the source. The index is determined by finding which position in 
+            - Node: For Vector→Scalar connections. The Node must be from this
+            (target) signature pattern and must map to semantic instances shared
+            with the source. The index is determined by finding which position in
             the source's groups matches the semantic instance.
             - torch.Tensor: Select multiple elements at these indices
-        
+
         input_port_index : int, Node, or torch.Tensor, optional
             Specifies which slot(s) in this component's input vector to fill.
-            
+
             - None: Fill the entire input (default for scalar inputs)
             - int: Fill a single slot at this index
-            - Node: For Scalar→Vector or Vector→Vector connections. The Node must 
-            be from this (target) signature pattern. The index/indices are 
-            determined by the ordering of groups matching this Node. This is the 
-            primary way to specify index mapping as it directly relates to the 
+            - Node: For Scalar→Vector or Vector→Vector connections. The Node must
+            be from this (target) signature pattern. The index/indices are
+            determined by the ordering of groups matching this Node. This is the
+            primary way to specify index mapping as it directly relates to the
             target component's structure.
             - torch.Tensor: Fill multiple slots at these indices
-        
+
         Connection Type Summary
         -----------------------
         - Scalar→Scalar: Both indices are None
         - Scalar→Vector: Use input_port_index=Node to specify which slot receives the scalar
         - Vector→Scalar: Use output_port_index=Node to specify which element to pick
         - Vector→Vector: Use input_port_index=Node to specify the mapping from source to target
-        
+
         Examples
         --------
         Simple scalar connection:
-        
+
         >>> sp.add_connection(sensor_node, "temperature", "measuredTemperature")
-        
+
         Vector connection where input is ordered by spaces:
-        
-        >>> sp.add_connection(spaces, "indoorTemperature", "exhaustTemperature", 
+
+        >>> sp.add_connection(spaces, "indoorTemperature", "exhaustTemperature",
         ...                   input_port_index=spaces)
-        
+
         Vector to scalar - pick element corresponding to a specific space:
-        
+
         >>> sp.add_connection(spaces, "indoorTemperature", "zoneTemperature",
         ...                   output_port_index=space_node)
-        
+
         Notes
         -----
-        When using a Node for indexing, the actual integer indices are resolved at 
-        translation time by the Translator._connect_components method, which examines 
+        When using a Node for indexing, the actual integer indices are resolved at
+        translation time by the Translator._connect_components method, which examines
         the matched groups from the semantic model to determine the correct mapping.
         """
         self._add_node(sender_node)
@@ -2684,12 +2876,14 @@ class SignaturePattern:
                 output_port_[c] = output_port_key
             output_port = output_port_
 
-        self._inputs[input_port] = (sender_node, output_port, output_port_index, input_port_index)
+        self._inputs[input_port] = (
+            sender_node,
+            output_port,
+            output_port_index,
+            input_port_index,
+        )
 
-    
-
-
-    def add_input(self, key, node, source_keys=None): # NOTE: Deprecated
+    def add_input(self, key, node, source_keys=None):  # NOTE: Deprecated
         """
         Deprecated method. Use add_connection() instead.
 
@@ -2700,7 +2894,7 @@ class SignaturePattern:
             "add_input() is deprecated and will be removed in a future version. "
             "Use add_connection() instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
 
         # Preprocess source_keys same as original method
@@ -2722,13 +2916,11 @@ class SignaturePattern:
 
         # Call the new method with mapped parameters
         self.add_connection(
-            sender_node=sender_node,
-            output_port=output_port,
-            input_port=input_port
+            sender_node=sender_node, output_port=output_port, input_port=input_port
         )
 
     def _add_node(self, node, rule=None, optional=False):
-        if isinstance(rule, NoExactRule)==False:
+        if isinstance(rule, NoExactRule) == False:
             if node not in self._nodes:
                 self._nodes.append(node)
                 node.set_signature_pattern(self)
@@ -2745,8 +2937,6 @@ class SignaturePattern:
     def _remove_node(self, node):
         if node in self._nodes:
             self._nodes.remove(node)
-
-        
 
     def add_parameter(self, key, node):
         self._add_node(node, optional=True)
@@ -2951,16 +3141,21 @@ class Rule:
         The precedence level for rule application
     """
 
-    def __init__(self, subject: Union[Node, Tuple[Node, ...]], object: Union[Node, Tuple[Node, ...]], predicate: Union[Predicate, Tuple[Predicate, ...]]) -> None:
+    def __init__(
+        self,
+        subject: Union[Node, Tuple[Node, ...]],
+        object: Union[Node, Tuple[Node, ...]],
+        predicate: Union[Predicate, Tuple[Predicate, ...]],
+    ) -> None:
         """
         Initialize a Rule.
-        
+
         Args:
             subject: The source Node
             object: The target Node
             predicate: A Predicate object, or value(s) to wrap in a Predicate
         """
-        self.rules = (self, )
+        self.rules = (self,)
         if isinstance(subject, tuple):
             self._subject = subject
         else:
@@ -2974,7 +3169,6 @@ class Rule:
         else:
             self._predicate = (predicate,)
 
-
         new_predicate = []
         for pred in self._predicate:
             # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node)
@@ -2985,8 +3179,9 @@ class Rule:
                 new_predicate.append(Predicate(pred))
         self._predicate = tuple(new_predicate)
 
-        assert len(self._subject) == len(self._object) == len(self._predicate), "The number of subjects, objects, and predicates must be the same."
-
+        assert (
+            len(self._subject) == len(self._object) == len(self._predicate)
+        ), "The number of subjects, objects, and predicates must be the same."
 
     def __and__(self, other):
         return And(self, other)
@@ -3007,7 +3202,6 @@ class Rule:
         return self._predicate
 
 
-
 class And(Rule):
     """Logical AND of two rules - both must match."""
 
@@ -3026,8 +3220,12 @@ class And(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
         LOGGER.debug(f"Applying {self.__class__.__name__}")
         LOGGER.add_level()
         if master_rule is None:
@@ -3055,16 +3253,19 @@ class And(Rule):
             pairs.extend([pair for pair in pairs_b if pair[4] in indices])
             ruleset_a.update(ruleset_b)
             for pair in pairs:
-                LOGGER.debug("MATCHED: %s (%s) IS (%s)", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), c)
+                LOGGER.debug(
+                    "MATCHED: %s (%s) IS (%s)",
+                    pair[1].get_short_name(),
+                    pair[1].get_most_specific_type().get_short_name(),
+                    c,
+                )
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
             return pairs, True, mask, ruleset_a
 
-
-        
         LOGGER.debug("Rule applies: %s", False)
         LOGGER.remove_level()
-        return [], False, np.array([False]*len(sm_objects)), ruleset
+        return [], False, np.array([False] * len(sm_objects)), ruleset
 
     def reset(self):
         self.rule_a.reset()
@@ -3098,8 +3299,12 @@ class Or(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
         LOGGER.debug("Applying %s", self.__class__.__name__)
         LOGGER.add_level()
         if master_rule is None:
@@ -3126,44 +3331,56 @@ class Or(Rule):
             pairs.extend([pair for pair in pairs_a if pair[4] in indices])
             pairs.extend([pair for pair in pairs_b if pair[4] in indices])
             ruleset_a.update(ruleset_b)
-            
+
             for pair in pairs:
-                LOGGER.debug("MATCHED: %s (%s) IS (%s)", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), c)
+                LOGGER.debug(
+                    "MATCHED: %s (%s) IS (%s)",
+                    pair[1].get_short_name(),
+                    pair[1].get_most_specific_type().get_short_name(),
+                    c,
+                )
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
             return pairs, True, rule_applies_a_vec | rule_applies_b_vec, ruleset_a
 
         elif rule_applies_a:
             for pair in pairs_a:
-                LOGGER.debug("MATCHED: %s (%s) IS (%s)", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), c)
+                LOGGER.debug(
+                    "MATCHED: %s (%s) IS (%s)",
+                    pair[1].get_short_name(),
+                    pair[1].get_most_specific_type().get_short_name(),
+                    c,
+                )
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
             return pairs_a, True, rule_applies_a_vec, ruleset_a
-            
+
         elif rule_applies_b:
             for pair in pairs_b:
-                LOGGER.debug("MATCHED: %s (%s) IS (%s)", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), c)
+                LOGGER.debug(
+                    "MATCHED: %s (%s) IS (%s)",
+                    pair[1].get_short_name(),
+                    pair[1].get_most_specific_type().get_short_name(),
+                    c,
+                )
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
             return pairs_b, True, rule_applies_b_vec, ruleset_b
 
         LOGGER.debug("Rule applies: %s", False)
         LOGGER.remove_level()
-        return [], False, np.array([False]*len(sm_objects)), ruleset
+        return [], False, np.array([False] * len(sm_objects)), ruleset
 
     def reset(self):
         self.rule_a.reset()
         self.rule_b.reset()
 
 
-
 class NoExactRule(Rule):
-    r"""
+    r""" """
 
-    """
     def __init__(self, **kwargs):
         Rule.__init__(self, **kwargs)
-
 
     @property
     def subject(self):
@@ -3186,17 +3403,19 @@ class NoExactRule(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
-        """
-        
-        """
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
+        """ """
         LOGGER.debug(f"Applying {self.__class__.__name__}")
         LOGGER.add_level()
         if master_rule is None:
             master_rule = self
         pairs = []
-        rule_applies_vec = np.array([False]*len(sm_objects))
+        rule_applies_vec = np.array([False] * len(sm_objects))
 
         if len(candidate_maps) == 0:
             candidate_maps = [None]
@@ -3234,7 +3453,7 @@ class NoExactRule(Rule):
             # Check each candidate SM object
             for i, sm_object in enumerate(sm_objects):
                 if (
-                    sm_object.isinstance(self.object.cls)==False
+                    sm_object.isinstance(self.object.cls) == False
                     and sm_subject not in excluded_sm_subjects
                     and sm_object not in excluded_sm_objects
                 ):
@@ -3242,14 +3461,20 @@ class NoExactRule(Rule):
                     rule_applies_vec[i] = True
         rule_applies = np.any(rule_applies_vec)
         for pair in pairs:
-            LOGGER.debug("MATCHED: %s (%s) IS %s", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), self.object.cls)
+            LOGGER.debug(
+                "MATCHED: %s (%s) IS %s",
+                pair[1].get_short_name(),
+                pair[1].get_most_specific_type().get_short_name(),
+                self.object.cls,
+            )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
-        
+
         return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
         pass
+
 
 class ExactRule(Rule):
     r"""
@@ -3380,6 +3605,7 @@ class ExactRule(Rule):
     ...     predicate=core.namespace.SAREF.isPropertyOf
     ... )
     """
+
     def __init__(self, **kwargs):
         Rule.__init__(self, **kwargs)
 
@@ -3404,8 +3630,12 @@ class ExactRule(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
         """
         Apply Exact rule to find matching SM objects.
 
@@ -3425,7 +3655,7 @@ class ExactRule(Rule):
         if master_rule is None:
             master_rule = self
         pairs = []
-        rule_applies_vec = np.array([False]*len(sm_objects))
+        rule_applies_vec = np.array([False] * len(sm_objects))
 
         if len(candidate_maps) == 0:
             candidate_maps = [None]
@@ -3472,7 +3702,12 @@ class ExactRule(Rule):
 
         rule_applies = np.any(rule_applies_vec)
         for pair in pairs:
-            LOGGER.debug("MATCHED: %s (%s) IS %s", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), self.object.cls)
+            LOGGER.debug(
+                "MATCHED: %s (%s) IS %s",
+                pair[1].get_short_name(),
+                pair[1].get_most_specific_type().get_short_name(),
+                self.object.cls,
+            )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
@@ -3483,6 +3718,7 @@ class ExactRule(Rule):
 
 class _SinglePath(Rule):
     """Internal rule for SinglePath traversal (creates intermediate SP nodes)."""
+
     def __init__(self, **kwargs):
         self.first_entry = True
         Rule.__init__(self, **kwargs)
@@ -3508,8 +3744,12 @@ class _SinglePath(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
         """
         Apply SinglePath traversal rule.
 
@@ -3523,12 +3763,14 @@ class _SinglePath(Rule):
             master_rule = self
         pairs = []
         matched_sm_objects = []
-        rule_applies_vec = np.array([False]*len(sm_objects))
+        rule_applies_vec = np.array([False] * len(sm_objects))
 
         if self.first_entry:
             self.first_entry = False
-            matched_sm_objects.extend([(i,sm_object) for i, sm_object in enumerate(sm_objects)])
-            rule_applies_vec = np.array([True]*len(sm_objects))
+            matched_sm_objects.extend(
+                [(i, sm_object) for i, sm_object in enumerate(sm_objects)]
+            )
+            rule_applies_vec = np.array([True] * len(sm_objects))
         else:
             # Only allow single-path continuation
             if len(sm_objects) == 1:
@@ -3540,7 +3782,7 @@ class _SinglePath(Rule):
                             pred in predicate_objects
                             and len(predicate_objects[pred]) == 1
                         ):
-                            matched_sm_objects.append((i,sm_object))
+                            matched_sm_objects.append((i, sm_object))
                             rule_applies_vec[i] = True
                             break  # Found a valid predicate, no need to check others
         rule_applies = np.any(rule_applies_vec)
@@ -3552,14 +3794,27 @@ class _SinglePath(Rule):
                     cls=sm_object.get_most_specific_type(),
                     hash_=(sm_object, self.subject, self.predicate.preds, self.object),
                 )
-                intermediate_sp_subject.set_signature_pattern(self.object.signature_pattern)
+                intermediate_sp_subject.set_signature_pattern(
+                    self.object.signature_pattern
+                )
                 intermediate_sp_subject.validate_cls()
-                intermediate_sp_subject.predicate_object_pairs[self.predicate] = [self.object]
-                ruleset[(intermediate_sp_subject, self.predicate, self.object)] = master_rule
-                pairs.append((candidate_maps, sm_object, intermediate_sp_subject, _SinglePath, i))
+                intermediate_sp_subject.predicate_object_pairs[self.predicate] = [
+                    self.object
+                ]
+                ruleset[(intermediate_sp_subject, self.predicate, self.object)] = (
+                    master_rule
+                )
+                pairs.append(
+                    (candidate_maps, sm_object, intermediate_sp_subject, _SinglePath, i)
+                )
 
         for pair in pairs:
-            LOGGER.debug("MATCHED: %s (%s) IS %s", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), self.object.cls)
+            LOGGER.debug(
+                "MATCHED: %s (%s) IS %s",
+                pair[1].get_short_name(),
+                pair[1].get_most_specific_type().get_short_name(),
+                self.object.cls,
+            )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
@@ -3698,20 +3953,25 @@ class UniPathRule(Rule):
     >>> # space1 -> common_equipment -> space2
     >>> # space1 -> thermal_bridge -> space2
     """
+
     def __init__(self, stop_early=True, **kwargs):
         # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node)
         super().__init__(**kwargs)
-        if kwargs.get('predicate') is None:
+        if kwargs.get("predicate") is None:
             predicate = None
-        elif isinstance(kwargs.get('predicate'), Predicate):
-            predicate = kwargs.get('predicate')
+        elif isinstance(kwargs.get("predicate"), Predicate):
+            predicate = kwargs.get("predicate")
         else:
             # Deprecation warning
-            warnings.warn("The 'predicate' argument is deprecated. Use the 'Predicate' class instead.", DeprecationWarning, stacklevel=2)
+            warnings.warn(
+                "The 'predicate' argument is deprecated. Use the 'Predicate' class instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
             # Auto-wrap in Predicate (handles single value or tuple)
-            predicate = Predicate(kwargs.get('predicate'))
-        kwargs['predicate'] = predicate
+            predicate = Predicate(kwargs.get("predicate"))
+        kwargs["predicate"] = predicate
         self.rule = ExactRule(**kwargs) | _SinglePath(**kwargs)  # This order
         self.stop_early = stop_early
         # super().__init__(**kwargs)
@@ -3722,8 +3982,12 @@ class UniPathRule(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
         """Delegate to internal Exact | _SinglePath rule."""
         if master_rule is None:
             master_rule = self
@@ -3742,6 +4006,7 @@ class UniPathRule(Rule):
 
 class _MultiPath(Rule):
     """Internal rule for MultiPath traversal (creates intermediate SP nodes)."""
+
     def __init__(self, **kwargs):
         self.first_entry = True
         super().__init__(**kwargs)
@@ -3767,8 +4032,12 @@ class _MultiPath(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
         """
         Apply MultiPath traversal rule.
 
@@ -3782,12 +4051,14 @@ class _MultiPath(Rule):
             master_rule = self
         pairs = []
         matched_sm_objects = []
-        rule_applies_vec = np.array([False]*len(sm_objects))
+        rule_applies_vec = np.array([False] * len(sm_objects))
 
         if self.first_entry:
             self.first_entry = False
-            matched_sm_objects.extend([(i,sm_object) for i, sm_object in enumerate(sm_objects)])
-            rule_applies_vec = np.array([True]*len(sm_objects))
+            matched_sm_objects.extend(
+                [(i, sm_object) for i, sm_object in enumerate(sm_objects)]
+            )
+            rule_applies_vec = np.array([True] * len(sm_objects))
         else:
             # Allow multi-path continuation (>= 1 child)
             if len(sm_objects) >= 1:
@@ -3799,24 +4070,37 @@ class _MultiPath(Rule):
                             pred in predicate_objects
                             and len(predicate_objects[pred]) >= 1
                         ):
-                            matched_sm_objects.append((i,sm_object))
+                            matched_sm_objects.append((i, sm_object))
                             rule_applies_vec[i] = True
                             break  # Found a valid predicate, no need to check others
 
         rule_applies = np.any(rule_applies_vec)
         if rule_applies:
-            
+
             for i, sm_object in matched_sm_objects:
                 # Create intermediate SP subject node for continued traversal
                 intermediate_sp_subject = Node(cls=sm_object.get_most_specific_type())
-                intermediate_sp_subject.set_signature_pattern(self.object.signature_pattern)
+                intermediate_sp_subject.set_signature_pattern(
+                    self.object.signature_pattern
+                )
                 intermediate_sp_subject.validate_cls()
-                intermediate_sp_subject.predicate_object_pairs[self.predicate] = [self.object]
-                ruleset[(intermediate_sp_subject, self.predicate, self.object)] = master_rule
-                pairs.append((candidate_maps, sm_object, intermediate_sp_subject, _MultiPath, i))
+                intermediate_sp_subject.predicate_object_pairs[self.predicate] = [
+                    self.object
+                ]
+                ruleset[(intermediate_sp_subject, self.predicate, self.object)] = (
+                    master_rule
+                )
+                pairs.append(
+                    (candidate_maps, sm_object, intermediate_sp_subject, _MultiPath, i)
+                )
 
         for pair in pairs:
-            LOGGER.debug("MATCHED: %s (%s) IS %s", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), self.object.cls)
+            LOGGER.debug(
+                "MATCHED: %s (%s) IS %s",
+                pair[1].get_short_name(),
+                pair[1].get_most_specific_type().get_short_name(),
+                self.object.cls,
+            )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
@@ -3989,6 +4273,7 @@ class OptionalRule(Rule):
     >>> # - Manual valve with position sensor (no controller)
     >>> # - Automated valve with controller and position feedback
     """
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -4013,8 +4298,12 @@ class OptionalRule(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
         """
         Apply Optional rule to find matching SM objects.
 
@@ -4026,7 +4315,7 @@ class OptionalRule(Rule):
         if master_rule is None:
             master_rule = self
         pairs = []
-        rule_applies_vec = np.array([False]*len(sm_objects))
+        rule_applies_vec = np.array([False] * len(sm_objects))
 
         for i, sm_object in enumerate(sm_objects):
             if sm_object.isinstance(self.object.cls):
@@ -4035,7 +4324,12 @@ class OptionalRule(Rule):
 
         rule_applies = np.any(rule_applies_vec)
         for pair in pairs:
-            LOGGER.debug("MATCHED: %s (%s) IS %s", pair[1].get_short_name(), pair[1].get_most_specific_type().get_short_name(), self.object.cls)
+            LOGGER.debug(
+                "MATCHED: %s (%s) IS %s",
+                pair[1].get_short_name(),
+                pair[1].get_most_specific_type().get_short_name(),
+                self.object.cls,
+            )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
@@ -4162,19 +4456,24 @@ class MultiPathRule(Rule):
     connections and Optional_ for alternative configurations rather than MultiPath,
     which can cause performance issues in complex semantic models.
     """
+
     def __init__(self, stop_early=True, **kwargs):
         # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node)
-        if kwargs.get('predicate') is None:
+        if kwargs.get("predicate") is None:
             predicate = None
-        elif isinstance(kwargs.get('predicate'), Predicate):
-            predicate = kwargs.get('predicate')
+        elif isinstance(kwargs.get("predicate"), Predicate):
+            predicate = kwargs.get("predicate")
         else:
             # Deprecation warning
-            warnings.warn("The 'predicate' argument is deprecated. Use the 'Predicate' class instead.", DeprecationWarning, stacklevel=2)
+            warnings.warn(
+                "The 'predicate' argument is deprecated. Use the 'Predicate' class instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
             # Auto-wrap in Predicate (handles single value or tuple)
-            predicate = Predicate(kwargs.get('predicate'))
-        kwargs['predicate'] = predicate
+            predicate = Predicate(kwargs.get("predicate"))
+        kwargs["predicate"] = predicate
         self.rule = ExactRule(**kwargs) | _MultiPath(**kwargs)
         self.stop_early = stop_early
         super().__init__(**kwargs)
@@ -4185,8 +4484,12 @@ class MultiPathRule(Rule):
         sm_objects: List[core.SemanticObject],
         ruleset: Dict[Tuple[Node, Optional[Predicate], Node], Rule],
         candidate_maps: Optional[List[Optional[Any]]] = None,
-        master_rule: Optional[Rule] = None
-    ) -> Tuple[List[Tuple[Optional[List], core.SemanticObject, Node, type]], bool, Dict[Tuple[Node, Optional[Predicate], Node], Rule]]:
+        master_rule: Optional[Rule] = None,
+    ) -> Tuple[
+        List[Tuple[Optional[List], core.SemanticObject, Node, type]],
+        bool,
+        Dict[Tuple[Node, Optional[Predicate], Node], Rule],
+    ]:
         pairs, rule_applies, rule_applies_vec, ruleset = self.rule.apply(
             sm_subject,
             sm_objects,
@@ -4206,7 +4509,7 @@ class Exact(ExactRule):
         warnings.warn(
             "The 'Exact' class is deprecated. Use 'ExactRule' instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         super().__init__(**kwargs)
 
@@ -4216,7 +4519,7 @@ class SinglePath(UniPathRule):
         warnings.warn(
             "The 'SinglePath' class is deprecated. Use 'UniPathRule' instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         super().__init__(**kwargs)
 
@@ -4226,7 +4529,7 @@ class MultiPath(MultiPathRule):
         warnings.warn(
             "The 'MultiPath' class is deprecated. Use 'MultiPathRule' instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         super().__init__(**kwargs)
 
@@ -4236,14 +4539,9 @@ class Optional_(OptionalRule):
         warnings.warn(
             "The 'Optional_' class is deprecated. Use 'OptionalRule' instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         super().__init__(**kwargs)
-
-
-
-
-
 
 
 # if __name__ == "__main__":

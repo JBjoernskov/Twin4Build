@@ -3,10 +3,12 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.junction.return_flow_junction_system import (
     ReturnFlowJunctionSystem,
 )
@@ -14,8 +16,6 @@ from twin4build.systems.junction.supply_flow_junction_system import (
     SupplyFlowJunctionSystem,
 )
 
-# Set test flag
-import twin4build
 twin4build._IS_TESTING = True
 
 
@@ -46,24 +46,14 @@ class TestReturnFlowJunctionSystem(unittest.TestCase):
         self.junction.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-        self.junction.input["airFlowRateIn"].initialize(
-            n_t=1, n_s=1, n_v=2
-        )
-        self.junction.input["airTemperatureIn"].initialize(
-            n_t=1, n_s=1, n_v=2
-        )
+        self.junction.input["airFlowRateIn"].initialize(n_t=1, n_s=1, n_v=2)
+        self.junction.input["airTemperatureIn"].initialize(n_t=1, n_s=1, n_v=2)
         self.junction.output["airFlowRateOut"].initialize(n_t=1, n_s=1)
-        self.junction.output["airTemperatureOut"].initialize(
-            n_t=1, n_s=1
-        )
+        self.junction.output["airTemperatureOut"].initialize(n_t=1, n_s=1)
 
         # Set inputs - vector inputs for multiple flows
-        self.junction.input["airFlowRateIn"].set(
-            torch.tensor([[0.5, 0.5]]), i_t=0
-        )
-        self.junction.input["airTemperatureIn"].set(
-            torch.tensor([[20.0, 22.0]]), i_t=0
-        )
+        self.junction.input["airFlowRateIn"].set(torch.tensor([[0.5, 0.5]]), i_t=0)
+        self.junction.input["airTemperatureIn"].set(torch.tensor([[20.0, 22.0]]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
@@ -106,9 +96,7 @@ class TestSupplyFlowJunctionSystem(unittest.TestCase):
         self.junction.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-        self.junction.input["airFlowRateOut"].initialize(
-            n_t=1, n_s=1, n_v=3
-        )
+        self.junction.input["airFlowRateOut"].initialize(n_t=1, n_s=1, n_v=3)
         self.junction.output["airFlowRateIn"].initialize(n_t=1, n_s=1)
 
         # Set inputs - vector inputs for multiple flows

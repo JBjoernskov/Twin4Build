@@ -2,13 +2,13 @@
 import unittest
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.model.model import Model
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.uppath import uppath
 
-# Set test flag
-import twin4build
 twin4build._IS_TESTING = True
 
 

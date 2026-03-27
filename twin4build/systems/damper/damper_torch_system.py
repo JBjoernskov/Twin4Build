@@ -164,7 +164,7 @@ class DamperTorchSystem(core.System, nn.Module):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
-        
+
         # Initialize input/output ports
         for port in self.input.values():
             port.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
@@ -202,7 +202,7 @@ class DamperTorchSystem(core.System, nn.Module):
         - b is calculated to ensure m=nominalAirFlowRate at u=1
         - c is calculated to ensure m=0 at u=0
         - u is the damper position (0-1)
-        
+
         All calculations are vectorized via n_c dimension.
         """
         # Get input damper position - shape: (n_s, n_c)

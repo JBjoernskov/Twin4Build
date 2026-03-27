@@ -44,8 +44,10 @@ except ImportError:
     print("Install it with: pip install coverage")
     sys.exit(1)
 
+# Local application imports
 # Set test flag
 import twin4build
+
 twin4build._IS_TESTING = True
 
 
@@ -129,34 +131,34 @@ def main():
 
 def _match_pattern(test_module: str, pattern: str) -> bool:
     """Check if a test module matches a pattern.
-    
+
     Args:
         test_module: Full module path (e.g., 'optimizer.test_optimizer')
         pattern: Pattern to match (e.g., 'optimizer', 'test_optimizer')
-        
+
     Returns:
         True if the pattern matches the module path
     """
     return (
-        f".{pattern}." in test_module or 
-        test_module.startswith(f"{pattern}.") or
-        test_module.endswith(f".{pattern}") or
-        test_module == pattern
+        f".{pattern}." in test_module
+        or test_module.startswith(f"{pattern}.")
+        or test_module.endswith(f".{pattern}")
+        or test_module == pattern
     )
 
 
 def _filter_tests_including(suite, include_patterns: list[str]) -> unittest.TestSuite:
     """Recursively filter tests, including only those matching specified patterns.
-    
+
     Args:
         suite: Test suite to filter
         include_patterns: List of patterns to include (e.g., ['optimizer', 'simulator'])
-        
+
     Returns:
         Filtered test suite containing only matching tests
     """
     filtered = unittest.TestSuite()
-    
+
     for test in suite:
         if isinstance(test, unittest.TestSuite):
             # Recursively filter nested suites
@@ -165,27 +167,26 @@ def _filter_tests_including(suite, include_patterns: list[str]) -> unittest.Test
             # Check if test module path matches any included pattern
             test_module = test.__class__.__module__
             should_include = any(
-                _match_pattern(test_module, pattern)
-                for pattern in include_patterns
+                _match_pattern(test_module, pattern) for pattern in include_patterns
             )
             if should_include:
                 filtered.addTest(test)
-    
+
     return filtered
 
 
 def _filter_tests_excluding(suite, exclude_patterns: list[str]) -> unittest.TestSuite:
     """Recursively filter tests, excluding those matching specified patterns.
-    
+
     Args:
         suite: Test suite to filter
         exclude_patterns: List of patterns to exclude (e.g., ['examples', 'optimizer'])
-        
+
     Returns:
         Filtered test suite
     """
     filtered = unittest.TestSuite()
-    
+
     for test in suite:
         if isinstance(test, unittest.TestSuite):
             # Recursively filter nested suites
@@ -194,12 +195,11 @@ def _filter_tests_excluding(suite, exclude_patterns: list[str]) -> unittest.Test
             # Check if test module path matches any excluded pattern
             test_module = test.__class__.__module__
             should_exclude = any(
-                _match_pattern(test_module, pattern)
-                for pattern in exclude_patterns
+                _match_pattern(test_module, pattern) for pattern in exclude_patterns
             )
             if not should_exclude:
                 filtered.addTest(test)
-    
+
     return filtered
 
 
@@ -215,16 +215,18 @@ def run_tests_including(include_patterns: list[str]):
     try:
         test_dir = os.path.dirname(os.path.abspath(__file__))
         loader = unittest.TestLoader()
-        
+
         # Discover all tests
         all_tests = loader.discover(start_dir=test_dir, pattern="test_*.py")
         total_before = all_tests.countTestCases()
-        
+
         # Filter to only included patterns
         filtered_tests = _filter_tests_including(all_tests, include_patterns)
         total_after = filtered_tests.countTestCases()
-        
-        print(f"Discovered {total_before} tests, running {total_after} (matching {include_patterns})")
+
+        print(
+            f"Discovered {total_before} tests, running {total_after} (matching {include_patterns})"
+        )
 
         runner = unittest.TextTestRunner(verbosity=2)
         result = runner.run(filtered_tests)
@@ -257,16 +259,18 @@ def run_tests_excluding(exclude_patterns: list[str]):
     try:
         test_dir = os.path.dirname(os.path.abspath(__file__))
         loader = unittest.TestLoader()
-        
+
         # Discover all tests
         all_tests = loader.discover(start_dir=test_dir, pattern="test_*.py")
         total_before = all_tests.countTestCases()
-        
+
         # Filter out excluded patterns
         filtered_tests = _filter_tests_excluding(all_tests, exclude_patterns)
         total_after = filtered_tests.countTestCases()
-        
-        print(f"Discovered {total_before} tests, running {total_after} (excluded {total_before - total_after} matching {exclude_patterns})")
+
+        print(
+            f"Discovered {total_before} tests, running {total_after} (excluded {total_before - total_after} matching {exclude_patterns})"
+        )
 
         runner = unittest.TextTestRunner(verbosity=2)
         result = runner.run(filtered_tests)

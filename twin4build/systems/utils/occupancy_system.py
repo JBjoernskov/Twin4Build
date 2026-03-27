@@ -143,11 +143,19 @@ class OccupancySystem(core.System, nn.Module):
         self._output = {"scheduleValue": tps.Scalar()}
         self._config = {
             "parameters": [
-                "mass.V", "mass.G_occ", "mass.m_inf",
-                "supply_damper.a", "supply_damper.nominalAirFlowRate",
-                "exhaust_damper.a", "exhaust_damper.nominalAirFlowRate",
-                "co2_filename", "co2_datecolumn", "co2_valuecolumn",
-                "damper_filename", "damper_datecolumn", "damper_valuecolumn",
+                "mass.V",
+                "mass.G_occ",
+                "mass.m_inf",
+                "supply_damper.a",
+                "supply_damper.nominalAirFlowRate",
+                "exhaust_damper.a",
+                "exhaust_damper.nominalAirFlowRate",
+                "co2_filename",
+                "co2_datecolumn",
+                "co2_valuecolumn",
+                "damper_filename",
+                "damper_datecolumn",
+                "damper_valuecolumn",
             ]
         }
         self.INITIALIZED = False
@@ -173,12 +181,10 @@ class OccupancySystem(core.System, nn.Module):
             out.initialize(n_t=max_timesteps, n_s=batch_size)
 
         assert self.co2_filename is not None, (
-            f"|{self.__class__.__name__}|{self.id}|: "
-            "co2_filename must be set."
+            f"|{self.__class__.__name__}|{self.id}|: " "co2_filename must be set."
         )
         assert self.damper_filename is not None, (
-            f"|{self.__class__.__name__}|{self.id}|: "
-            "damper_filename must be set."
+            f"|{self.__class__.__name__}|{self.id}|: " "damper_filename must be set."
         )
 
         self._co2_ts = TimeSeriesInputSystem(
@@ -215,8 +221,8 @@ class OccupancySystem(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
-        C_indoor = self._co2_ts.values[step_index]          # (n_s, 1) - measured
-        damper_pos = self._damper_ts.values[step_index]      # (n_s, 1) - measured
+        C_indoor = self._co2_ts.values[step_index]  # (n_s, 1) - measured
+        damper_pos = self._damper_ts.values[step_index]  # (n_s, 1) - measured
         C_outdoor = self.input["outdoorCo2Concentration"].get()
 
         m_sup = self.supply_damper.compute_airflow(damper_pos)

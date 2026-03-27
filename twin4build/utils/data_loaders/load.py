@@ -1,19 +1,20 @@
 # Standard library imports
 import configparser
+import datetime
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
 # Third party imports
 import numpy as np
 import pandas as pd
+import psycopg2
 from dateutil.parser import parse
 from dateutil.tz import gettz
-import datetime
+from psycopg2.extras import RealDictCursor
 
 # Local application imports
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.print_progress import LOGGER
+
 
 def parseDateStr(s):
     if s != "":
@@ -109,7 +110,9 @@ def sample_from_df(
     df = df.rename(columns={df.columns.to_list()[datecolumn]: "date_time"})
 
     LOGGER.add_level()
-    LOGGER.info(f"Sampling df from {start_time} to {end_time} with step_size {step_size}")
+    LOGGER.info(
+        f"Sampling df from {start_time} to {end_time} with step_size {step_size}"
+    )
     LOGGER.add_level()
 
     for i, column in enumerate(df.columns.to_list()):
@@ -126,7 +129,9 @@ def sample_from_df(
     if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
         has_tz = True
         df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
-        LOGGER.info(f"df has timezone information {df['date_time'].apply(lambda x: x.tzinfo).unique()}, converting to UTC")
+        LOGGER.info(
+            f"df has timezone information {df['date_time'].apply(lambda x: x.tzinfo).unique()}, converting to UTC"
+        )
 
     else:
         has_tz = False
@@ -158,7 +163,9 @@ def sample_from_df(
         df = df.tz_localize(tz, ambiguous="infer", nonexistent="NaT")
         LOGGER.info(f"df does not have timezone information, localizing to {tz}")
     else:
-        LOGGER.info(f"df has timezone information {df.index[0].tzinfo}, converting to {tz}")
+        LOGGER.info(
+            f"df has timezone information {df.index[0].tzinfo}, converting to {tz}"
+        )
         df = df.tz_convert(tz)
 
     # Duplicate dates can occur either due to measuring/logging malfunctions
@@ -167,7 +174,9 @@ def sample_from_df(
 
     if start_time.tzinfo is None:
         start_time = start_time.astimezone(tz=tz)
-        LOGGER.info(f"start_time does not have timezone information, converting to {tz}")
+        LOGGER.info(
+            f"start_time does not have timezone information, converting to {tz}"
+        )
     if end_time.tzinfo is None:
         end_time = end_time.astimezone(tz=tz)
         LOGGER.info(f"end_time does not have timezone information, converting to {tz}")
@@ -504,14 +513,18 @@ def load_from_database(
        memory usage and improve performance.
     """
     # Third party imports
-    assert isinstance(start_time, datetime.datetime), "start_time must be a datetime object"
+    assert isinstance(
+        start_time, datetime.datetime
+    ), "start_time must be a datetime object"
     assert isinstance(end_time, datetime.datetime), "end_time must be a datetime object"
     assert isinstance(step_size, int), "step_size must be an integer"
     assert isinstance(resample, bool), "resample must be a boolean"
     assert isinstance(resample_method, str), "resample_method must be a string"
     assert isinstance(clip, bool), "clip must be a boolean"
     assert isinstance(cache, bool), "cache must be a boolean"
-    assert isinstance(cache_root, (str, type(None))), "cache_root must be a string or None"
+    assert isinstance(
+        cache_root, (str, type(None))
+    ), "cache_root must be a string or None"
     assert isinstance(preserve_order, bool), "preserve_order must be a boolean"
     assert isinstance(table_name, str), "table_name must be a string"
     assert isinstance(sensor_id, str), "sensor_id must be a string"
@@ -559,7 +572,7 @@ def load_from_database(
         #     cursor.execute(
         #         """
         #         SELECT EXISTS (
-        #             SELECT FROM information_schema.tables 
+        #             SELECT FROM information_schema.tables
         #             WHERE table_schema = %s AND table_name = %s
         #         );
         #     """,
@@ -583,7 +596,6 @@ def load_from_database(
         where_conditions = []
         params = []
 
-
         # Get data for +/- 3 steps of buffer
         buffer = datetime.timedelta(seconds=3 * step_size)
         query_start_time = start_time - buffer
@@ -606,7 +618,6 @@ def load_from_database(
             WHERE {where_clause}
             ORDER BY {time_column}
         """
-
 
         cursor.execute(query, params)
         rows = cursor.fetchall()

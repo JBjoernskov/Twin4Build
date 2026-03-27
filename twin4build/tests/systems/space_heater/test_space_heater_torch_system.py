@@ -3,16 +3,16 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.space_heater.space_heater_torch_system import (
     SpaceHeaterTorchSystem,
 )
 
-# Set test flag
-import twin4build
 twin4build._IS_TESTING = True
 
 
@@ -44,9 +44,7 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
         )
 
         # Set inputs
-        self.heater.input["supplyWaterTemperature"].set(
-            torch.tensor([60.0]), i_t=0
-        )
+        self.heater.input["supplyWaterTemperature"].set(torch.tensor([60.0]), i_t=0)
         self.heater.input["waterFlowRate"].set(torch.tensor([0.1]), i_t=0)
         self.heater.input["indoorTemperature"].set(torch.tensor([20.0]), i_t=0)
 
@@ -81,9 +79,7 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
         start_time = [
             datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         ] * batch_size
-        end_time = [
-            datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)
-        ] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)] * batch_size
         step_size = [600] * batch_size
         heater_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
@@ -93,9 +89,7 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
         heater_batch.input["supplyWaterTemperature"].set(
             torch.tensor([60.0, 65.0, 55.0]), i_t=0
         )
-        heater_batch.input["waterFlowRate"].set(
-            torch.tensor([0.1, 0.15, 0.08]), i_t=0
-        )
+        heater_batch.input["waterFlowRate"].set(torch.tensor([0.1, 0.15, 0.08]), i_t=0)
         heater_batch.input["indoorTemperature"].set(
             torch.tensor([20.0, 22.0, 18.0]), i_t=0
         )

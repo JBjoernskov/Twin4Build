@@ -152,8 +152,12 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         """
         u = 0.5 + error * steepness
         switch_signal = smooth_saturation(
-            u, lower=0.0, upper=1.0, curve_start=curve_start,
-            steepness=a, power_exp=power_exp,
+            u,
+            lower=0.0,
+            upper=1.0,
+            curve_start=curve_start,
+            steepness=a,
+            power_exp=power_exp,
         )
         return off_value + switch_signal * (on_value - off_value)
 
@@ -173,7 +177,7 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         """
         actual_value = self.input["actualValue"].get()
         setpoint_value = self.input["setpointValue"].get()
-        
+
         k = self.steepness.get()
         off_val = self.offValue.get()
         on_val = self.onValue.get()
@@ -189,36 +193,39 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         # Smooth sigmoid switching
         # sigmoid(k * error) → 1 when error >> 0 (ON)
         # sigmoid(k * error) → 0 when error << 0 (OFF)
-        output_signal = self.power_law_saturation(error, off_value=off_val, on_value=on_val, steepness=k)
+        output_signal = self.power_law_saturation(
+            error, off_value=off_val, on_value=on_val, steepness=k
+        )
 
         # Interpolate between off and on values
         # output_signal = off_val + switch_signal * (on_val - off_val)
 
         self.output["inputSignal"].set(output_signal, step_index)
 
-    def get_switch_state(self, actual_value: torch.Tensor, setpoint_value: torch.Tensor) -> torch.Tensor:
+    def get_switch_state(
+        self, actual_value: torch.Tensor, setpoint_value: torch.Tensor
+    ) -> torch.Tensor:
         """
         Get the current switch state (0 to 1) for given inputs.
-        
+
         Useful for debugging and visualization.
-        
+
         Args:
             actual_value: Current measured value
             setpoint_value: Current setpoint value
-            
+
         Returns:
             Switch state between 0 (OFF) and 1 (ON)
         """
         k = self.steepness.get()
-        
+
         if self.isReverse:
             error = setpoint_value - actual_value
         else:
             error = actual_value - setpoint_value
-            
+
         return torch.sigmoid(k * error)
 
     def reset_state(self) -> None:
         """Reset controller state (no-op for on-off controller)."""
         pass
-

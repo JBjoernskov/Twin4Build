@@ -114,7 +114,10 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
                     f"day_weights must have {self.N_DAYS} values, got {len(day_weights)}"
                 )
             sw = [
-                [float(hour_weights[h]) * float(day_weights[d]) for d in range(self.N_DAYS)]
+                [
+                    float(hour_weights[h]) * float(day_weights[d])
+                    for d in range(self.N_DAYS)
+                ]
                 for h in range(self.N_HOURS)
             ]
         else:
@@ -149,7 +152,11 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
 
         self._config = {
             "parameters": (
-                [f"schedule_h{h}_d{d}" for h in range(self.N_HOURS) for d in range(self.N_DAYS)]
+                [
+                    f"schedule_h{h}_d{d}"
+                    for h in range(self.N_HOURS)
+                    for d in range(self.N_DAYS)
+                ]
                 + ["override_value"]
             ),
         }
@@ -247,19 +254,25 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
         # --- Look up schedule weight for each (hour, day) pair ---
         # Build full (24, 7, n_c) tensor and index into it
         all_weights = torch.stack(
-            [self._get_schedule_weight(h, d).get()
-             for h in range(self.N_HOURS)
-             for d in range(self.N_DAYS)],
+            [
+                self._get_schedule_weight(h, d).get()
+                for h in range(self.N_HOURS)
+                for d in range(self.N_DAYS)
+            ],
             dim=0,
-        ).reshape(self.N_HOURS, self.N_DAYS, -1)  # (24, 7, n_c)
+        ).reshape(
+            self.N_HOURS, self.N_DAYS, -1
+        )  # (24, 7, n_c)
 
-        hour_idx = torch.tensor(hours, dtype=torch.long)      # (n_s,)
-        day_idx = torch.tensor(weekdays, dtype=torch.long)     # (n_s,)
-        schedule_signal = all_weights[hour_idx, day_idx]       # (n_s, n_c)
+        hour_idx = torch.tensor(hours, dtype=torch.long)  # (n_s,)
+        day_idx = torch.tensor(weekdays, dtype=torch.long)  # (n_s,)
+        schedule_signal = all_weights[hour_idx, day_idx]  # (n_s, n_c)
 
         # --- Blend: active -> input, inactive -> override_value ---
         override = self.override_value.get()  # (n_c,)
-        output_signal = schedule_signal * input_signal + (1 - schedule_signal) * override
+        output_signal = (
+            schedule_signal * input_signal + (1 - schedule_signal) * override
+        )
 
         self.output["inputSignal"].set(output_signal, step_index)
 

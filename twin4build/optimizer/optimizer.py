@@ -1333,18 +1333,20 @@ class Optimizer:
         # Handle equality constraints
         # Use boolean mask (n_t, n_s) to index 3D tensors (n_t, n_s, n_c) -> (num_valid, n_c)
         mask = self._timestep_mask
-        
+
         if self._eq_cons is not None:
             for constraint in self._eq_cons:
                 component, output_name, desired_value = constraint
                 # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
                 y = component.output[output_name].history()[mask]
-                desired_tensor = self.equality_constraint_values[component, output_name][mask]
+                desired_tensor = self.equality_constraint_values[
+                    component, output_name
+                ][mask]
                 y_norm = component.output[output_name].normalize(y)
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
                 )
-                loss += k*torch.mean(torch.abs(y_norm - desired_tensor_norm))
+                loss += k * torch.mean(torch.abs(y_norm - desired_tensor_norm))
 
         # Handle inequality constraints
         if self._ineq_cons is not None:
@@ -1371,7 +1373,7 @@ class Optimizer:
                     constraint_violations = torch.relu(desired_tensor_norm - y_norm)
                     ineq_lower_term += torch.mean(constraint_violations)
 
-            loss += k*(ineq_upper_term + ineq_lower_term)
+            loss += k * (ineq_upper_term + ineq_lower_term)
 
         # Handle minimization objectives
         if self._objectives is not None:

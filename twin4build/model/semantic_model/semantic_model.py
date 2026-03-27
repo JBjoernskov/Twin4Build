@@ -821,7 +821,9 @@ class SemanticInstance(SemanticObject):
                 (None, None, self.uri)
             ):
                 is_symmetric = (
-                    pred, RDF.type, owl_symmetric,
+                    pred,
+                    RDF.type,
+                    owl_symmetric,
                 ) in self.model.ontology_graph
                 if is_symmetric:
                     inferred_pairs.append((pred, other))
@@ -829,7 +831,9 @@ class SemanticInstance(SemanticObject):
             # 3. Transitive properties
             for pred, obj in self.model.instance_graph.predicate_objects(self.uri):
                 is_transitive = (
-                    pred, RDF.type, owl_transitive,
+                    pred,
+                    RDF.type,
+                    owl_transitive,
                 ) in self.model.ontology_graph
                 if is_transitive:
                     for transitive_obj in self.model.instance_graph.transitive_objects(
@@ -1235,14 +1239,16 @@ class SemanticModel:
             if hasattr(core.ontology, prefix.upper()):
                 fallback_ontology_uri = getattr(core.ontology, prefix.upper())
                 LOGGER.info(
-                    "Attempting to parse namespace from core.ontology using URI: %s", fallback_ontology_uri
+                    "Attempting to parse namespace from core.ontology using URI: %s",
+                    fallback_ontology_uri,
                 )
                 try:
                     parse_wrapper(self._ontology_graph, source=fallback_ontology_uri)
                     self.parsed_namespaces.add(uri)
                     LOGGER.ok(
-                    "Attempting to parse namespace from core.ontology using URI: %s", fallback_ontology_uri,
-                    change_status=True,
+                        "Attempting to parse namespace from core.ontology using URI: %s",
+                        fallback_ontology_uri,
+                        change_status=True,
                     )
                     success = True
                 except Exception as e:
@@ -1252,15 +1258,13 @@ class SemanticModel:
                     LOGGER.error("Error: %s", str(e))
                     LOGGER.remove_level()
                     LOGGER.error(
-                    f"Attempting to parse namespace from core.ontology using URI: {fallback_ontology_uri}",
-                    change_status=True,
+                        f"Attempting to parse namespace from core.ontology using URI: {fallback_ontology_uri}",
+                        change_status=True,
                     )
 
             # If no fallback or fallback failed, try parsing namespace directly
             if not success:
-                LOGGER.info(
-                    f"Attempting to parse namespace directly using URI: {uri}"
-                )
+                LOGGER.info(f"Attempting to parse namespace directly using URI: {uri}")
                 try:
                     parse_wrapper(self._ontology_graph, source=namespace)
                     self.parsed_namespaces.add(uri)
@@ -1282,12 +1286,14 @@ class SemanticModel:
 
                 if success:
                     LOGGER.ok(
-                    "Attempting to parse namespace directly using URI: %s", uri,
-                    change_status=True,
+                        "Attempting to parse namespace directly using URI: %s",
+                        uri,
+                        change_status=True,
                     )
                 else:
                     LOGGER.error(
-                        "Attempting to parse namespace directly using URI: %s", uri,
+                        "Attempting to parse namespace directly using URI: %s",
+                        uri,
                         change_status=True,
                     )
 
@@ -1299,13 +1305,22 @@ class SemanticModel:
             overall_success = overall_success and success
 
             if not overall_success:
-                LOGGER.error("Parsing namespace: %s (%s)", prefix.upper(), uri, change_status=True)
+                LOGGER.error(
+                    "Parsing namespace: %s (%s)",
+                    prefix.upper(),
+                    uri,
+                    change_status=True,
+                )
             else:
-                LOGGER.ok("Parsing namespace: %s (%s)", prefix.upper(), uri, change_status=True)
+                LOGGER.ok(
+                    "Parsing namespace: %s (%s)",
+                    prefix.upper(),
+                    uri,
+                    change_status=True,
+                )
             LOGGER.remove_level()
 
         return overall_success
-
 
     def get_dir(
         self, folder_list: List[str] = None, filename: Optional[str] = None
@@ -1853,7 +1868,8 @@ class SemanticModel:
             # Remove triples not in keep_triples.
             # Collect first to avoid modifying the graph during iteration.
             to_remove = [
-                (s, p, o) for s, p, o in new_graph.triples((None, None, None))
+                (s, p, o)
+                for s, p, o in new_graph.triples((None, None, None))
                 if (s, p, o) not in keep_triples
             ]
             for triple in to_remove:
@@ -2138,7 +2154,12 @@ class SemanticModel:
         fill_color_map = {
             core.namespace.S4BLDG.BuildingSpace: [light_black, light_black, None, None],
             core.namespace.S4BLDG.Controller: [orange, orange, None, None],
-            core.namespace.S4BLDG.AirToAirHeatRecovery: [dark_blue, dark_blue, None, None],
+            core.namespace.S4BLDG.AirToAirHeatRecovery: [
+                dark_blue,
+                dark_blue,
+                None,
+                None,
+            ],
             core.namespace.S4BLDG.Coil: [red, red, None, None],
             core.namespace.S4BLDG.Damper: [dark_blue, dark_blue, None, None],
             core.namespace.S4BLDG.Valve: [red, red, None, None],
@@ -2151,8 +2172,12 @@ class SemanticModel:
             core.namespace.S4BLDG.Pump: [red, red, None, None],
             core.namespace.S4SYST.Connection: [grey, grey, None, None],
             core.namespace.S4SYST.ConnectionPoint: [grey, grey, None, None],
-
-            core.namespace.T4B.BuildingSpaceTorchSystem: [light_black, light_black, None, None],
+            core.namespace.T4B.BuildingSpaceTorchSystem: [
+                light_black,
+                light_black,
+                None,
+                None,
+            ],
             core.namespace.T4B.PIDControllerSystem: [orange, orange, None, None],
             core.namespace.T4B.AirToAirHeatRecovery: [dark_blue, dark_blue, None, None],
             core.namespace.T4B.CoilTorchSystem: [red, red, None, None],
@@ -2229,7 +2254,9 @@ class SemanticModel:
 
             # Build a set of (p, p_inv) pairs from the ontology
             inverse_pairs = set()
-            for p, _, p_inv in self.ontology_graph.triples((None, owl_inverse_of, None)):
+            for p, _, p_inv in self.ontology_graph.triples(
+                (None, owl_inverse_of, None)
+            ):
                 inverse_pairs.add((p, p_inv))
                 inverse_pairs.add((p_inv, p))
 
@@ -2294,7 +2321,10 @@ class SemanticModel:
 
                 # Resolve the matching type key for this node (most specific first, then all types)
                 matched_type_uri = None
-                if most_specific_type is not None and most_specific_type.uri in fill_color_map:
+                if (
+                    most_specific_type is not None
+                    and most_specific_type.uri in fill_color_map
+                ):
                     matched_type_uri = most_specific_type.uri
                 else:
                     for t in type_:
@@ -2305,7 +2335,9 @@ class SemanticModel:
                 # Resolve effective style lists for this node.
                 # Priority: instance_style > type-based map > cycle palette / defaults
                 uri_str = str(uri)
-                type_for_cycle = most_specific_type.uri if most_specific_type is not None else uri
+                type_for_cycle = (
+                    most_specific_type.uri if most_specific_type is not None else uri
+                )
 
                 def _get_fill(key):
                     if key is not None and key in fill_color_map:
@@ -2321,7 +2353,11 @@ class SemanticModel:
 
                 def _resolve(inst_map, type_map, default):
                     """Merge instance override with type default (None entries inherit)."""
-                    base = type_map.get(matched_type_uri, default) if matched_type_uri else default
+                    base = (
+                        type_map.get(matched_type_uri, default)
+                        if matched_type_uri
+                        else default
+                    )
                     if uri_str not in inst_map:
                         return base
                     override = inst_map[uri_str]
@@ -2329,16 +2365,24 @@ class SemanticModel:
 
                 eff_fill = _resolve_fill(_instance_fill)
 
-                eff_fc = _resolve(_instance_font_color, font_color_map, _default_font_color)
-                eff_fs = _resolve(_instance_font_size, font_size_map, _default_font_size)
-                eff_fb = _resolve(_instance_font_bold, font_bold_map, _default_font_bold)
+                eff_fc = _resolve(
+                    _instance_font_color, font_color_map, _default_font_color
+                )
+                eff_fs = _resolve(
+                    _instance_font_size, font_size_map, _default_font_size
+                )
+                eff_fb = _resolve(
+                    _instance_font_bold, font_bold_map, _default_font_bold
+                )
 
                 b = soup.new_tag("b", attrs={})
                 b.string = z
                 header_bgcolor = eff_fill[0]
                 header_font_color = eff_fc[0]
                 if header_font_color is not None:
-                    header_font = soup.new_tag("font", attrs={"color": header_font_color})
+                    header_font = soup.new_tag(
+                        "font", attrs={"color": header_font_color}
+                    )
                     header_font.append(b)
                 else:
                     header_font = b
@@ -2506,7 +2550,9 @@ class SemanticModel:
                 dot_filename_dot = os.path.join(
                     dirname_ccomps, filename.replace("ccomps", "dot")
                 )
-                dot_filename_ccomps_output = dot_filename_ccomps.replace(".dot", f".{format}")
+                dot_filename_ccomps_output = dot_filename_ccomps.replace(
+                    ".dot", f".{format}"
+                )
                 args = [
                     app_path,
                     "-q",
@@ -2551,7 +2597,9 @@ class SemanticModel:
         # Clean stale output files from previous runs (e.g. .svg when now rendering .png)
         graphs_dir, _ = self.get_dir(folder_list=["graphs"])
         for old_file in os.listdir(graphs_dir):
-            if old_file.startswith("semantic_model.") and os.path.isfile(os.path.join(graphs_dir, old_file)):
+            if old_file.startswith("semantic_model.") and os.path.isfile(
+                os.path.join(graphs_dir, old_file)
+            ):
                 os.remove(os.path.join(graphs_dir, old_file))
 
         semantic_model_output, _ = self.get_dir(
@@ -2754,9 +2802,7 @@ class SemanticModel:
             for subj, _, obj in self._instance_graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
 
-        LOGGER.info(
-            f"Added number of symmetric triples: {len(new_triples)-n_triples}"
-        )
+        LOGGER.info(f"Added number of symmetric triples: {len(new_triples)-n_triples}")
         n_triples = len(new_triples)
 
         # Handle transitive properties
@@ -2775,7 +2821,7 @@ class SemanticModel:
                         new_triples.add((s1, prop, o2))
 
         LOGGER.info(
-            "Added number of transitive triples: %d", len(new_triples)-n_triples
+            "Added number of transitive triples: %d", len(new_triples) - n_triples
         )
         n_triples = len(new_triples)
 
@@ -2793,7 +2839,9 @@ class SemanticModel:
                 for instance in self._instance_graph.subjects(RDF.type, class_uri):
                     new_triples.add((instance, RDF.type, superclass_type.uri))
 
-        LOGGER.info("Added number of subclass triples: %d", len(new_triples)-n_triples)
+        LOGGER.info(
+            "Added number of subclass triples: %d", len(new_triples) - n_triples
+        )
         n_triples = len(new_triples)
 
         # Handle equivalent classes (owl:equivalentClass)
@@ -2814,7 +2862,7 @@ class SemanticModel:
                     new_triples.add((instance, RDF.type, equiv_class))
 
         LOGGER.info(
-            "Added number of equivalent class triples: %d", len(new_triples)-n_triples
+            "Added number of equivalent class triples: %d", len(new_triples) - n_triples
         )
         n_triples = len(new_triples)
 
@@ -2832,7 +2880,8 @@ class SemanticModel:
                     new_triples.add((subj, equiv_pred, obj))
 
         LOGGER.info(
-            "Added number of equivalent property triples: %d", len(new_triples)-n_triples
+            "Added number of equivalent property triples: %d",
+            len(new_triples) - n_triples,
         )
         n_triples = len(new_triples)
 

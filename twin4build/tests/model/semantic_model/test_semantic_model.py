@@ -11,13 +11,13 @@ from rdflib import RDF, RDFS, XSD, Graph, Literal, Namespace, URIRef
 import twin4build
 import twin4build.core as core
 from twin4build.model.semantic_model.semantic_model import (
-    SemanticModel,
     SemanticEntity,
-    SemanticObject,
     SemanticInstance,
     SemanticLiteral,
-    SemanticProperty,
+    SemanticModel,
+    SemanticObject,
     SemanticPredicate,
+    SemanticProperty,
     SemanticType,
     get_short_name,
     parse_wrapper,

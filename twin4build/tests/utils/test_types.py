@@ -5,10 +5,10 @@ import unittest
 import torch
 
 # Local application imports
-from twin4build.utils.types import Parameter, Scalar, Vector
-
 # Set test flag
 import twin4build
+from twin4build.utils.types import Parameter, Scalar, Vector
+
 twin4build._IS_TESTING = True
 
 
@@ -24,7 +24,7 @@ class TestScalar(unittest.TestCase):
         s = Scalar(tensor=5.0)
         self.assertIsNone(s.tensor)  # Not created until initialize()
         self.assertEqual(s.init_value, 5.0)  # Stored for use in initialize()
-        
+
         # After initialize(), tensor is created and init_value is broadcast
         s.initialize(n_t=5, n_s=1, n_c=1)
         self.assertEqual(s.tensor[0, 0].item(), 5.0)
@@ -93,7 +93,9 @@ class TestScalar(unittest.TestCase):
         s.initialize(n_t=10, n_s=2, n_c=3)
 
         # Set batched values - shape (n_s, n_c) = (2, 3)
-        batched_value = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float64)
+        batched_value = torch.tensor(
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float64
+        )
         s.set(batched_value, i_t=0)
 
         result = s.get()
@@ -111,7 +113,9 @@ class TestScalar(unittest.TestCase):
 
         val = 3
         val_normalized = s.normalize(val)
-        self.assertAlmostEqual(val_normalized.reshape(-1)[0].item(), (val - 0) / (4 - 0), places=5)
+        self.assertAlmostEqual(
+            val_normalized.reshape(-1)[0].item(), (val - 0) / (4 - 0), places=5
+        )
 
         val_denormalized = s.denormalize(val_normalized)
         self.assertAlmostEqual(val_denormalized.reshape(-1)[0].item(), val, places=5)
@@ -158,7 +162,7 @@ class TestVector(unittest.TestCase):
         # Set multiple values to build history
         # History shape: (n_t, n_s, n_c, n_v) = (5, 1, 1, 2) - time-first layout
         for i in range(5):
-            val = torch.tensor([[[float(i*2+1), float(i*2+2)]]])
+            val = torch.tensor([[[float(i * 2 + 1), float(i * 2 + 2)]]])
             v.set(val, i_t=i)
 
         # Check history
@@ -176,7 +180,12 @@ class TestVector(unittest.TestCase):
 
         # Set batched values - shape (n_s, n_c, n_v) = (4, 1, 3)
         batched_value = torch.tensor(
-            [[[1.0, 2.0, 3.0]], [[4.0, 5.0, 6.0]], [[7.0, 8.0, 9.0]], [[10.0, 11.0, 12.0]]],
+            [
+                [[1.0, 2.0, 3.0]],
+                [[4.0, 5.0, 6.0]],
+                [[7.0, 8.0, 9.0]],
+                [[10.0, 11.0, 12.0]],
+            ],
             dtype=torch.float64,
         )
         v.set(batched_value, i_t=0)
@@ -194,8 +203,10 @@ class TestVector(unittest.TestCase):
 
         # Set batched values - shape (n_s, n_c, n_v) = (2, 3, 2)
         batched_value = torch.tensor(
-            [[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], 
-             [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]]],
+            [
+                [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
+            ],
             dtype=torch.float64,
         )
         v.set(batched_value, i_t=0)
@@ -398,6 +409,7 @@ class TestTensorParameter(unittest.TestCase):
 
     def test_tensor_parameter_n_c(self):
         """Test TensorParameter with n_c dimension."""
+        # Local application imports
         from twin4build.utils.types import TensorParameter
 
         tp = TensorParameter(

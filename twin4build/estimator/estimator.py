@@ -17,7 +17,7 @@ import torch.multiprocessing as multiprocessing
 import torch.nn as nn
 from fmpy.fmi1 import FMICallException
 from scipy._lib._array_api import array_namespace
-from scipy.optimize import Bounds, dual_annealing, basinhopping, least_squares, minimize
+from scipy.optimize import Bounds, basinhopping, dual_annealing, least_squares, minimize
 
 # Local application imports
 import twin4build.core as core
@@ -682,8 +682,9 @@ class Estimator:
             df = measuring_device.get_physical_readings(start_time, end_time, step_size)
             self.actual_readings[measuring_device.id] = df  # list of
 
-
-        measuring_devices = [measuring_device for measuring_device, sd in self._measurements]
+        measuring_devices = [
+            measuring_device for measuring_device, sd in self._measurements
+        ]
         self.simulator.model.set_save_simulation_result(flag=False)
         self.simulator.model.set_save_simulation_result(flag=True, c=measuring_devices)
 
@@ -770,7 +771,9 @@ class Estimator:
             print(f"  {phase_label}: λ = {lam}")
             print(f"{'='*60}")
 
-            result = self._scipy_solver(method=method, n_cores=n_cores, **merged_options)
+            result = self._scipy_solver(
+                method=method, n_cores=n_cores, **merged_options
+            )
 
             # Warm-start next phase: set x0 to the normalised solution
             self._x0_norm = self._last_x_norm.copy()
@@ -1059,40 +1062,52 @@ class Estimator:
         # theta is flat: [p0_v0, p0_v1, ..., p0_vn_c0, p1_v0, ..., p1_vn_c1, ...]
         # _theta_slices[i] = (start, end) for unique parameter i
         # _theta_mask[j] = which unique parameter index flat_parameter[j] maps to
-        
+
         self._unique_param_n_c = []  # n_c for each unique parameter
         self._theta_slices = []  # (start, end) for each unique param in theta
         theta_offset = 0
-        
+
         # Process private parameters (each is unique)
         private_x0_flat = []
         private_lb_flat = []
         private_ub_flat = []
-        
+
         for i, (component, attr, x0, lb, ub) in enumerate(private_params):
             param = rgetattr(component, attr)
-            n_c = param.n_c if hasattr(param, 'n_c') else 1
+            n_c = param.n_c if hasattr(param, "n_c") else 1
             self._unique_param_n_c.append(n_c)
             self._theta_slices.append((theta_offset, theta_offset + n_c))
             theta_offset += n_c
-            
+
             # Flatten x0, lb, ub for this parameter
             if isinstance(x0, (list, np.ndarray, torch.Tensor)):
-                x0_vals = np.array(x0).flatten() if not isinstance(x0, torch.Tensor) else x0.detach().numpy().flatten()
+                x0_vals = (
+                    np.array(x0).flatten()
+                    if not isinstance(x0, torch.Tensor)
+                    else x0.detach().numpy().flatten()
+                )
             else:
                 x0_vals = np.full(n_c, x0)
-            
+
             lb_val = lb if lb is not None else -np.inf
             ub_val = ub if ub is not None else np.inf
             if isinstance(lb_val, (list, np.ndarray, torch.Tensor)):
-                lb_vals = np.array(lb_val).flatten() if not isinstance(lb_val, torch.Tensor) else lb_val.detach().numpy().flatten()
+                lb_vals = (
+                    np.array(lb_val).flatten()
+                    if not isinstance(lb_val, torch.Tensor)
+                    else lb_val.detach().numpy().flatten()
+                )
             else:
                 lb_vals = np.full(n_c, lb_val)
             if isinstance(ub_val, (list, np.ndarray, torch.Tensor)):
-                ub_vals = np.array(ub_val).flatten() if not isinstance(ub_val, torch.Tensor) else ub_val.detach().numpy().flatten()
+                ub_vals = (
+                    np.array(ub_val).flatten()
+                    if not isinstance(ub_val, torch.Tensor)
+                    else ub_val.detach().numpy().flatten()
+                )
             else:
                 ub_vals = np.full(n_c, ub_val)
-            
+
             private_x0_flat.extend(x0_vals)
             private_lb_flat.extend(lb_vals)
             private_ub_flat.extend(ub_vals)
@@ -1102,40 +1117,64 @@ class Estimator:
         shared_lb_flat = []
         shared_ub_flat = []
         n_private_unique = len(private_params)
-        
+
         for components, attr, x0, lb, ub in shared_params:
             # Get n_c from first component (all shared components should have same n_c)
             param = rgetattr(components[0], attr)
-            n_c = param.n_c if hasattr(param, 'n_c') else 1
+            n_c = param.n_c if hasattr(param, "n_c") else 1
             self._unique_param_n_c.append(n_c)
             self._theta_slices.append((theta_offset, theta_offset + n_c))
             theta_offset += n_c
-            
+
             # Flatten x0, lb, ub for this shared parameter
             if isinstance(x0, (list, np.ndarray, torch.Tensor)):
-                x0_vals = np.array(x0).flatten() if not isinstance(x0, torch.Tensor) else x0.detach().numpy().flatten()
+                x0_vals = (
+                    np.array(x0).flatten()
+                    if not isinstance(x0, torch.Tensor)
+                    else x0.detach().numpy().flatten()
+                )
             else:
                 x0_vals = np.full(n_c, x0)
-            
+
             lb_val = lb if lb is not None else -np.inf
             ub_val = ub if ub is not None else np.inf
             if isinstance(lb_val, (list, np.ndarray, torch.Tensor)):
-                lb_vals = np.array(lb_val).flatten() if not isinstance(lb_val, torch.Tensor) else lb_val.detach().numpy().flatten()
+                lb_vals = (
+                    np.array(lb_val).flatten()
+                    if not isinstance(lb_val, torch.Tensor)
+                    else lb_val.detach().numpy().flatten()
+                )
             else:
                 lb_vals = np.full(n_c, lb_val)
             if isinstance(ub_val, (list, np.ndarray, torch.Tensor)):
-                ub_vals = np.array(ub_val).flatten() if not isinstance(ub_val, torch.Tensor) else ub_val.detach().numpy().flatten()
+                ub_vals = (
+                    np.array(ub_val).flatten()
+                    if not isinstance(ub_val, torch.Tensor)
+                    else ub_val.detach().numpy().flatten()
+                )
             else:
                 ub_vals = np.full(n_c, ub_val)
-            
+
             shared_x0_flat.extend(x0_vals)
             shared_lb_flat.extend(lb_vals)
             shared_ub_flat.extend(ub_vals)
 
         # Combine flattened values
-        self._x0 = np.array(private_x0_flat + shared_x0_flat) if (private_x0_flat or shared_x0_flat) else np.array([])
-        self._lb = np.array(private_lb_flat + shared_lb_flat) if (private_lb_flat or shared_lb_flat) else np.array([])
-        self._ub = np.array(private_ub_flat + shared_ub_flat) if (private_ub_flat or shared_ub_flat) else np.array([])
+        self._x0 = (
+            np.array(private_x0_flat + shared_x0_flat)
+            if (private_x0_flat or shared_x0_flat)
+            else np.array([])
+        )
+        self._lb = (
+            np.array(private_lb_flat + shared_lb_flat)
+            if (private_lb_flat or shared_lb_flat)
+            else np.array([])
+        )
+        self._ub = (
+            np.array(private_ub_flat + shared_ub_flat)
+            if (private_ub_flat or shared_ub_flat)
+            else np.array([])
+        )
 
         # Create theta_mask: maps flat_parameters index -> unique parameter index
         # Private parameters: one-to-one mapping (indices 0, 1, 2, ...)
@@ -1154,10 +1193,10 @@ class Estimator:
     def _theta_to_param_values(self, theta: np.ndarray) -> List[np.ndarray]:
         """
         Convert flat theta array to list of parameter values.
-        
+
         Args:
             theta: Flat array of all parameter values
-            
+
         Returns:
             List of arrays, one per flat_parameter, with values from theta
             (shared parameters get the same values)
@@ -1171,12 +1210,12 @@ class Estimator:
     def _param_values_to_theta(self, values: List[np.ndarray]) -> np.ndarray:
         """
         Convert list of parameter values to flat theta array.
-        
+
         Only uses the first occurrence of each unique parameter (for shared params).
-        
+
         Args:
             values: List of parameter value arrays
-            
+
         Returns:
             Flat theta array
         """
@@ -1637,7 +1676,9 @@ class Estimator:
         x0_values = self._theta_to_param_values(self._x0)
 
         # Enable gradients for parameters to be estimated
-        for i, (component, attr) in enumerate(zip(self._flat_components, self._parameter_names)):
+        for i, (component, attr) in enumerate(
+            zip(self._flat_components, self._parameter_names)
+        ):
             assert isinstance(
                 component, nn.Module
             ), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
@@ -1656,26 +1697,34 @@ class Estimator:
 
             param.min_value = lb
             param.max_value = ub
-        
+
         # Normalize each parameter's values
         lb_norm_list = []
         ub_norm_list = []
         x0_norm_list = []
-        
+
         seen_unique = set()
-        for i, (param, param_idx) in enumerate(zip(self._flat_parameters, self._theta_mask)):
+        for i, (param, param_idx) in enumerate(
+            zip(self._flat_parameters, self._theta_mask)
+        ):
             if param_idx not in seen_unique:
                 # Normalize the values for this unique parameter
-                lb_norm = param.normalize(torch.tensor(lb_values[i], dtype=torch.float64))
-                ub_norm = param.normalize(torch.tensor(ub_values[i], dtype=torch.float64))
-                x0_norm = param.normalize(torch.tensor(x0_values[i], dtype=torch.float64))
-                
+                lb_norm = param.normalize(
+                    torch.tensor(lb_values[i], dtype=torch.float64)
+                )
+                ub_norm = param.normalize(
+                    torch.tensor(ub_values[i], dtype=torch.float64)
+                )
+                x0_norm = param.normalize(
+                    torch.tensor(x0_values[i], dtype=torch.float64)
+                )
+
                 # Convert to numpy and flatten
                 lb_norm_list.extend(lb_norm.detach().numpy().flatten())
                 ub_norm_list.extend(ub_norm.detach().numpy().flatten())
                 x0_norm_list.extend(x0_norm.detach().numpy().flatten())
                 seen_unique.add(param_idx)
-        
+
         self._lb_norm = np.array(lb_norm_list)
         self._ub_norm = np.array(ub_norm_list)
         self._x0_norm = np.array(x0_norm_list)
@@ -1725,9 +1774,6 @@ class Estimator:
                 component, nn.Module
             ), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
 
-
-        
-
         assert len(self._flat_parameters) > 0, "No parameters to optimize"
 
         # Initialize simulator
@@ -1736,8 +1782,6 @@ class Estimator:
             end_time=self._end_time,
             step_size=self._stepSize,
         )
-
-
 
         # Set initial parameters - convert flat theta to per-parameter values NOTE: moved to herefrom before assert len...
         x0_param_values = self._theta_to_param_values(self._x0_norm)
@@ -1831,8 +1875,14 @@ class Estimator:
 
             # Separate dual_annealing kwargs from local minimizer options
             da_keys = {
-                "maxiter", "initial_temp", "restart_temp_ratio",
-                "visit", "accept", "maxfun", "seed", "no_local_search",
+                "maxiter",
+                "initial_temp",
+                "restart_temp_ratio",
+                "visit",
+                "accept",
+                "maxfun",
+                "seed",
+                "no_local_search",
                 "callback",
             }
             da_kwargs = {k: v for k, v in options.items() if k in da_keys}
@@ -1865,8 +1915,13 @@ class Estimator:
 
             # Separate basinhopping kwargs from local minimizer options
             bh_keys = {
-                "niter", "T", "stepsize", "seed",
-                "niter_success", "target_accept_rate", "stepwise_factor",
+                "niter",
+                "T",
+                "stepsize",
+                "seed",
+                "niter_success",
+                "target_accept_rate",
+                "stepwise_factor",
                 "callback",
             }
             bh_kwargs = {k: v for k, v in options.items() if k in bh_keys}
@@ -1904,6 +1959,7 @@ class Estimator:
 
             class _BoundedStep:
                 """Uniform perturbation clipped to parameter bounds."""
+
                 def __init__(self, stepsize, lb, ub, rng):
                     self.stepsize = stepsize
                     self.lb = lb
@@ -1979,7 +2035,9 @@ class Estimator:
         # result.x is flat array of all unique parameter values
         result_x_list = []
         seen_unique = set()
-        for i, (param, param_idx) in enumerate(zip(self._flat_parameters, self._theta_mask)):
+        for i, (param, param_idx) in enumerate(
+            zip(self._flat_parameters, self._theta_mask)
+        ):
             if param_idx not in seen_unique:
                 start, end = self._theta_slices[param_idx]
                 x_norm = torch.tensor(result.x[start:end], dtype=torch.float64)
@@ -1988,7 +2046,6 @@ class Estimator:
                 seen_unique.add(param_idx)
         result_x = np.array(result_x_list)
 
-        
         # Create and save result
         result = EstimationResult(
             result_x=result_x,
@@ -2041,7 +2098,7 @@ class Estimator:
         """
         # Convert flat theta to per-parameter values
         param_values = self._theta_to_param_values(theta)
-        
+
         # Set parameters - pass list of arrays (one per flat_parameter)
         self.simulator.model.set_parameters(
             param_values,
@@ -2128,7 +2185,7 @@ class Estimator:
             # Store diagnostics: raw MSE (in measurement units) and RMSE
             raw_mse = torch.mean(res_raw.flatten() ** 2).detach().item()
             self._last_mse = raw_mse
-            self._last_rmse = raw_mse ** 0.5
+            self._last_rmse = raw_mse**0.5
 
             # Add binarization penalty if regularization is enabled
             if self._regularization_lambda > 0:
@@ -2137,7 +2194,7 @@ class Estimator:
                 self._loglike = self._loglike + self._regularization_lambda * penalty
             else:
                 self._last_penalty = 0.0
-                
+
         elif output == "vector":
             res_flat = res.flatten()
             if self._mse_scaled is None:
@@ -2164,21 +2221,21 @@ class Estimator:
             Total binarization penalty summed across all regularization components.
         """
         penalty = torch.tensor(0.0, dtype=torch.float64)
-        
+
         # If no specific components provided, auto-detect from parameter components
         if self._regularization_components is None:
             components_to_check = set()
             for comp in self._flat_components:
-                if hasattr(comp, 'compute_binarization_penalty'):
+                if hasattr(comp, "compute_binarization_penalty"):
                     components_to_check.add(comp)
         else:
             components_to_check = self._regularization_components
-        
+
         # Sum penalties from all components
         for comp in components_to_check:
-            if hasattr(comp, 'compute_binarization_penalty'):
+            if hasattr(comp, "compute_binarization_penalty"):
                 penalty = penalty + comp.compute_binarization_penalty()
-        
+
         return penalty
 
     def _obj_ad(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:

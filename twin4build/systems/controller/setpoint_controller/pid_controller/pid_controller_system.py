@@ -21,9 +21,9 @@ from twin4build.translator.translator import (
 try:
     # Check if profile is defined in builtins (injected by kernprof)
     if isinstance(__builtins__, dict):
-        profile = __builtins__.get('profile')
+        profile = __builtins__.get("profile")
     else:
-        profile = getattr(__builtins__, 'profile', None)
+        profile = getattr(__builtins__, "profile", None)
     if profile is None:
         raise AttributeError
 except (KeyError, AttributeError, TypeError):
@@ -99,7 +99,9 @@ class PIDControllerSystem(core.System, nn.Module):
 
         self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar(0)}
-        self._config = {"parameters": ["kp", "Ti", "Td", "output_min", "output_max", "isReverse"]}
+        self._config = {
+            "parameters": ["kp", "Ti", "Td", "output_min", "output_max", "isReverse"]
+        }
 
     @property
     def config(self):
@@ -135,14 +137,22 @@ class PIDControllerSystem(core.System, nn.Module):
         self.output_min = self.output_min.expand_to_n_c(self.n_c)
         self.output_max = self.output_max.expand_to_n_c(self.n_c)
 
-        self.err_prev = torch.zeros((batch_size, 1), dtype=torch.float64, requires_grad=False)
-        self.err_prev_m1 = torch.zeros((batch_size, 1), dtype=torch.float64, requires_grad=False)
-        self.u_prev = torch.zeros((batch_size, 1), dtype=torch.float64, requires_grad=False)
-        
+        self.err_prev = torch.zeros(
+            (batch_size, 1), dtype=torch.float64, requires_grad=False
+        )
+        self.err_prev_m1 = torch.zeros(
+            (batch_size, 1), dtype=torch.float64, requires_grad=False
+        )
+        self.u_prev = torch.zeros(
+            (batch_size, 1), dtype=torch.float64, requires_grad=False
+        )
+
         # Cache step_size as tensor to avoid creating it every step
         # step_size may be a list with one value per batch element, so unsqueeze(1) gives shape (batch, 1)
-        self._step_size_tensor = torch.tensor(step_size, dtype=torch.float64, requires_grad=False).unsqueeze(1)
-        
+        self._step_size_tensor = torch.tensor(
+            step_size, dtype=torch.float64, requires_grad=False
+        ).unsqueeze(1)
+
         # Cache for PID coefficients (recomputed when parameters change)
         self._cached_coeffs = None
         self._cached_kp = None
@@ -151,20 +161,31 @@ class PIDControllerSystem(core.System, nn.Module):
 
     @staticmethod
     def asymptotic_smooth_saturation(
-        u, lower=0.0, upper=1.0, eps=0, curve_start=0.1, steepness=1,
-        curve_type='power', power_exp=0.5
+        u,
+        lower=0.0,
+        upper=1.0,
+        eps=0,
+        curve_start=0.1,
+        steepness=1,
+        curve_type="power",
+        power_exp=0.5,
     ):
         """Delegate to :func:`smooth_saturation` (kept for backward compat)."""
         return smooth_saturation(
-            u, lower=lower, upper=upper, eps=eps, curve_start=curve_start,
-            steepness=steepness, curve_type=curve_type, power_exp=power_exp,
+            u,
+            lower=lower,
+            upper=upper,
+            eps=eps,
+            curve_start=curve_start,
+            steepness=steepness,
+            curve_type=curve_type,
+            power_exp=power_exp,
         )
-
 
     def _compute_pid_coefficients(self, kp, Ti, Td, step_size):
         """
         Pre-compute PID coefficients to reduce per-step tensor operations.
-        
+
         The incremental PID formula is:
             du = kp * (c0 * err + c1 * err_prev + c2 * err_prev_m1)
         where:
@@ -174,8 +195,8 @@ class PIDControllerSystem(core.System, nn.Module):
         """
         Td_over_step = Td / step_size
         c0 = kp * (1 + step_size / Ti + Td_over_step)  # coefficient for err
-        c1 = kp * (-1 - 2 * Td_over_step)               # coefficient for err_prev
-        c2 = kp * Td_over_step                          # coefficient for err_prev_m1
+        c1 = kp * (-1 - 2 * Td_over_step)  # coefficient for err_prev
+        c2 = kp * Td_over_step  # coefficient for err_prev_m1
         return c0, c1, c2
 
     def do_step(
@@ -189,33 +210,34 @@ class PIDControllerSystem(core.System, nn.Module):
         kp = self.kp.get()
         Ti = self.Ti.get()
         Td = self.Td.get()
-        
+
         # Recompute coefficients only if parameters changed (common during estimation)
         # Using 'is not' for tensor identity check - fast when unchanged
         params_changed = (
-            self._cached_coeffs is None or
-            self._cached_kp is not kp or
-            self._cached_Ti is not Ti or
-            self._cached_Td is not Td
+            self._cached_coeffs is None
+            or self._cached_kp is not kp
+            or self._cached_Ti is not Ti
+            or self._cached_Td is not Td
         )
-        
+
         if params_changed:
-            self._cached_coeffs = self._compute_pid_coefficients(kp, Ti, Td, self._step_size_tensor)
+            self._cached_coeffs = self._compute_pid_coefficients(
+                kp, Ti, Td, self._step_size_tensor
+            )
             self._cached_kp = kp
             self._cached_Ti = Ti
             self._cached_Td = Td
-        
+
         c0, c1, c2 = self._cached_coeffs
-        
+
         # Compute error
         err = self.input["setpointValue"].get() - self.input["actualValue"].get()
         if self.isReverse == False:
             err = -err
-        
+
         # Compute control increment using pre-computed coefficients
         # This reduces multiple tensor operations to just 3 multiplications + 2 additions
         du = c0 * err + c1 * self.err_prev + c2 * self.err_prev_m1
-
 
         u = self.u_prev + du
         # print("DEBUG: u before saturation: ", u)
@@ -223,12 +245,11 @@ class PIDControllerSystem(core.System, nn.Module):
             u,
             lower=self.output_min.get(),
             upper=self.output_max.get(),
-            curve_start=0.05
+            curve_start=0.05,
         )
 
         # if date_time[0].hour<5 or (date_time[0].hour==5 and date_time[0].minute==0) or date_time[0].hour>17:
         #     u = u*0
-
 
         # print("DEBUG: u after saturation: ", u)
         self.u_prev = u

@@ -754,14 +754,24 @@ class SensorSystem(core.System):
         validated_for_estimator = True
         validated_for_optimizer = True
 
-        if len(self.connects_at) == 0 and self.filename is None and self.df is None and self.uuid is None:
+        if (
+            len(self.connects_at) == 0
+            and self.filename is None
+            and self.df is None
+            and self.uuid is None
+        ):
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df or uuid must be provided to enable use of Simulator, Estimator, and Optimizer."
             p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False
 
-        elif len(self.connects_at) > 0 and self.filename is None and self.df is None and self.uuid is None:
+        elif (
+            len(self.connects_at) > 0
+            and self.filename is None
+            and self.df is None
+            and self.uuid is None
+        ):
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df or uuid must be provided to enable use of Estimator."
             p(message, status="WARNING")
             validated_for_estimator = False

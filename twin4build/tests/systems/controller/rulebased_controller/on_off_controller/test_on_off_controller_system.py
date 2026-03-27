@@ -3,16 +3,16 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_system import (
     OnOffControllerSystem,
 )
 
-# Set test flag
-import twin4build
 twin4build._IS_TESTING = True
 
 
@@ -61,21 +61,15 @@ class TestOnOffControllerSystem(unittest.TestCase):
         start_time = [
             datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         ] * batch_size
-        end_time = [
-            datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)
-        ] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)] * batch_size
         step_size = [600] * batch_size
         controller_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
 
         # Set inputs with batch size 2
-        controller_batch.input["actualValue"].set(
-            torch.tensor([20.0, 23.0]), i_t=0
-        )
-        controller_batch.input["setpointValue"].set(
-            torch.tensor([22.0, 22.0]), i_t=0
-        )
+        controller_batch.input["actualValue"].set(torch.tensor([20.0, 23.0]), i_t=0)
+        controller_batch.input["setpointValue"].set(torch.tensor([22.0, 22.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)

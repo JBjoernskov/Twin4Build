@@ -3,14 +3,14 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
-from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
-
 # Set test flag
 import twin4build
+from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
+
 twin4build._IS_TESTING = True
 
 
@@ -34,9 +34,7 @@ class TestCoilTorchSystem(unittest.TestCase):
 
         # Set inputs
         self.coil.input["inletAirTemperature"].set(torch.tensor([20.0]), i_t=0)
-        self.coil.input["outletAirTemperatureSetpoint"].set(
-            torch.tensor([22.0]), i_t=0
-        )
+        self.coil.input["outletAirTemperatureSetpoint"].set(torch.tensor([22.0]), i_t=0)
         self.coil.input["airFlowRate"].set(torch.tensor([1.0]), i_t=0)
 
         # Execute a time step
@@ -69,9 +67,7 @@ class TestCoilTorchSystem(unittest.TestCase):
         )
 
         # Set inputs with batch size 2
-        coil_batch.input["inletAirTemperature"].set(
-            torch.tensor([20.0, 25.0]), i_t=0
-        )
+        coil_batch.input["inletAirTemperature"].set(torch.tensor([20.0, 25.0]), i_t=0)
         coil_batch.input["outletAirTemperatureSetpoint"].set(
             torch.tensor([22.0, 23.0]), i_t=0
         )

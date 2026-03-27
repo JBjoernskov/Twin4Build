@@ -677,9 +677,11 @@ def plot(
             kwargs_copy = kwargs.copy()
             color = kwargs.get("color", next(colors[i]))
             kwargs_copy["color"] = color
-            kwargs_copy["label"] = kwargs["label"] if n_s == 1 else kwargs["label"] + f" [{i}]"
+            kwargs_copy["label"] = (
+                kwargs["label"] if n_s == 1 else kwargs["label"] + f" [{i}]"
+            )
             t_i, d = filter_nans(time[i], data[i, :])
-            line, = target_ax.plot(t_i, d, fmt, **kwargs_copy)
+            (line,) = target_ax.plot(t_i, d, fmt, **kwargs_copy)
             legend_lines.append(line)
             legend_labels.append(kwargs_copy["label"])
 
@@ -735,7 +737,9 @@ def plot(
     for ax in axes:
         locator = mdates.AutoDateLocator()
         ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(mdates.AutoDateFormatter(locator, tz=time[0][0].tzinfo))
+        ax.xaxis.set_major_formatter(
+            mdates.AutoDateFormatter(locator, tz=time[0][0].tzinfo)
+        )
 
     # Save and show plot
     # component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]

@@ -7,6 +7,8 @@ import unittest
 from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
@@ -14,8 +16,6 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.uppath import uppath
 from twin4build.utils.validate_period import validate_period
 
-# Set test flag
-import twin4build
 twin4build._IS_TESTING = True
 
 
@@ -1269,7 +1269,6 @@ class TestGetMainDir(unittest.TestCase):
         self.assertTrue(os.path.isdir(main_dir))
 
 
-
 class TestPrintProgress(unittest.TestCase):
     def test_print_progress_initialization(self):
         """Test PrintProgress initialization."""
@@ -1531,7 +1530,9 @@ class TestPrintEstimationResult(unittest.TestCase):
         from twin4build.utils.print_estimation_result import print_estimation_result
 
         # Create a temporary pickle file
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=".pickle", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", suffix=".pickle", delete=False
+        ) as f:
             pickle.dump(self.result_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
             temp_file = f.name
 

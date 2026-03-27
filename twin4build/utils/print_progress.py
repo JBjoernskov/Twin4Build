@@ -17,6 +17,7 @@ from dateutil import tz
 try:
     # Standard library imports
     import curses
+
     CURSES_AVAILABLE = True
 except ImportError:
     CURSES_AVAILABLE = False
@@ -117,15 +118,15 @@ class Logger:
         self.VERT = "|"
         self.HOR = "_" * 3
         self.SPACE = " " * 3
-        
+
         # Color pair indices (used by curses)
         self.COLOR_PAIR_LEVEL_CYCLE = [8, 4]  # Alternating colors for tree levels
-        self.OK_COLOR_PAIR = 3       # Green
-        self.ERROR_COLOR_PAIR = 5    # Red
+        self.OK_COLOR_PAIR = 3  # Green
+        self.ERROR_COLOR_PAIR = 5  # Red
         self.WARNING_COLOR_PAIR = 7  # Yellow
-        self.INFO_COLOR_PAIR = 2     # Blue
-        self.LOCATION_COLOR_PAIR = 6 # Cyan/Magenta for file:line locations
-        
+        self.INFO_COLOR_PAIR = 2  # Blue
+        self.LOCATION_COLOR_PAIR = 6  # Cyan/Magenta for file:line locations
+
         # Single source of truth: map color pair index to ANSI code
         # This is used for both curses-to-ANSI conversion and direct ANSI output
         self.COLOR_PAIR_TO_ANSI = {
@@ -137,7 +138,7 @@ class Logger:
             7: "33",  # Yellow
             8: "37",  # White
         }
-        
+
         self._enabled = True
         # Allow explicit opt-in to progress output while tests run
         self._allow_in_tests = False
@@ -151,7 +152,7 @@ class Logger:
             "ok": True,
             "success": True,
             "info": True,
-            "default": True
+            "default": True,
         }  # True = show, False = hide
 
         # Caller filtering
@@ -176,17 +177,19 @@ class Logger:
     @property
     def enabled(self):
         # Optimized: avoid repeated imports by caching module reference
-        if not hasattr(self, '_twin4build_module'):
+        if not hasattr(self, "_twin4build_module"):
             try:
+                # Local application imports
                 import twin4build
+
                 self._twin4build_module = twin4build
             except ImportError:
                 self._twin4build_module = None
                 return False
-        
+
         if self._twin4build_module is None:
             return False
-            
+
         if not self._twin4build_module._IMPORT_COMPLETE:
             return False
         if self._twin4build_module._IS_TESTING and not self.allow_in_tests:
@@ -202,11 +205,11 @@ class Logger:
 
     def enable_threading(self):
         """Enable background threading for scrolling (curses mode only).
-        
+
         When enabled, a background thread handles input and display updates,
         allowing smooth scrolling and interactive features in curses mode.
         This is the default behavior.
-        
+
         Example:
             LOGGER.enable_threading()  # Enable smooth scrolling
         """
@@ -214,12 +217,12 @@ class Logger:
 
     def disable_threading(self):
         """Disable background threading - will still use curses but without scrolling.
-        
+
         When disabled, the display updates synchronously without a background thread.
         This can be useful for debugging, reducing resource usage, or avoiding
         threading-related issues. Scrolling and pause features will still work
         but will only update when new messages are logged.
-        
+
         Example:
             LOGGER.disable_threading()  # Disable background thread
         """
@@ -351,7 +354,6 @@ class Logger:
         elif self._caller_filter_mode == "blacklist":
             self._caller_filters.discard(caller_name)
 
-
     def _get_caller_function_name(self):
         """Get the name of the function that called LOGGER"""
         frame = inspect.currentframe()
@@ -361,7 +363,13 @@ class Logger:
         while frame is not None:
             func_name = frame.f_code.co_name
             # Skip internal methods and the __call__ method itself
-            if func_name not in ['__call__', '_get_caller_function_name', '_should_filter_message', 'wait_if_paused', 'wrapper']:
+            if func_name not in [
+                "__call__",
+                "_get_caller_function_name",
+                "_should_filter_message",
+                "wait_if_paused",
+                "wrapper",
+            ]:
                 return func_name
             frame = frame.f_back
         return None
@@ -377,7 +385,14 @@ class Logger:
         while frame is not None:
             func_name = frame.f_code.co_name
             # Skip internal methods
-            if func_name not in ['__call__', '_get_caller_function_name', '_should_filter_message', '_is_caller_in_stack', 'wait_if_paused', 'wrapper']:
+            if func_name not in [
+                "__call__",
+                "_get_caller_function_name",
+                "_should_filter_message",
+                "_is_caller_in_stack",
+                "wait_if_paused",
+                "wrapper",
+            ]:
                 if func_name in caller_set:
                     return True
             frame = frame.f_back
@@ -386,7 +401,7 @@ class Logger:
 
     def _should_filter_message(self, caller_name=None):
         """Check if a message should be filtered out based on caller filters.
-        
+
         Note: Status filtering is handled by the public methods (debug, info, etc.)
         before calling __call__, so we don't need to parse status strings here.
         """
@@ -417,10 +432,10 @@ class Logger:
         """
         Wait if execution is paused. Call this in your main execution loop
         to respect pause state from curses display.
-        
+
         Args:
             timeout: Maximum time to wait in seconds. None means wait indefinitely.
-        
+
         Returns:
             True if resumed normally, False if timeout occurred
         """
@@ -458,7 +473,7 @@ class Logger:
 
     def _get_logfile_path(self):
         """Get the logfile path without opening the file.
-        
+
         Returns the path string if output should go to a file, None for stdout.
         """
         if self.logfile is not None:
@@ -504,17 +519,17 @@ class Logger:
 
     # ANSI escape codes
     ANSI_RESET = "\033[0m"
-    
+
     def _get_ansi_color(self, color_pair_idx):
         """Get ANSI escape sequence for a color pair index"""
         ansi_code = self.COLOR_PAIR_TO_ANSI.get(color_pair_idx)
         if ansi_code:
             return f"\033[{ansi_code}m"
         return ""
-    
+
     def _get_status_color_pair(self, status):
         """Get the color pair index for a status string.
-        
+
         This is the single source of truth for status -> color mapping.
         """
         status_lower = status.lower()
@@ -553,7 +568,7 @@ class Logger:
 
     def _update_lines(self):
         """Update the canonical _curses_lines data structure from current state.
-        
+
         This is the single source of truth for all output modes
         (curses display, file, stdout).
         """
@@ -597,7 +612,9 @@ class Logger:
             lines = []
             for indent, message, status, level, location in self._curses_lines:
                 _status = "..." + status if status != "" else ""
-                display_message = self._format_message(message, location, use_ansi_colors=False)
+                display_message = self._format_message(
+                    message, location, use_ansi_colors=False
+                )
                 lines.append(indent + display_message + _status)
             content = "\n".join(lines)
             if lines:
@@ -622,7 +639,9 @@ class Logger:
             self.n_printed = 0
             for indent, message, status, level, location in self._curses_lines:
                 _status = "..." + status if status != "" else ""
-                display_message = self._format_message(message, location, use_ansi_colors=use_ansi)
+                display_message = self._format_message(
+                    message, location, use_ansi_colors=use_ansi
+                )
                 s = indent + display_message + _status
                 print(s, flush=True)
                 self.n_printed += 1
@@ -638,7 +657,7 @@ class Logger:
             return False
 
         # print("DEBUG: Starting curses initialization", file=sys.stderr)
-        
+
         # Optionally enter alternate screen buffer (like vim does)
         # This preserves the current terminal content and creates a separate "window"
         # When disabled, curses draws over the current terminal content
@@ -663,13 +682,13 @@ class Logger:
                 curses.use_default_colors()
             except Exception:
                 pass
-            
+
             # Set background to default/transparent (-1)
             try:
-                curses.assume_default_colors(-1, -1) # Available in python 3.14
+                curses.assume_default_colors(-1, -1)  # Available in python 3.14
             except Exception:
                 pass
-            
+
             max_pairs = min(curses.COLOR_PAIRS - 1, curses.COLORS)
             # print(f"DEBUG: Initializing {max_pairs} color pairs", file=sys.stderr)
             for i in range(0, max_pairs):
@@ -680,13 +699,15 @@ class Logger:
                     curses.init_pair(i + 1, i, 0)
 
         # Clear the screen to start fresh (with default background)
-        self._stdscr.bkgd(' ', curses.color_pair(0))
+        self._stdscr.bkgd(" ", curses.color_pair(0))
         self._stdscr.clear()
 
         # Start the display thread only if threading is enabled
         if self._use_threading:
             self._stop_thread.clear()
-            self._display_thread = threading.Thread(target=self._display_loop, daemon=True)
+            self._display_thread = threading.Thread(
+                target=self._display_loop, daemon=True
+            )
             self._display_thread.start()
 
         # Capture warnings so they are replayed after curses teardown
@@ -757,8 +778,9 @@ class Logger:
             # Forward to the original handler when not in curses, or when an explicit
             # target file is provided (e.g., logging to file).
             if (not self._curses_mode) or file is not None:
-                self._original_showwarning(message, category, filename, lineno, file, line)
-
+                self._original_showwarning(
+                    message, category, filename, lineno, file, line
+                )
 
         warnings.showwarning = _showwarning
         self._warning_handler_installed = True
@@ -842,7 +864,7 @@ class Logger:
 
     def _convert_curses_attr_to_ansi(self, color_pair, other_attrs=0):
         """Convert curses color pair and attributes to ANSI sequence.
-        
+
         This is the single source of truth for curses-to-ANSI conversion.
         """
         ansi_codes = []
@@ -903,7 +925,7 @@ class Logger:
                 for indent, message, status, level, location in self._curses_lines:
                     # Build the main text (indent + message, without location)
                     main_text = indent + message
-                    
+
                     # Build location text if present
                     location_text = f" ({location})" if location else ""
 
@@ -970,20 +992,16 @@ class Logger:
                     self._scroll_offset + self._scroll_step, max_scroll
                 )
             elif key == curses.KEY_DOWN:
-                self._scroll_offset = max(
-                    self._scroll_offset - self._scroll_step, 0
-                )
+                self._scroll_offset = max(self._scroll_offset - self._scroll_step, 0)
             elif key == curses.KEY_PPAGE:  # Page Up
-                self._scroll_offset = min(
-                    self._scroll_offset + max_lines, max_scroll
-                )
+                self._scroll_offset = min(self._scroll_offset + max_lines, max_scroll)
             elif key == curses.KEY_NPAGE:  # Page Down
                 self._scroll_offset = max(self._scroll_offset - max_lines, 0)
             elif key == curses.KEY_HOME:
                 self._scroll_offset = max_scroll
             elif key == curses.KEY_END:
                 self._scroll_offset = 0
-            elif key == ord('p') or key == ord('P'):  # Toggle pause
+            elif key == ord("p") or key == ord("P"):  # Toggle pause
                 self._paused = not self._paused
                 if self._paused:
                     self._pause_event.clear()  # Block execution
@@ -1031,7 +1049,7 @@ class Logger:
 
             # Build the main text (indent + message, without location)
             main_text = indent + message
-            
+
             # Build location text if present
             location_text = f" ({location})" if location else ""
 
@@ -1095,7 +1113,9 @@ class Logger:
         # Check added_level FIRST - if True, we have a pending level to remove
         # even though no visual lines exist yet (lazy creation)
         if self.added_level:
-            self._current_level_indent = self._current_level_indent - self.level_stack[-1]
+            self._current_level_indent = (
+                self._current_level_indent - self.level_stack[-1]
+            )
             self.level_stack.pop()
             self.removed_level = False
             self.added_level = False
@@ -1183,7 +1203,7 @@ class Logger:
         assert message is None or isinstance(
             message, str
         ), "Message must be a string or None"
-        
+
         # Wait if paused (blocks until resumed)
         self.wait_if_paused()
 
@@ -1226,11 +1246,13 @@ class Logger:
                 if self.added_level:
                     for _ in range(self.level_stack[-1]):
                         self._add_level()
-                
+
                 if location is None and self._show_location:
                     location = self._get_caller_location()
                 indent = self._get_indent()
-                self.add_line(indent=indent, message=message, status=status, location=location)
+                self.add_line(
+                    indent=indent, message=message, status=status, location=location
+                )
                 self.print_lines()
                 self.added_level = False
                 self.removed_level = False
@@ -1239,13 +1261,13 @@ class Logger:
 
     def is_enabled_for(self, status_type):
         """Check if a status type is enabled. Use this to avoid expensive string operations.
-        
+
         Args:
             status_type: One of "debug", "info", "warning", "error", "ok", "success", "default"
-            
+
         Returns:
             bool: True if messages of this type will be logged
-            
+
         Example:
             if LOGGER.is_enabled_for("debug"):
                 LOGGER.debug(f"Expensive calculation: {expensive_func()}")
@@ -1254,16 +1276,18 @@ class Logger:
             return False
         return self._status_filters.get(status_type.lower(), True)
 
-    def debug(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+    def debug(
+        self, message, *args, change_status=False, ignore_no_match=False, location=None
+    ):
         """Log a debug message. Filtered out if debug filter is disabled.
-        
+
         Args:
             message: Message string, format string (if args provided), or callable returning string or None
             *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
             change_status: Whether to change the status of an existing message
             ignore_no_match: Ignore if no matching message found for status change
             location: Optional caller location override
-            
+
         Examples:
             LOGGER.debug("Simple message")
             LOGGER.debug("Value: %s", expensive_func())  # expensive_func() only called if debug enabled
@@ -1286,12 +1310,19 @@ class Logger:
             # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
-        self(message, status="[DEBUG]", change_status=change_status, 
-             ignore_no_match=ignore_no_match, location=location)
+        self(
+            message,
+            status="[DEBUG]",
+            change_status=change_status,
+            ignore_no_match=ignore_no_match,
+            location=location,
+        )
 
-    def info(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+    def info(
+        self, message, *args, change_status=False, ignore_no_match=False, location=None
+    ):
         """Log an info message. Filtered out if info filter is disabled.
-        
+
         Args:
             message: Message string, format string (if args provided), or callable returning string or None
             *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
@@ -1312,12 +1343,19 @@ class Logger:
             # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
-        self(message, status="[INFO]", change_status=change_status, 
-             ignore_no_match=ignore_no_match, location=location)
+        self(
+            message,
+            status="[INFO]",
+            change_status=change_status,
+            ignore_no_match=ignore_no_match,
+            location=location,
+        )
 
-    def warning(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+    def warning(
+        self, message, *args, change_status=False, ignore_no_match=False, location=None
+    ):
         """Log a warning message. Filtered out if warning filter is disabled.
-        
+
         Args:
             message: Message string, format string (if args provided), or callable returning string or None
             *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
@@ -1338,12 +1376,19 @@ class Logger:
             # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
-        self(message, status="[WARNING]", change_status=change_status, 
-             ignore_no_match=ignore_no_match, location=location)
+        self(
+            message,
+            status="[WARNING]",
+            change_status=change_status,
+            ignore_no_match=ignore_no_match,
+            location=location,
+        )
 
-    def error(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+    def error(
+        self, message, *args, change_status=False, ignore_no_match=False, location=None
+    ):
         """Log an error message. Filtered out if error filter is disabled.
-        
+
         Args:
             message: Message string, format string (if args provided), or callable returning string or None
             *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
@@ -1364,12 +1409,19 @@ class Logger:
             # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
-        self(message, status="[ERROR]", change_status=change_status, 
-             ignore_no_match=ignore_no_match, location=location)
+        self(
+            message,
+            status="[ERROR]",
+            change_status=change_status,
+            ignore_no_match=ignore_no_match,
+            location=location,
+        )
 
-    def ok(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+    def ok(
+        self, message, *args, change_status=False, ignore_no_match=False, location=None
+    ):
         """Log an ok/success message. Filtered out if ok filter is disabled.
-        
+
         Args:
             message: Message string, format string (if args provided), or callable returning string or None
             *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
@@ -1390,12 +1442,19 @@ class Logger:
             # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
-        self(message, status="[OK]", change_status=change_status, 
-             ignore_no_match=ignore_no_match, location=location)
+        self(
+            message,
+            status="[OK]",
+            change_status=change_status,
+            ignore_no_match=ignore_no_match,
+            location=location,
+        )
 
-    def success(self, message, *args, change_status=False, ignore_no_match=False, location=None):
+    def success(
+        self, message, *args, change_status=False, ignore_no_match=False, location=None
+    ):
         """Log a success message. Filtered out if success filter is disabled.
-        
+
         Args:
             message: Message string, format string (if args provided), or callable returning string or None
             *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
@@ -1416,8 +1475,13 @@ class Logger:
             # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
-        self(message, status="[SUCCESS]", change_status=change_status, 
-             ignore_no_match=ignore_no_match, location=location)
+        self(
+            message,
+            status="[SUCCESS]",
+            change_status=change_status,
+            ignore_no_match=ignore_no_match,
+            location=location,
+        )
 
     def finalize(self):
         """Finalize the progress display and ensure output persists"""
@@ -1469,26 +1533,26 @@ class Logger:
 def reset_print(f):
     """
     Decorator that resets LOGGER state when call depth returns to 0.
-    
+
     IMPORTANT: This decorator breaks profiling tools (cProfile) due to identity
     collision. All wrapped functions share the same wrapper identity, causing
     incorrect cumulative time attribution in profiler output.
-    
+
     To disable for accurate profiling, set environment variable:
         DISABLE_AUTORESET_PRINT=1
-    
+
     The decorator overhead is negligible (~microseconds), so disabling it for
     profiling does not significantly change performance characteristics.
-    
+
     Examples:
         PowerShell: $env:DISABLE_AUTORESET_PRINT='1'; python script.py
         CMD:        set DISABLE_AUTORESET_PRINT=1 && python script.py
         Bash:       DISABLE_AUTORESET_PRINT=1 python script.py
     """
     # Check if decorator should be disabled (for profiling)
-    if os.environ.get('DISABLE_AUTORESET_PRINT', '0') == '1':
+    if os.environ.get("DISABLE_AUTORESET_PRINT", "0") == "1":
         return f  # Return function unwrapped - transparent to profiler
-    
+
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         LOGGER.call_depth += 1
@@ -1499,7 +1563,7 @@ def reset_print(f):
         if LOGGER.call_depth == 0:
             LOGGER.reset()
         return result
-    
+
     return wrapper
 
 
@@ -1509,7 +1573,7 @@ def autoreset_print(cls):
     This ensures that LOGGER context is managed correctly even when
     methods are called independently.
     """
-    if os.environ.get('DISABLE_AUTORESET_PRINT', '0') == '1':
+    if os.environ.get("DISABLE_AUTORESET_PRINT", "0") == "1":
         return cls  # Return class unmodified - transparent to profiler
 
     for name, attr in cls.__dict__.items():

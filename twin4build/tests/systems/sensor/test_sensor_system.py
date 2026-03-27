@@ -8,10 +8,10 @@ import pandas as pd
 from dateutil import tz
 
 # Local application imports
-from twin4build.systems.sensor.sensor_system import SensorSystem
-
 # Set test flag
 import twin4build
+from twin4build.systems.sensor.sensor_system import SensorSystem
+
 twin4build._IS_TESTING = True
 
 

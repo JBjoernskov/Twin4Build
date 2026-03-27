@@ -9,16 +9,18 @@ Usage:
     python run_optimization.py
 """
 
+# Standard library imports
 import datetime
 import os
 import pickle
 
+# Third party imports
 import pandas as pd
 from dateutil import tz
 
+# Local application imports
 import twin4build as tb
 import twin4build.examples.utils as utils
-
 
 # ── Configuration ─────────────────────────────────────────────────────────
 RESULT_PICKLE = (
@@ -30,11 +32,21 @@ RESULT_PICKLE = (
 STEP_SIZE = 1200  # 20 minutes
 
 OPT_START = datetime.datetime(
-    year=2023, month=12, day=2, hour=0, minute=0, second=0,
+    year=2023,
+    month=12,
+    day=2,
+    hour=0,
+    minute=0,
+    second=0,
     tzinfo=tz.gettz("Europe/Copenhagen"),
 )
 OPT_END = datetime.datetime(
-    year=2023, month=12, day=7, hour=0, minute=0, second=0,
+    year=2023,
+    month=12,
+    day=7,
+    hour=0,
+    minute=0,
+    second=0,
     tzinfo=tz.gettz("Europe/Copenhagen"),
 )
 
@@ -96,7 +108,9 @@ def main():
 
     elspot_clean_path = utils.get_path(["estimator_example", "electricity_price.csv"])
     elspot_subset.to_csv(elspot_clean_path, index=False)
-    print(f"Price range: {elspot_subset['value'].min():.4f} – {elspot_subset['value'].max():.4f} DKK/kWh")
+    print(
+        f"Price range: {elspot_subset['value'].min():.4f} – {elspot_subset['value'].max():.4f} DKK/kWh"
+    )
 
     price_schedule = tb.ScheduleSystem(
         filename=elspot_clean_path, datecolumn=0, valuecolumn=1, id="price_schedule"
@@ -165,28 +179,55 @@ def main():
 
     opt_results = {
         "date_time_steps": simulator_opt.date_time_steps,
-        "indoor_temperature": space.output["indoorTemperature"].history().detach().clone(),
-        "heating_setpoint": heating_setpoint.output["scheduleValue"].history().detach().clone(),
-        "cooling_setpoint": cooling_setpoint.output["scheduleValue"].history().detach().clone(),
+        "indoor_temperature": space.output["indoorTemperature"]
+        .history()
+        .detach()
+        .clone(),
+        "heating_setpoint": heating_setpoint.output["scheduleValue"]
+        .history()
+        .detach()
+        .clone(),
+        "cooling_setpoint": cooling_setpoint.output["scheduleValue"]
+        .history()
+        .detach()
+        .clone(),
         "power": space_heater.output["Power"].history().detach().clone(),
-        "valve_position": space_heater_valve.output["valvePosition"].history().detach().clone(),
-        "electricity_price": price_schedule.output["scheduleValue"].history().detach().clone(),
+        "valve_position": space_heater_valve.output["valvePosition"]
+        .history()
+        .detach()
+        .clone(),
+        "electricity_price": price_schedule.output["scheduleValue"]
+        .history()
+        .detach()
+        .clone(),
         "cost_per_step": costs_sensor.output["output"].history().detach().clone(),
         "step_size": STEP_SIZE,
         "opt_start_time": opt_start_time,
         "opt_end_time": opt_end_time,
         # Diagnostic: building space inputs (heat sources)
-        "supply_air_temperature": space.input["supplyAirTemperature"].history().detach().clone(),
-        "supply_air_flow_rate": space.input["supplyAirFlowRate"].history().detach().clone(),
-        "outdoor_temperature": space.input["outdoorTemperature"].history().detach().clone(),
+        "supply_air_temperature": space.input["supplyAirTemperature"]
+        .history()
+        .detach()
+        .clone(),
+        "supply_air_flow_rate": space.input["supplyAirFlowRate"]
+        .history()
+        .detach()
+        .clone(),
+        "outdoor_temperature": space.input["outdoorTemperature"]
+        .history()
+        .detach()
+        .clone(),
         "number_of_people": space.input["numberOfPeople"].history().detach().clone(),
         "heat_gain": space.input["heatGain"].history().detach().clone(),
-        "global_irradiation": space.input["globalIrradiation"].history().detach().clone(),
+        "global_irradiation": space.input["globalIrradiation"]
+        .history()
+        .detach()
+        .clone(),
     }
 
-    results_dir = utils.get_path([
-        "generated_files", "models", "full_workflow_example", "optimization_results"
-    ])
+    results_dir = utils.get_path(
+        ["generated_files", "models", "full_workflow_example", "optimization_results"]
+    )
     os.makedirs(results_dir, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     results_path = os.path.join(results_dir, f"{timestamp}_optimization.pickle")

@@ -253,7 +253,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     def _create_state_space_model(self):
         """Create the state space model matrices using PyTorch tensors.
-        
+
         Matrices have shape (n_c, n_states, n_states/n_inputs) to support
         different parameter values per component.
         """
@@ -283,18 +283,27 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         B[:, 0, 2] = m_inf / air_mass  # outdoorCO2 coefficient
 
         # Number of people
-        B[:, 0, 3] = (G_occ / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6  # numberOfPeople coefficient
+        B[:, 0, 3] = (
+            (G_occ / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6
+        )  # numberOfPeople coefficient
 
         # Output matrix C - Identity matrix for direct observation
         # Shape: (n_c, n_states, n_states)
-        C = torch.eye(n_states, dtype=torch.float64).unsqueeze(0).expand(n_c, -1, -1).clone()
+        C = (
+            torch.eye(n_states, dtype=torch.float64)
+            .unsqueeze(0)
+            .expand(n_c, -1, -1)
+            .clone()
+        )
 
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
         D = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
 
         # Initial state - shape (n_c, n_states)
         x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[0, :, :]  # Take first simulation, all components: (n_c, n_states)
+        x0 = x0_tensor[
+            0, :, :
+        ]  # Take first simulation, all components: (n_c, n_states)
 
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
         E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=torch.float64)

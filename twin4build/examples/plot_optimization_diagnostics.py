@@ -10,19 +10,21 @@ Usage:
     python plot_optimization_diagnostics.py
 """
 
+# Standard library imports
 import datetime
 import os
 import pickle
 import tempfile
 
-import pandas as pd
+# Third party imports
 import matplotlib.pyplot as plt
+import pandas as pd
 from dateutil import tz
+from plot_calibration_results import add_hourly_ticks, compute_metrics, move_legend
 
+# Local application imports
 import twin4build as tb
 import twin4build.examples.utils as utils
-from plot_calibration_results import compute_metrics, move_legend, add_hourly_ticks
-
 
 # ── Configuration ─────────────────────────────────────────────────────────
 ESTIMATION_PICKLE = (
@@ -49,7 +51,9 @@ def _valve_schedule_csv(opt_result, tmp_dir):
     print(f"  Valve from pickle: shape={opt_result['valve_position'].shape}")
     print(f"  min={valve.min():.6f}  max={valve.max():.6f}  mean={valve.mean():.6f}")
     print(f"  First 10 values: {valve[:10].tolist()}")
-    print(f"  Unique values (up to 20): {sorted(set(round(v, 6) for v in valve.tolist()))[:20]}")
+    print(
+        f"  Unique values (up to 20): {sorted(set(round(v, 6) for v in valve.tolist()))[:20]}"
+    )
 
     df = pd.DataFrame({"time": dt, "value": valve.tolist()})
     path = os.path.join(tmp_dir, "optimized_valve_schedule.csv")
@@ -88,7 +92,9 @@ def main():
     space_heater_valve = model.components["office_space_heater_valve"]
 
     valve_position_schedule = tb.ScheduleSystem(
-        filename=valve_csv, datecolumn=0, valuecolumn=1,
+        filename=valve_csv,
+        datecolumn=0,
+        valuecolumn=1,
         id="valve_position_schedule",
     )
 
@@ -114,40 +120,44 @@ def main():
     space = model.components["office"]
     space_heater = model.components["office_space_heater"]
 
-    indoor_temp   = space.output["indoorTemperature"].history()
-    wall_temp     = space.output["wallTemperature"].history()
-    outdoor_temp  = space.input["outdoorTemperature"].history()
-    supply_air_t  = space.input["supplyAirTemperature"].history()
-    supply_air_q  = space.input["supplyAirFlowRate"].history()
-    n_people      = space.input["numberOfPeople"].history()
-    heat_gain     = space.input["heatGain"].history()
-    irradiation   = space.input["globalIrradiation"].history()
+    indoor_temp = space.output["indoorTemperature"].history()
+    wall_temp = space.output["wallTemperature"].history()
+    outdoor_temp = space.input["outdoorTemperature"].history()
+    supply_air_t = space.input["supplyAirTemperature"].history()
+    supply_air_q = space.input["supplyAirFlowRate"].history()
+    n_people = space.input["numberOfPeople"].history()
+    heat_gain = space.input["heatGain"].history()
+    irradiation = space.input["globalIrradiation"].history()
 
-    heater_power  = space_heater.output["Power"].history()
-    water_t_out   = space_heater.output["outletWaterTemperature"].history()
-    water_t_in    = space_heater.input["supplyWaterTemperature"].history()
-    water_flow    = space_heater.input["waterFlowRate"].history()
+    heater_power = space_heater.output["Power"].history()
+    water_t_out = space_heater.output["outletWaterTemperature"].history()
+    water_t_in = space_heater.input["supplyWaterTemperature"].history()
+    water_flow = space_heater.input["waterFlowRate"].history()
 
-    valve_pos     = space_heater_valve.output["valvePosition"].history()
-    valve_flow    = space_heater_valve.output["waterFlowRate"].history()
+    valve_pos = space_heater_valve.output["valvePosition"].history()
+    valve_flow = space_heater_valve.output["waterFlowRate"].history()
 
-    temp_sensor   = model.components["office_temperature_sensor"]
-    temp_meas     = temp_sensor.time_series_input.values
-    temp_sim      = temp_sensor.output["measuredValue"].history()
+    temp_sensor = model.components["office_temperature_sensor"]
+    temp_meas = temp_sensor.time_series_input.values
+    temp_sim = temp_sensor.output["measuredValue"].history()
 
-    co2_sensor    = model.components["office_co2_sensor"]
-    co2_meas      = co2_sensor.time_series_input.values
-    co2_sim       = co2_sensor.output["measuredValue"].history()
+    co2_sensor = model.components["office_co2_sensor"]
+    co2_meas = co2_sensor.time_series_input.values
+    co2_sim = co2_sensor.output["measuredValue"].history()
 
-    valve_sensor  = model.components["office_valve_position_sensor"]
-    valve_meas    = valve_sensor.time_series_input.values
+    valve_sensor = model.components["office_valve_position_sensor"]
+    valve_meas = valve_sensor.time_series_input.values
 
     damper_sensor = model.components["office_damper_position_sensor"]
-    damper_meas   = damper_sensor.time_series_input.values
-    damper_sim    = damper_sensor.output["measuredValue"].history()
+    damper_meas = damper_sensor.time_series_input.values
+    damper_sim = damper_sensor.output["measuredValue"].history()
 
-    heating_sp    = heating_controller.input["setpointValue"].history()
-    occ_signal    = model.components["office_occupancy_detector"].output["occupancySignal"].history()
+    heating_sp = heating_controller.input["setpointValue"].history()
+    occ_signal = (
+        model.components["office_occupancy_detector"]
+        .output["occupancySignal"]
+        .history()
+    )
 
     # ── Quick summary ─────────────────────────────────────────────────────
     power_1d = heater_power[:, 0, 0]
@@ -155,7 +165,9 @@ def main():
     print("=" * 80)
     print(f"  Total energy:    {energy_kwh:.2f} kWh")
     print(f"  Peak power:      {power_1d.max():.1f} W")
-    print(f"  Temp range:      {indoor_temp[:, 0, 0].min():.2f} – {indoor_temp[:, 0, 0].max():.2f} °C")
+    print(
+        f"  Temp range:      {indoor_temp[:, 0, 0].min():.2f} – {indoor_temp[:, 0, 0].max():.2f} °C"
+    )
     print("=" * 80 + "\n")
 
     # =====================================================================
@@ -168,11 +180,38 @@ def main():
     fig, axes = tb.plot.plot(
         dt,
         [
-            tb.plot.Entry(indoor_temp,  label="Indoor temp (opt)",     color="#d95f02", linewidth=2),
-            tb.plot.Entry(temp_meas,    label="Indoor temp (meas)",    color=C.green,   linewidth=1.5, fmt="--"),
-            tb.plot.Entry(valve_pos,    label="Valve position (opt)",  color="#e7298a",  linewidth=2, axis=2),
-            tb.plot.Entry(valve_meas,   label="Valve position (meas)", color="#1f78b4",  linewidth=1.5, fmt="--", axis=2),
-            tb.plot.Entry(heating_sp,   label="Heating setpoint",      color=C.black,   linewidth=1.5, fmt=":"),
+            tb.plot.Entry(
+                indoor_temp, label="Indoor temp (opt)", color="#d95f02", linewidth=2
+            ),
+            tb.plot.Entry(
+                temp_meas,
+                label="Indoor temp (meas)",
+                color=C.green,
+                linewidth=1.5,
+                fmt="--",
+            ),
+            tb.plot.Entry(
+                valve_pos,
+                label="Valve position (opt)",
+                color="#e7298a",
+                linewidth=2,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                valve_meas,
+                label="Valve position (meas)",
+                color="#1f78b4",
+                linewidth=1.5,
+                fmt="--",
+                axis=2,
+            ),
+            tb.plot.Entry(
+                heating_sp,
+                label="Heating setpoint",
+                color=C.black,
+                linewidth=1.5,
+                fmt=":",
+            ),
         ],
         ylim_1axis=(17, 25),
         ylim_2axis=(0, 1.2),
@@ -190,10 +229,32 @@ def main():
     fig, axes = tb.plot.plot(
         dt,
         [
-            tb.plot.Entry(heater_power, label="Heater power",          color="#d95f02", linewidth=2),
-            tb.plot.Entry(water_flow,   label="Water flow rate",       color="#7570b3", linewidth=1.5, axis=2),
-            tb.plot.Entry(water_t_in,   label="Water supply temp",     color="#1b9e77", linewidth=1.5, fmt="--", axis=3),
-            tb.plot.Entry(water_t_out,  label="Water return temp",     color="#e7298a", linewidth=1.5, fmt="--", axis=3),
+            tb.plot.Entry(
+                heater_power, label="Heater power", color="#d95f02", linewidth=2
+            ),
+            tb.plot.Entry(
+                water_flow,
+                label="Water flow rate",
+                color="#7570b3",
+                linewidth=1.5,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                water_t_in,
+                label="Water supply temp",
+                color="#1b9e77",
+                linewidth=1.5,
+                fmt="--",
+                axis=3,
+            ),
+            tb.plot.Entry(
+                water_t_out,
+                label="Water return temp",
+                color="#e7298a",
+                linewidth=1.5,
+                fmt="--",
+                axis=3,
+            ),
         ],
         ylabel_1axis="Power [W]",
         ylabel_2axis="Flow rate [kg/s]",
@@ -210,11 +271,28 @@ def main():
     fig, axes = tb.plot.plot(
         dt,
         [
-            tb.plot.Entry(co2_sim,      label=r"CO$_2$ (sim)",    color="#d95f02", linewidth=2),
-            tb.plot.Entry(co2_meas,     label=r"CO$_2$ (meas)",   color=C.green,   linewidth=1.5, fmt="--"),
-            tb.plot.Entry(supply_air_q, label="Supply air flow",  color="#7570b3", linewidth=1.5, axis=2),
-            tb.plot.Entry(damper_sim,   label="Damper (sim)",      color="#e7298a", linewidth=1.5, axis=3),
-            tb.plot.Entry(damper_meas,  label="Damper (meas)",     color="#1f78b4", linewidth=1.5, fmt="--", axis=3),
+            tb.plot.Entry(co2_sim, label=r"CO$_2$ (sim)", color="#d95f02", linewidth=2),
+            tb.plot.Entry(
+                co2_meas, label=r"CO$_2$ (meas)", color=C.green, linewidth=1.5, fmt="--"
+            ),
+            tb.plot.Entry(
+                supply_air_q,
+                label="Supply air flow",
+                color="#7570b3",
+                linewidth=1.5,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                damper_sim, label="Damper (sim)", color="#e7298a", linewidth=1.5, axis=3
+            ),
+            tb.plot.Entry(
+                damper_meas,
+                label="Damper (meas)",
+                color="#1f78b4",
+                linewidth=1.5,
+                fmt="--",
+                axis=3,
+            ),
         ],
         ylabel_1axis=r"CO$_2$ [ppmv]",
         ylabel_2axis="Air flow [kg/s]",
@@ -231,9 +309,23 @@ def main():
     fig, axes = tb.plot.plot(
         dt,
         [
-            tb.plot.Entry(outdoor_temp, label="Outdoor temp",         color="#1b9e77", linewidth=1.5),
-            tb.plot.Entry(irradiation,  label="Solar irradiation",    color="#e6ab02", linewidth=1.5, axis=2),
-            tb.plot.Entry(n_people,     label="Occupancy (people)",   color="#7570b3", linewidth=1.5, axis=3),
+            tb.plot.Entry(
+                outdoor_temp, label="Outdoor temp", color="#1b9e77", linewidth=1.5
+            ),
+            tb.plot.Entry(
+                irradiation,
+                label="Solar irradiation",
+                color="#e6ab02",
+                linewidth=1.5,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                n_people,
+                label="Occupancy (people)",
+                color="#7570b3",
+                linewidth=1.5,
+                axis=3,
+            ),
         ],
         ylabel_1axis=r"Outdoor temp [$^\circ$C]",
         ylabel_2axis=r"Irradiation [W/m$^2$]",

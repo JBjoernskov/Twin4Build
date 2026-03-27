@@ -214,7 +214,9 @@ class AirToAirHeatRecoverySystem(core.System):
         self.eps_75_c = self.eps_75_c.expand_to_n_c(self.n_c)
         self.eps_100_c = self.eps_100_c.expand_to_n_c(self.n_c)
         self.primaryAirFlowRateMax = self.primaryAirFlowRateMax.expand_to_n_c(self.n_c)
-        self.secondaryAirFlowRateMax = self.secondaryAirFlowRateMax.expand_to_n_c(self.n_c)
+        self.secondaryAirFlowRateMax = self.secondaryAirFlowRateMax.expand_to_n_c(
+            self.n_c
+        )
 
         self.INITIALIZED = True
 

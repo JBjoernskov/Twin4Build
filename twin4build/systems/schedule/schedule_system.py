@@ -140,7 +140,7 @@ class ScheduleSystem(core.System):
         self._uuid = uuid
         self._name = name
         self._dbconfig = dbconfig
-        
+
         self.input = {}
         self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
         self._config = {
@@ -610,7 +610,6 @@ class ScheduleSystem(core.System):
             for batch_index, (date_time_steps_, n_timesteps_) in enumerate(
                 zip(date_time_steps, n_timesteps)
             ):
-                
 
                 # OLD: Only compute schedule values for actual timesteps
                 values[batch_index, :n_timesteps_] = [
@@ -625,9 +624,15 @@ class ScheduleSystem(core.System):
 
                 if self.add_noise:
                     # cache noise
-                    index = (start_time[batch_index], end_time[batch_index], step_size[batch_index])
+                    index = (
+                        start_time[batch_index],
+                        end_time[batch_index],
+                        step_size[batch_index],
+                    )
                     if index not in self.noise_cache:
-                        self.noise_cache[index] = self.get_noise(date_time_steps_[:n_timesteps_])
+                        self.noise_cache[index] = self.get_noise(
+                            date_time_steps_[:n_timesteps_]
+                        )
                     values[batch_index, :n_timesteps_] += self.noise_cache[index]
 
             assert not np.isnan(
@@ -638,7 +643,9 @@ class ScheduleSystem(core.System):
 
             # Convert values from (n_s, n_t) to time-first (n_t, n_s, n_c) where n_c=1
             # First transpose to (n_t, n_s), then unsqueeze to (n_t, n_s, 1)
-            values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(-1)  # (n_t, n_s, 1)
+            values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(
+                -1
+            )  # (n_t, n_s, 1)
             self.output["scheduleValue"].initialize(
                 n_t=max_timesteps,
                 n_s=len(start_time),
@@ -658,12 +665,9 @@ class ScheduleSystem(core.System):
             if (
                 date_time.hour == 0 and date_time.minute == 0
             ):  # Compute a new bias value if a new day is entered in the simulation
-                noise_day = random.uniform(
-                    -self.noise_day_range, self.noise_day_range
-                )
+                noise_day = random.uniform(-self.noise_day_range, self.noise_day_range)
             noise.append(noise_hour + noise_day)
         return np.array(noise)
-            
 
     def get_schedule_value(self, date_time):
 
@@ -671,7 +675,7 @@ class ScheduleSystem(core.System):
         #     if (
         #         date_time.minute == 0
         #     ):  # Compute a new noise value if a new hour is entered in the simulation
-                
+
         #         self.noise = random.uniform(
         #             -self.noise_hour_range, self.noise_hour_range
         #         )
@@ -679,7 +683,7 @@ class ScheduleSystem(core.System):
         #     if (
         #         date_time.hour == 0 and date_time.minute == 0
         #     ):  # Compute a new bias value if a new day is entered in the simulation
-                
+
         #         self.bias = random.uniform(
         #             -self.noise_day_range, self.noise_day_range
         #         )

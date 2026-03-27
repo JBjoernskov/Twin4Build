@@ -10,13 +10,15 @@ control or a shared driving signal (e.g., AHU SAT reset).
 If dampers move independently, zone-level control is dominant.
 """
 
+# Standard library imports
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+# Third party imports
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -43,39 +45,40 @@ END_TIME = datetime(2016, 9, 23, 0, 0, tzinfo=timezone_local)
 RESAMPLE = "10min"
 
 # Operating hours filter (only analyze data within these hours)
-OPERATING_HOUR_START = 9   # 09:00
-OPERATING_HOUR_END = 23    # 23:00
+OPERATING_HOUR_START = 9  # 09:00
+OPERATING_HOUR_END = 23  # 23:00
 
 # ==========================================================================
 # ROOM AND AHU SENSOR UUIDs
 # ==========================================================================
 
 ROOMS = {
-    'RM01_1': {'damper_position': '338d4128-1174-4bd3-a46c-7e13fdf4d41a', 'floor': 0},
-    'RM01_2': {'damper_position': 'ebe9c5eb-f2cc-41f7-9366-7f866d97884e', 'floor': 0},
-    'RM11_1': {'damper_position': 'e98cba81-51b7-44b4-be8b-d724d8ba1d22', 'floor': 1},
-    'RM11_2': {'damper_position': '51cf3b6c-aa59-44d2-aa60-9abfe2fd80c1', 'floor': 1},
-    'RM11_3': {'damper_position': 'd7c7c96b-7fed-4005-87dc-17dcbdd88d5c', 'floor': 1},
-    'RM12_1': {'damper_position': '23876ee1-0d47-405e-8dbc-f3336c0c42b0', 'floor': 1},
-    'RM12_2': {'damper_position': '6e662022-da07-44e1-85b1-185eff60660c', 'floor': 1},
-    'RM13_1': {'damper_position': 'f771ce69-4a68-40a2-85e3-d9593bbf0f20', 'floor': 1},
-    'RM13_2': {'damper_position': '0be785d7-7d79-47d1-80bd-354dba9e7610', 'floor': 1},
-    'RM21':   {'damper_position': '220e2d90-4d91-4399-84d9-96ccfd3f0a6b', 'floor': 2},
-    'RM22':   {'damper_position': '7098433c-2287-4bf6-b09c-aec3d6644f7a', 'floor': 2},
-    'RM31':   {'damper_position': '4a3e7cef-93d0-4888-9aed-9de72ce6c3b8', 'floor': 3},
+    "RM01_1": {"damper_position": "338d4128-1174-4bd3-a46c-7e13fdf4d41a", "floor": 0},
+    "RM01_2": {"damper_position": "ebe9c5eb-f2cc-41f7-9366-7f866d97884e", "floor": 0},
+    "RM11_1": {"damper_position": "e98cba81-51b7-44b4-be8b-d724d8ba1d22", "floor": 1},
+    "RM11_2": {"damper_position": "51cf3b6c-aa59-44d2-aa60-9abfe2fd80c1", "floor": 1},
+    "RM11_3": {"damper_position": "d7c7c96b-7fed-4005-87dc-17dcbdd88d5c", "floor": 1},
+    "RM12_1": {"damper_position": "23876ee1-0d47-405e-8dbc-f3336c0c42b0", "floor": 1},
+    "RM12_2": {"damper_position": "6e662022-da07-44e1-85b1-185eff60660c", "floor": 1},
+    "RM13_1": {"damper_position": "f771ce69-4a68-40a2-85e3-d9593bbf0f20", "floor": 1},
+    "RM13_2": {"damper_position": "0be785d7-7d79-47d1-80bd-354dba9e7610", "floor": 1},
+    "RM21": {"damper_position": "220e2d90-4d91-4399-84d9-96ccfd3f0a6b", "floor": 2},
+    "RM22": {"damper_position": "7098433c-2287-4bf6-b09c-aec3d6644f7a", "floor": 2},
+    "RM31": {"damper_position": "4a3e7cef-93d0-4888-9aed-9de72ce6c3b8", "floor": 3},
 }
 
 AHU_SENSORS = {
-    'AHU Supply Air Temp':     '77c50c34-1387-4ce4-a527-153fd143704e',
-    'AHU SAT Setpoint':        'cee1c63a-54c2-490e-a7a4-7200fa93b270',
-    'AHU Outside Air Temp':    '436a91fd-e4fe-486f-9a63-2e00303d6188',
-    'AHU Cooling Valve Output':'61704369-134c-4022-bb21-ef2368c91eb1',
-    'AHU Heating Valve Output':'2a800b32-492e-47f3-943a-db0aa985c316',
+    "AHU Supply Air Temp": "77c50c34-1387-4ce4-a527-153fd143704e",
+    "AHU SAT Setpoint": "cee1c63a-54c2-490e-a7a4-7200fa93b270",
+    "AHU Outside Air Temp": "436a91fd-e4fe-486f-9a63-2e00303d6188",
+    "AHU Cooling Valve Output": "61704369-134c-4022-bb21-ef2368c91eb1",
+    "AHU Heating Valve Output": "2a800b32-492e-47f3-943a-db0aa985c316",
 }
 
 # ==========================================================================
 # DATA LOADING
 # ==========================================================================
+
 
 def load_sensor(conn, uuid, start_time, end_time, resample="10min"):
     """Load a single sensor's data from the database, resample, and return a Series."""
@@ -84,7 +87,9 @@ def load_sensor(conn, uuid, start_time, end_time, resample="10min"):
         FROM {table}
         WHERE uuid = %s AND time >= %s AND time <= %s
         ORDER BY time
-    """.format(table=db_config["table_name"])
+    """.format(
+        table=db_config["table_name"]
+    )
 
     df = pd.read_sql(query, conn, params=(uuid, start_time, end_time))
     if df.empty:
@@ -113,7 +118,9 @@ def main():
     print(f"\nLoading damper positions for {len(ROOMS)} rooms...")
     damper_data = {}
     for room_name, room_info in ROOMS.items():
-        series = load_sensor(conn, room_info['damper_position'], START_TIME, END_TIME, RESAMPLE)
+        series = load_sensor(
+            conn, room_info["damper_position"], START_TIME, END_TIME, RESAMPLE
+        )
         if series is not None and len(series) > 0:
             damper_data[room_name] = series / 100.0  # percentage to fraction
             print(f"  {room_name}: {len(series)} points")
@@ -123,7 +130,7 @@ def main():
     # --- Load AHU sensors ---
     print(f"\nLoading AHU sensors...")
     ahu_data = {}
-    temp_transform = lambda x: (x - 32) * 5/9  # F to C
+    temp_transform = lambda x: (x - 32) * 5 / 9  # F to C
     for label, uuid in AHU_SENSORS.items():
         series = load_sensor(conn, uuid, START_TIME, END_TIME, RESAMPLE)
         if series is not None and len(series) > 0:
@@ -139,14 +146,20 @@ def main():
     conn.close()
 
     # --- Filter to operating hours only ---
-    print(f"\nFiltering to operating hours {OPERATING_HOUR_START:02d}:00 – {OPERATING_HOUR_END:02d}:00...")
+    print(
+        f"\nFiltering to operating hours {OPERATING_HOUR_START:02d}:00 – {OPERATING_HOUR_END:02d}:00..."
+    )
     for room_name in list(damper_data.keys()):
         s = damper_data[room_name]
-        mask = (s.index.hour >= OPERATING_HOUR_START) & (s.index.hour < OPERATING_HOUR_END)
+        mask = (s.index.hour >= OPERATING_HOUR_START) & (
+            s.index.hour < OPERATING_HOUR_END
+        )
         damper_data[room_name] = s[mask]
     for label in list(ahu_data.keys()):
         s = ahu_data[label]
-        mask = (s.index.hour >= OPERATING_HOUR_START) & (s.index.hour < OPERATING_HOUR_END)
+        mask = (s.index.hour >= OPERATING_HOUR_START) & (
+            s.index.hour < OPERATING_HOUR_END
+        )
         ahu_data[label] = s[mask]
 
     if not damper_data:
@@ -162,11 +175,17 @@ def main():
     ax1.set_title("All Room Damper Positions (bldg13 AHU01)", fontsize=14)
 
     # Color by floor
-    floor_colors = {0: 'tab:blue', 1: 'tab:orange', 2: 'tab:green', 3: 'tab:red'}
+    floor_colors = {0: "tab:blue", 1: "tab:orange", 2: "tab:green", 3: "tab:red"}
     for room_name, series in damper_data.items():
-        floor = ROOMS[room_name]['floor']
-        ax1.plot(series.index, series.values, linewidth=1, alpha=0.7,
-                 color=floor_colors[floor], label=room_name)
+        floor = ROOMS[room_name]["floor"]
+        ax1.plot(
+            series.index,
+            series.values,
+            linewidth=1,
+            alpha=0.7,
+            color=floor_colors[floor],
+            label=room_name,
+        )
 
     ax1.set_ylabel("Damper Position (0-1)")
     ax1.set_ylim(-0.05, 1.05)
@@ -175,12 +194,24 @@ def main():
 
     # Overlay AHU SAT on right axis
     ax1r = ax1.twinx()
-    if 'AHU Supply Air Temp' in ahu_data:
-        ax1r.plot(ahu_data['AHU Supply Air Temp'].index, ahu_data['AHU Supply Air Temp'].values,
-                  color='black', linewidth=2, linestyle='-', label="AHU Supply Air Temp")
-    if 'AHU SAT Setpoint' in ahu_data:
-        ax1r.plot(ahu_data['AHU SAT Setpoint'].index, ahu_data['AHU SAT Setpoint'].values,
-                  color='black', linewidth=2, linestyle='--', label="AHU SAT Setpoint")
+    if "AHU Supply Air Temp" in ahu_data:
+        ax1r.plot(
+            ahu_data["AHU Supply Air Temp"].index,
+            ahu_data["AHU Supply Air Temp"].values,
+            color="black",
+            linewidth=2,
+            linestyle="-",
+            label="AHU Supply Air Temp",
+        )
+    if "AHU SAT Setpoint" in ahu_data:
+        ax1r.plot(
+            ahu_data["AHU SAT Setpoint"].index,
+            ahu_data["AHU SAT Setpoint"].values,
+            color="black",
+            linewidth=2,
+            linestyle="--",
+            label="AHU SAT Setpoint",
+        )
     ax1r.set_ylabel("Temperature (°C)")
     ax1r.legend(loc="upper right", fontsize=9)
 
@@ -192,17 +223,23 @@ def main():
     # ======================================================================
     print("--- Plot 2: Damper positions by floor ---")
 
-    floors = sorted(set(r['floor'] for r in ROOMS.values()))
-    fig2, axes2 = plt.subplots(len(floors), 1, figsize=(18, 4 * len(floors)), sharex=True)
+    floors = sorted(set(r["floor"] for r in ROOMS.values()))
+    fig2, axes2 = plt.subplots(
+        len(floors), 1, figsize=(18, 4 * len(floors)), sharex=True
+    )
     fig2.suptitle("Damper Positions by Floor (bldg13 AHU01)", fontsize=14)
 
     if len(floors) == 1:
         axes2 = [axes2]
 
     for ax, floor in zip(axes2, floors):
-        floor_rooms = {k: v for k, v in damper_data.items() if ROOMS[k]['floor'] == floor}
+        floor_rooms = {
+            k: v for k, v in damper_data.items() if ROOMS[k]["floor"] == floor
+        }
         for room_name, series in floor_rooms.items():
-            ax.plot(series.index, series.values, linewidth=1.2, alpha=0.8, label=room_name)
+            ax.plot(
+                series.index, series.values, linewidth=1.2, alpha=0.8, label=room_name
+            )
 
         ax.set_ylabel("Damper (0-1)")
         ax.set_ylim(-0.05, 1.05)
@@ -212,9 +249,16 @@ def main():
 
         # AHU SAT on right axis
         axr = ax.twinx()
-        if 'AHU Supply Air Temp' in ahu_data:
-            axr.plot(ahu_data['AHU Supply Air Temp'].index, ahu_data['AHU Supply Air Temp'].values,
-                     color='black', linewidth=1.5, linestyle='-', alpha=0.5, label="AHU SAT")
+        if "AHU Supply Air Temp" in ahu_data:
+            axr.plot(
+                ahu_data["AHU Supply Air Temp"].index,
+                ahu_data["AHU Supply Air Temp"].values,
+                color="black",
+                linewidth=1.5,
+                linestyle="-",
+                alpha=0.5,
+                label="AHU SAT",
+            )
         axr.set_ylabel("°C")
         if floor == floors[0]:
             axr.legend(loc="upper right", fontsize=8)
@@ -235,21 +279,33 @@ def main():
         corr_matrix = damper_df.corr()
 
         fig3, ax3 = plt.subplots(figsize=(10, 8))
-        im = ax3.imshow(corr_matrix.values, cmap='RdBu_r', vmin=-1, vmax=1, aspect='auto')
+        im = ax3.imshow(
+            corr_matrix.values, cmap="RdBu_r", vmin=-1, vmax=1, aspect="auto"
+        )
         ax3.set_xticks(range(len(corr_matrix.columns)))
         ax3.set_yticks(range(len(corr_matrix.columns)))
-        ax3.set_xticklabels(corr_matrix.columns, rotation=45, ha='right', fontsize=9)
+        ax3.set_xticklabels(corr_matrix.columns, rotation=45, ha="right", fontsize=9)
         ax3.set_yticklabels(corr_matrix.columns, fontsize=9)
 
         # Annotate with correlation values
         for i in range(len(corr_matrix)):
             for j in range(len(corr_matrix)):
                 val = corr_matrix.iloc[i, j]
-                color = 'white' if abs(val) > 0.6 else 'black'
-                ax3.text(j, i, f"{val:.2f}", ha='center', va='center', fontsize=8, color=color)
+                color = "white" if abs(val) > 0.6 else "black"
+                ax3.text(
+                    j,
+                    i,
+                    f"{val:.2f}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color=color,
+                )
 
         fig3.colorbar(im, ax=ax3, shrink=0.8, label="Pearson r")
-        ax3.set_title("Pairwise Damper Position Correlation (bldg13 AHU01)", fontsize=13)
+        ax3.set_title(
+            "Pairwise Damper Position Correlation (bldg13 AHU01)", fontsize=13
+        )
         fig3.tight_layout()
     else:
         print("  Not enough aligned data for correlation matrix")
@@ -266,15 +322,34 @@ def main():
         damper_max = damper_df.max(axis=1)
 
         fig4, (ax4a, ax4b) = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
-        fig4.suptitle("Aggregate Damper Behavior & AHU Context (bldg13 AHU01)", fontsize=14)
+        fig4.suptitle(
+            "Aggregate Damper Behavior & AHU Context (bldg13 AHU01)", fontsize=14
+        )
 
         # Top: mean damper with min/max envelope
-        ax4a.plot(damper_mean.index, damper_mean.values, linewidth=2, color='tab:blue', label="Mean Damper")
-        ax4a.fill_between(damper_mean.index, damper_min.values, damper_max.values,
-                          alpha=0.2, color='tab:blue', label="Min-Max Range")
-        ax4a.fill_between(damper_mean.index, (damper_mean - damper_std).values,
-                          (damper_mean + damper_std).values,
-                          alpha=0.3, color='tab:blue', label="Mean +/- 1 Std")
+        ax4a.plot(
+            damper_mean.index,
+            damper_mean.values,
+            linewidth=2,
+            color="tab:blue",
+            label="Mean Damper",
+        )
+        ax4a.fill_between(
+            damper_mean.index,
+            damper_min.values,
+            damper_max.values,
+            alpha=0.2,
+            color="tab:blue",
+            label="Min-Max Range",
+        )
+        ax4a.fill_between(
+            damper_mean.index,
+            (damper_mean - damper_std).values,
+            (damper_mean + damper_std).values,
+            alpha=0.3,
+            color="tab:blue",
+            label="Mean +/- 1 Std",
+        )
         ax4a.set_ylabel("Damper Position (0-1)")
         ax4a.set_ylim(-0.05, 1.05)
         ax4a.legend(loc="upper left", fontsize=9)
@@ -283,24 +358,43 @@ def main():
 
         # Overlay AHU SAT
         ax4a_r = ax4a.twinx()
-        if 'AHU Supply Air Temp' in ahu_data:
-            ax4a_r.plot(ahu_data['AHU Supply Air Temp'].index, ahu_data['AHU Supply Air Temp'].values,
-                        color='black', linewidth=1.5, label="AHU SAT")
-        if 'AHU SAT Setpoint' in ahu_data:
-            ax4a_r.plot(ahu_data['AHU SAT Setpoint'].index, ahu_data['AHU SAT Setpoint'].values,
-                        color='black', linewidth=1.5, linestyle='--', label="AHU SAT SP")
+        if "AHU Supply Air Temp" in ahu_data:
+            ax4a_r.plot(
+                ahu_data["AHU Supply Air Temp"].index,
+                ahu_data["AHU Supply Air Temp"].values,
+                color="black",
+                linewidth=1.5,
+                label="AHU SAT",
+            )
+        if "AHU SAT Setpoint" in ahu_data:
+            ax4a_r.plot(
+                ahu_data["AHU SAT Setpoint"].index,
+                ahu_data["AHU SAT Setpoint"].values,
+                color="black",
+                linewidth=1.5,
+                linestyle="--",
+                label="AHU SAT SP",
+            )
         ax4a_r.set_ylabel("Temperature (°C)")
         ax4a_r.legend(loc="upper right", fontsize=9)
 
         # Bottom: AHU valves + OAT
-        if 'AHU Cooling Valve Output' in ahu_data:
-            ax4b.plot(ahu_data['AHU Cooling Valve Output'].index,
-                      ahu_data['AHU Cooling Valve Output'].values,
-                      linewidth=1.2, color='tab:blue', label="Cooling Valve")
-        if 'AHU Heating Valve Output' in ahu_data:
-            ax4b.plot(ahu_data['AHU Heating Valve Output'].index,
-                      ahu_data['AHU Heating Valve Output'].values,
-                      linewidth=1.2, color='tab:red', label="Heating Valve")
+        if "AHU Cooling Valve Output" in ahu_data:
+            ax4b.plot(
+                ahu_data["AHU Cooling Valve Output"].index,
+                ahu_data["AHU Cooling Valve Output"].values,
+                linewidth=1.2,
+                color="tab:blue",
+                label="Cooling Valve",
+            )
+        if "AHU Heating Valve Output" in ahu_data:
+            ax4b.plot(
+                ahu_data["AHU Heating Valve Output"].index,
+                ahu_data["AHU Heating Valve Output"].values,
+                linewidth=1.2,
+                color="tab:red",
+                label="Heating Valve",
+            )
         ax4b.set_ylabel("Valve Position (0-1)")
         ax4b.set_ylim(-0.05, 1.05)
         ax4b.legend(loc="upper left", fontsize=9)
@@ -308,10 +402,14 @@ def main():
         ax4b.set_title("AHU Valve Positions & Outside Air Temperature")
 
         ax4b_r = ax4b.twinx()
-        if 'AHU Outside Air Temp' in ahu_data:
-            ax4b_r.plot(ahu_data['AHU Outside Air Temp'].index,
-                        ahu_data['AHU Outside Air Temp'].values,
-                        color='tab:green', linewidth=1.5, label="Outside Air Temp")
+        if "AHU Outside Air Temp" in ahu_data:
+            ax4b_r.plot(
+                ahu_data["AHU Outside Air Temp"].index,
+                ahu_data["AHU Outside Air Temp"].values,
+                color="tab:green",
+                linewidth=1.5,
+                label="Outside Air Temp",
+            )
         ax4b_r.set_ylabel("Temperature (°C)")
         ax4b_r.legend(loc="upper right", fontsize=9)
 
@@ -321,9 +419,9 @@ def main():
     # ======================================================================
     # PRINT SUMMARY
     # ======================================================================
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("DAMPER CORRELATION SUMMARY")
-    print("="*70)
+    print("=" * 70)
 
     if len(damper_df) > 5:
         # Off-diagonal correlations
@@ -341,11 +439,15 @@ def main():
 
         n_high = np.sum(off_diag > 0.7)
         n_total = len(off_diag)
-        print(f"\n  Pairs with r > 0.7: {n_high} / {n_total} ({100*n_high/n_total:.1f}%)")
+        print(
+            f"\n  Pairs with r > 0.7: {n_high} / {n_total} ({100*n_high/n_total:.1f}%)"
+        )
 
         if np.mean(off_diag) > 0.7:
             print("\n  --> STRONG inter-room correlation: dampers move in unison.")
-            print("      This strongly suggests a shared driving signal (AHU SAT reset)")
+            print(
+                "      This strongly suggests a shared driving signal (AHU SAT reset)"
+            )
             print("      rather than independent zone-level control.")
         elif np.mean(off_diag) > 0.4:
             print("\n  --> MODERATE inter-room correlation: partially synchronized.")
@@ -355,8 +457,10 @@ def main():
             print("      Zone-level control is dominant.")
 
         # Correlation of mean damper with AHU SAT
-        if 'AHU Supply Air Temp' in ahu_data:
-            ahu_aligned = ahu_data['AHU Supply Air Temp'].reindex(damper_mean.index).interpolate()
+        if "AHU Supply Air Temp" in ahu_data:
+            ahu_aligned = (
+                ahu_data["AHU Supply Air Temp"].reindex(damper_mean.index).interpolate()
+            )
             valid = ~(damper_mean.isna() | ahu_aligned.isna())
             if valid.sum() > 5:
                 r_mean_sat = np.corrcoef(damper_mean[valid], ahu_aligned[valid])[0, 1]

@@ -660,9 +660,7 @@ class Model:
                 LOGGER.add_level()
                 self._semantic_model.visualize()
                 LOGGER.remove_level()
-                LOGGER(
-                    "Drawing semantic model", status="[OK]", change_status=True
-                )
+                LOGGER("Drawing semantic model", status="[OK]", change_status=True)
 
         else:
             apply_translator = False
@@ -710,7 +708,9 @@ class Model:
         self.simulation_model.set_save_simulation_result(flag=flag, c=c)
 
     def load_estimation_result(
-        self, filename: Optional[str] = None, result: Optional[Dict] = None,
+        self,
+        filename: Optional[str] = None,
+        result: Optional[Dict] = None,
         verbose: int = 0,
     ) -> None:
         """
@@ -725,7 +725,9 @@ class Model:
             AssertionError: If invalid arguments are provided.
         """
         self.simulation_model.load_estimation_result(
-            filename=filename, result=result, verbose=verbose,
+            filename=filename,
+            result=result,
+            verbose=verbose,
         )
 
     def check_for_for_missing_initial_values(self) -> None:
