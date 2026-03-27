@@ -269,28 +269,28 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
         # Store thermal parameters as tps.Parameters
         self.C_air = tps.Parameter(
-            torch.tensor(C_air, dtype=torch.float64), requires_grad=False
+            torch.tensor(C_air, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.C_wall = tps.Parameter(
-            torch.tensor(C_wall, dtype=torch.float64), requires_grad=False
+            torch.tensor(C_wall, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.C_int = tps.Parameter(
-            torch.tensor(C_int, dtype=torch.float64), requires_grad=False
+            torch.tensor(C_int, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.C_boundary = tps.Parameter(
-            torch.tensor(C_boundary, dtype=torch.float64), requires_grad=False
+            torch.tensor(C_boundary, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.R_out = tps.Parameter(
-            torch.tensor(R_out, dtype=torch.float64), requires_grad=False
+            torch.tensor(R_out, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.R_in = tps.Parameter(
-            torch.tensor(R_in, dtype=torch.float64), requires_grad=False
+            torch.tensor(R_in, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.R_int = tps.Parameter(
-            torch.tensor(R_int, dtype=torch.float64), requires_grad=False
+            torch.tensor(R_int, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.R_boundary = tps.Parameter(
-            torch.tensor(R_boundary, dtype=torch.float64), requires_grad=False
+            torch.tensor(R_boundary, dtype=torch.float64), requires_grad=False, scaling="log"
         )
 
         # Store other parameters as tps.Parameters

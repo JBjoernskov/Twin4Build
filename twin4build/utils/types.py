@@ -468,7 +468,10 @@ class Vector:
         """
         if self._tensor is None:
             return None
-        return self._tensor[i_s, i_c, i_v]
+        # clone() decouples the returned value from _tensor's storage so
+        # that later inplace writes (by _set at the next timestep) do not
+        # invalidate saved tensors in torch.func.jacrev's backward pass.
+        return self._tensor[i_s, i_c, i_v].clone()
 
     def copy(self):
         """Create a copy of the vector.
@@ -939,7 +942,10 @@ class Scalar:
         """
         if self._tensor is None:
             return None
-        return self._tensor[i_s, i_c]
+        # clone() decouples the returned value from _tensor's storage so
+        # that later inplace writes (by _set at the next timestep) do not
+        # invalidate saved tensors in torch.func.jacrev's backward pass.
+        return self._tensor[i_s, i_c].clone()
 
     def normalize(self, v: torch.Tensor = None):
         assert (
@@ -1047,6 +1053,9 @@ class Parameter(nn.Parameter):
         if min_value is None:
             if torch.all(data < 0):
                 min_value = data.detach().clone()
+            elif scaling == "log":
+                # Log scaling requires min > 0; default to data/10
+                min_value = (data.detach().clone().abs() * 0.1).clamp(min=1e-10)
             else:
                 min_value = torch.zeros(n_c, dtype=torch.float64)
         else:

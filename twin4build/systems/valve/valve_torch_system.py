@@ -93,7 +93,8 @@ class ValveTorchSystem(core.System, nn.Module):
 
         # Store parameters as tps.Parameters for gradient tracking
         self.waterFlowRateMax = tps.Parameter(
-            torch.tensor(waterFlowRateMax, dtype=torch.float64), requires_grad=False
+            torch.tensor(waterFlowRateMax, dtype=torch.float64), requires_grad=False,
+            scaling="log",
         )
         self.valveAuthority = tps.Parameter(
             torch.tensor(valveAuthority, dtype=torch.float64), requires_grad=False
@@ -189,8 +190,10 @@ class ValveTorchSystem(core.System, nn.Module):
         The water flow rate is then calculated as:
         m_w = u_norm * waterFlowRateMax
         """
-        # Get input valve position (assumed to be a tensor)
-        valve_position = self.input["valvePosition"].get()
+        # Clone to detach from the input _tensor's storage, preventing
+        # version-counter conflicts with jacrev when _tensor is overwritten
+        # at the next timestep by _assign_component_inputs.
+        valve_position = self.input["valvePosition"].get().clone()
 
         # Calculate normalized valve position using valve authority equation
         u_norm = valve_position / torch.sqrt(

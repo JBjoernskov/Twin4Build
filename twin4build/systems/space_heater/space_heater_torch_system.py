@@ -38,6 +38,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         TAir_nominal_sh: Nominal room air temperature [°C]
         thermalMassHeatCapacity: Total thermal mass heat capacity [J/K]
         nelements: Number of finite elements
+        initialize_UA: If True (default), UA is computed via fsolve to match nominal
+            conditions on first initialization. If False, the UA value is used as-is,
+            which is useful when UA is being estimated/calibrated.
 
     Mathematical Formulation:
     =========================
@@ -244,6 +247,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         TAir_nominal_sh: float = 21,
         thermalMassHeatCapacity: float = 500000,
         nelements: int = 3,
+        initialize_UA: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -253,12 +257,14 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self.T_b_nominal_sh = T_b_nominal_sh
         self.TAir_nominal_sh = TAir_nominal_sh
         self.nelements = nelements
+        self.initialize_UA = initialize_UA
         self.UA = tps.Parameter(
             torch.tensor(10.0, dtype=torch.float64), requires_grad=False
-        )  # Placeholder, will be set in initialize
+        )  # Placeholder, will be set in initialize if initialize_UA is True
         self.thermalMassHeatCapacity = tps.Parameter(
             torch.tensor(thermalMassHeatCapacity, dtype=torch.float64),
             requires_grad=False,
+            scaling="log",
         )
 
         # Define inputs and outputs as private variables
@@ -279,6 +285,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             "TAir_nominal_sh": {},
             "thermalMassHeatCapacity": {},
             "UA": {},
+            "initialize_UA": {},
         }
         self._config = {"parameters": list(self.parameter.keys())}
         self.INITIALIZED = False
@@ -326,7 +333,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """Initialize the space heater system for simulation.
 
         This method performs the following initialization steps:
-        1. Numerically solves for the UA value that matches the nominal heat output
+        1. If ``initialize_UA`` is True and this is the first call, numerically solves
+           for the UA value that matches the nominal heat output
         2. Initializes input/output data structures
         3. Creates or reinitializes the state-space model
 
@@ -334,7 +342,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             start_time (datetime.datetime): Start time of the simulation period.
             end_time (datetime.datetime): End time of the simulation period.
             step_size (int): Time step size in seconds.
-            simulator (core.Simulator): Simulation model object.
         """
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
@@ -356,31 +363,24 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self.UA = self.UA.expand_to_n_c(self.n_c)
         self.thermalMassHeatCapacity = self.thermalMassHeatCapacity.expand_to_n_c(self.n_c)
 
-        if not self.INITIALIZED:
-            # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh
+        if not self.INITIALIZED and self.initialize_UA:
+            # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh.
+            # When initialize_UA is False, the current UA value is used directly,
+            # which is useful when UA is being estimated/calibrated.
             UA0 = float(
                 self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
             )
             root = fsolve(self._ua_residual, UA0, full_output=True)
             UA_val = root[0][0]
             self.UA.data.fill_(UA_val)  # Preserves shape (n_c,)
-            # First initialization
-            self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size)
 
-            # FIX: Set correct initial state for batch
-            x0_tensor = self._get_initial_state_tensor()
-            self.ss_model.set_state(x0_tensor)
+        self._create_state_space_model()
+        self.ss_model.initialize(start_time, end_time, step_size)
 
-            self.INITIALIZED = True
-        else:
-            # Re-initialize the state space model
-            self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size)
+        x0_tensor = self._get_initial_state_tensor()
+        self.ss_model.set_state(x0_tensor)
 
-            # FIX: Set correct initial state for batch
-            x0_tensor = self._get_initial_state_tensor()
-            self.ss_model.set_state(x0_tensor)
+        self.INITIALIZED = True
 
     def _ua_residual(self, UA_candidate):
         """Calculate the residual for UA optimization.
