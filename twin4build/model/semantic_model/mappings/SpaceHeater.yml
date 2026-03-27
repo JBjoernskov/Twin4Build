@@ -13,16 +13,16 @@ operations:
 
   # Object properties (measurements)
   - template: |-
-      {{ create_property_value_triples(value['id'], 'bodyMass', value['bodyMass'], 's4bldg:BodyMass') }}
+      {{ create_property_value_triples(value['id'], 'bodyMass', value['bodyMass'], 's4bldg:bodyMass') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'outputCapacity', value['outputCapacity'], 's4bldg:OutputCapacity') }}
+      {{ create_property_value_triples(value['id'], 'outputCapacity', value['outputCapacity'], 's4bldg:outputCapacity') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'thermalEfficiency', value['thermalEfficiency'], 's4bldg:ThermalEfficiency') }}
+      {{ create_property_value_triples(value['id'], 'thermalEfficiency', value['thermalEfficiency'], 's4bldg:thermalEfficiency') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'thermalMassHeatCapacity', value['thermalMassHeatCapacity'], 's4bldg:ThermalMassHeatCapacity') }}
+      {{ create_property_value_triples(value['id'], 'thermalMassHeatCapacity', value['thermalMassHeatCapacity'], 's4bldg:thermalMassHeatCapacity') }}
 
   # Data properties
   - template: |-

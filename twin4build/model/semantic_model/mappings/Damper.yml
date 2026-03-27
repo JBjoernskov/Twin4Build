@@ -13,46 +13,46 @@ operations:
 
   # Object properties (measurements)
   - template: |-
-      {{ create_property_value_triples(value['id'], 'airFlowRateMax', value['airFlowRateMax'], 's4bldg:AirFlowRateMax') }}
+      {{ create_property_value_triples(value['id'], 'airFlowRateMax', value['airFlowRateMax'], 's4bldg:airFlowRateMax') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'bladeThickness', value['bladeThickness'], 's4bldg:BladeThickness') }}
+      {{ create_property_value_triples(value['id'], 'bladeThickness', value['bladeThickness'], 's4bldg:bladeThickness') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'closeOffRating', value['closeOffRating'], 's4bldg:CloseOffRating') }}
+      {{ create_property_value_triples(value['id'], 'closeOffRating', value['closeOffRating'], 's4bldg:closeOffRating') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'faceArea', value['faceArea'], 's4bldg:FaceArea') }}
+      {{ create_property_value_triples(value['id'], 'faceArea', value['faceArea'], 's4bldg:faceArea') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'frameDepth', value['frameDepth'], 's4bldg:FrameDepth') }}
+      {{ create_property_value_triples(value['id'], 'frameDepth', value['frameDepth'], 's4bldg:frameDepth') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'frameThickness', value['frameThickness'], 's4bldg:FrameThickness') }}
+      {{ create_property_value_triples(value['id'], 'frameThickness', value['frameThickness'], 's4bldg:frameThickness') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'leakageFullyClosed', value['leakageFullyClosed'], 's4bldg:LeakageFullyClosed') }}
+      {{ create_property_value_triples(value['id'], 'leakageFullyClosed', value['leakageFullyClosed'], 's4bldg:leakageFullyClosed') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalAirFlowRate', value['nominalAirFlowRate'], 's4bldg:NominalAirFlowRate') }}
+      {{ create_property_value_triples(value['id'], 'nominalAirFlowRate', value['nominalAirFlowRate'], 's4bldg:nominalAirFlowRate') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'numberOfBlades', value['numberOfBlades'], 's4bldg:NumberOfBlades') }}
+      {{ create_property_value_triples(value['id'], 'numberOfBlades', value['numberOfBlades'], 's4bldg:numberOfBlades') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'openPressureDrop', value['openPressureDrop'], 's4bldg:OpenPressureDrop') }}
+      {{ create_property_value_triples(value['id'], 'openPressureDrop', value['openPressureDrop'], 's4bldg:openPressureDrop') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:OperationTemperatureMax') }}
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:operationTemperatureMax') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:OperationTemperatureMin') }}
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:operationTemperatureMin') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'temperatureRating', value['temperatureRating'], 's4bldg:TemperatureRating') }}
+      {{ create_property_value_triples(value['id'], 'temperatureRating', value['temperatureRating'], 's4bldg:temperatureRating') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'workingPressureMax', value['workingPressureMax'], 's4bldg:WorkingPressureMax') }}
+      {{ create_property_value_triples(value['id'], 'workingPressureMax', value['workingPressureMax'], 's4bldg:workingPressureMax') }}
 
   # Data properties
   - template: |-
