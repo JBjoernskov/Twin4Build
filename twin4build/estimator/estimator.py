@@ -2225,10 +2225,17 @@ class Estimator:
 
         Notes
         -----
-        Uses torch.func.jacfwd for forward-mode automatic differentiation.
+        Uses torch.func.jacrev for reverse-mode automatic differentiation,
+        which is more efficient than jacfwd when output dim << input dim.
         """
-        self._jac = torch.func.jacfwd(self._obj, argnums=0)(theta, output)
-        assert not torch.any(torch.isnan(self._jac)), "JAC contains NaNs"
+        # Save and restore state that _obj overwrites during jacrev's
+        # internal forward pass, so the cached values in _obj_ad stay valid.
+        saved_loglike = self._loglike
+        self._jac = torch.func.jacrev(self._obj, argnums=0)(theta, output)
+        self._loglike = saved_loglike
+
+        if torch.any(torch.isnan(self._jac)):
+            raise ValueError("JAC contains NaNs")
         return self._jac
 
     def _jac_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:

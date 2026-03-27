@@ -231,17 +231,10 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         batch_size = len(start_time)
         
         # Initialize input ports - derive n_v from connection points for Vector inputs
-        # DEBUG: Print connection info
-        print(f"DEBUG AHU {self.id}: connects_at has {len(self.connects_at)} connection points")
-        for cp in self.connects_at:
-            print(f"  - input_port: {cp.input_port}, input_port_index: {cp.input_port_index}")
-        
         for name, input_port in self.input.items():
             if isinstance(input_port, tps.Vector):
-                # Derive n_v from connection point indices (largest index + 1)
-                n_v = self.get_n_v_from_connections(name)
-                print(f"DEBUG: Vector input '{name}' -> n_v = {n_v}")
-                assert n_v is not None, f"n_v not found for input port {name}"
+                # Derive n_v from connection point indices, fall back to n_branches
+                n_v = self.get_n_v_from_connections(name) or self.n_branches
                 input_port.initialize(
                     n_t=max_timesteps,
                     n_s=batch_size,

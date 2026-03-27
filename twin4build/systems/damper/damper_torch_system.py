@@ -165,12 +165,12 @@ class DamperTorchSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
         
-        # Initialize input/output ports (Scalar with n_c handled by data shape)
+        # Initialize input/output ports
         for port in self.input.values():
-            port.initialize(n_t=max_timesteps, n_s=batch_size)
-                
+            port.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
+
         for port in self.output.values():
-            port.initialize(n_t=max_timesteps, n_s=batch_size)
+            port.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
 
         # Expand parameters to n_c dimension for vectorization
         self.a = self.a.expand_to_n_c(self.n_c)

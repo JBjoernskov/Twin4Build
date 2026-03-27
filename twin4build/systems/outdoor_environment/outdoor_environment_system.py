@@ -683,7 +683,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         # Set the values for each output
         if self.apply_correction:
             self._output["outdoorTemperature"]._set(
-                i_t=step_index, apply=self._apply
+                i_t=step_index, transformation=self._apply
             )
         else:
             self._output["outdoorTemperature"]._set(i_t=step_index)

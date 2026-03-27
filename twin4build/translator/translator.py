@@ -244,8 +244,8 @@ class Translator:
         # Create component instances
         self._instantiate_components(complete_groups, semantic_model)
 
-        # if len(self._sim2sem_map) == 0:
-        #     raise Exception("No components instantiated.")
+        if len(self._sim2sem_map) == 0:
+            raise Exception("No components instantiated.")
 
         result = self._solve_milp()
         if result["success"]:
@@ -262,7 +262,7 @@ class Translator:
             LOGGER.error("Applying translator", change_status=True)
             LOGGER.remove_level()
             sim_model = None
-            # raise Exception(f"MILP solver failed: {result['message']}") # TODO: add line again after debugging
+            raise Exception(f"MILP solver failed: {result['message']}")
 
         return sim_model
 
@@ -1284,7 +1284,7 @@ class Translator:
             for key, value in pairs.items():
                 key_ = semantic_model.get_instance(key).get_short_name()
                 for value_ in value:
-                    if value_.is_literal:
+                    if isinstance(value_, core.SemanticLiteral):
                         pairs_new[key_] = value_.uri.value
             return pairs_new
 
