@@ -394,20 +394,28 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
+
+        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
+            self.n_c = self._n_c_compiled
+        else:
+            self.n_c = 1
+
         self.setup_variable_inputs()
         self.input["adjacentZoneTemperature"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_adjacent_zones
+            n_t=max_timesteps, n_s=batch_size, n_c=self.n_c, n_v=self.n_adjacent_zones
         )
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
+                n_c=self.n_c,
             )
         for output in self.output.values():
             output.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
+                n_c=self.n_c,
             )
 
         if not self.INITIALIZED:

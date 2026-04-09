@@ -340,31 +340,43 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
+
+        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
+            self.n_c = self._n_c_compiled
+        else:
+            self.n_c = 1
+
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
+                n_c=self.n_c,
             )
         for output in self.output.values():
             output.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
+                n_c=self.n_c,
             )
 
         if not self.INITIALIZED:
-            # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh
-            UA0 = float(
-                self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
-            )
-            root = fsolve(self._ua_residual, UA0, full_output=True)
-            UA_val = root[0][0]
-            self.UA.data.fill_(UA_val)  # Preserves shape (n_c,)
-            # First initialization
+            if self.n_c == 1:
+                # Single component: numerically solve for UA so that
+                # steady-state output matches Q_flow_nominal_sh.
+                UA0 = float(
+                    self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
+                )
+                root = fsolve(self._ua_residual, UA0, full_output=True)
+                UA_val = root[0][0]
+                self.UA.data.fill_(UA_val)
+            # When n_c > 1 (compiled meta component), self.UA already
+            # contains the stacked per-component values set by
+            # _batch_parameters(); skip fsolve.
+
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size)
 
-            # FIX: Set correct initial state for batch
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
 
@@ -374,7 +386,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size)
 
-            # FIX: Set correct initial state for batch
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
 

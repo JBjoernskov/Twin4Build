@@ -843,6 +843,7 @@ class Model:
                     )
 
                 self._batch_parameters(meta, comps, n_c)
+                self._copy_init_attrs(meta, comps[0])
 
                 for i_c, c in enumerate(comps):
                     self._component_to_meta[c.id] = (meta, i_c)
@@ -991,6 +992,23 @@ class Model:
 
     # -- parameter batching -----------------------------------------------
 
+    @staticmethod
+    def _resolve_dotted_attr(obj: Any, dotted_name: str) -> Any:
+        """Traverse a dotted attribute path (e.g. ``"thermal.C_air"``)."""
+        for part in dotted_name.split("."):
+            obj = getattr(obj, part, None)
+            if obj is None:
+                return None
+        return obj
+
+    @staticmethod
+    def _set_dotted_attr(obj: Any, dotted_name: str, value: Any) -> None:
+        """Set an attribute via a dotted path (e.g. ``"thermal.C_air"``)."""
+        parts = dotted_name.split(".")
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], value)
+
     def _batch_parameters(
         self, meta: Any, components: List, n_c: int
     ) -> None:
@@ -999,6 +1017,9 @@ class Model:
         Only ``tps.Parameter`` and ``tps.TensorParameter`` attributes whose
         names appear in ``components[0].parameter`` are batched.  Each
         original component contributes one slice along ``n_c``.
+
+        Supports dotted parameter names (e.g. ``"thermal.C_air"``) for
+        composite components that wrap sub-models.
         """
         param_dict = getattr(components[0], "parameter", None)
         if not param_dict:
@@ -1007,7 +1028,7 @@ class Model:
         for param_name in param_dict:
             originals = []
             for c in components:
-                p = getattr(c, param_name, None)
+                p = self._resolve_dotted_attr(c, param_name)
                 if p is None:
                     return
                 originals.append(p)
@@ -1022,7 +1043,7 @@ class Model:
                 maxs = torch.stack(
                     [p.max_value.squeeze() for p in originals]
                 )
-                setattr(
+                self._set_dotted_attr(
                     meta,
                     param_name,
                     tps.Parameter(
@@ -1050,7 +1071,7 @@ class Model:
                     if first.max_value is not None
                     else None
                 )
-                setattr(
+                self._set_dotted_attr(
                     meta,
                     param_name,
                     tps.TensorParameter(
@@ -1061,6 +1082,72 @@ class Model:
                         n_c=n_c,
                     ),
                 )
+
+    # -- non-parameter attribute copying -----------------------------------
+
+    # Attributes that must be copied verbatim from a source component to
+    # the meta component because they affect model structure (matrix sizes,
+    # topology) but are plain values rather than tps.Parameter instances.
+    # Keyed by fully-qualified class name.  Supports dotted paths for
+    # composite components (e.g. ``"thermal.some_attr"``).
+    _INIT_ATTRS_TO_COPY: Dict[str, Tuple[str, ...]] = {
+        "twin4build.systems.space_heater.space_heater_torch_system.SpaceHeaterTorchSystem": (
+            "nelements",
+            "Q_flow_nominal_sh",
+            "T_a_nominal_sh",
+            "T_b_nominal_sh",
+            "TAir_nominal_sh",
+        ),
+        "twin4build.systems.building_space.building_space_torch_system.BuildingSpaceTorchSystem": (),
+    }
+
+    def _copy_init_attrs(
+        self, meta: Any, source: Any
+    ) -> None:
+        """Copy non-Parameter constructor attributes from *source* to *meta*.
+
+        Only the attributes listed in ``_INIT_ATTRS_TO_COPY`` for the
+        component's class are copied.  This ensures that the meta component
+        has the correct structural values (e.g. ``nelements``) even though
+        ``_batch_parameters`` only handles ``tps.Parameter`` objects.
+        Supports dotted paths for composite components.
+
+        Additionally, for composite building-space components, topology
+        values (``n_adjacent_zones``, ``n_boundary_temperature``) are
+        computed from the source component's connection graph -- which is
+        available even before ``initialize()`` has been called.
+        """
+        fqn = f"{source.__class__.__module__}.{source.__class__.__name__}"
+        attrs = self._INIT_ATTRS_TO_COPY.get(fqn, ())
+        for attr in attrs:
+            val = self._resolve_dotted_attr(source, attr)
+            if val is not None:
+                self._set_dotted_attr(meta, attr, val)
+
+        # For BuildingSpaceTorchSystem: derive topology from the source
+        # component's connects_at (populated by model.load()) and push
+        # it through the thermal sub-model's setter so the manual flag
+        # is set and initialize() skips its own connects_at discovery.
+        from twin4build.systems.building_space.building_space_torch_system import (
+            BuildingSpaceTorchSystem,
+        )
+        if isinstance(source, BuildingSpaceTorchSystem):
+            cp_boundary = [
+                cp for cp in source.connects_at
+                if cp.inputPort == "boundaryTemperature"
+            ]
+            n_boundary = (
+                len(cp_boundary[0].connects_system_through) if cp_boundary else 0
+            )
+            cp_adj = [
+                cp for cp in source.connects_at
+                if cp.inputPort == "adjacentZoneTemperature"
+            ]
+            n_adj = (
+                len(cp_adj[0].connects_system_through) if cp_adj else 0
+            )
+            meta.thermal.n_adjacent_zones = n_adj
+            meta.thermal.n_boundary_temperature = n_boundary
 
     # -- signature helpers ------------------------------------------------
 

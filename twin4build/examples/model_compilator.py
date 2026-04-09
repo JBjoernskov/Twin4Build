@@ -84,3 +84,27 @@ fig, axes = tb.plot.plot_component(
     show=True,
     nticks=11
 )
+
+if "_compiled" in simulator.model.id:
+    damper_comoponent = simulator.model.simulation_model.components["g2_b0_DamperTorchSystem"]
+else:
+    damper_comoponent = simulator.model.simulation_model.components["020B_room_supply_damper"]
+
+fig2, axes2 = tb.plot.plot_component(
+    simulator,
+    components_1axis=[
+        (damper_comoponent.id, "airFlowRate", "output"),
+    ],
+    components_2axis=[
+        (damper_comoponent.id, "damperPosition", "output"),
+    ],
+    components_3axis=[
+        ("020B", "indoorTemperature", "output"),
+    ],
+    ylabel_1axis="Air flow rate [m³/s]",
+    ylabel_2axis="Damper position",
+    ylabel_3axis="Temperature [°C]",
+    title="Damper system",
+    show=True,
+    nticks=11
+)
