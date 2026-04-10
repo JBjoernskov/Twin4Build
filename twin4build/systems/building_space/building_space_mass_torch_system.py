@@ -268,7 +268,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         V = self.V.get()
         G_occ = self.G_occ.get()
         m_inf = self.m_inf.get()
-        n_c = V.shape[0]
+        n_c = self.n_c
 
         # Calculate air mass from volume and density
         density_air = constants.RHO_AIR

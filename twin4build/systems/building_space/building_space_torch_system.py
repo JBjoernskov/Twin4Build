@@ -115,7 +115,9 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
             "thermal." + s for s in self.thermal._config["parameters"]
         ]
         mass_parameters = ["mass." + s for s in self.mass._config["parameters"]]
-        self._config = {"parameters": thermal_parameters + mass_parameters}
+        all_parameters = thermal_parameters + mass_parameters
+        self._config = {"parameters": all_parameters}
+        self.parameter = {k: {} for k in all_parameters}
         self.INITIALIZED = False
 
     @property

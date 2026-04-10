@@ -76,7 +76,13 @@ class PIDControllerSystem(core.System, nn.Module):
 
         self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar(0)}
-        self._config = {"parameters": ["kp", "Ti", "Td", "isReverse"]}
+
+        self.parameter = {
+            "kp": {"lb": -1.0, "ub": 1.0},
+            "Ti": {"lb": 0.1, "ub": 1000.0},
+            "Td": {"lb": 0.0, "ub": 100.0},
+        }
+        self._config = {"parameters": list(self.parameter.keys()) + ["isReverse"]}
 
     @property
     def config(self):

@@ -531,7 +531,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         )  # Add one input for boundary temperature
         self.n_inputs = n_inputs
 
-        # Get parameter values - shape (n_c,)
+        # Get parameter values - shape (n_c_param,); may be 1 even when
+        # self.n_c > 1 (compiled/batched components share identical params).
         C_air = self.C_air.get()
         C_wall = self.C_wall.get()
         C_boundary = self.C_boundary.get()
@@ -543,7 +544,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         f_air = self.f_air.get()
         f_wall = self.f_wall.get()
         Q_occ_gain = self.Q_occ_gain.get()
-        n_c = C_air.shape[0]
+        n_c = self.n_c
 
         # Initialize A and B matrices with zeros - shape (n_c, n_states, n_states/n_inputs)
         A = torch.zeros((n_c, n_states, n_states), dtype=torch.float64)

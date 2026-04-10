@@ -1099,6 +1099,10 @@ class Model:
             "TAir_nominal_sh",
         ),
         "twin4build.systems.building_space.building_space_torch_system.BuildingSpaceTorchSystem": (),
+        "twin4build.systems.controller.setpoint_controller.pid_controller"
+        ".pid_controller_system.PIDControllerSystem": (
+            "isReverse",
+        ),
     }
 
     def _copy_init_attrs(

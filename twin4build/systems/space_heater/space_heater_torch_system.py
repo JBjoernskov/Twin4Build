@@ -361,18 +361,16 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             )
 
         if not self.INITIALIZED:
-            if self.n_c == 1:
-                # Single component: numerically solve for UA so that
-                # steady-state output matches Q_flow_nominal_sh.
-                UA0 = float(
-                    self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
-                )
-                root = fsolve(self._ua_residual, UA0, full_output=True)
-                UA_val = root[0][0]
-                self.UA.data.fill_(UA_val)
-            # When n_c > 1 (compiled meta component), self.UA already
-            # contains the stacked per-component values set by
-            # _batch_parameters(); skip fsolve.
+            # Numerically solve for UA so that steady-state output matches
+            # Q_flow_nominal_sh.  For batched (n_c > 1) components the
+            # nominal design values are identical across rooms, so a single
+            # fsolve result is broadcast to every component index.
+            UA0 = float(
+                self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
+            )
+            root = fsolve(self._ua_residual, UA0, full_output=True)
+            UA_val = root[0][0]
+            self.UA.data.fill_(UA_val)
 
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size)
@@ -403,7 +401,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             float: Difference between calculated and nominal heat output.
         """
         n = self.nelements
-        C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
+        tmc = self.thermalMassHeatCapacity.get()
+        C_elem = float(tmc.flatten()[0].item()) / n
         UA_elem = float(UA_candidate.item()) / n
         m_dot = float(
             self.Q_flow_nominal_sh
@@ -465,10 +464,11 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         n = self.nelements
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
         
-        # Get parameters - shape (n_c,)
-        C_elem = self.thermalMassHeatCapacity.get() / n  # (n_c,)
-        UA_elem = self.UA.get() / n  # (n_c,)
-        n_c = C_elem.shape[0]
+        # Get parameters - shape (n_c_param,); may be 1 even when
+        # self.n_c > 1 (compiled/batched components share identical params).
+        C_elem = self.thermalMassHeatCapacity.get() / n
+        UA_elem = self.UA.get() / n
+        n_c = self.n_c
         c_p = constants.CP_WATER
 
         # LTI part: Only UA/C on diagonal - shape (n_c, n, n)
