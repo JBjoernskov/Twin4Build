@@ -1,0 +1,14 @@
+# Versions captured at paper-experiment time (CPU profile).
+# These are extra dependencies on top of the twin4build install; run
+# `pip install -r requirements.txt` inside the same venv used for the
+# twin4build package.
+
+matplotlib==3.10.7
+numpy==2.3.5
+pandas==2.3.3
+psutil==7.1.3
+python-dateutil==2.9.0.post0
+pytz==2025.2
+scipy==1.16.3
+torch==2.9.1
+tqdm==4.67.1

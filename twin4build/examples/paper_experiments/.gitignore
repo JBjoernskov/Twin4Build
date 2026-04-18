@@ -1,0 +1,9 @@
+# Experiment artefacts: raw CSVs, figures, chrome traces, residual dumps.
+# The scripts are committed; outputs are not.
+results/
+figures/
+# Twin4build's model.load() writes intermediate artefacts here when scripts
+# are invoked from within this folder.
+generated_files/
+**/generated_files/
+**/__pycache__/
