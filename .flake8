@@ -39,4 +39,5 @@ exclude =
     dist,
     .venv,
     .eggs,
-    *.egg 
+    *.egg,
+    twin4build/examples/paper_experiments
