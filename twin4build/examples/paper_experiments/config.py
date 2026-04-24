@@ -87,6 +87,20 @@ STEP_SIZE_DEFAULT: int = 600
 # E5 profiler case size.
 N_E5: int = min(32, MAX_N_ROOMS)
 
+# E5 profile window.  The torch profiler buffers one event per op dispatch,
+# so a full HORIZON_DAYS_DEFAULT run at STEP_SIZE_DEFAULT (~1000 steps) easily
+# produces hundreds of thousands of events per pass.  With two passes back
+# to back and the chrome-trace JSON serialized in-memory on export, peak RSS
+# can exceed a couple of GB even at N_E5 = 8 and OOM-kill under WSL.  The
+# op-family aggregate is already an average, so a short representative slice
+# is sufficient.  Keep the number of events bounded by profiling only
+# ``PROFILE_N_STEPS`` steps of size ``PROFILE_STEP_SIZE``.
+PROFILE_N_STEPS: int = 24
+PROFILE_STEP_SIZE: int = STEP_SIZE_DEFAULT
+# Export the (large) chrome trace JSON.  Disable if you only want the CSV
+# summary and are memory-constrained -- the trace doubles peak RSS on export.
+PROFILE_EXPORT_TRACE: bool = True
+
 # E6 ablation base case size (small, to keep repeated runs cheap).
 N_E6: int = min(64, MAX_N_ROOMS)
 

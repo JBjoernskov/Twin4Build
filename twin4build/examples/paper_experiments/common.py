@@ -83,6 +83,31 @@ def peak_memory_mb(device_key: str) -> float:
     return float("nan")
 
 
+def current_rss_mb(device_key: str) -> float:
+    """Current (live) process memory in MB -- unlike :func:`peak_memory_mb`
+    this decreases as memory is freed.
+
+    On CPU we read ``VmRSS`` from ``/proc/self/status`` so we can sample the
+    resident set during a specific phase of work (e.g. just the compiled
+    simulate loop) rather than the lifetime high-water mark that
+    ``ru_maxrss`` tracks.  Falls back to ``ru_maxrss`` if ``/proc`` is
+    unavailable (non-Linux).  For GPU we read the CUDA allocator's current
+    allocation.
+    """
+    if device_key.startswith("cpu"):
+        try:
+            with open("/proc/self/status") as fh:
+                for line in fh:
+                    if line.startswith("VmRSS:"):
+                        return int(line.split()[1]) / 1024.0
+        except OSError:
+            pass
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+    if device_key == "gpu":
+        return torch.cuda.memory_allocated() / (1024.0 ** 2)
+    return float("nan")
+
+
 def reset_peak_memory(device_key: str) -> None:
     """Reset per-device peak trackers before a measured run."""
     if device_key == "gpu":

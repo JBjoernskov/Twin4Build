@@ -1,38 +1,39 @@
-"""E4 -- Realistic case study (full-port accuracy + graph-compression audit).
+"""E4 -- Accuracy audit on the scaling multi-room building.
 
-Runs the estimator-example model used by
-:mod:`twin4build.examples.model_compilator` and records:
+Reuses the synthetic multi-room model that drives E1 (see
+``common.build_multi_room_model``) and records, for each of a small and a
+large configuration, the numerical agreement between the uncompiled
+reference and the compiled (batched) version:
 
 * Full-port accuracy: max absolute and max relative error between the
-  uncompiled reference and the compiled (batched) model, for every output
-  port on every component that the compiler registered.  Written to
-  ``results/e4_port_errors.csv``.
-* Per-execution-group compression: how many original components fused into
-  how many meta components, and the batch sizes involved.  Written to
-  ``results/e4_compression.csv``.
-* A one-row timing summary: ``results/e4_timing.csv``.
-* Residual timeseries for three representative ports (for F5).  Saved
-  under ``results/e4_residuals/<component>__<port>.csv``.
+  uncompiled reference and the compiled model, for every output port on
+  every component that the compiler registered.  Written to
+  ``results/e4_port_errors.csv`` (one file, with an ``n_rooms`` column).
+* Per-execution-group compression: how many original components fused
+  into how many meta components, and the batch sizes involved.  Written
+  to ``results/e4_compression.csv`` (with an ``n_rooms`` column).
+* Per-case timing summary: ``results/e4_timing.csv`` (one row per size).
+* Residual timeseries for three representative ports at each size (for
+  F5).  Saved under ``results/e4_residuals/n{N_ROOMS}/<component>__<port>.csv``.
 
-The reference implementation is :mod:`twin4build.examples.model_compilator`;
-this script imports its ``setup_sensor_filenames`` helper so the data-source
-wiring stays in one place.
+Building a small instance (``N_ROOMS_SMALL``) exercises the code path with
+modest batch widths, while the large instance (``N_ROOMS_LARGE``) exercises
+the deep-batching regime that motivates the compiler in the first place.
+Comparing both keeps the accuracy claim honest across scales.
 """
 
 from __future__ import annotations
 
 import datetime
+import gc
 import sys
 from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
 import pandas as pd
-from dateutil import tz
 
 import twin4build as tb
-import twin4build.examples.utils as t4b_utils
-from twin4build.examples.model_compilator import setup_sensor_filenames
 
 from twin4build.examples.paper_experiments import common, config
 
@@ -42,72 +43,74 @@ CSV_COMPRESSION = config.RESULTS_DIR / "e4_compression.csv"
 CSV_TIMING = config.RESULTS_DIR / "e4_timing.csv"
 RESIDUALS_DIR = config.RESULTS_DIR / "e4_residuals"
 
-TZ_CPH = tz.gettz("Europe/Copenhagen")
-# Match the periods used by model_compilator.py so results are comparable.
-START_TIME = [
-    datetime.datetime(2023, 11, 27, 0, 0, 0, tzinfo=TZ_CPH),
-    datetime.datetime(2023, 12, 2, 0, 0, 0, tzinfo=TZ_CPH),
-]
-END_TIME = [
-    datetime.datetime(2023, 12, 1, 0, 0, 0, tzinfo=TZ_CPH),
-    datetime.datetime(2023, 12, 5, 0, 0, 0, tzinfo=TZ_CPH),
-]
-STEP_SIZE = 1200  # 20 minutes
+# Small and large cases.  Both are clamped against the global scale cap so
+# this experiment never grows past what the rest of the suite allows.
+N_ROOMS_SMALL: int = min(5, config.MAX_N_ROOMS)
+N_ROOMS_LARGE: int = min(128, config.MAX_N_ROOMS)
+N_ROOMS_CASES: List[int] = [N_ROOMS_SMALL, N_ROOMS_LARGE]
+
+HORIZON_DAYS: int = config.HORIZON_DAYS_DEFAULT
+STEP_SIZE: int = config.STEP_SIZE_DEFAULT
 
 
-# A hand-picked set of "representative" ports for the residual timeseries
-# plot.  Each tuple is (component_id, port_name, io_type).
-REPRESENTATIVE_PORTS = [
-    ("020B", "indoorTemperature", "output"),
-    ("020B_space_heater", "Power", "output"),
-    ("020B_room_supply_damper", "airFlowRate", "output"),
-]
+def _representative_ports(n_rooms: int) -> List[tuple]:
+    """Representative output ports for the F5 residual plot.
+
+    We always pick the first room so the plot is comparable across sizes.
+    """
+    _ = n_rooms  # kept for symmetry: size-dependent picks can slot in here
+    return [
+        ("room_0", "indoorTemperature", "output"),
+        ("room_0_space_heater", "Power", "output"),
+        ("room_0_supply_damper", "airFlowRate", "output"),
+    ]
 
 
-def _load_reference() -> "tb.Model":
-    """Load the estimator-example model with sensor CSVs wired up."""
-    model = tb.Model(id="e4_estimator_example")
-    filename_simulation = t4b_utils.get_path(
-        ["estimator_example", "instance_graph.ttl"]
+def _build_and_load(n_rooms: int, model_id: str) -> "tb.Model":
+    model = common.build_multi_room_model(
+        n_rooms,
+        start=common.DEFAULT_START,
+        horizon_days=HORIZON_DAYS,
+        step_size=STEP_SIZE,
+        model_id=model_id,
     )
     model.load(
-        simulation_model_filename=filename_simulation,
         draw_semantic_model=False,
         draw_simulation_model=False,
         verbose=0,
     )
-    setup_sensor_filenames(model)
     return model
 
 
 def _simulate(model: "tb.Model") -> float:
-    simulator = tb.Simulator(model)
-    t0_simulate = 0.0
-
-    import time
-
-    t0 = time.perf_counter()
-    simulator.simulate(
-        step_size=STEP_SIZE,
-        start_time=START_TIME,
-        end_time=END_TIME,
-        show_progress_bar=False,
+    start = common.DEFAULT_START
+    end = start + datetime.timedelta(days=HORIZON_DAYS)
+    _, dt = common.timed(
+        lambda: common.simulate_once(model, start, end, STEP_SIZE)
     )
-    t0_simulate = time.perf_counter() - t0
-    return t0_simulate
+    return dt
 
 
 def _save_residual_timeseries(
-    model_orig: "tb.Model", model_compiled: "tb.Model"
-) -> None:
-    RESIDUALS_DIR.mkdir(parents=True, exist_ok=True)
-    for comp_id, port_name, io_type in REPRESENTATIVE_PORTS:
+    model_orig: "tb.Model",
+    model_compiled: "tb.Model",
+    representative_ports: List[tuple],
+    out_dir: Path,
+) -> int:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = 0
+    for comp_id, port_name, io_type in representative_ports:
         meta_info = model_orig.get_compiled_component_info(comp_id)
         if meta_info is None:
             continue
         meta, i_c = meta_info
-        port_orig = getattr(model_orig.components[comp_id], io_type)[port_name]
-        port_meta = getattr(model_compiled.components[meta.id], io_type)[port_name]
+        try:
+            port_orig = getattr(model_orig.components[comp_id], io_type)[port_name]
+            port_meta = getattr(
+                model_compiled.components[meta.id], io_type
+            )[port_name]
+        except (AttributeError, KeyError):
+            continue
         a = port_orig.history()[:, :, 0].detach().cpu().numpy()  # (n_t, n_s)
         b = port_meta.history()[:, :, i_c].detach().cpu().numpy()
         n_t, n_s = a.shape
@@ -120,19 +123,26 @@ def _save_residual_timeseries(
                 "residual": (a - b).T.reshape(-1),
             }
         )
-        path = RESIDUALS_DIR / f"{comp_id}__{port_name}.csv"
-        df.to_csv(path, index=False)
+        df.to_csv(out_dir / f"{comp_id}__{port_name}.csv", index=False)
+        written += 1
+    return written
 
 
-def main() -> None:
-    print("[E4] loading estimator example ...")
-    model_orig = _load_reference()
+def _run_case(n_rooms: int) -> Dict[str, object]:
+    """Run the full accuracy audit for a single ``n_rooms`` case."""
+    print(f"\n[E4] ==== N_ROOMS = {n_rooms} ====")
+    print(f"[E4] building original ...")
+    model_orig = _build_and_load(n_rooms, model_id=f"e4_n{n_rooms}_orig")
     n_comp_orig, n_conn_orig = common.graph_size(model_orig)
     print(f"[E4]   original: {n_comp_orig} components, {n_conn_orig} connections")
 
     print("[E4] compiling ...")
     compiled, t_compile = common.timed(model_orig.build_compiled_model)
-    compiled.simulation_model.load(verbose=0, validate_model=True)
+    compiled.load(
+        draw_semantic_model=False,
+        draw_simulation_model=False,
+        verbose=0,
+    )
     n_comp_comp, n_conn_comp = common.graph_size(compiled)
     print(f"[E4]   compiled: {n_comp_comp} components, {n_conn_comp} connections")
     print(f"[E4]   compile time: {t_compile:.3f}s")
@@ -151,8 +161,7 @@ def main() -> None:
     # -- Accuracy audit --------------------------------------------------
     print("[E4] computing per-port errors ...")
     errors_df = common.port_errors(model_orig, compiled, io_types=("output",))
-    errors_df.to_csv(CSV_ERRORS, index=False)
-    # Summary: aggregate across all valid ports.
+    errors_df.insert(0, "n_rooms", n_rooms)
     valid = errors_df.dropna(subset=["max_abs_err"])
     valid = valid[valid["n_samples"] > 0]
     if len(valid):
@@ -173,7 +182,7 @@ def main() -> None:
     # -- Compression audit -----------------------------------------------
     print("[E4] computing per-group compression ...")
     comp_df = common.compressed_group_stats(model_orig, compiled)
-    comp_df.to_csv(CSV_COMPRESSION, index=False)
+    comp_df.insert(0, "n_rooms", n_rooms)
     print(
         f"[E4]   groups total: {len(comp_df)};  "
         f"orig total={int(comp_df['n_original'].sum())}, "
@@ -182,34 +191,69 @@ def main() -> None:
 
     # -- Residual timeseries for F5 -------------------------------------
     print("[E4] saving representative residual timeseries ...")
-    _save_residual_timeseries(model_orig, compiled)
-
-    # -- Timing summary --------------------------------------------------
-    wiring = common.connection_wiring_stats(compiled)
-    common.write_csv(
-        CSV_TIMING,
-        [
-            {
-                "model": "estimator_example",
-                "t_compile_s": t_compile,
-                "t_sim_orig_s": t_orig,
-                "t_sim_comp_s": t_comp,
-                "speedup": speedup,
-                "n_comp_orig": n_comp_orig,
-                "n_comp_comp": n_comp_comp,
-                "n_conn_orig": n_conn_orig,
-                "n_conn_comp": n_conn_comp,
-                "frac_aligned": wiring["fraction_aligned"],
-                "n_conn_aligned": wiring["n_connections_aligned"],
-                "n_conn_gather": wiring["n_connections_gather"],
-                "step_size_s": STEP_SIZE,
-                "n_periods": len(START_TIME),
-            }
-        ],
+    case_residuals_dir = RESIDUALS_DIR / f"n{n_rooms}"
+    n_residuals = _save_residual_timeseries(
+        model_orig, compiled, _representative_ports(n_rooms), case_residuals_dir
     )
 
+    wiring = common.connection_wiring_stats(compiled)
+    timing_row: Dict[str, object] = {
+        "n_rooms": n_rooms,
+        "horizon_days": HORIZON_DAYS,
+        "step_size_s": STEP_SIZE,
+        "t_compile_s": t_compile,
+        "t_sim_orig_s": t_orig,
+        "t_sim_comp_s": t_comp,
+        "speedup": speedup,
+        "n_comp_orig": n_comp_orig,
+        "n_comp_comp": n_comp_comp,
+        "n_conn_orig": n_conn_orig,
+        "n_conn_comp": n_conn_comp,
+        "frac_aligned": wiring["fraction_aligned"],
+        "n_conn_aligned": wiring["n_connections_aligned"],
+        "n_conn_gather": wiring["n_connections_gather"],
+        "n_residual_files": n_residuals,
+    }
+
+    # Release models before moving to the next (larger) case so peak RSS
+    # is dominated by a single case at a time.
+    del compiled, model_orig
+    gc.collect()
+
+    return {
+        "errors_df": errors_df,
+        "compression_df": comp_df,
+        "timing_row": timing_row,
+    }
+
+
+def main() -> None:
+    all_errors: List[pd.DataFrame] = []
+    all_compression: List[pd.DataFrame] = []
+    timing_rows: List[Dict[str, object]] = []
+
+    for n_rooms in N_ROOMS_CASES:
+        result = _run_case(n_rooms)
+        all_errors.append(result["errors_df"])
+        all_compression.append(result["compression_df"])
+        timing_rows.append(result["timing_row"])
+
+    pd.concat(all_errors, ignore_index=True).to_csv(CSV_ERRORS, index=False)
+    pd.concat(all_compression, ignore_index=True).to_csv(
+        CSV_COMPRESSION, index=False
+    )
+    common.write_csv(CSV_TIMING, timing_rows)
+
+    print("\n[E4] summary")
+    for row in timing_rows:
+        print(
+            f"  n_rooms={row['n_rooms']:>4d}  "
+            f"orig={row['t_sim_orig_s']:.3f}s  "
+            f"comp={row['t_sim_comp_s']:.3f}s  "
+            f"speedup={row['speedup']:.2f}x"
+        )
     print(f"\n[E4] wrote:\n  {CSV_ERRORS}\n  {CSV_COMPRESSION}\n  {CSV_TIMING}")
-    print(f"  {RESIDUALS_DIR}/ ({len(REPRESENTATIVE_PORTS)} files)")
+    print(f"  {RESIDUALS_DIR}/")
 
 
 if __name__ == "__main__":

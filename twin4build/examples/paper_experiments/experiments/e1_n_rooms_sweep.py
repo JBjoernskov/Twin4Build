@@ -7,8 +7,11 @@ reference and the compiled (batched) version.  Each measured cell reports
 ``N_REPEATS`` runs plus ``N_WARMUP`` discarded warm-ups.
 
 Writes ``results/e1_n_rooms.csv`` with one row per individual run (device,
-n_rooms, replicate index, and wallclock breakdown) so downstream plots can
-aggregate to medians/IQRs without losing the raw data.
+n_rooms, replicate index, wallclock breakdown, and per-variant peak-memory
+footprints: ``rss_peak_orig_mb``, ``rss_peak_comp_mb``, ``rss_overhead_mb``).
+The summary CSV additionally exposes the cell-level peak-memory max and the
+compiled/original memory-overhead ratio so the speed/memory tradeoff can be
+read off directly.
 """
 
 from __future__ import annotations
@@ -78,17 +81,38 @@ def _run_cell(
 
     # Run warmups (discarded) then measured repeats, alternating orig/comp
     # on the same repeat index so each replicate sees comparable system load.
+    # Around each simulate call we (a) reset the CUDA peak tracker so the
+    # per-variant peak is attributable to that call only, and (b) sample the
+    # live RSS immediately after the call so CPU peaks are attributable to
+    # the same phase.  The max across repeats becomes the cell's reported
+    # peak for that variant.
     orig_times: List[float] = []
     comp_times: List[float] = []
+    orig_peaks: List[float] = []
+    comp_peaks: List[float] = []
     for rep in range(warmup + repeats):
+        common.reset_peak_memory(device_key)
         _, dt_o = common.timed(
             lambda: common.simulate_once(model_orig, start, end, step)
         )
+        if device_key == "gpu":
+            peak_o = common.peak_memory_mb(device_key)
+        else:
+            peak_o = common.current_rss_mb(device_key)
+
+        common.reset_peak_memory(device_key)
         _, dt_c = common.timed(
             lambda: common.simulate_once(compiled, start, end, step)
         )
+        if device_key == "gpu":
+            peak_c = common.peak_memory_mb(device_key)
+        else:
+            peak_c = common.current_rss_mb(device_key)
+
         orig_times.append(dt_o)
         comp_times.append(dt_c)
+        orig_peaks.append(peak_o)
+        comp_peaks.append(peak_c)
 
     rss_peak = common.peak_memory_mb(device_key)
 
@@ -107,6 +131,9 @@ def _run_cell(
                 "t_compile_s": t_compile,
                 "t_sim_orig_s": orig_times[rep],
                 "t_sim_comp_s": comp_times[rep],
+                "rss_peak_orig_mb": orig_peaks[rep],
+                "rss_peak_comp_mb": comp_peaks[rep],
+                "rss_overhead_mb": comp_peaks[rep] - orig_peaks[rep],
                 "n_comp_orig": n_comp_orig,
                 "n_comp_comp": n_comp_comp,
                 "n_conn_orig": n_conn_orig,
@@ -152,16 +179,22 @@ def main() -> None:
                     }
                 )
                 continue
-            median_orig = sorted(
-                r["t_sim_orig_s"] for r in cell_rows if not r["is_warmup"]
-            )[len(cell_rows) // 2]
-            median_comp = sorted(
-                r["t_sim_comp_s"] for r in cell_rows if not r["is_warmup"]
-            )[len(cell_rows) // 2]
+            measured = [r for r in cell_rows if not r["is_warmup"]]
+            median_orig = sorted(r["t_sim_orig_s"] for r in measured)[
+                len(measured) // 2
+            ]
+            median_comp = sorted(r["t_sim_comp_s"] for r in measured)[
+                len(measured) // 2
+            ]
+            mem_orig = max(r["rss_peak_orig_mb"] for r in measured)
+            mem_comp = max(r["rss_peak_comp_mb"] for r in measured)
             speedup = median_orig / median_comp if median_comp > 0 else float("inf")
+            mem_ratio = mem_comp / mem_orig if mem_orig > 0 else float("inf")
             print(
                 f"orig={median_orig:.3f}s  comp={median_comp:.3f}s  "
-                f"speedup={speedup:.2f}x"
+                f"speedup={speedup:.2f}x  "
+                f"mem_orig={mem_orig:.0f}MB  mem_comp={mem_comp:.0f}MB  "
+                f"x{mem_ratio:.2f}"
             )
             all_rows.extend(cell_rows)
 
@@ -190,12 +223,24 @@ def _build_summary(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
         comp_vals = [float(r["t_sim_comp_s"]) for r in bucket]
         orig_q = common.iqr(orig_vals)
         comp_q = common.iqr(comp_vals)
+        # Peak memory is a high-water mark: within a cell we take the max
+        # across repeats (not the median), because that is the allocation
+        # the user actually has to provision for.
+        mem_orig_vals = [float(r["rss_peak_orig_mb"]) for r in bucket]
+        mem_comp_vals = [float(r["rss_peak_comp_mb"]) for r in bucket]
+        mem_orig_max = max(mem_orig_vals) if mem_orig_vals else float("nan")
+        mem_comp_max = max(mem_comp_vals) if mem_comp_vals else float("nan")
         ref = bucket[0]
         n_steps = int(
             config.HORIZON_DAYS_DEFAULT * 24 * 3600 / config.STEP_SIZE_DEFAULT
         )
         comp_steps_per_s = (
             ref["n_comp_orig"] * n_steps / comp_q[1] if comp_q[1] > 0 else float("nan")
+        )
+        mem_overhead_ratio = (
+            mem_comp_max / mem_orig_max
+            if mem_orig_max and mem_orig_max == mem_orig_max and mem_orig_max > 0
+            else float("nan")
         )
         out.append(
             {
@@ -211,6 +256,10 @@ def _build_summary(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
                 "speedup_median": (
                     orig_q[1] / comp_q[1] if comp_q[1] > 0 else float("inf")
                 ),
+                "rss_peak_orig_mb": mem_orig_max,
+                "rss_peak_comp_mb": mem_comp_max,
+                "rss_overhead_mb": mem_comp_max - mem_orig_max,
+                "rss_overhead_ratio": mem_overhead_ratio,
                 "n_comp_orig": ref["n_comp_orig"],
                 "n_comp_comp": ref["n_comp_comp"],
                 "n_conn_orig": ref["n_conn_orig"],
