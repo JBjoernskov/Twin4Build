@@ -662,7 +662,7 @@ class Model:
                 ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
                 PRINTPROGRESS("Drawing semantic model", status="")
                 PRINTPROGRESS.add_level()
-                self._semantic_model.visualize()
+                self._semantic_model.visualize(format="svg")
                 PRINTPROGRESS.remove_level()
                 PRINTPROGRESS(
                     "Drawing semantic model", status="[OK]", change_status=True
@@ -696,7 +696,7 @@ class Model:
 
             PRINTPROGRESS("Drawing simulation model", status="")
             PRINTPROGRESS.add_level()
-            self._simulation_model.visualize()
+            self._simulation_model.visualize(format="svg")
             PRINTPROGRESS("Drawing simulation model", status="[OK]", change_status=True)
             PRINTPROGRESS.remove_level()
 

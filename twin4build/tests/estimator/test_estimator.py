@@ -8,7 +8,6 @@ import unittest
 # Third party imports
 import numpy as np
 import pandas as pd
-import pytz
 from dateutil import tz
 
 # Local application imports
@@ -60,8 +59,8 @@ class TestEstimator(unittest.TestCase):
 
     def test_estimate_with_sensor_data(self):
         """Test estimation with sensor measurement data."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = 600
 
         # First, run simulation to generate "true" data with known parameters
@@ -150,8 +149,8 @@ class TestEstimator(unittest.TestCase):
 
     def test_estimate_with_invalid_bounds(self):
         """Test that estimation raises error when lower bound > upper bound."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         # Create simple model with sensor
@@ -184,8 +183,8 @@ class TestEstimator(unittest.TestCase):
 
     def test_estimate_without_measurements(self):
         """Test that estimation raises error when no measurements provided."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
@@ -211,8 +210,8 @@ class TestEstimator(unittest.TestCase):
 
     def test_estimate_with_empty_parameters(self):
         """Test that estimation raises error when no parameters to estimate."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         dates = pd.date_range(start=start_time, end=end_time, freq=f"{step_size}s")
@@ -239,8 +238,8 @@ class TestEstimator(unittest.TestCase):
 
     def test_estimate_with_nonexistent_attribute(self):
         """Test that estimation raises error when parameter attribute doesn't exist."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         dates = pd.date_range(start=start_time, end=end_time, freq=f"{step_size}s")
@@ -272,15 +271,15 @@ class TestEstimator(unittest.TestCase):
 
     def test_estimate_with_invalid_time_range(self):
         """Test that estimation raises error when start_time >= end_time."""
-        start_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         end_time = datetime.datetime(
-            2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC
+            2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC
         )  # Before start_time
         step_size = 600
 
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
-            end=datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
+            end=datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC),
             freq=f"{step_size}s",
         )
         df = pd.DataFrame({"value": np.ones(len(dates)) * 0.5}, index=dates)

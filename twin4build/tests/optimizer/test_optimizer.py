@@ -7,7 +7,7 @@ import unittest
 # Third party imports
 import numpy as np
 import pandas as pd
-import pytz
+from dateutil import tz
 
 # Local application imports
 from twin4build.model.model import Model
@@ -25,7 +25,7 @@ class TestOptimizer(unittest.TestCase):
         # Create a dummy dataframe for TimeSeriesInputSystem
         # This will be overwritten by the optimizer
         dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC),
+            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
@@ -59,8 +59,8 @@ class TestOptimizer(unittest.TestCase):
 
     def test_optimize_damper_position(self):
         """Test optimization of damper position to minimize air flow rate."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
@@ -105,8 +105,8 @@ class TestOptimizer(unittest.TestCase):
     # @unittest.skip("Known issue - IndexError in optimizer inequality constraint handling")
     def test_optimize_with_constraints(self):
         """Test optimization with inequality constraints."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
@@ -152,8 +152,8 @@ class TestOptimizer(unittest.TestCase):
 
     def test_optimize_with_invalid_bounds(self):
         """Test that optimization raises error when lower bound > upper bound."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
@@ -182,8 +182,8 @@ class TestOptimizer(unittest.TestCase):
 
     def test_optimize_without_objectives(self):
         """Test that optimization raises error when no objectives provided."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
@@ -207,8 +207,8 @@ class TestOptimizer(unittest.TestCase):
 
     def test_optimize_without_variables(self):
         """Test that optimization raises error when no variables provided."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
@@ -232,8 +232,8 @@ class TestOptimizer(unittest.TestCase):
 
     def test_optimize_with_nonexistent_attribute(self):
         """Test that optimization raises error when variable attribute doesn't exist."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
@@ -263,8 +263,8 @@ class TestOptimizer(unittest.TestCase):
     # @unittest.skip("Known limitation - optimizer does not validate objective type")
     def test_optimize_with_invalid_objective_type(self):
         """Test that optimization raises error when objective type is invalid."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
@@ -293,8 +293,8 @@ class TestOptimizer(unittest.TestCase):
 
     def test_optimize_with_invalid_constraint_type(self):
         """Test that optimization raises error when constraint type is invalid."""
-        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=pytz.UTC)
-        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=pytz.UTC)
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
         step_size = 600
 
         self.model.load()
