@@ -62,7 +62,7 @@ class ConnectionPoint:
         # Store attributes as private variables
         self._connectionPointOf = connection_point_of
         self._connectsSystemThrough = connects_system_through
-        self._inputPort = input_port
+        self._input_port = input_port
 
         if self._connectsSystemThrough is None:
             self._connectsSystemThrough = []
@@ -105,14 +105,14 @@ class ConnectionPoint:
         """
         Get the name of the property that the connection point receives.
         """
-        return self._inputPort
+        return self._input_port
 
     @input_port.setter
     def input_port(self, value: Optional[str]) -> None:
         """
         Set the name of the property that the connection point receives.
         """
-        self._inputPort = value
+        self._input_port = value
 
     @property
     def input_port_index(self) -> Union[int, torch.Tensor]:

@@ -1098,16 +1098,16 @@ class Model:
 
                         key = (
                             id(s_meta),
-                            conn.outputPort,
+                            conn.output_port,
                             id(r_meta),
-                            cp.inputPort,
+                            cp.input_port,
                         )
                         if key not in connection_map:
                             connection_map[key] = {
                                 "s_meta": s_meta,
                                 "r_meta": r_meta,
-                                "outputPort": conn.outputPort,
-                                "inputPort": cp.inputPort,
+                                "output_port": conn.output_port,
+                                "input_port": cp.input_port,
                                 "out_v_idx": cp.output_port_index.get(conn),
                                 "in_v_idx": cp.input_port_index.get(conn),
                                 "ic_pairs": [],
@@ -1118,8 +1118,8 @@ class Model:
             compiled.add_connection(
                 info["s_meta"],
                 info["r_meta"],
-                info["outputPort"],
-                info["inputPort"],
+                info["output_port"],
+                info["input_port"],
                 output_port_index=info["out_v_idx"],
                 input_port_index=info["in_v_idx"],
             )
@@ -1146,12 +1146,12 @@ class Model:
             # Walk the compiled model's connection graph to find the
             # ConnectionPoint + Connection objects we just created.
             for cp in info["r_meta"].connects_at:
-                if cp.inputPort != info["inputPort"]:
+                if cp.input_port != info["input_port"]:
                     continue
                 for conn_obj in cp.connects_system_through:
                     if (
                         conn_obj.connects_system is info["s_meta"]
-                        and conn_obj.outputPort == info["outputPort"]
+                        and conn_obj.output_port == info["output_port"]
                     ):
                         cp.set_output_component_index(conn_obj, s_ics)
                         cp.set_input_component_index(conn_obj, r_ics)
@@ -1372,14 +1372,14 @@ class Model:
         if isinstance(source, BuildingSpaceTorchSystem):
             cp_boundary = [
                 cp for cp in source.connects_at
-                if cp.inputPort == "boundaryTemperature"
+                if cp.input_port == "boundaryTemperature"
             ]
             n_boundary = (
                 len(cp_boundary[0].connects_system_through) if cp_boundary else 0
             )
             cp_adj = [
                 cp for cp in source.connects_at
-                if cp.inputPort == "adjacentZoneTemperature"
+                if cp.input_port == "adjacentZoneTemperature"
             ]
             n_adj = (
                 len(cp_adj[0].connects_system_through) if cp_adj else 0

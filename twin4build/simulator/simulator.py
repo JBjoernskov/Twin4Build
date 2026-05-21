@@ -211,7 +211,7 @@ class Simulator:
                     connection, slice(None)
                 )
                 component.input[connection_point.input_port]._set(
-                    connected_component.output[connection.outputPort].get(
+                    connected_component.output[connection.output_port].get(
                         i_v=output_port_index,
                         i_c=output_component_index,
                     ),
