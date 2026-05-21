@@ -63,6 +63,7 @@ dependencies = [
     "beautifulsoup4",
     "python-dateutil",
     "pathlib",
+    "pytz",
     "windows-curses ; platform_system == 'Windows'"
 ]
 

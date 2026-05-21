@@ -2,6 +2,7 @@
 import datetime
 import shutil
 import warnings
+from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 # Third party imports
@@ -12,6 +13,7 @@ from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.core as core
+import twin4build.utils.types as tps
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.print_progress import LOGGER, autoreset_print
 
@@ -132,6 +134,7 @@ class Model:
         "_semantic_model",
         "_translator",
         "_dir_conf",
+        "_component_to_meta",
     )
 
     def __str__(self):
@@ -220,6 +223,7 @@ class Model:
             id=f"{self._id}_simulation_model",
         )
         self._translator = None
+        self._component_to_meta: Dict[str, Tuple[Any, int]] = {}
 
     @classmethod
     def from_translation(
@@ -263,6 +267,7 @@ class Model:
         except Exception:
             pass
         return m
+
 
     @property
     def id(self) -> str:
@@ -992,3 +997,445 @@ class Model:
         if not kwargs:
             self._semantic_model.visualize()
         self._simulation_model.visualize(**kwargs)
+
+
+    def build_compiled_model(self) -> "Model":
+        """Build a compiled Model with batched meta components.
+
+        Groups components within each execution group by their signature
+        (class, port structure, parameter keys, state hints).  For each group
+        of compatible components a single *meta component* is created -- an
+        instance of the **same class** whose ``n_c`` (parallel-components)
+        dimension equals the group size.
+
+        ``tps.Parameter`` / ``tps.TensorParameter`` attributes listed in
+        ``component.parameter`` are stacked along the ``n_c`` axis so that a
+        single ``do_step`` call computes all batched components in parallel
+        via PyTorch broadcasting.
+
+        **After calling this method:**
+
+        1. Call ``compiled.load(draw_semantic_model=False,
+           draw_simulation_model=False)`` to compute execution order.
+        2. When initialising the compiled model for simulation, pass
+           ``n_c = component._n_c_compiled`` to every I/O port's
+           ``initialize()`` so that tensors are allocated with the correct
+           parallel-component dimension.
+
+        Returns
+        -------
+        Model
+            A new ``Model`` whose components are the batched meta components
+            and whose connections mirror the original model's wiring.
+
+        Notes
+        -----
+        * The mapping from original component ids to ``(meta, i_c)`` is
+          stored in ``self._component_to_meta`` for later look-up.
+        * Components with ``n_c == 1`` (singletons) are still wrapped in a
+          fresh meta instance for uniformity.
+        * Constructor defaults are used when instantiating meta components;
+          all component classes must therefore accept ``id`` as their only
+          required keyword argument.
+        """
+        compiled = Model(id=f"{self.id}_compiled")
+        self._component_to_meta = {}
+
+        # -- Phase 1: create one meta component per signature group --------
+        # Classes that must never be lumped together even when they share a
+        # signature.  Each instance is kept as-is (n_c = 1).
+        from twin4build.systems.outdoor_environment.outdoor_environment_system import OutdoorEnvironmentSystem
+        from twin4build.systems.schedule.schedule_system import ScheduleSystem
+        from twin4build.systems.sensor.sensor_system import SensorSystem
+        _NO_BATCH_CLASSES = (OutdoorEnvironmentSystem, ScheduleSystem, SensorSystem)
+
+        for group_idx, group in enumerate(
+            self.simulation_model.execution_order
+        ):
+            by_sig: "OrderedDict[Tuple[Any, ...], List[Any]]" = OrderedDict()
+            for comp in group:
+                sig = self._component_signature(comp)
+                if isinstance(comp, _NO_BATCH_CLASSES):
+                    # Force a unique key so this component is never grouped
+                    sig = (*sig, id(comp))
+                by_sig.setdefault(sig, []).append(comp)
+
+            for blk_idx, (sig, comps) in enumerate(by_sig.items()):
+                n_c = len(comps)
+                cls = comps[0].__class__
+                if n_c == 1:
+                    meta = cls(id=comps[0].id)
+                    meta._n_c_compiled = 1
+                    meta._source_component_ids = (meta.id,)
+                    self._copy_data_source_attrs(comps[0], meta)
+                else:
+                    meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
+                    meta = cls(id=meta_id)
+                    meta._n_c_compiled = n_c
+                    meta._source_component_ids = tuple(
+                        c.id for c in comps
+                    )
+
+                self._batch_parameters(meta, comps, n_c)
+                self._copy_init_attrs(meta, comps[0])
+
+                for i_c, c in enumerate(comps):
+                    self._component_to_meta[c.id] = (meta, i_c)
+
+                compiled.add_component(meta)
+
+        # -- Phase 2: wire connections between meta components -------------
+        # Collect all (sender_ic, receiver_ic) pairs per unique connection
+        # key so we can build the i_c mapping tensors.
+        connection_map: Dict[tuple, dict] = {}
+        for group in self.simulation_model.execution_order:
+            for comp in group:
+                for conn in comp.connected_through:
+                    for cp in conn.connects_system_at:
+                        receiver = cp.connection_point_of
+                        s_meta, s_ic = self._component_to_meta[comp.id]
+                        r_meta, r_ic = self._component_to_meta[receiver.id]
+
+                        key = (
+                            id(s_meta),
+                            conn.outputPort,
+                            id(r_meta),
+                            cp.inputPort,
+                        )
+                        if key not in connection_map:
+                            connection_map[key] = {
+                                "s_meta": s_meta,
+                                "r_meta": r_meta,
+                                "outputPort": conn.outputPort,
+                                "inputPort": cp.inputPort,
+                                "out_v_idx": cp.output_port_index.get(conn),
+                                "in_v_idx": cp.input_port_index.get(conn),
+                                "ic_pairs": [],
+                            }
+                        connection_map[key]["ic_pairs"].append((s_ic, r_ic))
+
+        for info in connection_map.values():
+            compiled.add_connection(
+                info["s_meta"],
+                info["r_meta"],
+                info["outputPort"],
+                info["inputPort"],
+                output_port_index=info["out_v_idx"],
+                input_port_index=info["in_v_idx"],
+            )
+
+            pairs = info["ic_pairs"]
+            s_n_c = getattr(info["s_meta"], "_n_c_compiled", 1)
+            r_n_c = getattr(info["r_meta"], "_n_c_compiled", 1)
+
+            if s_n_c == 1 and r_n_c == 1:
+                continue
+
+            sorted_pairs = sorted(pairs)
+            is_aligned = (
+                len(sorted_pairs) == s_n_c == r_n_c
+                and all(s == r for s, r in sorted_pairs)
+                and [p[0] for p in sorted_pairs] == list(range(s_n_c))
+            )
+            if is_aligned:
+                continue
+
+            s_ics = torch.tensor([p[0] for p in pairs], dtype=torch.long)
+            r_ics = torch.tensor([p[1] for p in pairs], dtype=torch.long)
+
+            # Walk the compiled model's connection graph to find the
+            # ConnectionPoint + Connection objects we just created.
+            for cp in info["r_meta"].connects_at:
+                if cp.inputPort != info["inputPort"]:
+                    continue
+                for conn_obj in cp.connects_system_through:
+                    if (
+                        conn_obj.connects_system is info["s_meta"]
+                        and conn_obj.outputPort == info["outputPort"]
+                    ):
+                        cp.set_output_component_index(conn_obj, s_ics)
+                        cp.set_input_component_index(conn_obj, r_ics)
+                        break
+                break
+
+        return compiled
+
+    # -- compiled-model look-ups ------------------------------------------
+
+    def get_block_id_for_component(
+        self, component_id: str
+    ) -> Optional[str]:
+        """Return the meta-component id that batches *component_id*."""
+        entry = self._component_to_meta.get(component_id)
+        if entry is None:
+            return None
+        meta, _ = entry
+        return meta.id
+
+    def get_compiled_component_info(
+        self, component_id: str
+    ) -> Optional[Tuple[Any, int]]:
+        """Return ``(meta_component, i_c_index)`` for an original component.
+
+        Returns ``None`` if *component_id* has not been compiled.
+        """
+        return self._component_to_meta.get(component_id)
+
+    # -- data-source attribute copying ------------------------------------
+
+    _DATA_SOURCE_ATTRS = (
+        # boolean flags
+        "use_spreadsheet", "use_database", "use_df", "use_dict",
+        # ScheduleSystem / SensorSystem
+        "filename", "df", "datecolumn", "valuecolumn",
+        "uuid", "name", "dbconfig",
+        # ScheduleSystem rulesets
+        "weekDayRulesetDict", "weekendRulesetDict",
+        "mondayRulesetDict", "tuesdayRulesetDict",
+        "wednesdayRulesetDict", "thursdayRulesetDict",
+        "fridayRulesetDict", "saturdayRulesetDict",
+        "sundayRulesetDict",
+        # OutdoorEnvironmentSystem
+        "filename_outdoorTemperature", "filename_globalIrradiation",
+        "filename_outdoorCo2Concentration",
+        "datecolumn_outdoorTemperature", "valuecolumn_outdoorTemperature",
+        "datecolumn_globalIrradiation", "valuecolumn_globalIrradiation",
+        "datecolumn_outdoorCo2Concentration",
+        "valuecolumn_outdoorCo2Concentration",
+        "uuid_outdoorTemperature", "dbconfig_outdoorTemperature",
+        "uuid_globalIrradiation", "dbconfig_globalIrradiation",
+        "uuid_outdoorCo2Concentration", "dbconfig_outdoorCo2Concentration",
+    )
+
+    def _copy_data_source_attrs(self, src: Any, dst: Any) -> None:
+        """Copy data-source configuration from *src* to *dst*.
+
+        Copies boolean flags (``use_spreadsheet``, ``use_database``,
+        ``use_df``, ``use_dict``) and their associated file / database /
+        ruleset attributes so that a freshly instantiated component can
+        initialise its data source the same way the original could.
+        """
+        for attr in self._DATA_SOURCE_ATTRS:
+            val = getattr(src, attr, None)
+            if val is None:
+                continue
+            try:
+                setattr(dst, attr, val)
+            except AttributeError:
+                pass
+
+    # -- parameter batching -----------------------------------------------
+
+    @staticmethod
+    def _resolve_dotted_attr(obj: Any, dotted_name: str) -> Any:
+        """Traverse a dotted attribute path (e.g. ``"thermal.C_air"``)."""
+        for part in dotted_name.split("."):
+            obj = getattr(obj, part, None)
+            if obj is None:
+                return None
+        return obj
+
+    @staticmethod
+    def _set_dotted_attr(obj: Any, dotted_name: str, value: Any) -> None:
+        """Set an attribute via a dotted path (e.g. ``"thermal.C_air"``)."""
+        parts = dotted_name.split(".")
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], value)
+
+    def _batch_parameters(
+        self, meta: Any, components: List, n_c: int
+    ) -> None:
+        """Stack calibration parameters along the ``n_c`` dimension.
+
+        Only ``tps.Parameter`` and ``tps.TensorParameter`` attributes whose
+        names appear in ``components[0].parameter`` are batched.  Each
+        original component contributes one slice along ``n_c``.
+
+        Supports dotted parameter names (e.g. ``"thermal.C_air"``) for
+        composite components that wrap sub-models.
+        """
+        param_dict = getattr(components[0], "parameter", None)
+        if not param_dict:
+            return
+
+        for param_name in param_dict:
+            originals = []
+            for c in components:
+                p = self._resolve_dotted_attr(c, param_name)
+                if p is None:
+                    return
+                originals.append(p)
+
+            first = originals[0]
+
+            if isinstance(first, tps.Parameter):
+                vals = torch.stack([p.get().squeeze() for p in originals])
+                mins = torch.stack(
+                    [p.min_value.squeeze() for p in originals]
+                )
+                maxs = torch.stack(
+                    [p.max_value.squeeze() for p in originals]
+                )
+                self._set_dotted_attr(
+                    meta,
+                    param_name,
+                    tps.Parameter(
+                        vals,
+                        min_value=mins,
+                        max_value=maxs,
+                        requires_grad=first.requires_grad,
+                        n_c=n_c,
+                    ),
+                )
+
+            elif isinstance(first, tps.TensorParameter):
+                vals = torch.stack([p.get().squeeze() for p in originals])
+                mins = (
+                    torch.stack(
+                        [p.min_value.squeeze() for p in originals]
+                    )
+                    if first.min_value is not None
+                    else None
+                )
+                maxs = (
+                    torch.stack(
+                        [p.max_value.squeeze() for p in originals]
+                    )
+                    if first.max_value is not None
+                    else None
+                )
+                self._set_dotted_attr(
+                    meta,
+                    param_name,
+                    tps.TensorParameter(
+                        vals,
+                        min_value=mins,
+                        max_value=maxs,
+                        normalized=False,
+                        n_c=n_c,
+                    ),
+                )
+
+    # -- non-parameter attribute copying -----------------------------------
+
+    # Attributes that must be copied verbatim from a source component to
+    # the meta component because they affect model structure (matrix sizes,
+    # topology) but are plain values rather than tps.Parameter instances.
+    # Keyed by fully-qualified class name.  Supports dotted paths for
+    # composite components (e.g. ``"thermal.some_attr"``).
+    _INIT_ATTRS_TO_COPY: Dict[str, Tuple[str, ...]] = {
+        "twin4build.systems.space_heater.space_heater_torch_system.SpaceHeaterTorchSystem": (
+            "nelements",
+            "Q_flow_nominal_sh",
+            "T_a_nominal_sh",
+            "T_b_nominal_sh",
+            "TAir_nominal_sh",
+        ),
+        "twin4build.systems.building_space.building_space_torch_system.BuildingSpaceTorchSystem": (),
+        "twin4build.systems.controller.setpoint_controller.pid_controller"
+        ".pid_controller_system.PIDControllerSystem": (
+            "isReverse",
+        ),
+    }
+
+    def _copy_init_attrs(
+        self, meta: Any, source: Any
+    ) -> None:
+        """Copy non-Parameter constructor attributes from *source* to *meta*.
+
+        Only the attributes listed in ``_INIT_ATTRS_TO_COPY`` for the
+        component's class are copied.  This ensures that the meta component
+        has the correct structural values (e.g. ``nelements``) even though
+        ``_batch_parameters`` only handles ``tps.Parameter`` objects.
+        Supports dotted paths for composite components.
+
+        Additionally, for composite building-space components, topology
+        values (``n_adjacent_zones``, ``n_boundary_temperature``) are
+        computed from the source component's connection graph -- which is
+        available even before ``initialize()`` has been called.
+        """
+        fqn = f"{source.__class__.__module__}.{source.__class__.__name__}"
+        attrs = self._INIT_ATTRS_TO_COPY.get(fqn, ())
+        for attr in attrs:
+            val = self._resolve_dotted_attr(source, attr)
+            if val is not None:
+                self._set_dotted_attr(meta, attr, val)
+
+        # For BuildingSpaceTorchSystem: derive topology from the source
+        # component's connects_at (populated by model.load()) and push
+        # it through the thermal sub-model's setter so the manual flag
+        # is set and initialize() skips its own connects_at discovery.
+        from twin4build.systems.building_space.building_space_torch_system import (
+            BuildingSpaceTorchSystem,
+        )
+        if isinstance(source, BuildingSpaceTorchSystem):
+            cp_boundary = [
+                cp for cp in source.connects_at
+                if cp.inputPort == "boundaryTemperature"
+            ]
+            n_boundary = (
+                len(cp_boundary[0].connects_system_through) if cp_boundary else 0
+            )
+            cp_adj = [
+                cp for cp in source.connects_at
+                if cp.inputPort == "adjacentZoneTemperature"
+            ]
+            n_adj = (
+                len(cp_adj[0].connects_system_through) if cp_adj else 0
+            )
+            meta.thermal.n_adjacent_zones = n_adj
+            meta.thermal.n_boundary_temperature = n_boundary
+
+    # -- signature helpers ------------------------------------------------
+
+    def _component_signature(self, component: Any) -> Tuple[Any, ...]:
+        input_signature = self._port_dict_signature(
+            getattr(component, "input", {})
+        )
+        output_signature = self._port_dict_signature(
+            getattr(component, "output", {})
+        )
+
+        parameter_keys: Tuple[str, ...] = tuple(
+            sorted(getattr(component, "parameter", {}).keys())
+        )
+
+        state_hints = (
+            getattr(component, "n_states", None),
+            getattr(component, "n_inputs", None),
+            getattr(component, "n_outputs", None),
+        )
+
+        return (
+            component.__class__.__module__,
+            component.__class__.__name__,
+            input_signature,
+            output_signature,
+            parameter_keys,
+            state_hints,
+        )
+
+    def _port_dict_signature(
+        self, port_dict: Dict[str, Any]
+    ) -> Tuple[Any, ...]:
+        items = []
+        for key in sorted(port_dict.keys()):
+            items.append((key, self._port_signature(port_dict[key])))
+        return tuple(items)
+
+    def _port_signature(self, port: Any) -> Tuple[Any, ...]:
+        if isinstance(port, tps.Scalar):
+            return (
+                "Scalar",
+                bool(getattr(port, "_optional", False)),
+                bool(getattr(port, "_is_leaf", False)),
+            )
+        if isinstance(port, tps.Vector):
+            return (
+                "Vector",
+                getattr(port, "_n_v", None),
+                bool(getattr(port, "_optional", False)),
+                bool(getattr(port, "_is_leaf", False)),
+            )
+        return (port.__class__.__name__,)

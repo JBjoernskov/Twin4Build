@@ -400,20 +400,28 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
+
+        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
+            self.n_c = self._n_c_compiled
+        else:
+            self.n_c = 1
+
         self.setup_variable_inputs()
         self.input["adjacentZoneTemperature"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_adjacent_zones
+            n_t=max_timesteps, n_s=batch_size, n_c=self.n_c, n_v=self.n_adjacent_zones
         )
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
+                n_c=self.n_c,
             )
         for output in self.output.values():
             output.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
+                n_c=self.n_c,
             )
 
         # Expand parameters to n_c dimension for vectorization
@@ -542,7 +550,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         )  # Add one input for boundary temperature
         self.n_inputs = n_inputs
 
-        # Get parameter values - shape (n_c,)
+        # Get parameter values - shape (n_c_param,); may be 1 even when
+        # self.n_c > 1 (compiled/batched components share identical params).
         C_air = self.C_air.get()
         C_wall = self.C_wall.get()
         C_boundary = self.C_boundary.get()
@@ -554,7 +563,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         f_air = self.f_air.get()
         f_wall = self.f_wall.get()
         Q_occ_gain = self.Q_occ_gain.get()
-        n_c = C_air.shape[0]
+        n_c = self.n_c
 
         # Initialize A and B matrices with zeros - shape (n_c, n_states, n_states/n_inputs)
         A = torch.zeros((n_c, n_states, n_states), dtype=torch.float64)

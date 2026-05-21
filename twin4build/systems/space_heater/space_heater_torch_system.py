@@ -347,16 +347,24 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
+
+        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
+            self.n_c = self._n_c_compiled
+        else:
+            self.n_c = 1
+
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
+                n_c=self.n_c,
             )
         for output in self.output.values():
             output.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
+                n_c=self.n_c,
             )
 
         # Expand parameters to n_c dimension for vectorization
@@ -398,7 +406,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             float: Difference between calculated and nominal heat output.
         """
         n = self.nelements
-        C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
+        tmc = self.thermalMassHeatCapacity.get()
+        C_elem = float(tmc.flatten()[0].item()) / n
         UA_elem = float(UA_candidate.item()) / n
         m_dot = float(
             self.Q_flow_nominal_sh
