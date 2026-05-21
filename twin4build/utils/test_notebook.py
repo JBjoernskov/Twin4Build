@@ -42,6 +42,16 @@ def test_notebook(notebook_path):
 
     old_jupyter_path = os.environ.get("JUPYTER_PATH", "")
     os.environ["JUPYTER_PATH"] = tmpdir + os.pathsep + old_jupyter_path
+
+    # Notebooks run in a subprocess kernel, so module-level flags like
+    # ``twin4build._IS_TESTING`` don't propagate.  Set an env var that
+    # ``Estimator.estimate(...)`` and ``Optimizer.optimize(...)`` honor
+    # by capping ``maxiter`` to 1, so the example notebooks complete in
+    # seconds instead of minutes.  The notebooks still execute every
+    # cell end-to-end (so we still catch import / API errors), they
+    # just don't burn cycles on real convergence.
+    old_fast_flag = os.environ.get("TWIN4BUILD_TESTING", None)
+    os.environ["TWIN4BUILD_TESTING"] = "1"
     try:
         # Read the notebook
         with open(notebook_path, "r", encoding="utf-8") as f:
@@ -78,6 +88,10 @@ def test_notebook(notebook_path):
             os.environ["JUPYTER_PATH"] = old_jupyter_path
         else:
             os.environ.pop("JUPYTER_PATH", None)
+        if old_fast_flag is None:
+            os.environ.pop("TWIN4BUILD_TESTING", None)
+        else:
+            os.environ["TWIN4BUILD_TESTING"] = old_fast_flag
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 

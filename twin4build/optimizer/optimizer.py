@@ -1,6 +1,7 @@
 # import pygad
 # Standard library imports
 import datetime
+import os
 import time as time_module
 from typing import Any, Dict, List, Tuple, Union
 
@@ -843,6 +844,18 @@ class Optimizer:
         if method[0] == "scipy":
             if options is None:
                 options = {}
+            # Fast-path for notebook example tests: keep the cell exercising
+            # the full Optimizer API (so we still catch wiring / API
+            # regressions) but stop the solver after a single iteration.
+            # Honors the env var set by ``utils.test_notebook.test_notebook``;
+            # callers in the regular test suite already pass small
+            # ``maxiter`` values explicitly, so this is a no-op for them.
+            if os.environ.get("TWIN4BUILD_TESTING", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                options["maxiter"] = 1
             result = self._scipy_solver(method=method, **options)
         else:
             LOGGER.remove_level()
@@ -1310,6 +1323,7 @@ class Optimizer:
                 method[1],
                 method[2],
                 change_status=True,
+                ignore_no_match=True,
             )
             raise NotImplementedError(
                 "Finite difference mode is not yet implemented for the optimizer. Use automatic differentiation mode."
@@ -1346,9 +1360,16 @@ class Optimizer:
                 method[1],
                 method[2],
                 change_status=True,
+                ignore_no_match=True,
             )
         else:
-            LOGGER.ok("Starting scipy solver: %s (%s mode)", method[1], method[2], change_status=True)
+            LOGGER.ok(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
 
     def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
         """

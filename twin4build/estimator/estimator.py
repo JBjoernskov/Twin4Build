@@ -6,6 +6,7 @@ import functools
 
 # import multiprocessing
 import math
+import os
 import pickle
 import time as time_module
 import warnings
@@ -619,6 +620,22 @@ class Estimator:
             end_time = [end_time]
         if not isinstance(step_size, list):
             step_size = [step_size] * len(start_time)
+
+        # Guard against degenerate / inverted periods up front -- otherwise the
+        # eager ``model.initialize`` below crashes inside ``ScheduleSystem``
+        # with an opaque ``IndexError`` ("index -7 is out of bounds for axis 1
+        # with size 0") before the per-period validation block can produce a
+        # readable error.
+        for s, e, ss in zip(start_time, end_time, step_size):
+            if not isinstance(ss, int) or ss <= 0:
+                raise ValueError(
+                    f"step_size must be a positive integer, got {ss!r}"
+                )
+            if s >= e:
+                raise ValueError(
+                    f"start_time ({s}) must be strictly less than end_time ({e})"
+                )
+
         self.simulator.model.initialize(start_time, end_time, step_size)
 
         # ``parameters="auto"`` / ``measurements="auto"`` sentinels.
@@ -925,6 +942,19 @@ class Estimator:
 
         if options is None:
             options = {}
+
+        # Fast-path for notebook example tests: keep every cell exercising
+        # the full Estimator API (so we still catch wiring / API
+        # regressions) but stop the solver after a single iteration.
+        # Honors the env var set by ``utils.test_notebook.test_notebook``;
+        # the regular ``test_estimator.py`` suite already passes
+        # ``maxiter=2`` explicitly so this is a no-op for them.
+        if os.environ.get("TWIN4BUILD_TESTING", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            options = {**options, "maxiter": 1}
 
         # --- Schedule dispatch ---
         # ``schedule=None`` collapses to a single phase with all
