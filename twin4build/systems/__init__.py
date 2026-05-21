@@ -12,6 +12,7 @@ Key Components:
 
     HVAC Components:
         - SpaceHeaterTorchSystem: Space heating system
+        - FanCoilUnitTorchSystem: Fan coil unit (heating/cooling terminal unit)
         - ValveTorchSystem: Control valve system
         - CoilTorchSystem: Heating/cooling coil system
         - DamperTorchSystem: Air flow control damper
@@ -62,6 +63,8 @@ __all__ = [
     "ValveTorchSystem",
     # Coils
     "CoilTorchSystem",
+    # Fan Coil Unit
+    "FanCoilUnitTorchSystem",
     # Controllers # TODO: Convert to Torch
     "PIDControllerSystem",
     "CascadeControllerSystem",
@@ -74,6 +77,13 @@ __all__ = [
     "ClassificationAnnControllerSystem",
     "NeuralPolicyControllerSystem",
     "ControllerIdentificationTorchSystem",
+    "ControllerIdentificationPITorchSystem",
+    "RewireReport",
+    "LoopScore",
+    "ActuatorSeeds",
+    "score_pair",
+    "derive_actuator_seeds",
+    "confidence_label",
     # Sensors
     "SensorSystem",
     # Schedules
@@ -104,6 +114,7 @@ __all__ = [
     "ScalarProductSystem",
     "OccupancySystem",
     "OccupancyDetectorSystem",
+    "SigmoidGate",
 ]
 
 # Local application imports
@@ -129,11 +140,29 @@ from twin4build.systems.building_space.building_space_torch_system import (
 
 # Coils
 from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
+
+# Fan Coil Unit
+from twin4build.systems.fan_coil_unit.fan_coil_unit_torch_system import (
+    FanCoilUnitTorchSystem,
+)
 from twin4build.systems.controller.classification_ann_controller.classification_ann_controller_system import (
     ClassificationAnnControllerSystem,
 )
 from twin4build.systems.controller.controller_identification.controller_identification_torch_system import (
     ControllerIdentificationTorchSystem,
+)
+from twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system import (
+    ControllerIdentificationPITorchSystem,
+)
+from twin4build.systems.controller.controller_identification.loop_classifier import (
+    ActuatorSeeds,
+    LoopScore,
+    confidence_label,
+    derive_actuator_seeds,
+    score_pair,
+)
+from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
+    RewireReport,
 )
 from twin4build.systems.controller.neural_policy_controller.neural_policy_controller_system import (
     NeuralPolicyControllerSystem,
@@ -204,6 +233,7 @@ from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespa
 from twin4build.systems.utils.fmu_system import fmuSystem
 from twin4build.systems.utils.max_system import MaxSystem
 from twin4build.systems.utils.occupancy_detector_system import OccupancyDetectorSystem
+from twin4build.systems.utils.sigmoid_gate import SigmoidGate
 from twin4build.systems.utils.occupancy_system import OccupancySystem
 from twin4build.systems.utils.on_off_system import OnOffSystem
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
