@@ -19,6 +19,21 @@ The module integrates various building system ontologies including:
 # Third party imports
 import rdflib
 
+
+class BlankNode:
+    """Sentinel used as a ``cls`` entry in :class:`Node` to match RDF resources
+    that have **no** ``rdf:type`` assertion (untyped blank nodes).
+
+    Usage::
+
+        externalref = Node(cls=(BRICKREF.ExternalReference, BlankNode))
+
+    Matches an instance typed as ``BRICKREF.ExternalReference`` *or* one with
+    no type at all.
+    """
+
+    pass
+
 # Local application imports
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
@@ -41,13 +56,25 @@ from twin4build.translator.translator import (
     Translator,
     SignaturePattern,
     Diff,
-    Exact,
-    Optional_,
-    SinglePath,
-    MultiPath,
+    StepRule,
+    NoStepRule,
+    SetStepRule,
+    OptionalRule,
+    PathRule,
+    AnyPathRule,
 )
 
 NoneType = type(None)
+
+# Non-alphanumeric characters that are still legal in component IDs.
+# Any character outside this set (and outside alphanumerics) will be replaced
+# with ``_`` by :func:`sanitize_id`.
+LEGAL_ID_CHARS = {"_", "-", " ", "(", ")", "[", "]"}
+
+
+def sanitize_id(id_str: str) -> str:
+    """Replace every character not allowed in a component ID with an underscore."""
+    return "".join(c if c.isalnum() or c in LEGAL_ID_CHARS else "_" for c in id_str)
 
 
 class namespace:
@@ -63,6 +90,7 @@ class namespace:
     REC = rdflib.Namespace("https://w3id.org/rec#")
     OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#")
     FPO = rdflib.Namespace("https://w3id.org/fpo#")
+    BOT = rdflib.Namespace("https://w3id.org/bot#")
     SENAPS = rdflib.Namespace("http://senaps.io/schema/1.0/senaps#")
     BRICKREF = rdflib.Namespace("https://brickschema.org/schema/Brick/ref#")
 
@@ -74,3 +102,4 @@ class ontology:
     S4SYST = "https://saref.etsi.org/saref4syst/"
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     T4B = "http://twin4build.org/"
+    BOT = "http://www.w3id.org/bot/bot.ttl"

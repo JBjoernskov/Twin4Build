@@ -7,12 +7,12 @@ import unittest
 import twin4build
 from twin4build.model.semantic_model.semantic_model import SemanticModel
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
     Translator,
 )
 from twin4build.utils.uppath import uppath
@@ -116,7 +116,7 @@ class TestTranslator(unittest.TestCase):
         self.semantic_model.serialize(filename_instance_graph="test_instance_graph.ttl")
 
     def test_exact_rule_matching(self):
-        """Test matching Exact rules against the semantic model."""
+        """Test matching StepRule rules against the semantic model."""
         # Local application imports
         import twin4build.core as core
 
@@ -125,8 +125,8 @@ class TestTranslator(unittest.TestCase):
         node_damper = Node(cls=core.namespace.BRICK.Damper)
 
         sp = SignaturePattern(id="exact_pattern")
-        sp.add_triple(
-            Exact(
+        sp.add_rule(
+            StepRule(
                 subject=node_ahu,
                 object=node_damper,
                 predicate=core.namespace.BRICK.feeds,
@@ -160,8 +160,8 @@ class TestTranslator(unittest.TestCase):
 
         sp = SignaturePattern(id="optional_pattern")
         # AHU exists, Fan doesn't. Optional relation.
-        sp.add_triple(
-            Optional_(
+        sp.add_rule(
+            OptionalRule(
                 subject=node_ahu, object=node_fan, predicate=core.namespace.BRICK.feeds
             )
         )
@@ -180,11 +180,11 @@ class TestTranslator(unittest.TestCase):
         self.assertEqual(len(complete_groups[DummySystem][sp]), 1)
 
     def test_single_path_rule_matching(self):
-        """Test matching SinglePath rules against the semantic model.
+        """Test matching PathRule rules against the semantic model.
         Should find 1 match for AHU -> Room (via Damper1)
 
         This rule doesnt match paths via Damper_2 -> Damper_21 -> Room2 or Damper_2 -> Damper_22 -> Room2 because the path splits into two paths.
-        This matches the indented behavior of SinglePath.
+        This matches the indented behavior of PathRule.
         """
         # Local application imports
         import twin4build.core as core
@@ -195,8 +195,8 @@ class TestTranslator(unittest.TestCase):
         node_room = Node(cls=core.namespace.BRICK.Room)
 
         sp = SignaturePattern(id="single_path_pattern")
-        sp.add_triple(
-            SinglePath(
+        sp.add_rule(
+            PathRule(
                 subject=node_ahu, object=node_room, predicate=core.namespace.BRICK.feeds
             )
         )
@@ -213,7 +213,7 @@ class TestTranslator(unittest.TestCase):
         self.assertEqual(len(complete_groups[DummySystem][sp]), 1)
 
     def test_multi_path_rule_matching(self):
-        """Test matching MultiPath rules against the semantic model.
+        """Test matching AnyPathRule rules against the semantic model.
         Should find 3 matches for AHU -> Room (one via Damper_1, one via Damper_21, one via Damper_22)
         """
         # Local application imports
@@ -223,8 +223,8 @@ class TestTranslator(unittest.TestCase):
         node_room = Node(cls=core.namespace.BRICK.Room)
 
         sp = SignaturePattern(id="multi_path_pattern")
-        sp.add_triple(
-            MultiPath(
+        sp.add_rule(
+            AnyPathRule(
                 subject=node_ahu, object=node_room, predicate=core.namespace.BRICK.feeds
             )
         )
@@ -247,6 +247,45 @@ class TestTranslator(unittest.TestCase):
 
         # Should find 2 matches for Damper_2 (one via Damper_21, one via Damper_22)
         self.assertEqual(len(complete_groups[DummySystem][sp]), 3)
+
+    def test_multi_path_rule_endpoints_only(self):
+        """Test AnyPathRule with endpoints_only=True finds unique endpoint matches.
+        BFS discovers 2 unique rooms (Room_1 and Room_2) regardless of the number
+        of intermediate paths leading to them. The full recursive version finds 3
+        because it tracks distinct intermediate paths (Damper_21 vs Damper_22 to Room_2).
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="multi_path_endpoints_only_pattern")
+        sp.add_rule(
+            AnyPathRule(
+                subject=node_ahu,
+                object=node_room,
+                predicate=core.namespace.BRICK.feeds,
+                endpoints_only=True,
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, incomplete = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        # 2 unique endpoints: Room_1 and Room_2
+        self.assertEqual(len(complete_groups[DummySystem][sp]), 2)
+
+        # Verify each match maps the Room node to a real Room instance
+        for mapping in complete_groups[DummySystem][sp]:
+            self.assertIsNotNone(mapping[node_room])
 
     def test_initialization(self):
         """Test translator initialization."""
@@ -287,15 +326,15 @@ class TestSignaturePattern(unittest.TestCase):
         self.assertIsNotNone(sp)
 
     def test_exact_rule(self):
-        """Test creating Exact rules."""
+        """Test creating StepRule rules."""
         # Local application imports
         import twin4build.core as core
 
         node1 = Node(cls=core.namespace.S4BLDG.Damper)
         node2 = Node(cls=core.namespace.S4BLDG.Controller)
 
-        # Create an Exact rule
-        rule = Exact(
+        # Create an StepRule rule
+        rule = StepRule(
             subject=node1, object=node2, predicate=core.namespace.SAREF.controls
         )
 
@@ -304,15 +343,15 @@ class TestSignaturePattern(unittest.TestCase):
         self.assertEqual(rule.object, node2)
 
     def test_optional_rule(self):
-        """Test creating Optional_ rules."""
+        """Test creating OptionalRule rules."""
         # Local application imports
         import twin4build.core as core
 
         node1 = Node(cls=core.namespace.S4BLDG.Damper)
         node2 = Node(cls=core.namespace.SAREF.Property)
 
-        # Create an Optional_ rule
-        rule = Optional_(
+        # Create an OptionalRule rule
+        rule = OptionalRule(
             subject=node1, object=node2, predicate=core.namespace.SAREF.hasProperty
         )
 
@@ -330,9 +369,9 @@ class TestSignaturePattern(unittest.TestCase):
 
         sp = SignaturePattern()
 
-        # Add a triple with an Exact rule
-        sp.add_triple(
-            Exact(
+        # Add a triple with an StepRule rule
+        sp.add_rule(
+            StepRule(
                 subject=controller_node,
                 object=damper_node,
                 predicate=core.namespace.SAREF.controls,
