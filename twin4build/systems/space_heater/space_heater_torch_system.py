@@ -340,31 +340,41 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
+
+        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
+            self.n_c = self._n_c_compiled
+        else:
+            self.n_c = 1
+
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
+                n_c=self.n_c,
             )
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
+                n_c=self.n_c,
             )
 
         if not self.INITIALIZED:
-            # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh
+            # Numerically solve for UA so that steady-state output matches
+            # Q_flow_nominal_sh.  For batched (n_c > 1) components the
+            # nominal design values are identical across rooms, so a single
+            # fsolve result is broadcast to every component index.
             UA0 = float(
                 self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
             )
             root = fsolve(self._ua_residual, UA0, full_output=True)
             UA_val = root[0][0]
-            self.UA.data = torch.tensor(UA_val, dtype=torch.float64)
-            # First initialization
+            self.UA.data.fill_(UA_val)
+
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size)
 
-            # FIX: Set correct initial state for batch
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
 
@@ -374,7 +384,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size)
 
-            # FIX: Set correct initial state for batch
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
 
@@ -392,7 +401,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             float: Difference between calculated and nominal heat output.
         """
         n = self.nelements
-        C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
+        tmc = self.thermalMassHeatCapacity.get()
+        C_elem = float(tmc.flatten()[0].item()) / n
         UA_elem = float(UA_candidate.item()) / n
         m_dot = float(
             self.Q_flow_nominal_sh
@@ -424,20 +434,18 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         return Power - self.Q_flow_nominal_sh
 
     def _get_initial_state_tensor(self):
-        # Get batch size from outletWaterTemperature
+        # Get dimensions from outletWaterTemperature
+        # Scalar.get() returns shape (n_s, n_c)
         t_outlet = self.output["outletWaterTemperature"].get()
-        batch_size = t_outlet.shape[0] if t_outlet.dim() > 0 else 1
+        n_s = t_outlet.shape[0]
+        n_c = t_outlet.shape[1]
 
-        x0 = torch.zeros((batch_size, self.nelements), dtype=torch.float64)
-
-        # Handle outlet water temperature
-        t_outlet_val = t_outlet
-        if t_outlet_val.dim() == 0:
-            t_outlet_val = t_outlet_val.expand(batch_size)
+        # x0 shape: (n_s, n_c, n_states) where n_states = nelements
+        x0 = torch.zeros((n_s, n_c, self.nelements), dtype=torch.float64)
 
         # Initialize all elements with outlet water temperature
         for i in range(self.nelements):
-            x0[:, i] = t_outlet_val
+            x0[:, :, i] = t_outlet
 
         return x0
 
@@ -446,52 +454,57 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
         This method creates a discrete state-space model representing the thermal
         dynamics of the space heater. The model includes:
-        - State matrix A for thermal dynamics
-        - Input matrix B for external inputs
-        - Output matrix C for temperature output
-        - Feedthrough matrix D
-        - State-input coupling matrix E for flow effects
-        - Input-input coupling matrix F for supply temperature effects
+        - State matrix A for thermal dynamics (n_c, n, n)
+        - Input matrix B for external inputs (n_c, n, n_inputs)
+        - Output matrix C for temperature output (n_c, n_outputs, n)
+        - Feedthrough matrix D (n_c, n_outputs, n_inputs)
+        - State-input coupling matrix E for flow effects (n_c, n_inputs, n, n)
+        - Input-input coupling matrix F for supply temperature effects (n_c, n_inputs, n, n_inputs)
         """
         n = self.nelements
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
+        
+        # Get parameters - shape (n_c_param,); may be 1 even when
+        # self.n_c > 1 (compiled/batched components share identical params).
         C_elem = self.thermalMassHeatCapacity.get() / n
         UA_elem = self.UA.get() / n
+        n_c = self.n_c
         c_p = constants.CP_WATER
 
-        # LTI part: Only UA/C on diagonal
-        A = torch.zeros((n, n), dtype=torch.float64)
+        # LTI part: Only UA/C on diagonal - shape (n_c, n, n)
+        A = torch.zeros((n_c, n, n), dtype=torch.float64)
         for i in range(n):
-            A[i, i] = -UA_elem / C_elem
+            A[:, i, i] = -UA_elem / C_elem
 
-        # B matrix: Only UA/C for indoor temperature input
-        B = torch.zeros((n, n_inputs), dtype=torch.float64)
+        # B matrix: Only UA/C for indoor temperature input - shape (n_c, n, n_inputs)
+        B = torch.zeros((n_c, n, n_inputs), dtype=torch.float64)
         for i in range(n):
-            B[i, 2] = UA_elem / C_elem
+            B[:, i, 2] = UA_elem / C_elem
 
-        # State-input coupling (E): waterFlowRate
-        E = torch.zeros((n_inputs, n, n), dtype=torch.float64)
+        # State-input coupling (E): waterFlowRate - shape (n_c, n_inputs, n, n)
+        E = torch.zeros((n_c, n_inputs, n, n), dtype=torch.float64)
         for i in range(n):
-            E[1, i, i] = -c_p / C_elem
+            E[:, 1, i, i] = -c_p / C_elem
             if i > 0:
-                E[1, i, i - 1] = c_p / C_elem
+                E[:, 1, i, i - 1] = c_p / C_elem
 
-        # Input-input coupling (F): T_supply * m_dot for first state
-        F = torch.zeros((n_inputs, n, n_inputs), dtype=torch.float64)
-        F[0, 0, 1] = c_p / C_elem  # Only first state, T_supply * m_dot
+        # Input-input coupling (F): T_supply * m_dot for first state - shape (n_c, n_inputs, n, n_inputs)
+        F = torch.zeros((n_c, n_inputs, n, n_inputs), dtype=torch.float64)
+        F[:, 0, 0, 1] = c_p / C_elem  # Only first state, T_supply * m_dot
 
-        C = torch.zeros((1, n), dtype=torch.float64)
-        C[0, n - 1] = 1.0
-        D = torch.zeros((1, n_inputs), dtype=torch.float64)
+        # Output matrices - shape (n_c, n_outputs, n) and (n_c, n_outputs, n_inputs)
+        C_out = torch.zeros((n_c, 1, n), dtype=torch.float64)
+        C_out[:, 0, n - 1] = 1.0
+        D = torch.zeros((n_c, 1, n_inputs), dtype=torch.float64)
 
-        # Initial state - use first batch element for system definition
-        x0_tensor = self._get_initial_state_tensor()
-        x0 = x0_tensor[0]
+        # Initial state - shape (n_c, n_states)
+        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
+        x0 = x0_tensor[0, :, :]  # Take first simulation, all components: (n_c, n_states)
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
             B=B,
-            C=C,
+            C=C_out,
             D=D,
             x0=x0,
             state_names=[f"T_{i+1}" for i in range(n)],
@@ -523,27 +536,32 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """
+        # Stack along dim=2 to get shape (n_s, n_c, n_inputs) from (n_s, n_c) scalars
         u = torch.stack(
             [
                 self.input["supplyWaterTemperature"].get(),
                 self.input["waterFlowRate"].get(),
                 self.input["indoorTemperature"].get(),
             ],
-            dim=1,
+            dim=2,
         )
-        self.ss_model.input["u"].set(u, step_index)
-        self.ss_model.do_step(second_time, date_time, step_size, step_index)
+        self.ss_model.input["u"]._set(u, i_t=step_index)
+        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
+        
+        # y shape: (n_s, n_c, n_outputs)
         y = self.ss_model.output["y"].get()
-        outletWaterTemperature = y[:, 0]
-        UA_elem = self.UA.get() / self.nelements
-        temps = self.ss_model.get_state()
-        # print("----")
-        # print("temps: ", temps)
-        # print("u[2]: ", u[2])
-        Power = UA_elem * torch.sum(temps - u[:, 2].unsqueeze(1), dim=1)
-        # print("Power: ", Power)
-        self.output["outletWaterTemperature"].set(outletWaterTemperature, step_index)
-        self.output["Power"].set(Power, step_index)
+        outletWaterTemperature = y[:, :, 0]  # (n_s, n_c)
+        
+        # Calculate power: UA_elem * sum(T_i - T_zone) for all elements
+        # UA_elem shape: (n_c,), temps shape: (n_s, n_c, n_states), u[:,:,2] shape: (n_s, n_c)
+        UA_elem = self.UA.get() / self.nelements  # (n_c,)
+        temps = self.ss_model.get_state()  # (n_s, n_c, n_states)
+        T_zone = u[:, :, 2]  # (n_s, n_c)
+        # Expand T_zone to match temps: (n_s, n_c, 1) for broadcasting
+        Power = UA_elem.unsqueeze(0) * torch.sum(temps - T_zone.unsqueeze(2), dim=2)  # (n_s, n_c)
+        
+        self.output["outletWaterTemperature"]._set(outletWaterTemperature, i_t=step_index)
+        self.output["Power"]._set(Power, i_t=step_index)
 
 
 def saref_signature_pattern():

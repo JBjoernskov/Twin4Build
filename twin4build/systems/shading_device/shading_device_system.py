@@ -68,4 +68,4 @@ class ShadingDeviceSystem(core.System):
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """
-        self.output["shadePosition"].set(self.input["shadePosition"], step_index)
+        self.output["shadePosition"]._set(self.input["shadePosition"], i_t=step_index)

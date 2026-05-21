@@ -1,53 +1,29 @@
 tests
 =====
 
+Package
+---------
+
+.. toctree::
+   :maxdepth: 1
+
+   twin4build.tests.estimator
+   twin4build.tests.examples
+   twin4build.tests.generated_files
+   twin4build.tests.model
+   twin4build.tests.optimizer
+   twin4build.tests.simulator
+   twin4build.tests.systems
+   twin4build.tests.translator
+   twin4build.tests.utils
+
 Modules
 -------
 
-test\_estimator module
-----------------------
+run module
+----------
 
-.. automodule:: twin4build.tests.test_estimator
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-test\_examples module
----------------------
-
-.. automodule:: twin4build.tests.test_examples
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-test\_model module
-------------------
-
-.. automodule:: twin4build.tests.test_model
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-test\_optimizer module
-----------------------
-
-.. automodule:: twin4build.tests.test_optimizer
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-test\_simulator module
-----------------------
-
-.. automodule:: twin4build.tests.test_simulator
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-test\_types module
-------------------
-
-.. automodule:: twin4build.tests.test_types
+.. automodule:: twin4build.tests.run
    :members:
    :show-inheritance:
    :undoc-members:

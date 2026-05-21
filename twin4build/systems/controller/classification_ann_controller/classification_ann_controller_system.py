@@ -235,4 +235,4 @@ class ClassificationAnnControllerSystem(core.System):
         # Make the output signal to be in the range of 0-1
         predicted = predicted / 20
 
-        self.output["inputSignal"].set(predicted.item(), step_index)
+        self.output["inputSignal"]._set(predicted.item(), i_t=step_index)

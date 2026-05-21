@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 # Third party imports
 import numpy as np
 import pandas as pd
+import torch
 
 # Local application imports
 import twin4build.core as core
@@ -414,10 +415,13 @@ class TimeSeriesInputSystem(core.System):
 
         self.n_timesteps = max_timesteps
         self.batch_size = len(start_time)
-        self.values = values
+        # Convert values from (n_s, n_t) to time-first (n_t, n_s, n_c) where n_c=1
+        # First transpose to (n_t, n_s), then unsqueeze to (n_t, n_s, 1)
+        self.values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(-1)  # (n_t, n_s, 1)
         self.output["value"].initialize(
-            max_timesteps,
-            batch_size=len(start_time),
+            n_t=max_timesteps,
+            n_s=len(start_time),
+            n_c=1,
             values=self.values,
         )
 
@@ -437,4 +441,4 @@ class TimeSeriesInputSystem(core.System):
             date_time (date_time, optional): Current simulation time as a date_time object.
             step_size (int, optional): Step size for the simulation.
         """
-        self.output["value"].set(step_index=step_index)
+        self.output["value"]._set(i_t=step_index)

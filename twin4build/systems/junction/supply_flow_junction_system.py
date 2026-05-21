@@ -109,13 +109,13 @@ class SupplyFlowJunctionSystem(core.System):
         batch_size = len(start_time)
         self.setup_variable_inputs()
         self.input["airFlowRateOut"].initialize(
-            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_input_ports
+            n_t=max_timesteps, n_s=batch_size, n_v=self.n_input_ports
         )
 
         for output in self.output.values():
             output.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
 
     
@@ -149,7 +149,7 @@ class SupplyFlowJunctionSystem(core.System):
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """
-        self.output["airFlowRateIn"].set(
+        self.output["airFlowRateIn"]._set(
             (self.input["airFlowRateOut"].get().sum(dim=-1)) + self.airFlowRateBias,
             step_index,
         )

@@ -44,16 +44,16 @@ class OnOffControllerSystem(core.System):
         )
         batch_size = len(start_time)
         self.input["actualValue"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
+            n_t=max_timesteps,
+            n_s=batch_size,
         )
         self.input["setpointValue"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
+            n_t=max_timesteps,
+            n_s=batch_size,
         )
         self.output["inputSignal"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
+            n_t=max_timesteps,
+            n_s=batch_size,
         )
 
     def do_step(
@@ -79,7 +79,7 @@ class OnOffControllerSystem(core.System):
 
         # Select output signal based on trigger condition
         output_signal = torch.where(trigger_on, self.onValue, self.offValue)
-        self.output["inputSignal"].set(output_signal, step_index)
+        self.output["inputSignal"]._set(output_signal, i_t=step_index)
 
 
 def saref_signature_pattern():

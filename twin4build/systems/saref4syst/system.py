@@ -214,9 +214,9 @@ class System:
         )
         batch_size = len(start_time)
         for input in self.input.values():
-            input.initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+            input.initialize(n_t=max_timesteps, n_s=batch_size)
         for output in self.output.values():
-            output.initialize(n_timesteps=max_timesteps, batch_size=batch_size)
+            output.initialize(n_t=max_timesteps, n_s=batch_size)
 
     def do_step(
         self,
@@ -246,7 +246,9 @@ class System:
 
         def extract_value(value):
             if hasattr(value, "detach") and hasattr(value, "numpy"):
-                return float(value.get().detach().numpy())
+                # Use .tolist() to convert numpy types to Python native types
+                # This ensures values like np.float64(1.0) become 1.0
+                return value.get().detach().numpy().flatten().tolist()
             else:  # isinstance(value, (int, float, type(None))):
                 return value
 

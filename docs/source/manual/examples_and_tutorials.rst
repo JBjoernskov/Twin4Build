@@ -12,15 +12,9 @@ This guide provides an overview of the available examples and tutorials for Twin
 Basics of Twin4Build
 --------------------
 
-**Minimal Example** (`minimal_example.ipynb`)
-
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
-
-- **Purpose**: Connecting components, simulating a model, and visualization
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Connecting components, simulating a model, and visualization</p>
 
 .. code-block:: python
 
@@ -34,29 +28,20 @@ Basics of Twin4Build
     # Run simulation
     # Visualize results
 
-**Space CO2 Controller Example** (`space_co2_controller_example.ipynb`)
+.. raw:: html
+
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration</p>
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/bems_example_lecture.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Adding a custom System component - RC modeling from scratch of 2 rooms with parameter estimation and heat optimization</p>
 
-- **Purpose**: Modeling and control of indoor CO2 concentration
-
-Translator Examples
--------------------
-
-**Translator Example** (`translator_example.ipynb`)
+Translator
+----------
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/translator_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
-
-- **Purpose**: How to use the translator to generate simulation models from semantic models
-- **Topics**: Ontology-driven modeling, automated model creation
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/translator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: How to use the translator to generate simulation models from semantic models</p>
 
 .. code-block:: python
 
@@ -69,19 +54,12 @@ Translator Examples
     # Generate simulation model
     # Validate translation
 
-Estimator Examples
-------------------
-
-**Estimator Example** (`estimator_example.ipynb`)
+Estimator
+---------
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/estimator_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
-
-- **Purpose**: Basic parameter estimation and calibration
-- **Topics**: Least-squares optimization, PyTorch-based calibration
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/estimator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Basic parameter estimation and calibration</p>
 
 .. code-block:: python
 
@@ -95,23 +73,16 @@ Estimator Examples
     # Run calibration
     # Analyze results
 
-Optimizer Examples
-------------------
-
-**Optimizer Example** (`optimizer_example.ipynb`)
+Optimizer
+---------
 
 .. raw:: html
 
-   <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb">
-     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-   </a>
-
-- **Purpose**: Optimization of space heater power consumption, constrained by heating and cooling setpoints
-- **Topics**: Gradient-based optimization, constraint handling
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints</p>
 
 .. code-block:: python
 
-    from twin4Build import Optimizer
+    from twin4build import Optimizer
     
     # Create optimizer
     optimizer = Optimizer()
@@ -137,26 +108,18 @@ Running in Jupyter
 ~~~~~~~~~~~~~~~~~~
 
 1. **Start Jupyter**:
+
    .. code-block:: bash
 
        jupyter notebook
 
 2. **Navigate** to the examples directory:
+
    .. code-block:: bash
 
        cd twin4build/examples
 
 3. **Open** the desired notebook and run cells sequentially
-
-Running as Python Scripts
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Some examples are also available as Python scripts:
-
-.. code-block:: bash
-
-    python twin4build/examples/translator_example.py
-    python twin4build/examples/optimizer_doc.py
 
 Example Structure
 -----------------
@@ -219,7 +182,6 @@ If you encounter issues with examples:
 Additional Resources
 -------------------
 
-- **API Documentation**: [Auto-generated API docs](../auto/index.html)
-- **Developer Reference**: [Comprehensive developer guide](developer_reference.rst)
-- **GitHub Repository**: [Source code and issues](https://github.com/JBjoernskov/Twin4Build/)
-- **Online Documentation**: [Read the Docs](https://twin4build.readthedocs.io/)
+- `API Documentation <../auto/twin4build>`_
+- `Developer Reference <developer_reference>`_
+- `GitHub Repository <https://github.com/JBjoernskov/Twin4Build/>`_

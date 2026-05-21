@@ -115,7 +115,9 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
             "thermal." + s for s in self.thermal._config["parameters"]
         ]
         mass_parameters = ["mass." + s for s in self.mass._config["parameters"]]
-        self._config = {"parameters": thermal_parameters + mass_parameters}
+        all_parameters = thermal_parameters + mass_parameters
+        self._config = {"parameters": all_parameters}
+        self.parameter = {k: {} for k in all_parameters}
         self.INITIALIZED = False
 
     @property
@@ -145,46 +147,43 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         step_size: int,
     ) -> None:
         """Initialize the system and its submodels."""
-        # _, _, n_timesteps = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-        # batch_size = len(start_time)
+        is_compiled = hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1
 
-        # Find if boundary temperature is set as input
-        connection_point = [
-            cp for cp in self.connects_at if cp.inputPort == "boundaryTemperature"
-        ]
-        n_boundary_temperature = (
-            len(connection_point[0].connects_system_through) if connection_point else 0
-        )
-        n_boundary_temperature = n_boundary_temperature
-        assert (
-            n_boundary_temperature == 0 or n_boundary_temperature == 1
-        ), "Maximum one boundary temperature input is allowed"
+        # Propagate compiled n_c to sub-models so they allocate
+        # I/O tensors with the correct parallel-component dimension.
+        if is_compiled:
+            self.thermal._n_c_compiled = self._n_c_compiled
+            self.mass._n_c_compiled = self._n_c_compiled
 
-        # Find number of adjacent zones
-        connection_point = [
-            cp for cp in self.connects_at if cp.inputPort == "adjacentZoneTemperature"
-        ]
-        n_adjacent_zones = (
-            len(connection_point[0].connects_system_through) if connection_point else 0
-        )
+        if is_compiled and self.thermal.manual_setup_n_adjacent_zones:
+            # Compiled meta component: topology values were pre-set by
+            # _copy_init_attrs during model compilation.  The meta
+            # component's connects_at may have a different connection
+            # count than the per-component topology, so skip discovery.
+            pass
+        else:
+            # Find if boundary temperature is set as input
+            connection_point = [
+                cp for cp in self.connects_at if cp.inputPort == "boundaryTemperature"
+            ]
+            n_boundary_temperature = (
+                len(connection_point[0].connects_system_through) if connection_point else 0
+            )
+            assert (
+                n_boundary_temperature == 0 or n_boundary_temperature == 1
+            ), "Maximum one boundary temperature input is allowed"
 
-        # We dont have to initialize the input and output of the combined system, because the thermal and mass systems will initialize them (copied in __init__)
-        # # Initialize I/O for the combined system
-        # for input in self.input.values():
-        #     input.initialize(
-        #         n_timesteps=n_timesteps,
-        #         batch_size=batch_size,
-        #     )
-        # for output in self.output.values():
-        #     output.initialize(
-        #         n_timesteps=n_timesteps,
-        #         batch_size=batch_size,
-        #     )
+            # Find number of adjacent zones
+            connection_point = [
+                cp for cp in self.connects_at if cp.inputPort == "adjacentZoneTemperature"
+            ]
+            n_adjacent_zones = (
+                len(connection_point[0].connects_system_through) if connection_point else 0
+            )
 
-        # self.input["adjacentZoneTemperature"].initialize(n_timesteps=n_timesteps, batch_size=batch_size, size=n_adjacent_zones)
+            self.thermal.n_adjacent_zones = n_adjacent_zones
+            self.thermal.n_boundary_temperature = n_boundary_temperature
 
-        self.thermal.n_adjacent_zones = n_adjacent_zones
-        self.thermal.n_boundary_temperature = n_boundary_temperature
         self.thermal.initialize(start_time, end_time, step_size)
         self.mass.initialize(start_time, end_time, step_size)
         self.INITIALIZED = True
@@ -202,19 +201,21 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         step_index: int,
     ) -> None:
         """Execute a single simulation step for both submodels."""
-        # Set inputs for thermal submodel
-        for k in self.thermal.input:
-            self.thermal.input[k].set(self.input[k].get(), step_index)
-        # Set inputs for mass submodel
-        for k in self.mass.input:
-            self.mass.input[k].set(self.input[k].get(), step_index)
-        self.thermal.do_step(second_time, date_time, step_size, step_index)
-        self.mass.do_step(second_time, date_time, step_size, step_index)
-        # Update outputs from both submodels
-        for k in self.thermal.output:
-            self.output[k].set(self.thermal.output[k].get(), step_index)
-        for k in self.mass.output:
-            self.output[k].set(self.mass.output[k].get(), step_index)
+        # NOTE: self.input/self.output ARE the same objects as self.thermal.input/output
+        # NOTE: They are therefore set by Simulator._assign_component_inputs() before do_step() is called.
+        # # Set inputs for thermal submodel
+        # for k in self.thermal.input:
+        #     self.thermal.input[k]._set(self.input[k].get(), i_t=step_index)
+        # # Set inputs for mass submodel
+        # for k in self.mass.input:
+        #     self.mass.input[k]._set(self.input[k].get(), i_t=step_index)
+        self.thermal.do_step(second_time, date_time, step_size, step_index=step_index)
+        self.mass.do_step(second_time, date_time, step_size, step_index=step_index)
+        # # Update outputs from both submodels
+        # for k in self.thermal.output:
+        #     self.output[k]._set(self.thermal.output[k].get(), i_t=step_index)
+        # for k in self.mass.output:
+        #     self.output[k]._set(self.mass.output[k].get(), i_t=step_index)
 
 
 def saref_signature_pattern_sensor():

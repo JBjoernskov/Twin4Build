@@ -139,7 +139,7 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         outdoor_env.do_step(
-            second_time=0, date_time=datetime_val, step_size=600, step_index=0
+            second_time=0, date_time=datetime_val, step_size=step_size, step_index=0
         )
 
         # Check that correction was applied to temperature

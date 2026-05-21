@@ -195,7 +195,7 @@ class fmuSystem(core.System):
                 second_time=second_time,
                 date_time=date_time,
                 step_size=step_size,
-                step_index=step_index,
+                i_t=step_index,
             )
         except FMICallException as inst:
             self.fmu.freeFMUState(self.fmu_initial_state)
