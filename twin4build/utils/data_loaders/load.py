@@ -109,96 +109,113 @@ def sample_from_df(
     assert datecolumn != valuecolumn, "datecolumn and valuecolumn cannot be the same"
     df = df.rename(columns={df.columns.to_list()[datecolumn]: "date_time"})
 
+    LOGGER.task("Starting dataframe sampling")
     LOGGER.add_level()
-    LOGGER.info(
-        f"Sampling df from {start_time} to {end_time} with step_size {step_size}"
-    )
-    LOGGER.add_level()
+    try:
+        LOGGER.config("Start time: %s", start_time)
+        LOGGER.config("End time: %s", end_time)
+        LOGGER.config("Step size: %s", step_size)
 
-    for i, column in enumerate(df.columns.to_list()):
-        if column != "date_time" and valuecolumn is None:
-            df[column] = pd.to_numeric(
-                df[column], errors="coerce"
-            )  # Remove string entries
-        elif i == valuecolumn:
-            df[column] = pd.to_numeric(
-                df[column], errors="coerce"
-            )  # Remove string entries
+        for i, column in enumerate(df.columns.to_list()):
+            if column != "date_time" and valuecolumn is None:
+                df[column] = pd.to_numeric(
+                    df[column], errors="coerce"
+                )  # Remove string entries
+            elif i == valuecolumn:
+                df[column] = pd.to_numeric(
+                    df[column], errors="coerce"
+                )  # Remove string entries
 
-    df["date_time"] = pd.to_datetime(df["date_time"])  # ), format=format)
-    if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
-        has_tz = True
-        df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
-        LOGGER.info(
-            f"df has timezone information {df['date_time'].apply(lambda x: x.tzinfo).unique()}, converting to UTC"
-        )
+        df["date_time"] = pd.to_datetime(df["date_time"])  # ), format=format)
+        if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
+            has_tz = True
+            df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
+            LOGGER.info(
+                "Dataframe has timezone information %s, converting to UTC",
+                df["date_time"].apply(lambda x: x.tzinfo).unique(),
+            )
 
-    else:
-        has_tz = False
-        LOGGER.info(f"df does not have timezone information")
+        else:
+            has_tz = False
+            LOGGER.info("Dataframe has no timezone information")
 
-    df = df.set_index(pd.DatetimeIndex(df["date_time"]))
-    df = df.drop(columns=["date_time"])
+        df = df.set_index(pd.DatetimeIndex(df["date_time"]))
+        df = df.drop(columns=["date_time"])
 
-    if preserve_order and has_tz == False:
-        # Detect if dates are reverse
-        diff_seconds = df.index.to_series().diff().dt.total_seconds()
-        # Remove NaN values from the calculation
-        diff_seconds_valid = diff_seconds.dropna()
-        if len(diff_seconds_valid) > 0:
-            frac_neg = np.sum(diff_seconds_valid < 0) / len(diff_seconds_valid)
-            if frac_neg >= 0.95:
-                df = df.iloc[::-1]
-            elif frac_neg > 0.05 and frac_neg < 0.95:
-                raise Exception(
-                    '"preserve_order" is true, but the date_time order cannot be determined.'
-                )
-    else:
-        df = df.sort_index()
+        if preserve_order and has_tz == False:
+            # Detect if dates are reverse
+            diff_seconds = df.index.to_series().diff().dt.total_seconds()
+            # Remove NaN values from the calculation
+            diff_seconds_valid = diff_seconds.dropna()
+            if len(diff_seconds_valid) > 0:
+                frac_neg = np.sum(diff_seconds_valid < 0) / len(diff_seconds_valid)
+                if frac_neg >= 0.95:
+                    df = df.iloc[::-1]
+                elif frac_neg > 0.05 and frac_neg < 0.95:
+                    raise Exception(
+                        '"preserve_order" is true, but the date_time order cannot be determined.'
+                    )
+        else:
+            df = df.sort_index()
 
-    df = df.dropna(how="all")
+        df = df.dropna(how="all")
 
-    # Check if the first index is timezone aware
-    if df.index[0].tzinfo is None:
-        df = df.tz_localize(tz, ambiguous="infer", nonexistent="NaT")
-        LOGGER.info(f"df does not have timezone information, localizing to {tz}")
-    else:
-        LOGGER.info(
-            f"df has timezone information {df.index[0].tzinfo}, converting to {tz}"
-        )
-        df = df.tz_convert(tz)
+        LOGGER.task("Enforcing timezone awareness")
+        LOGGER.add_level()
 
-    # Duplicate dates can occur either due to measuring/logging malfunctions
-    # or due to change of daylight saving time where an hour occurs twice in fall.
-    df = df.groupby(level=0).mean(numeric_only=True)
+        # Check if the first index is timezone aware
+        if df.index[0].tzinfo is None:
+            df = df.tz_localize(tz, ambiguous="infer", nonexistent="NaT")
+            LOGGER.config("Localized index timezone: %s", tz)
+        else:
+            LOGGER.info(
+                "Index has timezone %s, converting to %s",
+                df.index[0].tzinfo,
+                tz,
+            )
+            df = df.tz_convert(tz)
+        LOGGER.remove_level()
+           
 
-    if start_time.tzinfo is None:
-        start_time = start_time.astimezone(tz=tz)
-        LOGGER.info(
-            f"start_time does not have timezone information, converting to {tz}"
-        )
-    if end_time.tzinfo is None:
-        end_time = end_time.astimezone(tz=tz)
-        LOGGER.info(f"end_time does not have timezone information, converting to {tz}")
+        # Duplicate dates can occur either due to measuring/logging malfunctions
+        # or due to change of daylight saving time where an hour occurs twice in fall.
+        df = df.groupby(level=0).mean(numeric_only=True)
 
-    if resample:
-        allowable_resample_methods = ["constant", "linear"]
-        assert (
-            resample_method in allowable_resample_methods
-        ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
-        if resample_method == "constant":
-            df = df.resample(f"{step_size}s", origin=start_time).ffill().bfill()
-        elif resample_method == "linear":
-            oidx = df.index
-            nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
-            df = df.reindex(oidx.union(nidx)).interpolate("index").reindex(nidx)
-            df = df.ffill().bfill()
+        if start_time.tzinfo is None:
+            start_time = start_time.astimezone(tz=tz)
+            LOGGER.info(
+                "Start time had no timezone, converted to %s",
+                tz,
+            )
+        if end_time.tzinfo is None:
+            end_time = end_time.astimezone(tz=tz)
+            LOGGER.info("End time had no timezone, converted to %s", tz)
 
-    if clip:
-        df = df[
-            (df.index >= start_time) & (df.index < end_time)
-        ]  # Exclude end time for similar behavior as normal python slicing
+        if resample:
+            allowable_resample_methods = ["constant", "linear"]
+            assert (
+                resample_method in allowable_resample_methods
+            ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
+            if resample_method == "constant":
+                df = df.resample(f"{step_size}s", origin=start_time).ffill().bfill()
+            elif resample_method == "linear":
+                oidx = df.index
+                nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
+                df = df.reindex(oidx.union(nidx)).interpolate("index").reindex(nidx)
+                df = df.ffill().bfill()
 
+        if clip:
+            df = df[
+                (df.index >= start_time) & (df.index < end_time)
+            ]  # Exclude end time for similar behavior as normal python slicing
+
+    except Exception:
+        LOGGER.remove_level()
+        LOGGER.error("Starting dataframe sampling", change_status=True)
+        raise
+
+    LOGGER.remove_level()
+    LOGGER.ok("Starting dataframe sampling", change_status=True)
     return df
 
 
@@ -350,7 +367,11 @@ def load_database_config(config_file=None, section="timescaledb"):
                 if parser.has_option(section, "password"):
                     config["password"] = parser.get(section, "password")
         except Exception as e:
-            print(f"Warning: Could not load configuration from {config_file}: {e}")
+            LOGGER.warning(
+                "Could not load configuration from %s: %s.",
+                config_file,
+                e,
+            )
 
     # Override with environment variables
     config["host"] = os.getenv("TIMESCALEDB_HOST", config["host"])
@@ -626,7 +647,7 @@ def load_from_database(
             pass
         else:
             q = query % tuple(params)
-            print(f"No rows returned from query:\n{q}")
+            LOGGER.warning("No rows returned from query:\n%s.", q)
             # # Debug: Check what sensor IDs exist in the database
             # try:
             #     cursor.execute(
@@ -645,11 +666,11 @@ def load_from_database(
     except Exception as e:
         if "conn" in locals():
             conn.close()
-        print(f"Error loading data from database: {e}")
+        LOGGER.error("Error loading data from database: %s.", e)
         raise
 
     if not rows:
-        print(f"No data found for table {table_name}")
+        LOGGER.warning("No data found for table %s.", table_name)
         return pd.DataFrame()
 
     # Convert to DataFrame

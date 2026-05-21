@@ -69,6 +69,80 @@ def print_color_palette():
 
 
 class Logger:
+    """Custom logging system for Twin4Build with tree-structured output.
+
+    LOGGER Usage Standard
+    =====================
+
+    Badge system
+    ------------
+    Work & control flow:
+        - ``LOGGER.task(msg)``    -> ``[TASK]``    -- Unit of work (can self-nest).
+
+    Data & structure:
+        - ``LOGGER.section(msg)`` -> ``[SECTION]`` -- Data-organizing container (can self-nest).
+        - ``LOGGER.config(msg)``  -> ``[CONFIG]``  -- Setup/input value (leaf).
+        - ``LOGGER.result(msg)``  -> ``[RESULT]``  -- Reported result/output data (can self-nest).
+        - ``LOGGER.iter(msg)``    -> ``[ITER]``    -- Iteration metrics (leaf).
+
+    Informational:
+        - ``LOGGER.info(msg)``    -> ``[INFO]``    -- General information, discoveries.
+        - ``LOGGER.debug(msg)``   -> ``[DEBUG]``   -- Verbose detail, filtered by default.
+
+    Feedback (dual mode):
+        - ``LOGGER.ok(msg)``      -> ``[OUTCOME]`` green  -- or recolor with ``change_status=True``.
+        - ``LOGGER.warning(msg)`` -> ``[OUTCOME]`` yellow -- or recolor with ``change_status=True``.
+        - ``LOGGER.error(msg)``   -> ``[OUTCOME]`` red    -- or recolor with ``change_status=True``.
+
+    Nesting rules
+    -------------
+    ``[TASK]`` children -- any badge is allowed.
+
+    ``[SECTION]`` and ``[CONFIG]`` children -- only data badges:
+    ``[SECTION]``, ``[INFO]``, ``[ITER]``, ``[RESULT]``. Never ``[TASK]``,
+    ``[OUTCOME]``, or ``[DEBUG]``.
+
+    Outcome dual mode
+    -----------------
+    Without ``change_status=True``: prints a **new** ``[OUTCOME]`` line colored
+    green / yellow / red.
+    With ``change_status=True``: **recolors** an existing line's badge
+    (text stays unchanged; only the color changes).
+
+    Message formatting
+    ------------------
+    Always use ``%``-style formatting for dynamic messages::
+
+        LOGGER.info("Found %d items", n)
+
+    Never use f-strings -- ``%``-style enables lazy evaluation (skipping
+    interpolation when the message is filtered out).
+
+    Message styling
+    ---------------
+    - Sentence case (capitalize first word only).
+    - No terminal punctuation, except warning/error outcomes (full sentences
+      ending with a period).
+    - ``Label: value`` for config/result.
+    - ``key=value | key=value`` for iteration metrics.
+    - ``component_id.attribute`` for identifiers.
+
+    Example
+    -------
+    ::
+
+        LOGGER.task("Starting estimation")
+        LOGGER.add_level()
+        LOGGER.config("Method: %s", method)
+        LOGGER.task("Initializing model")
+        model.initialize()
+        LOGGER.ok("Initializing model", change_status=True)
+        LOGGER.iter("eval=%d | obj=%.6f | elapsed=%.1fs", n, obj, elapsed)
+        LOGGER.ok("Converged: iterations=%d", nit)
+        LOGGER.remove_level()
+        LOGGER.ok("Starting estimation", change_status=True)
+    """
+
     def __init__(self) -> None:
         self.level_indent = []  # level as function of line number
         self.level = []
@@ -77,6 +151,8 @@ class Logger:
         self.status = []
         self.location = []
         self.added_level = False
+        self._pending_levels = 0
+        self._phantom_levels = 0
         self.removed_level = False
         self.level_stack = [0]
         self.has_printed = False
@@ -86,6 +162,13 @@ class Logger:
         self.logfile = None
         self._last_file_content = ""  # Cache for atomic file updates
         self._is_active = False
+        self._log_flush_size = 50  # Flush to file every N lines
+        self._log_buffer = []  # Pending formatted lines not yet written
+        self._flushed_line_count = 0  # Number of _curses_lines already written to disk
+        # File mode is buffered; ensure we flush on exit/crash
+        self._file_flush_registered = False
+        self._file_flush_logfile_path = None
+        self._file_excepthook_installed = False
         self.call_depth = 0
         self._scroll_offset = 0
         self._lock = threading.Lock()
@@ -146,12 +229,17 @@ class Logger:
 
         # Status filtering
         self._status_filters = {
-            "debug": True,
+            "debug": False,
             "warning": True,
             "error": True,
             "ok": True,
-            "success": True,
             "info": True,
+            "task": True,
+            "section": True,
+            "config": True,
+            "result": True,
+            "iter": True,
+            "outcome": True,
             "default": True,
         }  # True = show, False = hide
 
@@ -159,6 +247,34 @@ class Logger:
         self._caller_filters = set()  # Set of caller function names
         self._caller_filter_mode = "whitelist"  # "whitelist" or "blacklist"
         self._caller_filter_include_stack = True  # Whether to check entire call stack
+
+        # Once-only warning deduplication
+        self._warned_once_messages: set = set()
+
+    def _install_file_flush_handlers(self, logfile_path: str):
+        """Install flush handlers so buffered file logs aren't lost on crashes."""
+        if not logfile_path:
+            return
+
+        # Flush at normal interpreter exit
+        if (not self._file_flush_registered) or (self._file_flush_logfile_path != logfile_path):
+            atexit.register(self._flush_log_buffer, logfile_path)
+            self._file_flush_registered = True
+            self._file_flush_logfile_path = logfile_path
+
+        # Flush on unhandled exceptions (file mode doesn't initialize curses)
+        if self._file_excepthook_installed:
+            return
+        original_excepthook = sys.excepthook
+
+        def _file_exception_handler(exc_type, exc_value, exc_traceback):
+            try:
+                self._flush_log_buffer(self._file_flush_logfile_path)
+            finally:
+                original_excepthook(exc_type, exc_value, exc_traceback)
+
+        sys.excepthook = _file_exception_handler
+        self._file_excepthook_installed = True
 
     def __enter__(self):
         """Context manager entry - ensures proper cleanup on exceptions"""
@@ -233,126 +349,64 @@ class Logger:
             self._display_thread.join(timeout=1.0)
             self._display_thread = None
 
-    def enable_status_filter(self, status_type):
-        """Enable showing messages with the given status type"""
+    def show_status(self, status_type):
+        """Show messages of the given status type.
+
+        Args:
+            status_type: One of "debug", "info", "warning", "error", "ok", "success", "default"
+        """
         self._status_filters[status_type.lower()] = True
 
-    def disable_status_filter(self, status_type):
-        """Disable showing messages with the given status type"""
+    def hide_status(self, status_type):
+        """Hide messages of the given status type.
+
+        Args:
+            status_type: One of "debug", "info", "warning", "error", "ok", "success", "default"
+        """
         self._status_filters[status_type.lower()] = False
 
-    def enable_all_status_filters(self):
-        """Enable showing all status types"""
+    def show_all_status(self):
+        """Show all status types."""
         for status in self._status_filters:
             self._status_filters[status] = True
 
-    def disable_all_status_filters(self):
-        """Disable showing all status types"""
+    def hide_all_status(self):
+        """Hide all status types."""
         for status in self._status_filters:
             self._status_filters[status] = False
 
-    def enable_level_filter(self, level):
-        """Enable showing messages at the given level"""
-        self._level_filters.add(level)
-
-    def disable_level_filter(self, level):
-        """Disable showing messages at the given level"""
-        self._level_filters.discard(level)
-
-    def enable_all_level_filters(self):
-        """Enable showing all levels (clear level filters)"""
-        self._level_filters.clear()
-
-    def disable_all_level_filters(self):
-        """Disable showing all levels (hide everything)"""
-        # This would hide everything - maybe not useful
-        pass
-
-    def show_only_debug(self):
-        """Show only debug messages"""
-        self.disable_all_status_filters()
-        self.enable_status_filter("debug")
-
-    def show_only_errors(self):
-        """Show only error messages"""
-        self.disable_all_status_filters()
-        self.enable_status_filter("error")
-
-    def show_only_warnings(self):
-        """Show only warning messages"""
-        self.disable_all_status_filters()
-        self.enable_status_filter("warning")
-
-    def hide_debug(self):
-        """Hide debug messages"""
-        self.disable_status_filter("debug")
-
-    def show_all_status_types(self):
-        """Show all status types (default behavior)"""
-        self.enable_all_status_filters()
-
-    def show_only_from_caller(self, caller_name, include_stack=True):
-        """Show messages only from call stacks containing the specified caller function
-
-        Args:
-            caller_name: Name of the function to show messages from
-            include_stack: If True, also show messages from functions called by this function
-        """
-        if self._caller_filter_mode != "whitelist":
-            self._caller_filters.clear()
-            self.set_caller_filter_mode("whitelist")
-        else:
-            self._caller_filters.clear()
-        self._caller_filter_include_stack = include_stack
-        self._caller_filters.add(caller_name)
-
-    def hide_from_caller(self, caller_name):
-        """Hide messages from the specified caller function"""
-        if self._caller_filter_mode != "blacklist":
-            self._caller_filters.clear()
-            self.set_caller_filter_mode("blacklist")
-        self._caller_filters.add(caller_name)
-
     def show_all_callers(self):
-        """Show messages from all callers (default behavior)"""
+        """Remove caller filter — show messages from all callers (default)."""
         self._caller_filters.clear()
         self._caller_filter_mode = "whitelist"
 
-    def set_caller_filter_mode(self, mode):
-        """Set caller filter mode to 'whitelist' or 'blacklist'
-
-        - 'whitelist': Only show messages where the call stack contains a function in the filter set
-        - 'blacklist': Hide messages where the call stack contains a function in the filter set
-        """
-        if mode not in ["whitelist", "blacklist"]:
-            raise ValueError("Mode must be 'whitelist' or 'blacklist'")
-        self._caller_filter_mode = mode
-
-    def hide_caller(self, caller_name, include_stack=True):
-        """Hide messages from the specified caller function
+    def show_caller(self, caller_name, include_stack=True, hide_other_callers=False):
+        """Show messages from call stacks containing caller_name (whitelist mode).
 
         Args:
-            caller_name: Name of the function to hide messages from
-            include_stack: If True, also hide messages from functions called by this function
+            caller_name: Name of the function whose messages to show
+            include_stack: If True, also show messages from functions called by it
+            hide_other_callers: If True (default), clear all previous caller filters so
+                                only this caller is shown. Set to False to add to an
+                                existing whitelist without clearing it.
         """
-        if self._caller_filter_mode != "blacklist":
+        self._caller_filter_mode = "whitelist"
+        if hide_other_callers:
             self._caller_filters.clear()
-            self.set_caller_filter_mode("blacklist")
         self._caller_filter_include_stack = include_stack
         self._caller_filters.add(caller_name)
 
-    def show_caller(self, caller_name, include_stack=True):
-        """Show messages from the specified caller function
+    def hide_caller(self, caller_name, include_stack=True):
+        """Hide messages from call stacks containing caller_name (blacklist mode).
 
         Args:
-            caller_name: Name of the function to show messages from
-            include_stack: If True, also show messages from functions called by this function
+            caller_name: Name of the function whose messages to hide
+            include_stack: If True, also hide messages from functions called by it
         """
+        self._caller_filter_mode = "blacklist"
+        self._caller_filters.clear()
         self._caller_filter_include_stack = include_stack
-        if self._caller_filter_mode == "whitelist":
-            self._caller_filters.add(caller_name)
-        elif self._caller_filter_mode == "blacklist":
-            self._caller_filters.discard(caller_name)
+        self._caller_filters.add(caller_name)
 
     def _get_caller_function_name(self):
         """Get the name of the function that called LOGGER"""
@@ -362,13 +416,19 @@ class Logger:
             frame = frame.f_back  # __call__ or internal
         while frame is not None:
             func_name = frame.f_code.co_name
-            # Skip internal methods and the __call__ method itself
+            # Skip internal methods, the __call__ method, and convenience wrappers
             if func_name not in [
                 "__call__",
                 "_get_caller_function_name",
                 "_should_filter_message",
                 "wait_if_paused",
                 "wrapper",
+                "debug",
+                "info",
+                "warning",
+                "error",
+                "ok",
+                "success",
             ]:
                 return func_name
             frame = frame.f_back
@@ -449,6 +509,11 @@ class Logger:
         return self._paused
 
     @property
+    def _caller_whitelist_active(self):
+        """True when a caller whitelist is set — status filters should not block early."""
+        return bool(self._caller_filters) and self._caller_filter_mode == "whitelist"
+
+    @property
     def threading_enabled(self):
         """Check if background threading is enabled"""
         return self._use_threading
@@ -470,6 +535,14 @@ class Logger:
     @property
     def current_level(self):
         return len(self.level_stack) - 1
+
+    @property
+    def log_flush_size(self):
+        return self._log_flush_size
+
+    @log_flush_size.setter
+    def log_flush_size(self, value):
+        self._log_flush_size = value
 
     def _get_logfile_path(self):
         """Get the logfile path without opening the file.
@@ -531,22 +604,49 @@ class Logger:
         """Get the color pair index for a status string.
 
         This is the single source of truth for status -> color mapping.
+        Color suffixes (e.g., [TASK:green], [TASK:red], [OUTCOME:yellow])
+        take priority. Badges without a color suffix use default colors.
         """
         status_lower = status.lower()
-        if "[ok]" in status_lower or "[success]" in status_lower:
+        if ":green]" in status_lower or "[ok]" in status_lower or "[success]" in status_lower:
             return self.OK_COLOR_PAIR
-        elif "[error]" in status_lower or "[failed]" in status_lower:
+        elif ":red]" in status_lower or "[error]" in status_lower or "[failed]" in status_lower:
             return self.ERROR_COLOR_PAIR
-        elif "[warning]" in status_lower or "[warn]" in status_lower:
+        elif ":yellow]" in status_lower or "[warning]" in status_lower or "[warn]" in status_lower:
             return self.WARNING_COLOR_PAIR
         elif "[debug]" in status_lower:
-            return self.INFO_COLOR_PAIR  # Use blue for debug messages
+            return self.INFO_COLOR_PAIR
         else:
             return self.INFO_COLOR_PAIR
 
     def _get_status_ansi_color(self, status):
         """Get ANSI color escape sequence for a status string"""
         return self._get_ansi_color(self._get_status_color_pair(status))
+
+    @staticmethod
+    def _get_status_display_text(status):
+        """Get the display text for a status, stripping internal color suffixes.
+
+        [TASK:green] -> [TASK], [OUTCOME:yellow] -> [OUTCOME], etc.
+        Any status of the form [TAG:color] is rendered as [TAG].
+        """
+        if ":" in status and status.endswith("]"):
+            return status.split(":")[0] + "]"
+        return status
+
+    @staticmethod
+    def _apply_color_to_status(existing_status, incoming_status):
+        """Preserve existing badge text, apply only the color from incoming status.
+
+        Used by change_status=True to recolor a line without replacing its badge.
+        e.g. existing=[TASK], incoming=[OUTCOME:green] -> [TASK:green]
+             existing=[TASK], incoming=[OUTCOME:red]   -> [TASK:red]
+        """
+        for color in ("green", "yellow", "red"):
+            if color in incoming_status.lower():
+                base = existing_status.split(":")[0].rstrip("]")
+                return "%s:%s]" % (base, color)
+        return incoming_status
 
     def _format_message(self, message, location, use_ansi_colors=False):
         if location:
@@ -557,6 +657,36 @@ class Logger:
                 return f"{message} ({location})"
         return message
 
+    def _format_line_ansi(self, indent, message, status, level, location):
+        """Format a complete log line with ANSI colors for tree, message, location, and status."""
+        char_levels = self.get_char_level(indent)
+
+        colored_output = ""
+        prev_pair_idx = None
+        for i, char in enumerate(indent):
+            pair_idx = self._get_color_pair_idx(char_levels[i])
+            if pair_idx != prev_pair_idx:
+                if prev_pair_idx is not None:
+                    colored_output += self.ANSI_RESET
+                colored_output += self._get_ansi_color(pair_idx)
+                prev_pair_idx = pair_idx
+            colored_output += char
+        if prev_pair_idx is not None:
+            colored_output += self.ANSI_RESET
+
+        if status:
+            status_color = self._get_status_ansi_color(status)
+            display_status = self._get_status_display_text(status)
+            colored_output += f"{status_color}{display_status}{self.ANSI_RESET} "
+
+        colored_output += message
+
+        if location:
+            loc_color = self._get_ansi_color(self.LOCATION_COLOR_PAIR)
+            colored_output += f" {loc_color}({location}){self.ANSI_RESET}"
+
+        return colored_output
+
     def add_line(self, indent="", message="", status="", location=None):
         self.indent.append(indent)
         self.message.append(message)
@@ -565,6 +695,48 @@ class Logger:
         self.level_indent.append(self._current_level_indent)
         self.level.append(self.current_level)
         self._is_active = True
+
+    def _compute_bar_visibility(self):
+        """Bottom-up pass: keep a vertical bar only when it connects to a future message.
+
+        A bar at ancestor level A on line i is shown iff there is a later
+        line j at level A+1 (a sibling) with no intervening line at level <= A
+        (which would break the scope).  This is the ``├`` vs ``└`` distinction
+        in standard tree renderers.
+        """
+        n = len(self.indent)
+        if n == 0:
+            return []
+
+        max_level = max(self.level) if self.level else 0
+        has_sibling = [False] * (max_level + 2)
+
+        rendered = [None] * n
+        for i in range(n - 1, -1, -1):
+            indent = self.indent[i]
+            level = self.level[i]
+            is_separator = self.message[i] == ""
+
+            if indent and level > 0:
+                bar_positions = [j for j, c in enumerate(indent) if c == self.VERT]
+                chars = list(indent)
+                last = len(bar_positions) - 1
+                for A, pos in enumerate(bar_positions):
+                    if A == last and not is_separator:
+                        break  # connector bar is always shown on message lines
+                    if not has_sibling[A]:
+                        chars[pos] = " "
+                rendered[i] = "".join(chars)
+            else:
+                rendered[i] = indent
+
+            if not is_separator:
+                for A in range(level, len(has_sibling)):
+                    has_sibling[A] = False
+                if level > 0:
+                    has_sibling[level - 1] = True
+
+        return rendered
 
     def _update_lines(self):
         """Update the canonical _curses_lines data structure from current state.
@@ -576,9 +748,10 @@ class Logger:
             if self._paused:
                 return
             current_len = len(self._curses_lines)
+            rendered_indents = self._compute_bar_visibility()
             temp_lines = []
             for indent, message, status, level, location in zip(
-                self.indent, self.message, self.status, self.level, self.location
+                rendered_indents, self.message, self.status, self.level, self.location
             ):
                 temp_lines.append((indent, message, status, level, location))
             self._curses_lines = temp_lines
@@ -586,6 +759,23 @@ class Logger:
             diff = new_len - current_len
             if self._scroll_offset > 0 and diff > 0:
                 self._scroll_offset += diff
+
+    def _flush_log_buffer(self, logfile_path=None):
+        """Append buffered log lines to the log file and clear the buffer."""
+        if not self._log_buffer:
+            return
+        if logfile_path is None:
+            logfile_path = self._get_logfile_path()
+        if logfile_path is None:
+            return
+        content = "\n".join(self._log_buffer) + "\n"
+        try:
+            with open(logfile_path, "a", encoding="utf-8") as f:
+                f.write(content)
+        except OSError:
+            pass
+        self._flushed_line_count += len(self._log_buffer)
+        self._log_buffer.clear()
 
     def print_lines(self):
         logfile_path = self._get_logfile_path()
@@ -605,30 +795,23 @@ class Logger:
                     self._handle_input()
                     self._update_curses_display()
         elif is_file_mode:
-            # File output - overwrite in place so the file is never empty.
-            # Using "r+" mode: seek to start, write, truncate excess.
-            # This avoids the "w" mode problem where open() truncates
-            # the file to zero bytes before writing.
-            lines = []
-            for indent, message, status, level, location in self._curses_lines:
-                _status = "..." + status if status != "" else ""
+            self._install_file_flush_handlers(logfile_path)
+            # Append-only buffered file output.
+            # Rebuild the buffer for all lines not yet flushed — this captures
+            # status updates (e.g. ...[OK]) for lines still in the buffer.
+            self._log_buffer = []
+            for indent, message, status, level, location in self._curses_lines[
+                self._flushed_line_count :
+            ]:
+                display_status = self._get_status_display_text(status)
+                _status = display_status + " " if status != "" else ""
                 display_message = self._format_message(
                     message, location, use_ansi_colors=False
                 )
-                lines.append(indent + display_message + _status)
-            content = "\n".join(lines)
-            if lines:
-                content += "\n"
-            if content and content != self._last_file_content:
-                try:
-                    with open(logfile_path, "r+") as f:
-                        f.seek(0)
-                        f.write(content)
-                        f.truncate()
-                except FileNotFoundError:
-                    with open(logfile_path, "w") as f:
-                        f.write(content)
-                self._last_file_content = content
+                self._log_buffer.append(indent + _status + display_message)
+
+            if len(self._log_buffer) >= self._log_flush_size:
+                self._flush_log_buffer(logfile_path)
         else:
             # Stdout output
             if self.has_printed:
@@ -638,11 +821,15 @@ class Logger:
 
             self.n_printed = 0
             for indent, message, status, level, location in self._curses_lines:
-                _status = "..." + status if status != "" else ""
-                display_message = self._format_message(
-                    message, location, use_ansi_colors=use_ansi
-                )
-                s = indent + display_message + _status
+                if use_ansi:
+                    s = self._format_line_ansi(indent, message, status, level, location)
+                else:
+                    display_status = self._get_status_display_text(status)
+                    _status = display_status + " " if status != "" else ""
+                    display_message = self._format_message(
+                        message, location, use_ansi_colors=False
+                    )
+                    s = indent + _status + display_message
                 print(s, flush=True)
                 self.n_printed += 1
 
@@ -754,7 +941,7 @@ class Logger:
                 self._cleanup_curses(preserve_output=True)
                 # print("DEBUG: Curses cleanup completed after exception", file=sys.stderr)
 
-            # Then call the original exception handler to show the traceback
+            print()
             original_excepthook(exc_type, exc_value, exc_traceback)
 
         sys.excepthook = curses_exception_handler
@@ -773,7 +960,7 @@ class Logger:
                 # Use the filename and lineno provided by Python's warning system
                 # These are the actual location where warnings.warn() was called
                 loc = f"{os.path.basename(filename)}:{lineno}"
-                self(str(message), status="[WARNING]", location=loc)
+                self(str(message), status="[OUTCOME:yellow]", location=loc)
 
             # Forward to the original handler when not in curses, or when an explicit
             # target file is provided (e.g., logging to file).
@@ -905,54 +1092,24 @@ class Logger:
         self._restore_warning_handler()
 
         if self._stdscr is not None:
-            # Clean up curses
-            # Check if curses is available (it might be None during interpreter shutdown)
             if "curses" in globals() and curses is not None:
                 curses.curs_set(1)
                 curses.nocbreak()
                 curses.echo()
                 curses.endwin()
 
-            # Exit alternate screen buffer if we used it
-            # This restores the original terminal content
-            sys.stdout.write("\033[?1049l")  # Exit alternate screen
-            sys.stdout.flush()
-
-            # Display the COMPLETE progress history with colors
-            # Only needed when using alternate screen (otherwise output is already visible)
+            # Replay the complete progress history with ANSI colors.
+            # endwin() restores the pre-curses terminal state, so the curses
+            # content is no longer visible — replay is needed to preserve it.
+            # NOTE: do NOT send \033[?1049l here — alternate screen is never
+            # entered, and sending the exit escape corrupts the terminal.
             if preserve_output and self._curses_lines:
-                print()  # Add some spacing
+                print()
                 for indent, message, status, level, location in self._curses_lines:
-                    # Build the main text (indent + message, without location)
-                    main_text = indent + message
-
-                    # Build location text if present
-                    location_text = f" ({location})" if location else ""
-
-                    # Get character-level colors using numpy method
-                    char_levels = self.get_char_level(main_text)
-
-                    # Build colored output character by character
-                    colored_output = ""
-                    for i, char in enumerate(main_text):
-                        char_level = char_levels[i]
-                        color_pair_idx = self._get_color_pair_idx(char_level)
-                        char_color = self._get_ansi_color(color_pair_idx)
-                        colored_output += f"{char_color}{char}{self.ANSI_RESET}"
-
-                    # Add location with its own color
-                    if location:
-                        loc_color = self._get_ansi_color(self.LOCATION_COLOR_PAIR)
-                        colored_output += f"{loc_color}{location_text}{self.ANSI_RESET}"
-
-                    # Add status with appropriate color
-                    _status = ""
-                    if status:
-                        status_color = self._get_status_ansi_color(status)
-                        _status = f"...{status_color}{status}{self.ANSI_RESET}"
-
-                    # Print the complete colored line
-                    print(f"{colored_output}{_status}", flush=True)
+                    print(
+                        self._format_line_ansi(indent, message, status, level, location),
+                        flush=True,
+                    )
 
             self._stdscr = None
             self._curses_mode = False
@@ -1044,40 +1201,38 @@ class Logger:
             indent, message, status, level, location = self._curses_lines[i]
             display_row = i - start_line
 
-            # Create status text
-            _status = "..." + status if status != "" else ""
+            display_status = self._get_status_display_text(status)
+            _status = display_status + " " if status != "" else ""
 
-            # Build the main text (indent + message, without location)
-            main_text = indent + message
-
-            # Build location text if present
             location_text = f" ({location})" if location else ""
 
-            # Get character-level colors using numpy method (for indent coloring)
-            char_levels = self.get_char_level(main_text)
+            char_levels = self.get_char_level(indent)
 
-            # Display main text character by character with appropriate colors
             col_pos = 0
-            for j, char in enumerate(main_text):
+            for j, char in enumerate(indent):
                 if col_pos >= width - 1:
                     break
-
-                # Get the level for this character
                 char_level = char_levels[j]
                 char_color = self._get_color_pair(char_level)
                 self._stdscr.addstr(display_row, col_pos, char, char_color)
                 col_pos += 1
 
-            # Add location with its own color if there's room
+            if status and col_pos + len(_status) <= width:
+                status_color = self._get_status_color(status)
+                self._stdscr.addstr(display_row, col_pos, _status, status_color)
+                col_pos += len(_status)
+
+            if col_pos + len(message) <= width:
+                self._stdscr.addstr(display_row, col_pos, message)
+                col_pos += len(message)
+            elif col_pos < width - 1:
+                self._stdscr.addstr(display_row, col_pos, message[: width - 1 - col_pos])
+                col_pos = width - 1
+
             if location and col_pos + len(location_text) <= width:
                 location_color = curses.color_pair(self.LOCATION_COLOR_PAIR)
                 self._stdscr.addstr(display_row, col_pos, location_text, location_color)
                 col_pos += len(location_text)
-
-            # Add colored status if there's room
-            if status and col_pos + len(_status) <= width:
-                status_color = self._get_status_color(status)
-                self._stdscr.addstr(display_row, col_pos, _status, status_color)
 
         # Add scroll indicator if needed
         if total_lines > max_lines:
@@ -1106,60 +1261,56 @@ class Logger:
         if self.verbose == 0 or self.enabled is False:
             return
 
+        if self._phantom_levels > 0:
+            self._phantom_levels -= 1
+            return
+
         if self._block_count > 0:
             self._block_count -= 1
             return
 
-        # Check added_level FIRST - if True, we have a pending level to remove
-        # even though no visual lines exist yet (lazy creation)
-        if self.added_level:
+        # Pending levels (added but no message printed yet) — pop without visual changes
+        if self._pending_levels > 0:
             self._current_level_indent = (
                 self._current_level_indent - self.level_stack[-1]
             )
             self.level_stack.pop()
+            self._pending_levels -= 1
+            if self._pending_levels == 0:
+                self.added_level = False
             self.removed_level = False
-            self.added_level = False
             return
 
-        # Now safe to check level[-1] since we know visual lines exist
         if not self.level or self.level[-1] == 0:
-            return  # "Already at the root level. Cannot remove level."
+            return
 
         self._current_level_indent = self._current_level_indent - self.level_stack[-1]
-
-        if self.removed_level:
-            self.level.pop()
-            self.level_indent.pop()
-            self.indent.pop()
-            self.message.pop()
-            self.status.pop()
-            self.location.pop()
         self.level_stack.pop()
-        self._remove_level()
-        self.removed_level = True
         self.added_level = False
+        self.removed_level = True
 
     def _add_level(self):
-        indent = self._get_indent(add_level=True)
-        if indent != "":
-            self.add_line(indent=indent)
+        pass
 
     def add_level(self, n=2):
         assert n >= 0, "Cannot add negative number of levels"
         if self.verbose == 0 or self.enabled is False:
             return
-        if self.current_level + 2 > self.verbose:  # +2 because of the added level
+
+        if self.added_level:
+            # Consecutive add_level with no visible message in between.
+            # Treat as phantom (no visual indent); track so remove_level balances.
+            self._phantom_levels += 1
+            return
+
+        if self.current_level + 2 > self.verbose:
             self._block_count += 1
             return
 
-        if self.added_level:  # changed_level?
-            self.level_stack[-1] += n
-        else:
-            self.level_stack.append(n)  # what about if we just removed a level?
+        self.level_stack.append(n)
         self._current_level_indent += n
-        # Visual lines created lazily in __call__() when message is printed
+        self._pending_levels += 1
         self.added_level = True
-        self.removed_level = False
 
     def _get_line(self, s):
         match_idx = []
@@ -1214,7 +1365,6 @@ class Logger:
             if self._should_filter_message(caller_name):
                 return
 
-        # change_status = False
         if change_status:
             if self._block_count > 0:
                 ignore_no_match = True
@@ -1229,23 +1379,25 @@ class Logger:
                         + f"current level: {self.current_level}"
                         + f"verbose: {self.verbose}"
                     )
-            elif len(match_idx) > 1:
-                # Multiple lines found, use the last one
-                self.status[match_idx[-1]] = status
-                self.print_lines()
-                # raise ValueError("Multiple lines found")
-            elif len(match_idx) == 1:
-                self.status[match_idx[0]] = status
+            elif len(match_idx) >= 1:
+                idx = match_idx[-1]
+                self.status[idx] = self._apply_color_to_status(
+                    self.status[idx], status
+                )
                 self.print_lines()
         else:
             if self._block_count > 0:
                 return
 
             if message is not None:
-                # Lazily create visual indent lines if level was added but no message printed yet
-                if self.added_level:
-                    for _ in range(self.level_stack[-1]):
-                        self._add_level()
+                if self._pending_levels > 0:
+                    self._pending_levels = 0
+
+                if self.removed_level and self._current_level_indent >= 1:
+                    sep = ""
+                    for si in range(1, len(self.level_stack)):
+                        sep += self.SPACE * self.level_stack[si - 1] + self.VERT
+                    self.add_line(indent=sep, message="", status="")
 
                 if location is None and self._show_location:
                     location = self._get_caller_location()
@@ -1263,14 +1415,15 @@ class Logger:
         """Check if a status type is enabled. Use this to avoid expensive string operations.
 
         Args:
-            status_type: One of "debug", "info", "warning", "error", "ok", "success", "default"
+            status_type: One of "debug", "info", "warning", "error", "ok",
+                         "phase", "step", "config", "iter", "outcome", "default"
 
         Returns:
             bool: True if messages of this type will be logged
 
         Example:
             if LOGGER.is_enabled_for("debug"):
-                LOGGER.debug(f"Expensive calculation: {expensive_func()}")
+                LOGGER.debug("Expensive calculation: %s", expensive_func())
         """
         if self.verbose == 0 or self.enabled is False:
             return False
@@ -1296,8 +1449,9 @@ class Logger:
             LOGGER.debug(lambda: f"Complex: {expensive_func()}")  # entire message built only if debug enabled
             LOGGER.debug(lambda: LOGGER.debug("Nested call") or None)  # callable can execute Logger statements
         """
-        # Fast filter check - avoid expensive operations if filtered
-        if not self._status_filters.get("debug", True):
+        # Fast filter check - avoid expensive operations if filtered; but let a
+        # caller whitelist override so whitelisted callers still see this status type
+        if not self._status_filters.get("debug", True) and not self._caller_whitelist_active:
             return
         # Evaluate callable message if needed
         if callable(message):
@@ -1330,8 +1484,9 @@ class Logger:
             ignore_no_match: Ignore if no matching message found for status change
             location: Optional caller location override
         """
-        # Fast filter check - avoid expensive operations if filtered
-        if not self._status_filters.get("info", True):
+        # Fast filter check - avoid expensive operations if filtered; but let a
+        # caller whitelist override so whitelisted callers still see this status type
+        if not self._status_filters.get("info", True) and not self._caller_whitelist_active:
             return
         # Evaluate callable message if needed
         if callable(message):
@@ -1352,33 +1507,28 @@ class Logger:
         )
 
     def warning(
-        self, message, *args, change_status=False, ignore_no_match=False, location=None
+        self, message, *args, change_status=False, ignore_no_match=False, location=None, warn_once=False
     ):
-        """Log a warning message. Filtered out if warning filter is disabled.
-
-        Args:
-            message: Message string, format string (if args provided), or callable returning string or None
-            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
-            change_status: Whether to change the status of an existing message
-            ignore_no_match: Ignore if no matching message found for status change
-            location: Optional caller location override
+        """Log a warning. Dual mode:
+        - change_status=False (default): prints new yellow [OUTCOME] line.
+        - change_status=True: recolors existing line yellow.
         """
-        # Fast filter check - avoid expensive operations if filtered
-        if not self._status_filters.get("warning", True):
+        if not self._status_filters.get("warning", True) and not self._caller_whitelist_active:
             return
-        # Evaluate callable message if needed
         if callable(message):
             message = message()
-            # If callable returns None, it has already logged (or intentionally skipped)
             if message is None:
                 return
         if args:
-            # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
+        if warn_once:
+            if message in self._warned_once_messages:
+                return
+            self._warned_once_messages.add(message)
         self(
             message,
-            status="[WARNING]",
+            status="[OUTCOME:yellow]" if not change_status else "[OUTCOME:yellow]",
             change_status=change_status,
             ignore_no_match=ignore_no_match,
             location=location,
@@ -1387,31 +1537,22 @@ class Logger:
     def error(
         self, message, *args, change_status=False, ignore_no_match=False, location=None
     ):
-        """Log an error message. Filtered out if error filter is disabled.
-
-        Args:
-            message: Message string, format string (if args provided), or callable returning string or None
-            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
-            change_status: Whether to change the status of an existing message
-            ignore_no_match: Ignore if no matching message found for status change
-            location: Optional caller location override
+        """Log an error. Dual mode:
+        - change_status=False (default): prints new red [OUTCOME] line.
+        - change_status=True: recolors existing line red.
         """
-        # Fast filter check - avoid expensive operations if filtered
-        if not self._status_filters.get("error", True):
+        if not self._status_filters.get("error", True) and not self._caller_whitelist_active:
             return
-        # Evaluate callable message if needed
         if callable(message):
             message = message()
-            # If callable returns None, it has already logged (or intentionally skipped)
             if message is None:
                 return
         if args:
-            # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
         self(
             message,
-            status="[ERROR]",
+            status="[OUTCOME:red]" if not change_status else "[OUTCOME:red]",
             change_status=change_status,
             ignore_no_match=ignore_no_match,
             location=location,
@@ -1420,66 +1561,133 @@ class Logger:
     def ok(
         self, message, *args, change_status=False, ignore_no_match=False, location=None
     ):
-        """Log an ok/success message. Filtered out if ok filter is disabled.
-
-        Args:
-            message: Message string, format string (if args provided), or callable returning string or None
-            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
-            change_status: Whether to change the status of an existing message
-            ignore_no_match: Ignore if no matching message found for status change
-            location: Optional caller location override
+        """Log success. Dual mode:
+        - change_status=False (default): prints new green [OUTCOME] line.
+        - change_status=True: recolors existing line green.
         """
-        # Fast filter check - avoid expensive operations if filtered
-        if not self._status_filters.get("ok", True):
+        if not self._status_filters.get("ok", True) and not self._caller_whitelist_active:
             return
-        # Evaluate callable message if needed
         if callable(message):
             message = message()
-            # If callable returns None, it has already logged (or intentionally skipped)
             if message is None:
                 return
         if args:
-            # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
         self(
             message,
-            status="[OK]",
+            status="[OUTCOME:green]" if not change_status else "[OUTCOME:green]",
             change_status=change_status,
             ignore_no_match=ignore_no_match,
             location=location,
         )
 
-    def success(
-        self, message, *args, change_status=False, ignore_no_match=False, location=None
+    def task(
+        self, message, *args, location=None
     ):
-        """Log a success message. Filtered out if success filter is disabled.
+        """Log a task entry. Tasks are units of work that can self-nest.
 
-        Args:
-            message: Message string, format string (if args provided), or callable returning string or None
-            *args: Arguments for string formatting (lazy evaluation). Callables are invoked only if logging is enabled.
-            change_status: Whether to change the status of an existing message
-            ignore_no_match: Ignore if no matching message found for status change
-            location: Optional caller location override
+        Always prints a new [TASK] line. Use add_level() after to indent children.
+        Close with remove_level() and ok/warning/error(msg, change_status=True)
+        to propagate color.
         """
-        # Fast filter check - avoid expensive operations if filtered
-        if not self._status_filters.get("success", True):
+        if not self._status_filters.get("task", True) and not self._caller_whitelist_active:
             return
-        # Evaluate callable message if needed
         if callable(message):
             message = message()
-            # If callable returns None, it has already logged (or intentionally skipped)
             if message is None:
                 return
         if args:
-            # Evaluate any callable arguments
             evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
             message = message % evaluated_args
         self(
             message,
-            status="[SUCCESS]",
-            change_status=change_status,
-            ignore_no_match=ignore_no_match,
+            status="[TASK]",
+            location=location,
+        )
+
+    def section(
+        self, message, *args, location=None
+    ):
+        """Log a section entry. Sections are data-organizing containers.
+
+        Use for structural grouping (not temporal workflow). Children should only
+        be [SECTION], [INFO], [ITER], or [RESULT] -- never [TASK], [OUTCOME],
+        or [DEBUG].
+        """
+        if not self._status_filters.get("section", True) and not self._caller_whitelist_active:
+            return
+        if callable(message):
+            message = message()
+            if message is None:
+                return
+        if args:
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(
+            message,
+            status="[SECTION]",
+            location=location,
+        )
+
+    def result(
+        self, message, *args, location=None
+    ):
+        """Log a result/output data line. Can self-nest for hierarchical results.
+
+        Use for reported results from computation, not for input/setup values
+        (use config() for those).
+        """
+        if not self._status_filters.get("result", True) and not self._caller_whitelist_active:
+            return
+        if callable(message):
+            message = message()
+            if message is None:
+                return
+        if args:
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(
+            message,
+            status="[RESULT]",
+            location=location,
+        )
+
+    def config(
+        self, message, *args, location=None
+    ):
+        """Log a configuration value. Format: 'Label: value'."""
+        if not self._status_filters.get("config", True) and not self._caller_whitelist_active:
+            return
+        if callable(message):
+            message = message()
+            if message is None:
+                return
+        if args:
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(
+            message,
+            status="[CONFIG]",
+            location=location,
+        )
+
+    def iter(
+        self, message, *args, location=None
+    ):
+        """Log iteration metrics. Format: 'Eval N: key=value | key=value (Xs)'."""
+        if not self._status_filters.get("iter", True) and not self._caller_whitelist_active:
+            return
+        if callable(message):
+            message = message()
+            if message is None:
+                return
+        if args:
+            evaluated_args = tuple(arg() if callable(arg) else arg for arg in args)
+            message = message % evaluated_args
+        self(
+            message,
+            status="[ITER]",
             location=location,
         )
 
@@ -1492,6 +1700,7 @@ class Logger:
         # Clean up curses before resetting
         self._cleanup_curses(preserve_output=True)
 
+        self._flush_log_buffer()  # Write any remaining buffered lines before reset
         self.level_indent = []  # level as function of line number
         self.level = []
         self.indent = []
@@ -1499,31 +1708,24 @@ class Logger:
         self.status = []
         self.location = []
         self.added_level = False
+        self._pending_levels = 0
+        self._phantom_levels = 0
         self.removed_level = False
         self.level_stack = [0]
         self.has_printed = False
-        # self._verbose = 3 # dont reset verbose level
         self._current_level_indent = 0
         self._block_count = 0
-        self.logfile = None
         self._last_file_content = ""
         self._is_active = False
+        self._log_buffer = []
+        self._flushed_line_count = 0
         self._curses_lines = []
         self._paused = False
         self._pause_event.set()  # Ensure not paused after reset
-        # Don't reset filters - preserve user settings
-        # self._status_filters = {
-        #     "debug": True,
-        #     "warning": True,
-        #     "error": True,
-        #     "ok": True,
-        #     "success": True,
-        #     "info": True,
-        #     "default": True
-        # }
-        # self._caller_filters = set()
-        # self._caller_filter_mode = "whitelist"
-        # Note: We don't reset _atexit_registered so cleanup remains registered
+        # Don't reset user-configured settings — only printing history.
+        # Preserved: _verbose, logfile, _status_filters, _caller_filters,
+        #            _caller_filter_mode, _warned_once_messages, _show_location,
+        #            _log_flush_size, _atexit_registered
 
     def __del__(self):
         """Destructor to ensure curses cleanup"""
@@ -1556,12 +1758,12 @@ def reset_print(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         LOGGER.call_depth += 1
-        # try:
-        result = f(*args, **kwargs)
-        # finally:
-        LOGGER.call_depth -= 1
-        if LOGGER.call_depth == 0:
-            LOGGER.reset()
+        try:
+            result = f(*args, **kwargs)
+        finally:
+            LOGGER.call_depth -= 1
+            if LOGGER.call_depth == 0:
+                LOGGER.reset()
         return result
 
     return wrapper

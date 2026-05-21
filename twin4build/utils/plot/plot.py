@@ -734,11 +734,13 @@ def plot(
 
     alignYaxes(axes, nticks_list, roundto_list, yoffset_list, align_zero=align_zero)
 
+    first_time = time[0][0]
+    tz = first_time.tzinfo if hasattr(first_time, "tzinfo") else None
     for ax in axes:
         locator = mdates.AutoDateLocator()
         ax.xaxis.set_major_locator(locator)
         ax.xaxis.set_major_formatter(
-            mdates.AutoDateFormatter(locator, tz=time[0][0].tzinfo)
+            mdates.AutoDateFormatter(locator, tz=tz)
         )
 
     # Save and show plot
