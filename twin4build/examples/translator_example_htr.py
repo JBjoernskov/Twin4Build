@@ -1,0 +1,58 @@
+# Standard library imports
+import cProfile
+import io
+import os
+import pstats
+
+# os.environ['DISABLE_AUTORESET_PRINT'] = '1'
+# os.environ['LINE_PROFILE'] = '1'
+import sys
+from datetime import datetime, timezone
+from pstats import SortKey
+
+# Third party imports
+# import juliacall
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import psycopg2
+
+# Add Equivalent class between brick:ec2ab3b8_518f_41d7_81c4_3b396f0d9d23 and brick:Weather_Station
+from rdflib import URIRef
+
+# Local application imports
+import twin4build as tb
+import twin4build.core as core
+from twin4build.utils.data_loaders.load import load_from_database
+from twin4build.utils.print_progress import LOGGER
+
+
+if __name__ == "__main__":
+    # sys.setrecursionlimit(50000)
+    # Load the semantic model
+    file_path = r"C:\Users\jabj\Documents\python\Datasets\HTR\HTR full graph.ttl"
+
+    # LOGGER.set_caller_filter_mode("whitelist")
+    # LOGGER.hide_debug()
+    # LOGGER.show_caller("_match_patterns", include_stack=False)
+    # LOGGER.show_caller("_connect_components", include_stack=True)
+
+    sm = tb.SemanticModel(rdf_file=file_path, id="htr", verbose=1500)
+    # sm.visualize()
+    translator = tb.Translator()
+    # LOGGER.logfile = "htr.log"
+    LOGGER.log_flush_size = 10000
+    # LOGGER.show_status("debug")
+    # LOGGER.show_only_from_caller("translate")
+
+
+    sim_model = translator.translate(
+        sm,
+        systems_=[
+            tb.BuildingSpaceTorchSystem,
+            tb.OutdoorEnvironmentSystem,
+        ],
+        verbose=10000,
+    )
+    sim_model.serialize()
+    sim_model.visualize(forward_only=True)

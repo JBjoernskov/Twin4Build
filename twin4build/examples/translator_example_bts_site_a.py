@@ -48,12 +48,10 @@ if __name__ == "__main__":
 
     # PRINTPROGRESS._use_curses = False
     # PRINTPROGRESS.disable()
-    # PRINTPROGRESS.set_caller_filter_mode("blacklist")
     # LOGGER.hide_caller("_match_patterns", include_stack=True)
-    # LOGGER.hide_debug()
-    LOGGER.set_caller_filter_mode("whitelist")
+    # LOGGER.hide_status("debug")
     LOGGER.show_caller("_solve_milp", include_stack=True)
-    LOGGER.show_caller("_connect_components", include_stack=True)
+    LOGGER.show_caller("_connect_components", include_stack=True, hide_other_callers=False)
     pr = cProfile.Profile()
 
     sm = tb.SemanticModel(rdf_file=file_path, id="site_a", verbose=1500)

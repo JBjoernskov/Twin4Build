@@ -48,8 +48,21 @@ Data range: TBD (adjust once ingestion is confirmed)
 
 # Standard library imports
 import os
+import sys
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+
+# Heavy imports (torch + twin4build) can take 30–120s on a cold start with no output
+# unless stdout is unbuffered (e.g. `python -u ...` or PYTHONUNBUFFERED=1).
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+print(
+    "Loading libraries (matplotlib, torch, twin4build) — this may take a while on first run…",
+    flush=True,
+)
 
 # Third party imports
 import matplotlib.pyplot as plt
@@ -448,9 +461,12 @@ print("  Model connections established")
 print("  Signal flow: controller --[damper]--> damper_actuator")
 print("               controller --[reheat]--> reheat_valve_actuator")
 
-# Load component data
-print("\nLoading component data from database...")
-model.load()
+# Prepare model topology (does not query the database; DB reads happen at initialize/simulate)
+print(
+    "\nPreparing simulation model (skipping Graphviz export; set draw_simulation_model=True to enable)…",
+    flush=True,
+)
+model.load(draw_semantic_model=False, draw_simulation_model=False)
 
 # Verify data was loaded for all sensors
 print("\nVerifying loaded data:")
@@ -634,6 +650,11 @@ simulator = tb.Simulator(model)
 
 simulator.set_simulation_timesteps(
     start_time=start_time, end_time=end_time, step_size=[step_size]
+)
+print(
+    "\nLoading time series from PostgreSQL (localhost:5432, table mortar_bldg13). "
+    "If this hangs, ensure Postgres is running; connection uses a timeout in load_from_database.",
+    flush=True,
 )
 model.initialize(start_time=start_time, end_time=end_time, step_size=[step_size])
 simulator.simulate(start_time=start_time, end_time=end_time, step_size=step_size)

@@ -133,7 +133,7 @@ model = tb.Model(id="translator_example")
 from twin4build.utils.print_progress import LOGGER
 
 # from twin4build.systems.building_space.building_space_torch_system import saref_signature_pattern_sensor
-LOGGER.hide_debug()
+LOGGER.hide_status("debug")
 # Load the model from semantic file
 
 filename = utils.get_path(["estimator_example", "one_room_example_model.xlsm"])
