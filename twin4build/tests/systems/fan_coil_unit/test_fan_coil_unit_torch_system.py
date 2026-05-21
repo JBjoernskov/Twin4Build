@@ -37,11 +37,14 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
     def test_input_output_ports(self):
         """Test that input and output ports are correctly defined."""
         self.assertIn("supplyWaterTemperature", self.fcu.input)
-        self.assertIn("waterFlowRate", self.fcu.input)
+        # valvePosition (in [0, 1]) drives the internal valve sub-system,
+        # which produces waterFlowRate as an FCU *output*.
+        self.assertIn("valvePosition", self.fcu.input)
         self.assertIn("airFlowRate", self.fcu.input)
         self.assertIn("inletAirTemperature", self.fcu.input)
         self.assertIn("outletWaterTemperature", self.fcu.output)
         self.assertIn("outletAirTemperature", self.fcu.output)
+        self.assertIn("waterFlowRate", self.fcu.output)
         self.assertIn("Power", self.fcu.output)
 
     def test_do_step_heating(self):
@@ -54,7 +57,7 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
         )
 
         self.fcu.input["supplyWaterTemperature"].set(torch.tensor([60.0]), i_t=0)
-        self.fcu.input["waterFlowRate"].set(torch.tensor([0.1]), i_t=0)
+        self.fcu.input["valvePosition"].set(torch.tensor([1.0]), i_t=0)
         self.fcu.input["airFlowRate"].set(torch.tensor([0.5]), i_t=0)
         self.fcu.input["inletAirTemperature"].set(torch.tensor([21.0]), i_t=0)
 
@@ -95,7 +98,7 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
         )
 
         fcu_cool.input["supplyWaterTemperature"].set(torch.tensor([7.0]), i_t=0)
-        fcu_cool.input["waterFlowRate"].set(torch.tensor([0.15]), i_t=0)
+        fcu_cool.input["valvePosition"].set(torch.tensor([1.0]), i_t=0)
         fcu_cool.input["airFlowRate"].set(torch.tensor([0.6]), i_t=0)
         fcu_cool.input["inletAirTemperature"].set(torch.tensor([26.0]), i_t=0)
 
@@ -139,8 +142,8 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
         fcu_batch.input["supplyWaterTemperature"].set(
             torch.tensor([60.0, 65.0, 55.0]), i_t=0
         )
-        fcu_batch.input["waterFlowRate"].set(
-            torch.tensor([0.1, 0.15, 0.08]), i_t=0
+        fcu_batch.input["valvePosition"].set(
+            torch.tensor([1.0, 0.8, 0.6]), i_t=0
         )
         fcu_batch.input["airFlowRate"].set(
             torch.tensor([0.5, 0.6, 0.4]), i_t=0
@@ -179,7 +182,7 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
             self.fcu.input["supplyWaterTemperature"].set(
                 torch.tensor([60.0]), i_t=step_idx
             )
-            self.fcu.input["waterFlowRate"].set(torch.tensor([0.1]), i_t=step_idx)
+            self.fcu.input["valvePosition"].set(torch.tensor([1.0]), i_t=step_idx)
             self.fcu.input["airFlowRate"].set(torch.tensor([0.5]), i_t=step_idx)
             self.fcu.input["inletAirTemperature"].set(
                 torch.tensor([21.0]), i_t=step_idx

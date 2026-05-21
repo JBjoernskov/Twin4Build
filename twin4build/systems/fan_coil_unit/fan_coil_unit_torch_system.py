@@ -317,7 +317,8 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
         Returns:
             dict: Dictionary containing input ports:
                 - "supplyWaterTemperature": Supply water temperature [°C]
-                - "waterFlowRate": Water mass flow rate [kg/s]
+                - "valvePosition": Water-side valve opening in [0, 1] (drives the
+                  internal valve, which converts it to a water mass flow rate).
                 - "airFlowRate": Air mass flow rate [kg/s]
                 - "inletAirTemperature": Inlet air temperature [°C]
         """
