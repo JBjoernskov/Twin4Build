@@ -206,28 +206,13 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
                 n_boundary_temperature == 0 or n_boundary_temperature == 1
             ), "Maximum one boundary temperature input is allowed"
 
-        # Find number of adjacent zones
-        connection_point = [
-            cp for cp in self.connects_at if cp.input_port == "adjacentZoneTemperature"
-        ]
-        n_adjacent_zones = (
-            len(connection_point[0].connects_system_through) if connection_point else 0
-        )
-
-        # We dont have to initialize the input and output of the combined system, because the thermal and mass systems will initialize them (copied in __init__)
-        # # Initialize I/O for the combined system
-        # for input in self.input.values():
-        #     input.initialize(
-        #         n_timesteps=n_timesteps,
-        #         batch_size=batch_size,
-        #     )
-        # for output in self.output.values():
-        #     output.initialize(
-        #         n_timesteps=n_timesteps,
-        #         batch_size=batch_size,
-        #     )
-
-        # self.input["adjacentZoneTemperature"].initialize(n_timesteps=n_timesteps, batch_size=batch_size, size=n_adjacent_zones)
+            # Find number of adjacent zones
+            connection_point = [
+                cp for cp in self.connects_at if cp.input_port == "adjacentZoneTemperature"
+            ]
+            n_adjacent_zones = (
+                len(connection_point[0].connects_system_through) if connection_point else 0
+            )
 
             self.thermal.n_adjacent_zones = n_adjacent_zones
             self.thermal.n_boundary_temperature = n_boundary_temperature
