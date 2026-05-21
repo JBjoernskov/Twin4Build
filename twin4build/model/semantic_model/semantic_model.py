@@ -69,11 +69,15 @@ class SemanticEntity:
         self._namespace = (None, None)
 
     def get_short_name(self) -> Optional[str]:
-        """Get the local name (without namespace prefix)"""
+        """Get the local name (without namespace prefix).
+
+        Falls back to ``str(self.uri)`` for entities whose URI does not
+        match any registered namespace (e.g. blank nodes, literals).
+        """
         for namespace in self.model.namespaces.values():
             if str(namespace) in str(self.uri):
                 return str(self.uri).split(str(namespace))[-1]
-        return None
+        return str(self.uri)
 
     def get_namespace(self) -> Tuple[Optional[str], Optional[Namespace]]:
         """Get the namespace prefix and URI for this entity"""
@@ -655,7 +659,7 @@ class SemanticType(SemanticEntity):
                 warnings.warn(message)
                 # raise ValueError(message)
         else:
-            print("[DEBUG parse_ontology] DYNAMIC PARSING IS DISABLED")
+            LOGGER.debug("Dynamic parsing is disabled")
 
 
 class SemanticObject(SemanticEntity):
@@ -897,9 +901,17 @@ class SemanticInstance(SemanticObject):
             List[Union[str, SemanticType]],
         ],
     ) -> bool:
-        """Check if this instance is of any of the given class types (including inheritance)"""
+        """Check if this instance is of any of the given class types (including inheritance).
+
+        If ``core.BlankNode`` is included in *cls*, also returns ``True`` when
+        the instance has no ``rdf:type`` assertions (i.e. it is an untyped
+        blank node or anonymous resource).
+        """
         if not isinstance(cls, (tuple, list)):
             cls = (cls,)
+
+        if core.BlankNode in cls and not self.types:
+            return True
 
         if self.types:
             for c in cls:
@@ -908,7 +920,9 @@ class SemanticInstance(SemanticObject):
                         return True
         return False
 
-    def get_most_specific_type(self) -> Optional["SemanticType"]:
+    def get_most_specific_type(
+        self, allow_multiple_classes: bool = False
+    ) -> Optional[Union["SemanticType", Tuple["SemanticType", ...]]]:
         """
         Get the most specific type of this instance.
         We find the class in self.types that has ALL the other classes in self.types as super classes.
@@ -926,13 +940,43 @@ class SemanticInstance(SemanticObject):
         Anonymous / Skolemized blank-node types (those without a recognized namespace) are
         excluded from the comparison, as they represent OWL restrictions or similar constructs
         that don't participate in the named class hierarchy.
+
+        Args:
+            allow_multiple_classes: If True and no single most-specific type can be found
+                (e.g. the instance has parallel types with no subclass relationship between
+                them), return a tuple of all named types instead of None.
         """
         if not self.types:
+            LOGGER.warning(
+                "Instance <%s> has no rdf:type assertions — cannot determine most specific type.",
+                self.uri,
+                warn_once=True,
+            )
+            if allow_multiple_classes:
+                LOGGER.warning(
+                    "Falling back to rdfs:Resource for <%s>.",
+                    self.uri,
+                    warn_once=True,
+                )
+                return core.SemanticType(RDFS.Resource, self.model)
             return None
 
         # Filter to named types only (those with a recognized namespace)
         named_types = {t for t in self.types if t.get_short_name() is not None}
         if not named_types:
+            LOGGER.warning(
+                "Instance <%s> has only anonymous/blank-node types (%s) — cannot determine most specific type.",
+                self.uri,
+                [str(t.uri) for t in self.types],
+                warn_once=True,
+            )
+            if allow_multiple_classes:
+                LOGGER.warning(
+                    "Falling back to rdfs:Resource for <%s>.",
+                    self.uri,
+                    warn_once=True,
+                )
+                return core.SemanticType(RDFS.Resource, self.model)
             return None
 
         for t in named_types:
@@ -944,7 +988,22 @@ class SemanticInstance(SemanticObject):
             if all(t_ in t.super_classes for t_ in types_excluding_this):
                 return t
 
-        warnings.warn(f"No most specific type found for {self.get_short_name()}")
+        type_names = [t.get_short_name() or str(t.uri) for t in named_types]
+        if allow_multiple_classes:
+            LOGGER.warning(
+                "No single most specific type found for <%s>. Returning all named types: %s.",
+                self.uri,
+                type_names,
+                warn_once=True,
+            )
+            return tuple(named_types)
+        LOGGER.warning(
+            "No most specific type found for <%s>. Types: %s. "
+            "Check that these types form a clear subclass hierarchy in the ontology.",
+            self.uri,
+            type_names,
+            warn_once=True,
+        )
         return None
 
 
@@ -1210,21 +1269,14 @@ class SemanticModel:
             namespaces: Dict of {prefix: namespace} to parse. If None, parses all namespaces
                        from the ontology_graph.
         """
-        # print(f"\n[DEBUG parse_namespaces] Called with namespaces: {namespaces}")
-        # print(f"[DEBUG parse_namespaces] Already parsed: {self.parsed_namespaces}")
-        # print(f"[DEBUG parse_namespaces] Already failed: {self.error_namespaces}")
-
-        # LOGGER.verbose = 0 # TODO: Remove this
 
         overall_success = True
 
         if namespaces is None:
             namespaces = self.namespaces
-            # print(f"[DEBUG parse_namespaces] Using all namespaces from ontology_graph: {list(namespaces.keys())}")
 
         for prefix, namespace in namespaces.items():
             uri = str(namespace)
-            # print(f"\n[DEBUG parse_namespaces] Processing {prefix}: {uri}")
 
             # Skip if already parsed or previously failed
             if uri in self.parsed_namespaces or uri in self.error_namespaces:
@@ -1232,13 +1284,13 @@ class SemanticModel:
 
             success = False
 
-            LOGGER.info("Parsing namespace: %s (%s)", prefix.upper(), uri)
+            LOGGER.task("Parsing namespace: %s (%s)", prefix, uri)
             LOGGER.add_level()
 
             # First, try to use fallback from core.ontology
             if hasattr(core.ontology, prefix.upper()):
                 fallback_ontology_uri = getattr(core.ontology, prefix.upper())
-                LOGGER.info(
+                LOGGER.task(
                     "Attempting to parse namespace from core.ontology using URI: %s",
                     fallback_ontology_uri,
                 )
@@ -1252,19 +1304,19 @@ class SemanticModel:
                     )
                     success = True
                 except Exception as e:
-                    status = "[ERROR]"
                     success = False
                     LOGGER.add_level()
-                    LOGGER.error("Error: %s", str(e))
+                    LOGGER.error("Error: %s.", str(e))
                     LOGGER.remove_level()
                     LOGGER.error(
-                        f"Attempting to parse namespace from core.ontology using URI: {fallback_ontology_uri}",
+                        "Attempting to parse namespace from core.ontology using URI: %s",
+                        fallback_ontology_uri,
                         change_status=True,
                     )
 
             # If no fallback or fallback failed, try parsing namespace directly
             if not success:
-                LOGGER.info(f"Attempting to parse namespace directly using URI: {uri}")
+                LOGGER.task("Attempting to parse namespace directly using URI: %s", uri)
                 try:
                     parse_wrapper(self._ontology_graph, source=namespace)
                     self.parsed_namespaces.add(uri)
@@ -1272,16 +1324,16 @@ class SemanticModel:
                 except HTTPError as http_err:
                     success = False
                     LOGGER.add_level()
-                    LOGGER.error("HTTPError: %s", str(http_err))
+                    LOGGER.error("HTTP error: %s.", str(http_err))
                     LOGGER.error(
-                        f"Sometimes this error occurs when the ontology is not available at the same address as the namespace.",
+                        "Sometimes this error occurs when the ontology is not available at the same address as the namespace.",
                     )
                     LOGGER.remove_level()
 
                 except Exception as e:
                     success = False
                     LOGGER.add_level()
-                    LOGGER.error("Error: %s", str(e))
+                    LOGGER.error("Error: %s.", str(e))
                     LOGGER.remove_level()
 
                 if success:
@@ -1304,21 +1356,21 @@ class SemanticModel:
 
             overall_success = overall_success and success
 
+            LOGGER.remove_level()
             if not overall_success:
                 LOGGER.error(
                     "Parsing namespace: %s (%s)",
-                    prefix.upper(),
+                    prefix,
                     uri,
                     change_status=True,
                 )
             else:
                 LOGGER.ok(
                     "Parsing namespace: %s (%s)",
-                    prefix.upper(),
+                    prefix,
                     uri,
                     change_status=True,
                 )
-            LOGGER.remove_level()
 
         return overall_success
 
@@ -1745,9 +1797,9 @@ class SemanticModel:
                             nodes_to_visit.append(s)  # For DFS, add to front
                             triples_leading_to.append(triple_)
 
-        print(f"Number of nodes visited: {len(visited_nodes)}")
-        print(f"Number of traversed nodes: {len(traversed_nodes)}")
-        print(f"Number of triples collected: {len(collected)}")
+        LOGGER.info("Nodes visited: %d", len(visited_nodes))
+        LOGGER.info("Traversed nodes: %d", len(traversed_nodes))
+        LOGGER.info("Triples collected: %d", len(collected))
         return collected
 
     def filter_graph(
@@ -1826,10 +1878,10 @@ class SemanticModel:
                 instances.add(o)
                 if not traversal_mode:
                     if node_limit is not None and len(instances) >= node_limit:
-                        print(f"Reached node limit: {node_limit}")
+                        LOGGER.info("Reached node limit: %d", node_limit)
                         break
                     if triple_limit is not None and len(instances) >= triple_limit:
-                        print(f"Reached triple limit: {triple_limit}")
+                        LOGGER.info("Reached triple limit: %d", triple_limit)
                         break
 
             # Determine start nodes for traversal
@@ -1909,6 +1961,20 @@ class SemanticModel:
             else:
                 return SemanticLiteral(value, self, datatype=datatype, lang=lang)
 
+        # Handle BNodes — preserve as BNode so predicate_objects() queries work correctly
+        if isinstance(value, rdflib.term.BNode):
+            bnode_key = f"__bnode__{str(value)}"
+            if bnode_key not in self._instances:
+                inst = SemanticInstance.__new__(SemanticInstance)
+                inst.uri = value  # Keep as BNode
+                inst.model = self
+                inst._namespace = (None, None)
+                inst._types = None
+                inst._direct_types = None
+                inst._attributes = None
+                self._instances[bnode_key] = inst
+            return self._instances[bnode_key]
+
         # Handle URIs
         uri = str(value)
         if uri not in self._instances:
@@ -1971,7 +2037,11 @@ class SemanticModel:
         xsd_datatypes = []
         uri_types = []
 
+        include_blank_nodes = False
         for class_uri in class_uris:
+            if class_uri is core.BlankNode:
+                include_blank_nodes = True
+                continue
             if isinstance(class_uri, str):
                 uri = URIRef(class_uri)
             elif isinstance(class_uri, SemanticType):
@@ -2017,6 +2087,15 @@ class SemanticModel:
                                 inst_obj = self.get_instance(same_as)
                                 instances.append(inst_obj)
                                 processed_instances.add(same_as)
+
+        # Handle BlankNode sentinel — collect all subjects/objects that have no rdf:type
+        if include_blank_nodes:
+            typed_subjects = set(self._instance_graph.subjects(RDF.type, None))
+            for s, p, o in self._instance_graph.triples((None, None, None)):
+                if isinstance(o, rdflib.term.BNode) and o not in typed_subjects and o not in processed_instances:
+                    inst_obj = self.get_instance(o)
+                    instances.append(inst_obj)
+                    processed_instances.add(o)
 
         # Then, handle literals with the specified datatypes
         if xsd_datatypes:
@@ -2624,8 +2703,8 @@ class SemanticModel:
     def parse_spreadsheet(self, spreadsheet, mappings_dir=None):
         """Parse spreadsheet into RDF graph using brickify tool"""
 
+        LOGGER.task("Parsing spreadsheet")
         LOGGER.add_level()
-        LOGGER.info("Parsing spreadsheet")
 
         # Overwrite typer progress bar to prevent it from printing to the console.
         class Overwriter:
@@ -2731,12 +2810,12 @@ class SemanticModel:
                             instance_graph, source=output_file, format="turtle"
                         )
                 except subprocess.CalledProcessError as e:
-                    print(f"Error running brickify for sheet {sheet}: {e}")
+                    LOGGER.error("Error running brickify for sheet %s: %s.", sheet, e)
                 except Exception as e:
-                    print(f"Error processing sheet {sheet}: {e}")
+                    LOGGER.error("Error processing sheet %s: %s.", sheet, e)
 
-        LOGGER.ok("Parsing spreadsheet", change_status=True)
         LOGGER.remove_level()
+        LOGGER.ok("Parsing spreadsheet", change_status=True)
         return instance_graph, ontology_graph
 
     def reason(self, namespaces=None):
@@ -2762,7 +2841,7 @@ class SemanticModel:
         # print("=" * 80, file=sys.stderr)
 
         # print(f"CURSES MODE: {LOGGER._curses_mode}", file=sys.stderr)
-        LOGGER.info("Reasoning")
+        LOGGER.task("Reasoning")
         LOGGER.add_level()
 
         if namespaces is None:
@@ -2802,7 +2881,7 @@ class SemanticModel:
             for subj, _, obj in self._instance_graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
 
-        LOGGER.info(f"Added number of symmetric triples: {len(new_triples)-n_triples}")
+        LOGGER.info("Added number of symmetric triples: %d", len(new_triples) - n_triples)
         n_triples = len(new_triples)
 
         # Handle transitive properties

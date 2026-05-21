@@ -219,6 +219,50 @@ class Model:
             dir_conf=self.dir_conf + ["simulation_model"],
             id=f"{self._id}_simulation_model",
         )
+        self._translator = None
+
+    @classmethod
+    def from_translation(
+        cls,
+        *,
+        id: str,
+        semantic_model: "core.SemanticModel",
+        simulation_model: "core.SimulationModel",
+        translator: "core.Translator",
+    ) -> "Model":
+        """Wrap the three artefacts produced by :meth:`Translator.translate`
+        into a :class:`Model` without re-creating empty halves.
+
+        Used by the translator to return a fully-wired Model. End users do
+        not normally call this; build a Model from scratch with
+        ``Model(id=...)`` or via ``Translator().translate(semantic_model)``.
+
+        Args:
+            id: The Model id (drives the on-disk directory layout under
+                ``generated_files/models/<id>/``).
+            semantic_model: The semantic model the translator consumed.
+            simulation_model: The simulation graph the translator produced.
+            translator: The translator instance whose ``sim2sem_map`` /
+                ``sem2sim_map`` link the two models.
+        """
+        m = cls.__new__(cls)
+        m._id = id
+        m._dir_conf = ["generated_files", "models", id]
+        m._semantic_model = semantic_model
+        m._simulation_model = simulation_model
+        m._translator = translator
+        # Re-anchor on-disk directories so semantic_model and simulation_model
+        # share the same Model-level parent.  Each underlying model exposes a
+        # ``dir_conf`` setter that keeps internal sub-paths in sync.
+        try:
+            m._semantic_model.dir_conf = m._dir_conf + ["semantic_model"]
+        except Exception:
+            pass
+        try:
+            m._simulation_model.dir_conf = m._dir_conf + ["simulation_model"]
+        except Exception:
+            pass
+        return m
 
     @property
     def id(self) -> str:
@@ -491,6 +535,173 @@ class Model:
         """
         self.simulation_model.restore_parameters(keep_values=keep_values)
 
+    # ------------------------------------------------------------------
+    # Dataset-configuration helpers (bridging semantic + simulation)
+    # ------------------------------------------------------------------
+    def set_dbconfigs(self, dbconfig: Dict[str, Any]) -> "Model":
+        """Apply a database configuration to every applicable component.
+
+        Facade for :meth:`SimulationModel.set_dbconfigs`. Returns ``self``
+        for chaining.
+        """
+        self.simulation_model.set_dbconfigs(dbconfig)
+        return self
+
+    def fill_missing_inputs(self, defaults: Dict[Any, Any]) -> "Model":
+        """Attach providers (constants or user-supplied systems) for
+        input ports the ontology did not wire.
+
+        Facade for :meth:`SimulationModel.fill_missing_inputs`; see that
+        method's docstring for the full key/value shape grammar.  In
+        short, ``defaults`` accepts both port-only entries (``str ->
+        value``) and component-scoped entries (``(component | id, port)
+        -> value``); values may be scalars (wrapped in a flat schedule),
+        :class:`core.System` providers (single-output auto-detected),
+        or ``(provider, output_port)`` tuples.  Returns ``self`` for
+        chaining.
+        """
+        self.simulation_model.fill_missing_inputs(defaults)
+        return self
+
+    def rewire(
+        self,
+        *,
+        start_time: Any,
+        end_time: Any,
+        step_size: int,
+        mode: str = "train",
+        **rewire_kwargs: Any,
+    ) -> "Model":
+        """Run the data-driven CITS rewire over the model's graph.
+
+        Should be called **before** :meth:`load` -- see
+        :meth:`SimulationModel.rewire` for the rationale.  Facade for
+        :meth:`SimulationModel.rewire`; in particular the ``mode``
+        kwarg selects gate-active (``"train"``) vs gate-bypassed
+        (``"simulate"``) frozen-pin configuration.
+
+        Returns:
+            ``self`` for chaining.
+        """
+        self.simulation_model.rewire(
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            mode=mode,
+            **rewire_kwargs,
+        )
+        return self
+
+    def set_transformations(
+        self, mapping: Dict[Any, Callable[[Any], Any]]
+    ) -> "Model":
+        """Apply unit-conversion callables to components by semantic class.
+
+        Keys are RDF class IRIs (``rdflib.URIRef``, strings, or
+        :class:`SemanticType` instances; e.g. ``BRICK.Temperature_Sensor``).
+        Each simulation component's semantic counterpart is looked up via
+        ``self._translator.sim2sem_map``; its rdf:types (with
+        ``rdfs:subClassOf`` transitive closure from the embedded
+        :class:`SemanticModel`) are matched against the mapping.
+
+        Most-specific class wins on ambiguity: when two rule keys both
+        match a component's types, the rule whose key is a subclass of
+        the other's is preferred.  Identical-specificity collisions log
+        a warning and the first-declared rule is kept.
+
+        Components implement ``set_transformation(self, fn)``; components
+        without that method are silently skipped (so this is safe to call
+        on heterogeneous models where only e.g. ``SensorSystem`` cares
+        about transformations).
+
+        This is a real method (not a facade) because it requires the
+        semantic + sim2sem map that only ``Model`` carries; the
+        underlying ``SimulationModel`` is intentionally kept ontology-
+        free.
+
+        Returns:
+            ``self`` for chaining.
+
+        Raises:
+            RuntimeError: When the model was not produced by a Translator
+                (no ``sim2sem_map`` available).  Build the model via
+                ``Translator().translate(semantic_model)`` to use this
+                helper.
+        """
+        if self._translator is None:
+            raise RuntimeError(
+                "Model.set_transformations requires a translator-built "
+                "model (no sim2sem_map is available on this Model). "
+                "Construct the Model via "
+                "`Translator().translate(semantic_model)` to use this "
+                "helper, or set per-component transformations directly "
+                "via `component.set_transformation(fn)`."
+            )
+        sim2sem = self._translator.sim2sem_map
+        semantic = self._semantic_model
+
+        # Resolve every rule key to a SemanticType so we can compare in
+        # the (rdfs:subClassOf-closed) class hierarchy.  Accept URIRef,
+        # plain str, or pre-built SemanticType instances.
+        rules: List[Tuple[Any, Callable[[Any], Any], Any]] = []
+        for key, fn in mapping.items():
+            if isinstance(key, core.SemanticType):
+                stype = key
+            else:
+                stype = semantic.get_type(key)
+            rules.append((stype, fn, key))
+
+        def _is_strict_subclass(a, b) -> bool:
+            """``True`` iff ``a`` is a strict subclass of ``b``."""
+            if str(a.uri) == str(b.uri):
+                return False
+            return any(str(sc.uri) == str(b.uri) for sc in a.super_classes)
+
+        for component in self._simulation_model.components.values():
+            setter = getattr(component, "set_transformation", None)
+            if not callable(setter):
+                continue
+            semantic_nodes = sim2sem.get(component)
+            if not semantic_nodes:
+                continue
+
+            # Gather every rule that matches at least one of the
+            # component's semantic counterparts.
+            matched: List[Tuple[Any, Callable[[Any], Any], Any]] = []
+            for stype, fn, original_key in rules:
+                hit = False
+                for node in semantic_nodes:
+                    isinstance_check = getattr(node, "isinstance", None)
+                    if callable(isinstance_check) and isinstance_check(
+                        stype.uri
+                    ):
+                        hit = True
+                        break
+                if hit:
+                    matched.append((stype, fn, original_key))
+
+            if not matched:
+                continue
+
+            # Most-specific wins; first-declared on ties.
+            winner = matched[0]
+            for cand in matched[1:]:
+                if _is_strict_subclass(cand[0], winner[0]):
+                    winner = cand
+                elif _is_strict_subclass(winner[0], cand[0]):
+                    continue
+                else:
+                    warnings.warn(
+                        f"set_transformations: rules for {cand[2]!r} and "
+                        f"{winner[2]!r} both match component "
+                        f"{component.id!r} with no subclass relationship; "
+                        f"keeping the first-declared rule ({winner[2]!r}).",
+                        stacklevel=2,
+                    )
+            setter(winner[1])
+
+        return self
+
     def cache(
         self,
         start_time: Optional[datetime.datetime] = None,
@@ -637,12 +848,12 @@ class Model:
             LOGGER.verbose = verbose
         LOGGER.logfile = logfile
 
-        LOGGER("Loading model", status="")
+        LOGGER.task("Loading model")
         LOGGER.add_level()
         # self.add_outdoor_environment()
         if semantic_model_filename is not None:
             apply_translator = True
-            LOGGER("Parsing semantic model", status="")
+            LOGGER.task("Parsing semantic model")
             self._semantic_model = core.SemanticModel(
                 rdf_file=semantic_model_filename,
                 namespaces={"T4B": core.namespace.T4B},
@@ -656,20 +867,24 @@ class Model:
                 assert (
                     app_path is not None
                 ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
-                LOGGER("Drawing semantic model", status="")
+                LOGGER.task("Drawing semantic model")
                 LOGGER.add_level()
                 self._semantic_model.visualize()
                 LOGGER.remove_level()
-                LOGGER("Drawing semantic model", status="[OK]", change_status=True)
+                LOGGER.ok("Drawing semantic model", change_status=True)
 
         else:
             apply_translator = False
 
         if apply_translator:
             self._translator = core.Translator()
-            self._simulation_model = self._translator.translate(
+            # ``translate`` now returns a fully-wired ``Model``; extract the
+            # simulation half and discard the wrapper since ``self`` is the
+            # Model we are populating here.
+            translated_model = self._translator.translate(
                 self._semantic_model, verbose=verbose
             )
+            self._simulation_model = translated_model.simulation_model
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
 
         self._simulation_model.load(
@@ -688,11 +903,11 @@ class Model:
                 app_path is not None
             ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
 
-            LOGGER("Drawing simulation model", status="")
+            LOGGER.task("Drawing simulation model")
             LOGGER.add_level()
             self._simulation_model.visualize()
-            LOGGER.ok("Drawing simulation model", change_status=True)
             LOGGER.remove_level()
+            LOGGER.ok("Drawing simulation model", change_status=True)
 
         LOGGER.remove_level()
         LOGGER.ok("Loading model", change_status=True)
@@ -762,14 +977,18 @@ class Model:
 
     def serialize(self) -> None:
         """
-        Serialize the model.
+        Serialize both halves of the model.
         """
         self._semantic_model.serialize()
         self._simulation_model.serialize()
 
-    def visualize(self) -> None:
+    def visualize(self, **kwargs) -> None:
         """
-        Visualize the model.
+        Visualize the model.  Keyword arguments are forwarded to
+        :meth:`SimulationModel.visualize` (e.g. ``forward_only=True``,
+        ``compressed=True``).  The semantic model is only re-drawn when
+        called without arguments to match the standalone behaviour.
         """
-        self._semantic_model.visualize()
-        self._simulation_model.visualize()
+        if not kwargs:
+            self._semantic_model.visualize()
+        self._simulation_model.visualize(**kwargs)

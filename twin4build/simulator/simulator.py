@@ -16,6 +16,7 @@ from tqdm import tqdm
 import twin4build.core as core
 import twin4build.systems as systems
 from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.print_progress import LOGGER
 from twin4build.utils.validate_period import validate_period
 
 # import george
@@ -215,8 +216,9 @@ class Simulator:
                 if torch.any(
                     torch.isnan(component.input[connection_point.input_port].get())
                 ):
-                    print(
-                        f"Component input: {component.input[connection_point.input_port].get()}"
+                    LOGGER.debug(
+                        "Component input: %s",
+                        component.input[connection_point.input_port].get(),
                     )
                     raise ValueError(
                         f"Input {connection_point.input_port} of component {component.id} is NaN"
