@@ -681,7 +681,13 @@ class TestSemanticModel(unittest.TestCase):
         self.assertEqual(short_name, "myProperty")
 
     def test_property_get_short_name_no_match(self):
-        """Test property get_short_name when no namespace matches."""
+        """Test property get_short_name when no namespace matches.
+
+        ``get_short_name`` now falls back to the full URI string when no
+        registered prefix matches, so downstream serialisation always
+        gets a printable identifier instead of a bare ``None`` that
+        used to mask the underlying URI in logs / diagnostics.
+        """
         prop_uri = "http://unregistered.property.org/myProperty"
         self.model.ontology_graph.add(
             (
@@ -693,7 +699,7 @@ class TestSemanticModel(unittest.TestCase):
 
         prop = self.model.get_property(prop_uri)
         short_name = prop.get_short_name()
-        self.assertIsNone(short_name)
+        self.assertEqual(short_name, prop_uri)
 
     def test_invalid_property_uri(self):
         """Test creating property with unknown URI still returns a predicate.
@@ -967,7 +973,13 @@ class TestSemanticModel(unittest.TestCase):
         self.assertEqual(short_name, "myPredicate")
 
     def test_predicate_get_short_name_no_match(self):
-        """Test predicate get_short_name when no namespace matches."""
+        """Test predicate get_short_name when no namespace matches.
+
+        ``get_short_name`` now falls back to the full URI string when no
+        registered prefix matches, so downstream serialisation always
+        gets a printable identifier instead of a bare ``None`` that
+        used to mask the underlying URI in logs / diagnostics.
+        """
         prop_uri = "http://unregistered.predicate.org/myPredicate"
         self.model.ontology_graph.add(
             (
@@ -979,7 +991,7 @@ class TestSemanticModel(unittest.TestCase):
 
         predicate = self.model.get_predicate(prop_uri)
         short_name = predicate.get_short_name()
-        self.assertIsNone(short_name)
+        self.assertEqual(short_name, prop_uri)
 
     def test_predicate_ispredicate_with_super_property(self):
         """Test ispredicate matching super properties."""
@@ -1327,7 +1339,13 @@ class TestSemanticModel(unittest.TestCase):
         self.assertEqual(short_name, "MyClass")
 
     def test_type_get_short_name_no_match(self):
-        """Test get_short_name when no namespace matches."""
+        """Test get_short_name when no namespace matches.
+
+        ``get_short_name`` now falls back to the full URI string when no
+        registered prefix matches, so downstream serialisation always
+        gets a printable identifier instead of a bare ``None`` that
+        used to mask the underlying URI in logs / diagnostics.
+        """
         type_uri = "http://unregistered.namespace.org/MyClass"
         self.model.ontology_graph.add(
             (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
@@ -1335,7 +1353,7 @@ class TestSemanticModel(unittest.TestCase):
 
         sem_type = self.model.get_type(type_uri)
         short_name = sem_type.get_short_name()
-        self.assertIsNone(short_name)
+        self.assertEqual(short_name, type_uri)
 
     def test_type_super_classes_with_equivalent(self):
         """Test super_classes including equivalent classes."""

@@ -316,9 +316,10 @@ class TestSimulator(unittest.TestCase):
         )
         model.load(simulation_model_filename=filename_simulation, verbose=0)
 
-        # Configure file paths and column indices for sensors
-        # (instance_graph uses datecolumn=2/valuecolumn=4 for original large CSVs;
-        #  the test CSVs have only 2 columns: datecolumn=0, valuecolumn=1)
+        # Configure file paths and column indices for sensors.
+        # The example CSVs in twin4build/examples/estimator_example/ are exported
+        # from the database with columns: [<index>, TagName, DateTime, Value, vValue]
+        # so datecolumn=2, valuecolumn=3.
         for sensor_id, csv_name in [
             ("office_temperature_sensor", "temperature_sensor.csv"),
             ("office_co2_sensor", "co2_sensor.csv"),
@@ -329,14 +330,14 @@ class TestSimulator(unittest.TestCase):
             model.components[sensor_id].filename = utils.get_path(
                 ["estimator_example", csv_name]
             )
-            model.components[sensor_id].datecolumn = 0
-            model.components[sensor_id].valuecolumn = 1
+            model.components[sensor_id].datecolumn = 2
+            model.components[sensor_id].valuecolumn = 3
 
         model.components["office_temperature_heating_setpoint"].filename = (
             utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"])
         )
-        model.components["office_temperature_heating_setpoint"].datecolumn = 0
-        model.components["office_temperature_heating_setpoint"].valuecolumn = 1
+        model.components["office_temperature_heating_setpoint"].datecolumn = 2
+        model.components["office_temperature_heating_setpoint"].valuecolumn = 3
         model.components["outdoor_environment"].filename_outdoorTemperature = (
             utils.get_path(["estimator_example", "outdoor_environment.csv"])
         )
@@ -346,6 +347,15 @@ class TestSimulator(unittest.TestCase):
         model.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 2
         model.components["outdoor_environment"].filename_outdoorCo2Concentration = (
             utils.get_path(["estimator_example", "outdoor_environment.csv"])
+        )
+
+        # OccupancySystem reads CO2 / damper time series directly from disk;
+        # redirect to the example CSVs so the test runs on any machine.
+        model.components["office_occupancy"].co2_filename = utils.get_path(
+            ["estimator_example", "co2_sensor.csv"]
+        )
+        model.components["office_occupancy"].damper_filename = utils.get_path(
+            ["estimator_example", "damper_position_sensor.csv"]
         )
 
         return model
