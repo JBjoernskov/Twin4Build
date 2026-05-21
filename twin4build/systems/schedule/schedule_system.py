@@ -616,9 +616,16 @@ class ScheduleSystem(core.System):
                     self.get_schedule_value(date_time)
                     for date_time in date_time_steps_[:n_timesteps_]
                 ]
-                values[batch_index, n_timesteps_:] = values[
-                    batch_index, n_timesteps_ - 1
-                ]
+                # ``n_timesteps_ == 0`` means the requested period has zero
+                # length (start_time >= end_time, or step_size larger than
+                # the period).  The pad-with-last-value step below would
+                # then index ``values[batch, -1]`` on an empty axis -- skip
+                # the pad and let the upstream simulator raise the real
+                # validation error instead of an opaque ``IndexError``.
+                if n_timesteps_ > 0:
+                    values[batch_index, n_timesteps_:] = values[
+                        batch_index, n_timesteps_ - 1
+                    ]
                 # NEW: Compute schedule values for ALL timesteps (including extended dates for shorter periods)
                 # values[batch_index,:] = [self.get_schedule_value(date_time) for date_time in date_time_steps_]
 

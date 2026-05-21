@@ -1371,7 +1371,18 @@ class Logger:
             assert message is not None, "Cannot change status of None"
             match_idx = self._get_line(message)
             if len(match_idx) == 0:
-                if ignore_no_match:
+                # Hard-raising on a missing line is too costly: a
+                # mismatched format-string between ``LOGGER.task(...)``
+                # and the closing ``LOGGER.ok(..., change_status=True)``
+                # crashes long-running simulations / optimisations
+                # purely because of a logging hiccup.  Instead we
+                # silently no-op (the underlying work has already run)
+                # so the user keeps their results, and surface the
+                # mismatch via the env var so we can still find these
+                # in development if we want to.
+                if ignore_no_match or os.environ.get(
+                    "TWIN4BUILD_LOGGER_STRICT", ""
+                ).lower() not in ("1", "true", "yes"):
                     pass
                 else:
                     raise ValueError(
