@@ -9,9 +9,13 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.systems.utils.smooth_saturation import smooth_saturation
+from twin4build.systems.utils.smooth_saturation import (
+    clamp,
+    hardclamp_smooth_grad,
+    smooth_saturation,
+)
 from twin4build.translator.translator import (
-    Exact,
+    StepRule,
     Node,
     SignaturePattern,
 )
@@ -76,7 +80,7 @@ class PIDControllerSystem(core.System, nn.Module):
         self.Ti = tps.Parameter(
             torch.tensor(Ti, dtype=torch.float64),
             min_value=0.1,
-            max_value=100,
+            max_value=10000.0,
             requires_grad=False,
             scaling="log",
         )
@@ -165,13 +169,40 @@ class PIDControllerSystem(core.System, nn.Module):
         lower=0.0,
         upper=1.0,
         eps=0,
-        curve_start=0.1,
+        curve_start=0.01,
         steepness=1,
         curve_type="power",
         power_exp=0.5,
     ):
-        """Delegate to :func:`smooth_saturation` (kept for backward compat)."""
+        """Deprecated alias.  Delegates to :func:`clamp` with ``mode="smooth"``."""
         return smooth_saturation(
+            u,
+            lower=lower,
+            upper=upper,
+            eps=eps,
+            curve_start=curve_start,
+            steepness=steepness,
+            curve_type=curve_type,
+            power_exp=power_exp,
+        )
+
+    @staticmethod
+    def hardclamp_smooth_grad(
+        u,
+        lower=0.0,
+        upper=1.0,
+        eps=0,
+        curve_start=0.05,
+        steepness=1,
+        curve_type="power",
+        power_exp=0.5,
+    ):
+        """Deprecated.  Use ``clamp(..., mode="hard")`` after a smooth
+        warm-start instead.  See module docstring of
+        :mod:`twin4build.systems.utils.smooth_saturation` for the
+        recommended two-stage workflow.
+        """
+        return hardclamp_smooth_grad(
             u,
             lower=lower,
             upper=upper,
@@ -240,12 +271,17 @@ class PIDControllerSystem(core.System, nn.Module):
         du = c0 * err + c1 * self.err_prev + c2 * self.err_prev_m1
 
         u = self.u_prev + du
-        # print("DEBUG: u before saturation: ", u)
-        u = self.asymptotic_smooth_saturation(
+        # Differentiable clamp into [output_min, output_max].  The mode
+        # (``"smooth"`` vs ``"hard"``) is read from the process-global
+        # toggle in ``smooth_saturation``: smooth for cold-start
+        # exploration (gradient flows through deep windup), hard for
+        # bias-correction refinement (forward exact at bounds, no
+        # faithfulness floor).  See ``estimate_with_refinement`` for
+        # the recommended two-stage workflow.
+        u = clamp(
             u,
             lower=self.output_min.get(),
             upper=self.output_max.get(),
-            curve_start=0.05,
         )
 
         # if date_time[0].hour<5 or (date_time[0].hour==5 and date_time[0].minute==0) or date_time[0].hour>17:
@@ -266,17 +302,17 @@ def saref_signature_pattern():
     node3 = Node(cls=core.namespace.S4BLDG.Schedule)
     node4 = Node(cls=core.namespace.XSD.boolean)
     sp = SignaturePattern(id="pid_controller_signature_pattern")
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
+    sp.add_rule(
+        StepRule(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
     )
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.observes)
+    sp.add_rule(
+        StepRule(subject=node1, object=node2, predicate=core.namespace.SAREF.observes)
     )
-    sp.add_triple(
-        Exact(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile)
+    sp.add_rule(
+        StepRule(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile)
     )
-    sp.add_triple(
-        Exact(subject=node0, object=node4, predicate=core.namespace.S4BLDG.isReverse)
+    sp.add_rule(
+        StepRule(subject=node0, object=node4, predicate=core.namespace.S4BLDG.isReverse)
     )
 
     sp.add_input("actualValue", node1, "measuredValue")
