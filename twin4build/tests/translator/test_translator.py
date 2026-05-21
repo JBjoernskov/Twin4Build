@@ -287,6 +287,64 @@ class TestTranslator(unittest.TestCase):
         for mapping in complete_groups[DummySystem][sp]:
             self.assertIsNotNone(mapping[node_room])
 
+    def test_disconnected_merge_skips_multi_hop_rules(self):
+        """``_validate_binding_against_merged`` must not single-edge-check
+        ``PathRule`` (or ``AnyPathRule``) bindings during a disconnected
+        merge.
+
+        Regression for the SAREF building-space pattern where the merge
+        rejects a complete match because ``office_supply_damper
+        hasFluidSuppliedBy cooling_coil_airside`` only holds via a
+        multi-hop chain (damper → port → sensor → coil), which the
+        merge validator wrongly checked as a single triple.
+
+        Pattern below mirrors that shape on the existing AHU/Damper/Room
+        fixture: ``AHU feeds Damper`` (one hop) and ``AHU feeds Room``
+        (multi-hop via Damper).  Phase-1 partials split between the
+        scalar Damper and Room candidates, and the disconnected-merge
+        path must accept the multi-hop ``AHU --feeds--> Room`` binding
+        without demanding a direct triple.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="ahu_damper_room_mixed_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_ahu,
+                object=node_damper,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_rule(
+            PathRule(
+                subject=node_ahu,
+                object=node_room,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        # Before the fix this returned 0 because the disconnected merge
+        # rejected every (Damper, Room) pairing on the multi-hop edge.
+        # The fixture has two reachable rooms (Room_1 via Damper_1 and
+        # Room_2 via Damper_2 / Damper_21 / Damper_22) so we expect at
+        # least one complete group.
+        self.assertGreater(len(complete_groups[DummySystem][sp]), 0)
+
     def test_initialization(self):
         """Test translator initialization."""
         self.assertIsNotNone(self.translator)

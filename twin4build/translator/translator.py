@@ -3107,6 +3107,24 @@ class Translator:
         for (subj, pred, obj), _rule in signature_pattern.ruleset.items():
             if pred is None:
                 continue
+            # ``_has_sm_edge`` only inspects a single direct triple, so
+            # this validator can only soundly reject single-hop rules.
+            # Multi-hop rules (``PathRule``, ``AnyPathRule``,
+            # ``SetAnyPathRule``) are already validated by the main
+            # ``_prune_recursive`` walk which performs the actual
+            # transitive traversal; running the single-edge check on
+            # them would falsely reject every legitimate multi-hop
+            # binding (e.g. an SAREF-style ``Damper hasFluidSuppliedBy
+            # Coil`` chain that goes damper → port → sensor → coil in
+            # the BMS graph).  ``OptionalRule`` is also skipped here
+            # because the prune walk treats it as best-effort and
+            # demanding the upstream edge would defeat the optionality.
+            if isinstance(_rule, (PathRule, AnyPathRule, SetAnyPathRule)):
+                continue
+            if not isinstance(_rule, (StepRule, NoStepRule)):
+                continue
+            if isinstance(_rule, OptionalRule):
+                continue
             # Upstream: ``subj`` is already in merged_group, we're
             # binding ``obj == sp_node``.  Require an SM edge from the
             # bound subject to ``sm_node`` via ``pred``.
