@@ -15,7 +15,7 @@ from twin4build.systems.controller.setpoint_controller.cascade_controller.cascad
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
-from twin4build.systems.utils.smooth_saturation import smooth_saturation
+from twin4build.systems.utils.smooth_saturation import clamp
 
 
 class SATLinearRuleSystem(core.System, nn.Module):
@@ -187,9 +187,7 @@ class SATLinearRuleSystem(core.System, nn.Module):
         deviation = sat - design
         raw_output = base + k * deviation
 
-        output = smooth_saturation(
-            raw_output, lower=o_min, upper=o_max, curve_start=0.05
-        )
+        output = clamp(raw_output, lower=o_min, upper=o_max)
 
         self.output["inputSignal"].set(output, step_index)
 
@@ -210,7 +208,7 @@ class SATCompensatedControllerTorchSystem(CascadeControllerSystem):
 
         supplyAirTemp ──> SATLinearRule ──[min_flow_sp]──> PID ──> damper_position
                                                            │
-        actualValue_b (airflow) ──────────────────────────┘
+         actualValue_b (airflow) ──────────────────────────┘
 
     **Stage A** (outer, rule-based): ``SATLinearRuleSystem``
         Maps AHU supply air temperature to a minimum airflow setpoint fraction:

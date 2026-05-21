@@ -122,15 +122,35 @@ class FanTorchSystem(core.System, nn.Module):
         self._input = {"airFlowRate": tps.Scalar(), "inletAirTemperature": tps.Scalar()}
         self._output = {"outletAirTemperature": tps.Scalar(), "Power": tps.Scalar()}
 
-        # Define parameters for calibration
+        # Define parameters for calibration.  Tightened to a real AHU
+        # supply / exhaust fan operating envelope so the auto-estimator
+        # can't pin a fan to ``nominalPowerRate = 0`` (no fan, but
+        # outlet temperature still updated from cp * m * dT) or
+        # ``f_total = 0`` (zero efficiency means the model attributes
+        # *all* the shaft power to fluid heat gain, which then forces
+        # SAT past the coil's reach).
         self.parameter = {
-            "nominalPowerRate": {"lb": 0.0, "ub": 10000.0},
-            "nominalAirFlowRate": {"lb": 0.0, "ub": 10.0},
-            "c1": {"lb": -10.0, "ub": 10.0},
-            "c2": {"lb": -10.0, "ub": 10.0},
-            "c3": {"lb": -10.0, "ub": 10.0},
-            "c4": {"lb": -10.0, "ub": 10.0},
-            "f_total": {"lb": 0.0, "ub": 1.0},
+            # AHU fan rated power.  Spans small fan-coil supply (~ 200
+            # W) up to a 10 kW primary AHU.  Outside this range the
+            # other parameters compensate in unphysical ways.
+            "nominalPowerRate": {"lb": 200.0, "ub": 10000.0},
+            # AHU air flow [kg/s].  ~ 0.5 kg/s is a small fan-coil,
+            # ~ 10 kg/s a large central handler.
+            "nominalAirFlowRate": {"lb": 0.5, "ub": 10.0},
+            # Polynomial coefficients of the ``P(m)`` curve.  These
+            # can legitimately be negative (curve concavity) but
+            # values past ~ 5 in magnitude give pathological power
+            # curves that the solver loves because they let one
+            # operating point dominate the fit.
+            "c1": {"lb": -1.0, "ub": 1.0},
+            "c2": {"lb": -1.0, "ub": 1.0},
+            "c3": {"lb": -1.0, "ub": 1.0},
+            "c4": {"lb": -1.0, "ub": 1.0},
+            # Total fan efficiency.  Real centrifugal AHU fans land
+            # between 0.4 and 0.85; lower bound 0.3 keeps very small
+            # / poorly maintained units in scope without admitting
+            # the unphysical 0.
+            "f_total": {"lb": 0.3, "ub": 0.9},
         }
 
         self._config = {"parameters": list(self.parameter.keys())}

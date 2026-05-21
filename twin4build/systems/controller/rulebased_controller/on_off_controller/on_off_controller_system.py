@@ -8,7 +8,7 @@ import torch
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.translator.translator import Exact, MultiPath, Node, SignaturePattern
+from twin4build.translator.translator import StepRule, AnyPathRule, Node, SignaturePattern
 
 
 class OnOffControllerSystem(core.System):
@@ -94,14 +94,14 @@ def saref_signature_pattern():
     node2 = Node(cls=(core.namespace.SAREF.Property))
     node3 = Node(cls=(core.namespace.S4BLDG.Schedule))
     sp = SignaturePattern(id="on_off_controller_signature_pattern")
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
+    sp.add_rule(
+        StepRule(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
     )
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.observes)
+    sp.add_rule(
+        StepRule(subject=node1, object=node2, predicate=core.namespace.SAREF.observes)
     )
-    sp.add_triple(
-        Exact(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile)
+    sp.add_rule(
+        StepRule(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile)
     )
     sp.add_input("actualValue", node1, "measuredValue")
     sp.add_input("setpointValue", node3, "scheduleValue")
@@ -121,11 +121,11 @@ def brick_signature_pattern():
     node2 = Node(cls=core.namespace.BRICK.Setpoint)
 
     sp = SignaturePattern(id="on_off_controller_signature_pattern_brick")
-    sp.add_triple(
-        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
 
     sp.add_input("actualValue", node1, "measuredValue")

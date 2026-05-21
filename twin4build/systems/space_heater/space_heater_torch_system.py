@@ -13,12 +13,12 @@ import twin4build.utils.types as tps
 from twin4build import core
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -580,18 +580,18 @@ def saref_signature_pattern():
         id="space_heater_signature_pattern",
     )
 
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
         )
     )
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
         )
     )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
+    sp.add_rule(
+        StepRule(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
     )
 
     sp.add_input("waterFlowRate", node3)
@@ -617,14 +617,14 @@ def brick_signature_pattern():
         id="space_heater_signature_pattern_brick",
     )
 
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
+    sp.add_rule(
+        StepRule(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node3, object=node1, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node3, object=node1, predicate=core.namespace.BRICK.isPointOf)
     )
 
     sp.add_input("waterFlowRate", node2, "measuredValue")

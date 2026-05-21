@@ -9,7 +9,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.systems.utils.smooth_saturation import smooth_saturation
+from twin4build.systems.utils.smooth_saturation import clamp
 
 
 class OnOffControllerTorchSystem(core.System, nn.Module):
@@ -145,19 +145,24 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         a: float = 1.0,
         power_exp: float = 0.5,
     ) -> torch.Tensor:
-        """Differentiable on/off switching via :func:`smooth_saturation`.
+        """Differentiable on/off switching via :func:`clamp` in smooth mode.
 
         Maps *error* → ``[off_value, on_value]``:
         ``error << 0`` → *off_value*,  ``error >> 0`` → *on_value*.
+
+        Always uses ``mode="smooth"``: a hard step would zero the
+        gradient with respect to the controller's setpoint and make
+        the switching threshold structurally non-estimable.
         """
         u = 0.5 + error * steepness
-        switch_signal = smooth_saturation(
+        switch_signal = clamp(
             u,
             lower=0.0,
             upper=1.0,
             curve_start=curve_start,
             steepness=a,
             power_exp=power_exp,
+            mode="smooth",
         )
         return off_value + switch_signal * (on_value - off_value)
 

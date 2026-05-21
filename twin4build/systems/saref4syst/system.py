@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 import datetime
-from typing import List, Union
+from typing import Any, List, Tuple, Union
 
 # Third party imports
 import torch
@@ -284,6 +284,83 @@ class System:
             step_index (int): The current step index.
         """
         pass
+
+    def get_estimable_parameters(
+        self,
+    ) -> List[Tuple[Any, str, float, float, float]]:
+        """Default ``parameters="auto"`` contract for a System.
+
+        Walks the attribute paths in ``self._config["parameters"]`` (the
+        project-wide registry of every tunable knob) and emits one
+        ``(component, attr_path, x0, lb, ub)`` tuple for each entry that
+
+          * resolves to a :class:`torch.nn.Parameter` (e.g. our
+            :class:`twin4build.utils.types.Parameter`) -- skips plain
+            Python floats stored as construction nominals, and
+          * has both ``"lb"`` and ``"ub"`` in its owner's ``parameter``
+            map.
+
+        Owner resolution: ``"thermal.C_air"`` looks up
+        ``self.thermal.parameter["C_air"]`` for bounds; an unprefixed
+        path looks up ``self.parameter[leaf]``.  Subclasses with a
+        bespoke parameter space (e.g.
+        :class:`ControllerIdentificationTorchSystem`) override this with
+        their own discovery logic.
+
+        Returns:
+            List of ``(component, attr_path, x0, lb, ub)`` tuples,
+            possibly empty when the system has no estimable knobs or has
+            not been built yet.
+        """
+        cfg = getattr(self, "_config", None)
+        if not isinstance(cfg, dict):
+            return []
+        paths = cfg.get("parameters", [])
+        if not isinstance(paths, (list, tuple)):
+            return []
+        out: List[Tuple[Any, str, float, float, float]] = []
+        for path in paths:
+            if not isinstance(path, str):
+                continue
+            *prefix, leaf = path.split(".")
+            try:
+                owner = rgetattr(self, ".".join(prefix)) if prefix else self
+            except AttributeError:
+                continue
+            param = getattr(owner, leaf, None)
+            # Duck-typed by ``nn.Parameter`` rather than tps.Parameter so
+            # this module avoids the ``core <-> utils.types`` import
+            # cycle that pulling :class:`tps.Parameter` in here would
+            # create.
+            if not isinstance(param, torch.nn.Parameter):
+                continue
+            spec = getattr(owner, "parameter", None)
+            if not isinstance(spec, dict):
+                continue
+            bounds = spec.get(leaf)
+            if (
+                not isinstance(bounds, dict)
+                or "lb" not in bounds
+                or "ub" not in bounds
+            ):
+                continue
+            lb = float(bounds["lb"])
+            ub = float(bounds["ub"])
+            # Log-scaled ``tps.Parameter`` instances assert ``lb > 0``
+            # inside ``TensorParameter.__init__``.  Skip rather than
+            # surface that assertion inside the estimator's
+            # ``set_parameters`` call: the symptom there is opaque and
+            # this is recoverable by either widening the bound on the
+            # owning component or by leaving the parameter out of
+            # estimation entirely.
+            if getattr(param, "scaling", None) == "log" and lb <= 0.0:
+                continue
+            try:
+                x0 = float(param.get().detach().reshape(-1)[0].item())
+            except Exception:  # noqa: BLE001
+                continue
+            out.append((self, path, x0, lb, ub))
+        return out
 
     def populate_config(self) -> dict:
         """

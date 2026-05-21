@@ -12,7 +12,7 @@ import torch
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
+from twin4build.translator.translator import StepRule, Node, SignaturePattern, PathRule
 from twin4build.utils.deprecation import deprecate_args
 
 

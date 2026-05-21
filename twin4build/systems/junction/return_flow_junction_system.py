@@ -10,12 +10,12 @@ import torch
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -186,13 +186,13 @@ def saref_signature_pattern():
     sp = SignaturePattern(
         id="return_flow_junction_signature_pattern",
     )
-    sp.add_triple(
-        MultiPath(
+    sp.add_rule(
+        AnyPathRule(
             subject=node0, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
         )
     )
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
         )
     )
@@ -219,11 +219,11 @@ def brick_signature_pattern():
     sp = SignaturePattern(
         id="return_flow_junction_signature_pattern_brick",
     )
-    sp.add_triple(
-        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node1, object=node0, predicate=core.namespace.BRICK.feeds)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node1, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node2, object=node1, predicate=core.namespace.BRICK.feeds)
     )
 
     sp.add_input("airFlowRateIn", node1, "airFlowRate")

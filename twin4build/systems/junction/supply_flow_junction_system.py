@@ -6,12 +6,12 @@ from typing import List, Optional, Union
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -172,13 +172,13 @@ def saref_signature_pattern():
     sp = SignaturePattern(
         id="supply_flow_junction_signature_pattern",
     )
-    sp.add_triple(
-        MultiPath(
+    sp.add_rule(
+        AnyPathRule(
             subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo
         )
     )
-    sp.add_triple(
-        SinglePath(
+    sp.add_rule(
+        PathRule(
             subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
         )
     )
@@ -201,11 +201,11 @@ def brick_signature_pattern():
     sp = SignaturePattern(
         id="supply_flow_junction_signature_pattern_brick",
     )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node0, object=node1, predicate=core.namespace.BRICK.feeds)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.feeds)
     )
     sp.add_input("airFlowRateOut", node1, "airFlowRate")
     sp.add_modeled_node(node0)

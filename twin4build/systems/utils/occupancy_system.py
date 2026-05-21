@@ -10,7 +10,7 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
-from twin4build.systems.utils.smooth_saturation import smooth_saturation
+from twin4build.systems.utils.smooth_saturation import clamp
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 
 
@@ -249,7 +249,7 @@ class OccupancySystem(core.System, nn.Module):
             + (m_inf + m_exh) * self.C_prev
             - (m_inf + m_sup) * C_outdoor
         ) / alpha
-        N_occ = smooth_saturation(N_occ, lower=0.0, upper=1e6, curve_start=0.1)
+        N_occ = clamp(N_occ, lower=0.0, upper=1e6)
 
         self.C_prev = C_indoor.detach().clone()
         self.output["scheduleValue"]._set(N_occ, i_t=step_index)

@@ -13,11 +13,11 @@ import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -773,17 +773,17 @@ def brick_signature_pattern():
         id="building_space_signature_pattern_brick",
     )
 
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
     )
-    # sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.BRICK.isFedBy))
-    sp.add_triple(
-        Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
+    # sp.add_rule(StepRule(subject=node1, object=node2, predicate=core.namespace.BRICK.isFedBy))
+    sp.add_rule(
+        StepRule(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
     )
-    sp.add_triple(
-        Exact(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
     )
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
+    # sp.add_rule(AnyPathRule(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
     # Optional
     # heatGain

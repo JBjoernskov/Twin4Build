@@ -10,9 +10,9 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
-    Exact,
+    StepRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
 )
 
@@ -102,7 +102,7 @@ class DamperTorchSystem(core.System, nn.Module):
 
         # Create parameters as scalars - expanded to n_c in initialize()
         self.a = tps.Parameter(
-            torch.tensor(a, dtype=torch.float64), requires_grad=False
+            torch.tensor(a, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.nominalAirFlowRate = tps.Parameter(
             torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False
@@ -115,10 +115,25 @@ class DamperTorchSystem(core.System, nn.Module):
             "airFlowRate": tps.Scalar(),
         }
 
-        # Define parameters for calibration
+        # Define parameters for calibration.  Tightened to the
+        # physically-realistic VAV-branch / AHU-damper range so the
+        # auto-estimator can't pin a damper at 1e-4 kg/s (effectively
+        # zero flow, makes the coil's energy balance singular) or run
+        # the shape coefficient ``a`` into a region where the
+        # ``m = b + a*u + c*log(u)`` characteristic is monotone but
+        # numerically ill-conditioned at low ``u``.
         self.parameter = {
-            "a": {"lb": 0.0001, "ub": 5},
-            "nominalAirFlowRate": {"lb": 0.0001, "ub": 5},
+            # log-scaled (lb > 0 mandatory).  ``a`` is a unit-less
+            # shape coefficient; values much above 5 give very steep
+            # rise near ``u=0`` and saturate immediately, values below
+            # 0.1 give nearly linear damper response (lose the physics
+            # of the equal-percentage characteristic).
+            "a": {"lb": 0.1, "ub": 5.0},
+            # Branch / AHU damper kg/s.  Range covers a 100 m³ VAV
+            # zone at 1 ach (~ 0.03 kg/s) up to a large primary AHU
+            # branch (~ 5 kg/s).  Below 0.01 kg/s the coil's
+            # energy balance becomes singular.
+            "nominalAirFlowRate": {"lb": 0.001, "ub": 5.0},
         }
 
         self._config = {"parameters": list(self.parameter.keys())}
@@ -204,13 +219,20 @@ class DamperTorchSystem(core.System, nn.Module):
         - u is the damper position (0-1)
 
         All calculations are vectorized via n_c dimension.
+        b and c are recomputed from the current a and nominalAirFlowRate
+        so that gradients flow correctly during estimation.
         """
         # Get input damper position - shape: (n_s, n_c)
         damper_position = self.input["damperPosition"].get()
 
+        # Recompute b, c from current a so gradient graph stays connected
+        a = self.a.get()
+        c = -a
+        b = torch.log((self.nominalAirFlowRate.get() - c) / a)
+
         # Calculate air flow rate using exponential equation
         # Broadcasting: (n_s, n_c) * (n_c,) -> (n_s, n_c)
-        air_flow_rate = self.a.get() * torch.exp(self.b * damper_position) + self.c
+        air_flow_rate = a * torch.exp(b * damper_position) + c
 
         # Update outputs - shape: (n_s, n_c)
         self.output["damperPosition"]._set(damper_position, i_t=step_index)
@@ -234,27 +256,27 @@ def saref_signature_pattern():
     sp = SignaturePattern(id="damper_signature_pattern")
 
     # Add edges to the signature pattern
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
+    sp.add_rule(
+        StepRule(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
     )
-    sp.add_triple(
-        Exact(subject=node1, object=node3, predicate=core.namespace.SAREF.observes)
+    sp.add_rule(
+        StepRule(subject=node1, object=node3, predicate=core.namespace.SAREF.observes)
     )
-    sp.add_triple(
-        Optional_(subject=node4, object=node5, predicate=core.namespace.SAREF.hasValue)
+    sp.add_rule(
+        OptionalRule(subject=node4, object=node5, predicate=core.namespace.SAREF.hasValue)
     )
-    sp.add_triple(
-        Optional_(
+    sp.add_rule(
+        OptionalRule(
             subject=node4,
             object=node6,
             predicate=core.namespace.SAREF.isValueOfProperty,
         )
     )
-    sp.add_triple(
-        Optional_(
+    sp.add_rule(
+        OptionalRule(
             subject=node0, object=node4, predicate=core.namespace.SAREF.hasPropertyValue
         )
     )
@@ -283,20 +305,20 @@ def brick_signature_pattern():
     sp = SignaturePattern(id="damper_signature_pattern_brick")
 
     # Add edges to the signature pattern
-    sp.add_triple(
-        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node3, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node3, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node4, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node4, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Optional_(subject=node4, object=node5, predicate=core.namespace.BRICK.hasValue)
+    sp.add_rule(
+        OptionalRule(subject=node4, object=node5, predicate=core.namespace.BRICK.hasValue)
     )
 
     # Configure inputs, parameters, and modeled nodes
