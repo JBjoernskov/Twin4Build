@@ -343,15 +343,15 @@ class TestEstimator(unittest.TestCase):
                 model.components[sensor_id].filename = utils.get_path(
                     ["estimator_example", csv_name]
                 )
-                model.components[sensor_id].datecolumn = 0
-                model.components[sensor_id].valuecolumn = 1
+                model.components[sensor_id].datecolumn = 2
+                model.components[sensor_id].valuecolumn = 3
             model.components["office_temperature_heating_setpoint"].filename = (
                 utils.get_path(
                     ["estimator_example", "temperature_heating_setpoint.csv"]
                 )
             )
-            model.components["office_temperature_heating_setpoint"].datecolumn = 0
-            model.components["office_temperature_heating_setpoint"].valuecolumn = 1
+            model.components["office_temperature_heating_setpoint"].datecolumn = 2
+            model.components["office_temperature_heating_setpoint"].valuecolumn = 3
             model.components["outdoor_environment"].filename_outdoorTemperature = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
             )
@@ -363,6 +363,15 @@ class TestEstimator(unittest.TestCase):
             ].valuecolumn_outdoorCo2Concentration = 2
             model.components["outdoor_environment"].filename_outdoorCo2Concentration = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
+            )
+
+            # OccupancySystem reads CO2 / damper time series directly from disk;
+            # redirect to the example CSVs so the test runs on any machine.
+            model.components["office_occupancy"].co2_filename = utils.get_path(
+                ["estimator_example", "co2_sensor.csv"]
+            )
+            model.components["office_occupancy"].damper_filename = utils.get_path(
+                ["estimator_example", "damper_position_sensor.csv"]
             )
 
             # Set up a temporary directory for saving estimation results
@@ -493,15 +502,15 @@ class TestEstimator(unittest.TestCase):
                 model2.components[sensor_id].filename = utils.get_path(
                     ["estimator_example", csv_name]
                 )
-                model2.components[sensor_id].datecolumn = 0
-                model2.components[sensor_id].valuecolumn = 1
+                model2.components[sensor_id].datecolumn = 2
+                model2.components[sensor_id].valuecolumn = 3
             model2.components["office_temperature_heating_setpoint"].filename = (
                 utils.get_path(
                     ["estimator_example", "temperature_heating_setpoint.csv"]
                 )
             )
-            model2.components["office_temperature_heating_setpoint"].datecolumn = 0
-            model2.components["office_temperature_heating_setpoint"].valuecolumn = 1
+            model2.components["office_temperature_heating_setpoint"].datecolumn = 2
+            model2.components["office_temperature_heating_setpoint"].valuecolumn = 3
             model2.components["outdoor_environment"].filename_outdoorTemperature = (
                 utils.get_path(["estimator_example", "outdoor_environment.csv"])
             )
@@ -515,6 +524,12 @@ class TestEstimator(unittest.TestCase):
                 "outdoor_environment"
             ].filename_outdoorCo2Concentration = utils.get_path(
                 ["estimator_example", "outdoor_environment.csv"]
+            )
+            model2.components["office_occupancy"].co2_filename = utils.get_path(
+                ["estimator_example", "co2_sensor.csv"]
+            )
+            model2.components["office_occupancy"].damper_filename = utils.get_path(
+                ["estimator_example", "damper_position_sensor.csv"]
             )
 
             # Step 11: Load the estimation result from file
