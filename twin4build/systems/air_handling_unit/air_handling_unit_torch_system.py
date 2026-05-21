@@ -6,6 +6,9 @@ DamperTorchSystem objects (one for supply, one for exhaust) rather than
 separate damper components for each branch.
 """
 
+# Required for PEP 604 (``X | None``) annotation syntax on Python 3.9.
+from __future__ import annotations
+
 # Standard library imports
 import datetime
 
