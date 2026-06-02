@@ -2646,25 +2646,93 @@ class Translator:
         signature_pattern,
         verbose=False,
         descendant_cache=None,
+        visited_sp_edges=None,
     ):
-        """Bidirectional matcher entry: walks SP edges in both directions.
+        """Bidirectional matcher: walks SP edges in both directions.
 
-        Currently a thin pass-through to :meth:`__prune_recursive_legacy`
-        (the legacy outgoing-only walker), so behavior is unchanged.
-        Subsequent commits in PR2 replace this body with the genuine
-        bidirectional walker; preserving the legacy walker as a regression
-        oracle is the point of the hybrid staging strategy.
+        Generalises the legacy outgoing-only walker by, after processing
+        every outgoing SP edge from ``sp_subject`` as the legacy walker
+        does, additionally processing every *incoming* SP edge using
+        ``sm_subject.get_predicate_subject_pairs()`` (the inverse SM
+        adjacency added in PR1).  Within a weakly-connected component
+        of the SP graph this lets a single seed walk fill the entire
+        component, which is the prerequisite for the merger removal
+        in PR4.
+
+        Backward direction is currently implemented for the StepRule
+        family (``StepRule``, ``OptionalRule(StepRule)``).  Other rule
+        types (``NoStepRule``, ``SetStepRule``, ``PathRule``,
+        ``AnyPathRule``, ``SetAnyPathRule``, ``OptionalRule`` wrapping
+        them) are processed only in the forward direction for now and
+        will gain backward support in subsequent PR2 commits; until
+        they do, the merger machinery (still in place through PR4)
+        glues partials produced from different seeds for those
+        patterns.
+
+        ``visited_sp_edges`` is threaded through the recursion to keep
+        each SP edge from being traversed more than once per branch
+        (would otherwise oscillate ``A --pred--> B`` forward / backward
+        indefinitely).  Edge-keys are tuples ``(rule_subject_node,
+        sp_predicate, rule_object_node)``, i.e. the ruleset key.
         """
-        return Translator.__prune_recursive_legacy(
+        if descendant_cache is None:
+            descendant_cache = {}
+        if visited_sp_edges is None:
+            visited_sp_edges = set()
+
+        # Tuple-broadcast entry: when the caller passes a set-bound
+        # subject, defer to the legacy broadcast-recurse plus legacy
+        # walker.  Backward broadcasting is intentionally out of scope
+        # for this commit; SetStepRule under bidirectional walks
+        # arrives in a follow-up.
+        if isinstance(sm_subject, tuple):
+            return Translator.__broadcast_recurse_legacy(
+                sm_subject,
+                sp_subject,
+                candidate_maps,
+                feasible,
+                comparison_table,
+                signature_pattern,
+                verbose,
+                descendant_cache,
+            )
+
+        # Forward direction: identical processing to the legacy walker,
+        # but with edge-visit bookkeeping so the subsequent backward
+        # iteration does not re-traverse what the forward iteration
+        # already covered, and vice-versa from a recursive frame.
+        result = Translator.__prune_recursive_forward(
             sm_subject,
             sp_subject,
             candidate_maps,
             feasible,
             comparison_table,
             signature_pattern,
-            verbose=verbose,
-            descendant_cache=descendant_cache,
+            verbose,
+            descendant_cache,
+            visited_sp_edges,
         )
+        candidate_maps, feasible, comparison_table, is_pruned = result
+        if is_pruned:
+            return candidate_maps, feasible, comparison_table, True
+
+        # Backward direction: for every SP edge incident to ``sp_subject``
+        # as object that has not been walked yet, enumerate inverse-
+        # adjacency candidates for the rule's subject, validate the
+        # candidate's class, and recurse.  Only the StepRule family is
+        # handled here; other rule shapes fall through unchanged.
+        result = Translator.__prune_recursive_backward(
+            sm_subject,
+            sp_subject,
+            candidate_maps,
+            feasible,
+            comparison_table,
+            signature_pattern,
+            verbose,
+            descendant_cache,
+            visited_sp_edges,
+        )
+        return result
 
     @staticmethod
     def __prune_recursive_legacy(
@@ -3116,6 +3184,420 @@ class Translator:
                 )
 
         return aggregated_maps, feasible, comparison_table, False
+
+    # =========================================================
+    # Bidirectional walker helpers (PR2 of bidir-matcher migration)
+    # =========================================================
+    # Both helpers thread ``visited_sp_edges`` and recurse back through
+    # :meth:`__prune_recursive` (the bidirectional entry), so every
+    # frame visits both incoming and outgoing SP edges of its current
+    # SP node.  Edge bookkeeping uses the SP-side ruleset key
+    # ``(rule_subject_node, sp_predicate, rule_object_node)`` so an
+    # edge walked forward from ``A`` to ``B`` is recognised as the
+    # same edge when ``B`` later examines its incoming edges.
+
+    @staticmethod
+    def __prune_recursive_forward(
+        sm_subject,
+        sp_subject,
+        candidate_maps,
+        feasible,
+        comparison_table,
+        signature_pattern,
+        verbose,
+        descendant_cache,
+        visited_sp_edges,
+    ):
+        """Forward-direction body of the bidirectional walker.
+
+        Mirrors the legacy walker's outgoing-edge iteration over
+        ``sp_subject.predicate_object_pairs``, with two structural
+        differences:
+
+        - Each forward edge ``(sp_subject, sp_predicate, sp_object)``
+          is added to ``visited_sp_edges`` before processing so the
+          symmetric backward iteration at any later frame skips it.
+        - The recursion routes back through
+          :meth:`__prune_recursive` (the bidirectional entry) rather
+          than the legacy walker, so each recursive frame also
+          performs a backward sweep.
+        """
+        LOGGER.debug("Entering prune_recursive (forward)")
+        LOGGER.add_level()
+        LOGGER.debug(lambda: Translator._get_node_string(sp_subject, sm_subject))
+
+        feasible.setdefault(sp_subject, set()).add(sm_subject)
+        comparison_table.setdefault(sp_subject, set()).add(sm_subject)
+
+        sm_predicate_objects = sm_subject.get_predicate_object_pairs()
+        sp_predicate_objects = sp_subject.predicate_object_pairs
+        ruleset = signature_pattern.ruleset
+
+        for sp_predicate, sp_objects in sp_predicate_objects.items():
+            for sp_object in sp_objects:
+                edge_key = (sp_subject, sp_predicate, sp_object)
+                if edge_key in visited_sp_edges:
+                    continue
+                visited_sp_edges.add(edge_key)
+
+                valid_maps = []
+                rule = ruleset[edge_key]
+
+                LOGGER.debug("Rule: %s", rule.__class__.__name__)
+
+                sm_objects = []
+                for predicate in rule._predicate:
+                    for pred in predicate.preds:
+                        pred_objects = sm_predicate_objects.get(pred, [])
+                        sm_objects.extend(pred_objects)
+                seen = set()
+                sm_objects = [x for x in sm_objects if not (x in seen or seen.add(x))]
+
+                if sm_objects:
+                    rule_pairs, _, _, ruleset = rule.apply(
+                        sm_subject,
+                        sm_objects,
+                        ruleset,
+                        candidate_maps=candidate_maps,
+                    )
+
+                    match_found = False
+                    for (
+                        maps_for_pair,
+                        matched_sm_object,
+                        matched_sp_object,
+                        matched_type,
+                        _,
+                    ) in rule_pairs:
+                        LOGGER.debug("Entered inner loop")
+                        LOGGER.debug(
+                            lambda: Translator._get_node_string(
+                                matched_sp_object, matched_sm_object
+                            )
+                        )
+
+                        # Set-bound subjects fall back to the legacy
+                        # broadcast path; bidirectional broadcasting is
+                        # added in a follow-up commit.
+                        if isinstance(matched_sm_object, tuple):
+                            feasible.setdefault(matched_sp_object, set())
+                            comparison_table.setdefault(matched_sp_object, set())
+                            for elem in matched_sm_object:
+                                feasible[matched_sp_object].add(elem)
+                                comparison_table[matched_sp_object].add(elem)
+
+                            for m in maps_for_pair:
+                                m[matched_sp_object] = matched_sm_object
+
+                            child_maps, feasible, comparison_table, is_pruned = (
+                                Translator.__broadcast_recurse_legacy(
+                                    matched_sm_object,
+                                    matched_sp_object,
+                                    maps_for_pair,
+                                    feasible,
+                                    comparison_table,
+                                    signature_pattern,
+                                    verbose,
+                                    descendant_cache,
+                                )
+                            )
+                            if not is_pruned:
+                                valid_maps.extend(child_maps)
+                                match_found = True
+                            continue
+
+                        feasible.setdefault(matched_sp_object, set())
+                        comparison_table.setdefault(matched_sp_object, set())
+
+                        if matched_sm_object not in comparison_table[matched_sp_object]:
+                            comparison_table[matched_sp_object].add(matched_sm_object)
+                            child_maps, feasible, comparison_table, is_pruned = (
+                                Translator.__prune_recursive(
+                                    matched_sm_object,
+                                    matched_sp_object,
+                                    maps_for_pair,
+                                    feasible,
+                                    comparison_table,
+                                    signature_pattern,
+                                    verbose,
+                                    descendant_cache=descendant_cache,
+                                    visited_sp_edges=visited_sp_edges,
+                                )
+                            )
+
+                            if not is_pruned:
+                                if child_maps:
+                                    ref = child_maps[0]
+                                    descendants = {
+                                        sp_n: sm_n
+                                        for sp_n, sm_n in ref.items()
+                                        if sm_n is not None
+                                    }
+                                    descendant_cache[
+                                        (matched_sp_object, matched_sm_object)
+                                    ] = descendants
+
+                                if (
+                                    isinstance(rule, (PathRule, AnyPathRule))
+                                    and rule.stop_early
+                                    and matched_type == StepRule
+                                ):
+                                    valid_maps.extend(child_maps)
+                                    match_found = True
+                                    break
+
+                                if match_found:
+                                    LOGGER.debug(
+                                        f'Multiple matches: "{sp_subject.id}" -> "{sm_subject.uri}"'
+                                    )
+                                valid_maps.extend(child_maps)
+                                match_found = True
+
+                        elif matched_sm_object in feasible[matched_sp_object]:
+                            cached = descendant_cache.get(
+                                (matched_sp_object, matched_sm_object), {}
+                            )
+                            for m in maps_for_pair:
+                                m[matched_sp_object] = matched_sm_object
+                                for sp_n, sm_n in cached.items():
+                                    if m.get(sp_n) is None:
+                                        m[sp_n] = sm_n
+                            valid_maps.extend(maps_for_pair)
+                            match_found = True
+
+                    if not match_found and not isinstance(rule, OptionalRule):
+                        feasible[sp_subject].discard(sm_subject)
+                        LOGGER.debug("Pruned (no match found)")
+                        LOGGER.debug(
+                            lambda: Translator._get_node_string(sp_subject, sm_subject)
+                        )
+                        LOGGER.remove_level()
+                        return candidate_maps, feasible, comparison_table, True
+
+                    if match_found:
+                        candidate_maps = valid_maps
+
+                else:
+                    if not isinstance(rule, OptionalRule):
+                        feasible[sp_subject].discard(sm_subject)
+                        LOGGER.debug(
+                            "Pruned (missing predicate): %s", sp_predicate
+                        )
+                        LOGGER.debug(
+                            lambda: Translator._get_node_string(sp_subject, sm_subject)
+                        )
+                        LOGGER.remove_level()
+                        return candidate_maps, feasible, comparison_table, True
+
+        # Bind the current subject in every surviving candidate map.
+        if not candidate_maps:
+            candidate_maps = [{n: None for n in signature_pattern.nodes}]
+
+        candidate_maps = Translator._copy_nodemap_list(candidate_maps)
+        for mapping in candidate_maps:
+            mapping[sp_subject] = sm_subject
+
+        LOGGER.debug("Returning from prune_recursive (forward)")
+        LOGGER.remove_level()
+        return candidate_maps, feasible, comparison_table, False
+
+    @staticmethod
+    def __prune_recursive_backward(
+        sm_subject,
+        sp_subject,
+        candidate_maps,
+        feasible,
+        comparison_table,
+        signature_pattern,
+        verbose,
+        descendant_cache,
+        visited_sp_edges,
+    ):
+        """Backward-direction body of the bidirectional walker.
+
+        Iterates SP edges *incident to* ``sp_subject`` as the
+        rule-object endpoint and recurses into the corresponding
+        rule-subject SP node, using the inverse SM adjacency
+        (:meth:`SemanticInstance.get_predicate_subject_pairs`) added
+        in PR1.
+
+        Backward direction is currently only honoured for the StepRule
+        family (``StepRule``, ``OptionalRule(StepRule)``).  Other rule
+        shapes are skipped silently here and continue to be processed
+        in the forward direction only; their backward-direction
+        equivalents are added in subsequent PR2 commits.
+
+        Visited edges from the symmetric forward iteration are
+        respected so the same SP edge is not walked twice on a single
+        DFS branch (which would otherwise oscillate forward / backward
+        forever).
+        """
+        sp_predicate_subjects = sp_subject.predicate_subject_pairs
+        if not sp_predicate_subjects:
+            return candidate_maps, feasible, comparison_table, False
+
+        ruleset = signature_pattern.ruleset
+        sm_predicate_subjects = sm_subject.get_predicate_subject_pairs()
+
+        for sp_predicate, sp_subjects_list in sp_predicate_subjects.items():
+            for sp_subj_other in sp_subjects_list:
+                edge_key = (sp_subj_other, sp_predicate, sp_subject)
+                if edge_key in visited_sp_edges:
+                    continue
+                rule = ruleset.get(edge_key)
+                if rule is None:
+                    continue
+
+                # Determine whether this rule shape supports backward
+                # walking yet.  Anything other than a plain StepRule or
+                # OptionalRule (which is effectively a soft-StepRule:
+                # same class-isinstance check, just non-pruning on
+                # zero matches) falls through unchanged.  ``SetStepRule``
+                # / ``NoStepRule`` / ``PathRule`` / ``AnyPathRule`` /
+                # ``SetAnyPathRule`` and ``_SinglePath`` /
+                # ``_MultiPath`` are out of scope and gain backward
+                # support in subsequent PR2 commits; until then the
+                # forward walk from another seed (or the merger, still
+                # in place through PR4) is responsible for stitching
+                # them in.  ``type(rule) is X`` is intentional: rule
+                # subclasses (e.g. ``SetStepRule`` extends ``StepRule``)
+                # need their own backward handling.
+                if type(rule) is not StepRule and type(rule) is not OptionalRule:
+                    continue
+
+                visited_sp_edges.add(edge_key)
+
+                # Enumerate inverse-adjacency candidates for the rule's
+                # subject endpoint.  Class filter mirrors the
+                # ``isinstance(self.object.cls)`` guard in
+                # ``StepRule.apply``; subject/object exclusions need to
+                # mirror that helper too because backward bypasses
+                # ``rule.apply`` entirely.
+                sm_candidates = []
+                for predicate in rule._predicate:
+                    for pred in predicate.preds:
+                        sm_candidates.extend(sm_predicate_subjects.get(pred, []))
+                seen = set()
+                sm_candidates = [
+                    x for x in sm_candidates if not (x in seen or seen.add(x))
+                ]
+                sm_candidates = [
+                    c for c in sm_candidates if c.isinstance(sp_subj_other.cls)
+                ]
+
+                # Subject/object exclusion mirrors StepRule.apply: when
+                # this same rule.subject and rule.predicate appear in
+                # other (already-bound) entries with a different
+                # rule.object, the bound SM-side subjects/objects are
+                # excluded from this match.  The backward walk only
+                # cares about subject exclusions because the object
+                # endpoint (``sm_subject``) is already pinned.
+                excluded_sm_subjects: set = set()
+                for current_map in candidate_maps:
+                    if current_map is None:
+                        continue
+                    for (sp_s, sp_p, sp_o), other_rule in ruleset.items():
+                        if other_rule.predicate is None or rule.predicate is None:
+                            continue
+                        if (
+                            sp_s in current_map
+                            and other_rule.object == rule.object
+                            and other_rule.predicate == rule.predicate
+                            and other_rule.subject != rule.subject
+                        ):
+                            bound = current_map[sp_s]
+                            if bound is not None:
+                                excluded_sm_subjects.add(bound)
+                sm_candidates = [
+                    c for c in sm_candidates if c not in excluded_sm_subjects
+                ]
+
+                if not sm_candidates:
+                    if not isinstance(rule, OptionalRule):
+                        feasible[sp_subject].discard(sm_subject)
+                        LOGGER.debug(
+                            "Pruned backward (no candidate): %s", sp_predicate
+                        )
+                        return candidate_maps, feasible, comparison_table, True
+                    continue
+
+                valid_maps: List[Dict[Node, Any]] = []
+                match_found = False
+
+                feasible.setdefault(sp_subj_other, set())
+                comparison_table.setdefault(sp_subj_other, set())
+
+                for sm_cand in sm_candidates:
+                    if sm_cand in comparison_table[sp_subj_other]:
+                        # Already explored this binding for ``sp_subj_other``.
+                        # If still feasible, replay descendant cache; else skip.
+                        if sm_cand in feasible[sp_subj_other]:
+                            cached = descendant_cache.get(
+                                (sp_subj_other, sm_cand), {}
+                            )
+                            replay_maps = Translator._copy_nodemap_list(
+                                candidate_maps
+                            ) if candidate_maps else [
+                                {n: None for n in signature_pattern.nodes}
+                            ]
+                            for m in replay_maps:
+                                m[sp_subj_other] = sm_cand
+                                for sp_n, sm_n in cached.items():
+                                    if m.get(sp_n) is None:
+                                        m[sp_n] = sm_n
+                            valid_maps.extend(replay_maps)
+                            match_found = True
+                        continue
+
+                    comparison_table[sp_subj_other].add(sm_cand)
+
+                    # Seed the candidate map with this binding before
+                    # recursing so descendant rules see it.
+                    base_maps = (
+                        Translator._copy_nodemap_list(candidate_maps)
+                        if candidate_maps
+                        else [{n: None for n in signature_pattern.nodes}]
+                    )
+                    for m in base_maps:
+                        m[sp_subj_other] = sm_cand
+
+                    child_maps, feasible, comparison_table, is_pruned = (
+                        Translator.__prune_recursive(
+                            sm_cand,
+                            sp_subj_other,
+                            base_maps,
+                            feasible,
+                            comparison_table,
+                            signature_pattern,
+                            verbose,
+                            descendant_cache=descendant_cache,
+                            visited_sp_edges=visited_sp_edges,
+                        )
+                    )
+
+                    if not is_pruned:
+                        if child_maps:
+                            ref = child_maps[0]
+                            descendants = {
+                                sp_n: sm_n
+                                for sp_n, sm_n in ref.items()
+                                if sm_n is not None
+                            }
+                            descendant_cache[(sp_subj_other, sm_cand)] = descendants
+                        valid_maps.extend(child_maps)
+                        match_found = True
+
+                if not match_found and not isinstance(rule, OptionalRule):
+                    feasible[sp_subject].discard(sm_subject)
+                    LOGGER.debug(
+                        "Pruned backward (no match found): %s", sp_predicate
+                    )
+                    return candidate_maps, feasible, comparison_table, True
+
+                if match_found:
+                    candidate_maps = valid_maps
+
+        return candidate_maps, feasible, comparison_table, False
 
     @staticmethod
     def _has_sm_edge(sm_subj: Any, predicate: "Predicate", sm_obj: Any) -> bool:

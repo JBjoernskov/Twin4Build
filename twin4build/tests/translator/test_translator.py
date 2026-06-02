@@ -519,6 +519,107 @@ class TestTranslator(unittest.TestCase):
         with self.assertRaises(Exception):
             sim_model = self.translator.translate(semantic_model)
 
+    def test_backward_walk_steprule(self):
+        """Bidirectional walker reaches an SP node via a backward edge.
+
+        Pattern shape::
+
+            node_ahu --feeds--> node_damper   (modeled)
+
+        Seed Phase 1 picks ``node_damper`` (the modeled node) as the
+        seed.  Under the legacy outgoing-only walker, walking from
+        ``node_damper`` would find no outgoing edges and produce an
+        incomplete partial that the merger would have to glue with a
+        separately-seeded ``node_ahu`` walk.  Under the bidirectional
+        walker, the seed walk follows the inverse adjacency directly
+        and produces a complete match in a single pass.
+
+        The SM contains two AHU --feeds--> Damper edges (Damper_1 and
+        Damper_2 from :meth:`setUp`), so two complete groups are
+        expected.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+
+        sp = SignaturePattern(id="backward_steprule_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_ahu,
+                object=node_damper,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        # Modeled node is the OBJECT endpoint -- forces backward walk
+        # from the seed.
+        sp.add_modeled_node(node_damper)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        self.assertEqual(
+            len(groups),
+            2,
+            "expected 2 complete groups (one per AHU-fed damper) reached "
+            "by walking backward from node_damper to node_ahu; got "
+            f"{len(groups)}",
+        )
+        for group in groups:
+            self.assertIsNotNone(group.get(node_ahu))
+            self.assertIsNotNone(group.get(node_damper))
+
+    def test_backward_walk_optional_steprule(self):
+        """Backward walk into an :class:`OptionalRule` wrapping a
+        :class:`StepRule` produces matches when the optional edge is
+        present in the SM and does not prune when absent.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+
+        sp = SignaturePattern(id="backward_optional_steprule_pattern")
+        sp.add_rule(
+            OptionalRule(
+                subject=node_ahu,
+                object=node_damper,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_damper)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        # All four BRICK.Damper instances in the setUp are valid
+        # candidates for ``node_damper``; two have an incoming
+        # AHU --feeds--> edge, two do not.  OptionalRule does not prune
+        # the latter, so all four produce complete groups.
+        self.assertEqual(
+            len(groups),
+            4,
+            "expected one complete group per BRICK.Damper in the setUp "
+            "(OptionalRule does not prune the AHU-less dampers); got "
+            f"{len(groups)}",
+        )
+
     def test_inverse_index_sm_symmetry(self):
         """``SemanticInstance.get_predicate_subject_pairs`` is the symmetric
         counterpart of ``get_predicate_object_pairs``: every direct triple
