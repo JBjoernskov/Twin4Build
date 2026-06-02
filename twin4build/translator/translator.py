@@ -449,20 +449,39 @@ class Translator:
         1. For each component class that defines signature patterns:
            - Iterate through each signature pattern (SP)
 
-        2. For each SP node, find candidate semantic model (SM) nodes of matching type
+        2. Compute the SP graph's weakly-connected components (WCCs) and
+           pick one seed SP node per WCC.  Seed picking prefers a modeled
+           node (the canonical anchor of the pattern); otherwise the
+           lowest-registration-index node in the WCC.
 
-        3. Use depth-first search (`_prune_recursive`) to validate mappings:
-           - Traverse both graphs simultaneously
-           - Apply pattern rules (Exact, SinglePath, MultiPath, Optional_)
-           - Prune branches where relationships don't match
+        3. For each seed SP node, enumerate candidate SM instances whose
+           ``isinstance`` matches the seed's ``cls``.
 
-        4. Categorize matches as complete or incomplete:
+        4. Use the bidirectional depth-first :meth:`_prune_recursive` to
+           validate each (seed_sp, candidate_sm) pair.  The walker
+           traverses SP edges as *incident* edges (both outgoing
+           ``predicate_object_pairs`` and incoming
+           ``predicate_subject_pairs``), so a single seed walk fills the
+           entire WCC -- no separate seeds are needed for non-modeled
+           SP nodes inside the same component.  Per-rule directional
+           support is currently complete for the StepRule family
+           (StepRule, OptionalRule); the multi-hop family (PathRule,
+           AnyPathRule, ...) and the set-rule family (SetStepRule,
+           SetAnyPathRule, NoStepRule) are walked forward only and rely
+           on the merger (Phase 4 below) to glue partials produced from
+           forward seeds.
+
+        5. Categorize matches as complete or incomplete:
            - Complete: All required SP nodes have SM matches
            - Incomplete: Only partial mappings found
 
-        5. Attempt to merge incomplete groups:
+        6. Attempt to merge incomplete groups:
            - Two partial mappings might combine into a complete match
            - Continue merging until no more combinations possible
+           - This step shrinks to a no-op once backward direction is
+             implemented for all rule shapes; the merger is then
+             reduced to a thin "WCC Cartesian product" step in PR4 of
+             the bidirectional matcher migration.
 
         Key Data Structures:
         --------------------
