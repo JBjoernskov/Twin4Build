@@ -3071,79 +3071,151 @@ class Translator:
         return False
 
     @staticmethod
+    def _has_sm_path(
+        sm_subj: Any,
+        predicate: "Predicate",
+        sm_obj: Any,
+        max_depth: int = 32,
+    ) -> bool:
+        """Return ``True`` iff some element of ``sm_subj`` reaches some
+        element of ``sm_obj`` along a directed path whose every edge is
+        labelled by one of ``predicate.preds`` (multi-hop transitive
+        closure).
+
+        Multi-hop counterpart to :meth:`_has_sm_edge`, used to validate
+        :class:`PathRule` / :class:`AnyPathRule` / :class:`SetAnyPathRule`
+        bindings during merges in :meth:`_match`.  A direct
+        ``_has_sm_edge`` check would falsely reject every genuine
+        multi-hop chain (e.g. an SAREF damper → port → sensor → coil
+        chain bound by ``hasFluidSuppliedBy``); this helper performs
+        the same DFS the prune walk uses, but only as a *yes/no*
+        reachability test, not to enumerate intermediates.
+
+        ``max_depth`` is a hard cap to prevent runaway traversal in
+        graphs with cycles in the predicate-induced subgraph; the
+        default (32) is well above any pattern path length we ship.
+        """
+        if sm_subj is None or sm_obj is None or predicate is None:
+            return False
+        obj_elems = set(Translator._iter_binding(sm_obj))
+        if not obj_elems:
+            return False
+
+        seen = set()
+        for s_elem in Translator._iter_binding(sm_subj):
+            stack = [(s_elem, 0)]
+            while stack:
+                node, depth = stack.pop()
+                node_id = id(node)
+                if node_id in seen:
+                    continue
+                seen.add(node_id)
+                if node in obj_elems:
+                    return True
+                if depth >= max_depth:
+                    continue
+                pos = node.get_predicate_object_pairs()
+                for p in predicate.preds:
+                    for child in pos.get(p, []):
+                        if id(child) in seen:
+                            continue
+                        if child in obj_elems:
+                            return True
+                        stack.append((child, depth + 1))
+        return False
+
+    @staticmethod
     def _validate_binding_against_merged(
         merged_group: Dict[Node, Any],
         sp_node: Node,
         sm_node: Any,
         signature_pattern,
-    ) -> bool:
-        """Reject a merge candidate when the SP-edge structure links
-        ``sp_node`` to an already-bound node but the SM doesn't honour
-        the edge.
+        nodes_b: Optional[Dict[Node, Any]] = None,
+    ) -> Tuple[bool, bool]:
+        """Validate ``sp_node = sm_node`` against the rest of the merge,
+        returning ``(valid, fully_evaluated)``.
 
-        Phase-4 merge has two paths that fill bindings into
-        ``merged_group`` (connected and disconnected -- see
-        :meth:`_match`).  The connected path's
-        :meth:`_validate_merge` only re-runs :meth:`_prune_recursive`
-        rooted *at* the new binding, which walks SP edges *downstream*
-        from ``sp_node``.  The disconnected path adds bindings one at a
-        time and likewise relies on the same downstream-only check.
-        Neither path verifies upstream SP edges
-        (``existing_subj --pred--> sp_node``), so an
-        :class:`OptionalRule` slot can be filled from an unrelated SM
-        neighbourhood -- e.g. AHU02's
-        ``Supply_Air_Temperature_Setpoint`` getting filled with
-        AHU01's setpoint URI from a partial rooted at the SAT
-        sm-node, despite AHU02 having no ``hasPoint`` triple to that
-        URI in the BMS graph.
+        ``valid`` is ``False`` iff the SM provides positive evidence
+        that the binding cannot stand under the pattern's ruleset
+        (i.e. *disproof*).  Absence of evidence is never grounds for
+        rejection -- this is the "innocent until disproven" merge
+        philosophy: the matcher only ever rejects on a counter-witness
+        in the SM.
 
-        This validator iterates :attr:`SignaturePattern.ruleset` and,
-        for every rule whose subject *or* object is already bound in
-        ``merged_group`` and whose other endpoint equals ``sp_node``,
-        requires :meth:`_has_sm_edge` between the bound endpoint and
-        ``sm_node`` to hold.  Returns ``False`` (i.e. reject the
-        binding) on the first violation.
+        ``fully_evaluated`` reports whether *every* rule incident on
+        ``sp_node`` could be checked to completion.  When ``False``,
+        at least one rule (always a multi-hop one whose peer endpoint
+        is unbound everywhere) was *deferred*: the binding is allowed,
+        but the caller MUST treat the merge as **speculative** and
+        avoid destroying the source groups -- some later merge may
+        bind the missing peer and either confirm (path exists) or
+        disprove (path absent) this binding via the same validator.
+
+        Per-rule semantics:
+
+        * ``OptionalRule`` -- skipped (best-effort by design; the
+          prune walk already handles them).
+        * ``StepRule`` / ``NoStepRule`` -- single-hop, validated with
+          :meth:`_has_sm_edge`.
+        * ``PathRule`` / ``AnyPathRule`` / ``SetAnyPathRule`` --
+          multi-hop, validated with :meth:`_has_sm_path` against the
+          peer's binding.
+
+        Peer lookup: a rule's "other" endpoint is searched in
+        ``merged_group`` first, then in ``nodes_b`` (the bindings
+        being added together with ``sp_node`` in the same disconnected
+        batch -- closes the iteration-order hole that would otherwise
+        make the result depend on dict order).  When the peer is
+        unbound in both, single-hop rules continue (today's behaviour
+        -- nothing to validate against), and multi-hop rules are
+        deferred (``fully_evaluated = False``).
         """
+        fully_evaluated = True
         for (subj, pred, obj), _rule in signature_pattern.ruleset.items():
             if pred is None:
                 continue
-            # ``_has_sm_edge`` only inspects a single direct triple, so
-            # this validator can only soundly reject single-hop rules.
-            # Multi-hop rules (``PathRule``, ``AnyPathRule``,
-            # ``SetAnyPathRule``) are already validated by the main
-            # ``_prune_recursive`` walk which performs the actual
-            # transitive traversal; running the single-edge check on
-            # them would falsely reject every legitimate multi-hop
-            # binding (e.g. an SAREF-style ``Damper hasFluidSuppliedBy
-            # Coil`` chain that goes damper → port → sensor → coil in
-            # the BMS graph).  ``OptionalRule`` is also skipped here
-            # because the prune walk treats it as best-effort and
-            # demanding the upstream edge would defeat the optionality.
-            if isinstance(_rule, (PathRule, AnyPathRule, SetAnyPathRule)):
-                continue
-            if not isinstance(_rule, (StepRule, NoStepRule)):
-                continue
             if isinstance(_rule, OptionalRule):
+                # Best-effort: the prune walk treats unmet optionals
+                # as "skip this branch", so demanding the edge here
+                # would defeat the optionality.
                 continue
-            # Upstream: ``subj`` is already in merged_group, we're
-            # binding ``obj == sp_node``.  Require an SM edge from the
-            # bound subject to ``sm_node`` via ``pred``.
+            if isinstance(_rule, (StepRule, NoStepRule)):
+                edge_check = Translator._has_sm_edge
+                multi_hop = False
+            elif isinstance(_rule, (PathRule, AnyPathRule, SetAnyPathRule)):
+                edge_check = Translator._has_sm_path
+                multi_hop = True
+            else:
+                continue
+
+            # Upstream: ``subj`` is the rule's source, we're binding
+            # ``obj == sp_node``.  Require ``peer --pred--> sm_node``.
             if obj is sp_node and subj is not sp_node:
-                subj_sm = merged_group.get(subj)
-                if subj_sm is None:
+                peer_sm = merged_group.get(subj)
+                if peer_sm is None and nodes_b is not None:
+                    peer_sm = nodes_b.get(subj)
+                if peer_sm is None:
+                    # Peer unbound everywhere.  Single-hop rules have
+                    # nothing to validate against; multi-hop rules
+                    # are deferred (the merge becomes speculative).
+                    if multi_hop:
+                        fully_evaluated = False
                     continue
-                if not Translator._has_sm_edge(subj_sm, pred, sm_node):
-                    return False
-            # Downstream: ``obj`` is already in merged_group, we're
-            # binding ``subj == sp_node``.  Require an SM edge from
-            # ``sm_node`` to the bound object via ``pred``.
+                if not edge_check(peer_sm, pred, sm_node):
+                    return False, True
+            # Downstream: ``obj`` is the rule's target, we're binding
+            # ``subj == sp_node``.  Require ``sm_node --pred--> peer``.
             elif subj is sp_node and obj is not sp_node:
-                obj_sm = merged_group.get(obj)
-                if obj_sm is None:
+                peer_sm = merged_group.get(obj)
+                if peer_sm is None and nodes_b is not None:
+                    peer_sm = nodes_b.get(obj)
+                if peer_sm is None:
+                    if multi_hop:
+                        fully_evaluated = False
                     continue
-                if not Translator._has_sm_edge(sm_node, pred, obj_sm):
-                    return False
-        return True
+                if not edge_check(sm_node, pred, peer_sm):
+                    return False, True
+        return True, fully_evaluated
 
     @staticmethod
     def _check_edge_connectivity(
@@ -3355,10 +3427,22 @@ class Translator:
                 # *downstream* of each new binding.  Reject the merge
                 # if any new binding has an upstream SP edge to an
                 # already-merged node that the SM doesn't honour.
+                #
+                # We only consult the ``valid`` half of the validator's
+                # tuple here.  The connected merge already has positive
+                # edge-connectivity proof from
+                # :meth:`_check_edge_connectivity`, so a deferred
+                # multi-hop check (``fully_evaluated=False``) is
+                # harmless -- the deferred peer being unbound just
+                # means there's nothing to disprove yet.
                 upstream_ok = all(
                     Translator._validate_binding_against_merged(
-                        group_a, sp_n, sm_n, signature_pattern
-                    )
+                        group_a,
+                        sp_n,
+                        sm_n,
+                        signature_pattern,
+                        nodes_b=nodes_b,
+                    )[0]
                     for sp_n, sm_n in nodes_b.items()
                 )
                 if upstream_ok:
@@ -3405,6 +3489,24 @@ class Translator:
                 groups_to_preserve.append(group_b)
                 LOGGER.debug("Group B has no modeled_node filled, preserving for reuse")
 
+            # ``speculative_merge`` is set when at least one binding's
+            # validation could not be fully evaluated -- always because
+            # a multi-hop rule's peer endpoint is unbound everywhere
+            # (neither in ``merged_group`` nor in ``nodes_b``).  Under
+            # the "innocent until disproven" merge philosophy we still
+            # accept the binding (no SM counter-witness exists), but
+            # we must not destroy the source groups: a future merge
+            # may bind the missing peer and either confirm or
+            # disprove the binding via the same validator.  We
+            # therefore promote both source groups into
+            # ``groups_to_preserve`` so they remain available as
+            # alternative hypotheses (the canonical example is the
+            # SAREF building-space sensor pattern, where a stray
+            # ``{Sensor=BTA001, Temperature=...}`` seed merging into
+            # a SpaceHeater partial would otherwise consume the
+            # clean SpaceHeater partial and prevent the
+            # supply-damper-rooted partial from ever completing it).
+            speculative_merge = False
             for sp_node, sm_node in nodes_b.items():
                 # Use cached sp_nodes instead of signature_pattern.nodes
                 feasible = {n: set() for n in sp_nodes}
@@ -3433,9 +3535,16 @@ class Translator:
                 # via an SM edge that doesn't actually exist (e.g.
                 # AHU02 inheriting AHU01's
                 # ``Supply_Air_Temperature_Setpoint``).
-                if not Translator._validate_binding_against_merged(
-                    merged_group, sp_node, sm_node, signature_pattern
-                ):
+                valid, fully_evaluated = (
+                    Translator._validate_binding_against_merged(
+                        merged_group,
+                        sp_node,
+                        sm_node,
+                        signature_pattern,
+                        nodes_b=nodes_b,
+                    )
+                )
+                if not valid:
                     if _diag:
                         _match_diag_write(
                             "[MERGE]   REJECT disconnected "
@@ -3448,9 +3557,27 @@ class Translator:
                     groups_to_preserve = []
                     break
 
+                if not fully_evaluated:
+                    speculative_merge = True
+
                 # Only add if actually matched (not skipped by Optional_ rule)
                 if result_maps and all(sm_node == m.get(sp_node) for m in result_maps):
                     merged_group[sp_node] = sm_node
+
+            # Speculative disconnected merge: keep the source groups
+            # alive as alternative hypotheses (regardless of whether
+            # they bear the modeled node).
+            if merged_group is not None and speculative_merge:
+                if group_a not in groups_to_preserve:
+                    groups_to_preserve.append(group_a)
+                if group_b not in groups_to_preserve:
+                    groups_to_preserve.append(group_b)
+                if _diag:
+                    _match_diag_write(
+                        "[MERGE]   SPECULATIVE disconnected "
+                        f"pattern={signature_pattern.id} "
+                        "preserving both source groups"
+                    )
 
         # If merge successful, check if complete
         if merged_group is not None:

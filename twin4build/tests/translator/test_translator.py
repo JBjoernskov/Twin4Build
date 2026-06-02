@@ -345,6 +345,165 @@ class TestTranslator(unittest.TestCase):
         # least one complete group.
         self.assertGreater(len(complete_groups[DummySystem][sp]), 0)
 
+    def test_disconnected_merge_speculative_preserves_alternative_hypothesis(self):
+        """A disconnected merge whose multi-hop rule could not be
+        evaluated (peer endpoint unbound everywhere) must NOT consume
+        the modeled-node-bearing source group: the original must
+        remain available so a later, *evidence-bearing* merge can
+        produce the correct complete match.
+
+        Regression for the SAREF building-space sensor pattern on
+        ``one_room_example_model.xlsm`` where every non-AHU
+        ``Sensor`` instance generated a ``{Sensor=BTA00x,
+        Temperature=...}`` Phase-1 seed that the disconnected merge
+        absorbed into the SpaceHeater-rooted partial -- locking
+        ``node7`` to a sensor that had no ``hasFluidSuppliedBy``
+        path back to ``office_supply_damper`` and preventing the
+        supply-damper-rooted partial from ever completing the
+        pattern.
+
+        The test mirrors that shape on a small BRICK-style fixture:
+
+        * Modeled node = ``Equipment`` (analog of the SAREF
+          BuildingSpace).
+        * One ``Damper`` directly attached to the Equipment by a
+          ``StepRule`` (``isPartOf``) -- analog of the SAREF
+          SpaceHeater.
+        * One ``Sensor`` reachable from the Equipment by a
+          multi-hop ``PathRule`` (``feeds``) via an intermediate
+          Damper-like node -- analog of the
+          ``Damper -> ... -> Sensor`` chain.
+        * Several stray sensors (``Sensor_2..Sensor_5``) whose only
+          incident triple is ``rdf:type Sensor`` -- they are not
+          reachable from the Equipment via ``feeds`` and would have
+          polluted the Equipment partial under the old
+          "skip multi-hop validation" disconnected merge.
+
+        A correct matcher rejects any completion that binds
+        ``node_sensor`` to a stray sensor (because no path exists)
+        and accepts the completion binding ``node_sensor`` to
+        ``Sensor_correct`` (because the path exists in the SM).
+        """
+        # Third party imports
+        from rdflib import URIRef
+
+        # Local application imports
+        import twin4build.core as core
+
+        sm = SemanticModel()
+        base = "http://example.org/sensor_pollution#"
+        equipment_uri = URIRef(base + "Equipment_1")
+        damper_uri = URIRef(base + "Damper_1")
+        port_uri = URIRef(base + "Port_1")
+        sensor_correct_uri = URIRef(base + "Sensor_correct")
+        stray_uris = [URIRef(base + f"Sensor_stray_{i}") for i in range(4)]
+
+        # Types
+        sm.instance_graph.add(
+            (equipment_uri, core.namespace.RDF.type, core.namespace.BRICK.AHU)
+        )
+        sm.instance_graph.add(
+            (damper_uri, core.namespace.RDF.type, core.namespace.BRICK.Damper)
+        )
+        sm.instance_graph.add(
+            (port_uri, core.namespace.RDF.type, core.namespace.BRICK.Damper)
+        )
+        sm.instance_graph.add(
+            (
+                sensor_correct_uri,
+                core.namespace.RDF.type,
+                core.namespace.BRICK.Temperature_Sensor,
+            )
+        )
+        for u in stray_uris:
+            sm.instance_graph.add(
+                (u, core.namespace.RDF.type, core.namespace.BRICK.Temperature_Sensor)
+            )
+
+        # Single-hop structural edge: Damper isPartOf Equipment.
+        sm.instance_graph.add(
+            (damper_uri, core.namespace.BRICK.isPartOf, equipment_uri)
+        )
+
+        # Multi-hop chain: Equipment -> Port -> Sensor_correct via ``feeds``.
+        # Equipment "feeds" Port "feeds" Sensor_correct, so the PathRule
+        # ``Equipment -[feeds]-> Sensor`` is satisfied via Sensor_correct
+        # and via Sensor_correct alone (the strays are unreachable).
+        sm.instance_graph.add(
+            (equipment_uri, core.namespace.BRICK.feeds, port_uri)
+        )
+        sm.instance_graph.add(
+            (port_uri, core.namespace.BRICK.feeds, sensor_correct_uri)
+        )
+
+        node_eq = Node(cls=core.namespace.BRICK.AHU)
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+        node_sensor = Node(cls=core.namespace.BRICK.Temperature_Sensor)
+
+        sp = SignaturePattern(id="speculative_pollution_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_damper,
+                object=node_eq,
+                predicate=core.namespace.BRICK.isPartOf,
+            )
+        )
+        sp.add_rule(
+            PathRule(
+                subject=node_eq,
+                object=node_sensor,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_eq)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=sm
+        )
+
+        groups = complete_groups[DummySystem][sp]
+
+        # Must produce at least one complete group.  Before the fix,
+        # PHASE1 absorbed every stray ``{Sensor=Sensor_stray_i}`` seed
+        # into the Equipment partial (a disconnected merge that the
+        # pre-fix validator could not catch because the multi-hop rule
+        # was simply skipped), locking ``node_sensor`` to a stray and
+        # leaving 0 complete groups.
+        self.assertGreater(
+            len(groups),
+            0,
+            "speculative disconnected merge must preserve the modeled-node "
+            "source group so the correct multi-hop completion can still "
+            "form",
+        )
+
+        # Every complete group must bind ``node_sensor`` to
+        # ``Sensor_correct`` -- not to a stray.  The strays are not
+        # reachable from ``Equipment_1`` along any ``feeds`` path, so
+        # ``_has_sm_path`` rejects them on positive disproof.
+        from twin4build.model.semantic_model.semantic_model import (
+            SemanticInstance,
+        )
+
+        for mapping in groups:
+            sensor_binding = mapping.get(node_sensor)
+            self.assertIsNotNone(sensor_binding)
+            sensor_uri_str = str(
+                sensor_binding.uri
+                if isinstance(sensor_binding, SemanticInstance)
+                else sensor_binding
+            )
+            self.assertEqual(
+                sensor_uri_str,
+                str(sensor_correct_uri),
+                f"node_sensor must bind to Sensor_correct, got {sensor_uri_str}",
+            )
+
     def test_initialization(self):
         """Test translator initialization."""
         self.assertIsNotNone(self.translator)
