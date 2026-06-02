@@ -2734,12 +2734,12 @@ class Translator:
             visited_sp_edges = set()
 
         # Tuple-broadcast entry: when the caller passes a set-bound
-        # subject, defer to the legacy broadcast-recurse plus legacy
-        # walker.  Backward broadcasting is intentionally out of scope
-        # for this commit; bidirectional set-rule walking arrives with
-        # the SetStepRule parametric refactor in B'-PR2.4.
+        # subject, defer to the bidirectional broadcast helper.  The
+        # helper recurses through this same :meth:`__prune_recursive`
+        # for each tuple element, so per-element walks are themselves
+        # bidirectional and ``visited_sp_edges`` propagates correctly.
         if isinstance(sm_subject, tuple):
-            return Translator.__broadcast_recurse_legacy(
+            return Translator.__broadcast_recurse(
                 sm_subject,
                 sp_subject,
                 candidate_maps,
@@ -2748,6 +2748,7 @@ class Translator:
                 signature_pattern,
                 verbose,
                 descendant_cache,
+                visited_sp_edges,
             )
 
         LOGGER.debug("Entering prune_recursive (bidirectional)")
@@ -2841,9 +2842,13 @@ class Translator:
                                 )
                             )
 
-                            # Set-bound matches still defer to the
-                            # legacy broadcast path; bidirectional
-                            # set-rule walking arrives in B'-PR2.4.
+                            # Set-bound matches dispatch to the
+                            # bidirectional broadcast helper; per-element
+                            # recursions inherit the parent's
+                            # ``visited_sp_edges`` (via copy) so the
+                            # incident edge that triggered the broadcast
+                            # is preserved as visited and per-element
+                            # walks are independent.
                             if isinstance(matched_sm_object, tuple):
                                 feasible.setdefault(matched_sp_object, set())
                                 comparison_table.setdefault(
@@ -2857,7 +2862,7 @@ class Translator:
                                     m[matched_sp_object] = matched_sm_object
 
                                 child_maps, feasible, comparison_table, is_pruned = (
-                                    Translator.__broadcast_recurse_legacy(
+                                    Translator.__broadcast_recurse(
                                         matched_sm_object,
                                         matched_sp_object,
                                         maps_for_pair,
@@ -2866,6 +2871,7 @@ class Translator:
                                         signature_pattern,
                                         verbose,
                                         descendant_cache,
+                                        visited_sp_edges,
                                     )
                                 )
                                 if not is_pruned:
@@ -3432,6 +3438,160 @@ class Translator:
             for mi, m in enumerate(aggregated_maps):
                 _match_diag_write(
                     f"[BRCAST] OK pattern={signature_pattern.id} "
+                    f"sp_subject={sp_subject.id} out={mi}/{len(aggregated_maps)} "
+                    f"aggregated={_diag_mapping_summary(m)}"
+                )
+
+        return aggregated_maps, feasible, comparison_table, False
+
+    @staticmethod
+    def __broadcast_recurse(
+        sm_tuple,
+        sp_subject,
+        candidate_maps,
+        feasible,
+        comparison_table,
+        signature_pattern,
+        verbose,
+        descendant_cache,
+        visited_sp_edges,
+    ):
+        """Bidirectional broadcast over a set-bound subject.
+
+        Mirrors :meth:`__broadcast_recurse_legacy` but each per-element
+        recursion uses the bidirectional :meth:`__prune_recursive`
+        walker and threads ``visited_sp_edges``.  Each element receives
+        a *copy* of the parent's ``visited_sp_edges`` so:
+
+        - The SP edge that brought the walker to this set-bound
+          ``sp_subject`` is preserved as visited (preventing
+          oscillation back through it).
+        - Different elements' per-element walks do not interfere with
+          each other (an edge marked visited by element 1 does not
+          silently block element 2).
+
+        The aggregation logic (parallel-tuple alignment, scalar
+        consensus, filter semantics) is identical to the legacy
+        broadcast — direction is handled inside the per-element
+        recursion, so the aggregator is direction-blind.
+        """
+        set_bound_nodes = signature_pattern._set_bound_nodes
+        aggregated_maps: List[Dict[Node, Any]] = []
+
+        LOGGER.debug(
+            "Broadcasting %s over %d elements (bidirectional)",
+            sp_subject.id,
+            len(sm_tuple),
+        )
+
+        _diag = _match_diag_enabled(signature_pattern)
+        if _diag:
+            _match_diag_write(
+                f"[BRCAST-BD] enter pattern={signature_pattern.id} "
+                f"sp_subject={sp_subject.id} n_elements={len(sm_tuple)} "
+                f"elements={_diag_sm_name(sm_tuple)}"
+            )
+
+        if not candidate_maps:
+            candidate_maps = [{n: None for n in signature_pattern.nodes}]
+
+        for base_idx, base_map in enumerate(candidate_maps):
+            per_elem_maps: List[Dict[Node, Any]] = []
+            surviving_elements: List[Any] = []
+            pruned_elements_repr: List[str] = []
+            for elem in sm_tuple:
+                elem_map = dict(base_map)
+                elem_map[sp_subject] = elem
+                elem_maps_input = [elem_map]
+                # Each element gets its own copy of visited_sp_edges so
+                # the parent's already-traversed edges propagate but
+                # element-to-element interactions don't leak.
+                elem_visited = set(visited_sp_edges)
+                child_maps, feasible, comparison_table, is_pruned = (
+                    Translator.__prune_recursive(
+                        elem,
+                        sp_subject,
+                        elem_maps_input,
+                        feasible,
+                        comparison_table,
+                        signature_pattern,
+                        verbose,
+                        descendant_cache=descendant_cache,
+                        visited_sp_edges=elem_visited,
+                    )
+                )
+                if _diag:
+                    if is_pruned:
+                        _match_diag_write(
+                            f"[BRCAST-BD]   base={base_idx} elem={_diag_sm_name(elem)} "
+                            f"FILTERED-OUT (downstream rule failed)"
+                        )
+                    else:
+                        rep = child_maps[0] if child_maps else elem_map
+                        _match_diag_write(
+                            f"[BRCAST-BD]   base={base_idx} elem={_diag_sm_name(elem)} "
+                            f"OK child={_diag_mapping_summary(rep)}"
+                        )
+                if is_pruned:
+                    pruned_elements_repr.append(_diag_sm_name(elem))
+                    continue
+                surviving_elements.append(elem)
+                per_elem_maps.append(child_maps[0] if child_maps else elem_map)
+
+            if not surviving_elements:
+                if _diag:
+                    _match_diag_write(
+                        f"[BRCAST-BD] WHOLE-BROADCAST PRUNED pattern={signature_pattern.id} "
+                        f"sp_subject={sp_subject.id} "
+                        f"all_elements_filtered={pruned_elements_repr}"
+                    )
+                return candidate_maps, feasible, comparison_table, True
+
+            surviving_tuple = tuple(surviving_elements)
+
+            merged = dict(base_map)
+            merged[sp_subject] = surviving_tuple
+
+            touched_sp_nodes: set = set()
+            for cm in per_elem_maps:
+                for sp_n, v in cm.items():
+                    if v is not None and sp_n is not sp_subject:
+                        touched_sp_nodes.add(sp_n)
+
+            for sp_n in touched_sp_nodes:
+                base_val = base_map.get(sp_n)
+                if base_val is not None:
+                    merged[sp_n] = base_val
+                    continue
+
+                values = [cm.get(sp_n) for cm in per_elem_maps]
+                if sp_n in set_bound_nodes:
+                    flat: List[Any] = []
+                    for v in values:
+                        if v is None:
+                            continue
+                        if isinstance(v, tuple):
+                            flat.extend(v)
+                        else:
+                            flat.append(v)
+                    if flat:
+                        merged[sp_n] = tuple(flat)
+                else:
+                    non_none = [v for v in values if v is not None]
+                    if non_none and all(v == non_none[0] for v in non_none):
+                        merged[sp_n] = non_none[0]
+
+            aggregated_maps.append(merged)
+
+        if not aggregated_maps:
+            aggregated_maps = [{n: None for n in signature_pattern.nodes}]
+            for mapping in aggregated_maps:
+                mapping[sp_subject] = sm_tuple
+
+        if _diag:
+            for mi, m in enumerate(aggregated_maps):
+                _match_diag_write(
+                    f"[BRCAST-BD] OK pattern={signature_pattern.id} "
                     f"sp_subject={sp_subject.id} out={mi}/{len(aggregated_maps)} "
                     f"aggregated={_diag_mapping_summary(m)}"
                 )
@@ -6387,16 +6547,18 @@ class SetStepRule(StepRule):
         bool,
         Dict[Tuple[Node, Optional[Predicate], Node], Rule],
     ]:
-        """Apply SetStep rule: collect all StepRule matches into a single
-        tuple-bound pair.
+        """Apply SetStepRule in the requested ``direction``.
 
-        Reuses the per-candidate-map exclusion bookkeeping of
-        :class:`StepRule`. For each candidate map, all SM objects that
-        satisfy the predicate are bundled into one tuple binding and
-        emitted as a single pair ``(maps_for_match, tuple_of_sm_objects,
-        self.object, SetStepRule, i0)`` where ``i0`` is the index of the
-        first matched SM object (used solely to index ``rule_applies_vec``
-        downstream).
+        Direction-parametric mirror of :meth:`StepRule.apply`: collects
+        every SM far node satisfying the predicate (under the
+        direction-appropriate adjacency view) into a single tuple
+        binding emitted as one pair
+        ``(maps_for_match, tuple_of_sm_fars, far_node, SetStepRule, i0)``
+        where ``i0`` is the index of the first matched SM object.
+
+        Sibling exclusion bookkeeping uses ``Direction.far`` /
+        ``Direction.near`` so backward-direction set-rules detect
+        ruleset-key collisions symmetrically (cf. :meth:`StepRule.apply`).
         """
         LOGGER.debug("Applying %s", self.__class__.__name__)
         LOGGER.add_level()
@@ -6408,42 +6570,49 @@ class SetStepRule(StepRule):
         if len(candidate_maps) == 0:
             candidate_maps = [None]
 
+        far_node = direction.far(self)
+        near_node = direction.near(self)
+
         for current_map in candidate_maps:
-            excluded_sm_subjects: List[Any] = []
-            excluded_sm_objects: List[Any] = []
+            excluded_sm_nears: List[Any] = []
+            excluded_sm_fars: List[Any] = []
 
             if current_map is not None:
-                for (sp_subject, sp_predicate, sp_object), rule in ruleset.items():
-                    if rule.predicate is not None and self.predicate is not None:
+                for _key, other_rule in ruleset.items():
+                    if other_rule.predicate is not None and self.predicate is not None:
+                        other_far = direction.far(other_rule)
+                        other_near = direction.near(other_rule)
                         if (
-                            sp_object in current_map
-                            and rule.subject == self.subject
-                            and rule.predicate == self.predicate
-                            and rule.object != self.object
+                            other_far in current_map
+                            and other_near == near_node
+                            and other_rule.predicate == self.predicate
+                            and other_far != far_node
                         ):
-                            excluded_sm_objects.append(current_map[sp_object])
+                            excluded_sm_fars.append(current_map[other_far])
 
-                for (sp_subject, sp_predicate, sp_object), rule in ruleset.items():
-                    if rule.predicate is not None and self.predicate is not None:
+                for _key, other_rule in ruleset.items():
+                    if other_rule.predicate is not None and self.predicate is not None:
+                        other_far = direction.far(other_rule)
+                        other_near = direction.near(other_rule)
                         if (
-                            sp_subject in current_map
-                            and rule.object == self.object
-                            and rule.predicate == self.predicate
-                            and rule.subject != self.subject
+                            other_near in current_map
+                            and other_far == far_node
+                            and other_rule.predicate == self.predicate
+                            and other_near != near_node
                         ):
-                            excluded_sm_subjects.append(current_map[sp_subject])
+                            excluded_sm_nears.append(current_map[other_near])
                 maps_for_match = [current_map]
             else:
                 maps_for_match = []
 
             matched: List[Tuple[int, Any]] = []
-            for i, sm_object in enumerate(sm_objects):
+            for i, sm_far in enumerate(sm_objects):
                 if (
-                    sm_object.isinstance(self.object.cls)
-                    and sm_subject not in excluded_sm_subjects
-                    and sm_object not in excluded_sm_objects
+                    sm_far.isinstance(far_node.cls)
+                    and sm_subject not in excluded_sm_nears
+                    and sm_far not in excluded_sm_fars
                 ):
-                    matched.append((i, sm_object))
+                    matched.append((i, sm_far))
                     rule_applies_vec[i] = True
 
             if matched:
@@ -6454,8 +6623,8 @@ class SetStepRule(StepRule):
                 # canonicalized ordering as the single source of truth —
                 # the rest of the Translator assumes this shape.
                 unique_by_obj: Dict[Any, Any] = {}
-                for _, sm_object in matched:
-                    unique_by_obj.setdefault(sm_object, sm_object)
+                for _, sm_far in matched:
+                    unique_by_obj.setdefault(sm_far, sm_far)
                 tuple_binding = tuple(
                     sorted(unique_by_obj.keys(), key=lambda o: str(o.uri))
                 )
@@ -6464,7 +6633,7 @@ class SetStepRule(StepRule):
                     (
                         maps_for_match,
                         tuple_binding,
-                        self.object,
+                        far_node,
                         SetStepRule,
                         first_idx,
                     )
@@ -6484,7 +6653,7 @@ class SetStepRule(StepRule):
                 "Matched (set, %d): [%s] is %s",
                 len(pair[1]),
                 preview,
-                self.object.cls,
+                far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()

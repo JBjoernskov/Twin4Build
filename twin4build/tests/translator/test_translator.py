@@ -13,6 +13,7 @@ from twin4build.translator.translator import (
     OptionalRule,
     SignaturePattern,
     PathRule,
+    SetStepRule,
     Translator,
 )
 from twin4build.utils.uppath import uppath
@@ -799,6 +800,71 @@ class TestTranslator(unittest.TestCase):
         for group in groups:
             self.assertIsNotNone(group.get(node_ahu))
             self.assertIsNotNone(group.get(node_room))
+
+    def test_setsteprule_forward_through_bidirectional_broadcast(self):
+        """Forward-seeded :class:`SetStepRule` produces a parallel-tuple
+        binding via the bidirectional broadcast helper.
+
+        This exercises both the parametric :meth:`SetStepRule.apply`
+        (forward direction) and the new bidirectional
+        :meth:`Translator.__broadcast_recurse` helper.  The broadcast
+        threads ``visited_sp_edges`` per element so the walker does
+        not oscillate back through the SetStepRule edge while
+        broadcasting per-element recursions.
+
+        SM (extends the setUp): ``Room_1 -> hasPoint -> Sensor1`` and
+        ``Room_2 -> hasPoint -> Sensor2``.  Pattern binds
+        ``node_room`` (modeled, scalar) -> ``hasPoint`` ->
+        ``node_sensors`` (set-bound).  Two complete groups are
+        expected, one per room, each with a single-element tuple
+        binding for ``node_sensors``.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_room = Node(cls=core.namespace.BRICK.Room)
+        node_sensors = Node(cls=core.namespace.BRICK.Temperature_Sensor)
+
+        sp = SignaturePattern(id="setsteprule_forward_pattern")
+        sp.add_rule(
+            SetStepRule(
+                subject=node_room,
+                object=node_sensors,
+                predicate=core.namespace.BRICK.hasPoint,
+            )
+        )
+        sp.add_modeled_node(node_room)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        self.assertEqual(
+            len(groups),
+            2,
+            "expected one complete group per BRICK.Room (each with a "
+            f"single-element sensor tuple); got {len(groups)}",
+        )
+        for group in groups:
+            self.assertIsNotNone(group.get(node_room))
+            sensors_binding = group.get(node_sensors)
+            self.assertIsInstance(
+                sensors_binding,
+                tuple,
+                "node_sensors binding produced by SetStepRule must be a tuple",
+            )
+            self.assertEqual(
+                len(sensors_binding),
+                1,
+                f"each room has exactly one sensor; got tuple of length "
+                f"{len(sensors_binding)}",
+            )
 
     def test_intermediate_hash_direction_disambiguation(self):
         """Forward and backward ``_SinglePath`` intermediates seeded
