@@ -673,6 +673,169 @@ class TestTranslator(unittest.TestCase):
             self.assertIsNotNone(group.get(node_ahu))
             self.assertIsNotNone(group.get(node_damper))
 
+    def test_backward_walk_pathrule_two_hops(self):
+        """Bidirectional walker traverses :class:`PathRule` backward.
+
+        Pattern shape::
+
+            node_ahu --feeds*--> node_room   (modeled = node_room)
+
+        With ``node_room`` as the modeled / seed node, the legacy
+        outgoing-only walker would have to seed at ``node_ahu``
+        (forward) and merge with a separately-seeded ``node_room``
+        partial.  Under the parametric :class:`Direction` walker the
+        same SP edge is walked backward through inverse adjacency,
+        and ``_SinglePath`` honours backward traversal natively.
+
+        With the :meth:`setUp` SM the *forward* single-path test
+        finds 1 match (``AHU_1 -> Damper_1 -> Room_1``) and prunes
+        the ``Damper_2`` branch because ``Damper_2`` has two forward
+        children.  The *backward* walk does not see that branching:
+        each step from a ``Room`` to its damper to ``AHU_1`` has
+        cardinality 1 in inverse adjacency.  Three backward paths
+        therefore complete:
+
+        - ``Room_1 -> Damper_1 -> AHU_1``
+        - ``Room_2 -> Damper_21 -> Damper_2 -> AHU_1``
+        - ``Room_2 -> Damper_22 -> Damper_2 -> AHU_1``
+
+        The asymmetry vs. forward (1 vs. 3) confirms the walker is
+        actually iterating the inverse direction and not silently
+        falling back to forward.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="backward_pathrule_two_hops_pattern")
+        sp.add_rule(
+            PathRule(
+                subject=node_ahu,
+                object=node_room,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_room)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        self.assertEqual(
+            len(groups),
+            3,
+            "expected 3 backward PathRule matches (Room_1 + 2x Room_2 via "
+            f"Damper_21 / Damper_22); got {len(groups)}",
+        )
+        for group in groups:
+            self.assertIsNotNone(group.get(node_ahu))
+            self.assertIsNotNone(group.get(node_room))
+
+    def test_intermediate_hash_direction_disambiguation(self):
+        """Forward and backward ``_SinglePath`` intermediates seeded
+        from the same ``(sm_object, subject, predicate, object)``
+        quadruple must have *distinct* :class:`Node` identities.
+
+        The intermediate hash includes :attr:`Direction.sentinel` so
+        the bidirectional walker can produce a forward intermediate
+        and a backward intermediate from the same SM object without
+        them collapsing onto each other (which would cross-pollute
+        their adjacency views and corrupt the ruleset).
+        """
+        # Local application imports
+        from twin4build.translator.translator import (
+            BACKWARD,
+            FORWARD,
+            Predicate,
+            _SinglePath,
+        )
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+        sp = SignaturePattern(id="hash_disambig_pattern")
+        # Register the rule so the predicate is wired into the SP.
+        sp.add_rule(
+            PathRule(
+                subject=node_ahu,
+                object=node_room,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+
+        # Build a fresh _SinglePath whose endpoints share node_ahu /
+        # node_room with the path_rule above.  Its apply() emits
+        # intermediates whose hash takes the direction sentinel.
+        single_path = _SinglePath(
+            subject=node_ahu,
+            object=node_room,
+            predicate=Predicate(core.namespace.BRICK.feeds),
+        )
+        single_path.subject.set_signature_pattern(sp)
+        single_path.object.set_signature_pattern(sp)
+
+        # Pick any SM instance to play the role of the matched far node.
+        ahu_sm = next(
+            iter(
+                self.semantic_model.get_instances_of_type(core.namespace.BRICK.AHU)
+            )
+        )
+
+        # Forward apply -- emits a forward intermediate, then resets
+        # the per-direction first_entry so the test does not stick.
+        single_path._first_entry = {FORWARD: True, BACKWARD: True}
+        pairs_fwd, _, _, _ = single_path.apply(
+            ahu_sm,
+            [ahu_sm],
+            ruleset={},
+            candidate_maps=[],
+            direction=FORWARD,
+        )
+        single_path._first_entry = {FORWARD: True, BACKWARD: True}
+        pairs_back, _, _, _ = single_path.apply(
+            ahu_sm,
+            [ahu_sm],
+            ruleset={},
+            candidate_maps=[],
+            direction=BACKWARD,
+        )
+
+        self.assertEqual(len(pairs_fwd), 1, "forward apply should emit one pair")
+        self.assertEqual(len(pairs_back), 1, "backward apply should emit one pair")
+
+        intermediate_fwd = pairs_fwd[0][2]
+        intermediate_back = pairs_back[0][2]
+
+        self.assertNotEqual(
+            intermediate_fwd,
+            intermediate_back,
+            "forward and backward intermediates seeded from the same SM "
+            "object must be distinct Node identities (disambiguated by "
+            "Direction.sentinel in the hash)",
+        )
+        self.assertNotEqual(
+            hash(intermediate_fwd),
+            hash(intermediate_back),
+            "forward and backward intermediates must have distinct hash "
+            "values to avoid colliding in the ruleset",
+        )
+
+        # Forward intermediate carries forward adjacency only; backward
+        # intermediate carries backward adjacency only.  Confirms
+        # ``Direction.set_intermediate_far_edge`` wired the right view.
+        self.assertTrue(intermediate_fwd.predicate_object_pairs)
+        self.assertFalse(intermediate_fwd.predicate_subject_pairs)
+        self.assertFalse(intermediate_back.predicate_object_pairs)
+        self.assertTrue(intermediate_back.predicate_subject_pairs)
+
     def test_backward_walk_optional_steprule(self):
         """Backward walk into an :class:`OptionalRule` wrapping a
         :class:`StepRule` produces matches when the optional edge is

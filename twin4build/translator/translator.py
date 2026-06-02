@@ -2788,9 +2788,11 @@ class Translator:
                     # (e.g. ``SetStepRule`` extends ``StepRule``) need
                     # their own backward handling.
                     if direction is BACKWARD:
-                        if (
-                            type(rule) is not StepRule
-                            and type(rule) is not OptionalRule
+                        if type(rule) not in (
+                            StepRule,
+                            OptionalRule,
+                            PathRule,
+                            _SinglePath,
                         ):
                             continue
 
@@ -6491,11 +6493,37 @@ class SetStepRule(StepRule):
 
 
 class _SinglePath(Rule):
-    """Internal rule for SinglePath traversal (creates intermediate SP nodes)."""
+    """Internal rule for SinglePath traversal (creates intermediate SP nodes).
+
+    The ``apply`` method is parametric over :class:`Direction`: a single
+    forward walk *and* a backward walk through the same ``_SinglePath``
+    instance need independent ``first_entry`` book-keeping so the
+    "first entry accepts all" semantic fires once per direction.  The
+    intermediate SP node hash includes ``direction.sentinel`` to keep
+    forward and backward intermediates seeded from the same SM object
+    distinct, and the intermediate's adjacency view is wired through
+    :meth:`Direction.set_intermediate_far_edge` so the walker continues
+    in the matching direction at the next recursive frame.
+    """
 
     def __init__(self, **kwargs):
-        self.first_entry = True
+        # Direction-keyed first_entry: forward and backward walks track
+        # entry state independently.  Stored under a plain dict (not
+        # __slots__) so :meth:`reset` can rebuild it cheaply.
+        self._first_entry = {FORWARD: True, BACKWARD: True}
         Rule.__init__(self, **kwargs)
+
+    # Backward-compatibility shim: external resetters historically wrote
+    # ``rule.first_entry = True`` to reset the forward flag.  Forward and
+    # backward are tied together by this setter so the legacy reset call
+    # still resets *both* directions; reads return the forward flag.
+    @property
+    def first_entry(self) -> bool:
+        return self._first_entry[FORWARD]
+
+    @first_entry.setter
+    def first_entry(self, value: bool) -> None:
+        self._first_entry = {FORWARD: bool(value), BACKWARD: bool(value)}
 
     @property
     def subject(self):
@@ -6526,11 +6554,28 @@ class _SinglePath(Rule):
         Dict[Tuple[Node, Optional[Predicate], Node], Rule],
     ]:
         """
-        Apply SinglePath traversal rule.
+        Apply SinglePath traversal rule in the requested ``direction``.
 
-        Creates intermediate SP subject nodes for path traversal. On first entry,
-        accepts all SM objects. On subsequent entries, only accepts SM objects
-        that have exactly one child for the predicate (single path constraint).
+        Creates intermediate SP nodes for path traversal.  On first entry
+        in this direction, accepts all SM far candidates supplied by the
+        walker (which already restricted them to ``rule._predicate``
+        through ``direction.sm_adj``).  On subsequent entries, only
+        accepts SM far candidates that have exactly one
+        direction-appropriate adjacency entry for the predicate (single
+        path constraint).
+
+        The intermediate is wired so that the walker, on the next
+        recursive frame, continues in the same direction:
+
+        - Forward: ``intermediate.predicate_object_pairs[predicate] =
+          [self.object]`` and ruleset key ``(intermediate, predicate,
+          self.object)``.
+        - Backward: ``intermediate.predicate_subject_pairs[predicate] =
+          [self.subject]`` and ruleset key ``(self.subject, predicate,
+          intermediate)``.
+
+        Both shapes are produced by :meth:`Direction.set_intermediate_far_edge`
+        and :meth:`Direction.edge_key` respectively.
         """
         LOGGER.debug("Applying %s", self.__class__.__name__)
         LOGGER.add_level()
@@ -6540,22 +6585,25 @@ class _SinglePath(Rule):
         matched_sm_objects = []
         rule_applies_vec = np.array([False] * len(sm_objects))
 
-        if self.first_entry:
-            self.first_entry = False
+        far_node = direction.far(self)
+        near_node = direction.near(self)
+
+        if self._first_entry[direction]:
+            self._first_entry[direction] = False
             matched_sm_objects.extend(
                 [(i, sm_object) for i, sm_object in enumerate(sm_objects)]
             )
             rule_applies_vec = np.array([True] * len(sm_objects))
         else:
-            # Only allow single-path continuation
+            # Only allow single-path continuation (cardinality 1 gate
+            # against the direction-appropriate adjacency view).
             if len(sm_objects) == 1:
                 for i, sm_object in enumerate(sm_objects):
-                    predicate_objects = sm_object.get_predicate_object_pairs()
-                    # Check all predicates in the Predicate's tuple
+                    predicate_neighbors = direction.sm_adj(sm_object)
                     for pred in self.predicate.preds:
                         if (
-                            pred in predicate_objects
-                            and len(predicate_objects[pred]) == 1
+                            pred in predicate_neighbors
+                            and len(predicate_neighbors[pred]) == 1
                         ):
                             matched_sm_objects.append((i, sm_object))
                             rule_applies_vec[i] = True
@@ -6563,22 +6611,31 @@ class _SinglePath(Rule):
         rule_applies = np.any(rule_applies_vec)
         if rule_applies:
             for i, sm_object in matched_sm_objects:
-                # Create intermediate SP subject node for continued traversal
-                # Hash ensures uniqueness based on context (use predicate's preds tuple)
+                # Direction sentinel in the hash disambiguates forward
+                # and backward intermediates seeded from the same
+                # ``(sm_object, subject, predicate, object)`` tuple.
                 intermediate_sp_subject = Node(
                     cls=sm_object.get_most_specific_type(allow_multiple_classes=True),
-                    hash_=(sm_object, self.subject, self.predicate.preds, self.object),
+                    hash_=(
+                        sm_object,
+                        self.subject,
+                        self.predicate.preds,
+                        self.object,
+                        direction.sentinel,
+                    ),
                 )
                 intermediate_sp_subject.set_signature_pattern(
-                    self.object.signature_pattern
+                    far_node.signature_pattern
                 )
                 intermediate_sp_subject.validate_cls()
-                intermediate_sp_subject.predicate_object_pairs[self.predicate] = [
-                    self.object
-                ]
-                ruleset[(intermediate_sp_subject, self.predicate, self.object)] = (
-                    master_rule
+                direction.set_intermediate_far_edge(
+                    intermediate_sp_subject, self.predicate, far_node
                 )
+                ruleset[
+                    direction.edge_key(
+                        intermediate_sp_subject, self.predicate, far_node
+                    )
+                ] = master_rule
                 pairs.append(
                     (candidate_maps, sm_object, intermediate_sp_subject, _SinglePath, i)
                 )
@@ -6588,14 +6645,14 @@ class _SinglePath(Rule):
                 "Matched: %s (%s) is %s",
                 pair[1].get_short_name(),
                 (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
-                self.object.cls,
+                far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
-        self.first_entry = True
+        self._first_entry = {FORWARD: True, BACKWARD: True}
 
 
 class PathRule(Rule):
@@ -6707,7 +6764,11 @@ class PathRule(Rule):
         return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
-        self.rule.first_entry = True
+        # Delegate through Or.reset so the inner StepRule and _SinglePath
+        # both reset their (now direction-keyed) state cleanly.  The
+        # legacy ``self.rule.first_entry = True`` route bypassed _SinglePath
+        # and only set a stray attribute on the Or wrapper.
+        self.rule.reset()
 
 
 class _MultiPath(Rule):
