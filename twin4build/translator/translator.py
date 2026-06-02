@@ -987,10 +987,22 @@ class Translator:
         """
         Iteratively merge incomplete groups until no more progress.
 
-        Uses indexing to reduce O(n²) comparisons:
-        1. Builds an index mapping (sp_node, sm_node) -> group indices
-        2. Uses index to find only compatible candidates (eliminates conflicting pairs)
-        3. Tracks failed pairs to avoid redundant _match calls within an iteration
+        Reduction (PR4 of the parametric bidirectional matcher
+        migration): with the unified bidirectional walker (PR2*) and
+        WCC seeding (PR3), Phase 1 fills every weakly-connected
+        component (WCC) of the SP graph from a single seed.  The
+        merger's only remaining legitimate job is therefore to combine
+        partials that originate from *distinct WCCs* of the same SP
+        graph -- a Cartesian product over per-WCC partials.
+
+        For a connected SP graph (single WCC), this method is a
+        no-op and the per-pattern code path entirely bypasses
+        :meth:`_match`'s heuristic merge logic.  For multi-WCC
+        patterns with set-bound rules whose backward dispatch is
+        currently gated off (see ``__prune_recursive`` readiness
+        gate), the legacy heuristic merger is kept as a fallback so
+        no regression occurs while the set-rule backward semantics
+        mature.
 
         Args:
             incomplete_matches: List of incomplete mappings (mutated)
@@ -1007,6 +1019,33 @@ class Translator:
             LOGGER.remove_level()
             return incomplete_matches
 
+        # Fast path: a connected SP graph has exactly one WCC, and
+        # the bidirectional walker will have filled it from the
+        # single Phase-1 seed.  Any leftover incomplete partials are
+        # either (a) genuine alternative seeds the walker could not
+        # complete -- in which case the heuristic merger cannot help
+        # either -- or (b) byproducts of multiple SM seeds for the
+        # same modeled SP node, which Phase 6 dedup handles.  Skip
+        # the merger entirely.
+        try:
+            wccs = signature_pattern.weakly_connected_components()
+        except Exception:
+            wccs = None
+
+        if wccs is not None and len(wccs) <= 1:
+            LOGGER.debug(
+                "Connected SP graph (1 WCC): merger is a no-op, %d partials carried through",
+                len(incomplete_matches),
+            )
+            LOGGER.remove_level()
+            return incomplete_matches
+
+        # Multi-WCC fallback: heuristic merge loop preserved for
+        # patterns whose backward dispatch is incomplete (e.g.
+        # set-rule families on disjoint subgraphs).  Once their
+        # backward semantics land in the readiness gate, this branch
+        # will be exercised only as a Cartesian-product step and can
+        # be replaced with an explicit primitive.
         previous_count = float("inf")
 
         while len(incomplete_matches) < previous_count:

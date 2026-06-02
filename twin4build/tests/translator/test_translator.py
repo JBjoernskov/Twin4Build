@@ -1109,6 +1109,107 @@ class TestTranslator(unittest.TestCase):
             "the forward case",
         )
 
+    def test_merger_noop_on_connected_pattern(self):
+        """A connected SP graph (single WCC) needs no merger after the
+        bidirectional walker.
+
+        After the parametric direction refactor (PR2.1-PR2.6) the
+        unified bidirectional walker fills every weakly-connected
+        component (WCC) of the SP graph from its single Phase-1 seed.
+        :meth:`Translator._merge_incomplete_groups` therefore acts as
+        a no-op on connected patterns: any partials it receives are
+        returned unchanged, no new ``complete_matches`` are produced
+        by the merger.
+
+        The test seeds the matcher with a deliberately under-explored
+        partial mapping for a connected AHU/Damper/Room pattern and
+        asserts both invariants:
+
+        1. ``incomplete_matches`` is returned unchanged (length and
+           identity-preserving).
+        2. ``complete_matches`` is not extended by the merger.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="merger_noop_connected_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_ahu,
+                object=node_damper,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_rule(
+            PathRule(
+                subject=node_ahu,
+                object=node_room,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        wccs = sp.weakly_connected_components()
+        self.assertEqual(
+            len(wccs),
+            1,
+            f"prerequisite: SP graph must be connected (1 WCC); got {len(wccs)} "
+            "WCCs -- if this fails, the test fixture has been altered",
+        )
+
+        # Synthetic incomplete partials: each one binds only a
+        # subset of nodes.  These would normally be the merger's
+        # input.  After the bidirectional walker the runtime
+        # produces complete matches directly, so the merger receives
+        # at most these synthetic partials and -- per the PR4
+        # invariant -- returns them unchanged.
+        ahu_sm = next(
+            iter(
+                self.semantic_model.get_instances_of_type(core.namespace.BRICK.AHU)
+            )
+        )
+        damper_sm = next(
+            iter(
+                self.semantic_model.get_instances_of_type(core.namespace.BRICK.Damper)
+            )
+        )
+        partial_ahu = {n: None for n in sp.nodes}
+        partial_ahu[node_ahu] = ahu_sm
+        partial_damper = {n: None for n in sp.nodes}
+        partial_damper[node_damper] = damper_sm
+
+        incomplete_matches = [partial_ahu, partial_damper]
+        complete_matches: list = []
+        complete_count_before = len(complete_matches)
+        incomplete_count_before = len(incomplete_matches)
+
+        result = Translator._merge_incomplete_groups(
+            incomplete_matches, complete_matches, sp
+        )
+
+        self.assertEqual(
+            len(result),
+            incomplete_count_before,
+            "connected-pattern merger must return incomplete_matches unchanged: "
+            f"got {len(result)} entries, expected {incomplete_count_before}",
+        )
+        self.assertIs(
+            result,
+            incomplete_matches,
+            "connected-pattern merger must preserve list identity (no-op fast path)",
+        )
+        self.assertEqual(
+            len(complete_matches),
+            complete_count_before,
+            "connected-pattern merger must NOT extend complete_matches: "
+            f"got {len(complete_matches)} entries, expected "
+            f"{complete_count_before}",
+        )
+
     def test_nosteprule_walker_backward_seed_veto(self):
         """The bidirectional walker dispatches :class:`NoStepRule`
         backward through the readiness gate.
