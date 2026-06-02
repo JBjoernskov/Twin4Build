@@ -501,7 +501,32 @@ class Translator:
             # ===================================================================
             # PHASE 1: Find candidate mappings using depth-first search
             # ===================================================================
-            for sp_node in signature_pattern.nodes:
+            # WCC seeding (PR3 of bidir-matcher migration): the
+            # bidirectional walker (PR2) reaches every SP node in a
+            # weakly-connected component from a single seed, so we
+            # only need one seed per WCC instead of seeding at every
+            # SP node.  Seed picking prefers a modeled node (which is
+            # the canonical "anchor" of the pattern at the component's
+            # identity); otherwise the lowest-registration-index node
+            # in the WCC (deterministic across runs).  Phase 6 still
+            # runs canonical dedup on complete_matches via
+            # ``_canonical_mapping_key``, so any stray duplicates
+            # produced by parallel seeds in a multi-WCC pattern are
+            # collapsed downstream.
+            wccs = signature_pattern.weakly_connected_components()
+            modeled_nodes_set = set(getattr(signature_pattern, "_modeled_nodes", []) or [])
+            seed_sp_nodes: List["Node"] = []
+            for wcc in wccs:
+                seed_for_wcc = None
+                for n in wcc:
+                    if n in modeled_nodes_set:
+                        seed_for_wcc = n
+                        break
+                if seed_for_wcc is None:
+                    seed_for_wcc = wcc[0]
+                seed_sp_nodes.append(seed_for_wcc)
+
+            for sp_node in seed_sp_nodes:
                 candidate_sm_nodes = semantic_model.get_instances_of_type(sp_node.cls)
 
                 for sm_node in candidate_sm_nodes:
@@ -5041,6 +5066,69 @@ class SignaturePattern:
             if node.id == id:
                 return node
         return None
+
+    def weakly_connected_components(self) -> List[List["Node"]]:
+        """Compute the weakly-connected components of the SP graph.
+
+        The SP graph's edge view is the union of the outgoing edges
+        (:attr:`Node.predicate_object_pairs`) and the incoming edges
+        (:attr:`Node.predicate_subject_pairs`).  A weakly-connected
+        component (WCC) is a maximal set of SP nodes connected via
+        these edges when treated as undirected.
+
+        Why this matters for the matcher
+        --------------------------------
+        Under the bidirectional walker (PR2), a single seed walk
+        starting anywhere inside a WCC reaches every other SP node in
+        the same WCC because both incident edges are followed.  Phase 1
+        of :meth:`Translator._match_patterns` can therefore reduce its
+        seed enumeration from "every SP node, every candidate SM
+        instance" to "one seed SP node per WCC, every candidate SM
+        instance".  When the SP has only one WCC -- the common case
+        for shipped patterns -- the merger surface (also still in
+        place through PR4) collapses to a no-op since each seed walk
+        already yields complete partials.
+
+        Returns:
+            List of components, each a list of :class:`Node` objects
+            in registration order within :attr:`nodes`.  Components
+            are emitted in registration order of their lowest-indexed
+            node so the result is deterministic across runs.
+        """
+        nodes = self._nodes
+        if not nodes:
+            return []
+
+        index_of = {n: i for i, n in enumerate(nodes)}
+        seen: set = set()
+        components: List[List["Node"]] = []
+
+        for start in nodes:
+            if start in seen:
+                continue
+            # BFS over the symmetric edge view.
+            component: List["Node"] = []
+            stack = [start]
+            while stack:
+                n = stack.pop()
+                if n in seen:
+                    continue
+                seen.add(n)
+                component.append(n)
+                for neighbours in n.predicate_object_pairs.values():
+                    for nb in neighbours:
+                        if nb not in seen:
+                            stack.append(nb)
+                for neighbours in n.predicate_subject_pairs.values():
+                    for nb in neighbours:
+                        if nb not in seen:
+                            stack.append(nb)
+            # Stable ordering inside the component for downstream
+            # determinism (seed picking, dedup, diagnostics).
+            component.sort(key=lambda n: index_of.get(n, len(nodes)))
+            components.append(component)
+
+        return components
 
     def add_rule(self, rule):
         """Register a pattern-matching rule (one triple or composite rule).

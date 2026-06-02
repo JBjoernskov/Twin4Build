@@ -996,6 +996,70 @@ class TestSignaturePattern(unittest.TestCase):
                     "Predicate instance",
                 )
 
+    def test_weakly_connected_components_single_component(self):
+        """A pattern wired into a single chain is one WCC; member order
+        within the component matches SP node-registration order."""
+        # Local application imports
+        import twin4build.core as core
+
+        node_a = Node(cls=core.namespace.BRICK.AHU)
+        node_b = Node(cls=core.namespace.BRICK.Damper)
+        node_c = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="wcc_single_component_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_a, object=node_b, predicate=core.namespace.BRICK.feeds
+            )
+        )
+        sp.add_rule(
+            StepRule(
+                subject=node_b, object=node_c, predicate=core.namespace.BRICK.feeds
+            )
+        )
+
+        wccs = sp.weakly_connected_components()
+        self.assertEqual(len(wccs), 1, f"expected 1 WCC, got {len(wccs)}")
+        self.assertEqual(set(wccs[0]), {node_a, node_b, node_c})
+
+    def test_weakly_connected_components_two_disconnected_components(self):
+        """Two disjoint subgraphs in the same SignaturePattern produce
+        two WCCs; the symmetric :attr:`Node.predicate_subject_pairs`
+        edges are walked, so a node only reachable backward still ends
+        up in the same WCC as its predecessor.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_a1 = Node(cls=core.namespace.BRICK.AHU)
+        node_b1 = Node(cls=core.namespace.BRICK.Damper)
+        node_a2 = Node(cls=core.namespace.BRICK.AHU)
+        node_b2 = Node(cls=core.namespace.BRICK.Damper)
+
+        sp = SignaturePattern(id="wcc_two_components_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_a1,
+                object=node_b1,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_rule(
+            StepRule(
+                subject=node_a2,
+                object=node_b2,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+
+        wccs = sp.weakly_connected_components()
+        self.assertEqual(
+            len(wccs), 2, f"expected 2 WCCs (disjoint subgraphs), got {len(wccs)}"
+        )
+        component_sets = [set(c) for c in wccs]
+        self.assertIn({node_a1, node_b1}, component_sets)
+        self.assertIn({node_a2, node_b2}, component_sets)
+
     def test_inverse_index_sp_initial_state(self):
         """A freshly-constructed :class:`Node` exposes both views as empty
         dicts (rather than ``None`` or missing attributes), so the
