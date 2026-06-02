@@ -14,6 +14,7 @@ from twin4build.translator.translator import (
     SignaturePattern,
     PathRule,
     SetStepRule,
+    SetAnyPathRule,
     Translator,
 )
 from twin4build.utils.uppath import uppath
@@ -865,6 +866,161 @@ class TestTranslator(unittest.TestCase):
                 f"each room has exactly one sensor; got tuple of length "
                 f"{len(sensors_binding)}",
             )
+
+    def test_setanypathrule_forward_multi_hop_aggregation(self):
+        """Forward-seeded :class:`SetAnyPathRule` aggregates every
+        multi-hop endpoint under the predicate into a single tuple
+        binding.
+
+        SM (from :meth:`setUp`): the AHU reaches ``Room_1`` (one hop
+        through ``Damper_1``) and ``Room_2`` (two hops through
+        ``Damper_2 -> Damper_21|22``) under ``BRICK.feeds``.  The
+        ``SetAnyPathRule`` BFS uses :meth:`Direction.sm_adj` -- in
+        forward direction this is ``predicate_object_pairs`` -- and
+        collects every reachable :class:`BRICK.Room` endpoint into one
+        canonical tuple of length 2.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_rooms = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="setanypath_forward_pattern")
+        sp.add_rule(
+            SetAnyPathRule(
+                subject=node_ahu,
+                object=node_rooms,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        self.assertEqual(
+            len(groups),
+            1,
+            "expected one complete group (one AHU, one tuple of every "
+            f"reachable room); got {len(groups)}",
+        )
+        rooms_binding = groups[0].get(node_rooms)
+        self.assertIsInstance(
+            rooms_binding,
+            tuple,
+            "SetAnyPathRule must produce a tuple binding on its object",
+        )
+        self.assertEqual(
+            len(rooms_binding),
+            2,
+            "expected both Room_1 and Room_2 in the aggregated tuple; "
+            f"got tuple of length {len(rooms_binding)}",
+        )
+        room_uris = {str(r.uri).rsplit("#", 1)[-1] for r in rooms_binding}
+        self.assertSetEqual(
+            room_uris,
+            {"Room_1", "Room_2"},
+            "tuple should contain both Room_1 and Room_2 (deduplicated "
+            f"despite two parallel paths to Room_2); got {room_uris}",
+        )
+
+    def test_setanypathrule_apply_backward_direct(self):
+        """:meth:`SetAnyPathRule.apply` body is direction-parametric.
+
+        Even though the bidirectional walker does not currently
+        dispatch :class:`SetStepRule` subclasses backward (set-rule
+        backward semantics defer their walker integration until tuple
+        re-firing is solved), the rule's ``apply`` must still walk
+        the backward predicate adjacency correctly when called
+        directly.  This test seeds at a :class:`BRICK.Room` instance
+        and asserts the BFS reaches the AHU through inverse-feeds
+        edges, producing a single-element AHU tuple bound to
+        ``self.subject`` (= ``direction.far(self)``).
+        """
+        # Local application imports
+        from twin4build.translator.translator import BACKWARD, Predicate
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_rooms = Node(cls=core.namespace.BRICK.Room)
+        sp = SignaturePattern(id="setanypath_backward_unit_pattern")
+        sp.add_rule(
+            SetAnyPathRule(
+                subject=node_ahu,
+                object=node_rooms,
+                predicate=Predicate(core.namespace.BRICK.feeds),
+            )
+        )
+
+        # The Predicate equality-hash semantics make ruleset key lookup
+        # by reconstructed predicate brittle; resolve the rule instance
+        # by scanning the ruleset values for the SetAnyPathRule.
+        candidates = [
+            r for r in sp.ruleset.values() if isinstance(r, SetAnyPathRule)
+        ]
+        self.assertEqual(
+            len(candidates),
+            1,
+            f"expected one SetAnyPathRule registered in ruleset; got {len(candidates)}",
+        )
+        rule = candidates[0]
+
+        room_sm = next(
+            iter(
+                self.semantic_model.get_instances_of_type(core.namespace.BRICK.Room)
+            )
+        )
+
+        pairs, rule_applies, _, _ = rule.apply(
+            room_sm,
+            [room_sm],
+            sp.ruleset,
+            direction=BACKWARD,
+        )
+        self.assertTrue(
+            rule_applies,
+            "backward BFS from a Room must reach the AHU through "
+            "inverse-feeds adjacency",
+        )
+        self.assertEqual(
+            len(pairs),
+            1,
+            f"SetAnyPathRule emits exactly one tuple-binding pair; got {len(pairs)}",
+        )
+        _, tuple_binding, sp_target, kind, _ = pairs[0]
+        self.assertEqual(
+            kind,
+            SetStepRule,
+            "set-rules tag matches with SetStepRule kind for the "
+            "matcher's tuple-handling branch",
+        )
+        self.assertIs(
+            sp_target,
+            node_ahu,
+            "backward-direction far node must be the SP subject "
+            "(node_ahu); got a different SP node",
+        )
+        self.assertIsInstance(tuple_binding, tuple)
+        self.assertEqual(
+            len(tuple_binding),
+            1,
+            "exactly one AHU is reachable from any Room via "
+            f"inverse-feeds; got tuple of length {len(tuple_binding)}",
+        )
+        ahu_uri_short = str(tuple_binding[0].uri).rsplit("#", 1)[-1]
+        self.assertEqual(
+            ahu_uri_short,
+            "AHU_1",
+            f"backward BFS must terminate at AHU_1; got {ahu_uri_short}",
+        )
 
     def test_intermediate_hash_direction_disambiguation(self):
         """Forward and backward ``_SinglePath`` intermediates seeded

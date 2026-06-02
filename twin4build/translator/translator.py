@@ -7506,28 +7506,36 @@ class SetAnyPathRule(SetStepRule):
         bool,
         Dict[Tuple[Node, Optional[Predicate], Node], Rule],
     ]:
-        """Apply set-bound multi-hop rule.
+        """Apply set-bound multi-hop rule in the requested ``direction``.
 
-        BFS from ``sm_objects`` through the rule's predicate(s),
-        collecting every reachable node whose type satisfies
-        ``self.object.cls`` as an endpoint. The endpoints are
-        deduplicated, canonicalised by IRI sort, and emitted as a
-        single tuple binding per ``candidate_map`` — the same emission
-        shape :meth:`SetStepRule.apply` uses, so downstream tuple
-        handling is shared.
+        BFS from ``sm_objects`` through the rule's predicate(s) using
+        the direction-appropriate adjacency view, collecting every
+        reachable node whose type satisfies ``direction.far(self).cls``
+        as an endpoint.  Endpoints are deduplicated, canonicalised by
+        IRI sort, and emitted as a single tuple binding per
+        ``candidate_map`` — the same emission shape
+        :meth:`SetStepRule.apply` uses, so downstream tuple handling
+        is shared.
+
+        Forward direction matches the legacy semantic exactly (BFS
+        through ``predicate_object_pairs``).  Backward direction
+        performs the symmetric BFS through
+        ``predicate_subject_pairs`` and emits endpoints whose class
+        satisfies ``self.subject.cls``; the matched ``sp_object``
+        position carries ``direction.far(self)`` so the walker
+        recurses to the correct SP node.
         """
         LOGGER.debug("Applying %s", self.__class__.__name__)
         LOGGER.add_level()
         if master_rule is None:
             master_rule = self
 
-        target_cls = self.object.cls
+        far_node = direction.far(self)
+        target_cls = far_node.cls
         preds = self.predicate.preds
 
-        # BFS to collect every reachable endpoint of the target type.
-        # ``sm_objects`` is the set of direct predicate-children of
-        # ``sm_subject``; from each we walk further predicate edges
-        # until we hit a node whose type satisfies ``target_cls``.
+        # BFS to collect every reachable endpoint of the target type
+        # under the direction-appropriate adjacency view.
         visited: set = set()
         queue = collections.deque(sm_objects)
         endpoints: List[Any] = []
@@ -7547,9 +7555,9 @@ class SetAnyPathRule(SetStepRule):
                 # AnyPathRule._apply_endpoints_only.
                 continue
 
-            pred_objects = node.get_predicate_object_pairs()
+            pred_neighbors = direction.sm_adj(node)
             for pred in preds:
-                for child in pred_objects.get(pred, []):
+                for child in pred_neighbors.get(pred, []):
                     if child not in visited:
                         queue.append(child)
 
@@ -7571,7 +7579,7 @@ class SetAnyPathRule(SetStepRule):
                     (
                         maps_for_match,
                         tuple_binding,
-                        self.object,
+                        far_node,
                         SetStepRule,
                         0,
                     )
@@ -7587,7 +7595,7 @@ class SetAnyPathRule(SetStepRule):
                 "Matched (set-anypath, %d): [%s] is %s",
                 len(tuple_binding),
                 preview,
-                self.object.cls,
+                far_node.cls,
             )
 
         LOGGER.debug("Rule applies: %s", rule_applies)
