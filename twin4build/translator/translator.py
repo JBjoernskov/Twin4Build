@@ -76,10 +76,17 @@ from twin4build.utils.rsetattr import rsetattr
 #     # optional: filter to one pattern id (substring match)
 #     set TWIN4BUILD_MATCH_DIAG_PATTERN=controller_identification_vav
 #
-# Writes one line per decision in three scopes:
-#   [PHASE1] per (sp_node, sm_node) enumeration start, and per complete/incomplete mapping
-#   [BRCAST] per-element prune decisions inside __broadcast_recurse
-#   [MERGE]  per merge attempt in _match (accept / reject + reason)
+# Writes one line per decision in four scopes:
+#   [PHASE1]    per (sp_node, sm_node) enumeration start, and per complete/incomplete mapping
+#   [WALKER]    per-edge dispatch / prune decisions inside __prune_recursive
+#               (each line carries an explicit ``dir=forward|backward`` label
+#                so forward and backward sweeps can be distinguished when
+#                debugging the bidirectional matcher)
+#   [BRCAST]    per-element prune decisions inside __broadcast_recurse
+#               (legacy and bidirectional helpers; the bidirectional helper
+#                tags entries ``[BRCAST-BD]`` so per-element walks driven by
+#                the bidirectional walker are obvious)
+#   [MERGE]     per merge attempt in _match (accept / reject + reason)
 #
 # The file is opened on first write and flushed per line so partial runs
 # still produce useful output if the process is interrupted.
@@ -2804,6 +2811,7 @@ class Translator:
         # asymmetry is the readiness gate that limits backward
         # dispatch to rule shapes whose ``apply`` already implements
         # backward semantics (currently StepRule + OptionalRule).
+        _diag_walker = _match_diag_enabled(signature_pattern)
         for direction in (FORWARD, BACKWARD):
             sp_adj = direction.sp_adj(sp_subject)
             sm_adj = direction.sm_adj(sm_subject)
@@ -2843,6 +2851,14 @@ class Translator:
                             AnyPathRule,
                             _MultiPath,
                         ):
+                            if _diag_walker:
+                                _match_diag_write(
+                                    f"[WALKER]   GATE-SKIP dir={direction.name} "
+                                    f"pattern={signature_pattern.id} "
+                                    f"sp_subject={sp_subject.id} "
+                                    f"sp_neighbor={sp_neighbor.id} "
+                                    f"rule={type(rule).__name__}"
+                                )
                             continue
 
                     visited_sp_edges.add(edge_key)
@@ -2854,6 +2870,16 @@ class Translator:
                         rule.__class__.__name__,
                         direction.name,
                     )
+
+                    if _diag_walker:
+                        _match_diag_write(
+                            f"[WALKER]   APPLY dir={direction.name} "
+                            f"pattern={signature_pattern.id} "
+                            f"sp_subject={sp_subject.id} "
+                            f"sp_neighbor={sp_neighbor.id} "
+                            f"rule={type(rule).__name__} "
+                            f"sm_subject={_diag_sm_name(sm_subject)}"
+                        )
 
                     sm_neighbors = []
                     for predicate in rule._predicate:
@@ -3001,6 +3027,16 @@ class Translator:
                                     sp_subject, sm_subject
                                 )
                             )
+                            if _diag_walker:
+                                _match_diag_write(
+                                    f"[WALKER]   PRUNE dir={direction.name} "
+                                    f"reason=no-match "
+                                    f"pattern={signature_pattern.id} "
+                                    f"sp_subject={sp_subject.id} "
+                                    f"sp_neighbor={sp_neighbor.id} "
+                                    f"rule={type(rule).__name__} "
+                                    f"sm_subject={_diag_sm_name(sm_subject)}"
+                                )
                             LOGGER.remove_level()
                             return candidate_maps, feasible, comparison_table, True
 
@@ -3020,6 +3056,16 @@ class Translator:
                                     sp_subject, sm_subject
                                 )
                             )
+                            if _diag_walker:
+                                _match_diag_write(
+                                    f"[WALKER]   PRUNE dir={direction.name} "
+                                    f"reason=missing-predicate "
+                                    f"pattern={signature_pattern.id} "
+                                    f"sp_subject={sp_subject.id} "
+                                    f"sp_neighbor={sp_neighbor.id} "
+                                    f"rule={type(rule).__name__} "
+                                    f"sm_subject={_diag_sm_name(sm_subject)}"
+                                )
                             LOGGER.remove_level()
                             return candidate_maps, feasible, comparison_table, True
 

@@ -1109,6 +1109,132 @@ class TestTranslator(unittest.TestCase):
             "the forward case",
         )
 
+    def test_diagnostic_dump_surfaces_direction_labels(self):
+        """The TWIN4BUILD_MATCH_DIAG_FILE diagnostic dump labels every
+        walker decision with an explicit ``dir=forward`` or
+        ``dir=backward`` token.
+
+        Without direction labels, debugging a bidirectional matcher
+        run becomes ambiguous: a "PRUNE" event could be a forward or
+        backward sweep failing, and the pruning reason
+        (missing-predicate, no-match, gate-skip) would then have to
+        be cross-referenced against pattern topology to recover the
+        direction.  The PR5 diagnostic refresh emits ``[WALKER]``
+        entries with ``dir=...`` on every dispatch and prune so the
+        log is self-describing.
+
+        The test sets ``TWIN4BUILD_MATCH_DIAG_FILE`` for the duration
+        of one matching call, runs the AHU/Damper backward-walk
+        pattern (which fires both directions for every seed), and
+        asserts the dump contains lines tagged with both
+        ``dir=forward`` and ``dir=backward`` and at least one
+        ``[WALKER]`` event.
+        """
+        # Standard library imports
+        import importlib
+        import os
+        import tempfile
+
+        # Local application imports
+        import twin4build.core as core
+        from twin4build.translator import translator as translator_mod
+
+        # AHU --feeds-> Damper --feeds-> Room.  Modeled = node_damper
+        # so the seed lands at SM Dampers.  At each Damper seed the
+        # walker enumerates both outgoing edges (forward to Room) and
+        # incoming edges (backward to AHU); both directions therefore
+        # produce ``[WALKER]`` diagnostic entries with the
+        # corresponding ``dir=`` label.
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="diag_direction_label_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_ahu,
+                object=node_damper,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_rule(
+            StepRule(
+                subject=node_damper,
+                object=node_room,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_damper)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = os.path.join(tmpdir, "matcher_diag.log")
+            os.environ["TWIN4BUILD_MATCH_DIAG_FILE"] = log_path
+            os.environ["TWIN4BUILD_MATCH_DIAG_PATTERN"] = (
+                "diag_direction_label_pattern"
+            )
+            try:
+                # Reload the module-level diag-path/filter cache (the
+                # globals are read from the environment at module
+                # import time, so the test must explicitly refresh
+                # them after setting the envs).
+                translator_mod._MATCH_DIAG_PATH = log_path
+                translator_mod._MATCH_DIAG_PATTERN_FILTER = (
+                    "diag_direction_label_pattern"
+                )
+                translator_mod._MATCH_DIAG_FH = None
+
+                Translator._match_patterns(
+                    systems_=[DummySystem], semantic_model=self.semantic_model
+                )
+
+                # Close the file handle so all writes are flushed.
+                fh = translator_mod._MATCH_DIAG_FH
+                if fh is not None:
+                    fh.close()
+                    translator_mod._MATCH_DIAG_FH = None
+
+                with open(log_path, "r", encoding="utf-8") as f:
+                    log_text = f.read()
+            finally:
+                # Reset env + module-level state so other tests are
+                # not impacted by the diag path.
+                os.environ.pop("TWIN4BUILD_MATCH_DIAG_FILE", None)
+                os.environ.pop("TWIN4BUILD_MATCH_DIAG_PATTERN", None)
+                translator_mod._MATCH_DIAG_PATH = None
+                translator_mod._MATCH_DIAG_PATTERN_FILTER = None
+                if translator_mod._MATCH_DIAG_FH is not None:
+                    try:
+                        translator_mod._MATCH_DIAG_FH.close()
+                    except Exception:
+                        pass
+                    translator_mod._MATCH_DIAG_FH = None
+
+        self.assertIn(
+            "[WALKER]",
+            log_text,
+            "diagnostic dump must surface walker-scope events when "
+            "TWIN4BUILD_MATCH_DIAG_FILE is enabled",
+        )
+        self.assertIn(
+            "dir=forward",
+            log_text,
+            "walker events must be tagged with dir=forward for the "
+            "forward sweep so the bidirectional walker is "
+            "self-describing in the dump",
+        )
+        self.assertIn(
+            "dir=backward",
+            log_text,
+            "walker events must be tagged with dir=backward for the "
+            "backward sweep so the bidirectional walker is "
+            "self-describing in the dump",
+        )
+
     def test_merger_noop_on_connected_pattern(self):
         """A connected SP graph (single WCC) needs no merger after the
         bidirectional walker.
