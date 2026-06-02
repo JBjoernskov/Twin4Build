@@ -138,7 +138,6 @@ def fcn(self):
     # self.components["office_damper_position_sensor"].datecolumn = 2
     # self.components["office_damper_position_sensor"].valuecolumn = 4
 
-    # Supply air temperature (AHU-level, same for all rooms)
     self.components["supply_air_temperature_sensor"].filename = (
         DATA_ROOT
         + r"\Time series\HF04\OD095_01_032A_J95_HF04_BTA004_S1.plc_SENSOR_VALUE.csv"
@@ -309,10 +308,10 @@ def fcn(self):
 
 def main():
     # Re-serialize: uncomment this block to rebuild from the semantic model
-    # model = tb.Model(id="full_workflow_example")
-    # filename = utils.get_path(["estimator_example", "one_room_example_model.xlsm"])
-    # model.load(semantic_model_filename=filename, fcn=fcn, verbose=0)
-    # print("Serializing model...")
+    model = tb.Model(id="full_workflow_example")
+    filename = utils.get_path(["estimator_example", "one_room_example_model.xlsm"])
+    model.load(semantic_model_filename=filename, fcn=fcn)
+    print("Serializing model...")
     # model.serialize()
 
     # aa
@@ -320,11 +319,11 @@ def main():
     # print(model)
 
     # Load from serialized model (comment out the block above after re-serializing)
-    model = tb.Model(id="full_workflow_example")
-    filename_simulation, _ = model._simulation_model._semantic_model.get_dir(
-        filename="instance_graph.ttl"
-    )
-    model.load(simulation_model_filename=filename_simulation)
+    # model = tb.Model(id="full_workflow_example")
+    # filename_simulation, _ = model._simulation_model._semantic_model.get_dir(
+    #     filename="instance_graph.ttl"
+    # )
+    # model.load(simulation_model_filename=filename_simulation)
     print(model)
 
     # --- 2.1 Set Up Simulation Parameters ---

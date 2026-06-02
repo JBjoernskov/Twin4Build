@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -39,14 +40,46 @@ def parse_wrapper(graph, source=None, **kwargs):
     """
     Wrapper for rdflib.graph.parse that handles XSD namespace separately.
     We don't parse XSD namespace because it isn't defined in rdf.
+
+    Also raises a clear ``FileNotFoundError`` when ``source`` looks like
+    a local filesystem path that doesn't exist.  Without this guard
+    rdflib's resolver (see ``rdflib/parser.py:_create_input_source_from_location``)
+    falls through to ``URLInputSource`` and a Windows path like
+    ``C:\\Users\\...\\graph.ttl`` gets dispatched to ``urlopen`` as a
+    URL with scheme ``c``, surfacing as the famously unhelpful
+    ``URLError: <urlopen error unknown url type: c>``.
     """
     namespaces = [
         str(getattr(core.namespace, s)) for s in IGNORE_PARSING_FOR_NAMESPACES
     ]
 
     if isinstance(source, (str, URIRef)):
-        if str(source) in namespaces:  # Dont parse XSD
+        source_str = str(source)
+        if source_str in namespaces:  # Dont parse XSD
             return
+
+        # Only path-like inputs get the existence check; explicit URLs
+        # (http://, https://, file://, ftp://, ...) are left for rdflib
+        # to resolve.
+        looks_like_url = bool(
+            re.match(r"^[a-z][a-z0-9+.\-]*://", source_str, flags=re.IGNORECASE)
+        )
+        if not looks_like_url:
+            try:
+                exists = os.path.isfile(source_str)
+            except (OSError, ValueError):
+                # If ``isfile`` itself chokes (very long string, illegal
+                # characters, ...) just fall through to rdflib.
+                exists = True
+            if not exists:
+                raise FileNotFoundError(
+                    f"Cannot parse RDF graph from {source_str!r}: file does not exist. "
+                    "If you intended to load a previously serialized model, run the "
+                    "translator + ``model.serialize()`` step first; if you intended a "
+                    "remote URL, prefix the source with an explicit scheme "
+                    "(e.g. 'https://')."
+                )
+
     graph.parse(source, **kwargs)
 
 

@@ -2235,7 +2235,7 @@ class SimulationModel:
         self,
         rdf_file: Optional[str] = None,
         fcn: Optional[Callable] = None,
-        verbose: Union[int, None] = None,
+        # verbose: Union[int, None] = None,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
         logfile: Optional[str] = None,
@@ -2252,13 +2252,13 @@ class SimulationModel:
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
             logfile: Path to the log file.
         """
-        if verbose:
+        if LOGGER.verbose:
             self._load(
                 rdf_file=rdf_file,
                 fcn=fcn,
                 validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
-                verbose=verbose,
+                # verbose=verbose,
                 logfile=logfile,
             )
         else:
@@ -2269,7 +2269,7 @@ class SimulationModel:
                     fcn=fcn,
                     validate_model=validate_model,
                     force_config_overwrite=force_config_overwrite,
-                    verbose=verbose,
+                    # verbose=verbose,
                     logfile=logfile,
                 )
 
@@ -2278,7 +2278,7 @@ class SimulationModel:
         self,
         rdf_file: Optional[str],
         fcn: Optional[Callable],
-        verbose: int,
+        # verbose: int,
         validate_model: bool,
         force_config_overwrite: bool,
         logfile: Optional[str],
@@ -2302,8 +2302,8 @@ class SimulationModel:
         # else:
         #     reset_PRINTPROGRESS = False
 
-        if verbose is not None:
-            LOGGER.verbose = verbose
+        # if verbose is not None:
+        #     LOGGER.verbose = verbose
         LOGGER.logfile = logfile
 
         if self._is_loaded:
@@ -2694,7 +2694,7 @@ class SimulationModel:
         self,
         filename: Optional[str] = None,
         result: Optional[Dict] = None,
-        verbose: int = 0,
+        # verbose: int = 0,
     ) -> None:
         """
         Load a chain log from a file or dictionary.
@@ -2779,24 +2779,23 @@ class SimulationModel:
             max_values=max_values,
         )
 
-        if verbose > 0:
-            theta_mask = self._result["theta_mask"]
-            theta_slices = self._result["theta_slices"]
-            LOGGER.info("Load estimation result: applied parameters")
-            for comp, attr, param_idx in zip(
-                flat_components, flat_attr_list, theta_mask
-            ):
-                start, end = theta_slices[param_idx]
-                raw = result_x[start:end]
-                obj = rgetattr(comp, attr)
-                actual = obj.get() if hasattr(obj, "get") else obj
-                LOGGER.info(
-                    "%s.%s: pickle: %s, actual: %s",
-                    comp.id,
-                    attr,
-                    raw,
-                    actual,
-                )
+        theta_mask = self._result["theta_mask"]
+        theta_slices = self._result["theta_slices"]
+        LOGGER.info("Load estimation result: applied parameters")
+        for comp, attr, param_idx in zip(
+            flat_components, flat_attr_list, theta_mask
+        ):
+            start, end = theta_slices[param_idx]
+            raw = result_x[start:end]
+            obj = rgetattr(comp, attr)
+            actual = obj.get() if hasattr(obj, "get") else obj
+            LOGGER.info(
+                "%s.%s: pickle: %s, actual: %s",
+                comp.id,
+                attr,
+                raw,
+                actual,
+            )
 
     def check_for_for_missing_initial_values(self) -> None:
         """

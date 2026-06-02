@@ -698,47 +698,20 @@ def brick_signature_pattern_vav_ahu():
 
 
 
-def saref_signature_pattern():
-    """
-    SAREF pattern for a fan coil unit.
-
-    Matches a SpaceHeater (generic terminal unit in SAREF4BLDG) contained in a
-    BuildingSpace, with a Valve that supplies fluid to it.
-
-    Topology::
-
-        Valve       isContainedIn   BuildingSpace
-        SpaceHeater isContainedIn   BuildingSpace
-        Valve       suppliesFluidTo SpaceHeater
-
-    Connections::
-
-        Valve.waterFlowRate       → FCU.waterFlowRate
-        BuildingSpace.indoorTemp  → FCU.inletAirTemperature
-    """
-    node0 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
-    node1 = Node(cls=core.namespace.S4BLDG.Valve)
-    node2 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
-
-    sp = SignaturePattern(id="fan_coil_unit_signature_pattern_saref")
-
-    sp.add_rule(
-        StepRule(subject=node1, object=node0, predicate=core.namespace.S4BLDG.isContainedIn)
-    )
-    sp.add_rule(
-        StepRule(subject=node2, object=node0, predicate=core.namespace.S4BLDG.isContainedIn)
-    )
-    sp.add_rule(
-        StepRule(subject=node1, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-
-    sp.add_connection(node1, "valvePosition", "valvePosition")
-    sp.add_connection(node0, "indoorTemperature", "inletAirTemperature")
-    sp.add_modeled_node(node2)
-
-    return sp
-
-
+# NOTE: A SAREF signature pattern was deliberately *not* registered for
+# ``FanCoilUnitTorchSystem``.  SAREF4BLDG has no ``FanCoilUnit`` class --
+# the closest concept is ``S4BLDG.SpaceHeater`` -- and any pattern keyed
+# on ``SpaceHeater`` + ``Valve`` + ``BuildingSpace`` would be
+# structurally identical to ``SpaceHeaterTorchSystem.saref_signature_pattern``.
+# Both classes would then claim the same entity in every SAREF model, the
+# MILP would have no way to tell them apart, and the alphabetical
+# tie-breaker would silently route plain radiator/space-heater models
+# through the FCU physics (forced-air bilinear coil, ``Q_flow_nominal``,
+# ``T_w_supply_nominal``, ``inletAirTemperature``, ...) instead of the
+# quasi-static space-heater physics that ``S4BLDG.SpaceHeater`` is
+# intended to represent.  FCU therefore only registers BRICK patterns:
+# BRICK has a dedicated ``Fan_Coil_Unit`` class and the VAV/AHU
+# topology, both of which carry the air-side wiring that genuinely
+# distinguishes an FCU from a radiator.
 FanCoilUnitTorchSystem.add_signature_pattern(brick_signature_pattern())
 FanCoilUnitTorchSystem.add_signature_pattern(brick_signature_pattern_vav_ahu())
-FanCoilUnitTorchSystem.add_signature_pattern(saref_signature_pattern())

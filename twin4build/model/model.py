@@ -765,7 +765,7 @@ class Model:
         fcn: Optional[Callable] = None,
         draw_semantic_model: bool = True,
         draw_simulation_model: bool = True,
-        verbose: Union[int, None] = None,
+        # verbose: Union[int, None] = None,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
         logfile: Optional[str] = None,
@@ -782,14 +782,14 @@ class Model:
             validate_model: Whether to perform model validation.
             logfile: Path to the log file.
         """
-        if verbose:
+        if LOGGER.verbose:
             self._load(
                 semantic_model_filename=semantic_model_filename,
                 simulation_model_filename=simulation_model_filename,
                 fcn=fcn,
                 draw_semantic_model=draw_semantic_model,
                 draw_simulation_model=draw_simulation_model,
-                verbose=verbose,
+                # verbose=verbose,
                 validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
                 logfile=logfile,
@@ -803,7 +803,7 @@ class Model:
                     fcn=fcn,
                     draw_semantic_model=draw_semantic_model,
                     draw_simulation_model=draw_simulation_model,
-                    verbose=verbose,
+                    # verbose=verbose,
                     validate_model=validate_model,
                     force_config_overwrite=force_config_overwrite,
                     logfile=logfile,
@@ -816,7 +816,7 @@ class Model:
         fcn: Optional[Callable],
         draw_semantic_model: bool,
         draw_simulation_model: bool,
-        verbose: int,
+        # verbose: int,
         validate_model: bool,
         force_config_overwrite: bool,
         logfile: Optional[str],
@@ -844,8 +844,8 @@ class Model:
         #     warnings.warn("The model is already loaded. Resetting model.")
         #     self.reset()
 
-        if verbose is not None:
-            LOGGER.verbose = verbose
+        # if verbose is not None:
+        #     LOGGER.verbose = verbose
         LOGGER.logfile = logfile
 
         LOGGER.task("Loading model")
@@ -882,7 +882,7 @@ class Model:
             # simulation half and discard the wrapper since ``self`` is the
             # Model we are populating here.
             translated_model = self._translator.translate(
-                self._semantic_model, verbose=verbose
+                self._semantic_model
             )
             self._simulation_model = translated_model.simulation_model
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
@@ -890,7 +890,7 @@ class Model:
         self._simulation_model.load(
             rdf_file=simulation_model_filename,
             fcn=fcn,
-            verbose=verbose,
+            # verbose=verbose,
             validate_model=validate_model,
             force_config_overwrite=force_config_overwrite,
             logfile=logfile,
@@ -926,7 +926,7 @@ class Model:
         self,
         filename: Optional[str] = None,
         result: Optional[Dict] = None,
-        verbose: int = 0,
+        # verbose: int = 0,
     ) -> None:
         """
         Load a chain log from a file or dictionary.
@@ -942,7 +942,7 @@ class Model:
         self.simulation_model.load_estimation_result(
             filename=filename,
             result=result,
-            verbose=verbose,
+            # verbose=verbose,
         )
 
     def check_for_for_missing_initial_values(self) -> None:
