@@ -519,6 +519,102 @@ class TestTranslator(unittest.TestCase):
         with self.assertRaises(Exception):
             sim_model = self.translator.translate(semantic_model)
 
+    def test_walker_equivalence_legacy_vs_bidirectional(self):
+        """The bidirectional walker reaches the same result-set as the
+        legacy walker when seeded at an SP node from which the legacy
+        forward walk can already discover the full pattern.
+
+        Acts as the regression-oracle equivalence test the PR2 plan
+        prescribes: it pins down that the structural change (forward
+        + backward iteration with ``visited_sp_edges`` bookkeeping)
+        does not silently alter behavior on inputs the legacy walker
+        already handles end-to-end.
+
+        Seed: ``node_ahu`` (rule subject) bound to ``AHU_1``.  A pure
+        forward walk visits ``node_damper`` via the outgoing edge.
+        The bidirectional walker visits the same edge forward and
+        marks it visited; the subsequent backward iteration at
+        ``node_damper`` finds the same edge in ``visited_sp_edges``
+        and skips it -- so the surviving ``result_maps`` set should
+        match the legacy walker's exactly.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+
+        sp = SignaturePattern(id="walker_equivalence_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_ahu,
+                object=node_damper,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_ahu)
+
+        seed_sm = next(
+            inst
+            for inst in self.semantic_model.get_instances_of_type(
+                core.namespace.BRICK.AHU
+            )
+        )
+
+        def canonical(maps):
+            """Reduce a list of partial maps to a hashable, order-
+            independent canonical form keyed on (sp.id, sm.uri)."""
+            out = set()
+            for m in maps:
+                items = []
+                for sp_n, sm_n in m.items():
+                    if sm_n is None:
+                        continue
+                    if isinstance(sm_n, tuple):
+                        sm_repr = (
+                            "tuple",
+                            tuple(sorted(str(getattr(e, "uri", e)) for e in sm_n)),
+                        )
+                    else:
+                        sm_repr = str(getattr(sm_n, "uri", sm_n))
+                    items.append((sp_n.id, sm_repr))
+                out.add(tuple(sorted(items)))
+            return out
+
+        # Run legacy walker
+        legacy_maps, _, _, legacy_pruned = Translator._prune_recursive_legacy(
+            seed_sm,
+            node_ahu,
+            [],
+            {},
+            {},
+            sp,
+        )
+        # Run bidirectional walker (production path)
+        bidir_maps, _, _, bidir_pruned = Translator._prune_recursive(
+            seed_sm,
+            node_ahu,
+            [],
+            {},
+            {},
+            sp,
+        )
+
+        self.assertEqual(
+            legacy_pruned,
+            bidir_pruned,
+            "legacy and bidirectional walkers disagree on prune outcome "
+            f"(legacy_pruned={legacy_pruned}, bidir_pruned={bidir_pruned})",
+        )
+        self.assertEqual(
+            canonical(legacy_maps),
+            canonical(bidir_maps),
+            "legacy and bidirectional walkers produced different "
+            "result_maps on a forward-discoverable pattern; the "
+            "bidirectional walker must not silently change behavior on "
+            "inputs the legacy walker handles end-to-end",
+        )
+
     def test_backward_walk_steprule(self):
         """Bidirectional walker reaches an SP node via a backward edge.
 
