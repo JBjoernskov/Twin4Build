@@ -739,6 +739,67 @@ class TestTranslator(unittest.TestCase):
             self.assertIsNotNone(group.get(node_ahu))
             self.assertIsNotNone(group.get(node_room))
 
+    def test_backward_walk_anypathrule_branching(self):
+        """Bidirectional walker traverses :class:`AnyPathRule` backward.
+
+        Pattern shape::
+
+            node_ahu --feeds*--> node_room   (modeled = node_room, AnyPathRule)
+
+        :class:`AnyPathRule` (multi-path) tolerates branching at every
+        hop, in either direction.  Forward-seeded the existing
+        :meth:`test_multi_path_rule_matching` produces 3 matches
+        (Damper_1 / Damper_21 / Damper_22 endpoints from AHU_1).
+
+        Backward-seeded at ``node_room`` the walker enumerates every
+        room that has an inverse path back to an AHU.  Both rooms in
+        :meth:`setUp` reach AHU_1 by inverse adjacency:
+
+        - ``Room_1`` via ``Damper_1``
+        - ``Room_2`` via ``Damper_21 -> Damper_2`` and via
+          ``Damper_22 -> Damper_2`` (AnyPathRule preserves both
+          intermediates because branching is allowed).
+
+        Three backward matches confirm the walker is actually
+        following ``predicate_subject_pairs`` and the multi-path
+        cardinality gate fires symmetrically in inverse adjacency.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="backward_anypathrule_pattern")
+        sp.add_rule(
+            AnyPathRule(
+                subject=node_ahu,
+                object=node_room,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_room)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        self.assertEqual(
+            len(groups),
+            3,
+            "expected 3 backward AnyPathRule matches (Room_1 + 2x Room_2 "
+            f"via Damper_21 / Damper_22); got {len(groups)}",
+        )
+        for group in groups:
+            self.assertIsNotNone(group.get(node_ahu))
+            self.assertIsNotNone(group.get(node_room))
+
     def test_intermediate_hash_direction_disambiguation(self):
         """Forward and backward ``_SinglePath`` intermediates seeded
         from the same ``(sm_object, subject, predicate, object)``

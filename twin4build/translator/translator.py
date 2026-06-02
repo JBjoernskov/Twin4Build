@@ -2793,6 +2793,8 @@ class Translator:
                             OptionalRule,
                             PathRule,
                             _SinglePath,
+                            AnyPathRule,
+                            _MultiPath,
                         ):
                             continue
 
@@ -6772,11 +6774,29 @@ class PathRule(Rule):
 
 
 class _MultiPath(Rule):
-    """Internal rule for MultiPath traversal (creates intermediate SP nodes)."""
+    """Internal rule for MultiPath traversal (creates intermediate SP nodes).
+
+    Direction-parametric mirror of :class:`_SinglePath` with the
+    cardinality gate relaxed to ``>= 1`` (multi-path allows branching).
+    See :class:`_SinglePath` for the rationale behind the
+    direction-keyed ``_first_entry`` and the direction sentinel in the
+    intermediate hash.
+    """
 
     def __init__(self, **kwargs):
-        self.first_entry = True
+        self._first_entry = {FORWARD: True, BACKWARD: True}
         super().__init__(**kwargs)
+
+    # Backward-compat shim mirroring :class:`_SinglePath`: legacy resetters
+    # write ``rule.first_entry = True``; the setter resets both directions
+    # so the legacy reset path keeps working under the new state shape.
+    @property
+    def first_entry(self) -> bool:
+        return self._first_entry[FORWARD]
+
+    @first_entry.setter
+    def first_entry(self, value: bool) -> None:
+        self._first_entry = {FORWARD: bool(value), BACKWARD: bool(value)}
 
     @property
     def subject(self):
@@ -6806,12 +6826,14 @@ class _MultiPath(Rule):
         bool,
         Dict[Tuple[Node, Optional[Predicate], Node], Rule],
     ]:
-        """
-        Apply MultiPath traversal rule.
+        """Apply MultiPath traversal rule in the requested ``direction``.
 
-        Creates intermediate SP subject nodes for path traversal. On first entry,
-        accepts all SM objects. On subsequent entries, accepts SM objects that
-        have at least one child for the predicate (multi-path allows branching).
+        Mirror of :meth:`_SinglePath.apply` with the cardinality gate
+        relaxed to "at least one direction-appropriate adjacency entry"
+        (multi-path tolerates branching, unlike single-path).  All other
+        intermediate-construction details (direction-aware adjacency
+        wiring, ruleset key, hash sentinel) are handled identically
+        through :class:`Direction`.
         """
         LOGGER.debug("Applying %s", self.__class__.__name__)
         LOGGER.add_level()
@@ -6821,22 +6843,24 @@ class _MultiPath(Rule):
         matched_sm_objects = []
         rule_applies_vec = np.array([False] * len(sm_objects))
 
-        if self.first_entry:
-            self.first_entry = False
+        far_node = direction.far(self)
+
+        if self._first_entry[direction]:
+            self._first_entry[direction] = False
             matched_sm_objects.extend(
                 [(i, sm_object) for i, sm_object in enumerate(sm_objects)]
             )
             rule_applies_vec = np.array([True] * len(sm_objects))
         else:
-            # Allow multi-path continuation (>= 1 child)
+            # Allow multi-path continuation (>= 1 direction-appropriate
+            # adjacency entry on the candidate).
             if len(sm_objects) >= 1:
                 for i, sm_object in enumerate(sm_objects):
-                    predicate_objects = sm_object.get_predicate_object_pairs()
-                    # Check all predicates in the Predicate's tuple
+                    predicate_neighbors = direction.sm_adj(sm_object)
                     for pred in self.predicate.preds:
                         if (
-                            pred in predicate_objects
-                            and len(predicate_objects[pred]) >= 1
+                            pred in predicate_neighbors
+                            and len(predicate_neighbors[pred]) >= 1
                         ):
                             matched_sm_objects.append((i, sm_object))
                             rule_applies_vec[i] = True
@@ -6846,21 +6870,30 @@ class _MultiPath(Rule):
         if rule_applies:
 
             for i, sm_object in matched_sm_objects:
-                # Create intermediate SP subject node for continued traversal
+                # Direction sentinel disambiguates forward/backward
+                # intermediates seeded from the same SM node.
                 intermediate_sp_subject = Node(
                     cls=sm_object.get_most_specific_type(allow_multiple_classes=True),
-                    hash_=(sm_object, self.subject, self.predicate.preds, self.object),
+                    hash_=(
+                        sm_object,
+                        self.subject,
+                        self.predicate.preds,
+                        self.object,
+                        direction.sentinel,
+                    ),
                 )
                 intermediate_sp_subject.set_signature_pattern(
-                    self.object.signature_pattern
+                    far_node.signature_pattern
                 )
                 intermediate_sp_subject.validate_cls()
-                intermediate_sp_subject.predicate_object_pairs[self.predicate] = [
-                    self.object
-                ]
-                ruleset[(intermediate_sp_subject, self.predicate, self.object)] = (
-                    master_rule
+                direction.set_intermediate_far_edge(
+                    intermediate_sp_subject, self.predicate, far_node
                 )
+                ruleset[
+                    direction.edge_key(
+                        intermediate_sp_subject, self.predicate, far_node
+                    )
+                ] = master_rule
                 pairs.append(
                     (candidate_maps, sm_object, intermediate_sp_subject, _MultiPath, i)
                 )
@@ -6870,14 +6903,14 @@ class _MultiPath(Rule):
                 "Matched: %s (%s) is %s",
                 pair[1].get_short_name(),
                 (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
-                self.object.cls,
+                far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
-        self.first_entry = True
+        self._first_entry = {FORWARD: True, BACKWARD: True}
 
 
 class OptionalRule(Rule):
@@ -7096,14 +7129,26 @@ class AnyPathRule(Rule):
         assert len(self._predicate) == 1, "The number of predicates must be 1."
         return self._predicate[0]
 
-    def _apply_endpoints_only(self, sm_subject, sm_objects, ruleset, candidate_maps):
+    def _apply_endpoints_only(
+        self,
+        sm_subject,
+        sm_objects,
+        ruleset,
+        candidate_maps,
+        direction: "Direction" = FORWARD,
+    ):
         """BFS from sm_objects following predicate edges, returning only target-type endpoints.
 
         Replaces the recursive Or(StepRule | _MultiPath) chain with an O(V+E) graph
         traversal. Only the (source, target) endpoint pairs are returned — no intermediate
         SP nodes are created, no ruleset mutations, no comparison_table interaction.
+
+        The BFS is direction-parametric: it follows ``direction.sm_adj``
+        edges and emits endpoints whose class matches
+        ``direction.far(self).cls``.
         """
-        target_cls = self.object.cls
+        far_node = direction.far(self)
+        target_cls = far_node.cls
         preds = self.predicate.preds
 
         visited = set()
@@ -7120,15 +7165,15 @@ class AnyPathRule(Rule):
                 endpoints.append(node)
                 continue
 
-            pred_objects = node.get_predicate_object_pairs()
+            pred_neighbors = direction.sm_adj(node)
             for pred in preds:
-                for child in pred_objects.get(pred, []):
+                for child in pred_neighbors.get(pred, []):
                     if child not in visited:
                         queue.append(child)
 
         pairs = []
         for endpoint in endpoints:
-            pairs.append((candidate_maps, endpoint, self.object, AnyPathRule, 0))
+            pairs.append((candidate_maps, endpoint, far_node, AnyPathRule, 0))
 
         rule_applies_vec = np.array([bool(endpoints)] * len(sm_objects))
         return pairs, bool(endpoints), rule_applies_vec, ruleset
@@ -7146,9 +7191,15 @@ class AnyPathRule(Rule):
         bool,
         Dict[Tuple[Node, Optional[Predicate], Node], Rule],
     ]:
+        if master_rule is None:
+            master_rule = self
         if self.endpoints_only:
             return self._apply_endpoints_only(
-                sm_subject, sm_objects, ruleset, candidate_maps
+                sm_subject,
+                sm_objects,
+                ruleset,
+                candidate_maps,
+                direction=direction,
             )
         pairs, rule_applies, rule_applies_vec, ruleset = self.rule.apply(
             sm_subject,
@@ -7161,7 +7212,9 @@ class AnyPathRule(Rule):
         return pairs, rule_applies, rule_applies_vec, ruleset
 
     def reset(self):
-        self.rule.first_entry = True
+        # Delegate through Or.reset so the inner StepRule and _MultiPath
+        # both reset their (now direction-keyed) state cleanly.
+        self.rule.reset()
 
 
 class SetAnyPathRule(SetStepRule):
