@@ -485,18 +485,24 @@ def brick_signature_pattern():
 #       the index that the AHU pattern recorded.  This is independent
 #       of the pattern-matching fixes for (1) and (3) above.
 #
-#   4.  OPEN (Phase-4 merge cross-contamination on optional bindings).
-#       ``OptionalRule`` allows a node to remain unbound when the SM
-#       lacks the predicate, but Phase-4 will then merge in any
-#       incomplete partial that *does* bind that node, even if the
-#       partial was rooted from an unrelated SM neighbourhood.  In
-#       this pattern AHU02 lacks a SAT setpoint, yet its complete map
-#       picks up ``Supply_Air_Temperature_Setpoint =
-#       bldg1.AHU.AHU01.Supply_Air_Temp_Setpoint`` from a partial that
-#       was rooted at AHU01's SAT.  The merge should refuse to fill
-#       optional slots from a partial whose own root is incompatible
-#       with the complete (here: AHU = AHU01 vs AHU02) but doesn't
-#       today.
+#   4.  RESOLVED.  ``OptionalRule`` allows a node to remain unbound
+#       when the SM lacks the predicate; the legacy heuristic Phase-4
+#       merger would then absorb any incomplete partial that *did*
+#       bind that node -- even one rooted from an unrelated SM
+#       neighbourhood -- producing the canonical AHU01-SAT-leaks-into
+#       -AHU02 cross-contamination.  After PR2.1-PR2.6 the
+#       bidirectional walker (``__prune_recursive``) walks both forward
+#       and backward edges from a single seed, so a connected
+#       SP graph (this pattern is one weakly-connected component)
+#       fills every required + optional binding from one Phase-1 seed.
+#       ``_merge_incomplete_groups`` short-circuits to a no-op for
+#       single-WCC patterns (PR4), so the cross-contamination path
+#       no longer fires here.  When AHU02 lacks a SAT setpoint, the
+#       walker terminates the seed without binding ``sat_setpoint``,
+#       Phase 5 (isolated-optional fill) only transfers an optional
+#       binding when ``_optional_binding_compatible`` confirms it
+#       agrees with the complete map's structural context, and
+#       AHU01's SAT setpoint stays attached to AHU01.
 
 def brick_signature_pattern_vav_dampers():
     """AHU pattern for VAV systems with per-zone dampers + AHU-level points.
