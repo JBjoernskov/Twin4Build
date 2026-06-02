@@ -2584,8 +2584,48 @@ class Translator:
         signature_pattern,
         verbose=False,
     ):
+        """Public entry point: recursive SP -> SM matcher.
+
+        Delegates to the new bidirectional :meth:`__prune_recursive`, which
+        walks SP edges as *incident* edges (both directions) using the
+        :attr:`Node.predicate_subject_pairs` / :meth:`SemanticInstance.get_predicate_subject_pairs`
+        inverse indices added in PR1.  The legacy outgoing-only walker is
+        preserved as :meth:`__prune_recursive_legacy` and reachable via
+        :meth:`_prune_recursive_legacy` for tests / regression-oracle use.
+        """
         signature_pattern.reset_ruleset()
         return Translator.__prune_recursive(
+            sm_subject,
+            sp_subject,
+            candidate_maps,
+            feasible,
+            comparison_table,
+            signature_pattern,
+            verbose=verbose,
+            descendant_cache=None,
+        )
+
+    @staticmethod
+    def _prune_recursive_legacy(
+        sm_subject,
+        sp_subject,
+        candidate_maps,
+        feasible,
+        comparison_table,
+        signature_pattern,
+        verbose=False,
+    ):
+        """Test-only entry point: legacy outgoing-only matcher.
+
+        Same signature and contract as :meth:`_prune_recursive`, but routes
+        to :meth:`__prune_recursive_legacy` (the pre-bidirectional walker
+        preserved verbatim from before the migration).  Used by regression-
+        oracle tests that compare the new bidirectional walker against the
+        legacy walker on the same input; production code calls
+        :meth:`_prune_recursive` only.
+        """
+        signature_pattern.reset_ruleset()
+        return Translator.__prune_recursive_legacy(
             sm_subject,
             sp_subject,
             candidate_maps,
@@ -2607,7 +2647,39 @@ class Translator:
         verbose=False,
         descendant_cache=None,
     ):
+        """Bidirectional matcher entry: walks SP edges in both directions.
+
+        Currently a thin pass-through to :meth:`__prune_recursive_legacy`
+        (the legacy outgoing-only walker), so behavior is unchanged.
+        Subsequent commits in PR2 replace this body with the genuine
+        bidirectional walker; preserving the legacy walker as a regression
+        oracle is the point of the hybrid staging strategy.
         """
+        return Translator.__prune_recursive_legacy(
+            sm_subject,
+            sp_subject,
+            candidate_maps,
+            feasible,
+            comparison_table,
+            signature_pattern,
+            verbose=verbose,
+            descendant_cache=descendant_cache,
+        )
+
+    @staticmethod
+    def __prune_recursive_legacy(
+        sm_subject,
+        sp_subject,
+        candidate_maps,
+        feasible,
+        comparison_table,
+        signature_pattern,
+        verbose=False,
+        descendant_cache=None,
+    ):
+        """
+        LEGACY outgoing-only matcher (preserved for regression-oracle tests).
+
         Recursively match a signature pattern node against a semantic model node (DFS).
 
         Traverses the subject → predicate → object structure of both graphs simultaneously.
@@ -2645,7 +2717,7 @@ class Translator:
         # closure propagation). Recurse per element and then aggregate
         # parallel tuples at every set-bound descendant before returning.
         if isinstance(sm_subject, tuple):
-            result = Translator.__broadcast_recurse(
+            result = Translator.__broadcast_recurse_legacy(
                 sm_subject,
                 sp_subject,
                 candidate_maps,
@@ -2736,7 +2808,7 @@ class Translator:
                                 m[matched_sp_object] = matched_sm_object
 
                             child_maps, feasible, comparison_table, is_pruned = (
-                                Translator.__broadcast_recurse(
+                                Translator.__broadcast_recurse_legacy(
                                     matched_sm_object,
                                     matched_sp_object,
                                     maps_for_pair,
@@ -2760,7 +2832,7 @@ class Translator:
                             # New comparison - recurse (object becomes subject in next level)
                             comparison_table[matched_sp_object].add(matched_sm_object)
                             child_maps, feasible, comparison_table, is_pruned = (
-                                Translator.__prune_recursive(
+                                Translator.__prune_recursive_legacy(
                                     matched_sm_object,
                                     matched_sp_object,
                                     maps_for_pair,
@@ -2866,7 +2938,7 @@ class Translator:
         return candidate_maps, feasible, comparison_table, False
 
     @staticmethod
-    def __broadcast_recurse(
+    def __broadcast_recurse_legacy(
         sm_tuple,
         sp_subject,
         candidate_maps,
@@ -2876,7 +2948,7 @@ class Translator:
         verbose,
         descendant_cache,
     ):
-        """Broadcast :meth:`__prune_recursive` over a set-bound subject.
+        """Broadcast :meth:`__prune_recursive_legacy` over a set-bound subject.
 
         Runs one recursion per element of ``sm_tuple`` with ``sp_subject``
         as the SP side. For every downstream SP node that participates in
@@ -2932,7 +3004,7 @@ class Translator:
                 elem_map[sp_subject] = elem
                 elem_maps_input = [elem_map]
                 child_maps, feasible, comparison_table, is_pruned = (
-                    Translator.__prune_recursive(
+                    Translator.__prune_recursive_legacy(
                         elem,
                         sp_subject,
                         elem_maps_input,
