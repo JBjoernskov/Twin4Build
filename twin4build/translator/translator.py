@@ -3689,7 +3689,17 @@ class Node:
             else:
                 cls = (cls,)
         self.cls = cls
+        # Outgoing-edge view of the SP graph: ``predicate -> [object Nodes]``
+        # for every rule on which this Node is the subject.
         self.predicate_object_pairs = {}
+        # Incoming-edge view of the SP graph: ``predicate -> [subject Nodes]``
+        # for every rule on which this Node is the object.  Symmetric
+        # counterpart of :attr:`predicate_object_pairs`; populated alongside
+        # it in :meth:`SignaturePattern.add_rule`.  Used by the bidirectional
+        # matcher to walk SP edges as incident edges (both directions) so a
+        # single seed can fill the entire weakly-connected component of the
+        # SP graph in one walk.
+        self.predicate_subject_pairs = {}
         self._signature_pattern = None
         self._id = self.make_id()
 
@@ -3863,6 +3873,8 @@ class ModeledNode(Node):
 
         self._graph_name = None
         self.predicate_object_pairs = {}
+        # Symmetric incoming-edge view; see Node.predicate_subject_pairs.
+        self.predicate_subject_pairs = {}
         self._signature_pattern = sp
 
         # SP-space id: deterministic member-id concatenation. Only used for
@@ -4546,6 +4558,16 @@ class SignaturePattern:
                 subj.predicate_object_pairs[pred] = [obj]
             else:
                 subj.predicate_object_pairs[pred].append(obj)
+
+            # Mirror write into the incoming-edge view of ``obj`` so the SP
+            # graph can be traversed in either direction.  The bidirectional
+            # matcher relies on this symmetric index to walk SP edges as
+            # incident edges; without it the inverse direction would be a
+            # silent no-op.
+            if pred not in obj.predicate_subject_pairs:
+                obj.predicate_subject_pairs[pred] = [subj]
+            else:
+                obj.predicate_subject_pairs[pred].append(subj)
 
             subject_instance = core.namespace.T4B.__getitem__(subj.id)
             object_instance = core.namespace.T4B.__getitem__(obj.id)

@@ -721,6 +721,30 @@ class SemanticObject(SemanticEntity):
         """Return all attributes of this instance (empty for literals)"""
         return {}
 
+    def get_predicate_subject_pairs(
+        self,
+    ) -> Dict["SemanticPredicate", List[Union["SemanticObject", "SemanticType"]]]:
+        """Return all *incoming* edges as a predicate -> [subjects] map.
+
+        This is the symmetric counterpart of :meth:`get_predicate_object_pairs`.
+        ``get_predicate_object_pairs`` answers "for outgoing triples ``(self, p, o)``,
+        what are the predicate -> object lists?"; this method answers
+        "for incoming triples ``(s, p, self)``, what are the predicate -> subject
+        lists?".
+
+        Direction reversal is purely a graph-traversal mechanic and is independent
+        of any ``owl:inverseOf`` declaration: a predecessor lookup along the *same*
+        predicate, regardless of whether the ontology declares an inverse predicate
+        for it.  The same OWL reasoning rules (inverseOf, SymmetricProperty,
+        TransitiveProperty, equivalentProperty) that materialise inferred outgoing
+        triples on :meth:`get_predicate_object_pairs` are applied symmetrically
+        here so the two views remain consistent under reasoning.
+
+        Default implementation returns ``{}`` (used by :class:`SemanticLiteral`
+        and any non-instance subclass).
+        """
+        return {}
+
     def isinstance(
         self,
         cls: Union[
@@ -747,6 +771,7 @@ class SemanticInstance(SemanticObject):
         self._types = None
         self._direct_types = None
         self._attributes = None
+        self._inverse_attributes = None
 
     @property
     def direct_types(self) -> Set[SemanticType]:
@@ -924,6 +949,161 @@ class SemanticInstance(SemanticObject):
                     self._attributes[pred_obj] = [obj_instance]
 
         return self._attributes
+
+    def get_predicate_subject_pairs(
+        self,
+    ) -> Dict[
+        "SemanticPredicate", List[Union["SemanticObject", "SemanticType"]]
+    ]:  # TODO: dynamic-graph-change cache invalidation -- see the matching note on get_predicate_object_pairs.
+        """Return all *incoming* edges of this instance as a predicate -> [subjects] map.
+
+        Symmetric counterpart of :meth:`get_predicate_object_pairs`.  For every
+        triple ``(s, p, self.uri)`` in the instance graph, ``s`` appears in the
+        list at key ``p``.
+
+        OWL reasoning is mirrored: if :meth:`get_predicate_object_pairs`
+        materialises an outgoing edge by ``owl:inverseOf`` /
+        ``owl:SymmetricProperty`` / ``owl:TransitiveProperty`` /
+        ``owl:equivalentProperty``, this method materialises the corresponding
+        incoming edge so the two views remain consistent under reasoning.  In
+        particular, ``self --pred--> X`` together with ``pred owl:inverseOf inv``
+        yields ``X --inv--> self``, which appears here as
+        ``inv -> [..., X, ...]``.
+
+        Direction reversal is independent of any inverse-predicate declaration:
+        a direct triple ``s --pred--> self`` always produces an entry under
+        ``pred`` here, even when the ontology does not declare an inverse for
+        ``pred``.
+
+        Returns:
+            Dictionary mapping :class:`SemanticPredicate` objects to lists of
+            :class:`SemanticObject` or :class:`SemanticType` instances that
+            point at ``self`` under that predicate.
+        """
+        if self._inverse_attributes is None:
+            self._inverse_attributes = {}
+
+            # Eagerly parse ontology for every predicate touching this instance
+            # (mirrors the same step in get_predicate_object_pairs so the two
+            # views see identical reasoning state).
+            predicates_used = set()
+
+            for pred, _ in self.model.instance_graph.predicate_objects(self.uri):
+                predicates_used.add(pred)
+
+            for _, pred, _ in self.model.instance_graph.triples((None, None, self.uri)):
+                predicates_used.add(pred)
+
+            for pred in predicates_used:
+                pred_obj = self.model.get_predicate(pred)
+                pred_obj.parse_ontology()
+
+            #########################################################
+            # On-demand reasoning for this specific instance --
+            # symmetric to get_predicate_object_pairs but inferring
+            # *incoming* edges instead of outgoing ones.
+            #########################################################
+
+            inferred_pairs = []  # (pred, subject) entries to add as incoming edges
+
+            owl_inverse_of = URIRef("http://www.w3.org/2002/07/owl#inverseOf")
+            owl_symmetric = URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")
+            owl_transitive = URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")
+            owl_equivalent_property = URIRef(
+                "http://www.w3.org/2002/07/owl#equivalentProperty"
+            )
+
+            # 1. Inverse properties: for every OUTGOING (pred, other) on self,
+            #    if pred has an inverse `inv`, infer an INCOMING edge
+            #    other --inv--> self.
+            for pred, other in self.model.instance_graph.predicate_objects(self.uri):
+                for inverse_pred in self.model.ontology_graph.objects(
+                    pred, owl_inverse_of
+                ):
+                    inferred_pairs.append((inverse_pred, other))
+                for inverse_pred in self.model.ontology_graph.subjects(
+                    owl_inverse_of, pred
+                ):
+                    inferred_pairs.append((inverse_pred, other))
+
+            # 2. Symmetric properties: for every OUTGOING (pred, other) on self,
+            #    if pred is symmetric, infer an INCOMING edge other --pred--> self.
+            for pred, other in self.model.instance_graph.predicate_objects(self.uri):
+                is_symmetric = (
+                    pred,
+                    RDF.type,
+                    owl_symmetric,
+                ) in self.model.ontology_graph
+                if is_symmetric:
+                    inferred_pairs.append((pred, other))
+
+            # 3. Transitive properties: for every direct INCOMING (subj, pred),
+            #    infer transitive ancestors anc --pred--> self.
+            for subj, pred, _ in self.model.instance_graph.triples(
+                (None, None, self.uri)
+            ):
+                is_transitive = (
+                    pred,
+                    RDF.type,
+                    owl_transitive,
+                ) in self.model.ontology_graph
+                if is_transitive:
+                    for transitive_subj in self.model.instance_graph.transitive_subjects(
+                        pred, subj
+                    ):
+                        if transitive_subj != subj:
+                            inferred_pairs.append((pred, transitive_subj))
+
+            # 4. Equivalent properties: for every direct INCOMING (subj, pred),
+            #    rebroadcast under any equivalent predicate.
+            for subj, pred, _ in self.model.instance_graph.triples(
+                (None, None, self.uri)
+            ):
+                for equiv_pred in self.model.ontology_graph.objects(
+                    pred, owl_equivalent_property
+                ):
+                    if equiv_pred != pred:
+                        inferred_pairs.append((equiv_pred, subj))
+                for equiv_pred in self.model.ontology_graph.subjects(
+                    owl_equivalent_property, pred
+                ):
+                    if equiv_pred != pred:
+                        inferred_pairs.append((equiv_pred, subj))
+
+            ####################################################
+
+            # Collect direct INCOMING predicate-subject pairs from the graph.
+            for subj, pred, _ in self.model.instance_graph.triples(
+                (None, None, self.uri)
+            ):
+                if self._is_class_uri(subj):
+                    subj_instance = self.model.get_type(subj)
+                else:
+                    subj_instance = self.model.get_instance(subj)
+
+                pred_obj = self.model.get_predicate(pred)
+
+                if pred_obj in self._inverse_attributes:
+                    self._inverse_attributes[pred_obj].append(subj_instance)
+                else:
+                    self._inverse_attributes[pred_obj] = [subj_instance]
+
+            # Add inferred predicate-subject pairs from reasoning.
+            for pred, subj in inferred_pairs:
+                if self._is_class_uri(subj):
+                    subj_instance = self.model.get_type(subj)
+                else:
+                    subj_instance = self.model.get_instance(subj)
+
+                pred_obj = self.model.get_predicate(pred)
+
+                if pred_obj in self._inverse_attributes:
+                    if subj_instance not in self._inverse_attributes[pred_obj]:
+                        self._inverse_attributes[pred_obj].append(subj_instance)
+                else:
+                    self._inverse_attributes[pred_obj] = [subj_instance]
+
+        return self._inverse_attributes
 
     def isinstance(
         self,

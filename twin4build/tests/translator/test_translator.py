@@ -519,6 +519,75 @@ class TestTranslator(unittest.TestCase):
         with self.assertRaises(Exception):
             sim_model = self.translator.translate(semantic_model)
 
+    def test_inverse_index_sm_symmetry(self):
+        """``SemanticInstance.get_predicate_subject_pairs`` is the symmetric
+        counterpart of ``get_predicate_object_pairs``: every direct triple
+        ``(s, p, o)`` in the instance graph must produce ``o`` in
+        ``s.get_predicate_object_pairs()[p]`` *and* ``s`` in
+        ``o.get_predicate_subject_pairs()[p]``.
+
+        Direction reversal here is purely a graph-traversal mechanic; it
+        has nothing to do with ``owl:inverseOf``.  This test seeds the
+        BRICK fixture from :meth:`setUp` (whose predicates are not
+        declared inverse / symmetric / transitive / equivalent), so the
+        two views must match the direct triples exactly with no inferred
+        entries.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        # Skip rdf:type triples -- those map class URIs which become
+        # SemanticType (no inverse-edge view by design); we only assert
+        # symmetry on instance-to-instance edges.
+        for s, p, o in self.semantic_model.instance_graph:
+            if p == core.namespace.RDF.type:
+                continue
+
+            s_inst = self.semantic_model.get_instance(s)
+            o_inst = self.semantic_model.get_instance(o)
+            p_obj = self.semantic_model.get_predicate(p)
+
+            # Forward view contains the outgoing edge.
+            forward = s_inst.get_predicate_object_pairs()
+            self.assertIn(
+                p_obj,
+                forward,
+                f"predicate {p} missing on outgoing view of {s}",
+            )
+            self.assertIn(
+                o_inst,
+                forward[p_obj],
+                f"forward edge {s} --{p}--> {o} missing in get_predicate_object_pairs",
+            )
+
+            # Inverse view contains the incoming edge under the same
+            # predicate (no owl:inverseOf required).
+            inverse = o_inst.get_predicate_subject_pairs()
+            self.assertIn(
+                p_obj,
+                inverse,
+                f"predicate {p} missing on incoming view of {o}",
+            )
+            self.assertIn(
+                s_inst,
+                inverse[p_obj],
+                f"inverse edge {s} --{p}--> {o} missing in get_predicate_subject_pairs",
+            )
+
+    def test_inverse_index_literal_stub(self):
+        """``SemanticLiteral`` (and any other non-instance ``SemanticObject``)
+        returns an empty dict from ``get_predicate_subject_pairs`` -- the
+        symmetric counterpart of the existing literal stub on
+        ``get_predicate_object_pairs``.
+        """
+        # Local application imports
+        from twin4build.model.semantic_model.semantic_model import SemanticLiteral
+
+        sm = SemanticModel()
+        lit = SemanticLiteral("hello", sm)
+        self.assertEqual(lit.get_predicate_object_pairs(), {})
+        self.assertEqual(lit.get_predicate_subject_pairs(), {})
+
 
 class TestSignaturePattern(unittest.TestCase):
     def test_node_creation(self):
@@ -642,6 +711,104 @@ class TestSignaturePattern(unittest.TestCase):
 
         # If no exception, test passed
         self.assertTrue(True)
+
+    def test_inverse_index_sp_symmetry(self):
+        """``Node.predicate_subject_pairs`` is the symmetric counterpart of
+        ``Node.predicate_object_pairs``: every rule added to a
+        :class:`SignaturePattern` must populate both views so the
+        bidirectional matcher can walk SP edges as incident edges.
+
+        Asserts symmetry across :class:`StepRule`, :class:`PathRule`,
+        :class:`AnyPathRule`, and :class:`OptionalRule` -- the four user-
+        facing rule shapes that all delegate to the same
+        ``predicate_object_pairs`` write site in
+        :meth:`SignaturePattern.add_rule`.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_a = Node(cls=core.namespace.BRICK.AHU)
+        node_b = Node(cls=core.namespace.BRICK.Damper)
+        node_c = Node(cls=core.namespace.BRICK.Room)
+        node_d = Node(cls=core.namespace.BRICK.Temperature_Sensor)
+
+        sp = SignaturePattern(id="sp_symmetry_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_a, object=node_b, predicate=core.namespace.BRICK.feeds
+            )
+        )
+        sp.add_rule(
+            PathRule(
+                subject=node_a, object=node_c, predicate=core.namespace.BRICK.feeds
+            )
+        )
+        sp.add_rule(
+            AnyPathRule(
+                subject=node_b, object=node_c, predicate=core.namespace.BRICK.feeds
+            )
+        )
+        sp.add_rule(
+            OptionalRule(
+                subject=node_c,
+                object=node_d,
+                predicate=core.namespace.BRICK.hasPoint,
+            )
+        )
+        sp.add_modeled_node(node_a)
+
+        # The user-added (subj, pred-uri, obj) triples that ``add_rule``
+        # must materialise in both views.  Each rule type wraps the URI
+        # in its own :class:`Predicate` instance, so an edge may be
+        # registered under multiple distinct ``Predicate`` keys -- the
+        # bidirectional contract is per-instance: under every
+        # ``Predicate`` instance that stores the outgoing edge, the
+        # inverse view of the object must contain the subject under the
+        # *same* instance.
+        expected_user_edges = [
+            (node_a, core.namespace.BRICK.feeds, node_b),
+            (node_a, core.namespace.BRICK.feeds, node_c),
+            (node_b, core.namespace.BRICK.feeds, node_c),
+            (node_c, core.namespace.BRICK.hasPoint, node_d),
+        ]
+
+        for subj, pred_uri, obj in expected_user_edges:
+            forward_preds = [
+                p
+                for p, objs in subj.predicate_object_pairs.items()
+                if pred_uri in p.preds and obj in objs
+            ]
+            self.assertGreater(
+                len(forward_preds),
+                0,
+                f"forward edge {subj.id} --{pred_uri}--> {obj.id} missing "
+                "in predicate_object_pairs",
+            )
+            for pred in forward_preds:
+                self.assertIn(
+                    pred,
+                    obj.predicate_subject_pairs,
+                    f"predicate-instance for {pred_uri} missing on "
+                    f"incoming view of {obj.id}",
+                )
+                self.assertIn(
+                    subj,
+                    obj.predicate_subject_pairs[pred],
+                    f"inverse edge {subj.id} --{pred_uri}--> {obj.id} "
+                    "missing in predicate_subject_pairs under the same "
+                    "Predicate instance",
+                )
+
+    def test_inverse_index_sp_initial_state(self):
+        """A freshly-constructed :class:`Node` exposes both views as empty
+        dicts (rather than ``None`` or missing attributes), so the
+        bidirectional matcher can iterate either side without guards."""
+        # Local application imports
+        import twin4build.core as core
+
+        n = Node(cls=core.namespace.BRICK.AHU)
+        self.assertEqual(n.predicate_object_pairs, {})
+        self.assertEqual(n.predicate_subject_pairs, {})
 
 
 if __name__ == "__main__":
