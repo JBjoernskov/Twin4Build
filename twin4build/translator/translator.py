@@ -2783,15 +2783,22 @@ class Translator:
 
                     # Direction-readiness gate.  Lifted incrementally in
                     # B'-PR2.2 (_SinglePath / PathRule), B'-PR2.3
-                    # (_MultiPath / AnyPathRule), B'-PR2.4 (SetStepRule),
-                    # B'-PR2.5 (SetAnyPathRule), B'-PR2.6 (NoStepRule).
-                    # ``type(rule) is X`` is intentional: subclasses
-                    # (e.g. ``SetStepRule`` extends ``StepRule``) need
-                    # their own backward handling.
+                    # (_MultiPath / AnyPathRule), B'-PR2.6 (NoStepRule).
+                    # SetStepRule / SetAnyPathRule are intentionally
+                    # excluded: their backward semantics require
+                    # re-firing forward at the subject to assemble the
+                    # full tuple binding, which conflicts with current
+                    # ``visited_sp_edges`` tracking; their bodies are
+                    # nonetheless direction-parametric (B'-PR2.4 /
+                    # B'-PR2.5) so the gate can be lifted later without
+                    # touching the rule classes.  ``type(rule) is X``
+                    # is intentional: subclasses need their own
+                    # backward handling.
                     if direction is BACKWARD:
                         if type(rule) not in (
                             StepRule,
                             OptionalRule,
+                            NoStepRule,
                             PathRule,
                             _SinglePath,
                             AnyPathRule,
@@ -6186,63 +6193,86 @@ class NoStepRule(Rule):
         bool,
         Dict[Tuple[Node, Optional[Predicate], Node], Rule],
     ]:
-        """ """
+        """Apply one-hop negation in the requested ``direction``.
+
+        ``sm_subject`` is the SM node bound to ``direction.near(self)``
+        (the SP subject in forward, the SP object in backward).
+        ``sm_objects`` are the SM nodes adjacent to it under the
+        direction-appropriate adjacency view (predicate-objects in
+        forward, predicate-subjects in backward).  The veto fires
+        when *no* adjacent SM node satisfies the forbidden SP class on
+        the far side -- so the per-element check is symmetric.
+        """
         LOGGER.debug("Applying %s", self.__class__.__name__)
         LOGGER.add_level()
         if master_rule is None:
             master_rule = self
-        pairs = []
+
+        far_node = direction.far(self)
+        near_node = direction.near(self)
+
+        pairs: List[Tuple[Any, Any, Node, type, int]] = []
         rule_applies_vec = np.array([False] * len(sm_objects))
 
         if len(candidate_maps) == 0:
             candidate_maps = [None]
 
         for current_map in candidate_maps:
-            excluded_sm_subjects = []
-            excluded_sm_objects = []
+            excluded_sm_nears: List[Any] = []
+            excluded_sm_fars: List[Any] = []
 
             if current_map is not None:
-                # Find SM objects to exclude (already matched to different SP objects)
-                for (sp_subject, sp_predicate, sp_object), rule in ruleset.items():
-                    if rule.predicate is not None and self.predicate is not None:
+                # Exclude SM far values already bound under another rule
+                # sharing this near and predicate but disagreeing on far.
+                for _key, other_rule in ruleset.items():
+                    if other_rule.predicate is not None and self.predicate is not None:
+                        other_far = direction.far(other_rule)
+                        other_near = direction.near(other_rule)
                         if (
-                            sp_object in current_map
-                            and rule.subject == self.subject
-                            and rule.predicate == self.predicate
-                            and rule.object != self.object
+                            other_far in current_map
+                            and other_near == near_node
+                            and other_rule.predicate == self.predicate
+                            and other_far != far_node
                         ):
-                            excluded_sm_objects.append(current_map[sp_object])
+                            excluded_sm_fars.append(current_map[other_far])
 
-                # Find SM subjects to exclude (already matched to different SP subjects)
-                for (sp_subject, sp_predicate, sp_object), rule in ruleset.items():
-                    if rule.predicate is not None and self.predicate is not None:
+                # Exclude SM near values already bound under another rule
+                # sharing this far and predicate but disagreeing on near.
+                for _key, other_rule in ruleset.items():
+                    if other_rule.predicate is not None and self.predicate is not None:
+                        other_far = direction.far(other_rule)
+                        other_near = direction.near(other_rule)
                         if (
-                            sp_subject in current_map
-                            and rule.object == self.object
-                            and rule.predicate == self.predicate
-                            and rule.subject != self.subject
+                            other_near in current_map
+                            and other_far == far_node
+                            and other_rule.predicate == self.predicate
+                            and other_near != near_node
                         ):
-                            excluded_sm_subjects.append(current_map[sp_subject])
+                            excluded_sm_nears.append(current_map[other_near])
                 maps_for_match = [current_map]
             else:
                 maps_for_match = []
 
-            # Check each candidate SM object
-            for i, sm_object in enumerate(sm_objects):
+            # Veto fires when an adjacent SM far node does NOT satisfy
+            # the forbidden far-class -- the rule reports applies-True
+            # so the walker keeps the branch alive (no veto).  When
+            # every adjacent SM far node IS the forbidden class, the
+            # branch is pruned implicitly via rule_applies==False.
+            for i, sm_far in enumerate(sm_objects):
                 if (
-                    sm_object.isinstance(self.object.cls) == False
-                    and sm_subject not in excluded_sm_subjects
-                    and sm_object not in excluded_sm_objects
+                    sm_far.isinstance(far_node.cls) == False
+                    and sm_subject not in excluded_sm_nears
+                    and sm_far not in excluded_sm_fars
                 ):
-                    # pairs.append((maps_for_match, sm_object, self.object, NoStepRule, i))
                     rule_applies_vec[i] = True
-        rule_applies = np.any(rule_applies_vec)
+
+        rule_applies = bool(np.any(rule_applies_vec))
         for pair in pairs:
             LOGGER.debug(
                 "Matched: %s (%s) is %s",
                 pair[1].get_short_name(),
                 (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
-                self.object.cls,
+                far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()

@@ -10,6 +10,7 @@ from twin4build.translator.translator import (
     StepRule,
     AnyPathRule,
     Node,
+    NoStepRule,
     OptionalRule,
     SignaturePattern,
     PathRule,
@@ -1020,6 +1021,146 @@ class TestTranslator(unittest.TestCase):
             ahu_uri_short,
             "AHU_1",
             f"backward BFS must terminate at AHU_1; got {ahu_uri_short}",
+        )
+
+    def test_nosteprule_apply_symmetric_veto(self):
+        """:meth:`NoStepRule.apply` enforces the absence-of-edge veto
+        symmetrically across forward and backward seed directions.
+
+        The veto applies to the triple ``Room -hasPoint-> Sensor``.
+        When :meth:`NoStepRule.apply` is called with a Room as
+        ``sm_subject`` and the corresponding Sensor as the SM
+        candidate (forward), or with the Sensor as ``sm_subject`` and
+        the Room as the SM candidate (backward), both arms must
+        report ``rule_applies == False`` -- i.e. the veto fires
+        regardless of seed direction.
+
+        The forward case is the legacy semantic; the backward case
+        relies on the parametric ``direction.far(self)`` lookup
+        introduced in B'-PR2.6 (without it, the rule would be
+        comparing the SP subject's class against a backward-seeded SM
+        object and silently let a forbidden triple through).
+        """
+        # Local application imports
+        from twin4build.translator.translator import BACKWARD, FORWARD
+        import twin4build.core as core
+
+        node_room = Node(cls=core.namespace.BRICK.Room)
+        node_sensor = Node(cls=core.namespace.BRICK.Temperature_Sensor)
+
+        sp = SignaturePattern(id="nosteprule_symmetric_pattern")
+        sp.add_rule(
+            NoStepRule(
+                subject=node_room,
+                object=node_sensor,
+                predicate=core.namespace.BRICK.hasPoint,
+            )
+        )
+
+        rule = next(
+            r for r in sp.ruleset.values() if isinstance(r, NoStepRule)
+        )
+
+        room_sm = next(
+            iter(
+                self.semantic_model.get_instances_of_type(core.namespace.BRICK.Room)
+            )
+        )
+        sensor_sm = next(
+            iter(
+                self.semantic_model.get_instances_of_type(
+                    core.namespace.BRICK.Temperature_Sensor
+                )
+            )
+        )
+
+        # Forward: Room as SM near, Sensor as SM far candidate.
+        # Sensor IS a Temperature_Sensor (== far_node.cls), so the
+        # forbidden triple exists -- veto fires (rule_applies=False).
+        _, fwd_applies, _, _ = rule.apply(
+            room_sm,
+            [sensor_sm],
+            sp.ruleset,
+            candidate_maps=[],
+            direction=FORWARD,
+        )
+        self.assertFalse(
+            fwd_applies,
+            "forward NoStepRule must veto when an SM neighbor "
+            "satisfies the forbidden far class",
+        )
+
+        # Backward: Sensor as SM near, Room as SM far candidate.
+        # Room IS a Room (== direction.far(self).cls in BACKWARD), so
+        # the forbidden triple still exists from the inverse view --
+        # the symmetric veto must fire.
+        _, bwd_applies, _, _ = rule.apply(
+            sensor_sm,
+            [room_sm],
+            sp.ruleset,
+            candidate_maps=[],
+            direction=BACKWARD,
+        )
+        self.assertFalse(
+            bwd_applies,
+            "backward NoStepRule must veto symmetrically: an SM "
+            "neighbor reached via inverse-predicate that satisfies "
+            "the SP subject class is the same forbidden triple as "
+            "the forward case",
+        )
+
+    def test_nosteprule_walker_backward_seed_veto(self):
+        """The bidirectional walker dispatches :class:`NoStepRule`
+        backward through the readiness gate.
+
+        Pattern shape::
+
+            node_room --hasPoint--> node_sensor   (NoStepRule)
+
+        Modeled = ``node_sensor`` forces the seed at SM Sensors.
+        Every Sensor in the SM is reachable backward through
+        ``hasPoint`` to its parent Room, which satisfies the
+        forbidden ``BRICK.Room`` class.  The backward dispatch of
+        :meth:`NoStepRule.apply` reports rule_applies=False, and the
+        walker prunes -- so zero complete groups are produced.
+
+        Without the readiness gate change in B'-PR2.6 (admitting
+        ``NoStepRule``), the backward edge would be silently skipped
+        and the walker would happily seed every Sensor without ever
+        evaluating the veto.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_room = Node(cls=core.namespace.BRICK.Room)
+        node_sensor = Node(cls=core.namespace.BRICK.Temperature_Sensor)
+
+        sp = SignaturePattern(id="nosteprule_backward_walker_pattern")
+        sp.add_rule(
+            NoStepRule(
+                subject=node_room,
+                object=node_sensor,
+                predicate=core.namespace.BRICK.hasPoint,
+            )
+        )
+        sp.add_modeled_node(node_sensor)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        self.assertEqual(
+            len(groups),
+            0,
+            "backward seed at every Sensor must be vetoed by the "
+            "NoStepRule (each Sensor's parent is a forbidden Room); "
+            f"got {len(groups)} unexpected complete groups",
         )
 
     def test_intermediate_hash_direction_disambiguation(self):
