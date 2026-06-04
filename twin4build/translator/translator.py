@@ -2764,15 +2764,50 @@ class Translator:
         glues partials produced from different seeds for those
         patterns.
 
-        ``visited_sp_edges`` is threaded through the recursion to keep
-        each SP edge from being traversed more than once per branch
-        (would otherwise oscillate ``A --pred--> B`` forward / backward
-        indefinitely).  Edge-keys are tuples ``(rule_subject_node,
-        sp_predicate, rule_object_node)``, i.e. the canonical ruleset
-        key.  The walker constructs them via
-        :meth:`Direction.edge_key` so backward iterations (which see
-        edges in ``(near=object, far=subject)`` order) reorder before
-        lookup.
+        ``visited_sp_edges`` is threaded through the recursion to
+        prevent infinite oscillation between forward and backward
+        traversals (would otherwise loop ``A --pred--> B`` forward /
+        backward indefinitely).  The keying strategy is
+        rule-shape-dependent:
+
+        - **Path-style rules** (:class:`PathRule`,
+          :class:`AnyPathRule`, :class:`_SinglePath`,
+          :class:`_MultiPath`) are keyed by ``edge_key`` alone --
+          the canonical 3-tuple ``(rule_subject_node, sp_predicate,
+          rule_object_node)`` produced by
+          :meth:`Direction.edge_key`.  Once such an edge has been
+          fired in *either* direction, it must not be re-fired in
+          the opposite direction from the far endpoint: the
+          intermediate SP nodes synthesised by
+          :class:`_SinglePath` / :class:`_MultiPath` are
+          direction-keyed (see ``Direction.sentinel`` in the hash
+          mix), so a backward re-firing would produce a *disjoint
+          set* of intermediate SP nodes that the walker would then
+          glue onto the existing forward partial -- yielding
+          "hybrid" result_maps mixing forward and backward
+          intermediates that do not correspond to any single
+          path in the SM.
+        - **All other rule shapes** (:class:`StepRule`,
+          :class:`OptionalRule`, :class:`NoStepRule`, plus the
+          per-intermediate edges constructed inside a Path chain)
+          are keyed by ``(sm_subject, edge_key)``.  This scopes
+          cycle-prevention to the (SM-subject, SP-edge) pair so
+          a sibling Path branch can re-fire the *same downstream*
+          SP edge from a *different* SM intermediate.  This is the
+          canonical bug fix:  a :class:`PathRule`'s :class:`StepRule`
+          1-hop branch may match an SM intermediate that fails the
+          downstream rule; the sibling multi-hop branch then
+          reaches a *different* SM intermediate and must be
+          allowed to re-fire that downstream rule from the new
+          SM subject.  An ``edge_key``-only set would incorrectly
+          poison all subsequent firings.
+
+        Cycle prevention is preserved in both modes: same
+        ``edge_key`` for path rules; same ``(sm_subject, edge_key)``
+        pair for step rules.  The walker constructs ``edge_key``
+        via :meth:`Direction.edge_key` so backward iterations
+        (which see edges in ``(near=object, far=subject)`` order)
+        reorder before lookup.
         """
         if descendant_cache is None:
             descendant_cache = {}
@@ -2821,11 +2856,48 @@ class Translator:
                     edge_key = direction.edge_key(
                         sp_subject, sp_predicate, sp_neighbor
                     )
-                    if edge_key in visited_sp_edges:
-                        continue
 
                     rule = ruleset.get(edge_key)
                     if rule is None:
+                        continue
+
+                    # Keying strategy for ``visited_sp_edges`` is
+                    # rule-shape-dependent (see method docstring):
+                    #
+                    # - Path / Any-Path rules (multi-hop traversal
+                    #   that introduces *intermediate* SP nodes via
+                    #   :class:`_SinglePath` / :class:`_MultiPath`)
+                    #   are keyed by ``edge_key`` alone.  Once such
+                    #   an edge has been fired in any direction,
+                    #   it must NOT be re-fired in the opposite
+                    #   direction from the far endpoint -- doing so
+                    #   would synthesise spurious "hybrid"
+                    #   result_maps that mix forward and backward
+                    #   intermediate bindings (forward path
+                    #   ``A -> i_f -> B`` glued onto a backward
+                    #   path ``B -> i_b -> A`` sharing the same
+                    #   far endpoints but disjoint intermediates).
+                    # - All other rule shapes (StepRule, downstream
+                    #   StepRule below a Path rule, OptionalRule,
+                    #   NoStepRule, the per-intermediate edges
+                    #   inside a Path chain) are keyed by
+                    #   ``(sm_subject, edge_key)``.  This scopes
+                    #   cycle-prevention to the (SM-subject,
+                    #   SP-edge) pair so a sibling Path branch can
+                    #   re-fire the *same* downstream SP edge from
+                    #   a *different* SM intermediate -- essential
+                    #   for the original bug:  a Path's StepRule
+                    #   branch failing at one SM intermediate must
+                    #   not poison the downstream rule for the
+                    #   sibling _SinglePath branch reaching a
+                    #   different SM intermediate.
+                    if isinstance(
+                        rule, (PathRule, AnyPathRule, _SinglePath, _MultiPath)
+                    ):
+                        visited_key = edge_key
+                    else:
+                        visited_key = (sm_subject, edge_key)
+                    if visited_key in visited_sp_edges:
                         continue
 
                     # Direction-readiness gate.  Lifted incrementally in
@@ -2861,7 +2933,7 @@ class Translator:
                                 )
                             continue
 
-                    visited_sp_edges.add(edge_key)
+                    visited_sp_edges.add(visited_key)
 
                     valid_maps = []
 

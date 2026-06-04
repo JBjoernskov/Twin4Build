@@ -803,6 +803,245 @@ class TestTranslator(unittest.TestCase):
             self.assertIsNotNone(group.get(node_ahu))
             self.assertIsNotNone(group.get(node_room))
 
+    def test_pathrule_two_hop_with_downstream_step_rule(self):
+        """Regression: ``PathRule``'s multi-hop ``_SinglePath`` branch must
+        be able to fire its *downstream* :class:`StepRule` after the
+        sibling :class:`StepRule` branch (1-hop) failed at a
+        *different* SM subject.
+
+        Pattern shape::
+
+            node_damper --feeds*--> node_sensor --observes--> node_temp
+                          (PathRule)              (StepRule)
+
+        SM::
+
+            damper -[feeds]-> sensor_pressure -[feeds]-> sensor_temp
+            sensor_temp -[observes]-> temperature
+            (sensor_pressure has NO observes-edge to a Temperature)
+
+        Two ``PathRule`` branches fire from ``damper``:
+
+        - The 1-hop ``StepRule`` branch matches ``sensor_pressure``.
+          The walker recurses at ``sensor_pressure`` and tries the
+          downstream ``observes Temperature`` ``StepRule`` -- which
+          fails because ``sensor_pressure`` has no such edge.  This
+          attempt marks the SP edge ``(node_sensor, observes,
+          node_temp)`` visited.
+        - The 2-hop ``_SinglePath`` branch then reaches
+          ``sensor_temp``.  The walker recurses at ``sensor_temp``
+          and must be able to re-evaluate the downstream
+          ``observes Temperature`` edge -- *from a different SM
+          subject* -- and bind ``node_temp`` to ``temperature``.
+
+        Before the fix, ``visited_sp_edges`` was keyed by the SP edge
+        only, so the failed first attempt poisoned the second:
+        ``(node_sensor, observes, node_temp)`` was already in the set
+        and the walker could not re-fire the downstream rule from
+        ``sensor_temp``.  ``node_temp`` therefore stayed unbound and
+        the matcher produced **0** complete groups.
+
+        Re-keying ``visited_sp_edges`` by ``(sm_subject, edge_key)``
+        scopes the cycle-prevention to the (SM-subject, SP-edge)
+        pair, so the same SP edge can be re-evaluated when entered
+        from a different SM subject.  The matcher then produces
+        **1** complete group bound to ``Sensor=sensor_temp,
+        Temperature=temperature``.
+        """
+        # Third party imports
+        from rdflib import URIRef
+
+        # Local application imports
+        import twin4build.core as core
+        from twin4build.model.semantic_model.semantic_model import (
+            SemanticInstance,
+        )
+
+        sm = SemanticModel()
+        base = "http://example.org/two_hop_pathrule#"
+        damper_uri = URIRef(base + "Damper_1")
+        sensor_pressure_uri = URIRef(base + "Sensor_pressure")
+        sensor_temp_uri = URIRef(base + "Sensor_temp")
+        temp_uri = URIRef(base + "Temperature_1")
+
+        sm.instance_graph.add(
+            (damper_uri, core.namespace.RDF.type, core.namespace.BRICK.Damper)
+        )
+        sm.instance_graph.add(
+            (
+                sensor_pressure_uri,
+                core.namespace.RDF.type,
+                core.namespace.BRICK.Sensor,
+            )
+        )
+        sm.instance_graph.add(
+            (sensor_temp_uri, core.namespace.RDF.type, core.namespace.BRICK.Sensor)
+        )
+        sm.instance_graph.add(
+            (temp_uri, core.namespace.RDF.type, core.namespace.BRICK.Temperature)
+        )
+
+        # Two-hop chain: damper -[feeds]-> sensor_pressure -[feeds]-> sensor_temp
+        sm.instance_graph.add(
+            (damper_uri, core.namespace.BRICK.feeds, sensor_pressure_uri)
+        )
+        sm.instance_graph.add(
+            (sensor_pressure_uri, core.namespace.BRICK.feeds, sensor_temp_uri)
+        )
+        # Only sensor_temp observes a Temperature.  sensor_pressure has
+        # no outgoing observes triple at all, so the StepRule branch
+        # of the PathRule fails at sensor_pressure.
+        sm.instance_graph.add(
+            (sensor_temp_uri, core.namespace.BRICK.observes, temp_uri)
+        )
+
+        node_damper = Node(cls=core.namespace.BRICK.Damper)
+        node_sensor = Node(cls=core.namespace.BRICK.Sensor)
+        node_temp = Node(cls=core.namespace.BRICK.Temperature)
+
+        sp = SignaturePattern(id="pathrule_two_hop_downstream_step_pattern")
+        sp.add_rule(
+            PathRule(
+                subject=node_damper,
+                object=node_sensor,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_rule(
+            StepRule(
+                subject=node_sensor,
+                object=node_temp,
+                predicate=core.namespace.BRICK.observes,
+            )
+        )
+        sp.add_modeled_node(node_damper)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=sm
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        self.assertEqual(
+            len(groups),
+            1,
+            "expected exactly 1 complete match (Sensor=sensor_temp, "
+            "Temperature=temperature) -- the PathRule's _SinglePath "
+            "branch must reach sensor_temp and complete the downstream "
+            "StepRule even after the StepRule branch failed at "
+            f"sensor_pressure; got {len(groups)}",
+        )
+
+        for mapping in groups:
+            sensor_binding = mapping.get(node_sensor)
+            temp_binding = mapping.get(node_temp)
+            self.assertIsNotNone(
+                sensor_binding,
+                "node_sensor must be bound when the downstream StepRule "
+                "completes via _SinglePath",
+            )
+            self.assertIsNotNone(
+                temp_binding,
+                "node_temp must be bound -- the downstream StepRule must "
+                "fire from sensor_temp even though it was rejected from "
+                "sensor_pressure earlier in the walk",
+            )
+            sensor_uri_str = str(
+                sensor_binding.uri
+                if isinstance(sensor_binding, SemanticInstance)
+                else sensor_binding
+            )
+            temp_uri_str = str(
+                temp_binding.uri
+                if isinstance(temp_binding, SemanticInstance)
+                else temp_binding
+            )
+            self.assertEqual(
+                sensor_uri_str,
+                str(sensor_temp_uri),
+                "node_sensor must bind to sensor_temp (the only sensor "
+                "with a Temperature observation), not sensor_pressure",
+            )
+            self.assertEqual(
+                temp_uri_str,
+                str(temp_uri),
+                "node_temp must bind to the SM Temperature instance "
+                "reached via sensor_temp",
+            )
+
+    def test_visited_edges_still_block_same_sm_cycle(self):
+        """Re-keying ``visited_sp_edges`` by ``(sm_subject, edge_key)``
+        must still prevent the matcher from re-traversing the same SP
+        edge from the same SM subject.
+
+        Pattern: a self-loop ``node_a --feeds--> node_a``.  SM: a
+        single :class:`BRICK.AHU` instance with a self-loop on
+        ``BRICK.feeds``.  The walker enters at the seed, follows the
+        forward edge back to the same SM instance, and the recursive
+        entry must short-circuit on ``(a, (node_a, feeds, node_a))``
+        already being in ``visited_sp_edges``.
+
+        Asserts the matcher terminates (no infinite recursion) and
+        produces exactly one complete group binding ``node_a`` to the
+        single SM AHU -- demonstrating that the per-(sm_subject,
+        edge) keying still vetoes same-subject same-edge re-entry.
+        """
+        # Third party imports
+        from rdflib import URIRef
+
+        # Local application imports
+        import twin4build.core as core
+
+        sm = SemanticModel()
+        base = "http://example.org/self_loop#"
+        a_uri = URIRef(base + "AHU_self_loop")
+
+        sm.instance_graph.add(
+            (a_uri, core.namespace.RDF.type, core.namespace.BRICK.AHU)
+        )
+        sm.instance_graph.add((a_uri, core.namespace.BRICK.feeds, a_uri))
+
+        node_a = Node(cls=core.namespace.BRICK.AHU)
+
+        sp = SignaturePattern(id="self_loop_cycle_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=node_a,
+                object=node_a,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_a)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        # Must not infinite-loop; must produce exactly one match.
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=sm
+        )
+
+        groups = complete_groups[DummySystem][sp]
+        self.assertEqual(
+            len(groups),
+            1,
+            "expected exactly 1 complete group for the self-loop SP "
+            "(node_a --feeds--> node_a) -- the (sm_subject, edge_key) "
+            "keying must still block re-traversal of the same SP edge "
+            f"from the same SM subject; got {len(groups)}",
+        )
+        for mapping in groups:
+            self.assertIsNotNone(
+                mapping.get(node_a),
+                "node_a must be bound to the single SM AHU instance",
+            )
+
     def test_setsteprule_forward_through_bidirectional_broadcast(self):
         """Forward-seeded :class:`SetStepRule` produces a parallel-tuple
         binding via the bidirectional broadcast helper.
