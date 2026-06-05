@@ -736,7 +736,10 @@ def main():
     df_valve = pd.DataFrame(
         model.components["office_valve_position_sensor"]
         .output["measuredValue"]
-        .history()[:, 0, 0],
+        .history()[:, 0, 0]
+        .detach()
+        .cpu()
+        .numpy(),
         index=simulator.date_time_steps[0],
     )
     valve_position_schedule = tb.SensorSystem(df=df_valve, id="ValvePositionSchedule")

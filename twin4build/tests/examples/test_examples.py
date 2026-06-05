@@ -65,6 +65,16 @@ class TestExamples(unittest.TestCase):
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
 
+    # @unittest.skip("Temporarily disabled - notebook test failing")
+    def test_full_workflow_example(self):
+        notebook_path = os.path.join(
+            uppath(os.path.abspath(__file__), 3),
+            "examples",
+            "full_workflow_example.ipynb",
+        )
+        result = test_notebook(notebook_path)
+        self.assertTrue(result, f"Test failed for {notebook_path}")
+
 
 if __name__ == "__main__":
     unittest.main()

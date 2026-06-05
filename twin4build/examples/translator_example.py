@@ -144,7 +144,7 @@ sm = tb.SemanticModel(rdf_file=filename, id="translator_example")
 # tb.BuildingSpaceTorchSystem.sp = [saref_signature_pattern_sensor()]
 # translator.translate(semantic_model=sm, systems_=[tb.BuildingSpaceTorchSystem], verbose=999999)
 
-model.load(semantic_model_filename=filename, fcn=fcn, verbose=999999)
+model.load(semantic_model_filename=filename, fcn=fcn)
 
 
 forest_green = "#2D6A4F"

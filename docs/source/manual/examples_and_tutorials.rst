@@ -92,6 +92,29 @@ Optimizer
     # Run optimization
     # Analyze optimal solutions
 
+Full Workflow
+-------------
+
+.. raw:: html
+
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/full_workflow_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> End-to-end pipeline: translate a semantic model, calibrate parameters with the Estimator, and optimize a control schedule with the Optimizer</p>
+
+.. code-block:: python
+
+    import twin4build as tb
+
+    # 1. Translate a semantic model into a simulation model
+    translator = tb.Translator()
+    model = translator.translate(...)
+
+    # 2. Calibrate parameters against measurements
+    estimator = tb.Estimator(tb.Simulator(model))
+    estimator.estimate(parameters=...)
+
+    # 3. Optimize a control schedule on the calibrated model
+    optimizer = tb.Optimizer(tb.Simulator(model))
+    optimizer.optimize(variables=...)
+
 Running Examples
 ---------------
 
