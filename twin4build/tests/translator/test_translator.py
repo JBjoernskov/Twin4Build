@@ -1173,20 +1173,27 @@ class TestTranslator(unittest.TestCase):
         )
 
     def test_setanypathrule_apply_backward_direct(self):
-        """:meth:`SetAnyPathRule.apply` body is direction-parametric.
+        """:meth:`SetAnyPathRule.apply` body is direction-parametric
+        with asymmetric forward/backward emission.
 
-        Even though the bidirectional walker does not currently
-        dispatch :class:`SetStepRule` subclasses backward (set-rule
-        backward semantics defer their walker integration until tuple
-        re-firing is solved), the rule's ``apply`` must still walk
-        the backward predicate adjacency correctly when called
-        directly.  This test seeds at a :class:`BRICK.Room` instance
-        and asserts the BFS reaches the AHU through inverse-feeds
-        edges, producing a single-element AHU tuple bound to
-        ``self.subject`` (= ``direction.far(self)``).
+        Forward emits one tuple-binding pair (set-binding on the SP
+        object); backward emits *scalar* per-endpoint pairs -- one pair
+        per reachable near reached through inverse adjacency.  The
+        scalar shape is required because the SP subject of a
+        ``SetAnyPathRule`` is scalar by construction; bundling
+        backward-reached nears into a singleton tuple at a scalar SP
+        node would force the walker's tuple-handling branch onto a
+        scalar position and confuse the broadcast aggregator.  The
+        full set binding on the SP object is restored by the natural
+        FORWARD firing at the near reached via this backward walk
+        (see :meth:`SetAnyPathRule.apply` docstring).
+
+        This test seeds at a :class:`BRICK.Room` instance and asserts
+        the BFS reaches the AHU through inverse-feeds edges,
+        producing one scalar pair per reachable AHU.
         """
         # Local application imports
-        from twin4build.translator.translator import BACKWARD, Predicate
+        from twin4build.translator.translator import BACKWARD, Predicate, StepRule
         import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
@@ -1233,14 +1240,18 @@ class TestTranslator(unittest.TestCase):
         self.assertEqual(
             len(pairs),
             1,
-            f"SetAnyPathRule emits exactly one tuple-binding pair; got {len(pairs)}",
+            "SetAnyPathRule emits one scalar pair per reachable near "
+            "in backward direction; expected exactly one (single AHU "
+            f"reachable via inverse-feeds); got {len(pairs)}",
         )
-        _, tuple_binding, sp_target, kind, _ = pairs[0]
-        self.assertEqual(
+        _, sm_near, sp_target, kind, _ = pairs[0]
+        self.assertIs(
             kind,
-            SetStepRule,
-            "set-rules tag matches with SetStepRule kind for the "
-            "matcher's tuple-handling branch",
+            StepRule,
+            "backward set-rules emit scalar pairs tagged StepRule so "
+            "the walker takes the scalar (non-broadcast) recursion "
+            "branch; tuple binding is restored later by the forward "
+            "firing at the near",
         )
         self.assertIs(
             sp_target,
@@ -1248,18 +1259,235 @@ class TestTranslator(unittest.TestCase):
             "backward-direction far node must be the SP subject "
             "(node_ahu); got a different SP node",
         )
-        self.assertIsInstance(tuple_binding, tuple)
-        self.assertEqual(
-            len(tuple_binding),
-            1,
-            "exactly one AHU is reachable from any Room via "
-            f"inverse-feeds; got tuple of length {len(tuple_binding)}",
+        self.assertNotIsInstance(
+            sm_near,
+            tuple,
+            "backward set-rule emission must be scalar (the matched "
+            "SM near), not a tuple binding",
         )
-        ahu_uri_short = str(tuple_binding[0].uri).rsplit("#", 1)[-1]
+        ahu_uri_short = str(sm_near.uri).rsplit("#", 1)[-1]
         self.assertEqual(
             ahu_uri_short,
             "AHU_1",
             f"backward BFS must terminate at AHU_1; got {ahu_uri_short}",
+        )
+
+    def test_setsteprule_backward_through_bidirectional_walker(self):
+        """Backward-seeded :class:`SetStepRule` recovers the full tuple
+        binding via the natural FORWARD firing at the near.
+
+        Pattern: ``node_room (modeled, scalar) <-- StepRule(hasPoint) --
+        node_sensor (scalar)`` plus
+        ``node_ahu (scalar) -- SetStepRule(feeds) --> node_dampers
+        (set-bound)``, with ``node_dampers <-- StepRule(feeds) --
+        node_room`` linking the two halves.  Seeding at the modeled
+        Room walks backward through ``StepRule(node_dampers, node_room,
+        feeds)`` to a damper, then backward through the
+        ``SetStepRule(node_ahu, node_dampers, feeds)`` to ``AHU_1``.
+        The matcher's recursion at ``(AHU_1, node_ahu)`` then fires
+        the ``SetStepRule`` *forward* and the broadcast helper
+        re-establishes the full ``node_dampers`` tuple binding on the
+        SP object -- which, after broadcast filter semantics, retains
+        only the dampers whose downstream ``StepRule`` to a room is
+        satisfied (see ``__broadcast_recurse`` filter semantics).
+
+        Verifies:
+          1. The seed walk *reaches* ``node_ahu`` despite no forward
+             path from the seed Room (the only route is backward
+             through the set-rule).  Pre-fix, the readiness gate
+             skipped backward dispatch on ``SetStepRule``, leaving
+             ``node_ahu`` unbound and the match incomplete.
+          2. ``node_dampers`` ends up as a tuple (set-bound binding)
+             rather than a stray scalar from the backward walk's
+             intermediate scalar binding.
+          3. ``node_ahu`` binds to a single ``AHU`` instance (scalar).
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_dampers = Node(cls=core.namespace.BRICK.Damper)
+        node_room = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="setsteprule_backward_pattern")
+        sp.add_rule(
+            SetStepRule(
+                subject=node_ahu,
+                object=node_dampers,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_rule(
+            StepRule(
+                subject=node_dampers,
+                object=node_room,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        sp.add_modeled_node(node_room)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+        groups = complete_groups[DummySystem][sp]
+
+        # In the test SM, only Damper_1 directly feeds Room_1 (Damper_2
+        # feeds Damper_21/22 which then feed Room_2 -- that's *two*
+        # hops, not directly satisfied by ``StepRule(feeds)``).  The
+        # broadcast filter prunes Damper_2 from the surviving tuple.
+        # We therefore expect exactly one complete group: AHU_1 ->
+        # (Damper_1,) -> Room_1.
+        self.assertEqual(
+            len(groups),
+            1,
+            "expected one complete group (AHU_1 -> (Damper_1,) -> "
+            f"Room_1); got {len(groups)}",
+        )
+        group = groups[0]
+
+        # The set-rule subject must be bound (the WHOLE point of
+        # backward set-rule support).  Pre-fix, this would be None.
+        self.assertIsNotNone(
+            group.get(node_ahu),
+            "node_ahu must be bound after backward set-rule traversal "
+            "(the modeled Room can only reach the AHU by walking "
+            "backward through the SetStepRule edge)",
+        )
+        self.assertNotIsInstance(
+            group.get(node_ahu),
+            tuple,
+            "node_ahu is the scalar SP subject of the SetStepRule -- "
+            "it must remain scalar (not a singleton tuple) after the "
+            "backward traversal",
+        )
+
+        # Set-bound node must hold a tuple binding (re-established by
+        # the forward firing at the AHU after the backward walk).
+        dampers_binding = group.get(node_dampers)
+        self.assertIsInstance(
+            dampers_binding,
+            tuple,
+            "node_dampers (set-bound) must hold a tuple binding "
+            "after the forward firing at AHU re-establishes the set",
+        )
+        # After broadcast filter, only Damper_1 survives (Damper_2
+        # has no direct feeds -> Room edge).
+        damper_uris = sorted(str(d.uri).rsplit("#", 1)[-1] for d in dampers_binding)
+        self.assertEqual(
+            damper_uris,
+            ["Damper_1"],
+            "after broadcast filter semantics, only the dampers whose "
+            "downstream StepRule(feeds, room) is satisfied survive; "
+            f"got {damper_uris}",
+        )
+
+        ahu_uri_short = str(group.get(node_ahu).uri).rsplit("#", 1)[-1]
+        self.assertEqual(
+            ahu_uri_short,
+            "AHU_1",
+            f"node_ahu must bind to AHU_1; got {ahu_uri_short}",
+        )
+
+    def test_setanypathrule_backward_through_bidirectional_walker(self):
+        """Backward-seeded :class:`SetAnyPathRule` recovers the full
+        multi-hop tuple binding via the natural FORWARD firing at the
+        near.
+
+        Pattern: ``node_ahu (scalar) -- SetAnyPathRule(feeds) -->
+        node_rooms (set-bound)`` with ``node_room_anchor (modeled,
+        scalar)`` linked via auto-broadcast.  Seeding at the modeled
+        Room walks backward through the multi-hop inverse-feeds chain
+        (``Room_2 <- Damper_22 <- Damper_2 <- AHU_1`` *or*
+        ``Room_2 <- Damper_21 <- Damper_2 <- AHU_1`` *or*
+        ``Room_1 <- Damper_1 <- AHU_1``) to ``AHU_1``, then the
+        forward firing of the ``SetAnyPathRule`` at ``AHU_1``
+        rebuilds the full multi-hop endpoint tuple
+        ``(Room_1, Room_2)``.
+
+        Verifies the multi-hop counterpart of
+        :meth:`test_setsteprule_backward_through_bidirectional_walker`:
+        the BFS-based ``SetAnyPathRule.apply`` body emits one scalar
+        pair per *reachable* near in backward direction (here a
+        single ``AHU_1``), and the matcher's natural forward
+        re-firing reconstructs the full set binding through the
+        BFS frontier.
+        """
+        # Local application imports
+        import twin4build.core as core
+
+        node_ahu = Node(cls=core.namespace.BRICK.AHU)
+        node_rooms = Node(cls=core.namespace.BRICK.Room)
+
+        sp = SignaturePattern(id="setanypath_backward_pattern")
+        sp.add_rule(
+            SetAnyPathRule(
+                subject=node_ahu,
+                object=node_rooms,
+                predicate=core.namespace.BRICK.feeds,
+            )
+        )
+        # Modeled at the set-bound side: this forces the seed to be
+        # an individual Room, exercising the backward set-rule
+        # traversal contract.  Without backward dispatch on
+        # SetAnyPathRule, the seed walk would produce only an
+        # incomplete partial mapping (node_ahu = None).
+        sp.add_modeled_node(node_rooms)
+
+        class DummySystem(core.System):
+            pass
+
+        DummySystem.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummySystem], semantic_model=self.semantic_model
+        )
+        groups = complete_groups[DummySystem][sp]
+
+        # Exactly one canonical complete group is expected: AHU_1
+        # paired with the full set of reachable rooms.  Multiple
+        # seeds (Room_1, Room_2) collapse to one mapping after Phase 6
+        # dedupe; multiple parallel paths to Room_2 are deduplicated
+        # by SetAnyPathRule's BFS endpoint set.
+        self.assertEqual(
+            len(groups),
+            1,
+            "expected one canonical complete group (AHU_1 -> all "
+            f"reachable rooms); got {len(groups)}",
+        )
+        group = groups[0]
+
+        # The set-rule subject must be bound -- this is the regression
+        # marker for backward dispatch on SetAnyPathRule.
+        self.assertIsNotNone(
+            group.get(node_ahu),
+            "node_ahu must be bound after backward SetAnyPathRule "
+            "traversal (only reachable from a Room seed by walking "
+            "backward through the multi-hop inverse-feeds chain)",
+        )
+        self.assertNotIsInstance(
+            group.get(node_ahu),
+            tuple,
+            "scalar SP subject of a SetAnyPathRule must stay scalar",
+        )
+
+        rooms_binding = group.get(node_rooms)
+        self.assertIsInstance(
+            rooms_binding,
+            tuple,
+            "node_rooms (set-bound) must hold a tuple binding "
+            "re-established by the forward firing at AHU",
+        )
+        room_uris = {str(r.uri).rsplit("#", 1)[-1] for r in rooms_binding}
+        self.assertSetEqual(
+            room_uris,
+            {"Room_1", "Room_2"},
+            "the forward re-firing at AHU_1 must rebuild the full set "
+            f"of reachable rooms; got {room_uris}",
         )
 
     def test_nosteprule_apply_symmetric_veto(self):
@@ -1825,10 +2053,12 @@ class TestTranslator(unittest.TestCase):
             )
 
     def test_inverse_index_literal_stub(self):
-        """``SemanticLiteral`` (and any other non-instance ``SemanticObject``)
-        returns an empty dict from ``get_predicate_subject_pairs`` -- the
-        symmetric counterpart of the existing literal stub on
-        ``get_predicate_object_pairs``.
+        """``SemanticLiteral`` returns an empty dict from
+        :meth:`get_predicate_object_pairs` (literals are RDF leaves --
+        they cannot appear as the subject of a triple).  An *unattached*
+        literal -- one that doesn't appear as the object of any triple
+        in any model -- also returns an empty dict from
+        :meth:`get_predicate_subject_pairs`.
         """
         # Local application imports
         from twin4build.model.semantic_model.semantic_model import SemanticLiteral
@@ -1836,7 +2066,144 @@ class TestTranslator(unittest.TestCase):
         sm = SemanticModel()
         lit = SemanticLiteral("hello", sm)
         self.assertEqual(lit.get_predicate_object_pairs(), {})
+        # A literal that does not appear as an object of any triple in
+        # the SM has no incoming edges either.
         self.assertEqual(lit.get_predicate_subject_pairs(), {})
+
+    def test_literal_get_predicate_subject_pairs_exposes_incoming_edges(self):
+        """``SemanticLiteral.get_predicate_subject_pairs`` must expose
+        every triple ``(s, p, lit)`` in the instance graph as ``p ->
+        [s]``.
+
+        Regression for the cascade where SAREF
+        :class:`pid_controller_signature_pattern` failed to match
+        ``office_temperature_heating_controller`` -- and as a downstream
+        consequence the ``office_valve_position_sensor`` /
+        ``office_damper_position_sensor`` were dropped from the
+        simulation model.
+
+        Root cause: the PID pattern declares a ``StepRule`` whose
+        far-end node is typed as :data:`XSD.boolean` (the
+        ``SetpointController --isReverse--> "true"^^xsd:boolean``
+        edge).  The bidirectional matcher walks every SP edge from
+        *both* endpoints to verify it.  When the far endpoint binds
+        to a :class:`SemanticLiteral`, the backward verification
+        consults ``literal.get_predicate_subject_pairs()`` -- which,
+        before this fix, returned the empty dict inherited from
+        :class:`SemanticObject`.  The walker then pruned the edge with
+        ``reason=missing-predicate``, dropping every otherwise-valid
+        match that involved a literal-typed pattern node.
+
+        This test seeds a literal with two distinct incoming triples
+        (different subjects, same predicate) and asserts both
+        subjects are returned under the predicate key.
+        """
+        # Third party imports
+        from rdflib import Literal, URIRef
+
+        # Local application imports
+        import twin4build.core as core
+        from twin4build.model.semantic_model.semantic_model import SemanticLiteral
+
+        sm = SemanticModel()
+        base = "http://example.org/literal_incoming#"
+        ctrl_a = URIRef(base + "controller_A")
+        ctrl_b = URIRef(base + "controller_B")
+        is_reverse = core.namespace.S4BLDG.isReverse
+        true_lit = Literal("true", datatype=core.namespace.XSD.boolean)
+
+        sm.instance_graph.add(
+            (ctrl_a, core.namespace.RDF.type, core.namespace.S4BLDG.SetpointController)
+        )
+        sm.instance_graph.add(
+            (ctrl_b, core.namespace.RDF.type, core.namespace.S4BLDG.SetpointController)
+        )
+        sm.instance_graph.add((ctrl_a, is_reverse, true_lit))
+        sm.instance_graph.add((ctrl_b, is_reverse, true_lit))
+
+        lit_inst = SemanticLiteral(true_lit, sm)
+        incoming = lit_inst.get_predicate_subject_pairs()
+
+        self.assertEqual(
+            len(incoming),
+            1,
+            f"expected exactly one predicate (isReverse) on the literal, got {list(incoming)}",
+        )
+        pred_obj = next(iter(incoming))
+        self.assertEqual(str(pred_obj.uri), str(is_reverse))
+        subjects = {str(s.uri) for s in incoming[pred_obj]}
+        self.assertEqual(
+            subjects,
+            {str(ctrl_a), str(ctrl_b)},
+            "both controllers pointing at the literal must appear in the subject list",
+        )
+
+    def test_steprule_with_literal_far_endpoint_bidirectional(self):
+        """A ``StepRule`` whose far-end node binds to a literal must
+        be matched correctly by the bidirectional walker.
+
+        End-to-end regression for the PID controller cascade
+        (see :meth:`test_literal_get_predicate_subject_pairs_exposes_incoming_edges`
+        for the underlying root cause).  Seeds a minimal SM that
+        mirrors the
+        ``SetpointController --isReverse--> "true"^^xsd:boolean``
+        edge from the example, and asserts the matcher produces
+        exactly one complete group with the literal correctly bound
+        to the boolean SP node.
+        """
+        # Third party imports
+        from rdflib import Literal, URIRef
+
+        # Local application imports
+        import twin4build.core as core
+
+        sm = SemanticModel()
+        base = "http://example.org/steprule_literal#"
+        ctrl_uri = URIRef(base + "ctrl")
+        true_lit = Literal("true", datatype=core.namespace.XSD.boolean)
+
+        sm.instance_graph.add(
+            (ctrl_uri, core.namespace.RDF.type, core.namespace.S4BLDG.SetpointController)
+        )
+        sm.instance_graph.add(
+            (ctrl_uri, core.namespace.S4BLDG.isReverse, true_lit)
+        )
+
+        ctrl_node = Node(cls=core.namespace.S4BLDG.SetpointController)
+        bool_node = Node(cls=core.namespace.XSD.boolean)
+
+        sp = SignaturePattern(id="pid_isreverse_literal_pattern")
+        sp.add_rule(
+            StepRule(
+                subject=ctrl_node,
+                object=bool_node,
+                predicate=core.namespace.S4BLDG.isReverse,
+            )
+        )
+        sp.add_modeled_node(ctrl_node)
+
+        class DummyPIDStub(core.System):
+            pass
+
+        DummyPIDStub.sp = [sp]
+
+        complete_groups, _ = Translator._match_patterns(
+            systems_=[DummyPIDStub], semantic_model=sm
+        )
+        groups = complete_groups[DummyPIDStub][sp]
+        self.assertEqual(
+            len(groups),
+            1,
+            "expected exactly one complete match for the literal-far-endpoint "
+            f"StepRule, got {len(groups)}",
+        )
+        binding = groups[0]
+        self.assertEqual(str(binding[ctrl_node].uri), str(ctrl_uri))
+        # The literal binding's URI is the rdflib Literal; compare by string.
+        self.assertEqual(str(binding[bool_node].uri), "true")
+        self.assertEqual(
+            str(binding[bool_node].uri.datatype), str(core.namespace.XSD.boolean)
+        )
 
 
 class TestSignaturePattern(unittest.TestCase):

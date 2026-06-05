@@ -1310,6 +1310,113 @@ class SemanticLiteral(SemanticObject):
                 return True
         return False
 
+    def get_predicate_subject_pairs(
+        self,
+    ) -> Dict["SemanticPredicate", List[Union["SemanticObject", "SemanticType"]]]:
+        """Return all *incoming* edges of this literal as a predicate -> [subjects] map.
+
+        Literals are leaves in the RDF graph: they cannot appear as the
+        subject of a triple, so :meth:`get_predicate_object_pairs` is
+        empty (inherited from :class:`SemanticObject`).  However, a
+        literal *can* appear as the object of many triples (e.g.
+        ``controller --isReverse--> "true"^^xsd:boolean``), and the
+        bidirectional matcher needs to walk those edges in the
+        backward direction in order to verify a forward
+        ``StepRule`` whose far-end node binds to a typed literal
+        (e.g. an ``XSD.boolean``-typed pattern node).
+
+        The base-class default of returning ``{}`` causes the walker to
+        prune every such forward edge with ``reason=missing-predicate``
+        on the backward verification step, dropping perfectly valid
+        matches whose only "issue" was that one of the SP nodes binds
+        to a literal datatype.  This override mirrors
+        :meth:`SemanticInstance.get_predicate_subject_pairs` for the
+        incoming-edge view, restricted to the reasoning rules that
+        actually apply to literal endpoints:
+
+        - **Direct incoming triples** ``(s, p, self)`` are listed under
+          ``p``.
+        - **Equivalent properties** (``owl:equivalentProperty``)
+          rebroadcast each direct incoming edge under the equivalent
+          predicate.
+        - **owl:inverseOf**, **owl:SymmetricProperty** and
+          **owl:TransitiveProperty** do *not* apply: they require a
+          corresponding *outgoing* edge from ``self`` (which literals
+          never have) or transitive chaining through literal hops
+          (which is not meaningful in OWL).
+        """
+        owl_equivalent_property = URIRef(
+            "http://www.w3.org/2002/07/owl#equivalentProperty"
+        )
+
+        result: Dict["SemanticPredicate", List["SemanticObject"]] = {}
+
+        # Eagerly parse ontology for every predicate touching this
+        # literal so equivalent-property reasoning sees the full
+        # ontology graph.
+        predicates_used = set()
+        for _, pred, _ in self.model.instance_graph.triples(
+            (None, None, self.uri)
+        ):
+            predicates_used.add(pred)
+        for pred in predicates_used:
+            self.model.get_predicate(pred).parse_ontology()
+
+        inferred_pairs: List[Tuple[URIRef, URIRef]] = []
+        for subj, pred, _ in self.model.instance_graph.triples(
+            (None, None, self.uri)
+        ):
+            for equiv_pred in self.model.ontology_graph.objects(
+                pred, owl_equivalent_property
+            ):
+                if equiv_pred != pred:
+                    inferred_pairs.append((equiv_pred, subj))
+            for equiv_pred in self.model.ontology_graph.subjects(
+                owl_equivalent_property, pred
+            ):
+                if equiv_pred != pred:
+                    inferred_pairs.append((equiv_pred, subj))
+
+        # Direct incoming edges.
+        for subj, pred, _ in self.model.instance_graph.triples(
+            (None, None, self.uri)
+        ):
+            if self._is_class_uri(subj):
+                subj_instance = self.model.get_type(subj)
+            else:
+                subj_instance = self.model.get_instance(subj)
+            pred_obj = self.model.get_predicate(pred)
+            result.setdefault(pred_obj, []).append(subj_instance)
+
+        # Inferred (equivalent-property) incoming edges.
+        for pred, subj in inferred_pairs:
+            if self._is_class_uri(subj):
+                subj_instance = self.model.get_type(subj)
+            else:
+                subj_instance = self.model.get_instance(subj)
+            pred_obj = self.model.get_predicate(pred)
+            bucket = result.setdefault(pred_obj, [])
+            if subj_instance not in bucket:
+                bucket.append(subj_instance)
+
+        return result
+
+    def _is_class_uri(self, obj: URIRef) -> bool:
+        """Mirror :meth:`SemanticInstance._is_class_uri` so the
+        incoming-edge view of a literal classifies subjects identically
+        to the corresponding view on a URI resource.
+
+        Checks both instance and ontology graphs for ``rdf:type
+        owl:Class`` / ``rdf:type rdfs:Class`` assertions.
+        """
+        OWL_CLASS = URIRef("http://www.w3.org/2002/07/owl#Class")
+        return (
+            any(self.model.instance_graph.triples((obj, RDF.type, OWL_CLASS)))
+            or any(self.model.instance_graph.triples((obj, RDF.type, RDFS.Class)))
+            or any(self.model.ontology_graph.triples((obj, RDF.type, OWL_CLASS)))
+            or any(self.model.ontology_graph.triples((obj, RDF.type, RDFS.Class)))
+        )
+
     def get_most_specific_type(self) -> Optional["SemanticType"]:
         """For literals, the most specific type is the datatype."""
         if self.types:

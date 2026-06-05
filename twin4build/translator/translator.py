@@ -471,12 +471,14 @@ class Translator:
            ``predicate_subject_pairs``), so a single seed walk fills the
            entire WCC -- no separate seeds are needed for non-modeled
            SP nodes inside the same component.  Per-rule directional
-           support is currently complete for the StepRule family
-           (StepRule, OptionalRule); the multi-hop family (PathRule,
-           AnyPathRule, ...) and the set-rule family (SetStepRule,
-           SetAnyPathRule, NoStepRule) are walked forward only and rely
-           on the merger (Phase 4 below) to glue partials produced from
-           forward seeds.
+           support is now complete for every rule shape in the taxonomy
+           (StepRule, OptionalRule, NoStepRule, PathRule, AnyPathRule,
+           SetStepRule, SetAnyPathRule, plus the multi-hop intermediates
+           _SinglePath / _MultiPath); set-rules navigate to the near in
+           backward and the natural forward firing at that near
+           re-establishes the tuple binding on the SP object.  The
+           merger (Phase 4 below) is therefore reduced to a thin
+           "WCC Cartesian product" step over isolated subgraphs.
 
         5. Categorize matches as complete or incomplete:
            - Complete: All required SP nodes have SM matches
@@ -2751,18 +2753,23 @@ class Translator:
         the entire component, which is the prerequisite for the
         merger removal in PR4.
 
-        Backward direction is currently implemented for the StepRule
-        family (``StepRule``, ``OptionalRule``).  Other rule types
-        (``NoStepRule``, ``SetStepRule``, ``PathRule``,
-        ``AnyPathRule``, ``SetAnyPathRule`` and the multi-hop
-        intermediates ``_SinglePath`` / ``_MultiPath``) are processed
-        only in the forward direction for now and gain backward
-        support in subsequent PR2 commits via the parametric
-        ``apply(..., direction=BACKWARD)`` contract; until they do, a
-        readiness gate inside this loop skips them in the backward
-        sweep and the merger machinery (still in place through PR4)
-        glues partials produced from different seeds for those
-        patterns.
+        Backward direction is now implemented for *every* rule shape
+        in the taxonomy: :class:`StepRule`, :class:`OptionalRule`,
+        :class:`NoStepRule`, :class:`PathRule`, :class:`AnyPathRule`,
+        :class:`SetStepRule`, :class:`SetAnyPathRule`, and the
+        multi-hop intermediates :class:`_SinglePath` /
+        :class:`_MultiPath`.  Set-rules (:class:`SetStepRule`,
+        :class:`SetAnyPathRule`) emit *scalar* per-near pairs in the
+        backward direction -- backward through a set-rule is
+        navigation to the unique SM near so the natural FORWARD
+        firing at that near can re-establish the full tuple binding
+        on the SP object via the broadcast helper; see
+        :meth:`SetStepRule.apply` / :meth:`SetAnyPathRule.apply` for
+        the asymmetric forward/backward emission contract.  As a
+        result, a single seed walk reaches every node in a weakly
+        connected component of the SP graph regardless of edge
+        direction, and the merger machinery (still in place through
+        PR4) is reduced to a thin "WCC Cartesian product" step.
 
         ``visited_sp_edges`` is threaded through the recursion to
         prevent infinite oscillation between forward and backward
@@ -2900,38 +2907,17 @@ class Translator:
                     if visited_key in visited_sp_edges:
                         continue
 
-                    # Direction-readiness gate.  Lifted incrementally in
-                    # B'-PR2.2 (_SinglePath / PathRule), B'-PR2.3
-                    # (_MultiPath / AnyPathRule), B'-PR2.6 (NoStepRule).
-                    # SetStepRule / SetAnyPathRule are intentionally
-                    # excluded: their backward semantics require
-                    # re-firing forward at the subject to assemble the
-                    # full tuple binding, which conflicts with current
-                    # ``visited_sp_edges`` tracking; their bodies are
-                    # nonetheless direction-parametric (B'-PR2.4 /
-                    # B'-PR2.5) so the gate can be lifted later without
-                    # touching the rule classes.  ``type(rule) is X``
-                    # is intentional: subclasses need their own
-                    # backward handling.
-                    if direction is BACKWARD:
-                        if type(rule) not in (
-                            StepRule,
-                            OptionalRule,
-                            NoStepRule,
-                            PathRule,
-                            _SinglePath,
-                            AnyPathRule,
-                            _MultiPath,
-                        ):
-                            if _diag_walker:
-                                _match_diag_write(
-                                    f"[WALKER]   GATE-SKIP dir={direction.name} "
-                                    f"pattern={signature_pattern.id} "
-                                    f"sp_subject={sp_subject.id} "
-                                    f"sp_neighbor={sp_neighbor.id} "
-                                    f"rule={type(rule).__name__}"
-                                )
-                            continue
+                    # All rule shapes now have backward dispatch
+                    # support: scalar/path rules emit a far-side
+                    # binding (StepRule semantics), set-rules emit
+                    # *scalar* per-near pairs (set-rule navigation —
+                    # the tuple binding on the SP object is restored
+                    # by the natural FORWARD firing once the matcher
+                    # reaches the near via inverse adjacency; see
+                    # :meth:`SetStepRule.apply` / :meth:`SetAnyPathRule.apply`).
+                    # The previous direction-readiness gate (which
+                    # excluded SetStepRule / SetAnyPathRule) is no
+                    # longer needed.
 
                     visited_sp_edges.add(visited_key)
 
@@ -3142,12 +3128,36 @@ class Translator:
                             return candidate_maps, feasible, comparison_table, True
 
         # Bind the current subject in every surviving candidate map.
+        # Preserve any tuple binding already established by a downstream
+        # broadcast (the FORWARD re-firing at the near triggered by a
+        # backward set-rule walk) so we do not overwrite a canonical
+        # set-binding with the scalar SM seed used to ENTER this
+        # recursion: writing scalar over tuple here would silently
+        # collapse the broadcast's result and fail Phase 6 deduplication
+        # (each seed would produce a distinct scalar binding for the
+        # same canonical match).  Scalar bindings already equal to
+        # ``sm_subject`` are simply re-confirmed.
         if not candidate_maps:
             candidate_maps = [{n: None for n in signature_pattern.nodes}]
 
         candidate_maps = Translator._copy_nodemap_list(candidate_maps)
         for mapping in candidate_maps:
-            mapping[sp_subject] = sm_subject
+            existing = mapping.get(sp_subject)
+            if existing is None:
+                mapping[sp_subject] = sm_subject
+            elif isinstance(existing, tuple):
+                # Tuple binding produced by a downstream broadcast at
+                # this same SP node -- keep the tuple.  ``sm_subject``
+                # is one element of it (or about to be merged in via
+                # the broadcast filter), so the tuple is the
+                # authoritative set-binding.
+                continue
+            else:
+                # Existing scalar binding (e.g. propagated from the
+                # caller before the recursion started).  Re-affirm
+                # ``sm_subject`` as the canonical scalar; this is the
+                # legacy semantic and is a no-op when the values agree.
+                mapping[sp_subject] = sm_subject
 
         LOGGER.debug("Returning from prune_recursive (bidirectional)")
         LOGGER.add_level()
@@ -6736,12 +6746,31 @@ class SetStepRule(StepRule):
     ]:
         """Apply SetStepRule in the requested ``direction``.
 
-        Direction-parametric mirror of :meth:`StepRule.apply`: collects
-        every SM far node satisfying the predicate (under the
+        Forward direction
+        -----------------
+        Collects every SM far node satisfying the predicate (under the
         direction-appropriate adjacency view) into a single tuple
         binding emitted as one pair
         ``(maps_for_match, tuple_of_sm_fars, far_node, SetStepRule, i0)``
-        where ``i0`` is the index of the first matched SM object.
+        per ``current_map``.  This is the canonical "set-binding"
+        semantic: the matcher's tuple-handling branch broadcasts the
+        downstream pattern over each element.
+
+        Backward direction
+        ------------------
+        Emits *scalar* pairs (one per matched SM near reached through
+        the inverse-predicate adjacency), shaped exactly like
+        :meth:`StepRule.apply`:
+        ``(maps_for_match, sm_near, far_node, StepRule, i)``.  The
+        matcher takes the scalar branch and recurses into
+        ``(sm_near, rule.subject)``; the natural FORWARD firing of
+        this same set-rule at that SM near will then re-establish the
+        full tuple binding on the SP object via the broadcast helper.
+        Walking backward through a set-rule is therefore *navigation*
+        (find the unique near so forward firing can fill the tuple),
+        not a tuple-binding event in its own right -- a singleton tuple
+        on the scalar SP subject would be semantically wrong, since the
+        SP subject of a set-rule is scalar by construction.
 
         Sibling exclusion bookkeeping uses ``Direction.far`` /
         ``Direction.near`` so backward-direction set-rules detect
@@ -6803,45 +6832,69 @@ class SetStepRule(StepRule):
                     rule_applies_vec[i] = True
 
             if matched:
-                # Deduplicate and canonicalize by IRI sort order so two
-                # matches of the same SM subgraph produce identical tuple
-                # bindings (cheap equality and hashability for
-                # deduplication in the matcher and the MILP). Keep the
-                # canonicalized ordering as the single source of truth —
-                # the rest of the Translator assumes this shape.
-                unique_by_obj: Dict[Any, Any] = {}
-                for _, sm_far in matched:
-                    unique_by_obj.setdefault(sm_far, sm_far)
-                tuple_binding = tuple(
-                    sorted(unique_by_obj.keys(), key=lambda o: str(o.uri))
-                )
-                first_idx = matched[0][0]
-                pairs.append(
-                    (
-                        maps_for_match,
-                        tuple_binding,
-                        far_node,
-                        SetStepRule,
-                        first_idx,
+                if direction is FORWARD:
+                    # Forward: bundle every matched SM far into one
+                    # canonical tuple binding.  Deduplicate + IRI-sort
+                    # so two matches of the same SM subgraph produce
+                    # identical tuple bindings (cheap equality and
+                    # hashability for deduplication in the matcher and
+                    # the MILP).
+                    unique_by_obj: Dict[Any, Any] = {}
+                    for _, sm_far in matched:
+                        unique_by_obj.setdefault(sm_far, sm_far)
+                    tuple_binding = tuple(
+                        sorted(unique_by_obj.keys(), key=lambda o: str(o.uri))
                     )
-                )
+                    first_idx = matched[0][0]
+                    pairs.append(
+                        (
+                            maps_for_match,
+                            tuple_binding,
+                            far_node,
+                            SetStepRule,
+                            first_idx,
+                        )
+                    )
+                else:
+                    # Backward: emit scalar pairs (one per reachable
+                    # SM near).  See class-level / method docstring:
+                    # backward through a set-rule is navigation, not
+                    # tuple-binding -- the tuple is established by the
+                    # natural forward firing at the near.
+                    for i, sm_near in matched:
+                        pairs.append(
+                            (
+                                maps_for_match,
+                                sm_near,
+                                far_node,
+                                StepRule,
+                                i,
+                            )
+                        )
 
         rule_applies = np.any(rule_applies_vec)
         for pair in pairs:
             try:
-                preview = ", ".join(
-                    o.get_short_name() for o in pair[1][:3]
-                )
-                if len(pair[1]) > 3:
-                    preview += ", ..."
+                if isinstance(pair[1], tuple):
+                    preview = ", ".join(
+                        o.get_short_name() for o in pair[1][:3]
+                    )
+                    if len(pair[1]) > 3:
+                        preview += ", ..."
+                    LOGGER.debug(
+                        "Matched (set, %d): [%s] is %s",
+                        len(pair[1]),
+                        preview,
+                        far_node.cls,
+                    )
+                else:
+                    LOGGER.debug(
+                        "Matched (set-bwd scalar): %s is %s",
+                        pair[1].get_short_name(),
+                        far_node.cls,
+                    )
             except Exception:
-                preview = str(pair[1])
-            LOGGER.debug(
-                "Matched (set, %d): [%s] is %s",
-                len(pair[1]),
-                preview,
-                far_node.cls,
-            )
+                LOGGER.debug("Matched (set): %s", pair[1])
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
@@ -7698,19 +7751,29 @@ class SetAnyPathRule(SetStepRule):
         BFS from ``sm_objects`` through the rule's predicate(s) using
         the direction-appropriate adjacency view, collecting every
         reachable node whose type satisfies ``direction.far(self).cls``
-        as an endpoint.  Endpoints are deduplicated, canonicalised by
-        IRI sort, and emitted as a single tuple binding per
-        ``candidate_map`` — the same emission shape
-        :meth:`SetStepRule.apply` uses, so downstream tuple handling
-        is shared.
+        as an endpoint.
 
-        Forward direction matches the legacy semantic exactly (BFS
-        through ``predicate_object_pairs``).  Backward direction
-        performs the symmetric BFS through
-        ``predicate_subject_pairs`` and emits endpoints whose class
-        satisfies ``self.subject.cls``; the matched ``sp_object``
-        position carries ``direction.far(self)`` so the walker
-        recurses to the correct SP node.
+        Forward direction
+        -----------------
+        Endpoints are deduplicated, canonicalised by IRI sort, and
+        emitted as a single tuple binding per ``candidate_map`` — the
+        same emission shape :meth:`SetStepRule.apply` uses, so
+        downstream tuple handling is shared.
+
+        Backward direction
+        ------------------
+        Each reachable endpoint becomes its *own* scalar pair (shape:
+        ``(maps_for_match, sm_endpoint, far_node, StepRule, i)``) --
+        mirroring the asymmetric backward semantic in
+        :meth:`SetStepRule.apply`.  Walking backward through a
+        set-rule is navigation: every endpoint reached upstream is
+        a candidate near for a separate match, and the tuple binding
+        on the SP object is restored when the matcher recurses to
+        that near and fires the set-rule forward via the broadcast
+        helper.  Bundling endpoints into a tuple at the SP subject
+        (which is scalar by construction for set-rules) would be
+        semantically wrong: it would force a singleton tuple onto a
+        scalar SP node and confuse the broadcast aggregator.
         """
         LOGGER.debug("Applying %s", self.__class__.__name__)
         LOGGER.add_level()
@@ -7753,37 +7816,76 @@ class SetAnyPathRule(SetStepRule):
         pairs: List[Tuple[Any, Any, Node, type, int]] = []
 
         if rule_applies:
-            tuple_binding = tuple(sorted(endpoints, key=lambda o: str(o.uri)))
-
             if not candidate_maps:
                 maps_iter: List[Optional[Any]] = [None]
             else:
                 maps_iter = list(candidate_maps)
 
-            for current_map in maps_iter:
-                maps_for_match = [current_map] if current_map is not None else []
-                pairs.append(
-                    (
-                        maps_for_match,
-                        tuple_binding,
-                        far_node,
-                        SetStepRule,
-                        0,
-                    )
+            if direction is FORWARD:
+                tuple_binding = tuple(
+                    sorted(endpoints, key=lambda o: str(o.uri))
                 )
-
-            try:
-                preview = ", ".join(o.get_short_name() for o in tuple_binding[:3])
-                if len(tuple_binding) > 3:
-                    preview += ", ..."
-            except Exception:
-                preview = str(tuple_binding)
-            LOGGER.debug(
-                "Matched (set-anypath, %d): [%s] is %s",
-                len(tuple_binding),
-                preview,
-                far_node.cls,
-            )
+                for current_map in maps_iter:
+                    maps_for_match = (
+                        [current_map] if current_map is not None else []
+                    )
+                    pairs.append(
+                        (
+                            maps_for_match,
+                            tuple_binding,
+                            far_node,
+                            SetStepRule,
+                            0,
+                        )
+                    )
+                try:
+                    preview = ", ".join(
+                        o.get_short_name() for o in tuple_binding[:3]
+                    )
+                    if len(tuple_binding) > 3:
+                        preview += ", ..."
+                except Exception:
+                    preview = str(tuple_binding)
+                LOGGER.debug(
+                    "Matched (set-anypath, %d): [%s] is %s",
+                    len(tuple_binding),
+                    preview,
+                    far_node.cls,
+                )
+            else:
+                # Backward: per-endpoint scalar pairs (mirrors
+                # SetStepRule.apply backward semantics).  Deterministic
+                # ordering by IRI keeps result emission stable across
+                # runs.
+                ordered_endpoints = sorted(endpoints, key=lambda o: str(o.uri))
+                for current_map in maps_iter:
+                    maps_for_match = (
+                        [current_map] if current_map is not None else []
+                    )
+                    for i, ep in enumerate(ordered_endpoints):
+                        pairs.append(
+                            (
+                                maps_for_match,
+                                ep,
+                                far_node,
+                                StepRule,
+                                i,
+                            )
+                        )
+                try:
+                    preview = ", ".join(
+                        o.get_short_name() for o in ordered_endpoints[:3]
+                    )
+                    if len(ordered_endpoints) > 3:
+                        preview += ", ..."
+                except Exception:
+                    preview = str(ordered_endpoints)
+                LOGGER.debug(
+                    "Matched (set-anypath bwd, %d scalar): [%s] is %s",
+                    len(ordered_endpoints),
+                    preview,
+                    far_node.cls,
+                )
 
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
