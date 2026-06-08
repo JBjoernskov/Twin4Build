@@ -62,13 +62,15 @@ class ConnectionPoint:
         # Store attributes as private variables
         self._connectionPointOf = connection_point_of
         self._connectsSystemThrough = connects_system_through
-        self._inputPort = input_port
+        self._input_port = input_port
 
         if self._connectsSystemThrough is None:
             self._connectsSystemThrough = []
 
         self._input_port_index = {}
         self._output_port_index = {}
+        self._input_component_index = {}
+        self._output_component_index = {}
 
     @property
     def connection_point_of(self) -> Union[core.System, None]:
@@ -103,14 +105,14 @@ class ConnectionPoint:
         """
         Get the name of the property that the connection point receives.
         """
-        return self._inputPort
+        return self._input_port
 
     @input_port.setter
     def input_port(self, value: Optional[str]) -> None:
         """
         Set the name of the property that the connection point receives.
         """
-        self._inputPort = value
+        self._input_port = value
 
     @property
     def input_port_index(self) -> Union[int, torch.Tensor]:
@@ -141,3 +143,33 @@ class ConnectionPoint:
         Set the index of the output port.
         """
         self._output_port_index[connection] = index
+
+    @property
+    def input_component_index(self) -> dict:
+        """
+        Get the component index dict for the input side (i_c dimension).
+        """
+        return self._input_component_index
+
+    @property
+    def output_component_index(self) -> dict:
+        """
+        Get the component index dict for the output side (i_c dimension).
+        """
+        return self._output_component_index
+
+    def set_input_component_index(
+        self, connection: core.Connection, index: [int, torch.Tensor]
+    ) -> None:
+        """
+        Set the component index on the input side (i_c dimension).
+        """
+        self._input_component_index[connection] = index
+
+    def set_output_component_index(
+        self, connection: core.Connection, index: [int, torch.Tensor]
+    ) -> None:
+        """
+        Set the component index on the output side (i_c dimension).
+        """
+        self._output_component_index[connection] = index

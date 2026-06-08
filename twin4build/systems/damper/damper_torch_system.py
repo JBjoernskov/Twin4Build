@@ -180,13 +180,24 @@ class DamperTorchSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        # Initialize input/output ports
-        for port in self.input.values():
-            port.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
+        # Determine n_c from _n_c_compiled if present and >1, else default to 1
+        if hasattr(self, "_n_c_compiled") and getattr(self, "_n_c_compiled") > 1:
+            self.n_c = self._n_c_compiled
+        else:
+            self.n_c = 1
 
-        for port in self.output.values():
-            port.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-
+        for input in self.input.values():
+            input.initialize(
+                n_t=max_timesteps,
+                n_s=batch_size,
+                n_c=self.n_c,
+            )
+        for output in self.output.values():
+            output.initialize(
+                n_t=max_timesteps,
+                n_s=batch_size,
+                n_c=self.n_c,
+            )
         # Expand parameters to n_c dimension for vectorization
         self.a = self.a.expand_to_n_c(self.n_c)
         self.nominalAirFlowRate = self.nominalAirFlowRate.expand_to_n_c(self.n_c)
@@ -234,9 +245,9 @@ class DamperTorchSystem(core.System, nn.Module):
         # Broadcasting: (n_s, n_c) * (n_c,) -> (n_s, n_c)
         air_flow_rate = a * torch.exp(b * damper_position) + c
 
-        # Update outputs - shape: (n_s, n_c)
-        self.output["damperPosition"]._set(damper_position, i_t=step_index)
-        self.output["airFlowRate"]._set(air_flow_rate, i_t=step_index)
+        # Update outputs
+        self.output["damperPosition"]._set(damper_position, i_t=step_index, ic=self.n_c)
+        self.output["airFlowRate"]._set(air_flow_rate, i_t=step_index, ic=self.n_c)
 
 
 def saref_signature_pattern():
