@@ -160,7 +160,7 @@ def _configure_sensors(model):
             elif any(kw in name for kw in ("temp", "setpoint", "control_temp")):
                 comp._transformation = transformation_temp
 
-sim_model.load(rdf_file=RDF_FILE, fcn=_configure_sensors, verbose=1000)
+sim_model.load(rdf_file=RDF_FILE, fcn=_configure_sensors)
 
 # ── 2) Build CITS internals (lazy build from connections) ────────────────────
 

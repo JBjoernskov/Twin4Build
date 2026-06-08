@@ -245,7 +245,7 @@ def generate_single_controller_data(
     )
     model.add_connection(heater, building_space, "Power", "heatGain")
 
-    model.load(draw_semantic_model=False, draw_simulation_model=False, verbose=0)
+    model.load(draw_semantic_model=False, draw_simulation_model=False)
 
     simulator = tb.Simulator(model)
     simulator.simulate(start_time=start_time, end_time=end_time, step_size=step_size)
@@ -844,7 +844,7 @@ def run_complex_identification_example():
         output_port_index=1,
     )
 
-    model.load(draw_semantic_model=False, draw_simulation_model=True, verbose=0)
+    model.load(draw_semantic_model=False, draw_simulation_model=True)
 
     print(model)
 

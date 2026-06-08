@@ -949,6 +949,14 @@ class Estimator:
         # Honors the env var set by ``utils.test_notebook.test_notebook``;
         # the regular ``test_estimator.py`` suite already passes
         # ``maxiter=2`` explicitly so this is a no-op for them.
+        #
+        # The cap is applied here (top-level ``options``) *and* again
+        # inside :meth:`_run_schedule` after the per-phase merge -- so a
+        # notebook that defines a multi-phase schedule with explicit
+        # per-phase ``maxiter`` values (e.g. ``[{"options": {"maxiter":
+        # 100}}, {"options": {"maxiter": 50}}]``) still collapses to
+        # one iteration per phase in tests instead of overriding the
+        # top-level cap during the schedule merge.
         if os.environ.get("TWIN4BUILD_TESTING", "").lower() in (
             "1",
             "true",
@@ -1053,6 +1061,17 @@ class Estimator:
             phase_reg_comps = entry.get("regularization_components", None)
 
             merged_options = {**base_options, **phase_opts}
+
+            # Re-apply the notebook-test fast-path cap after the
+            # per-phase merge so an explicit per-phase ``maxiter`` in
+            # the schedule cannot accidentally undo the env-var cap
+            # (see :meth:`estimate` for the top-level pass).
+            if os.environ.get("TWIN4BUILD_TESTING", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                merged_options["maxiter"] = 1
 
             self._regularization_lambda = lam
             self._regularization_components = phase_reg_comps

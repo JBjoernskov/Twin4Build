@@ -129,7 +129,7 @@ def _build_stage1_model():
     )
     if LOAD_SERIALIZED_MODEL and exists:
         LOGGER.info(f"[sim-x0] Loading serialized stage-1 model from {stage1_rdf}")
-        sim_model.load(rdf_file=stage1_rdf, fcn=_prepare_stage1_model, verbose=1000)
+        sim_model.load(rdf_file=stage1_rdf, fcn=_prepare_stage1_model)
         return sim_model
 
     LOGGER.info(f"[sim-x0] Translating stage-1 model from {STAGE1_TTL}")

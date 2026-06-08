@@ -365,7 +365,7 @@ if __name__ == "__main__":
     filename = utils.get_path(
         ["parameter_estimation_example", "one_room_example_model.xlsm"]
     )
-    model.load(semantic_model_filename=filename, fcn=fcn, verbose=False)
+    model.load(semantic_model_filename=filename, fcn=fcn)
     """   
     #Visualize the model
     import matplotlib.pyplot as plt

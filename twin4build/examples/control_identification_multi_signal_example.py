@@ -238,7 +238,7 @@ def generate_data_with_twin4build(
     )
     model.add_connection(space_heater, building_space, "Power", "heatGain")
 
-    model.load(draw_semantic_model=False, draw_simulation_model=False, verbose=0)
+    model.load(draw_semantic_model=False, draw_simulation_model=False)
 
     print("   Running closed-loop simulation...")
     simulator = tb.Simulator(model)
@@ -553,7 +553,7 @@ def run_multi_signal_identification_example():
         controller, actuator_sensor, "inputSignal", "measuredValue", output_port_index=0
     )
 
-    model.load(draw_semantic_model=False, draw_simulation_model=True, verbose=0)
+    model.load(draw_semantic_model=False, draw_simulation_model=True)
 
     print(model)
 
