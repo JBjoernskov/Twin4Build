@@ -314,7 +314,7 @@ class TestSimulator(unittest.TestCase):
         filename_simulation = utils.get_path(
             ["estimator_example", "instance_graph.ttl"]
         )
-        model.load(simulation_model_filename=filename_simulation, verbose=0)
+        model.load(simulation_model_filename=filename_simulation)
 
         # Configure file paths and column indices for sensors.
         # The example CSVs in twin4build/examples/estimator_example/ are exported

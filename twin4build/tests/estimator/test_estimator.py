@@ -330,7 +330,7 @@ class TestEstimator(unittest.TestCase):
                 ["estimator_example", "instance_graph.ttl"]
             )
 
-            model.load(simulation_model_filename=filename_simulation, verbose=0)
+            model.load(simulation_model_filename=filename_simulation)
 
             # Configure file paths for sensors
             for sensor_id, csv_name in [
@@ -489,7 +489,7 @@ class TestEstimator(unittest.TestCase):
 
             # Step 10: Create a new model for loading the results
             model2 = tb.Model(id="estimator_example_loaded")
-            model2.load(simulation_model_filename=filename_simulation, verbose=0)
+            model2.load(simulation_model_filename=filename_simulation)
 
             # Configure file paths for the new model
             for sensor_id, csv_name in [

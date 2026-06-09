@@ -180,10 +180,16 @@ class DamperTorchSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        # Determine n_c from _n_c_compiled if present and >1, else default to 1
+        # Determine n_c.  Order of preference:
+        #   1. ``_n_c_compiled`` set by the translator (overrides everything).
+        #   2. An ``n_c`` already assigned by an outer wrapper (e.g. the
+        #      vectorized :class:`AirHandlingUnitTorchSystem` flattens
+        #      its (n_s, n_c, n_v) Vector inputs into a per-branch damper
+        #      ``n_c = n_c_ahu * n_v`` *before* calling ``initialize``).
+        #   3. Default to 1 when neither caller set anything > 1.
         if hasattr(self, "_n_c_compiled") and getattr(self, "_n_c_compiled") > 1:
             self.n_c = self._n_c_compiled
-        else:
+        elif self.n_c <= 1:
             self.n_c = 1
 
         for input in self.input.values():
