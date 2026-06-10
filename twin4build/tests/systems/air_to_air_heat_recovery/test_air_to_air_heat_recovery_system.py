@@ -3,13 +3,17 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
     AirToAirHeatRecoverySystem,
 )
+
+twin4build._IS_TESTING = True
 
 
 class TestAirToAirHeatRecoverySystem(unittest.TestCase):
@@ -44,9 +48,7 @@ class TestAirToAirHeatRecoverySystem(unittest.TestCase):
             torch.tensor([0.0]), i_t=0
         )  # Cold outdoor
         self.hr.input["primaryAirFlowRate"].set(torch.tensor([1.0]), i_t=0)
-        self.hr.input["primaryTemperatureOutSetpoint"].set(
-            torch.tensor([20.0]), i_t=0
-        )
+        self.hr.input["primaryTemperatureOutSetpoint"].set(torch.tensor([20.0]), i_t=0)
 
         # Exhaust side (indoor to outdoor)
         self.hr.input["secondaryTemperatureIn"].set(
@@ -97,19 +99,13 @@ class TestAirToAirHeatRecoverySystem(unittest.TestCase):
         )
 
         # Set inputs with batch size 2
-        hr_batch.input["primaryTemperatureIn"].set(
-            torch.tensor([0.0, -5.0]), i_t=0
-        )
+        hr_batch.input["primaryTemperatureIn"].set(torch.tensor([0.0, -5.0]), i_t=0)
         hr_batch.input["primaryAirFlowRate"].set(torch.tensor([1.0, 0.8]), i_t=0)
         hr_batch.input["primaryTemperatureOutSetpoint"].set(
             torch.tensor([20.0, 20.0]), i_t=0
         )
-        hr_batch.input["secondaryTemperatureIn"].set(
-            torch.tensor([20.0, 22.0]), i_t=0
-        )
-        hr_batch.input["secondaryAirFlowRate"].set(
-            torch.tensor([1.0, 0.8]), i_t=0
-        )
+        hr_batch.input["secondaryTemperatureIn"].set(torch.tensor([20.0, 22.0]), i_t=0)
+        hr_batch.input["secondaryAirFlowRate"].set(torch.tensor([1.0, 0.8]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)

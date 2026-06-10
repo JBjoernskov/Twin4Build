@@ -6,12 +6,12 @@ from typing import List, Optional, Union
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -59,7 +59,7 @@ class SupplyFlowJunctionSystem(core.System):
             self.airFlowRateBias = 0
 
         self._manual_setup_n_input_ports = False
-        self._n_input_ports = 0 #At least one input port is required
+        self._n_input_ports = 0  # At least one input port is required
 
         self.input = {"airFlowRateOut": tps.Vector()}
         self.output = {"airFlowRateIn": tps.Scalar()}
@@ -73,7 +73,7 @@ class SupplyFlowJunctionSystem(core.System):
     def n_input_ports(self, n_input_ports: int):
         self._manual_setup_n_input_ports = True
         self._n_input_ports = n_input_ports
-    
+
     @property
     def config(self):
         """Get the configuration parameters.
@@ -102,7 +102,6 @@ class SupplyFlowJunctionSystem(core.System):
             simulator (core.Simulator): Simulation model object.
         """
 
-
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
         )
@@ -118,18 +117,17 @@ class SupplyFlowJunctionSystem(core.System):
                 n_s=batch_size,
             )
 
-    
     def setup_variable_inputs(self):
         if self._manual_setup_n_input_ports == False:
-            #Assert that the number of input ports is at least 1
-            connection_point = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateOut"]
+            # Assert that the number of input ports is at least 1
+            connection_point = [
+                cp for cp in self.connects_at if cp.input_port == "airFlowRateOut"
+            ]
             if len(connection_point) == 0:
                 raise ValueError("No input port found for airFlowRateOut")
             n_input_ports = len(connection_point[0].connects_system_through)
             self.n_input_ports = n_input_ports
-        
-            
-    
+
     def do_step(
         self,
         second_time: float,
@@ -174,13 +172,13 @@ def saref_signature_pattern():
     sp = SignaturePattern(
         id="supply_flow_junction_signature_pattern",
     )
-    sp.add_triple(
-        MultiPath(
+    sp.add_rule(
+        AnyPathRule(
             subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo
         )
     )
-    sp.add_triple(
-        SinglePath(
+    sp.add_rule(
+        PathRule(
             subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
         )
     )
@@ -203,11 +201,11 @@ def brick_signature_pattern():
     sp = SignaturePattern(
         id="supply_flow_junction_signature_pattern_brick",
     )
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node0, object=node1, predicate=core.namespace.BRICK.feeds)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.feeds)
     )
     sp.add_input("airFlowRateOut", node1, "airFlowRate")
     sp.add_modeled_node(node0)

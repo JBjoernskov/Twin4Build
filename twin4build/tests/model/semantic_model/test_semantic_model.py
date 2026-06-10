@@ -8,15 +8,23 @@ import unittest
 from rdflib import RDF, RDFS, XSD, Graph, Literal, Namespace, URIRef
 
 # Local application imports
+import twin4build
 import twin4build.core as core
 from twin4build.model.semantic_model.semantic_model import (
+    SemanticEntity,
+    SemanticInstance,
+    SemanticLiteral,
     SemanticModel,
     SemanticObject,
+    SemanticPredicate,
     SemanticProperty,
     SemanticType,
     get_short_name,
     parse_wrapper,
 )
+
+# Set test flag
+twin4build._IS_TESTING = True
 
 
 class TestSemanticModel(unittest.TestCase):
@@ -80,7 +88,7 @@ class TestSemanticModel(unittest.TestCase):
         literal = self.semantic_model.get_instance(
             literal_val, datatype="http://www.w3.org/2001/XMLSchema#string"
         )
-        self.assertTrue(literal.is_literal)
+        self.assertIsInstance(literal, SemanticLiteral)
 
     def test_get_property(self):
         """Test get_property method."""
@@ -267,17 +275,18 @@ class TestSemanticModel(unittest.TestCase):
         self.assertIsNotNone(namespaces)
 
     def test_instance_is_literal(self):
-        """Test literal instance creation."""
+        """Test literal instance creation returns SemanticLiteral."""
         literal = self.semantic_model.get_instance(
             "test_value", datatype="http://www.w3.org/2001/XMLSchema#string"
         )
-        self.assertTrue(literal.is_literal)
+        self.assertIsInstance(literal, SemanticLiteral)
 
     def test_instance_not_literal(self):
-        """Test non-literal instance."""
+        """Test non-literal instance returns SemanticInstance."""
         uri = "http://example.org/instance"
         instance = self.semantic_model.get_instance(uri)
-        self.assertFalse(instance.is_literal)
+        self.assertIsInstance(instance, SemanticInstance)
+        self.assertNotIsInstance(instance, SemanticLiteral)
 
     def test_parse_namespaces(self):
         """Test parse_namespaces method."""
@@ -440,7 +449,7 @@ class TestSemanticModel(unittest.TestCase):
         literal_value = Literal("42", datatype=XSD.integer)
         literal_obj = self.model.get_instance(literal_value)
 
-        self.assertTrue(literal_obj.is_literal)
+        self.assertIsInstance(literal_obj, SemanticLiteral)
         types = literal_obj.types
 
         self.assertIsNotNone(types)
@@ -452,7 +461,7 @@ class TestSemanticModel(unittest.TestCase):
         literal_value = Literal("plain text")
         literal_obj = self.model.get_instance(literal_value)
 
-        self.assertTrue(literal_obj.is_literal)
+        self.assertIsInstance(literal_obj, SemanticLiteral)
         types = literal_obj.types
 
         self.assertIsNotNone(types)
@@ -672,7 +681,13 @@ class TestSemanticModel(unittest.TestCase):
         self.assertEqual(short_name, "myProperty")
 
     def test_property_get_short_name_no_match(self):
-        """Test property get_short_name when no namespace matches."""
+        """Test property get_short_name when no namespace matches.
+
+        ``get_short_name`` now falls back to the full URI string when no
+        registered prefix matches, so downstream serialisation always
+        gets a printable identifier instead of a bare ``None`` that
+        used to mask the underlying URI in logs / diagnostics.
+        """
         prop_uri = "http://unregistered.property.org/myProperty"
         self.model.ontology_graph.add(
             (
@@ -684,12 +699,17 @@ class TestSemanticModel(unittest.TestCase):
 
         prop = self.model.get_property(prop_uri)
         short_name = prop.get_short_name()
-        self.assertIsNone(short_name)
+        self.assertEqual(short_name, prop_uri)
 
     def test_invalid_property_uri(self):
-        """Test creating property with invalid URI raises error."""
-        with self.assertRaises(ValueError):
-            self.model.get_property("http://example.org/not_a_real_property_12345")
+        """Test creating property with unknown URI still returns a predicate.
+
+        Since SemanticProperty is now an alias for SemanticPredicate (which does not
+        validate), get_property no longer raises ValueError for unknown URIs.
+        """
+        prop = self.model.get_property("http://example.org/not_a_real_property_12345")
+        self.assertIsNotNone(prop)
+        self.assertIsInstance(prop, SemanticPredicate)
 
     # ==================== SemanticPredicate Tests ====================
 
@@ -953,7 +973,13 @@ class TestSemanticModel(unittest.TestCase):
         self.assertEqual(short_name, "myPredicate")
 
     def test_predicate_get_short_name_no_match(self):
-        """Test predicate get_short_name when no namespace matches."""
+        """Test predicate get_short_name when no namespace matches.
+
+        ``get_short_name`` now falls back to the full URI string when no
+        registered prefix matches, so downstream serialisation always
+        gets a printable identifier instead of a bare ``None`` that
+        used to mask the underlying URI in logs / diagnostics.
+        """
         prop_uri = "http://unregistered.predicate.org/myPredicate"
         self.model.ontology_graph.add(
             (
@@ -965,7 +991,7 @@ class TestSemanticModel(unittest.TestCase):
 
         predicate = self.model.get_predicate(prop_uri)
         short_name = predicate.get_short_name()
-        self.assertIsNone(short_name)
+        self.assertEqual(short_name, prop_uri)
 
     def test_predicate_ispredicate_with_super_property(self):
         """Test ispredicate matching super properties."""
@@ -1313,7 +1339,13 @@ class TestSemanticModel(unittest.TestCase):
         self.assertEqual(short_name, "MyClass")
 
     def test_type_get_short_name_no_match(self):
-        """Test get_short_name when no namespace matches."""
+        """Test get_short_name when no namespace matches.
+
+        ``get_short_name`` now falls back to the full URI string when no
+        registered prefix matches, so downstream serialisation always
+        gets a printable identifier instead of a bare ``None`` that
+        used to mask the underlying URI in logs / diagnostics.
+        """
         type_uri = "http://unregistered.namespace.org/MyClass"
         self.model.ontology_graph.add(
             (URIRef(type_uri), RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
@@ -1321,7 +1353,7 @@ class TestSemanticModel(unittest.TestCase):
 
         sem_type = self.model.get_type(type_uri)
         short_name = sem_type.get_short_name()
-        self.assertIsNone(short_name)
+        self.assertEqual(short_name, type_uri)
 
     def test_type_super_classes_with_equivalent(self):
         """Test super_classes including equivalent classes."""

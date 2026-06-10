@@ -16,6 +16,7 @@ from tqdm import tqdm
 import twin4build.core as core
 import twin4build.systems as systems
 from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.print_progress import LOGGER
 from twin4build.utils.validate_period import validate_period
 
 # import george
@@ -209,8 +210,8 @@ class Simulator:
                 input_component_index = connection_point.input_component_index.get(
                     connection, slice(None)
                 )
-                component.input[connection_point.inputPort]._set(
-                    connected_component.output[connection.outputPort].get(
+                component.input[connection_point.input_port]._set(
+                    connected_component.output[connection.output_port].get(
                         i_v=output_port_index,
                         i_c=output_component_index,
                     ),
@@ -221,13 +222,14 @@ class Simulator:
 
                 # Actually, we HAVE to check for nans because it breaks jacobian calculation in optimizer will include nans which breaks scipy solver.
                 if torch.any(
-                    torch.isnan(component.input[connection_point.inputPort].get())
+                    torch.isnan(component.input[connection_point.input_port].get())
                 ):
-                    print(
-                        f"Component input: {component.input[connection_point.inputPort].get()}"
+                    LOGGER.debug(
+                        "Component input: %s",
+                        component.input[connection_point.input_port].get(),
                     )
                     raise ValueError(
-                        f"Input {connection_point.inputPort} of component {component.id} is NaN"
+                        f"Input {connection_point.input_port} of component {component.id} is NaN"
                     )
 
     @staticmethod

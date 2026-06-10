@@ -6,16 +6,20 @@ import warnings
 # Third party imports
 import numpy as np
 import pandas as pd
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.systems.utils.max_system import MaxSystem
 from twin4build.systems.utils.on_off_system import OnOffSystem
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+
+twin4build._IS_TESTING = True
 
 
 class TestTimeSeriesInputSystem(unittest.TestCase):
@@ -74,12 +78,14 @@ class TestDiscreteStatespaceSystem(unittest.TestCase):
 
     def test_state_property(self):
         """Test get_state and set_state methods."""
+        # Standard library imports
         import datetime
+
         # Must initialize before get_state/set_state
         start_time = [datetime.datetime(2024, 1, 1)]
         end_time = [datetime.datetime(2024, 1, 2)]
         self.system.initialize(start_time, end_time, step_size=3600)
-        
+
         state = self.system.get_state()
         self.assertIsNotNone(state)
 

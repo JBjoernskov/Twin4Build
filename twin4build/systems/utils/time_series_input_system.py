@@ -51,6 +51,7 @@ class TimeSeriesInputSystem(core.System):
         uuid: Optional[str] = None,
         dbconfig: Optional[Dict[str, Any]] = None,
         cache: Optional[bool] = True,
+        transformation: Optional[callable] = None,
         **kwargs,
     ) -> None:
         """Initialize the TimeSeriesInputSystem.
@@ -83,8 +84,8 @@ class TimeSeriesInputSystem(core.System):
         ), "use_spreadsheet and use_database cannot both be True."
         super().__init__(**kwargs)
         assert (
-            df is not None or filename is not None
-        ), 'Either "df" or "filename" must be provided as argument.'
+            df is not None or filename is not None or uuid is not None
+        ), f'Either "df" or "filename" or "uuid" must be provided as argument.'
 
         # # Store attributes as private variables
         # if isinstance(df, pd.DataFrame):
@@ -104,7 +105,8 @@ class TimeSeriesInputSystem(core.System):
         self._dbconfig = dbconfig
         self._cached_initialize_arguments = []
         self._cache_root = get_main_dir()
-        self.cache = cache
+        self._cache = cache
+        self._transformation = transformation
 
         # Define inputs and outputs as private variables
         self._input = {}
@@ -115,7 +117,7 @@ class TimeSeriesInputSystem(core.System):
                 self._filename = filename
             else:  # Check if relative path to root was provided
                 filename = filename.lstrip("/\\")
-                filename_ = os.path.join(self.cache_root, filename)
+                filename_ = os.path.join(self._cache_root, filename)
                 if os.path.isfile(filename_) == False:
                     raise (
                         ValueError(
@@ -360,17 +362,17 @@ class TimeSeriesInputSystem(core.System):
                             start_time=start_time_,
                             end_time=end_time_,
                             cache_root=self._cache_root,
-                            cache=self.cache,
+                            cache=self._cache,
                         )
                     elif self.use_database:
                         df = load_from_database(
-                            config=self.dbconfig,
-                            sensor_id=self.uuid,
                             step_size=step_size_,
                             start_time=start_time_,
                             end_time=end_time_,
                             cache_root=self._cache_root,
-                            cache=self.cache,
+                            cache=self._cache,
+                            sensor_id=self.uuid,
+                            **self.dbconfig,
                         )
                 else:
                     df_ = self._df_init.copy()
@@ -391,6 +393,8 @@ class TimeSeriesInputSystem(core.System):
                 self._cached_initialize_arguments.append(
                     (start_time_, end_time_, step_size_)
                 )
+                if self._transformation is not None:
+                    df = df.apply(self._transformation)
                 self.df.append(df)
 
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
@@ -411,13 +415,25 @@ class TimeSeriesInputSystem(core.System):
                 # Forward-fill: repeat the last value for extended timesteps
                 values[batch_index, size:] = df.values[-1]
 
-        assert not np.isnan(values).any(), "Values contain NaN."
+        nan_mask = np.isnan(values)
+        if nan_mask.any():
+            nan_count = int(nan_mask.sum())
+            nan_pct = nan_count / values.size * 100
+            batch_indices = np.where(nan_mask.any(axis=1))[0]
+            raise AssertionError(
+                f"Values contain {nan_count} NaN(s) ({nan_pct:.1f}%) in "
+                f"TimeSeriesInput '{self.id}' "
+                f"(file: {self.filename}, batch indices: {batch_indices.tolist()}). "
+                f"Check the source data for missing values in the queried date range."
+            )
 
         self.n_timesteps = max_timesteps
         self.batch_size = len(start_time)
         # Convert values from (n_s, n_t) to time-first (n_t, n_s, n_c) where n_c=1
         # First transpose to (n_t, n_s), then unsqueeze to (n_t, n_s, 1)
-        self.values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(-1)  # (n_t, n_s, 1)
+        self.values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(
+            -1
+        )  # (n_t, n_s, 1)
         self.output["value"].initialize(
             n_t=max_timesteps,
             n_s=len(start_time),

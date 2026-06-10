@@ -9,6 +9,7 @@ import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
+import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 
 
@@ -21,7 +22,7 @@ class FanTorchSystem(core.System, nn.Module):
 
     Args:
         nominalPowerRate : Nominal power rate [W]
-        nominalAirFlowRate : Nominal air flow rate [m³/s]
+        nominalAirFlowRate : Nominal air flow rate [kg/s]
         c1 : Constant term in power polynomial
         c2 : Linear term coefficient in power polynomial
         c3 : Quadratic term coefficient in power polynomial
@@ -73,13 +74,13 @@ class FanTorchSystem(core.System, nn.Module):
 
     def __init__(
         self,
-        nominalPowerRate: float = None,
-        nominalAirFlowRate: float = None,
-        c1: float = None,
-        c2: float = None,
-        c3: float = None,
-        c4: float = None,
-        f_total: float = None,
+        nominalPowerRate: float = 1000,
+        nominalAirFlowRate: float = 1.0,
+        c1: float = 0,
+        c2: float = 0.8,
+        c3: float = 0.2,
+        c4: float = 0.0,
+        f_total: float = 0.9,
         **kwargs,
     ):
         """
@@ -121,15 +122,35 @@ class FanTorchSystem(core.System, nn.Module):
         self._input = {"airFlowRate": tps.Scalar(), "inletAirTemperature": tps.Scalar()}
         self._output = {"outletAirTemperature": tps.Scalar(), "Power": tps.Scalar()}
 
-        # Define parameters for calibration
+        # Define parameters for calibration.  Tightened to a real AHU
+        # supply / exhaust fan operating envelope so the auto-estimator
+        # can't pin a fan to ``nominalPowerRate = 0`` (no fan, but
+        # outlet temperature still updated from cp * m * dT) or
+        # ``f_total = 0`` (zero efficiency means the model attributes
+        # *all* the shaft power to fluid heat gain, which then forces
+        # SAT past the coil's reach).
         self.parameter = {
-            "nominalPowerRate": {"lb": 0.0, "ub": 10000.0},
-            "nominalAirFlowRate": {"lb": 0.0, "ub": 10.0},
-            "c1": {"lb": -10.0, "ub": 10.0},
-            "c2": {"lb": -10.0, "ub": 10.0},
-            "c3": {"lb": -10.0, "ub": 10.0},
-            "c4": {"lb": -10.0, "ub": 10.0},
-            "f_total": {"lb": 0.0, "ub": 1.0},
+            # AHU fan rated power.  Spans small fan-coil supply (~ 200
+            # W) up to a 10 kW primary AHU.  Outside this range the
+            # other parameters compensate in unphysical ways.
+            "nominalPowerRate": {"lb": 200.0, "ub": 10000.0},
+            # AHU air flow [kg/s].  ~ 0.5 kg/s is a small fan-coil,
+            # ~ 10 kg/s a large central handler.
+            "nominalAirFlowRate": {"lb": 0.5, "ub": 10.0},
+            # Polynomial coefficients of the ``P(m)`` curve.  These
+            # can legitimately be negative (curve concavity) but
+            # values past ~ 5 in magnitude give pathological power
+            # curves that the solver loves because they let one
+            # operating point dominate the fit.
+            "c1": {"lb": -1.0, "ub": 1.0},
+            "c2": {"lb": -1.0, "ub": 1.0},
+            "c3": {"lb": -1.0, "ub": 1.0},
+            "c4": {"lb": -1.0, "ub": 1.0},
+            # Total fan efficiency.  Real centrifugal AHU fans land
+            # between 0.4 and 0.85; lower bound 0.3 keeps very small
+            # / poorly maintained units in scope without admitting
+            # the unphysical 0.
+            "f_total": {"lb": 0.3, "ub": 0.9},
         }
 
         self._config = {"parameters": list(self.parameter.keys())}
@@ -194,6 +215,16 @@ class FanTorchSystem(core.System, nn.Module):
                 n_s=batch_size,
                 n_c=self.n_c,
             )
+
+        # Expand parameters to n_c dimension for vectorization
+        self.nominalPowerRate = self.nominalPowerRate.expand_to_n_c(self.n_c)
+        self.nominalAirFlowRate = self.nominalAirFlowRate.expand_to_n_c(self.n_c)
+        self.c1 = self.c1.expand_to_n_c(self.n_c)
+        self.c2 = self.c2.expand_to_n_c(self.n_c)
+        self.c3 = self.c3.expand_to_n_c(self.n_c)
+        self.c4 = self.c4.expand_to_n_c(self.n_c)
+        self.f_total = self.f_total.expand_to_n_c(self.n_c)
+
         self.INITIALIZED = True
 
     def do_step(
@@ -224,17 +255,11 @@ class FanTorchSystem(core.System, nn.Module):
         - c_p is the specific heat capacity of air
         """
         # Get inputs
-        air_flow_rate = self.input["airFlowRate"].get()
+        m_dot = self.input["airFlowRate"].get()
         inlet_temp = self.input["inletAirTemperature"].get()
 
-        # Convert to torch tensors if not already
-        if not isinstance(air_flow_rate, torch.Tensor):
-            air_flow_rate = torch.tensor(air_flow_rate, dtype=torch.float64)
-        if not isinstance(inlet_temp, torch.Tensor):
-            inlet_temp = torch.tensor(inlet_temp, dtype=torch.float64)
-
         # Calculate normalized flow rate
-        m_norm = air_flow_rate / self.nominalAirFlowRate.get()
+        m_norm = m_dot / self.nominalAirFlowRate.get()
 
         # Calculate fan power using polynomial equation
         power = self.nominalPowerRate.get() * (
@@ -244,16 +269,8 @@ class FanTorchSystem(core.System, nn.Module):
             + self.c4.get() * m_norm**3
         )
 
-        # Calculate outlet temperature
-        # Using air properties at standard conditions
-        c_p = 1005.0  # J/(kg·K)
-        rho = 1.2  # kg/m³
-
-        # Convert volume flow rate to mass flow rate
-        m_dot = air_flow_rate * rho
-
         # Calculate temperature rise
-        delta_T = (power * self.f_total.get()) / (m_dot * c_p)
+        delta_T = (power * self.f_total.get()) / (m_dot * constants.CP_AIR)
         outlet_temp = inlet_temp + delta_T
 
         # Update outputs

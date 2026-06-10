@@ -29,7 +29,7 @@ from twin4build.utils.dict_utils import (
 )
 from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
+from twin4build.utils.print_progress import LOGGER, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
@@ -38,6 +38,37 @@ from twin4build.utils.simple_cycle import simple_cycles
 from twin4build.utils.validate_period import validate_period
 
 INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
+
+# Hard cap on id length. Ids are used as filename components under
+# ``model_parameters/<class>/<id>.json`` and similar; on Windows the full
+# path must stay under MAX_PATH (260 chars) unless long-path support is
+# enabled, so we bound the id at a value that leaves headroom for the
+# project directory, class folder, and file extension.
+MAX_ID_LEN = 100
+
+
+def _check_id(id: str, kind: str) -> None:
+    """Validate that ``id`` is a legal string of allowed characters and
+    within :data:`MAX_ID_LEN`. Raises :class:`AssertionError` with a
+    descriptive message on failure.
+
+    ``kind`` is a short label (e.g. ``"model"`` or ``"component"``) used in
+    the error message.
+    """
+    assert isinstance(id, str), f'Argument "id" must be of type {str(type(str))}'
+    assert len(id) <= MAX_ID_LEN, (
+        f'The {kind} with id "{id}" exceeds the maximum id length of '
+        f"{MAX_ID_LEN} characters (got {len(id)}). Ids are used as "
+        f"filename components; long ids trip Windows MAX_PATH and cause "
+        f"OSError at load/save time."
+    )
+    isvalid = np.array([x.isalnum() or x in INVALID_ID_CHARS for x in id])
+    np_id = np.array(list(id))
+    violated_characters = list(np_id[isvalid == False])
+    assert all(isvalid), (
+        f'The {kind} with id "{id}" has an invalid id. The characters '
+        f'"{", ".join(violated_characters)}" are not allowed.'
+    )
 
 
 def _convert_literal_value(value):
@@ -282,6 +313,7 @@ class SimulationModel:
         "_dir_conf",
         "_semantic_model",
         "_translator",
+        "_rewire_reports",
     )
 
     def __str__(self):
@@ -326,17 +358,11 @@ class SimulationModel:
         """
         self._id = id
         if dir_conf is None:
-            self._dir_conf = ["generated_files", "models", self._id]
+            self._dir_conf = ["generated_files", "models", self._id, "simulation_model"]
         else:
             self._dir_conf = dir_conf
 
-        assert isinstance(id, str), f'Argument "id" must be of type {str(type(str))}'
-        isvalid = np.array([x.isalnum() or x in INVALID_ID_CHARS for x in id])
-        np_id = np.array(list(id))
-        violated_characters = list(np_id[isvalid == False])
-        assert all(
-            isvalid
-        ), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
+        _check_id(id, kind="model")
         self._id = id
         self._components = {}
         self._execution_order = []
@@ -347,6 +373,7 @@ class SimulationModel:
         self._custom_initial_dict = None
         self._is_loaded = False
         self._is_validated = False
+        self._rewire_reports = {}
 
         self._semantic_model = core.SemanticModel(
             id=self._id,
@@ -374,6 +401,11 @@ class SimulationModel:
         return self._is_validated
 
     @property
+    def rewire_reports(self) -> dict:
+        """Per-CITS reports produced by the most recent :meth:`rewire` call."""
+        return self._rewire_reports
+
+    @property
     def dir_conf(self) -> List[str]:
         return self._dir_conf
 
@@ -391,6 +423,7 @@ class SimulationModel:
             isinstance(x, str) for x in dir_conf
         ), f"The set value must be of type {list} and contain strings"
         self._dir_conf = dir_conf
+        self._semantic_model.dir_conf = dir_conf + ["semantic_model"]
 
     def get_dir(
         self, folder_list: List[str] = [], filename: Optional[str] = None
@@ -436,7 +469,7 @@ class SimulationModel:
             ), f'The component with id "{component.id}" already exists in the model.'
 
         if components == self._components:
-            self._update_literals(component)
+            self._update_literals([component])
 
         self._is_loaded = False
 
@@ -611,8 +644,8 @@ class SimulationModel:
                 self.remove_connection(
                     connection.connects_system,
                     component,
-                    connection.outputPort,
-                    connection_point.inputPort,
+                    connection.output_port,
+                    connection_point.input_port,
                 )
 
         # Connection from component
@@ -621,22 +654,79 @@ class SimulationModel:
                 self.remove_connection(
                     component,
                     connection_point.connection_point_of,
-                    connection.outputPort,
-                    connection_point.inputPort,
+                    connection.output_port,
+                    connection_point.input_port,
                 )
 
         if components is None:
             components = self._components
 
+        if components is self._components:
+            component_uri = self._semantic_model.T4B.__getitem__(component.id)
+            self._semantic_model.instance_graph.remove((component_uri, None, None))
+            self._semantic_model.instance_graph.remove((None, None, component_uri))
+
         del components[component.id]
         self._is_loaded = False
+
+    @staticmethod
+    def _resolve_port_index(
+        port_index: Optional[Union[int, torch.Tensor]],
+        this_port: Union[tps.Scalar, tps.Vector],
+        other_port: Union[tps.Scalar, tps.Vector],
+        this_port_name: str,
+        other_port_name: str,
+    ) -> Optional[Union[int, torch.Tensor]]:
+        """
+        Validate and resolve a port index for connections.
+
+        Returns the appropriate index value: the provided index if valid,
+        a generated range for vector-to-vector mappings, or None for scalars.
+        """
+        if port_index is not None:
+            assert isinstance(
+                this_port, tps.Vector
+            ), f"If {this_port_name} port index is set, {this_port_name} port must be a vector"
+            assert isinstance(
+                port_index, (torch.Tensor, int)
+            ), f"If {this_port_name} port index is set, it must either be an integer or a torch.Tensor"
+            if isinstance(port_index, torch.Tensor):
+                assert isinstance(other_port, tps.Vector), (
+                    f"If {this_port_name} port index is set and is a torch.Tensor, "
+                    f"{other_port_name} port must be a vector"
+                )
+            else:
+                # ``int`` ``port_index`` selects one slot of this Vector port.
+                # The opposite side may be either a Scalar (slot value flows
+                # straight to/from a scalar peer) or a Vector with its own
+                # explicit ``int`` slot (single-slot-to-single-slot bridge,
+                # e.g. CITS.inputSignal[0] -> AHU.supplyDamperPosition[3]).
+                # The translator's ``resolve_port_indices`` populates both
+                # ints in that Vector->Vector case after Vector port slot
+                # ordinals are resolved on both ends.
+                assert isinstance(other_port, (tps.Scalar, tps.Vector)), (
+                    f"If {this_port_name} port index is set and is an integer, "
+                    f"{other_port_name} port must be a scalar or vector, got "
+                    f"{other_port.__class__.__name__}"
+                )
+            return port_index
+        else:
+            if isinstance(other_port, tps.Vector) and isinstance(this_port, tps.Vector):
+                return torch.arange(this_port.size)  # Map directly
+            else:
+                assert isinstance(this_port, tps.Scalar), (
+                    f"If {this_port_name} port index is not set, both output and input ports "
+                    f"must be scalars. Got {other_port_name} port type {other_port.__class__.__name__} "
+                    f"and {this_port_name} port type {this_port.__class__.__name__}"
+                )
+                return None
 
     def add_connection(
         self,
         sender_component: core.System,
         receiver_component: core.System,
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
         output_port_index: [int, torch.Tensor] = None,
         input_port_index: [int, torch.Tensor] = None,
         components: Dict[str, core.System] = None,
@@ -647,8 +737,8 @@ class SimulationModel:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
@@ -660,31 +750,31 @@ class SimulationModel:
         self.add_component(receiver_component, components=components)
 
         l = [f"'{k}'" for k in list(sender_component.output.keys())]
-        message = f"The property '{outputPort}' is not a valid output for the component '{sender_component.id}' of type '{type(sender_component)}'.\nThe valid output properties are:\n{' '.join(l)}"
-        assert outputPort in (
+        message = f"The property '{output_port}' is not a valid output for the component '{sender_component.id}' of type '{type(sender_component)}'.\nThe valid output properties are:\n{' '.join(l)}"
+        assert output_port in (
             set(sender_component.output.keys()) | set(sender_component.output.keys())
         ), message  # Before we joined input and output sets
 
         l = [f"'{k}'" for k in list(receiver_component.input.keys())]
-        message = f"The property '{inputPort}' is not a valid input for the component '{receiver_component.id}' of type '{type(receiver_component)}'.\nThe valid input properties are:\n{' '.join(l)}"
-        assert inputPort in receiver_component.input.keys(), message
+        message = f"The property '{input_port}' is not a valid input for the component '{receiver_component.id}' of type '{type(receiver_component)}'.\nThe valid input properties are:\n{' '.join(l)}"
+        assert input_port in receiver_component.input.keys(), message
 
         found_connection_point = False
         # Check if there already is a connectionPoint with the same receiver_property_name
         for receiver_component_connection_point in receiver_component.connects_at:
-            if receiver_component_connection_point.inputPort == inputPort:
+            if receiver_component_connection_point.input_port == input_port:
                 found_connection_point = True
                 break
 
         found_connection = False
         # Check if there already is a connection with the same sender_property_name
         for sender_obj_connection in sender_component.connected_through:
-            if sender_obj_connection.outputPort == outputPort:
+            if sender_obj_connection.output_port == output_port:
                 found_connection = True
                 break
 
         if found_connection_point and found_connection:
-            message = f'core.Connection between "{sender_component.id}" and "{receiver_component.id}" with the properties "{outputPort}" and "{inputPort}" already exists.'
+            message = f'core.Connection between "{sender_component.id}" and "{receiver_component.id}" with the properties "{output_port}" and "{input_port}" already exists.'
             assert (
                 receiver_component_connection_point
                 not in sender_obj_connection.connects_system_at
@@ -692,13 +782,13 @@ class SimulationModel:
 
         if found_connection == False:
             sender_obj_connection = core.Connection(
-                connects_system=sender_component, outputPort=outputPort
+                connects_system=sender_component, output_port=output_port
             )
             sender_component.connected_through.append(sender_obj_connection)
 
         if found_connection_point == False:
             receiver_component_connection_point = core.ConnectionPoint(
-                connection_point_of=receiver_component, inputPort=inputPort
+                connection_point_of=receiver_component, input_port=input_port
             )
             receiver_component.connects_at.append(receiver_component_connection_point)
 
@@ -709,76 +799,27 @@ class SimulationModel:
             sender_obj_connection
         )  # if sender_obj_connection not in receiver_component_connection_point.connects_system_through else None
 
-        if input_port_index is not None:
-            assert isinstance(
-                receiver_component.input[inputPort], tps.Vector
-            ), "If input port index is set, input port must be a vector"
-            assert isinstance(input_port_index, torch.Tensor) or isinstance(
-                input_port_index, int
-            ), "If input port index is set, it must either be an integer or a torch.Tensor"
+        input_idx = self._resolve_port_index(
+            input_port_index,
+            receiver_component.input[input_port],
+            sender_component.output[output_port],
+            "input",
+            "output",
+        )
+        receiver_component_connection_point.set_input_port_index(
+            sender_obj_connection, input_idx
+        )
 
-            if isinstance(input_port_index, torch.Tensor):
-                assert isinstance(
-                    sender_component.output[outputPort], tps.Vector
-                ), "If input port index is set and is a torch.Tensor, output port must be a vector"
-            else:
-                assert isinstance(
-                    sender_component.output[outputPort], tps.Scalar
-                ), "If input port index is set and is an integer, output port must be a scalar"
-            receiver_component_connection_point.set_input_port_index(
-                sender_obj_connection, input_port_index
-            )
-        else:
-            if isinstance(
-                sender_component.output[outputPort], tps.Vector
-            ) and isinstance(receiver_component.input[inputPort], tps.Vector):
-                receiver_component_connection_point.set_input_port_index(
-                    sender_obj_connection,
-                    torch.arange(receiver_component.input[inputPort].size),
-                )  # Map directly
-            else:
-                assert isinstance(
-                    receiver_component.input[inputPort], tps.Scalar
-                ), f"If input port index is not set, both output and input ports must be scalars. Got output port type {sender_component.output[outputPort].__class__.__name__} and input port type {receiver_component.input[inputPort].__class__.__name__}"
-                receiver_component_connection_point.set_input_port_index(
-                    sender_obj_connection, None
-                )
-
-        if output_port_index is not None:
-            assert isinstance(
-                sender_component.output[outputPort], tps.Vector
-            ), "If output port index is set, output port must be a vector"
-            assert isinstance(output_port_index, torch.Tensor) or isinstance(
-                output_port_index, int
-            ), "If output port index is set, it must either be an integer or a torch.Tensor"
-
-            if isinstance(output_port_index, torch.Tensor):
-                assert isinstance(
-                    receiver_component.input[inputPort], tps.Vector
-                ), "If output port index is set and is a torch.Tensor, input port must be a vector"
-            else:
-                assert isinstance(
-                    receiver_component.input[inputPort], tps.Scalar
-                ), "If output port index is set and is an integer, input port must be a scalar"
-
-            receiver_component_connection_point.set_output_port_index(
-                sender_obj_connection, output_port_index
-            )
-        else:
-            if isinstance(
-                receiver_component.input[inputPort], tps.Vector
-            ) and isinstance(sender_component.output[outputPort], tps.Vector):
-                receiver_component_connection_point.set_output_port_index(
-                    sender_obj_connection,
-                    torch.arange(sender_component.output[outputPort].size),
-                )  # Map directly
-            else:
-                assert isinstance(
-                    sender_component.output[outputPort], tps.Scalar
-                ), f"If output port index is not set, both output and input ports must be scalars. Got output port type {sender_component.output[outputPort].__class__.__name__} and input port type {receiver_component.input[inputPort].__class__.__name__}"
-                receiver_component_connection_point.set_output_port_index(
-                    sender_obj_connection, None
-                )
+        output_idx = self._resolve_port_index(
+            output_port_index,
+            sender_component.output[output_port],
+            receiver_component.input[input_port],
+            "output",
+            "input",
+        )
+        receiver_component_connection_point.set_output_port_index(
+            sender_obj_connection, output_idx
+        )
 
         if components == self._components:
             sender_component_uri = self._semantic_model.T4B.__getitem__(
@@ -799,10 +840,10 @@ class SimulationModel:
             )
 
             literal_sender_property = Literal(
-                outputPort
+                output_port
             )  # , datatype=core.namespace.XSD.string)
             literal_receiver_property = Literal(
-                inputPort
+                input_port
             )  # , datatype=core.namespace.XSD.string)
 
             # Add the class of the components to the semantic model
@@ -890,16 +931,53 @@ class SimulationModel:
                 )
             )
 
-            self._semantic_model.instance_graph.add(
-                (connection_uri, core.namespace.T4B.outputPort, literal_sender_property)
+            self._update_literals(
+                components=[sender_component, receiver_component],
+                connections=[sender_obj_connection],
+                connection_points=[receiver_component_connection_point],
             )
-            self._semantic_model.instance_graph.add(
-                (
-                    connection_point_uri,
-                    core.namespace.T4B.inputPort,
-                    literal_receiver_property,
-                )
-            )
+
+            # self._semantic_model.instance_graph.add(
+            #     (connection_uri, core.namespace.T4B.output_port, literal_sender_property)
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.input_port,
+            #         literal_receiver_property,
+            #     )
+            # )
+
+            # # Add the input_port_index and output_port_index literals
+            # # Serialize indices as JSON with connection hash as keys
+            # input_port_index_dict = {
+            #     str(hash(conn)): int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+            #     for conn, idx in receiver_component_connection_point.input_port_index.items()
+            # }
+            # output_port_index_dict = {
+            #     str(hash(conn)): int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+            #     for conn, idx in receiver_component_connection_point.output_port_index.items()
+            # }
+            # literal_input_port_index = Literal(
+            #     json.dumps(input_port_index_dict), datatype=core.namespace.RDF.JSON
+            # )
+            # literal_output_port_index = Literal(
+            #     json.dumps(output_port_index_dict), datatype=core.namespace.RDF.JSON
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.input_port_index,
+            #         literal_input_port_index,
+            #     )
+            # )
+            # self._semantic_model.instance_graph.add(
+            #     (
+            #         connection_point_uri,
+            #         core.namespace.T4B.output_port_index,
+            #         literal_output_port_index,
+            #     )
+            # )
 
         self._is_loaded = False
 
@@ -907,8 +985,8 @@ class SimulationModel:
         self,
         sender_component: core.System,
         receiver_component: core.System,
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
         components: Dict[str, core.System] = None,
     ) -> None:
         """
@@ -928,22 +1006,22 @@ class SimulationModel:
 
         sender_component_connection = None
         for connection in sender_component.connected_through:
-            if connection.outputPort == outputPort:
+            if connection.output_port == output_port:
                 sender_component_connection = connection
                 break
         if sender_component_connection is None:
             raise ValueError(
-                f'The sender component "{sender_component.id}" does not have a connection with the property "{outputPort}"'
+                f'The sender component "{sender_component.id}" does not have a connection with the property "{output_port}"'
             )
 
         receiver_component_connection_point = None
         for connection_point in receiver_component.connects_at:
-            if connection_point.inputPort == inputPort:
+            if connection_point.input_port == input_port:
                 receiver_component_connection_point = connection_point
                 break
         if receiver_component_connection_point is None:
             raise ValueError(
-                f'The receiver component "{receiver_component.id}" does not have a connection point with the property "{inputPort}"'
+                f'The receiver component "{receiver_component.id}" does not have a connection point with the property "{input_port}"'
             )
 
         sender_component_connection.connects_system_at.remove(
@@ -978,12 +1056,12 @@ class SimulationModel:
 
             literal_sender_property = list(
                 self._semantic_model.instance_graph.objects(
-                    connection_uri, core.namespace.T4B.outputPort
+                    connection_uri, core.namespace.T4B.output_port
                 )
             )
             literal_receiver_property = list(
                 self._semantic_model.instance_graph.objects(
-                    connection_point_uri, core.namespace.T4B.inputPort
+                    connection_point_uri, core.namespace.T4B.input_port
                 )
             )
             assert (
@@ -1029,7 +1107,7 @@ class SimulationModel:
                 self._semantic_model.instance_graph.remove(
                     (
                         connection_uri,
-                        core.namespace.T4B.outputPort,
+                        core.namespace.T4B.output_port,
                         literal_sender_property,
                     )
                 )
@@ -1052,7 +1130,7 @@ class SimulationModel:
                 self._semantic_model.instance_graph.remove(
                     (
                         connection_point_uri,
-                        core.namespace.T4B.inputPort,
+                        core.namespace.T4B.input_port,
                         literal_receiver_property,
                     )
                 )
@@ -1228,10 +1306,10 @@ class SimulationModel:
             # Assert that the min_values and max_values are the same length as the values
             assert len(min_values) == len(
                 values
-            ), "The length of min_values must be the same as the length of values"
+            ), f"The length of min_values must be the same as the length of values. Got {len(min_values)} and {len(values)}"
             assert len(max_values) == len(
                 values
-            ), "The length of max_values must be the same as the length of values"
+            ), f"The length of max_values must be the same as the length of values. Got {len(max_values)} and {len(values)}"
 
         for i, (v, obj, attr, normalized_) in enumerate(
             zip(values, components, parameter_names, normalized)
@@ -1252,17 +1330,50 @@ class SimulationModel:
                         obj_.max_value = max_values[i]
                     if overwrite:
                         if save_original:
-                            if (
-                                obj.id not in self._saved_parameters
-                            ):  # Save the original parameter if we later need to restore it
-                                self._saved_parameters[obj.id] = {}
-                            self._saved_parameters[obj.id][attr] = obj_
+                            obj_key = id(obj)
+                            if obj_key not in self._saved_parameters:
+                                self._saved_parameters[obj_key] = {"__ref__": obj}
+                            self._saved_parameters[obj_key][attr] = obj_
+
+                        # Reconcile ``v`` with the *current* n_c of ``obj_``.
+                        # The estimator captures n_c at parameter-list
+                        # processing time, which happens BEFORE
+                        # :meth:`SimulationModel.initialize`.  Sub-components
+                        # like the AHU dampers get ``expand_to_n_c(n_branches)``
+                        # inside their owner's ``initialize`` -- so by the time
+                        # we land here ``obj_.min_value`` has shape ``(n_c,)``
+                        # with ``n_c > 1`` even though the theta entry the
+                        # solver hands back is scalar.  ``tps.TensorParameter``
+                        # then infers ``n_c=1`` from a scalar ``v`` and refuses
+                        # the ``(n_c,)`` bound (see
+                        # :func:`_prepare_bound_value`).  Broadcasting ``v`` to
+                        # the existing ``n_c`` matches the auto-discovery
+                        # semantics: ``get_estimable_parameters`` emits one
+                        # scalar bound, so every parallel branch shares the
+                        # same denormalized value.  Callers wanting per-branch
+                        # estimation must pass the vector form
+                        # ``(comp, attr, [x0]*n_c, [lb]*n_c, [ub]*n_c)``.
+                        target_n_c = getattr(obj_, "n_c", 1) or 1
+                        if target_n_c > 1:
+                            v_t = torch.as_tensor(v, dtype=torch.float64).reshape(-1)
+                            if v_t.numel() == 1:
+                                v_t = v_t.expand(target_n_c).clone()
+                            elif v_t.numel() != target_n_c:
+                                raise ValueError(
+                                    f"Cannot reconcile value of shape "
+                                    f"{tuple(v_t.shape)} with parameter "
+                                    f"'{attr}' on '{obj.id}' (n_c="
+                                    f"{target_n_c}).  Pass per-branch x0/lb/ub "
+                                    f"as lists if you need distinct values."
+                                )
+                            v = v_t
 
                         new_param = tps.TensorParameter(
                             v,
                             min_value=obj_.min_value,
                             max_value=obj_.max_value,
                             normalized=normalized_,
+                            scaling=getattr(obj_, "_scaling", "linear"),
                         )
                         rdelattr(obj, attr)
                         rsetattr(obj, attr, new_param)
@@ -1285,15 +1396,348 @@ class SimulationModel:
         return self.set_parameters(*args, **kwargs)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
-        for obj in self._saved_parameters:
-            for attr in self._saved_parameters[obj]:
-                old_obj = rgetattr(self._components[obj], attr)
+        for obj_key in self._saved_parameters:
+            saved = self._saved_parameters[obj_key]
+            component = saved["__ref__"]
+            for attr in saved:
+                if attr == "__ref__":
+                    continue
+                old_obj = rgetattr(component, attr)
                 v = old_obj.get()
-                new_obj = self._saved_parameters[obj][attr]
-                rdelattr(self._components[obj], attr)
-                rsetattr(self._components[obj], attr, new_obj)
+                new_obj = saved[attr]
+                rdelattr(component, attr)
+                rsetattr(component, attr, new_obj)
                 if keep_values:
                     new_obj.set(v, normalized=False)
+
+    def set_dbconfigs(self, dbconfig: Dict[str, Any]) -> "SimulationModel":
+        """Apply a database configuration to every component that supports it.
+
+        Walks ``self.components.values()`` and calls
+        ``component.set_dbconfig(dbconfig)`` on every component that exposes
+        such a method.  Components without ``set_dbconfig`` are silently
+        skipped, so this is safe to call on heterogeneous models -- only
+        e.g. :class:`SensorSystem` instances are affected.
+
+        Components that already carry a non-``None`` ``dbconfig`` are
+        overwritten (the call is non-idempotent for non-None starting
+        states); pass per-component ``dbconfig=None`` arguments via
+        :meth:`set_parameters` if you need to clear or vary per-component.
+
+        Args:
+            dbconfig: The database configuration dict (typically
+                ``{"table_name": ..., "db_host": ..., "db_port": ...,
+                "db_name": ..., "db_user": ..., "db_password": ...}``).
+
+        Returns:
+            ``self`` for chaining.
+        """
+        for comp in self._components.values():
+            setter = getattr(comp, "set_dbconfig", None)
+            if callable(setter):
+                setter(dbconfig)
+        return self
+
+    def fill_missing_inputs(
+        self,
+        defaults: Dict[Any, Any],
+    ) -> "SimulationModel":
+        """Attach providers for input ports the ontology did not wire.
+
+        Each ``defaults`` entry says "this missing port should be driven
+        by that source" -- with two axes of flexibility:
+
+        * **Scope** (the key): apply to every component declaring a port
+          name (port-only) OR to a specific component (component-scoped).
+        * **Provider** (the value): a constant (wrapped in a flat
+          :class:`ScheduleSystem`) OR a user-supplied :class:`core.System`
+          (e.g. a :class:`SensorSystem` reading a BMS historian by
+          ``uuid``) OR an explicit ``(component, output_port)`` pair when
+          the provider has more than one output.
+
+        Key shapes
+        ----------
+        * ``"port_name"`` -- port-only entry.  Connects every component
+          that:
+
+            1. declares an input port called ``port_name``
+               (``port_name in component.input``), and
+            2. has no incoming connection on that port yet, and
+            3. is not covered by a component-scoped entry below.
+
+          Idempotent across calls: the schedule id is
+          ``_sched_{port_name}``, looked up before re-creating.
+        * ``(component_or_id, port_name)`` -- component-scoped entry.
+          ``component_or_id`` may be a :class:`core.System` instance or
+          its id string.  Takes precedence over a port-only entry on
+          the same port (so a building-wide constant can coexist with
+          a per-AHU override).  The auto-generated schedule id is
+          ``_sched_{component_id}_{port_name}`` so each scoped entry
+          gets its own provider instance even if multiple components
+          map the same port to the same value.
+
+        Value shapes
+        ------------
+        * ``float | int | bool`` -- wrapped in a flat
+          :class:`ScheduleSystem` whose ``scheduleValue`` output is
+          ``value`` at every timestep.
+        * :class:`core.System` -- used directly as the provider; the
+          component is added to :attr:`self._components` if it isn't
+          already.  The provider must have **exactly one** output
+          port; that port is auto-selected.  Useful for plugging in a
+          pre-built :class:`SensorSystem` (``uuid`` + ``dbconfig`` set)
+          that reads a BMS historian: the connection is then a true
+          exogenous time-series input, even though the BRICK ontology
+          carries no equivalent URI.
+        * ``(provider, output_port_name)`` -- when the provider has
+          multiple outputs.  ``output_port_name`` must be a key of
+          ``provider.output``.
+
+        Conflict resolution
+        -------------------
+        Component-scoped entries always win over port-only entries on
+        the same port; this lets a project-wide constant (e.g.
+        ``"outdoorCO2": 400.0``) coexist with a per-component override
+        (e.g. ``(ahu02, "supplyAirTemperatureSetpoint"): leaf_sensor``)
+        without the user having to maintain two parallel dicts.  If
+        the same ``(component_id, port_name)`` pair appears twice the
+        later value wins -- standard ``dict`` semantics.
+
+        Args:
+            defaults: Mapping with the key/value shapes above.
+
+        Returns:
+            ``self`` for chaining.
+        """
+
+        def _has_incoming(component: core.System, input_port: str) -> bool:
+            for cp in component.connects_at:
+                if cp.input_port == input_port and cp.connects_system_through:
+                    return True
+            return False
+
+        def _make_schedule(value: float, id_: str) -> core.System:
+            # Empty rulesets + ``ruleset_default_value`` is the canonical
+            # ``flat schedule'' shape in twin4build (see ScheduleSystem
+            # docstring for the ruleset semantics).
+            return systems.ScheduleSystem(
+                weekDayRulesetDict={
+                    "ruleset_default_value": value,
+                    "ruleset_start_minute": [],
+                    "ruleset_end_minute": [],
+                    "ruleset_start_hour": [],
+                    "ruleset_end_hour": [],
+                    "ruleset_value": [],
+                },
+                add_noise=False,
+                id=id_,
+            )
+
+        def _resolve_spec(
+            spec: Any,
+            schedule_id: str,
+        ) -> tuple[core.System, str]:
+            """Normalise a value-side spec to ``(provider, output_port)``.
+
+            * Scalar -> create or reuse a flat ``ScheduleSystem`` with
+              id ``schedule_id`` and emit ``scheduleValue``.
+            * ``core.System`` -> use the unique output port (assert).
+            * ``(System, output_port)`` -- use as-is after validating
+              the output port exists.
+            """
+            # ``bool`` is a subclass of ``int`` in Python so the
+            # ``(int, float)`` check below catches flat 0/1 enable/
+            # disable schedules too -- intentional.
+            if isinstance(spec, (int, float)):
+                sched = self._components.get(schedule_id)
+                if sched is None:
+                    sched = _make_schedule(float(spec), schedule_id)
+                return sched, "scheduleValue"
+            if isinstance(spec, core.System):
+                out_keys = list(spec.output.keys())
+                assert len(out_keys) == 1, (
+                    f"fill_missing_inputs: provider {spec.id!r} has "
+                    f"{len(out_keys)} outputs ({out_keys!r}); pass a "
+                    "(provider, output_port) tuple to disambiguate."
+                )
+                return spec, out_keys[0]
+            if isinstance(spec, tuple) and len(spec) == 2:
+                provider, out_port = spec
+                assert isinstance(provider, core.System), (
+                    "fill_missing_inputs: in a (provider, output_port) "
+                    "tuple the first element must be a core.System "
+                    f"instance, got {type(provider).__name__}."
+                )
+                assert out_port in provider.output, (
+                    f"fill_missing_inputs: provider {provider.id!r} has "
+                    f"no output port {out_port!r}; valid keys are "
+                    f"{list(provider.output)}."
+                )
+                return provider, out_port
+            raise TypeError(
+                f"fill_missing_inputs: unsupported value spec "
+                f"{type(spec).__name__}({spec!r}).  Use a scalar, a "
+                "core.System instance, or a (component, output_port) "
+                "tuple."
+            )
+
+        # Split entries by scope so port-only fan-out can skip any
+        # (component, port) pair already overridden by a scoped entry.
+        port_defaults: Dict[str, Any] = {}
+        comp_defaults: Dict[tuple[str, str], Any] = {}
+        for key, spec in defaults.items():
+            if isinstance(key, str):
+                port_defaults[key] = spec
+                continue
+            if isinstance(key, tuple) and len(key) == 2:
+                comp_ref, port_name = key
+                if isinstance(comp_ref, core.System):
+                    comp_id = comp_ref.id
+                elif isinstance(comp_ref, str):
+                    comp_id = comp_ref
+                else:
+                    raise TypeError(
+                        "fill_missing_inputs: component-scoped key "
+                        "expects (System | id_str, port_name); got "
+                        f"({type(comp_ref).__name__}, {type(port_name).__name__})."
+                    )
+                if not isinstance(port_name, str):
+                    raise TypeError(
+                        "fill_missing_inputs: component-scoped key's "
+                        f"port_name must be a str, got {type(port_name).__name__}."
+                    )
+                comp_defaults[(comp_id, port_name)] = spec
+                continue
+            raise TypeError(
+                f"fill_missing_inputs: unsupported key {key!r}.  Use a "
+                "port-name str, or a (component | component_id, port_name) "
+                "tuple."
+            )
+
+        # ---- Pass 1: port-only fan-out, skipping component-scoped overrides
+        for port_name, spec in port_defaults.items():
+            consumers = [
+                comp
+                for comp in list(self._components.values())
+                if port_name in getattr(comp, "input", {})
+                and not _has_incoming(comp, port_name)
+                and (comp.id, port_name) not in comp_defaults
+            ]
+            if not consumers:
+                continue
+            provider, out_port = _resolve_spec(spec, f"_sched_{port_name}")
+            for consumer in consumers:
+                self.add_connection(provider, consumer, out_port, port_name)
+
+        # ---- Pass 2: per-component overrides
+        for (comp_id, port_name), spec in comp_defaults.items():
+            consumer = self._components.get(comp_id)
+            assert consumer is not None, (
+                f"fill_missing_inputs: no component with id {comp_id!r} "
+                "in this model; check the component reference or run "
+                "this method after the component has been translated / "
+                "added."
+            )
+            assert port_name in getattr(consumer, "input", {}), (
+                f"fill_missing_inputs: component {comp_id!r} has no "
+                f"input port {port_name!r}; valid ports are "
+                f"{list(getattr(consumer, 'input', {}))}."
+            )
+            if _has_incoming(consumer, port_name):
+                # Component-scoped override targeting an already-wired
+                # port is almost certainly a config bug: the user asked
+                # to drive a port that the ontology already populated.
+                # Loudly skip rather than silently double-connect (the
+                # downstream ``add_connection`` would assert anyway).
+                LOGGER.warn(
+                    "fill_missing_inputs: %s.%s already has an incoming "
+                    "connection; component-scoped override skipped.",
+                    comp_id, port_name,
+                )
+                continue
+            provider, out_port = _resolve_spec(
+                spec, f"_sched_{comp_id}_{port_name}"
+            )
+            self.add_connection(provider, consumer, out_port, port_name)
+
+        return self
+
+    def rewire(
+        self,
+        *,
+        start_time: Any,
+        end_time: Any,
+        step_size: int,
+        mode: str = "train",
+        **rewire_kwargs: Any,
+    ) -> "SimulationModel":
+        """Run the data-driven CITS rewire on every PI-CITS in the graph.
+
+        Should be called **before** :meth:`load`: the rewire modifies
+        the topology (prunes losing sensor connections, repins CITS
+        frozen state) which would otherwise invalidate the execution
+        order computed by :meth:`load`.  It only needs the components
+        and connections produced by :class:`~twin4build.translator.Translator`
+        plus a configured dbconfig on the sensors -- no execution
+        order, validated graph, or loaded parameters are required.
+
+        Convenience entrypoint that dispatches to the internal
+        :func:`_rewire_pi_loops` helper in
+        :mod:`twin4build.systems.controller.controller_identification.pi_loop_rewire`.
+        The helper:
+
+          * loads timeseries for every connected
+            :class:`SensorSystem` over the requested window,
+          * scores every wired ``(sensor, setpoint)`` pair against
+            the downstream actuator measurement,
+          * prunes losing connections (so the surviving
+            :class:`ControllerIdentificationPITorchSystem` has
+            ``n_sensors = n_setpoints = 1`` and a single PI candidate),
+          * writes data-driven seeds (``kp``, ``Ti``, ``output_min``,
+            ``output_max``, ``default_output_0``, ``isReverse``,
+            ``gate_0.threshold``, ``gate_0.band``, ``gamma_gate_0``)
+            onto the surviving candidate,
+          * pins ``alpha_0`` / ``beta_0`` / ``gamma_0`` / ``beta_b_0``
+            to one-hot, ``gate_0.polarity`` to ``1.0`` and
+            ``alpha_gate_{a}`` according to ``mode``.
+
+        Per-CITS ``RewireReport`` objects are stored on
+        ``self._rewire_reports`` for downstream inspection.
+
+        Args:
+            start_time, end_time, step_size: Window passed to
+                :meth:`SensorSystem.initialize` so the rewire can
+                read measurement values.
+            mode: ``"train"`` -> ``alpha_gate_{a} = 1.0`` (gate active
+                during Stage-1 estimation); ``"simulate"`` ->
+                ``alpha_gate_{a} = 0.0`` (gate bypassed for Stage-2
+                closed-loop simulation, PI passthrough).
+            **rewire_kwargs: Forwarded verbatim to
+                :func:`_rewire_pi_loops` (confidence thresholds,
+                decade-pad widths, candidate filters, ...).  See the
+                helper's docstring for the full list.
+
+        Returns:
+            ``self`` for chaining.
+        """
+        # Local import keeps the simulation-model module import-cycle-
+        # free; the rewire helper depends on the loop-classifier,
+        # actuator GMM, ... module graph which would otherwise pull
+        # heavy dependencies into every ``SimulationModel`` import.
+        from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
+            _rewire_pi_loops,
+        )
+
+        reports = _rewire_pi_loops(
+            self,
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            mode=mode,
+            **rewire_kwargs,
+        )
+        self._rewire_reports = reports
+        return self
 
     def set_parameters_from_config(self, d: dict, component: core.System):
         """
@@ -1377,70 +1821,70 @@ class SimulationModel:
 
             # Make the inputs and outputs aware of the execution order.
             # This is important to ensure that input tps.Vectors have the same order, allowing for instance element-wise operations.
-            for i, connection_point in enumerate(component.connects_at):
+            # for i, connection_point in enumerate(component.connects_at):
 
-                update_input_port_index = False
-                hash_array = torch.arange(
-                    len(connection_point.connects_system_through), dtype=torch.int64
-                )
-                for j, connection in enumerate(
-                    connection_point.connects_system_through
-                ):
-                    connected_component = connection.connects_system
-                    if (
-                        isinstance(
-                            component.input[connection_point.inputPort], tps.Vector
-                        )
-                        and self._translator is not None
-                        and (
-                            component,
-                            connected_component,
-                            connection.outputPort,
-                            connection_point.inputPort,
-                        )
-                        in self._translator.E_conn_to_sp_group
-                    ):
-                        update_input_port_index = True
-                        sp, groups = self._translator.E_conn_to_sp_group[
-                            (
-                                component,
-                                connected_component,
-                                connection.outputPort,
-                                connection_point.inputPort,
-                            )
-                        ]
-                        # Find the group of the connected component
-                        modeled_match_nodes_ = self._translator.sim2sem_map[
-                            connected_component
-                        ]
-                        groups_matched = [
-                            g
-                            for g in groups
-                            if len(modeled_match_nodes_.intersection(set(g.values())))
-                            > 0
-                        ]
-                        assert (
-                            len(groups_matched) == 1
-                        ), "Only one group is allowed for each component."
-                        group = groups_matched[0]
-                        group_hash = hash(group)
+            #     update_input_port_index = False
+            #     hash_array = torch.arange(
+            #         len(connection_point.connects_system_through), dtype=torch.int64
+            #     )
+            #     for j, connection in enumerate(
+            #         connection_point.connects_system_through
+            #     ):
+            #         connected_component = connection.connects_system
+            #         if (
+            #             isinstance(
+            #                 component.input[connection_point.input_port], tps.Vector
+            #             )
+            #             and self._translator is not None
+            #             and (
+            #                 component,
+            #                 connected_component,
+            #                 connection.output_port,
+            #                 connection_point.input_port,
+            #             )
+            #             in self._translator.E_conn_to_sp_group
+            #         ):
+            #             update_input_port_index = True
+            #             sp, groups = self._translator.E_conn_to_sp_group[
+            #                 (
+            #                     component,
+            #                     connected_component,
+            #                     connection.output_port,
+            #                     connection_point.input_port,
+            #                 )
+            #             ]
+            #             # Find the group of the connected component
+            #             modeled_match_nodes_ = self._translator.sim2sem_map[
+            #                 connected_component
+            #             ]
+            #             groups_matched = [
+            #                 g
+            #                 for g in groups
+            #                 if len(modeled_match_nodes_.intersection(set(g.values())))
+            #                 > 0
+            #             ]
+            #             assert (
+            #                 len(groups_matched) == 1
+            #             ), "Only one group is allowed for each component."
+            #             group = groups_matched[0]
+            #             group_hash = hash(group)
 
-                        # component.input[connection_point.inputPort].update(
-                        #     group_id=group_id
-                        # )
+            #             # component.input[connection_point.input_port].update(
+            #             #     group_id=group_id
+            #             # )
 
-                        ###########################
-                        hash_array[j] = group_hash
-                        # for idx, group_id in self.id_map.items():
-                        #     id_array[idx] = group_id
-                        # self.sorted_id_indices = torch.argsort(id_array)
-                        #########################################
+            #             ###########################
+            #             hash_array[j] = group_hash
+            #             # for idx, group_id in self.id_map.items():
+            #             #     id_array[idx] = group_id
+            #             # self.sorted_id_indices = torch.argsort(id_array)
+            #             #########################################
 
-                if update_input_port_index:
-                    for index, connection in zip(
-                        hash_array, connection_point.connects_system_through
-                    ):
-                        connection_point.set_input_port_index(connection, index)
+            #     if update_input_port_index:
+            #         for index, connection in zip(
+            #             hash_array, connection_point.connects_system_through
+            #         ):
+            #             connection_point.set_input_port_index(connection, index)
 
             component.initialize(
                 start_time=start_time,
@@ -1455,10 +1899,10 @@ class SimulationModel:
         """
         Validate the model by checking IDs and connections.
         """
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
 
-        PRINTPROGRESS("Validating components")
-        PRINTPROGRESS.add_level()
+        LOGGER.task("Validating components")
+        LOGGER.add_level()
         (
             validated_for_simulator_components,
             validated_for_estimator_components,
@@ -1469,15 +1913,13 @@ class SimulationModel:
             and validated_for_estimator_components
             and validated_for_optimizer_components
         ) == False:
-            PRINTPROGRESS(
-                "Validating components", status="[FAILED]", change_status=True
-            )
+            LOGGER.error("Validating components", change_status=True)
         else:
-            PRINTPROGRESS("Validating components", status="[OK]", change_status=True)
-        PRINTPROGRESS.remove_level()
+            LOGGER.ok("Validating components", change_status=True)
+        LOGGER.remove_level()
 
-        PRINTPROGRESS("Validating connections")
-        PRINTPROGRESS.add_level()
+        LOGGER.task("Validating connections")
+        LOGGER.add_level()
         (
             validated_for_simulator_connections,
             validated_for_estimator_connections,
@@ -1488,12 +1930,10 @@ class SimulationModel:
             and validated_for_estimator_connections
             and validated_for_optimizer_connections
         ) == False:
-            PRINTPROGRESS(
-                "Validating connections", status="[FAILED]", change_status=True
-            )
+            LOGGER.error("Validating connections", change_status=True)
         else:
-            PRINTPROGRESS("Validating connections", status="[OK]", change_status=True)
-        PRINTPROGRESS.remove_level()
+            LOGGER.ok("Validating connections", change_status=True)
+        LOGGER.remove_level()
 
         self._validated_for_simulator = (
             validated_for_simulator_components and validated_for_simulator_connections
@@ -1510,19 +1950,19 @@ class SimulationModel:
             and self._validated_for_optimizer
         )
 
-        PRINTPROGRESS(
-            "Validated for Simulator",
-            status="[OK]" if self._validated_for_simulator else "[FAILED]",
-        )
-        PRINTPROGRESS(
-            "Validated for Estimator",
-            status="[OK]" if self._validated_for_estimator else "[FAILED]",
-        )
-        PRINTPROGRESS(
-            "Validated for Optimizer",
-            status="[OK]" if self._validated_for_optimizer else "[FAILED]",
-        )
-        PRINTPROGRESS.remove_level()
+        if self._validated_for_simulator:
+            LOGGER.ok("Validated for simulator")
+        else:
+            LOGGER.error("Validated for simulator.")
+        if self._validated_for_estimator:
+            LOGGER.ok("Validated for estimator")
+        else:
+            LOGGER.error("Validated for estimator.")
+        if self._validated_for_optimizer:
+            LOGGER.ok("Validated for optimizer")
+        else:
+            LOGGER.error("Validated for optimizer.")
+        LOGGER.remove_level()
 
         # assert validated, "The model is not valid. See the warnings above."
 
@@ -1544,7 +1984,7 @@ class SimulationModel:
                     validated_for_simulator_,
                     validated_for_estimator_,
                     validated_for_optimizer_,
-                ) = component.validate(PRINTPROGRESS)
+                ) = component.validate(LOGGER)
                 _validated_for_simulator = (
                     _validated_for_simulator and validated_for_simulator_
                 )
@@ -1562,12 +2002,15 @@ class SimulationModel:
                 }
                 is_none = [k for k, v in parameters.items() if v is None]
                 if any(is_none):
-                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing values for the following parameter(s) to enable use of Simulator, and Optimizer:"
-                    PRINTPROGRESS(message, status="[WARNING]")
-                    PRINTPROGRESS.add_level()
+                    LOGGER.warning(
+                        "Class: %s, id: %s: missing values for the following parameters to enable use of simulator and optimizer.",
+                        component.__class__.__name__,
+                        component.id,
+                    )
+                    LOGGER.add_level()
                     for par in is_none:
-                        PRINTPROGRESS(par)
-                    PRINTPROGRESS.remove_level()
+                        LOGGER.info("%s", par)
+                    LOGGER.remove_level()
 
                     _validated_for_simulator = False
                     _validated_for_optimizer = False
@@ -1590,8 +2033,12 @@ class SimulationModel:
                             output, tps.Scalar
                         ):  # TODO: Add support for vectors
                             if output.is_leaf == False:
-                                message = f'|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output "{key}" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs.'
-                                PRINTPROGRESS(message, status="[WARNING]")
+                                LOGGER.warning(
+                                    'Class: %s, id: %s: the output "%s" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs.',
+                                    component.__class__.__name__,
+                                    component.id,
+                                    key,
+                                )
                                 _validated_for_optimizer = False
 
                             # assert output.is_leaf, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs."
@@ -1603,8 +2050,12 @@ class SimulationModel:
                             output, tps.Scalar
                         ):  # TODO: Add support for vectors
                             if output.is_leaf:
-                                message = f'|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output "{key}" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs.'
-                                PRINTPROGRESS(message, status="[WARNING]")
+                                LOGGER.warning(
+                                    'Class: %s, id: %s: the output "%s" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs.',
+                                    component.__class__.__name__,
+                                    component.id,
+                                    key,
+                                )
                                 _validated_for_optimizer = False
                             # assert output.is_leaf==False, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs."
         (
@@ -1639,14 +2090,34 @@ class SimulationModel:
         validated = True
         component_instances = list(self._components.values())
         for component in component_instances:
+            # Length check — mirrors the one in ``SimulationModel.__init__``
+            # / ``_check_id`` but downgraded to a logged validation
+            # failure (matches the existing style here: invalid chars set
+            # ``validated=False`` rather than raising, so callers can
+            # collect all offenders in one pass).
+            if len(component.id) > MAX_ID_LEN:
+                LOGGER.error(
+                    "Class: %s, id: %s: id length %d exceeds the maximum "
+                    "of %d characters; this will trip Windows MAX_PATH "
+                    "when the id is used as a filename component.",
+                    component.__class__.__name__,
+                    component.id,
+                    len(component.id),
+                    MAX_ID_LEN,
+                )
+                validated = False
             isvalid = np.array(
                 [x.isalnum() or x in INVALID_ID_CHARS for x in component.id]
             )
             np_id = np.array(list(component.id))
             violated_characters = list(np_id[isvalid == False])
             if not all(isvalid):
-                message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
-                PRINTPROGRESS(message)
+                LOGGER.error(
+                    "Class: %s, id: %s: invalid id, the characters \"%s\" are not allowed.",
+                    component.__class__.__name__,
+                    component.id,
+                    ", ".join(violated_characters),
+                )
                 validated = False
         return (validated, validated, validated)
 
@@ -1664,16 +2135,19 @@ class SimulationModel:
             if hasattr(
                 component, "validate_connections"
             ):  # Check if component has validate method
-                validated = component.validate_connections(PRINTPROGRESS)
+                validated = component.validate_connections(LOGGER)
             else:
                 if (
                     len(component.connected_through) == 0
                     and len(component.connects_at) == 0
                 ):
-                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The component is not connected to any other components."
-                    PRINTPROGRESS(message, status="[WARNING]")
+                    LOGGER.warning(
+                        "Class: %s, id: %s: the component is not connected to any other components.",
+                        component.__class__.__name__,
+                        component.id,
+                    )
 
-                input_labels = [cp.inputPort for cp in component.connects_at]
+                input_labels = [cp.input_port for cp in component.connects_at]
                 first_input = True
                 for req_input_label in component.input.keys():
                     if (
@@ -1681,14 +2155,17 @@ class SimulationModel:
                         and component.input[req_input_label].optional == False
                     ):
                         if first_input:
-                            message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-                            PRINTPROGRESS(message, status="[WARNING]")
+                            LOGGER.warning(
+                                "Class: %s, id: %s: missing connections for the following inputs to enable use of simulator, estimator, and optimizer.",
+                                component.__class__.__name__,
+                                component.id,
+                            )
                             first_input = False
-                            PRINTPROGRESS.add_level()
-                        PRINTPROGRESS(req_input_label)
+                            LOGGER.add_level()
+                        LOGGER.info("%s", req_input_label)
                         validated = False
                 if first_input == False:
-                    PRINTPROGRESS.remove_level()
+                    LOGGER.remove_level()
         return (validated, validated, validated)
 
     def _load_parameters(self, force_config_overwrite: bool = False) -> None:
@@ -1700,7 +2177,7 @@ class SimulationModel:
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
         """
 
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
 
         for component in self._components.values():
             assert hasattr(
@@ -1722,16 +2199,23 @@ class SimulationModel:
 
                 comparison_result = compare_dict_structure(config_, config)
                 if not comparison_result["structures_match"]:
-                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Config structure mismatch."
-                    PRINTPROGRESS(message, status="[WARNING]")
-                    PRINTPROGRESS.add_level()
+                    LOGGER.warning(
+                        "Class: %s, id: %s: config structure mismatch.",
+                        component.__class__.__name__,
+                        component.id,
+                    )
+                    LOGGER.add_level()
                     if comparison_result["missing_in_1"]:
-                        missing_msg = f"File config has unused parameters: {', '.join(sorted(comparison_result['missing_in_1']))}"
-                        PRINTPROGRESS(missing_msg, status="[WARNING]")
+                        LOGGER.warning(
+                            "Unused parameters in file config: %s.",
+                            ", ".join(sorted(comparison_result["missing_in_1"])),
+                        )
                     if comparison_result["missing_in_2"]:
-                        missing_msg = f"File config is missing the following parameters: {', '.join(sorted(comparison_result['missing_in_2']))}"
-                        PRINTPROGRESS(missing_msg, status="[WARNING]")
-                    PRINTPROGRESS.remove_level()
+                        LOGGER.warning(
+                            "Missing parameters in file config: %s.",
+                            ", ".join(sorted(comparison_result["missing_in_2"])),
+                        )
+                    LOGGER.remove_level()
 
                 if force_config_overwrite:
                     config_ = merge_dicts(config_, config, prioritize="dict2")
@@ -1745,13 +2229,13 @@ class SimulationModel:
                 with open(filename, "w") as f:
                     json.dump(config_, f, indent=4)
 
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
     def load(
         self,
         rdf_file: Optional[str] = None,
         fcn: Optional[Callable] = None,
-        verbose: Union[int, None] = None,
+        # verbose: Union[int, None] = None,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
         logfile: Optional[str] = None,
@@ -1768,13 +2252,13 @@ class SimulationModel:
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
             logfile: Path to the log file.
         """
-        if verbose:
+        if LOGGER.verbose:
             self._load(
                 rdf_file=rdf_file,
                 fcn=fcn,
                 validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
-                verbose=verbose,
+                # verbose=verbose,
                 logfile=logfile,
             )
         else:
@@ -1785,7 +2269,7 @@ class SimulationModel:
                     fcn=fcn,
                     validate_model=validate_model,
                     force_config_overwrite=force_config_overwrite,
-                    verbose=verbose,
+                    # verbose=verbose,
                     logfile=logfile,
                 )
 
@@ -1794,7 +2278,7 @@ class SimulationModel:
         self,
         rdf_file: Optional[str],
         fcn: Optional[Callable],
-        verbose: int,
+        # verbose: int,
         validate_model: bool,
         force_config_overwrite: bool,
         logfile: Optional[str],
@@ -1813,64 +2297,58 @@ class SimulationModel:
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
             logfile: Path to the log file.
         """
-        # if not PRINTPROGRESS.is_active:
+        # if not LOGGER.is_active:
         #     reset_PRINTPROGRESS = True
         # else:
         #     reset_PRINTPROGRESS = False
 
-        if verbose is not None:
-            PRINTPROGRESS.verbose = verbose
-        PRINTPROGRESS.logfile = logfile
+        # if verbose is not None:
+        #     LOGGER.verbose = verbose
+        LOGGER.logfile = logfile
 
         if self._is_loaded:
             self._reset()
 
-        PRINTPROGRESS("Loading simulation model")
-        PRINTPROGRESS.add_level()
+        LOGGER.task("Loading simulation model")
+        LOGGER.add_level()
 
         if rdf_file is not None:
-            PRINTPROGRESS("Loading model from RDF file")
+            LOGGER.task("Loading model from RDF file")
             self._load_model_from_rdf(rdf_file)
-            PRINTPROGRESS(
-                "Loading model from RDF file", status="[OK]", change_status=True
-            )
+            LOGGER.ok("Loading model from RDF file", change_status=True)
 
         if fcn is not None:
             assert callable(
                 fcn
             ), "The function to be applied during model loading is not callable."
-            PRINTPROGRESS("Applying user defined function")
+            LOGGER.task("Applying user-defined function")
             fcn(self)
-            PRINTPROGRESS(
-                "Applying user defined function", status="[OK]", change_status=True
-            )
+            LOGGER.ok("Applying user-defined function", change_status=True)
 
-        PRINTPROGRESS("Prepare for topological sorting")
+        LOGGER.task("Preparing for topological sorting")
         self._get_components_no_cycles()
-        PRINTPROGRESS(
-            "Prepare for topological sorting", status="[OK]", change_status=True
-        )
+        LOGGER.ok("Preparing for topological sorting", change_status=True)
 
-        PRINTPROGRESS("Determining execution order")
+        LOGGER.task("Determining execution order")
         self._get_execution_order()
-        PRINTPROGRESS("Determining execution order", status="[OK]", change_status=True)
+        LOGGER.ok("Determining execution order", change_status=True)
 
-        PRINTPROGRESS("Loading parameters")
+        LOGGER.task("Loading parameters")
         self._load_parameters(force_config_overwrite=force_config_overwrite)
-        PRINTPROGRESS("Loading parameters", status="[OK]", change_status=True)
+        LOGGER.ok("Loading parameters", change_status=True)
 
         if validate_model:
-            PRINTPROGRESS("Validating model")
+            LOGGER.task("Validating model")
             self.validate()
-            PRINTPROGRESS("Validating model", status="[OK]", change_status=True)
+            LOGGER.ok("Validating model", change_status=True)
 
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Loading simulation model", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Loading simulation model", change_status=True)
 
         self._is_loaded = True
 
         # if reset_PRINTPROGRESS:
-        #     PRINTPROGRESS.reset()
+        #     LOGGER.reset()
 
         # if verbose:
         #     print(self)
@@ -1986,8 +2464,8 @@ class SimulationModel:
                     self.add_connection(
                         new_component,
                         new_connected_component,
-                        connection.outputPort,
-                        connection_point.inputPort,
+                        connection.output_port,
+                        connection_point.input_port,
                         output_port_index=connection_point.output_port_index[
                             connection
                         ],
@@ -2003,15 +2481,15 @@ class SimulationModel:
         Create a dictionary of components without cycles using an improved algorithm
         that minimizes the number of edges removed.
         """
-        PRINTPROGRESS.add_level()
-        PRINTPROGRESS("Copying components")
+        LOGGER.add_level()
+        LOGGER.task("Copying components")
         self._components_no_cycles = self._copy_components()
-        PRINTPROGRESS("Copying components", status="[OK]", change_status=True)
+        LOGGER.ok("Copying components", change_status=True)
         self._required_initialization_connections = []
 
         # Use the improved cycle removal algorithm
         self._remove_cycles()
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
     def _remove_cycles(self) -> None:
         """
@@ -2030,21 +2508,22 @@ class SimulationModel:
         iteration = 0
         max_iterations = 1000  # Safety limit to prevent infinite loops
 
-        PRINTPROGRESS("Detecting cycles")
-        PRINTPROGRESS.add_level()
+        LOGGER.task("Detecting cycles")
+        LOGGER.add_level()
 
         # Calculate all cycles once at the beginning
         cycles = list(self._get_simple_cycles(self._components_no_cycles))
-        PRINTPROGRESS(f"Found {len(cycles)} cycles")
+        LOGGER.info("Found %d cycles", len(cycles))
         if not cycles:
-            PRINTPROGRESS("No cycles found")
-            PRINTPROGRESS.remove_level()
+            LOGGER.info("No cycles found")
+            LOGGER.remove_level()
+            LOGGER.ok("Detecting cycles", change_status=True)
             return  # No cycles to remove
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Detecting cycles", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Detecting cycles", change_status=True)
 
-        PRINTPROGRESS("Removing cycles")
-        PRINTPROGRESS.add_level()
+        LOGGER.task("Removing cycles")
+        LOGGER.add_level()
         while iteration < max_iterations and cycles:
             iteration += 1
 
@@ -2078,13 +2557,18 @@ class SimulationModel:
             # Update cycles list by removing cycles that contained the removed edge
             cycles = self._update_cycles_after_edge_removal(cycles, best_edge)
 
-        if iteration >= max_iterations:
-            PRINTPROGRESS(
-                "Warning: Cycle removal reached maximum iterations", status="[WARNING]"
+        reached_max_iterations = iteration >= max_iterations
+        if reached_max_iterations:
+            LOGGER.warning(
+                "Cycle removal stopped after %d iterations.",
+                max_iterations,
             )
 
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Removing cycles", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        if reached_max_iterations:
+            LOGGER.warning("Removing cycles", change_status=True)
+        else:
+            LOGGER.ok("Removing cycles", change_status=True)
 
     def _update_cycles_after_edge_removal(self, cycles, removed_edge):
         """
@@ -2139,13 +2623,14 @@ class SimulationModel:
 
         # If multiple edges have the same max count, apply additional criteria
         if len(best_edges) > 1:
-            PRINTPROGRESS(
-                f"Multiple component pairs have the same cycle participation count ({max_cycle_count}):"
+            LOGGER.info(
+                "Multiple component pairs have the same cycle participation count (%d)",
+                max_cycle_count,
             )
-            PRINTPROGRESS.add_level()
+            LOGGER.add_level()
             for edge in best_edges:
-                PRINTPROGRESS(f"({edge[0].id}, {edge[1].id})")
-            PRINTPROGRESS.remove_level()
+                LOGGER.info("(%s, %s)", edge[0].id, edge[1].id)
+            LOGGER.remove_level()
 
             # Prefer edges from components with more outgoing connections
             def edge_priority(edge):
@@ -2156,8 +2641,10 @@ class SimulationModel:
 
             best_edges.sort(key=edge_priority, reverse=True)
 
-        PRINTPROGRESS(
-            f"Selected component pair: ({best_edges[0][0].id}, {best_edges[0][1].id})"
+        LOGGER.info(
+            "Selected component pair: (%s, %s)",
+            best_edges[0][0].id,
+            best_edges[0][1].id,
         )
         return best_edges[0]
 
@@ -2173,15 +2660,19 @@ class SimulationModel:
             c_from: Source component
             c_to: Target component
         """
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
         # Find and remove all connections from c_from to c_to
         connections_to_remove = []
         for connection in c_from.connected_through:
             for connection_point in connection.connects_system_at:
                 if c_to == connection_point.connection_point_of:
                     connections_to_remove.append((connection, connection_point))
-                    PRINTPROGRESS(
-                        f"Removing connection: {c_from.id}.{connection.outputPort} --> {c_to.id}.{connection_point.inputPort}"
+                    LOGGER.info(
+                        "Removing connection: %s.%s --> %s.%s",
+                        c_from.id,
+                        connection.output_port,
+                        c_to.id,
+                        connection_point.input_port,
                     )
 
         # Remove the identified connections
@@ -2197,10 +2688,13 @@ class SimulationModel:
             # Clean up empty connection
             if len(connection.connects_system_at) == 0:
                 c_from.connected_through.remove(connection)
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
     def load_estimation_result(
-        self, filename: Optional[str] = None, result: Optional[Dict] = None
+        self,
+        filename: Optional[str] = None,
+        result: Optional[Dict] = None,
+        # verbose: int = 0,
     ) -> None:
         """
         Load a chain log from a file or dictionary.
@@ -2208,6 +2702,7 @@ class SimulationModel:
         Args:
             filename (Optional[str]): The filename to load the chain log from.
             result (Optional[Dict]): The chain log dictionary to load.
+            verbose (int): If > 0, print applied parameter values for verification.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -2233,24 +2728,74 @@ class SimulationModel:
         assert isinstance(
             self._result, estimator.EstimationResult
         ), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
-        theta = self._result["result_x"]
+        result_x = self._result["result_x"]
+
+        # Build extended lookup including nested sub-objects (e.g.
+        # OccupancySystem._DamperParams) that have their own id but are
+        # not registered as top-level components.  nn.Module stores
+        # child modules in _modules rather than __dict__, so we use
+        # .modules() to walk the full hierarchy.
+        component_lookup = dict(self._components)
+        for comp in self._components.values():
+            if isinstance(comp, torch.nn.Module):
+                for child in comp.modules():
+                    if (
+                        child is not comp
+                        and hasattr(child, "id")
+                        and child.id not in component_lookup
+                    ):
+                        component_lookup[child.id] = child
+            else:
+                for attr_val in vars(comp).values():
+                    if hasattr(attr_val, "id") and attr_val.id not in component_lookup:
+                        component_lookup[attr_val.id] = attr_val
+
         flat_components = [
-            self._components[com_id] for com_id in self._result["component_id"]
+            component_lookup[com_id] for com_id in self._result["component_id"]
         ]
         flat_attr_list = self._result["component_attr"]
         theta_mask = self._result["theta_mask"]
-        min_values = self._result["lb"]
-        min_values = min_values[theta_mask]
-        max_values = self._result["ub"]
-        max_values = max_values[theta_mask]
+        theta_slices = self._result["theta_slices"]
+        lb = self._result["lb"]
+        ub = self._result["ub"]
 
-        self.set_parameters_from_array(
-            theta,
+        # Use theta_slices to properly map from the flat unique-parameter
+        # arrays (result_x, lb, ub) back to per-component values.
+        # This correctly handles parameters with n_c > 1 and shared parameters.
+        values = []
+        min_values = []
+        max_values = []
+        for param_idx in theta_mask:
+            start, end = theta_slices[param_idx]
+            values.append(result_x[start:end])
+            min_values.append(lb[start:end])
+            max_values.append(ub[start:end])
+
+        self.set_parameters(
+            values,
             flat_components,
             flat_attr_list,
             min_values=min_values,
             max_values=max_values,
         )
+
+        theta_mask = self._result["theta_mask"]
+        theta_slices = self._result["theta_slices"]
+        LOGGER.info("Load estimation result: applied parameters")
+        for comp, attr, param_idx in zip(
+            flat_components, flat_attr_list, theta_mask
+        ):
+            start, end = theta_slices[param_idx]
+            raw = result_x[start:end]
+            obj = rgetattr(comp, attr)
+            actual = obj.get() if hasattr(obj, "get") else obj
+            LOGGER.info(
+                "%s.%s: pickle: %s, actual: %s",
+                comp.id,
+                attr,
+                raw,
+                actual,
+            )
 
     def check_for_for_missing_initial_values(self) -> None:
         """
@@ -2261,13 +2806,13 @@ class SimulationModel:
         """
         for connection in self._required_initialization_connections:
             component = connection.connects_system
-            if connection.outputPort not in component.output:
+            if connection.output_port not in component.output:
                 raise Exception(
-                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.outputPort}'
+                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.output_port}'
                 )
-            elif component.output[connection.outputPort].get() is None:
+            elif component.output[connection.output_port].get() is None:
                 raise Exception(
-                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.outputPort}'
+                    f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.output_port}'
                 )
 
     def _get_execution_order(self) -> None:
@@ -2312,8 +2857,9 @@ class SimulationModel:
             self._execution_order.append(component_group)
             return activeComponents
 
-        PRINTPROGRESS.add_level()
-        PRINTPROGRESS("Running Kahn's algorithm")
+        LOGGER.add_level()
+        LOGGER.task("Running Kahn's algorithm")
+        LOGGER.add_level()
 
         initComponents = [
             v for v in self._components_no_cycles.values() if len(v.connects_at) == 0
@@ -2336,7 +2882,7 @@ class SimulationModel:
             for connection in self._components[
                 no_cycle_connection.connects_system.id
             ].connected_through
-            if connection.outputPort == no_cycle_connection.outputPort
+            if connection.output_port == no_cycle_connection.output_port
         ]
 
         self._flat_execution_order = _flatten(self._execution_order)
@@ -2344,24 +2890,32 @@ class SimulationModel:
             self._components_no_cycles
         ), "Cycles detected in the model. This should not happen. Please report this issue."
 
-        PRINTPROGRESS.add_level()
         for i, component_group in enumerate(self._execution_order):
-            PRINTPROGRESS(f"Priority {i}:")
-            PRINTPROGRESS.add_level()
+            LOGGER.section("Priority: %d", i)
+            LOGGER.add_level()
             for component in component_group:
-                PRINTPROGRESS(f"{component.id}")
-            PRINTPROGRESS.remove_level()
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Running Kahn's algorithm", status="[OK]", change_status=True)
+                LOGGER.info("%s", component.id)
+            LOGGER.remove_level()
+        LOGGER.remove_level()
+        LOGGER.ok("Running Kahn's algorithm", change_status=True)
 
-        PRINTPROGRESS.remove_level()
+        LOGGER.remove_level()
 
-    def _update_literals(self, component: core.System = None) -> None:
+    def _update_literals(
+        self,
+        components: List[core.System] = None,
+        connections: List[core.Connection] = None,
+        connection_points: List[core.ConnectionPoint] = None,
+    ) -> None:
         """
         Update the literals in the semantic model.
         """
 
-        def _update_literals_for_component(component: core.System) -> None:
+        def _update_literals_for_component(
+            component: core.System,
+            connection: core.Connection = None,
+            connection_point: core.ConnectionPoint = None,
+        ) -> None:
             component_uri = self._semantic_model.T4B.__getitem__(component.id)
             for key, value in flatten_dict(component.populate_config(), component):
                 if isinstance(value, (dict, list)):
@@ -2415,42 +2969,413 @@ class SimulationModel:
                         f'The component with id: "{component.id}" has more than one output port.'
                     )
 
-        if component is None:
+        def _update_literals_for_connection(connection: core.Connection) -> None:
+            """
+            Update the literals for a connection in the semantic model.
+            Updates output_port.
+            """
+            connection_uri = self._semantic_model.T4B.__getitem__(str(hash(connection)))
+
+            # Define the literals to update
+            literals_to_update = {
+                "output_port": connection.output_port,
+            }
+
+            for key, value in literals_to_update.items():
+                if isinstance(value, (dict, list)):
+                    # Serialize dicts and lists as JSON with datatype
+                    value_ = json.dumps(value)
+                    datatype = core.namespace.RDF.JSON
+                else:
+                    value_ = value
+                    datatype = None
+
+                # Check if the property is already in the semantic model
+                literal_property = list(
+                    self._semantic_model.instance_graph.objects(
+                        connection_uri, core.namespace.T4B.__getitem__(key)
+                    )
+                )
+                if len(literal_property) == 0:
+                    # No literal in the semantic model.
+                    # Add the literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                elif len(literal_property) == 1:
+                    # There is one literal in the semantic model.
+                    literal_property = literal_property[0]
+                    # Remove the literal from the semantic model.
+                    self._semantic_model.instance_graph.remove(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                    # Add the new literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                else:
+                    # There are more than one literal in the semantic model.
+                    raise Exception(
+                        f'The connection has more than one literal for "{key}".'
+                    )
+
+        def _update_literals_for_connection_point(
+            connection_point: core.ConnectionPoint,
+        ) -> None:
+            """
+            Update the literals for a connection point in the semantic model.
+            Updates input_port, input_port_index, and output_port_index.
+            """
+            connection_point_uri = self._semantic_model.T4B.__getitem__(
+                str(hash(connection_point))
+            )
+
+            # Define the literals to update
+            literals_to_update = {
+                "input_port": connection_point.input_port,
+                "input_port_index": {
+                    str(hash(conn)): (
+                        int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+                    )
+                    for conn, idx in connection_point.input_port_index.items()
+                },
+                "output_port_index": {
+                    str(hash(conn)): (
+                        int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
+                    )
+                    for conn, idx in connection_point.output_port_index.items()
+                },
+            }
+
+            for key, value in literals_to_update.items():
+                if isinstance(value, (dict, list)):
+                    # Serialize dicts and lists as JSON with datatype
+                    value_ = json.dumps(value)
+                    datatype = core.namespace.RDF.JSON
+                else:
+                    value_ = value
+                    datatype = None
+
+                # Check if the property is already in the semantic model
+                literal_property = list(
+                    self._semantic_model.instance_graph.objects(
+                        connection_point_uri, core.namespace.T4B.__getitem__(key)
+                    )
+                )
+                if len(literal_property) == 0:
+                    # No literal in the semantic model.
+                    # Add the literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                elif len(literal_property) == 1:
+                    # There is one literal in the semantic model.
+                    literal_property = literal_property[0]
+                    # Remove the literal from the semantic model.
+                    self._semantic_model.instance_graph.remove(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                    # Add the new literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.instance_graph.add(
+                        (
+                            connection_point_uri,
+                            core.namespace.T4B.__getitem__(key),
+                            literal_property,
+                        )
+                    )
+                else:
+                    # There are more than one literal in the semantic model.
+                    raise Exception(
+                        f'The connection point has more than one literal for "{key}".'
+                    )
+
+        if components is None and connections is None and connection_points is None:
             for component in self._components.values():
                 _update_literals_for_component(component)
-        else:
-            _update_literals_for_component(component)
+                # Also update literals for all connections of this component
+                for connection in component.connected_through:
+                    _update_literals_for_connection(connection)
+                # Also update literals for all connection points of this component
+                for connection_point in component.connects_at:
+                    _update_literals_for_connection_point(connection_point)
+
+        if components is not None:
+            for component in components:
+                _update_literals_for_component(component)
+
+        if connections is not None:
+            for connection in connections:
+                _update_literals_for_connection(connection)
+        if connection_points is not None:
+            for connection_point in connection_points:
+                _update_literals_for_connection_point(connection_point)
 
     def serialize(self):
         """
         Serialize the simulation model.
         """
+        # dummy_start_time = [datetime.datetime.now()] * len(self._components)
+        # dummy_end_time = [datetime.datetime.now()] * len(self._components)
+        # dummy_step_size = [1]
+        # self.load(verbose=False)
+        # self.initialize(dummy_start_time, dummy_end_time, dummy_step_size)
         self._update_literals()
         self._semantic_model.serialize()
 
-    def visualize(self, query: str = None, literals: bool = True, **kwargs) -> None:
+    def visualize(
+        self,
+        query: str = None,
+        literals: bool = True,
+        forward_only: bool = False,
+        compressed: bool = False,
+        **kwargs,
+    ) -> None:
         """
         Visualize the simulation model.
+
+        Args:
+            query: Custom SPARQL CONSTRUCT query. If None, a default query is used.
+            literals: If True, include all literals. If False, only include connection-related properties.
+            forward_only: If True, only include forward flow (System -> Connection -> ConnectionPoint -> System).
+                         If False, include both forward and reverse relationships.
+            compressed: If True, remove intermediate Connection and ConnectionPoint nodes
+                       and show direct edges between system components with port labels
+                       like ``"output: YYY\\ninput: XXX"``.
+            **kwargs: Additional arguments passed to semantic_model.visualize().
         """
         self._update_literals()
+        if compressed:
+            forward_only = True
         if query is None:
-            if literals:
-                query = None
-            else:
+            if forward_only and literals:
+                # Forward flow + all literals
+                # Forward: connectedThrough, connectsSystemAt, connectionPointOf
+                # All literals except rdf:type and rdfs:subClassOf
+                # Exclude reverse relationships: connectsSystem, connectsSystemThrough, connectsAt
                 query = """
                 CONSTRUCT {
                     ?s ?p ?o
                 }
                 WHERE {
                     ?s ?p ?o .
-                    FILTER (?p = s4syst:connectsSystemAt || 
-                            ?p = s4syst:connectedThrough || 
-                            ?p = s4syst:connectionPointOf ||
-                            ?p = t4b:inputPort ||
-                            ?p = t4b:outputPort)
+                    FILTER (?p != rdf:type && 
+                            ?p != rdfs:subClassOf &&
+                            ?p != s4syst:connectsSystem &&
+                            ?p != s4syst:connectsSystemThrough &&
+                            ?p != s4syst:connectsAt)
                 }
                 """
+            elif forward_only and not literals:
+                # Forward flow + only port literals
+                query = """
+                CONSTRUCT {
+                    ?s ?p ?o
+                }
+                WHERE {
+                    ?s ?p ?o .
+                    FILTER (?p = s4syst:connectedThrough || 
+                            ?p = s4syst:connectsSystemAt || 
+                            ?p = s4syst:connectionPointOf ||
+                            ?p = t4b:input_port ||
+                            ?p = t4b:output_port ||
+                            ?p = t4b:input_port_index ||
+                            ?p = t4b:output_port_index)
+                }
+                """
+            elif not forward_only and literals:
+                # All relationships + all literals
+                query = None
+            else:
+                # All relationships + only port literals
+                query = """
+                CONSTRUCT {
+                    ?s ?p ?o
+                }
+                WHERE {
+                    ?s ?p ?o .
+                    FILTER (?p = s4syst:connectedThrough || 
+                            ?p = s4syst:connectsSystemAt || 
+                            ?p = s4syst:connectionPointOf ||
+                            ?p = s4syst:connectsSystem ||
+                            ?p = s4syst:connectsSystemThrough ||
+                            ?p = s4syst:connectsAt ||
+                            ?p = t4b:input_port ||
+                            ?p = t4b:output_port ||
+                            ?p = t4b:input_port_index ||
+                            ?p = t4b:output_port_index)
+                }
+                """
+        if compressed:
+            kwargs["pydot_transform"] = self._build_compressed_transform()
         self._semantic_model.visualize(query, **kwargs)
+
+    @staticmethod
+    def _build_compressed_transform():
+        """Build a pydot_transform callback that collapses Connection/ConnectionPoint
+        nodes into direct edges labelled with port names."""
+
+        def _compress(dg):
+            # Third party imports
+            import pydotplus as pdp
+            from bs4 import BeautifulSoup
+
+            def _unquote(name):
+                """Strip surrounding double-quotes that pydotplus may add."""
+                s = name.strip()
+                if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+                    return s[1:-1]
+                return s
+
+            def _find_prop(props, prop_name):
+                """Find a property value whose key ends with exactly *prop_name*."""
+                for key, val in props.items():
+                    k = key.strip()
+                    if (
+                        k == prop_name
+                        or k.endswith(":" + prop_name)
+                        or k.endswith("/" + prop_name)
+                    ):
+                        return val.strip('"')
+                return "?"
+
+            # --- 1. Parse node labels ----------------------------------------
+            node_info = {}  # norm_name -> {type, props, orig_name}
+            conn_nodes = set()
+            cp_nodes = set()
+            all_headers = set()
+
+            for node in dg.get_nodes():
+                orig_name = node.get_name()
+                name = _unquote(orig_name)
+                attrs = node.obj_dict.get("attributes", {})
+                if "label" not in attrs:
+                    continue
+                soup = BeautifulSoup(attrs["label"], "html.parser")
+                rows = soup.find_all("tr")
+                if not rows:
+                    continue
+
+                header = rows[0].get_text().strip()
+                all_headers.add(header)
+                props = {}
+                for row in rows:
+                    cols = row.find_all("td")
+                    if len(cols) == 2:
+                        props[cols[0].get_text().strip()] = cols[1].get_text().strip()
+
+                node_info[name] = {"type": header, "props": props, "orig": orig_name}
+                if header == "Connection":
+                    conn_nodes.add(name)
+                elif header == "ConnectionPoint":
+                    cp_nodes.add(name)
+
+            intermediate = conn_nodes | cp_nodes
+            if not intermediate:
+                warnings.warn(
+                    f"compressed=True: found 0 Connection/ConnectionPoint nodes. "
+                    f"Node type headers present: {all_headers}",
+                    stacklevel=4,
+                )
+                return
+
+            # --- 2. Build adjacency using normalised names --------------------
+            outgoing = {}  # norm_src -> [norm_dst, ...]
+            incoming = {}  # norm_dst -> [norm_src, ...]
+            norm_to_orig = {}
+
+            for orig_src, orig_dst in dg.obj_dict["edges"]:
+                ns, nd = _unquote(orig_src), _unquote(orig_dst)
+                outgoing.setdefault(ns, []).append(nd)
+                incoming.setdefault(nd, []).append(ns)
+                norm_to_orig.setdefault(ns, orig_src)
+                norm_to_orig.setdefault(nd, orig_dst)
+
+            for nname, info in node_info.items():
+                norm_to_orig.setdefault(nname, info["orig"])
+
+            # --- 3. Trace chains and collect new direct edges -----------------
+            new_edges = []
+            for conn in conn_nodes:
+                output_port = _find_prop(node_info[conn]["props"], "output_port")
+                senders = [s for s in incoming.get(conn, []) if s not in intermediate]
+                cps = [d for d in outgoing.get(conn, []) if d in cp_nodes]
+
+                for cp in cps:
+                    input_port = _find_prop(node_info[cp]["props"], "input_port")
+                    receivers = [
+                        d for d in outgoing.get(cp, []) if d not in intermediate
+                    ]
+
+                    for sender in senders:
+                        for receiver in receivers:
+                            label = f"output: {output_port}\\ninput: {input_port}"
+                            new_edges.append((sender, receiver, label))
+
+            # Deduplicate in case the RDF graph contained redundant paths
+            seen = set()
+            unique_edges = []
+            for entry in new_edges:
+                if entry not in seen:
+                    seen.add(entry)
+                    unique_edges.append(entry)
+            new_edges = unique_edges
+
+            if not new_edges:
+                warnings.warn(
+                    f"compressed=True: found {len(conn_nodes)} Connection and "
+                    f"{len(cp_nodes)} ConnectionPoint nodes but could not trace "
+                    f"any complete chains. Check edge directions.",
+                    stacklevel=4,
+                )
+
+            # --- 4. Remove intermediate edges and nodes -----------------------
+            dg.obj_dict["edges"] = {
+                (src, dst): edge_list
+                for (src, dst), edge_list in dg.obj_dict["edges"].items()
+                if _unquote(src) not in intermediate
+                and _unquote(dst) not in intermediate
+            }
+
+            for name in intermediate:
+                orig = node_info[name]["orig"]
+                if orig in dg.obj_dict["nodes"]:
+                    del dg.obj_dict["nodes"][orig]
+
+            # --- 5. Add new direct edges --------------------------------------
+            for sender, receiver, label in new_edges:
+                orig_src = norm_to_orig.get(sender, sender)
+                orig_dst = norm_to_orig.get(receiver, receiver)
+                edge = pdp.Edge(orig_src, orig_dst)
+                edge.obj_dict["attributes"]["label"] = f'"{label}"'
+                edge.obj_dict["attributes"]["fontsize"] = "7"
+                edge.obj_dict["attributes"]["fontname"] = "Courier"
+                dg.add_edge(edge)
+
+        return _compress
 
     def _load_model_from_rdf(self, rdf_file: str) -> None:
         """
@@ -2460,7 +3385,7 @@ class SimulationModel:
         Args:
             rdf_file (str): Path to the RDF file to load from
         """
-        PRINTPROGRESS.add_level()
+        LOGGER.add_level()
         self._semantic_model = core.SemanticModel(
             id=self._id,
             rdf_file=rdf_file,
@@ -2468,8 +3393,8 @@ class SimulationModel:
             dir_conf=self._dir_conf + ["semantic_model"],
         )
 
-        PRINTPROGRESS("Instantiating components")
-        PRINTPROGRESS.add_level()
+        LOGGER.task("Instantiating components")
+        LOGGER.add_level()
 
         # print(f"sm instances: {self._semantic_model.get_instances_of_type(core.namespace.S4SYST.System)}")
 
@@ -2487,7 +3412,7 @@ class SimulationModel:
             attributes = {}
             for pred, obj in sm_instance.get_predicate_object_pairs().items():
                 for obj_ in obj:
-                    if obj_.is_literal:
+                    if isinstance(obj_, core.SemanticLiteral):
                         literal_value = obj_.uri.value
                         # Convert string literals to appropriate Python types
                         literal_value = _convert_literal_value(literal_value)
@@ -2495,70 +3420,126 @@ class SimulationModel:
                             get_short_name(pred, self._semantic_model.namespaces)
                         ] = literal_value
 
-            PRINTPROGRESS(
-                f"Instantiating component: {sm_instance.get_short_name()} with type: {class_name}"
+            LOGGER.info(
+                "Component: %s, type: %s",
+                sm_instance.get_short_name(),
+                class_name,
             )
             component = cls(id=sm_instance.get_short_name(), **attributes)
             # Check if the component already exists
             self.add_component(component)
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Instantiating components", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Instantiating components", change_status=True)
 
-        PRINTPROGRESS("Making connections")
-        PRINTPROGRESS.add_level()
-        # Go through all the connections (from - to) and add them to the simulation model
+        LOGGER.task("Making connections")
+        LOGGER.add_level()
+
+        # Step 1: Read all connection info from the RDF graph while the
+        # original Connection / ConnectionPoint triples are still present.
+        pending_connections = []
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
         ):
             component = self._components[sm_instance.get_short_name()]
             predicate_object_pairs = sm_instance.get_predicate_object_pairs()
-            if (
-                core.namespace.S4SYST.connectedThrough in predicate_object_pairs
-            ):  # You can have a System without connections so we need to check
-                connections = predicate_object_pairs[
-                    core.namespace.S4SYST.connectedThrough
+            if core.namespace.S4SYST.connectedThrough not in predicate_object_pairs:
+                continue
+
+            connections = predicate_object_pairs[core.namespace.S4SYST.connectedThrough]
+
+            for connection in connections:
+                predicate_object_pairs_connection = (
+                    connection.get_predicate_object_pairs()
+                )
+                output_port = predicate_object_pairs_connection[
+                    core.namespace.T4B.output_port
+                ][0].uri.value
+                connection_points = predicate_object_pairs_connection[
+                    core.namespace.S4SYST.connectsSystemAt
                 ]
 
-                for connection in connections:
-                    predicate_object_pairs_connection = (
-                        connection.get_predicate_object_pairs()
+                for connection_point in connection_points:
+                    predicate_object_pairs_connection_point = (
+                        connection_point.get_predicate_object_pairs()
                     )
-                    outputPort = predicate_object_pairs_connection[
-                        core.namespace.T4B.outputPort
-                    ][
-                        0
-                    ].uri.value  # There can only be one output port per connection
-                    connection_points = predicate_object_pairs_connection[
-                        core.namespace.S4SYST.connectsSystemAt
-                    ]
+                    receiver_component = predicate_object_pairs_connection_point[
+                        core.namespace.S4SYST.connectionPointOf
+                    ][0]
+                    input_port = predicate_object_pairs_connection_point[
+                        core.namespace.T4B.input_port
+                    ][0].uri.value
 
-                    for connection_point in connection_points:
-                        predicate_object_pairs_connection_point = (
-                            connection_point.get_predicate_object_pairs()
-                        )
-                        receiver_component = predicate_object_pairs_connection_point[
-                            core.namespace.S4SYST.connectionPointOf
-                        ][
-                            0
-                        ]  # There can only be one connection point per connection
-                        inputPort = predicate_object_pairs_connection_point[
-                            core.namespace.T4B.inputPort
-                        ][
-                            0
-                        ].uri.value  # There can only be one input port per connection point
+                    conn_key = connection.get_short_name()
+                    input_port_index = None
+                    output_port_index = None
+                    if (
+                        core.namespace.T4B.input_port_index
+                        in predicate_object_pairs_connection_point
+                    ):
+                        raw = predicate_object_pairs_connection_point[
+                            core.namespace.T4B.input_port_index
+                        ][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict) and parsed:
+                            input_port_index = parsed.get(conn_key)
+                    if (
+                        core.namespace.T4B.output_port_index
+                        in predicate_object_pairs_connection_point
+                    ):
+                        raw = predicate_object_pairs_connection_point[
+                            core.namespace.T4B.output_port_index
+                        ][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict) and parsed:
+                            output_port_index = parsed.get(conn_key)
 
-                        receiver_component_id = receiver_component.get_short_name()
-                        receiver_component = self._components[receiver_component_id]
+                    receiver_component_id = receiver_component.get_short_name()
+                    receiver_component = self._components[receiver_component_id]
 
-                        PRINTPROGRESS(
-                            f"Adding connection: {component.id}.{outputPort} → {receiver_component.id}.{inputPort}"
-                        )
-                        self.add_connection(
-                            sender_component=component,
-                            receiver_component=receiver_component,
-                            outputPort=outputPort,
-                            inputPort=inputPort,
-                        )
+                    pending_connections.append(
+                        {
+                            "sender": component,
+                            "receiver": receiver_component,
+                            "output_port": output_port,
+                            "input_port": input_port,
+                            "input_port_index": input_port_index,
+                            "output_port_index": output_port_index,
+                        }
+                    )
 
-        PRINTPROGRESS("Making connections", status="[OK]", change_status=True)
-        PRINTPROGRESS.remove_level()
+        # Step 2: Remove old Connection / ConnectionPoint instances and
+        # their triples.  add_connection() will recreate them with fresh
+        # Python-object hashes.  Without this cleanup the graph would
+        # contain BOTH the original URIs from the file AND new URIs from
+        # add_connection, duplicating every edge.
+        ig = self._semantic_model.instance_graph
+        for conn_type in (
+            core.namespace.S4SYST.Connection,
+            core.namespace.S4SYST.ConnectionPoint,
+        ):
+            for subj in list(ig.subjects(RDF.type, conn_type)):
+                ig.remove((subj, None, None))
+                ig.remove((None, None, subj))
+
+        # Step 3: Rebuild connections (adds Python objects + fresh RDF triples)
+        for data in pending_connections:
+            LOGGER.info(
+                "Adding connection: %s.%s --> %s.%s",
+                data["sender"].id,
+                data["output_port"],
+                data["receiver"].id,
+                data["input_port"],
+            )
+            self.add_connection(
+                sender_component=data["sender"],
+                receiver_component=data["receiver"],
+                output_port=data["output_port"],
+                input_port=data["input_port"],
+                input_port_index=data["input_port_index"],
+                output_port_index=data["output_port_index"],
+            )
+
+        LOGGER.remove_level()
+        LOGGER.ok("Making connections", change_status=True)
+
+        LOGGER.remove_level()

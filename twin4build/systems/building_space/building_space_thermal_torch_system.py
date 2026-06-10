@@ -13,11 +13,11 @@ import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -269,28 +269,34 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
         # Store thermal parameters as tps.Parameters
         self.C_air = tps.Parameter(
-            torch.tensor(C_air, dtype=torch.float64), requires_grad=False
+            torch.tensor(C_air, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.C_wall = tps.Parameter(
-            torch.tensor(C_wall, dtype=torch.float64), requires_grad=False
+            torch.tensor(C_wall, dtype=torch.float64),
+            requires_grad=False,
+            scaling="log",
         )
         self.C_int = tps.Parameter(
-            torch.tensor(C_int, dtype=torch.float64), requires_grad=False
+            torch.tensor(C_int, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.C_boundary = tps.Parameter(
-            torch.tensor(C_boundary, dtype=torch.float64), requires_grad=False
+            torch.tensor(C_boundary, dtype=torch.float64),
+            requires_grad=False,
+            scaling="log",
         )
         self.R_out = tps.Parameter(
-            torch.tensor(R_out, dtype=torch.float64), requires_grad=False
+            torch.tensor(R_out, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.R_in = tps.Parameter(
-            torch.tensor(R_in, dtype=torch.float64), requires_grad=False
+            torch.tensor(R_in, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.R_int = tps.Parameter(
-            torch.tensor(R_int, dtype=torch.float64), requires_grad=False
+            torch.tensor(R_int, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.R_boundary = tps.Parameter(
-            torch.tensor(R_boundary, dtype=torch.float64), requires_grad=False
+            torch.tensor(R_boundary, dtype=torch.float64),
+            requires_grad=False,
+            scaling="log",
         )
 
         # Store other parameters as tps.Parameters
@@ -418,6 +424,19 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 n_c=self.n_c,
             )
 
+        # Expand parameters to n_c dimension for vectorization
+        self.C_air = self.C_air.expand_to_n_c(self.n_c)
+        self.C_wall = self.C_wall.expand_to_n_c(self.n_c)
+        self.C_int = self.C_int.expand_to_n_c(self.n_c)
+        self.C_boundary = self.C_boundary.expand_to_n_c(self.n_c)
+        self.R_out = self.R_out.expand_to_n_c(self.n_c)
+        self.R_in = self.R_in.expand_to_n_c(self.n_c)
+        self.R_int = self.R_int.expand_to_n_c(self.n_c)
+        self.R_boundary = self.R_boundary.expand_to_n_c(self.n_c)
+        self.f_wall = self.f_wall.expand_to_n_c(self.n_c)
+        self.f_air = self.f_air.expand_to_n_c(self.n_c)
+        self.Q_occ_gain = self.Q_occ_gain.expand_to_n_c(self.n_c)
+
         if not self.INITIALIZED:
             # First initialization
             self._create_state_space_model()
@@ -448,7 +467,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         if self.manual_setup_n_boundary_temperature == False:
             # Find if boundary temperature is set as input
             connection_point = [
-                cp for cp in self.connects_at if cp.inputPort == "boundaryTemperature"
+                cp for cp in self.connects_at if cp.input_port == "boundaryTemperature"
             ]
             n_boundary_temperature = (
                 len(connection_point[0].connects_system_through)
@@ -465,7 +484,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             connection_point = [
                 cp
                 for cp in self.connects_at
-                if cp.inputPort == "adjacentZoneTemperature"
+                if cp.input_port == "adjacentZoneTemperature"
             ]
             n_adjacent_zones = (
                 len(connection_point[0].connects_system_through)
@@ -508,7 +527,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
         This formulation directly constructs the state space matrices A and B
         using PyTorch tensors for gradient tracking.
-        
+
         Matrices have shape (n_c, n_states, n_states) to support different
         parameter values per component.
         """
@@ -558,11 +577,15 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             # Add heat exchange with boundary wall
             A[:, 0, 0] -= 1 / (R_boundary * C_air)  # T_bound_wall coefficient
             A[:, 0, 2] = 1 / (R_boundary * C_air)  # T_bound_wall coefficient
-            A[:, 2, 0] = 1 / (R_boundary * C_boundary)  # T_air coefficient for boundary wall
+            A[:, 2, 0] = 1 / (
+                R_boundary * C_boundary
+            )  # T_air coefficient for boundary wall
             A[:, 2, 2] = -2 / (R_boundary * C_boundary)  # T_bound_wall coefficient
 
         # Add heat loss to interior walls of adjacent zones
-        A[:, 0, 0] -= self.n_adjacent_zones * 1 / (R_int * C_air)  # Heat loss to interior walls
+        A[:, 0, 0] -= (
+            self.n_adjacent_zones * 1 / (R_int * C_air)
+        )  # Heat loss to interior walls
 
         # Exterior wall temperature equation coefficients
         A[:, 1, 0] = 1 / (R_in * C_wall)  # T_air coefficient
@@ -574,8 +597,12 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
                 n_states - self.n_adjacent_zones - self.n_boundary_temperature
             ) + i  # Interior walls are after boundary wall
             A[:, 0, adj_wall_idx] = 1 / (R_int * C_air)  # T_int_wall coefficient
-            A[:, adj_wall_idx, 0] = 1 / (R_int * C_int)  # T_air coefficient for interior wall
-            A[:, adj_wall_idx, adj_wall_idx] = -2 / (R_int * C_int)  # T_int_wall coefficient
+            A[:, adj_wall_idx, 0] = 1 / (
+                R_int * C_int
+            )  # T_air coefficient for interior wall
+            A[:, adj_wall_idx, adj_wall_idx] = -2 / (
+                R_int * C_int
+            )  # T_int_wall coefficient
 
         # Input matrix B coefficients - match the order in do_step
         # Outdoor temperature
@@ -603,18 +630,27 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             adj_wall_input_idx = (
                 n_inputs - self.n_adjacent_zones - self.n_boundary_temperature
             ) + i  # Adjacent zone temperatures are after boundary temperature
-            B[:, adj_wall_state_idx, adj_wall_input_idx] = 1 / (R_int * C_int)  # T_adj coefficient
+            B[:, adj_wall_state_idx, adj_wall_input_idx] = 1 / (
+                R_int * C_int
+            )  # T_adj coefficient
 
         # Output matrix C - Identity matrix for direct observation of all states
         # Shape: (n_c, n_states, n_states)
-        C_out = torch.eye(n_states, dtype=torch.float64).unsqueeze(0).expand(n_c, -1, -1).clone()
+        C_out = (
+            torch.eye(n_states, dtype=torch.float64)
+            .unsqueeze(0)
+            .expand(n_c, -1, -1)
+            .clone()
+        )
 
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
         D = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
 
         # Initial state - shape (n_c, n_states)
         x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[0, :, :]  # Take first simulation, all components: (n_c, n_states)
+        x0 = x0_tensor[
+            0, :, :
+        ]  # Take first simulation, all components: (n_c, n_states)
 
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
         E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=torch.float64)
@@ -624,7 +660,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
         F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=torch.float64)
         # m_sup*cp*T_sup (inputs 1 and 3)
-        F[:, 1, 0, 3] = constants.CP_AIR / C_air  # supplyAirFlowRate * supplyAirTemperature
+        F[:, 1, 0, 3] = (
+            constants.CP_AIR / C_air
+        )  # supplyAirFlowRate * supplyAirTemperature
 
         # Pass E and F to DiscreteStatespaceSystem
         self.ss_model = DiscreteStatespaceSystem(
@@ -744,17 +782,17 @@ def brick_signature_pattern():
         id="building_space_signature_pattern_brick",
     )
 
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
     )
-    # sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.BRICK.isFedBy))
-    sp.add_triple(
-        Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
+    # sp.add_rule(StepRule(subject=node1, object=node2, predicate=core.namespace.BRICK.isFedBy))
+    sp.add_rule(
+        StepRule(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
     )
-    sp.add_triple(
-        Exact(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
     )
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
+    # sp.add_rule(AnyPathRule(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
     # Optional
     # heatGain

@@ -13,25 +13,25 @@ operations:
 
   # Object properties (measurements)
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalAirFlowRate', value['nominalAirFlowRate'], 's4bldg:NominalAirFlowRate') }}
+      {{ create_property_value_triples(value['id'], 'nominalAirFlowRate', value['nominalAirFlowRate'], 's4bldg:nominalAirFlowRate') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalPowerRate', value['nominalPowerRate'], 's4bldg:NominalPowerRate') }}
+      {{ create_property_value_triples(value['id'], 'nominalPowerRate', value['nominalPowerRate'], 's4bldg:nominalPowerRate') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalRotationSpeed', value['nominalRotationSpeed'], 's4bldg:NominalRotationSpeed') }}
+      {{ create_property_value_triples(value['id'], 'nominalRotationSpeed', value['nominalRotationSpeed'], 's4bldg:nominalRotationSpeed') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalStaticPressure', value['nominalStaticPressure'], 's4bldg:NominalStaticPressure') }}
+      {{ create_property_value_triples(value['id'], 'nominalStaticPressure', value['nominalStaticPressure'], 's4bldg:nominalStaticPressure') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'nominalTotalPressure', value['nominalTotalPressure'], 's4bldg:NominalTotalPressure') }}
+      {{ create_property_value_triples(value['id'], 'nominalTotalPressure', value['nominalTotalPressure'], 's4bldg:nominalTotalPressure') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:OperationTemperatureMax') }}
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:operationTemperatureMax') }}
 
   - template: |-
-      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:OperationTemperatureMin') }}
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:operationTemperatureMin') }}
 
   # Data properties
   - template: |-

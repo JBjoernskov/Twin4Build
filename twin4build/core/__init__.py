@@ -19,12 +19,30 @@ The module integrates various building system ontologies including:
 # Third party imports
 import rdflib
 
+
+class BlankNode:
+    """Sentinel used as a ``cls`` entry in :class:`Node` to match RDF resources
+    that have **no** ``rdf:type`` assertion (untyped blank nodes).
+
+    Usage::
+
+        externalref = Node(cls=(BRICKREF.ExternalReference, BlankNode))
+
+    Matches an instance typed as ``BRICKREF.ExternalReference`` *or* one with
+    no type at all.
+    """
+
+    pass
+
 # Local application imports
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.model.semantic_model.semantic_model import (
     SemanticModel,
+    SemanticEntity,
     SemanticObject,
+    SemanticInstance,
+    SemanticLiteral,
     SemanticProperty,
     SemanticType,
     SemanticPredicate,
@@ -38,13 +56,25 @@ from twin4build.translator.translator import (
     Translator,
     SignaturePattern,
     Diff,
-    Exact,
-    Optional_,
-    SinglePath,
-    MultiPath,
+    StepRule,
+    NoStepRule,
+    SetStepRule,
+    OptionalRule,
+    PathRule,
+    AnyPathRule,
 )
 
 NoneType = type(None)
+
+# Non-alphanumeric characters that are still legal in component IDs.
+# Any character outside this set (and outside alphanumerics) will be replaced
+# with ``_`` by :func:`sanitize_id`.
+LEGAL_ID_CHARS = {"_", "-", " ", "(", ")", "[", "]"}
+
+
+def sanitize_id(id_str: str) -> str:
+    """Replace every character not allowed in a component ID with an underscore."""
+    return "".join(c if c.isalnum() or c in LEGAL_ID_CHARS else "_" for c in id_str)
 
 
 class namespace:
@@ -60,43 +90,16 @@ class namespace:
     REC = rdflib.Namespace("https://w3id.org/rec#")
     OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#")
     FPO = rdflib.Namespace("https://w3id.org/fpo#")
+    BOT = rdflib.Namespace("https://w3id.org/bot#")
+    SENAPS = rdflib.Namespace("http://senaps.io/schema/1.0/senaps#")
+    BRICKREF = rdflib.Namespace("https://brickschema.org/schema/Brick/ref#")
 
 
 class ontology:
     FSO = "https://alikucukavci.github.io/FSO/fso.ttl"
     SAREF = "https://saref.etsi.org/core/v3.1.1/"
-    S4BLDG = "https://saref.etsi.org/saref4bldg/"
+    S4BLDG = "https://saref.etsi.org/saref4bldg/v1.1.2/"
     S4SYST = "https://saref.etsi.org/saref4syst/"
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     T4B = "http://twin4build.org/"
-    # REC = "https://github.com/RealEstateCore/rec/blob/main/Source/SHACL/RealEstateCore/rec.ttl"
-
-
-# def get_ontologies():
-#     """Retrieve and initialize the semantic model with required ontologies.
-
-#     This function initializes the semantic model with the following ontologies:
-#         - FSO (Facility Smart Objects)
-#         - SAREF (Smart Applications REFerence)
-#         - S4BLDG (SAREF for Building)
-#         - S4SYST (SAREF for System)
-
-#     Returns:
-#         SemanticModel: An initialized semantic model containing all required ontologies.
-
-#     Note:
-#         The FSO and Brick ontology URL is different from the namespace definition due to parsing limitations
-#         with the namespace URL.
-#     """
-#     namespaces = {
-#         "FSO": namespace.FSO,
-#         "SAREF": namespace.SAREF,
-#         "S4BLDG": namespace.S4BLDG,
-#         "S4SYST": namespace.S4SYST,
-#         "BRICK": namespace.BRICK,
-#     }
-#     sm = SemanticModel(namespaces=namespaces)
-#     return sm
-
-
-# ontologies = get_ontologies()
+    BOT = "http://www.w3id.org/bot/bot.ttl"

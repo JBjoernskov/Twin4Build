@@ -16,11 +16,14 @@ from twin4build.systems.building_space.building_space_thermal_torch_system impor
     BuildingSpaceThermalTorchSystem,
 )
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
+    NoStepRule,
+    OptionalRule,
+    Predicate,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -108,9 +111,39 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         self.thermal = BuildingSpaceThermalTorchSystem(**thermal_kwargs)
         self.mass = BuildingSpaceMassTorchSystem(**mass_kwargs)
 
-        # Merge input and output dictionaries as private variables
+        # Merge input and output dictionaries as private variables.
+        #
+        # ``{**a, **b}`` keeps ``b``'s entry on key collision, so for any
+        # input port declared by BOTH ``thermal`` and ``mass`` (today:
+        # ``supplyAirFlowRate``, ``exhaustAirFlowRate``, ``numberOfPeople``)
+        # the merge silently shadows the ``thermal`` port object with the
+        # ``mass`` port.  The simulator writes to ``self._input`` (the
+        # parent's view) -- i.e. the ``mass`` port -- and the parallel
+        # ``thermal.input[k]`` Scalar stays at its construction default
+        # (0).  ``thermal.do_step`` then reads ``self.input[k].get()`` to
+        # build its state-space input vector ``u``, gets back 0 for
+        # ``m_sup`` and ``m_exh``, and the bilinear F-matrix term
+        # ``m_sup * cp * T_sup / C_air`` that feeds supply-air enthalpy
+        # into ``T_air`` contributes zero -- so the air state is never
+        # convectively heated.  Rooms drift to a low equilibrium driven
+        # only by solar / wall conduction.
+        #
+        # Fix: snap every shared key to a single port object across all
+        # three dicts (parent, thermal, mass) so a single write
+        # propagates to every consumer.  The earlier "forward inputs
+        # in do_step" code (still preserved below as a comment) became
+        # unnecessary once the merge was assumed to be alias-preserving;
+        # this restores that invariant for collision keys as well.
         self._input = {**self.thermal.input, **self.mass.input}
+        for k in set(self.thermal.input) & set(self.mass.input):
+            shared = self._input[k]
+            self.thermal.input[k] = shared
+            self.mass.input[k] = shared
         self._output = {**self.thermal.output, **self.mass.output}
+        for k in set(self.thermal.output) & set(self.mass.output):
+            shared = self._output[k]
+            self.thermal.output[k] = shared
+            self.mass.output[k] = shared
         thermal_parameters = [
             "thermal." + s for s in self.thermal._config["parameters"]
         ]
@@ -164,7 +197,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         else:
             # Find if boundary temperature is set as input
             connection_point = [
-                cp for cp in self.connects_at if cp.inputPort == "boundaryTemperature"
+                cp for cp in self.connects_at if cp.input_port == "boundaryTemperature"
             ]
             n_boundary_temperature = (
                 len(connection_point[0].connects_system_through) if connection_point else 0
@@ -175,7 +208,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
             # Find number of adjacent zones
             connection_point = [
-                cp for cp in self.connects_at if cp.inputPort == "adjacentZoneTemperature"
+                cp for cp in self.connects_at if cp.input_port == "adjacentZoneTemperature"
             ]
             n_adjacent_zones = (
                 len(connection_point[0].connects_system_through) if connection_point else 0
@@ -200,22 +233,28 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
-        """Execute a single simulation step for both submodels."""
-        # NOTE: self.input/self.output ARE the same objects as self.thermal.input/output
-        # NOTE: They are therefore set by Simulator._assign_component_inputs() before do_step() is called.
-        # # Set inputs for thermal submodel
-        # for k in self.thermal.input:
-        #     self.thermal.input[k]._set(self.input[k].get(), i_t=step_index)
-        # # Set inputs for mass submodel
-        # for k in self.mass.input:
-        #     self.mass.input[k]._set(self.input[k].get(), i_t=step_index)
+        """Execute a single simulation step for both submodels.
+
+        ``self.input`` / ``self.output`` share port objects with
+        ``self.thermal.{input,output}`` and ``self.mass.{input,output}``
+        for every key, including the ones that exist in both submodels
+        (``supplyAirFlowRate``, ``exhaustAirFlowRate``, ``numberOfPeople``).
+        The aliasing is set up in ``__init__`` after the dict-merge:
+        for collision keys the merge alone would keep only the ``mass``
+        port, leaving ``thermal.input[k]`` pointing at an orphan Scalar
+        that the simulator never writes -- so we explicitly snap all
+        three dicts to a single shared port per name there.
+
+        Consequence here: ``Simulator._assign_component_inputs`` writes
+        once to ``self.input[k]`` and both submodels read the same value
+        via ``self.{thermal,mass}.input[k].get()``.  No per-step
+        forwarding loop is needed; the older code that copied
+        ``self.input -> thermal.input -> mass.input`` step-by-step was
+        only correct *because* it bypassed the aliasing problem, and is
+        redundant once the aliases are guaranteed.
+        """
         self.thermal.do_step(second_time, date_time, step_size, step_index=step_index)
         self.mass.do_step(second_time, date_time, step_size, step_index=step_index)
-        # # Update outputs from both submodels
-        # for k in self.thermal.output:
-        #     self.output[k]._set(self.thermal.output[k].get(), i_t=step_index)
-        # for k in self.mass.output:
-        #     self.output[k]._set(self.mass.output[k].get(), i_t=step_index)
 
 
 def saref_signature_pattern_sensor():
@@ -230,43 +269,42 @@ def saref_signature_pattern_sensor():
     node1 = Node(cls=core.namespace.S4BLDG.Damper)  # return damper
     node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
     node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
-    node5 = Node(cls=core.namespace.S4BLDG.Schedule)  # return valve
+    node5 = Node(cls=core.namespace.S4BLDG.Schedule)
     node6 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
     node7 = Node(cls=core.namespace.SAREF.Sensor)
     node8 = Node(cls=core.namespace.SAREF.Temperature)
-    # node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
     sp = SignaturePattern(
-        id="building_space_signature_pattern",
+        id="building_space_signature_pattern_sensor",
     )
 
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
+    sp.add_rule(
+        StepRule(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
     )
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
         )
     )
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
         )
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
+    sp.add_rule(
+        StepRule(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
+    sp.add_rule(
+        StepRule(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
     )
-    sp.add_triple(
-        SinglePath(
+    sp.add_rule(
+        PathRule(
             subject=node0, object=node7, predicate=core.namespace.FSO.hasFluidSuppliedBy
         )
     )
-    sp.add_triple(
-        Exact(subject=node7, object=node8, predicate=core.namespace.SAREF.observes)
+    sp.add_rule(
+        StepRule(subject=node7, object=node8, predicate=core.namespace.SAREF.observes)
     )
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
+    # sp.add_rule(AnyPathRule(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
     sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
     sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
@@ -309,31 +347,31 @@ def saref_signature_pattern():
         id="building_space_signature_pattern",
     )
 
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
+    sp.add_rule(
+        StepRule(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
     )
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
         )
     )
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
         )
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
+    sp.add_rule(
+        StepRule(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
+    sp.add_rule(
+        StepRule(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
     )
-    sp.add_triple(
-        SinglePath(
+    sp.add_rule(
+        PathRule(
             subject=node0, object=node7, predicate=core.namespace.FSO.hasFluidSuppliedBy
         )
     )
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
+    # sp.add_rule(AnyPathRule(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
     sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
     sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
@@ -361,78 +399,59 @@ def brick_signature_pattern():  # Fits to site A
         SignaturePattern: The BRICK-only signature pattern of the building space component.
     """
 
-    node0 = Node(cls=core.namespace.BRICK.AHU)
+    ahu = Node(cls=core.namespace.BRICK.AHU)
     # node1 = Node(cls=core.namespace.BRICK.Damper)
     # node2 = Node(cls=core.namespace.BRICK.Zone)  # Compatibility with both site A and B (A uses Zone and B uses HVAC_Zone)
-    node3 = Node(
+    space = Node(
         cls=(
             core.namespace.BRICK.Room,
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
+            core.namespace.BRICK.HVAC_Zone,
+            core.namespace.BOT.Space,
         )
-    )  # TODO: 'space' should be 'Office', but the site b ttl file has a bug
-    # node4 = Node(cls=core.namespace.BRICK.Air_Temperature_Sensor)
-    # node5 = Node(cls=core.namespace.BRICK.CO2_Sensor)
-    node4 = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
-    node6 = Node(cls=core.namespace.BRICK.Weather_Station)  # outdoor temperature sensor
-    # node7 = Node(cls=core.namespace.BRICK.AHU) # For site A only
-    node8 = Node(cls=core.namespace.BRICK.Solar_Radiance_Sensor)
-    node9 = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    # node9 = Node(cls=core.namespace.BRICK.
+    )  # TODO: '_space' should be '_Office', but the site b ttl file has a bug
+    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    outside_air_temperature_sensor = Node(
+        cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
+    )
+
+    vav = Node(cls=core.namespace.BRICK.VAV)
+
+    feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
 
     sp = SignaturePattern(
         id="building_space_signature_pattern_brick",
     )
 
-    sp.add_triple(
-        MultiPath(subject=node0, object=node3, predicate=core.namespace.BRICK.feeds)
-    )
-    # sp.add_triple(
-    #     Exact(subject=node1, object=node3, predicate=core.namespace.BRICK.feeds)
-    # )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.BRICK.hasPoint)
-    )
+    sp.add_node(solar_radiance_sensor, optional=True) # Optional because it is not always present
+    sp.add_node(outside_air_temperature_sensor, optional=True) # Optional because it is not always present
 
-    sp.add_triple(
-        Exact(subject=node6, object=node8, predicate=core.namespace.BRICK.hasPoint)
-    )
-    sp.add_triple(
-        Exact(subject=node6, object=node9, predicate=core.namespace.BRICK.hasPoint)
+    sp.add_rule(
+        AnyPathRule(
+            subject=ahu, object=space, predicate=feeds, endpoints_only=True
+        ) & NoStepRule(subject=ahu, object=vav, predicate=feeds)
     )
 
-    # sp.add_triple(
-    #     SinglePath(subject=node1, object=node3, predicate=core.namespace.BRICK.feeds)
-    # )
-    # sp.add_triple(
-    #     Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
-    # )
-    # sp.add_triple(
-    #     Exact(subject=node7, predicate=core.namespace.BRICK.hasPart, object=node0)
-    # )
-    # sp.add_triple(
-    #     Exact(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
-    # )
-    # sp.add_triple(
-    #     Exact(subject=node5, object=node3, predicate=core.namespace.BRICK.isPointOf)
-    # )
 
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
-    # Optional
-    # heatGain
-    # numberOfPeople
-
-    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
-    sp.add_input("exhaustAirFlowRate", node0, "airFlowRate")
-    # sp.add_input("numberOfPeople", node5, "measuredValue")
-    sp.add_input("outdoorTemperature", node6, "measuredValue")
-    # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
-    # sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    sp.add_input("supplyAirTemperature", node0)
+    sp.add_connection(
+        ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space
+    )
+    sp.add_connection(
+        ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space
+    )
+    # # sp.add_input("numberOfPeople", node5, "measuredValue")
+    sp.add_connection(
+        outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"
+    )
+    sp.add_connection(
+        solar_radiance_sensor, "globalIrradiation", "globalIrradiation"
+    )
+    sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
 
     # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
-    sp.add_modeled_node(node3)
+    sp.add_modeled_node(space)
 
     # sp_eq = SignaturePattern(
     #     id="building_space_signature_pattern_brick_eq",
@@ -440,11 +459,11 @@ def brick_signature_pattern():  # Fits to site A
 
     #######################
 
-    # sp_eq.add_triple(
-    #     Exact(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
+    # sp_eq.add_rule(
+    #     StepRule(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
     # )
-    # sp_eq.add_triple(
-    #     Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
+    # sp_eq.add_rule(
+    #     StepRule(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
     # )
 
     # # TODO: How to handle inverse predicates?
@@ -458,6 +477,67 @@ def brick_signature_pattern():  # Fits to site A
     return sp
 
 
+def brick_signature_pattern_vav():
+    """
+    BRICK signature pattern for a building space served by an AHU via a VAV/FCU.
+
+    Mirrors physical reality: AHU → VAV/FCU (adds reheat) → Room.
+    The supply air temperature entering the room comes from the FCU outlet,
+    not directly from the AHU.
+
+    Topology::
+
+        AHU  feeds  VAV  feeds  Room
+
+    Connections:
+        AHU.supplyAirFlowRate  → BuildingSpace.supplyAirFlowRate
+        AHU.exhaustAirFlowRate → BuildingSpace.exhaustAirFlowRate
+        VAV.outletAirTemperature → BuildingSpace.supplyAirTemperature
+
+    The MILP solver will prefer this pattern over the direct AHU pattern when
+    a VAV is present between the AHU and the room, because it covers more nodes.
+    """
+    ahu = Node(cls=core.namespace.BRICK.AHU)
+    vav = Node(cls=core.namespace.BRICK.VAV)
+    space = Node(
+        cls=(
+            core.namespace.BRICK.Room,
+            core.namespace.BRICK.Enclosed_space,
+            core.namespace.BRICK.Open_space,
+            core.namespace.BRICK.HVAC_Zone,
+            core.namespace.BOT.Space,
+        )
+    )
+    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor )
+    outside_air_temperature_sensor = Node(
+        cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
+    )
+
+    feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
+
+    sp = SignaturePattern(id="building_space_signature_pattern_brick_vav")
+
+    sp.add_node(solar_radiance_sensor, optional=True) # Optional because it is not always present
+    sp.add_node(outside_air_temperature_sensor, optional=True) # Optional because it is not always present
+
+    sp.add_rule(StepRule(subject=ahu, object=vav, predicate=feeds))
+    sp.add_rule(StepRule(subject=vav, object=space, predicate=feeds))
+
+    sp.add_connection(
+        ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space
+    )
+    sp.add_connection(
+        ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space
+    )
+    sp.add_connection(vav, "outletAirTemperature", "supplyAirTemperature")
+    sp.add_connection(solar_radiance_sensor, "globalIrradiation", "globalIrradiation")
+    sp.add_connection(outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature")
+    sp.add_modeled_node(space)
+
+    return sp
+
+
+BuildingSpaceTorchSystem.add_signature_pattern(brick_signature_pattern_vav())
 BuildingSpaceTorchSystem.add_signature_pattern(brick_signature_pattern())
 BuildingSpaceTorchSystem.add_signature_pattern(saref_signature_pattern())
 BuildingSpaceTorchSystem.add_signature_pattern(saref_signature_pattern_sensor())

@@ -2,10 +2,14 @@
 import unittest
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.model.model import Model
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.uppath import uppath
+
+twin4build._IS_TESTING = True
 
 
 class TestModel(unittest.TestCase):
@@ -367,29 +371,6 @@ class TestModelMethods(unittest.TestCase):
 
         # Validate should not raise errors
         self.model.validate()
-
-    def test_load_with_verbose(self):
-        """Test load method with verbose parameter."""
-        schedule = ScheduleSystem(
-            weekDayRulesetDict={
-                "ruleset_start_minute": [0],
-                "ruleset_end_minute": [0],
-                "ruleset_start_hour": [0],
-                "ruleset_end_hour": [1],
-                "ruleset_value": [0.5],
-                "ruleset_default_value": 0,
-            },
-            id="schedule",
-        )
-        damper = DamperTorchSystem(id="damper")
-
-        self.model.add_component(schedule)
-        self.model.add_component(damper)
-        self.model.add_connection(schedule, damper, "scheduleValue", "damperPosition")
-
-        # Load with verbose enabled
-        self.model.load(verbose=1)
-        self.assertTrue(self.model.is_loaded)
 
     def test_set_save_simulation_result(self):
         """Test set_save_simulation_result method."""

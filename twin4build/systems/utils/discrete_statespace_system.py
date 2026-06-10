@@ -386,7 +386,7 @@ class DiscreteStatespaceSystem(core.System):
         All matrices use the convention:
         - n_c: number of parallel components (different system configurations)
         - n_s: number of parallel simulations (set during initialize)
-        
+
         Args:
             A: System dynamics matrix of shape (n_c, N, N) or (N, N)
             B: Control input matrix of shape (n_c, N, M) or (N, M)
@@ -433,7 +433,7 @@ class DiscreteStatespaceSystem(core.System):
             self._B_base = _B.clone()
             self._C = _C.clone()
             self._D = _D.clone()
-            
+
             # Pre-expand C and D for efficient batched matmul in do_step
             # Shape: (1, n_c, n_outputs, n_states) and (1, n_c, n_outputs, n_inputs)
             # This avoids implicit broadcasting overhead at runtime (~1.7x speedup)
@@ -442,7 +442,7 @@ class DiscreteStatespaceSystem(core.System):
 
             # Store dimensions
             self.n_c = n_c  # Number of different system configurations
-            self.n_s = 1    # Number of parallel simulations (set during initialize)
+            self.n_s = 1  # Number of parallel simulations (set during initialize)
             self.n_states = n_states
             self.n_inputs = n_inputs
             self.n_outputs = n_outputs
@@ -517,7 +517,7 @@ class DiscreteStatespaceSystem(core.System):
 
         # For input change detection - shape (n_s, n_c, n_inputs)
         self._prev_u = None
-        
+
         # Discretized matrices - computed in discretize_system()
         # Shape: (n_s, n_c, ...) when bilinear, (n_c, ...) when linear
         self.Ad = None
@@ -571,14 +571,16 @@ class DiscreteStatespaceSystem(core.System):
         """Alias for n_c. Provided for backward compatibility."""
         return self.n_c
 
-    def discretize_system(self, A_eff: torch.Tensor, B_eff: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def discretize_system(
+        self, A_eff: torch.Tensor, B_eff: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Discretize the continuous-time state space model using the matrix exponential method.
 
         Args:
             A_eff: Effective A matrix, shape (n_s, n_c, n_states, n_states)
             B_eff: Effective B matrix, shape (n_s, n_c, n_states, n_inputs)
-            
+
         Returns:
             Ad: Discretized A matrix, shape (n_s, n_c, n_states, n_states)
             Bd: Discretized B matrix, shape (n_s, n_c, n_states, n_inputs)
@@ -594,7 +596,9 @@ class DiscreteStatespaceSystem(core.System):
 
         # Build block matrix: M = | A*T  B*T |
         #                         |  0    0  |
-        M = torch.zeros((batch_size, n + m, n + m), dtype=A_flat.dtype, device=A_flat.device)
+        M = torch.zeros(
+            (batch_size, n + m, n + m), dtype=A_flat.dtype, device=A_flat.device
+        )
         M[:, :n, :n] = A_flat * T
         M[:, :n, n:] = B_flat * T
 
@@ -640,10 +644,12 @@ class DiscreteStatespaceSystem(core.System):
             self.x = self.x0.unsqueeze(0).expand(n_s, -1, -1).clone()
         else:
             # x0 is already (n_s, n_c, n_states) - validate and use directly
-            assert self.x0.shape[0] == n_s, \
-                f"x0 has n_s={self.x0.shape[0]} but simulation requires n_s={n_s}"
-            assert self.x0.shape[1] == self.n_c, \
-                f"x0 has n_c={self.x0.shape[1]} but system has n_c={self.n_c}"
+            assert (
+                self.x0.shape[0] == n_s
+            ), f"x0 has n_s={self.x0.shape[0]} but simulation requires n_s={n_s}"
+            assert (
+                self.x0.shape[1] == self.n_c
+            ), f"x0 has n_c={self.x0.shape[1]} but system has n_c={self.n_c}"
             self.x = self.x0.clone()
 
         # Clear previous input for bilinear term detection
@@ -673,7 +679,7 @@ class DiscreteStatespaceSystem(core.System):
             [step_size_ == step_size[0] for step_size_ in step_size]
         ), "DiscreteStatespaceSystem currently only supports a single step size."
         step_size = step_size[0]
-        first_step = (step_index == 0)
+        first_step = step_index == 0
 
         if step_size != self.sample_time:
             self.sample_time = step_size
@@ -684,7 +690,7 @@ class DiscreteStatespaceSystem(core.System):
 
         # Check if we need to recompute discretized matrices
         need_rediscretize = first_step or self._prev_u is None
-        
+
         if not need_rediscretize and self._E is not None and len(self.non_zero_E) > 0:
             u_relevant = u[:, :, self.non_zero_E]
             prev_u_relevant = self._prev_u[:, :, self.non_zero_E]
@@ -698,8 +704,12 @@ class DiscreteStatespaceSystem(core.System):
         # Compute effective matrices and discretize if needed
         if need_rediscretize:
             # Expand base matrices to (n_s, n_c, ...) shape
-            A_eff = self._A_base.unsqueeze(0).expand(self.n_s, -1, -1, -1)  # (n_s, n_c, n_states, n_states)
-            B_eff = self._B_base.unsqueeze(0).expand(self.n_s, -1, -1, -1)  # (n_s, n_c, n_states, n_inputs)
+            A_eff = self._A_base.unsqueeze(0).expand(
+                self.n_s, -1, -1, -1
+            )  # (n_s, n_c, n_states, n_states)
+            B_eff = self._B_base.unsqueeze(0).expand(
+                self.n_s, -1, -1, -1
+            )  # (n_s, n_c, n_states, n_inputs)
 
             if self._E is not None:
                 # Add bilinear E term: E (n_c, n_inputs, n_states, n_states), u (n_s, n_c, n_inputs)
@@ -715,14 +725,18 @@ class DiscreteStatespaceSystem(core.System):
         # State update: x_new = Ad @ x + Bd @ u
         # Using batched matmul instead of einsum for ~1.6-1.9x speedup
         # Ad: (n_s, n_c, n_states, n_states), x: (n_s, n_c, n_states) -> x.unsqueeze(-1): (n_s, n_c, n_states, 1)
-        x_new = (self.Ad @ x.unsqueeze(-1)).squeeze(-1) + (self.Bd @ u.unsqueeze(-1)).squeeze(-1)
+        x_new = (self.Ad @ x.unsqueeze(-1)).squeeze(-1) + (
+            self.Bd @ u.unsqueeze(-1)
+        ).squeeze(-1)
         self.x = x_new
 
         # Output: y = C @ x + D @ u
         # Using pre-expanded C and D with batched matmul for ~1.7x speedup
         # _C_expanded: (1, n_c, n_outputs, n_states), x: (n_s, n_c, n_states)
-        y = (self._C_expanded @ x_new.unsqueeze(-1)).squeeze(-1) + (self._D_expanded @ u.unsqueeze(-1)).squeeze(-1)
-        
+        y = (self._C_expanded @ x_new.unsqueeze(-1)).squeeze(-1) + (
+            self._D_expanded @ u.unsqueeze(-1)
+        ).squeeze(-1)
+
         self.output["y"]._set(y, i_t=step_index)
 
     @classmethod

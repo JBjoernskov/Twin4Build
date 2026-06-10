@@ -14,7 +14,7 @@ operations:
 
   # Object properties (measurements)
   - template: |-
-      {{ create_property_value_triples(value['id'], 'airVolume', value['airVolume'], 's4bldg:AirVolume') }}
+      {{ create_property_value_triples(value['id'], 'airVolume', value['airVolume'], 's4bldg:airVolume') }}
 
   # Relationships
   - template: |-

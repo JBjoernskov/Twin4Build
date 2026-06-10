@@ -17,6 +17,9 @@ from twin4build.simulator.simulator import Simulator
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 
+# Set test flag
+tb._IS_TESTING = True
+
 
 class TestSimulator(unittest.TestCase):
     def setUp(self):
@@ -111,9 +114,7 @@ class TestSimulator(unittest.TestCase):
     def test_simulate_invalid_time_period(self):
         """Test simulation with invalid time period (start >= end)."""
         start_time = datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)
-        end_time = datetime.datetime(
-            2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC
-        )  # Before start
+        end_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)  # Before start
         step_size = 600
 
         # Should raise an error
@@ -149,9 +150,7 @@ class TestSimulator(unittest.TestCase):
     def test_simulate_very_short_period(self):
         """Test simulation with very short time period."""
         start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
-        end_time = datetime.datetime(
-            2023, 1, 1, 0, 0, 10, tzinfo=tz.UTC
-        )  # 10 seconds
+        end_time = datetime.datetime(2023, 1, 1, 0, 0, 10, tzinfo=tz.UTC)  # 10 seconds
         step_size = 5  # 5 second steps
 
         self.simulator.simulate(
@@ -315,27 +314,30 @@ class TestSimulator(unittest.TestCase):
         filename_simulation = utils.get_path(
             ["estimator_example", "instance_graph.ttl"]
         )
-        model.load(simulation_model_filename=filename_simulation, verbose=0)
+        model.load(simulation_model_filename=filename_simulation)
 
-        # Configure file paths for sensors
-        model.components["020B_temperature_sensor"].filename = utils.get_path(
-            ["estimator_example", "temperature_sensor.csv"]
+        # Configure file paths and column indices for sensors.
+        # The example CSVs in twin4build/examples/estimator_example/ are exported
+        # from the database with columns: [<index>, TagName, DateTime, Value, vValue]
+        # so datecolumn=2, valuecolumn=3.
+        for sensor_id, csv_name in [
+            ("office_temperature_sensor", "temperature_sensor.csv"),
+            ("office_co2_sensor", "co2_sensor.csv"),
+            ("office_valve_position_sensor", "valve_position_sensor.csv"),
+            ("office_damper_position_sensor", "damper_position_sensor.csv"),
+            ("supply_air_temperature_sensor", "supply_air_temperature.csv"),
+        ]:
+            model.components[sensor_id].filename = utils.get_path(
+                ["estimator_example", csv_name]
+            )
+            model.components[sensor_id].datecolumn = 2
+            model.components[sensor_id].valuecolumn = 3
+
+        model.components["office_temperature_heating_setpoint"].filename = (
+            utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"])
         )
-        model.components["020B_co2_sensor"].filename = utils.get_path(
-            ["estimator_example", "co2_sensor.csv"]
-        )
-        model.components["020B_valve_position_sensor"].filename = utils.get_path(
-            ["estimator_example", "valve_position_sensor.csv"]
-        )
-        model.components["020B_damper_position_sensor"].filename = utils.get_path(
-            ["estimator_example", "damper_position_sensor.csv"]
-        )
-        model.components["BTA004"].filename = utils.get_path(
-            ["estimator_example", "supply_air_temperature.csv"]
-        )
-        model.components["020B_temperature_heating_setpoint"].filename = utils.get_path(
-            ["estimator_example", "temperature_heating_setpoint.csv"]
-        )
+        model.components["office_temperature_heating_setpoint"].datecolumn = 2
+        model.components["office_temperature_heating_setpoint"].valuecolumn = 3
         model.components["outdoor_environment"].filename_outdoorTemperature = (
             utils.get_path(["estimator_example", "outdoor_environment.csv"])
         )
@@ -345,6 +347,15 @@ class TestSimulator(unittest.TestCase):
         model.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 2
         model.components["outdoor_environment"].filename_outdoorCo2Concentration = (
             utils.get_path(["estimator_example", "outdoor_environment.csv"])
+        )
+
+        # OccupancySystem reads CO2 / damper time series directly from disk;
+        # redirect to the example CSVs so the test runs on any machine.
+        model.components["office_occupancy"].co2_filename = utils.get_path(
+            ["estimator_example", "co2_sensor.csv"]
+        )
+        model.components["office_occupancy"].damper_filename = utils.get_path(
+            ["estimator_example", "damper_position_sensor.csv"]
         )
 
         return model
@@ -404,12 +415,14 @@ class TestSimulator(unittest.TestCase):
         )
 
         # Compare results for key outputs
-        space_gs = model_gs.components["020B"]
-        space_jacobi = model_jacobi.components["020B"]
+        space_gs = model_gs.components["office"]
+        space_jacobi = model_jacobi.components["office"]
 
         # Get indoor temperature outputs
         temp_gs = space_gs.output["indoorTemperature"].history().detach().numpy()
-        temp_jacobi = space_jacobi.output["indoorTemperature"].history().detach().numpy()
+        temp_jacobi = (
+            space_jacobi.output["indoorTemperature"].history().detach().numpy()
+        )
 
         # Get CO2 concentration outputs
         co2_gs = space_gs.output["indoorCO2"].history().detach().numpy()
@@ -496,7 +509,7 @@ class TestSimulator(unittest.TestCase):
         )
 
         # Verify simulation produced outputs
-        space = model.components["020B"]
+        space = model.components["office"]
         self.assertIn(
             "indoorTemperature",
             space.output,

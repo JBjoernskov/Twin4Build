@@ -15,6 +15,7 @@ from fmpy.fmi2 import FMU2Slave
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
+from twin4build.utils.print_progress import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 
 
@@ -116,15 +117,18 @@ class fmuSystem(core.System):
                     try:
                         fmi2.addLoggerProxy(byref(callbacks))
                     except Exception as e:
-                        print("Failed to add logger proxy function. %s" % e)
+                        LOGGER.error("Failed to add logger proxy function: %s.", e)
                 self.fmu.instantiate(callbacks=callbacks)
                 self.fmu.setupExperiment(start_time=0)
                 self.fmu.enterInitializationMode()
                 self.fmu.exitInitializationMode()
                 break
             except:
-                print(
-                    f'Failed to instantiate "{self.id}" FMU. Trying again {str(i+1)}/{str(n_try)}...'
+                LOGGER.error(
+                    'Failed to instantiate "%s" fmu, trying again %s/%s.',
+                    self.id,
+                    i + 1,
+                    n_try,
                 )
                 sleep_time = np.random.uniform(0.1, 1)
                 time.sleep(sleep_time)

@@ -1,9 +1,8 @@
 # Standard library imports
 import datetime
-from typing import List, Optional
+from typing import List
 
 # Third party imports
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -11,12 +10,10 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
 )
 
 
@@ -25,12 +22,13 @@ class DamperTorchSystem(core.System, nn.Module):
     A damper system model implemented with PyTorch for gradient-based optimization.
 
     This model represents a damper that controls air flow rate based on damper position,
-    using an exponential equation for accurate flow control representation.
+    using an exponential equation for accurate flow control representation. Supports
+    vectorized operation across multiple parallel branches via the n_c dimension.
 
     Args:
         a : Shape parameter for the air flow curve. Controls the non-linearity
-        of the damper characteristic. Higher values result in more non-linear behavior.
-        nominalAirFlowRate : Nominal air flow rate [m³/s] at fully open position
+            of the damper characteristic. Higher values result in more non-linear behavior.
+        nominalAirFlowRate : Nominal air flow rate [kg/s] at fully open position.
 
     Mathematical Formulation
     ========================
@@ -42,12 +40,12 @@ class DamperTorchSystem(core.System, nn.Module):
             \dot{m} = a \cdot e^{b \cdot u} + c
 
     where:
-       - :math:`\dot{m}` is the air flow rate [m³/s]
+       - :math:`\dot{m}` is the air flow rate [kg/s]
        - :math:`a` is the shape parameter
        - :math:`b` is calculated to ensure :math:`\dot{m} = \dot{m}_{nom}` at :math:`u = 1`
        - :math:`c` is calculated to ensure :math:`\dot{m} = 0` at :math:`u = 0`
        - :math:`u` is the damper position (0-1)
-       - :math:`\dot{m}_{nom}` is the nominal air flow rate [m³/s]
+       - :math:`\dot{m}_{nom}` is the nominal air flow rate [kg/s]
 
     The parameters :math:`b` and :math:`c` are calculated during initialization:
 
@@ -75,10 +73,13 @@ class DamperTorchSystem(core.System, nn.Module):
 
     Implementation Details:
        - The model uses PyTorch tensors for gradient-based optimization
-       - Parameters 'a' and 'nominalAirFlowRate' are stored as non-trainable
-         PyTorch parameters
+       - Parameters 'a' and 'nominalAirFlowRate' are stored as tps.Parameter and
+         expanded to n_c dimension during initialize() for parallel branches
        - Parameters 'b' and 'c' are calculated during initialization
        - The model assumes ideal damper behavior (no hysteresis or deadband)
+       - Uses tps.Scalar for ports (not tps.Vector) - multiple parallel instances
+         are handled via the n_c dimension, not the n_v dimension
+       - n_c (parallel components) is set before initialize() and used for vectorization
     """
 
     def __init__(
@@ -93,28 +94,46 @@ class DamperTorchSystem(core.System, nn.Module):
         Initialize the damper system model.
 
         Args:
-            a: Shape parameter for the air flow curve
-            nominalAirFlowRate: Nominal air flow rate [m³/s]
+            a: Shape parameter for the air flow curve.
+            nominalAirFlowRate: Nominal air flow rate [kg/s].
         """
         super().__init__(**kwargs)
         nn.Module.__init__(self)
 
-        # Store parameters as tps.Parameters for gradient tracking
+        # Create parameters as scalars - expanded to n_c in initialize()
         self.a = tps.Parameter(
-            torch.tensor(a, dtype=torch.float64), requires_grad=False
+            torch.tensor(a, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.nominalAirFlowRate = tps.Parameter(
             torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False
         )
 
-        # Define inputs and outputs as private variables
+        # Define inputs and outputs using Scalar (n_c handles vectorization)
         self._input = {"damperPosition": tps.Scalar()}
-        self._output = {"damperPosition": tps.Scalar(0), "airFlowRate": tps.Scalar(0)}
+        self._output = {
+            "damperPosition": tps.Scalar(),
+            "airFlowRate": tps.Scalar(),
+        }
 
-        # Define parameters for calibration
+        # Define parameters for calibration.  Tightened to the
+        # physically-realistic VAV-branch / AHU-damper range so the
+        # auto-estimator can't pin a damper at 1e-4 kg/s (effectively
+        # zero flow, makes the coil's energy balance singular) or run
+        # the shape coefficient ``a`` into a region where the
+        # ``m = b + a*u + c*log(u)`` characteristic is monotone but
+        # numerically ill-conditioned at low ``u``.
         self.parameter = {
-            "a": {"lb": 0.0001, "ub": 5},
-            "nominalAirFlowRate": {"lb": 0.0001, "ub": 5},
+            # log-scaled (lb > 0 mandatory).  ``a`` is a unit-less
+            # shape coefficient; values much above 5 give very steep
+            # rise near ``u=0`` and saturate immediately, values below
+            # 0.1 give nearly linear damper response (lose the physics
+            # of the equal-percentage characteristic).
+            "a": {"lb": 0.1, "ub": 5.0},
+            # Branch / AHU damper kg/s.  Range covers a 100 m³ VAV
+            # zone at 1 ach (~ 0.03 kg/s) up to a large primary AHU
+            # branch (~ 5 kg/s).  Below 0.01 kg/s the coil's
+            # energy balance becomes singular.
+            "nominalAirFlowRate": {"lb": 0.001, "ub": 5.0},
         }
 
         self._config = {"parameters": list(self.parameter.keys())}
@@ -132,7 +151,7 @@ class DamperTorchSystem(core.System, nn.Module):
 
         Returns:
             dict: Dictionary containing input ports:
-                - "damperPosition": Damper position (0-1)
+                - "damperPosition": Damper position (0-1). Shape: (n_s, n_c).
         """
         return self._input
 
@@ -143,8 +162,8 @@ class DamperTorchSystem(core.System, nn.Module):
 
         Returns:
             dict: Dictionary containing output ports:
-                - "damperPosition": Damper position (0-1)
-                - "airFlowRate": Air flow rate [m³/s]
+                - "damperPosition": Damper position (0-1). Shape: (n_s, n_c).
+                - "airFlowRate": Air flow rate [kg/s]. Shape: (n_s, n_c).
         """
         return self._output
 
@@ -161,10 +180,16 @@ class DamperTorchSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        # Determine n_c from _n_c_compiled if present and >1, else default to 1
+        # Determine n_c.  Order of preference:
+        #   1. ``_n_c_compiled`` set by the translator (overrides everything).
+        #   2. An ``n_c`` already assigned by an outer wrapper (e.g. the
+        #      vectorized :class:`AirHandlingUnitTorchSystem` flattens
+        #      its (n_s, n_c, n_v) Vector inputs into a per-branch damper
+        #      ``n_c = n_c_ahu * n_v`` *before* calling ``initialize``).
+        #   3. Default to 1 when neither caller set anything > 1.
         if hasattr(self, "_n_c_compiled") and getattr(self, "_n_c_compiled") > 1:
             self.n_c = self._n_c_compiled
-        else:
+        elif self.n_c <= 1:
             self.n_c = 1
 
         for input in self.input.values():
@@ -179,8 +204,11 @@ class DamperTorchSystem(core.System, nn.Module):
                 n_s=batch_size,
                 n_c=self.n_c,
             )
+        # Expand parameters to n_c dimension for vectorization
+        self.a = self.a.expand_to_n_c(self.n_c)
+        self.nominalAirFlowRate = self.nominalAirFlowRate.expand_to_n_c(self.n_c)
 
-        # Calculate b and c parameters
+        # Calculate b and c parameters (vectorized for n_c)
         self.c = -self.a.get()  # Ensures that m=0 at u=0
         self.b = torch.log(
             (self.nominalAirFlowRate.get() - self.c) / self.a.get()
@@ -201,17 +229,27 @@ class DamperTorchSystem(core.System, nn.Module):
         The damper characteristic is calculated using an exponential equation:
         m = a * exp(b * u) + c
         where:
-        - m is the air flow rate
-        - a is the shape parameter
+        - m is the air flow rate [kg/s]
+        - a is the shape parameter (shape: (n_c,))
         - b is calculated to ensure m=nominalAirFlowRate at u=1
         - c is calculated to ensure m=0 at u=0
         - u is the damper position (0-1)
+
+        All calculations are vectorized via n_c dimension.
+        b and c are recomputed from the current a and nominalAirFlowRate
+        so that gradients flow correctly during estimation.
         """
-        # Get input damper position (assumed to be a tensor)
+        # Get input damper position - shape: (n_s, n_c)
         damper_position = self.input["damperPosition"].get()
 
+        # Recompute b, c from current a so gradient graph stays connected
+        a = self.a.get()
+        c = -a
+        b = torch.log((self.nominalAirFlowRate.get() - c) / a)
+
         # Calculate air flow rate using exponential equation
-        air_flow_rate = self.a.get() * torch.exp(self.b * damper_position) + self.c
+        # Broadcasting: (n_s, n_c) * (n_c,) -> (n_s, n_c)
+        air_flow_rate = a * torch.exp(b * damper_position) + c
 
         # Update outputs
         self.output["damperPosition"]._set(damper_position, i_t=step_index, ic=self.n_c)
@@ -235,27 +273,27 @@ def saref_signature_pattern():
     sp = SignaturePattern(id="damper_signature_pattern")
 
     # Add edges to the signature pattern
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
+    sp.add_rule(
+        StepRule(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
     )
-    sp.add_triple(
-        Exact(subject=node1, object=node3, predicate=core.namespace.SAREF.observes)
+    sp.add_rule(
+        StepRule(subject=node1, object=node3, predicate=core.namespace.SAREF.observes)
     )
-    sp.add_triple(
-        Optional_(subject=node4, object=node5, predicate=core.namespace.SAREF.hasValue)
+    sp.add_rule(
+        OptionalRule(subject=node4, object=node5, predicate=core.namespace.SAREF.hasValue)
     )
-    sp.add_triple(
-        Optional_(
+    sp.add_rule(
+        OptionalRule(
             subject=node4,
             object=node6,
             predicate=core.namespace.SAREF.isValueOfProperty,
         )
     )
-    sp.add_triple(
-        Optional_(
+    sp.add_rule(
+        OptionalRule(
             subject=node0, object=node4, predicate=core.namespace.SAREF.hasPropertyValue
         )
     )
@@ -284,20 +322,20 @@ def brick_signature_pattern():
     sp = SignaturePattern(id="damper_signature_pattern_brick")
 
     # Add edges to the signature pattern
-    sp.add_triple(
-        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node3, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node3, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node4, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node4, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Optional_(subject=node4, object=node5, predicate=core.namespace.BRICK.hasValue)
+    sp.add_rule(
+        OptionalRule(subject=node4, object=node5, predicate=core.namespace.BRICK.hasValue)
     )
 
     # Configure inputs, parameters, and modeled nodes

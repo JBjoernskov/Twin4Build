@@ -1,15 +1,19 @@
 # Standard library imports
 import configparser
+import datetime
 import os
 
 # Third party imports
 import numpy as np
 import pandas as pd
+import psycopg2
 from dateutil.parser import parse
 from dateutil.tz import gettz
+from psycopg2.extras import RealDictCursor
 
 # Local application imports
 from twin4build.utils.mkdir_in_root import mkdir_in_root
+from twin4build.utils.print_progress import LOGGER
 
 
 def parseDateStr(s):
@@ -32,7 +36,7 @@ def sample_from_df(
     resample=True,
     resample_method="linear",
     clip=True,
-    tz="Europe/Copenhagen",
+    tz=datetime.timezone.utc,
     preserve_order=True,
 ):
     r"""
@@ -105,76 +109,113 @@ def sample_from_df(
     assert datecolumn != valuecolumn, "datecolumn and valuecolumn cannot be the same"
     df = df.rename(columns={df.columns.to_list()[datecolumn]: "date_time"})
 
-    for i, column in enumerate(df.columns.to_list()):
-        if column != "date_time" and valuecolumn is None:
-            df[column] = pd.to_numeric(
-                df[column], errors="coerce"
-            )  # Remove string entries
-        elif i == valuecolumn:
-            df[column] = pd.to_numeric(
-                df[column], errors="coerce"
-            )  # Remove string entries
+    LOGGER.task("Starting dataframe sampling")
+    LOGGER.add_level()
+    try:
+        LOGGER.config("Start time: %s", start_time)
+        LOGGER.config("End time: %s", end_time)
+        LOGGER.config("Step size: %s", step_size)
 
-    df["date_time"] = pd.to_datetime(df["date_time"])  # ), format=format)
-    if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
-        has_tz = True
-        df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
-    else:
-        has_tz = False
+        for i, column in enumerate(df.columns.to_list()):
+            if column != "date_time" and valuecolumn is None:
+                df[column] = pd.to_numeric(
+                    df[column], errors="coerce"
+                )  # Remove string entries
+            elif i == valuecolumn:
+                df[column] = pd.to_numeric(
+                    df[column], errors="coerce"
+                )  # Remove string entries
 
-    df = df.set_index(pd.DatetimeIndex(df["date_time"]))
-    df = df.drop(columns=["date_time"])
+        df["date_time"] = pd.to_datetime(df["date_time"])  # ), format=format)
+        if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
+            has_tz = True
+            df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
+            LOGGER.info(
+                "Dataframe has timezone information %s, converting to UTC",
+                df["date_time"].apply(lambda x: x.tzinfo).unique(),
+            )
 
-    if preserve_order and has_tz == False:
-        # Detect if dates are reverse
-        diff_seconds = df.index.to_series().diff().dt.total_seconds()
-        # Remove NaN values from the calculation
-        diff_seconds_valid = diff_seconds.dropna()
-        if len(diff_seconds_valid) > 0:
-            frac_neg = np.sum(diff_seconds_valid < 0) / len(diff_seconds_valid)
-            if frac_neg >= 0.95:
-                df = df.iloc[::-1]
-            elif frac_neg > 0.05 and frac_neg < 0.95:
-                raise Exception(
-                    '"preserve_order" is true, but the date_time order cannot be determined.'
-                )
-    else:
-        df = df.sort_index()
+        else:
+            has_tz = False
+            LOGGER.info("Dataframe has no timezone information")
 
-    df = df.dropna(how="all")
+        df = df.set_index(pd.DatetimeIndex(df["date_time"]))
+        df = df.drop(columns=["date_time"])
 
-    # Check if the first index is timezone aware
-    if df.index[0].tzinfo is None:
-        df = df.tz_localize(gettz(tz), ambiguous="infer", nonexistent="NaT")
-    else:
-        df = df.tz_convert(gettz(tz))
+        if preserve_order and has_tz == False:
+            # Detect if dates are reverse
+            diff_seconds = df.index.to_series().diff().dt.total_seconds()
+            # Remove NaN values from the calculation
+            diff_seconds_valid = diff_seconds.dropna()
+            if len(diff_seconds_valid) > 0:
+                frac_neg = np.sum(diff_seconds_valid < 0) / len(diff_seconds_valid)
+                if frac_neg >= 0.95:
+                    df = df.iloc[::-1]
+                elif frac_neg > 0.05 and frac_neg < 0.95:
+                    raise Exception(
+                        '"preserve_order" is true, but the date_time order cannot be determined.'
+                    )
+        else:
+            df = df.sort_index()
 
-    # Duplicate dates can occur either due to measuring/logging malfunctions
-    # or due to change of daylight saving time where an hour occurs twice in fall.
-    df = df.groupby(level=0).mean()
+        df = df.dropna(how="all")
 
-    if start_time.tzinfo is None:
-        start_time = start_time.astimezone(tz=gettz(tz))
-    if end_time.tzinfo is None:
-        end_time = end_time.astimezone(tz=gettz(tz))
+        LOGGER.task("Enforcing timezone awareness")
+        LOGGER.add_level()
 
-    if resample:
-        allowable_resample_methods = ["constant", "linear"]
-        assert (
-            resample_method in allowable_resample_methods
-        ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
-        if resample_method == "constant":
-            df = df.resample(f"{step_size}s", origin=start_time).ffill().bfill()
-        elif resample_method == "linear":
-            oidx = df.index
-            nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
-            df = df.reindex(oidx.union(nidx)).interpolate("index").reindex(nidx)
+        # Check if the first index is timezone aware
+        if df.index[0].tzinfo is None:
+            df = df.tz_localize(tz, ambiguous="infer", nonexistent="NaT")
+            LOGGER.config("Localized index timezone: %s", tz)
+        else:
+            LOGGER.info(
+                "Index has timezone %s, converting to %s",
+                df.index[0].tzinfo,
+                tz,
+            )
+            df = df.tz_convert(tz)
+        LOGGER.remove_level()
+           
 
-    if clip:
-        df = df[
-            (df.index >= start_time) & (df.index < end_time)
-        ]  # Exclude end time for similar behavior as normal python slicing
+        # Duplicate dates can occur either due to measuring/logging malfunctions
+        # or due to change of daylight saving time where an hour occurs twice in fall.
+        df = df.groupby(level=0).mean(numeric_only=True)
 
+        if start_time.tzinfo is None:
+            start_time = start_time.astimezone(tz=tz)
+            LOGGER.info(
+                "Start time had no timezone, converted to %s",
+                tz,
+            )
+        if end_time.tzinfo is None:
+            end_time = end_time.astimezone(tz=tz)
+            LOGGER.info("End time had no timezone, converted to %s", tz)
+
+        if resample:
+            allowable_resample_methods = ["constant", "linear"]
+            assert (
+                resample_method in allowable_resample_methods
+            ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
+            if resample_method == "constant":
+                df = df.resample(f"{step_size}s", origin=start_time).ffill().bfill()
+            elif resample_method == "linear":
+                oidx = df.index
+                nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
+                df = df.reindex(oidx.union(nidx)).interpolate("index").reindex(nidx)
+                df = df.ffill().bfill()
+
+        if clip:
+            df = df[
+                (df.index >= start_time) & (df.index < end_time)
+            ]  # Exclude end time for similar behavior as normal python slicing
+
+    except Exception:
+        LOGGER.remove_level()
+        LOGGER.error("Starting dataframe sampling", change_status=True)
+        raise
+
+    LOGGER.remove_level()
+    LOGGER.ok("Starting dataframe sampling", change_status=True)
     return df
 
 
@@ -189,7 +230,6 @@ def load_from_spreadsheet(
     clip=True,
     cache=True,
     cache_root=None,
-    tz="Europe/Copenhagen",
     preserve_order=True,
 ):
     """
@@ -211,7 +251,8 @@ def load_from_spreadsheet(
         # Check if file is cached
         startTime_str = start_time.strftime("%d-%m-%Y %H-%M-%S")
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S")
-        cached_filename = f"name({os.path.basename(name)})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
+        col_suffix = f"_col({valuecolumn})" if valuecolumn is not None else ""
+        cached_filename = f"name({os.path.basename(name)})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str}){col_suffix}_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
@@ -240,7 +281,7 @@ def load_from_spreadsheet(
             end_time=end_time,
             resample=resample,
             clip=clip,
-            tz=tz,
+            tz=start_time.tzinfo,
             preserve_order=preserve_order,
         )
 
@@ -326,7 +367,11 @@ def load_database_config(config_file=None, section="timescaledb"):
                 if parser.has_option(section, "password"):
                     config["password"] = parser.get(section, "password")
         except Exception as e:
-            print(f"Warning: Could not load configuration from {config_file}: {e}")
+            LOGGER.warning(
+                "Could not load configuration from %s: %s.",
+                config_file,
+                e,
+            )
 
     # Override with environment variables
     config["host"] = os.getenv("TIMESCALEDB_HOST", config["host"])
@@ -339,25 +384,20 @@ def load_database_config(config_file=None, section="timescaledb"):
 
 
 def load_from_database(
-    table_name=None,
-    sensor_id=None,
-    step_size=None,
-    start_time=None,
-    end_time=None,
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
+    step_size: int,
     resample=True,
     resample_method="linear",
     clip=True,
     cache=True,
     cache_root=None,
-    tz="Europe/Copenhagen",
     preserve_order=True,
-    schema=None,
+    table_name=None,
+    sensor_id=None,
     time_column="time",
     id_column="uuid",
     value_column="value",
-    config=None,
-    config_file=None,
-    section="timescaledb",
     db_host=None,
     db_port=None,
     db_name=None,
@@ -437,21 +477,9 @@ def load_from_database(
        cache_root (str, optional): Root directory for cache files. If None, uses the default Twin4Build cache location.
        tz (str, optional): Timezone for data processing. Can be timezone name (e.g., "Europe/Copenhagen"),
            UTC offset (e.g., "UTC+2", "GMT-8"), or "UTC". Defaults to "Europe/Copenhagen".
-       schema (str, optional): Database schema name. If provided, the query will be executed as "schema.table_name".
-           If None, only the table_name will be used (defaults to the database's default schema, typically "public").
-           Example: schema="sensor_data" with table_name="building1" results in querying "sensor_data.building1".
        time_column (str, optional): Name of the timestamp column in the database table. Defaults to "time".
        id_column (str, optional): Name of the sensor ID column in the database table. Defaults to "id".
        value_column (str, optional): Name of the value column in the database table. Defaults to "value".
-       config (dict, optional): Configuration dictionary containing database and table parameters.
-           Supported keys: "table_name", "schema", "time_column", "id_column", "value_column",
-           "host", "port", "name", "user", "password".
-           This provides a convenient way to pass all configuration at once.
-           Individual parameters take precedence over config dict values.
-       config_file (str, optional): Path to INI configuration file for database settings.
-           If provided, database connection parameters will be loaded from this file.
-           See load_database_config() for file format details.
-       section (str, optional): Section of the INI file to use for database settings.
        db_host (str, optional): Database host address. Overrides config file and environment variables.
        db_port (int, optional): Database port number. Overrides config file and environment variables.
        db_name (str, optional): Database name. Overrides config file and environment variables.
@@ -506,48 +534,29 @@ def load_from_database(
        memory usage and improve performance.
     """
     # Third party imports
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-
-    # Handle config dict parameter - extract all parameters from it if provided
-    if config is not None:
-        if table_name is None and "table_name" in config:
-            table_name = config["table_name"]
-        if schema is None and "schema" in config:
-            schema = config["schema"]
-        # Column name configurations
-        if "time_column" in config:
-            time_column = config["time_column"]
-        if "id_column" in config:
-            id_column = config["id_column"]
-        if "value_column" in config:
-            value_column = config["value_column"]
-        # Database connection configurations
-        if db_host is None and "host" in config:
-            db_host = config["host"]
-        if db_port is None and "port" in config:
-            db_port = config["port"]
-        if db_name is None and "name" in config:
-            db_name = config["name"]
-        if db_user is None and "user" in config:
-            db_user = config["user"]
-        if db_password is None and "password" in config:
-            db_password = config["password"]
-
-    # Load database configuration
-    db_config = load_database_config(config_file, section)
-
-    # Override with function parameters if provided
-    if db_host is not None:
-        db_config["host"] = db_host
-    if db_port is not None:
-        db_config["port"] = db_port
-    if db_name is not None:
-        db_config["name"] = db_name
-    if db_user is not None:
-        db_config["user"] = db_user
-    if db_password is not None:
-        db_config["password"] = db_password
+    assert isinstance(
+        start_time, datetime.datetime
+    ), "start_time must be a datetime object"
+    assert isinstance(end_time, datetime.datetime), "end_time must be a datetime object"
+    assert isinstance(step_size, int), "step_size must be an integer"
+    assert isinstance(resample, bool), "resample must be a boolean"
+    assert isinstance(resample_method, str), "resample_method must be a string"
+    assert isinstance(clip, bool), "clip must be a boolean"
+    assert isinstance(cache, bool), "cache must be a boolean"
+    assert isinstance(
+        cache_root, (str, type(None))
+    ), "cache_root must be a string or None"
+    assert isinstance(preserve_order, bool), "preserve_order must be a boolean"
+    assert isinstance(table_name, str), "table_name must be a string"
+    assert isinstance(sensor_id, str), "sensor_id must be a string"
+    assert isinstance(time_column, str), "time_column must be a string"
+    assert isinstance(id_column, str), "id_column must be a string"
+    assert isinstance(value_column, str), "value_column must be a string"
+    assert isinstance(db_host, str), "db_host must be a string"
+    assert isinstance(db_port, int), "db_port must be an integer"
+    assert isinstance(db_name, str), "db_name must be a string"
+    assert isinstance(db_user, str), "db_user must be a string"
+    assert isinstance(db_password, str), "db_password must be a string"
 
     # Handle caching
     if cache:
@@ -567,10 +576,10 @@ def load_from_database(
             return pd.read_pickle(cached_filename)
 
     # Build connection string
-    if db_config["password"]:
-        conn_string = f"host={db_config['host']} port={db_config['port']} dbname={db_config['name']} user={db_config['user']} password={db_config['password']}"
+    if db_password:
+        conn_string = f"host={db_host} port={db_port} dbname={db_name} user={db_user} password={db_password}"
     else:
-        conn_string = f"host={db_config['host']} port={db_config['port']} dbname={db_config['name']} user={db_config['user']}"
+        conn_string = f"host={db_host} port={db_port} dbname={db_name} user={db_user}"
 
     try:
         # Connect to database
@@ -578,81 +587,78 @@ def load_from_database(
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         # Build full table name with schema if provided
-        full_table_name = f"{schema}.{table_name}" if schema else table_name
 
         # Check if table exists
-        if schema:
-            cursor.execute(
-                """
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = %s AND table_name = %s
-                );
-            """,
-                (schema, table_name),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_name = %s
-                );
-            """,
-                (table_name,),
-            )
+        # if schema:
+        #     cursor.execute(
+        #         """
+        #         SELECT EXISTS (
+        #             SELECT FROM information_schema.tables
+        #             WHERE table_schema = %s AND table_name = %s
+        #         );
+        #     """,
+        #         (schema, table_name),
+        #     )
+        # else:
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = %s
+            );
+        """,
+            (table_name,),
+        )
 
         if not cursor.fetchone()["exists"]:
-            raise Exception(f"Table {full_table_name} does not exist in the database")
+            raise Exception(f"Table {table_name} does not exist in the database")
 
         # Build WHERE clause
         where_conditions = []
         params = []
 
-        if sensor_id:
-            where_conditions.append(f"{id_column} = %s")
-            params.append(sensor_id)
+        # Get data for +/- 3 steps of buffer
+        buffer = datetime.timedelta(seconds=3 * step_size)
+        query_start_time = start_time - buffer
+        query_end_time = end_time + buffer
 
-        if start_time:
-            where_conditions.append(f"{time_column} >= %s")
-            params.append(start_time)
+        where_conditions.append(f"{id_column} = %s")
+        params.append(sensor_id)
 
-        if end_time:
-            where_conditions.append(f"{time_column} < %s")
-            params.append(end_time)
+        where_conditions.append(f"{time_column} >= %s")
+        params.append(query_start_time)
 
+        where_conditions.append(f"{time_column} < %s")
+        params.append(query_end_time)
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
 
         # Execute query
         query = f"""
             SELECT {time_column}, {value_column} 
-            FROM {full_table_name} 
+            FROM {table_name} 
             WHERE {where_clause}
             ORDER BY {time_column}
         """
 
-        print(f"Executing query: {query}")
-        print(f"Query parameters: {params}")
-
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-        print(f"Query returned {len(rows)} rows")
         if len(rows) > 0:
-            print(f"Sample row: {rows[0]}")
+            pass
         else:
-            print("No rows returned from query")
-            # Debug: Check what sensor IDs exist in the database
-            try:
-                cursor.execute(
-                    f"SELECT DISTINCT {id_column} FROM {full_table_name} ORDER BY {id_column}"
-                )
-                existing_sensors = cursor.fetchall()
-                print(
-                    f"Available sensor IDs in database: {[row[id_column] for row in existing_sensors]}"
-                )
-            except Exception as e:
-                print(f"Could not check existing sensors: {e}")
+            q = query % tuple(params)
+            LOGGER.warning("No rows returned from query:\n%s.", q)
+            # # Debug: Check what sensor IDs exist in the database
+            # try:
+            #     cursor.execute(
+            #         f"SELECT DISTINCT {id_column} FROM {full_table_name} ORDER BY {id_column}"
+            #     )
+            #     existing_sensors = cursor.fetchall()
+            #     print(
+            #         f"Available sensor IDs in database: {[row[id_column] for row in existing_sensors]}"
+            #     )
+            # except Exception as e:
+            #     print(f"Could not check existing sensors: {e}")
 
         if "conn" in locals():
             conn.close()
@@ -660,11 +666,11 @@ def load_from_database(
     except Exception as e:
         if "conn" in locals():
             conn.close()
-        print(f"Error loading data from database: {e}")
+        LOGGER.error("Error loading data from database: %s.", e)
         raise
 
     if not rows:
-        print(f"No data found for table {table_name}")
+        LOGGER.warning("No data found for table %s.", table_name)
         return pd.DataFrame()
 
     # Convert to DataFrame
@@ -685,7 +691,7 @@ def load_from_database(
         resample=resample,
         resample_method=resample_method,
         clip=clip,
-        tz=tz,
+        tz=start_time.tzinfo,
         preserve_order=preserve_order,
     )
 

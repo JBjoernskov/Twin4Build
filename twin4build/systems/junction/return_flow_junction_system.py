@@ -10,12 +10,12 @@ import torch
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -64,9 +64,7 @@ class ReturnFlowJunctionSystem(core.System):
             self.airFlowRateBias = airFlowRateBias
         else:
             self.airFlowRateBias = 0
-        self.n_input_ports = (
-            2  
-        )
+        self.n_input_ports = 2
         self._manual_setup_n_input_ports = False
 
         self.input = {
@@ -94,22 +92,30 @@ class ReturnFlowJunctionSystem(core.System):
 
     def setup_variable_inputs(self):
 
-        #Check that the number of airFlowRateIn and airTemperatureIn are the same
-        connection_point_airFlowRateIn = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateIn"]
-        connection_point_airTemperatureIn = [cp for cp in self.connects_at if cp.inputPort == "airTemperatureIn"]
-        if len(connection_point_airFlowRateIn) != len(connection_point_airTemperatureIn):
-            raise ValueError("The number of airFlowRateIn and airTemperatureIn must be the same")
-        
+        # Check that the number of airFlowRateIn and airTemperatureIn are the same
+        connection_point_airFlowRateIn = [
+            cp for cp in self.connects_at if cp.input_port == "airFlowRateIn"
+        ]
+        connection_point_airTemperatureIn = [
+            cp for cp in self.connects_at if cp.input_port == "airTemperatureIn"
+        ]
+        if len(connection_point_airFlowRateIn) != len(
+            connection_point_airTemperatureIn
+        ):
+            raise ValueError(
+                "The number of airFlowRateIn and airTemperatureIn must be the same"
+            )
+
         if self._manual_setup_n_input_ports == False:
-            #Assert that the number of input ports is at least 1
-            connection_point = [cp for cp in self.connects_at if cp.inputPort == "airFlowRateIn"]
+            # Assert that the number of input ports is at least 1
+            connection_point = [
+                cp for cp in self.connects_at if cp.input_port == "airFlowRateIn"
+            ]
             if len(connection_point) == 0:
                 raise ValueError("No input port found for airFlowRateIn")
             n_input_ports = len(connection_point[0].connects_system_through)
             self.n_input_ports = n_input_ports
-   
-   
-   
+
     def initialize(
         self,
         start_time: Union[List[datetime.datetime], datetime.datetime],
@@ -121,13 +127,12 @@ class ReturnFlowJunctionSystem(core.System):
         )
         batch_size = len(start_time)
         self.setup_variable_inputs()
-        
-        
+
         for input in self.input.values():
             input.initialize(
                 n_t=max_timesteps,
                 n_s=batch_size,
-                n_v=self.n_input_ports, #both inputs must have the same number of input ports
+                n_v=self.n_input_ports,  # both inputs must have the same number of input ports
             )
         for output in self.output.values():
             output.initialize(
@@ -181,13 +186,13 @@ def saref_signature_pattern():
     sp = SignaturePattern(
         id="return_flow_junction_signature_pattern",
     )
-    sp.add_triple(
-        MultiPath(
+    sp.add_rule(
+        AnyPathRule(
             subject=node0, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
         )
     )
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
         )
     )
@@ -214,11 +219,11 @@ def brick_signature_pattern():
     sp = SignaturePattern(
         id="return_flow_junction_signature_pattern_brick",
     )
-    sp.add_triple(
-        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node1, object=node0, predicate=core.namespace.BRICK.feeds)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node1, predicate=core.namespace.BRICK.feeds)
+    sp.add_rule(
+        StepRule(subject=node2, object=node1, predicate=core.namespace.BRICK.feeds)
     )
 
     sp.add_input("airFlowRateIn", node1, "airFlowRate")

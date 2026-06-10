@@ -2,9 +2,11 @@ from __future__ import annotations
 
 # Standard library imports
 import datetime
-from typing import List, Union
+from typing import Any, List, Tuple, Union
 
 # Third party imports
+import torch
+
 # from twin4build.utils.plot.simulation_result import SimulationResult
 from prettytable import PrettyTable
 
@@ -114,6 +116,7 @@ class System:
         self._input = input
         self._output = output
         self._id = id
+        self._n_c = 1  # Number of parallel components (for vectorization)
 
     @classmethod
     def add_signature_pattern(cls, signature_pattern: core.SignaturePattern) -> None:
@@ -194,6 +197,52 @@ class System:
         """
         self._id = value
 
+    @property
+    def n_c(self) -> int:
+        """
+        Get the number of parallel components (for n_c vectorization).
+        """
+        return self._n_c
+
+    @n_c.setter
+    def n_c(self, value: int) -> None:
+        """
+        Set the number of parallel components (for n_c vectorization).
+        """
+        self._n_c = value
+
+    def get_n_v_from_connections(self, input_port_name: str) -> int:
+        """
+        Determine the required n_v (vector size) for a given input port by examining
+        connection points and finding the largest input_port_index.
+
+        Args:
+            input_port_name: Name of the input port to check.
+
+        Returns:
+            int: Required n_v (max index + 1), or 1 if no connections found.
+        """
+        max_index = 0
+        found_connection = False
+
+        for cp in self.connects_at:
+            if cp.input_port == input_port_name:
+                # Get all indices from the input_port_index dict
+                for index in cp.input_port_index.values():
+                    found_connection = True
+                    if isinstance(index, int):
+                        idx_val = index
+                    elif hasattr(index, "max"):
+                        idx_val = int(index.max().item())
+                    else:
+                        idx_val = int(index)
+                    max_index = max(max_index, idx_val)
+
+        n_v = max_index + 1
+        if found_connection == False:
+            n_v = None
+        return n_v  # Default to None if no connections
+
     def initialize(
         self,
         start_time: datetime.datetime,
@@ -235,6 +284,83 @@ class System:
             step_index (int): The current step index.
         """
         pass
+
+    def get_estimable_parameters(
+        self,
+    ) -> List[Tuple[Any, str, float, float, float]]:
+        """Default ``parameters="auto"`` contract for a System.
+
+        Walks the attribute paths in ``self._config["parameters"]`` (the
+        project-wide registry of every tunable knob) and emits one
+        ``(component, attr_path, x0, lb, ub)`` tuple for each entry that
+
+          * resolves to a :class:`torch.nn.Parameter` (e.g. our
+            :class:`twin4build.utils.types.Parameter`) -- skips plain
+            Python floats stored as construction nominals, and
+          * has both ``"lb"`` and ``"ub"`` in its owner's ``parameter``
+            map.
+
+        Owner resolution: ``"thermal.C_air"`` looks up
+        ``self.thermal.parameter["C_air"]`` for bounds; an unprefixed
+        path looks up ``self.parameter[leaf]``.  Subclasses with a
+        bespoke parameter space (e.g.
+        :class:`ControllerIdentificationTorchSystem`) override this with
+        their own discovery logic.
+
+        Returns:
+            List of ``(component, attr_path, x0, lb, ub)`` tuples,
+            possibly empty when the system has no estimable knobs or has
+            not been built yet.
+        """
+        cfg = getattr(self, "_config", None)
+        if not isinstance(cfg, dict):
+            return []
+        paths = cfg.get("parameters", [])
+        if not isinstance(paths, (list, tuple)):
+            return []
+        out: List[Tuple[Any, str, float, float, float]] = []
+        for path in paths:
+            if not isinstance(path, str):
+                continue
+            *prefix, leaf = path.split(".")
+            try:
+                owner = rgetattr(self, ".".join(prefix)) if prefix else self
+            except AttributeError:
+                continue
+            param = getattr(owner, leaf, None)
+            # Duck-typed by ``nn.Parameter`` rather than tps.Parameter so
+            # this module avoids the ``core <-> utils.types`` import
+            # cycle that pulling :class:`tps.Parameter` in here would
+            # create.
+            if not isinstance(param, torch.nn.Parameter):
+                continue
+            spec = getattr(owner, "parameter", None)
+            if not isinstance(spec, dict):
+                continue
+            bounds = spec.get(leaf)
+            if (
+                not isinstance(bounds, dict)
+                or "lb" not in bounds
+                or "ub" not in bounds
+            ):
+                continue
+            lb = float(bounds["lb"])
+            ub = float(bounds["ub"])
+            # Log-scaled ``tps.Parameter`` instances assert ``lb > 0``
+            # inside ``TensorParameter.__init__``.  Skip rather than
+            # surface that assertion inside the estimator's
+            # ``set_parameters`` call: the symptom there is opaque and
+            # this is recoverable by either widening the bound on the
+            # owning component or by leaving the parameter out of
+            # estimation entirely.
+            if getattr(param, "scaling", None) == "log" and lb <= 0.0:
+                continue
+            try:
+                x0 = float(param.get().detach().reshape(-1)[0].item())
+            except Exception:  # noqa: BLE001
+                continue
+            out.append((self, path, x0, lb, ub))
+        return out
 
     def populate_config(self) -> dict:
         """

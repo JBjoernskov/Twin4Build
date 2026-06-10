@@ -17,14 +17,14 @@ class ConnectionPoint:
     Args:
         connection_point_of: The system that the connection point is part of. Defaults to None.
         connects_system_through: A list of systems that the connection point connects to. Defaults to None.
-        inputPort: The name of the property that the connection point receives. Defaults to None.
+        input_port: The name of the property that the connection point receives. Defaults to None.
     """
 
     def __init__(
         self,
         connection_point_of: Union[core.System, None] = None,
         connects_system_through: Union[list, None] = None,
-        inputPort: Optional[str] = None,
+        input_port: Optional[str] = None,
     ):
         """
         Initialize a ConnectionPoint object.
@@ -32,7 +32,7 @@ class ConnectionPoint:
         Args:
             connection_point_of: The system that the connection point is part of. Defaults to None.
             connects_system_through: A list of systems that the connection point connects to. Defaults to None.
-            inputPort: The name of the property that the connection point receives. Defaults to None.
+            input_port: The name of the property that the connection point receives. Defaults to None.
         """
         assert (
             isinstance(connection_point_of, core.System) or connection_point_of is None
@@ -52,9 +52,9 @@ class ConnectionPoint:
             + str(list)
             + '"'
         )
-        assert isinstance(inputPort, str) or inputPort is None, (
-            'Attribute "inputPort" is of type "'
-            + str(type(inputPort))
+        assert isinstance(input_port, str) or input_port is None, (
+            'Attribute "input_port" is of type "'
+            + str(type(input_port))
             + '" but must be of type "'
             + str(str)
             + '"'
@@ -62,7 +62,7 @@ class ConnectionPoint:
         # Store attributes as private variables
         self._connectionPointOf = connection_point_of
         self._connectsSystemThrough = connects_system_through
-        self._inputPort = inputPort
+        self._input_port = input_port
 
         if self._connectsSystemThrough is None:
             self._connectsSystemThrough = []
@@ -101,18 +101,18 @@ class ConnectionPoint:
         self._connectsSystemThrough = value
 
     @property
-    def inputPort(self) -> Optional[str]:
+    def input_port(self) -> Optional[str]:
         """
         Get the name of the property that the connection point receives.
         """
-        return self._inputPort
+        return self._input_port
 
-    @inputPort.setter
-    def inputPort(self, value: Optional[str]) -> None:
+    @input_port.setter
+    def input_port(self, value: Optional[str]) -> None:
         """
         Set the name of the property that the connection point receives.
         """
-        self._inputPort = value
+        self._input_port = value
 
     @property
     def input_port_index(self) -> Union[int, torch.Tensor]:

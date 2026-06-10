@@ -2,7 +2,6 @@
 import datetime
 import random
 import warnings
-from random import randrange
 from typing import Optional
 
 # Third party imports
@@ -13,7 +12,7 @@ import torch
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
+from twin4build.translator.translator import StepRule, Node, SignaturePattern, PathRule
 from twin4build.utils.deprecation import deprecate_args
 
 
@@ -58,6 +57,8 @@ class ScheduleSystem(core.System):
         saturdayRulesetDict: dict = None,
         sundayRulesetDict: dict = None,
         add_noise: bool = False,
+        noise_hour_range: float = 4.0,
+        noise_day_range: float = 10.0,
         use_spreadsheet: bool = False,
         use_database: bool = False,
         use_dict: bool = False,
@@ -127,6 +128,9 @@ class ScheduleSystem(core.System):
         self._saturdayRulesetDict = saturdayRulesetDict
         self._sundayRulesetDict = sundayRulesetDict
         self.add_noise = add_noise
+        self.noise_cache = {}
+        self.noise_hour_range = float(noise_hour_range)
+        self.noise_day_range = float(noise_day_range)
         self._use_spreadsheet = use_spreadsheet
         self._use_database = use_database
         self._use_dict = use_dict
@@ -136,7 +140,7 @@ class ScheduleSystem(core.System):
         self._uuid = uuid
         self._name = name
         self._dbconfig = dbconfig
-        random.seed(0)
+
         self.input = {}
         self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
         self._config = {
@@ -151,6 +155,8 @@ class ScheduleSystem(core.System):
                 "saturdayRulesetDict",
                 "sundayRulesetDict",
                 "add_noise",
+                "noise_hour_range",
+                "noise_day_range",
                 "use_spreadsheet",
                 "use_database",
                 "use_dict",
@@ -480,6 +486,7 @@ class ScheduleSystem(core.System):
         end_time: datetime.datetime,
         step_size: int,
     ) -> None:
+        random.seed(0)
         self.noise = 0
         self.bias = 0
         assert (
@@ -492,26 +499,26 @@ class ScheduleSystem(core.System):
             self.use_spreadsheet or self.use_database or self.use_dict
         ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: One of use_spreadsheet, use_database, or use_dict must be True."
 
-        if self.mondayRulesetDict is None:
-            self.mondayRulesetDict = self.weekDayRulesetDict
-        if self.tuesdayRulesetDict is None:
-            self.tuesdayRulesetDict = self.weekDayRulesetDict
-        if self.wednesdayRulesetDict is None:
-            self.wednesdayRulesetDict = self.weekDayRulesetDict
-        if self.thursdayRulesetDict is None:
-            self.thursdayRulesetDict = self.weekDayRulesetDict
-        if self.fridayRulesetDict is None:
-            self.fridayRulesetDict = self.weekDayRulesetDict
-        if self.saturdayRulesetDict is None:
-            if self.weekendRulesetDict is None:
-                self.saturdayRulesetDict = self.weekDayRulesetDict
+        if self._mondayRulesetDict is None:
+            self._mondayRulesetDict = self._weekDayRulesetDict
+        if self._tuesdayRulesetDict is None:
+            self._tuesdayRulesetDict = self._weekDayRulesetDict
+        if self._wednesdayRulesetDict is None:
+            self._wednesdayRulesetDict = self._weekDayRulesetDict
+        if self._thursdayRulesetDict is None:
+            self._thursdayRulesetDict = self._weekDayRulesetDict
+        if self._fridayRulesetDict is None:
+            self._fridayRulesetDict = self._weekDayRulesetDict
+        if self._saturdayRulesetDict is None:
+            if self._weekendRulesetDict is None:
+                self._saturdayRulesetDict = self._weekDayRulesetDict
             else:
-                self.saturdayRulesetDict = self.weekendRulesetDict
-        if self.sundayRulesetDict is None:
-            if self.weekendRulesetDict is None:
-                self.sundayRulesetDict = self.weekDayRulesetDict
+                self._saturdayRulesetDict = self._weekendRulesetDict
+        if self._sundayRulesetDict is None:
+            if self._weekendRulesetDict is None:
+                self._sundayRulesetDict = self._weekDayRulesetDict
             else:
-                self.sundayRulesetDict = self.weekendRulesetDict
+                self._sundayRulesetDict = self._weekendRulesetDict
         if self.use_dict:
             assert (
                 self.mondayRulesetDict is not None
@@ -603,16 +610,37 @@ class ScheduleSystem(core.System):
             for batch_index, (date_time_steps_, n_timesteps_) in enumerate(
                 zip(date_time_steps, n_timesteps)
             ):
+
                 # OLD: Only compute schedule values for actual timesteps
                 values[batch_index, :n_timesteps_] = [
                     self.get_schedule_value(date_time)
                     for date_time in date_time_steps_[:n_timesteps_]
                 ]
-                values[batch_index, n_timesteps_:] = values[
-                    batch_index, n_timesteps_ - 1
-                ]
+                # ``n_timesteps_ == 0`` means the requested period has zero
+                # length (start_time >= end_time, or step_size larger than
+                # the period).  The pad-with-last-value step below would
+                # then index ``values[batch, -1]`` on an empty axis -- skip
+                # the pad and let the upstream simulator raise the real
+                # validation error instead of an opaque ``IndexError``.
+                if n_timesteps_ > 0:
+                    values[batch_index, n_timesteps_:] = values[
+                        batch_index, n_timesteps_ - 1
+                    ]
                 # NEW: Compute schedule values for ALL timesteps (including extended dates for shorter periods)
                 # values[batch_index,:] = [self.get_schedule_value(date_time) for date_time in date_time_steps_]
+
+                if self.add_noise:
+                    # cache noise
+                    index = (
+                        start_time[batch_index],
+                        end_time[batch_index],
+                        step_size[batch_index],
+                    )
+                    if index not in self.noise_cache:
+                        self.noise_cache[index] = self.get_noise(
+                            date_time_steps_[:n_timesteps_]
+                        )
+                    values[batch_index, :n_timesteps_] += self.noise_cache[index]
 
             assert not np.isnan(
                 values
@@ -622,7 +650,9 @@ class ScheduleSystem(core.System):
 
             # Convert values from (n_s, n_t) to time-first (n_t, n_s, n_c) where n_c=1
             # First transpose to (n_t, n_s), then unsqueeze to (n_t, n_s, 1)
-            values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(-1)  # (n_t, n_s, 1)
+            values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(
+                -1
+            )  # (n_t, n_s, 1)
             self.output["scheduleValue"].initialize(
                 n_t=max_timesteps,
                 n_s=len(start_time),
@@ -630,16 +660,40 @@ class ScheduleSystem(core.System):
                 values=values,
             )
 
-    def get_schedule_value(self, date_time):
-        if (
-            date_time.minute == 0
-        ):  # Compute a new noise value if a new hour is entered in the simulation
-            self.noise = randrange(-4, 4)
+    def get_noise(self, date_time_steps):
+        noise = []
+        for date_time in date_time_steps:
+            if (
+                date_time.minute == 0
+            ):  # Compute a new noise value if a new hour is entered in the simulation
+                noise_hour = random.uniform(
+                    -self.noise_hour_range, self.noise_hour_range
+                )
+            if (
+                date_time.hour == 0 and date_time.minute == 0
+            ):  # Compute a new bias value if a new day is entered in the simulation
+                noise_day = random.uniform(-self.noise_day_range, self.noise_day_range)
+            noise.append(noise_hour + noise_day)
+        return np.array(noise)
 
-        if (
-            date_time.hour == 0 and date_time.minute == 0
-        ):  # Compute a new bias value if a new day is entered in the simulation
-            self.bias = randrange(-10, 10)
+    def get_schedule_value(self, date_time):
+
+        # if self.add_noise:
+        #     if (
+        #         date_time.minute == 0
+        #     ):  # Compute a new noise value if a new hour is entered in the simulation
+
+        #         self.noise = random.uniform(
+        #             -self.noise_hour_range, self.noise_hour_range
+        #         )
+
+        #     if (
+        #         date_time.hour == 0 and date_time.minute == 0
+        #     ):  # Compute a new bias value if a new day is entered in the simulation
+
+        #         self.bias = random.uniform(
+        #             -self.noise_day_range, self.noise_day_range
+        #         )
 
         if date_time.weekday() == 0:
             rulesetDict = self.mondayRulesetDict
@@ -683,10 +737,10 @@ class ScheduleSystem(core.System):
 
         if found_match == False:
             schedule_value = rulesetDict["ruleset_default_value"]
-        elif self.add_noise and schedule_value > 0:
-            schedule_value += self.noise + self.bias
-            if schedule_value < 0:
-                schedule_value = 0
+        # elif self.add_noise and schedule_value > 0:
+        #     schedule_value += self.noise + self.bias
+        #     if schedule_value < 0:
+        #         schedule_value = 0
         return schedule_value
 
     def do_step(

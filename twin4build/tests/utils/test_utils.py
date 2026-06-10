@@ -7,12 +7,16 @@ import unittest
 from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.uppath import uppath
 from twin4build.utils.validate_period import validate_period
+
+twin4build._IS_TESTING = True
 
 
 class TestUppath(unittest.TestCase):
@@ -289,7 +293,6 @@ class TestDataLoaders(unittest.TestCase):
             end_time=end_time,
             resample=True,
             clip=True,
-            tz="UTC",
         )
 
         self.assertIsNotNone(result)
@@ -324,7 +327,6 @@ class TestDataLoaders(unittest.TestCase):
             resample=True,
             resample_method="constant",
             clip=True,
-            tz="UTC",
         )
 
         self.assertIsNotNone(result)
@@ -360,7 +362,6 @@ class TestDataLoaders(unittest.TestCase):
             end_time=end_time,
             resample=False,
             clip=True,
-            tz="UTC",
         )
 
         self.assertIsNotNone(result)
@@ -379,7 +380,6 @@ class TestDataLoaders(unittest.TestCase):
             start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=5,
             freq="1h",
-            tz="UTC",
         )
         df = pd.DataFrame({"date_time": dates, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
 
@@ -395,7 +395,6 @@ class TestDataLoaders(unittest.TestCase):
             end_time=end_time,
             resample=True,
             clip=True,
-            tz="UTC",
         )
 
         self.assertIsNotNone(result)
@@ -435,7 +434,6 @@ class TestDataLoaders(unittest.TestCase):
             end_time=end_time,
             resample=True,
             clip=True,
-            tz="UTC",
         )
 
         self.assertIsNotNone(result)
@@ -475,7 +473,6 @@ class TestDataLoaders(unittest.TestCase):
             end_time=end_time,
             resample=True,
             clip=True,
-            tz="UTC",
             preserve_order=True,
         )
 
@@ -631,7 +628,6 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
                 resample=True,
                 clip=True,
                 cache=False,  # Disable caching for test
-                tz="UTC",
             )
 
             self.assertIsNotNone(result)
@@ -683,7 +679,6 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
                 resample=True,
                 clip=True,
                 cache=True,
-                tz="UTC",
             )
 
             # Second load - should use cache
@@ -697,7 +692,6 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
                 resample=True,
                 clip=True,
                 cache=True,
-                tz="UTC",
             )
 
             self.assertIsNotNone(result1)
@@ -750,7 +744,6 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
                 resample=True,
                 clip=True,
                 cache=False,
-                tz="UTC",
             )
 
             self.assertIsNotNone(result)
@@ -1276,12 +1269,11 @@ class TestGetMainDir(unittest.TestCase):
         self.assertTrue(os.path.isdir(main_dir))
 
 
-
 class TestPrintProgress(unittest.TestCase):
     def test_print_progress_initialization(self):
         """Test PrintProgress initialization."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertIsNotNone(p)
@@ -1293,13 +1285,16 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_enable_disable(self):
         """Test PrintProgress enable/disable functionality."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
         # Auto-disabled in test environments
         self.assertFalse(p.enabled)
 
         p.enable()
+        self.assertFalse(p.enabled)
+
+        p._allow_in_tests = True
         self.assertTrue(p.enabled)
 
         p.disable()
@@ -1308,7 +1303,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_verbose_setting(self):
         """Test PrintProgress verbose setting."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertEqual(p.verbose, 3)
@@ -1322,7 +1317,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_add_line(self):
         """Test PrintProgress add_line method."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
         p.add_line(indent="  ", message="Test message", status="OK")
@@ -1335,7 +1330,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_get_char_level(self):
         """Test PrintProgress get_char_level method."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
 
@@ -1349,7 +1344,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_current_level(self):
         """Test PrintProgress current_level property."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertEqual(p.current_level, 0)
@@ -1360,9 +1355,10 @@ class TestPrintProgress(unittest.TestCase):
         from unittest.mock import patch
 
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
+        p._allow_in_tests = True
         p.enable()  # Enable to test add_level functionality
 
         # Mock only print_lines to prevent terminal manipulation
@@ -1382,9 +1378,10 @@ class TestPrintProgress(unittest.TestCase):
         from unittest.mock import patch
 
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
+        p._allow_in_tests = True
         p.enable()  # Enable for this test (auto-disabled in test environments)
         p.verbose = 3
 
@@ -1400,7 +1397,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_call_disabled(self):
         """Test PrintProgress __call__ when disabled."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
         # Instance is auto-disabled in test environments
@@ -1415,7 +1412,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_context_manager(self):
         """Test PrintProgress as context manager."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         # Instance is auto-disabled in test environments
         with PrintProgress() as p:
@@ -1425,7 +1422,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_is_interactive(self):
         """Test PrintProgress is_interactive method."""
         # Local application imports
-        from twin4build.utils.print_progress import PrintProgress
+        from twin4build.utils.print_progress import Logger as PrintProgress
 
         p = PrintProgress()
         # This should return True or False depending on environment
@@ -1533,7 +1530,9 @@ class TestPrintEstimationResult(unittest.TestCase):
         from twin4build.utils.print_estimation_result import print_estimation_result
 
         # Create a temporary pickle file
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=".pickle", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", suffix=".pickle", delete=False
+        ) as f:
             pickle.dump(self.result_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
             temp_file = f.name
 

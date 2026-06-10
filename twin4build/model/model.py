@@ -15,7 +15,7 @@ from prettytable import PrettyTable
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, autoreset_print
+from twin4build.utils.print_progress import LOGGER, autoreset_print
 
 
 @autoreset_print
@@ -222,7 +222,52 @@ class Model:
             dir_conf=self.dir_conf + ["simulation_model"],
             id=f"{self._id}_simulation_model",
         )
+        self._translator = None
         self._component_to_meta: Dict[str, Tuple[Any, int]] = {}
+
+    @classmethod
+    def from_translation(
+        cls,
+        *,
+        id: str,
+        semantic_model: "core.SemanticModel",
+        simulation_model: "core.SimulationModel",
+        translator: "core.Translator",
+    ) -> "Model":
+        """Wrap the three artefacts produced by :meth:`Translator.translate`
+        into a :class:`Model` without re-creating empty halves.
+
+        Used by the translator to return a fully-wired Model. End users do
+        not normally call this; build a Model from scratch with
+        ``Model(id=...)`` or via ``Translator().translate(semantic_model)``.
+
+        Args:
+            id: The Model id (drives the on-disk directory layout under
+                ``generated_files/models/<id>/``).
+            semantic_model: The semantic model the translator consumed.
+            simulation_model: The simulation graph the translator produced.
+            translator: The translator instance whose ``sim2sem_map`` /
+                ``sem2sim_map`` link the two models.
+        """
+        m = cls.__new__(cls)
+        m._id = id
+        m._dir_conf = ["generated_files", "models", id]
+        m._semantic_model = semantic_model
+        m._simulation_model = simulation_model
+        m._translator = translator
+        # Re-anchor on-disk directories so semantic_model and simulation_model
+        # share the same Model-level parent.  Each underlying model exposes a
+        # ``dir_conf`` setter that keeps internal sub-paths in sync.
+        try:
+            m._semantic_model.dir_conf = m._dir_conf + ["semantic_model"]
+        except Exception:
+            pass
+        try:
+            m._simulation_model.dir_conf = m._dir_conf + ["simulation_model"]
+        except Exception:
+            pass
+        return m
+
 
     @property
     def id(self) -> str:
@@ -318,8 +363,8 @@ class Model:
         self,
         sender_component: "core.System",
         receiver_component: "core.System",
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
         output_port_index: [int, torch.Tensor] = None,
         input_port_index: [int, torch.Tensor] = None,
     ) -> None:
@@ -329,8 +374,8 @@ class Model:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
@@ -338,8 +383,8 @@ class Model:
         self.simulation_model.add_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
-            outputPort=outputPort,
-            inputPort=inputPort,
+            output_port=output_port,
+            input_port=input_port,
             output_port_index=output_port_index,
             input_port_index=input_port_index,
         )
@@ -348,8 +393,8 @@ class Model:
         self,
         sender_component: "core.System",
         receiver_component: "core.System",
-        outputPort: str,
-        inputPort: str,
+        output_port: str,
+        input_port: str,
     ) -> None:
         """
         Remove a connection between two components in the system.
@@ -357,8 +402,8 @@ class Model:
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            outputPort (str): Name of the sender property.
-            inputPort (str): Name of the receiver property.
+            output_port (str): Name of the sender property.
+            input_port (str): Name of the receiver property.
 
         Raises:
             ValueError: If the specified connection does not exist.
@@ -366,8 +411,8 @@ class Model:
         self.simulation_model.remove_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
-            outputPort=outputPort,
-            inputPort=inputPort,
+            output_port=output_port,
+            input_port=input_port,
         )
 
     def get_component_by_class(
@@ -495,6 +540,173 @@ class Model:
         """
         self.simulation_model.restore_parameters(keep_values=keep_values)
 
+    # ------------------------------------------------------------------
+    # Dataset-configuration helpers (bridging semantic + simulation)
+    # ------------------------------------------------------------------
+    def set_dbconfigs(self, dbconfig: Dict[str, Any]) -> "Model":
+        """Apply a database configuration to every applicable component.
+
+        Facade for :meth:`SimulationModel.set_dbconfigs`. Returns ``self``
+        for chaining.
+        """
+        self.simulation_model.set_dbconfigs(dbconfig)
+        return self
+
+    def fill_missing_inputs(self, defaults: Dict[Any, Any]) -> "Model":
+        """Attach providers (constants or user-supplied systems) for
+        input ports the ontology did not wire.
+
+        Facade for :meth:`SimulationModel.fill_missing_inputs`; see that
+        method's docstring for the full key/value shape grammar.  In
+        short, ``defaults`` accepts both port-only entries (``str ->
+        value``) and component-scoped entries (``(component | id, port)
+        -> value``); values may be scalars (wrapped in a flat schedule),
+        :class:`core.System` providers (single-output auto-detected),
+        or ``(provider, output_port)`` tuples.  Returns ``self`` for
+        chaining.
+        """
+        self.simulation_model.fill_missing_inputs(defaults)
+        return self
+
+    def rewire(
+        self,
+        *,
+        start_time: Any,
+        end_time: Any,
+        step_size: int,
+        mode: str = "train",
+        **rewire_kwargs: Any,
+    ) -> "Model":
+        """Run the data-driven CITS rewire over the model's graph.
+
+        Should be called **before** :meth:`load` -- see
+        :meth:`SimulationModel.rewire` for the rationale.  Facade for
+        :meth:`SimulationModel.rewire`; in particular the ``mode``
+        kwarg selects gate-active (``"train"``) vs gate-bypassed
+        (``"simulate"``) frozen-pin configuration.
+
+        Returns:
+            ``self`` for chaining.
+        """
+        self.simulation_model.rewire(
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            mode=mode,
+            **rewire_kwargs,
+        )
+        return self
+
+    def set_transformations(
+        self, mapping: Dict[Any, Callable[[Any], Any]]
+    ) -> "Model":
+        """Apply unit-conversion callables to components by semantic class.
+
+        Keys are RDF class IRIs (``rdflib.URIRef``, strings, or
+        :class:`SemanticType` instances; e.g. ``BRICK.Temperature_Sensor``).
+        Each simulation component's semantic counterpart is looked up via
+        ``self._translator.sim2sem_map``; its rdf:types (with
+        ``rdfs:subClassOf`` transitive closure from the embedded
+        :class:`SemanticModel`) are matched against the mapping.
+
+        Most-specific class wins on ambiguity: when two rule keys both
+        match a component's types, the rule whose key is a subclass of
+        the other's is preferred.  Identical-specificity collisions log
+        a warning and the first-declared rule is kept.
+
+        Components implement ``set_transformation(self, fn)``; components
+        without that method are silently skipped (so this is safe to call
+        on heterogeneous models where only e.g. ``SensorSystem`` cares
+        about transformations).
+
+        This is a real method (not a facade) because it requires the
+        semantic + sim2sem map that only ``Model`` carries; the
+        underlying ``SimulationModel`` is intentionally kept ontology-
+        free.
+
+        Returns:
+            ``self`` for chaining.
+
+        Raises:
+            RuntimeError: When the model was not produced by a Translator
+                (no ``sim2sem_map`` available).  Build the model via
+                ``Translator().translate(semantic_model)`` to use this
+                helper.
+        """
+        if self._translator is None:
+            raise RuntimeError(
+                "Model.set_transformations requires a translator-built "
+                "model (no sim2sem_map is available on this Model). "
+                "Construct the Model via "
+                "`Translator().translate(semantic_model)` to use this "
+                "helper, or set per-component transformations directly "
+                "via `component.set_transformation(fn)`."
+            )
+        sim2sem = self._translator.sim2sem_map
+        semantic = self._semantic_model
+
+        # Resolve every rule key to a SemanticType so we can compare in
+        # the (rdfs:subClassOf-closed) class hierarchy.  Accept URIRef,
+        # plain str, or pre-built SemanticType instances.
+        rules: List[Tuple[Any, Callable[[Any], Any], Any]] = []
+        for key, fn in mapping.items():
+            if isinstance(key, core.SemanticType):
+                stype = key
+            else:
+                stype = semantic.get_type(key)
+            rules.append((stype, fn, key))
+
+        def _is_strict_subclass(a, b) -> bool:
+            """``True`` iff ``a`` is a strict subclass of ``b``."""
+            if str(a.uri) == str(b.uri):
+                return False
+            return any(str(sc.uri) == str(b.uri) for sc in a.super_classes)
+
+        for component in self._simulation_model.components.values():
+            setter = getattr(component, "set_transformation", None)
+            if not callable(setter):
+                continue
+            semantic_nodes = sim2sem.get(component)
+            if not semantic_nodes:
+                continue
+
+            # Gather every rule that matches at least one of the
+            # component's semantic counterparts.
+            matched: List[Tuple[Any, Callable[[Any], Any], Any]] = []
+            for stype, fn, original_key in rules:
+                hit = False
+                for node in semantic_nodes:
+                    isinstance_check = getattr(node, "isinstance", None)
+                    if callable(isinstance_check) and isinstance_check(
+                        stype.uri
+                    ):
+                        hit = True
+                        break
+                if hit:
+                    matched.append((stype, fn, original_key))
+
+            if not matched:
+                continue
+
+            # Most-specific wins; first-declared on ties.
+            winner = matched[0]
+            for cand in matched[1:]:
+                if _is_strict_subclass(cand[0], winner[0]):
+                    winner = cand
+                elif _is_strict_subclass(winner[0], cand[0]):
+                    continue
+                else:
+                    warnings.warn(
+                        f"set_transformations: rules for {cand[2]!r} and "
+                        f"{winner[2]!r} both match component "
+                        f"{component.id!r} with no subclass relationship; "
+                        f"keeping the first-declared rule ({winner[2]!r}).",
+                        stacklevel=2,
+                    )
+            setter(winner[1])
+
+        return self
+
     def cache(
         self,
         start_time: Optional[datetime.datetime] = None,
@@ -558,7 +770,7 @@ class Model:
         fcn: Optional[Callable] = None,
         draw_semantic_model: bool = True,
         draw_simulation_model: bool = True,
-        verbose: Union[int, None] = None,
+        # verbose: Union[int, None] = None,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
         logfile: Optional[str] = None,
@@ -575,14 +787,14 @@ class Model:
             validate_model: Whether to perform model validation.
             logfile: Path to the log file.
         """
-        if verbose:
+        if LOGGER.verbose:
             self._load(
                 semantic_model_filename=semantic_model_filename,
                 simulation_model_filename=simulation_model_filename,
                 fcn=fcn,
                 draw_semantic_model=draw_semantic_model,
                 draw_simulation_model=draw_simulation_model,
-                verbose=verbose,
+                # verbose=verbose,
                 validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
                 logfile=logfile,
@@ -596,7 +808,7 @@ class Model:
                     fcn=fcn,
                     draw_semantic_model=draw_semantic_model,
                     draw_simulation_model=draw_simulation_model,
-                    verbose=verbose,
+                    # verbose=verbose,
                     validate_model=validate_model,
                     force_config_overwrite=force_config_overwrite,
                     logfile=logfile,
@@ -609,7 +821,7 @@ class Model:
         fcn: Optional[Callable],
         draw_semantic_model: bool,
         draw_simulation_model: bool,
-        verbose: int,
+        # verbose: int,
         validate_model: bool,
         force_config_overwrite: bool,
         logfile: Optional[str],
@@ -637,16 +849,16 @@ class Model:
         #     warnings.warn("The model is already loaded. Resetting model.")
         #     self.reset()
 
-        if verbose is not None:
-            PRINTPROGRESS.verbose = verbose
-        PRINTPROGRESS.logfile = logfile
+        # if verbose is not None:
+        #     LOGGER.verbose = verbose
+        LOGGER.logfile = logfile
 
-        PRINTPROGRESS("Loading model", status="")
-        PRINTPROGRESS.add_level()
+        LOGGER.task("Loading model")
+        LOGGER.add_level()
         # self.add_outdoor_environment()
         if semantic_model_filename is not None:
             apply_translator = True
-            PRINTPROGRESS("Parsing semantic model", status="")
+            LOGGER.task("Parsing semantic model")
             self._semantic_model = core.SemanticModel(
                 rdf_file=semantic_model_filename,
                 namespaces={"T4B": core.namespace.T4B},
@@ -654,34 +866,36 @@ class Model:
                 id=f"{self._id}_semantic_model",
             )
             # self._semantic_model.reason()
-            PRINTPROGRESS("Parsing semantic model", status="[OK]", change_status=True)
+            LOGGER.ok("Parsing semantic model", change_status=True)
             if draw_semantic_model:
                 app_path = shutil.which("dot")
                 assert (
                     app_path is not None
                 ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
-                PRINTPROGRESS("Drawing semantic model", status="")
-                PRINTPROGRESS.add_level()
-                self._semantic_model.visualize(format="svg")
-                PRINTPROGRESS.remove_level()
-                PRINTPROGRESS(
-                    "Drawing semantic model", status="[OK]", change_status=True
-                )
+                LOGGER.task("Drawing semantic model")
+                LOGGER.add_level()
+                self._semantic_model.visualize()
+                LOGGER.remove_level()
+                LOGGER.ok("Drawing semantic model", change_status=True)
 
         else:
             apply_translator = False
 
         if apply_translator:
             self._translator = core.Translator()
-            self._simulation_model = self._translator.translate(
-                self._semantic_model, verbose=verbose
+            # ``translate`` now returns a fully-wired ``Model``; extract the
+            # simulation half and discard the wrapper since ``self`` is the
+            # Model we are populating here.
+            translated_model = self._translator.translate(
+                self._semantic_model
             )
+            self._simulation_model = translated_model.simulation_model
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
 
         self._simulation_model.load(
             rdf_file=simulation_model_filename,
             fcn=fcn,
-            verbose=verbose,
+            # verbose=verbose,
             validate_model=validate_model,
             force_config_overwrite=force_config_overwrite,
             logfile=logfile,
@@ -694,16 +908,16 @@ class Model:
                 app_path is not None
             ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
 
-            PRINTPROGRESS("Drawing simulation model", status="")
-            PRINTPROGRESS.add_level()
-            self._simulation_model.visualize(format="svg")
-            PRINTPROGRESS("Drawing simulation model", status="[OK]", change_status=True)
-            PRINTPROGRESS.remove_level()
+            LOGGER.task("Drawing simulation model")
+            LOGGER.add_level()
+            self._simulation_model.visualize()
+            LOGGER.remove_level()
+            LOGGER.ok("Drawing simulation model", change_status=True)
 
-        PRINTPROGRESS.remove_level()
-        PRINTPROGRESS("Loading model", status="[OK]", change_status=True)
+        LOGGER.remove_level()
+        LOGGER.ok("Loading model", change_status=True)
 
-        # PRINTPROGRESS.reset()
+        # LOGGER.reset()
 
     def fcn(self) -> None:
         """
@@ -714,7 +928,10 @@ class Model:
         self.simulation_model.set_save_simulation_result(flag=flag, c=c)
 
     def load_estimation_result(
-        self, filename: Optional[str] = None, result: Optional[Dict] = None
+        self,
+        filename: Optional[str] = None,
+        result: Optional[Dict] = None,
+        # verbose: int = 0,
     ) -> None:
         """
         Load a chain log from a file or dictionary.
@@ -722,11 +939,16 @@ class Model:
         Args:
             filename (Optional[str]): The filename to load the chain log from.
             result (Optional[Dict]): The chain log dictionary to load.
+            verbose (int): If > 0, print applied parameter values for verification.
 
         Raises:
             AssertionError: If invalid arguments are provided.
         """
-        self.simulation_model.load_estimation_result(filename=filename, result=result)
+        self.simulation_model.load_estimation_result(
+            filename=filename,
+            result=result,
+            # verbose=verbose,
+        )
 
     def check_for_for_missing_initial_values(self) -> None:
         """
@@ -760,10 +982,22 @@ class Model:
 
     def serialize(self) -> None:
         """
-        Serialize the model.
+        Serialize both halves of the model.
         """
         self._semantic_model.serialize()
         self._simulation_model.serialize()
+
+    def visualize(self, **kwargs) -> None:
+        """
+        Visualize the model.  Keyword arguments are forwarded to
+        :meth:`SimulationModel.visualize` (e.g. ``forward_only=True``,
+        ``compressed=True``).  The semantic model is only re-drawn when
+        called without arguments to match the standalone behaviour.
+        """
+        if not kwargs:
+            self._semantic_model.visualize()
+        self._simulation_model.visualize(**kwargs)
+
 
     def build_compiled_model(self) -> "Model":
         """Build a compiled Model with batched meta components.
@@ -864,16 +1098,16 @@ class Model:
 
                         key = (
                             id(s_meta),
-                            conn.outputPort,
+                            conn.output_port,
                             id(r_meta),
-                            cp.inputPort,
+                            cp.input_port,
                         )
                         if key not in connection_map:
                             connection_map[key] = {
                                 "s_meta": s_meta,
                                 "r_meta": r_meta,
-                                "outputPort": conn.outputPort,
-                                "inputPort": cp.inputPort,
+                                "output_port": conn.output_port,
+                                "input_port": cp.input_port,
                                 "out_v_idx": cp.output_port_index.get(conn),
                                 "in_v_idx": cp.input_port_index.get(conn),
                                 "ic_pairs": [],
@@ -884,8 +1118,8 @@ class Model:
             compiled.add_connection(
                 info["s_meta"],
                 info["r_meta"],
-                info["outputPort"],
-                info["inputPort"],
+                info["output_port"],
+                info["input_port"],
                 output_port_index=info["out_v_idx"],
                 input_port_index=info["in_v_idx"],
             )
@@ -912,12 +1146,12 @@ class Model:
             # Walk the compiled model's connection graph to find the
             # ConnectionPoint + Connection objects we just created.
             for cp in info["r_meta"].connects_at:
-                if cp.inputPort != info["inputPort"]:
+                if cp.input_port != info["input_port"]:
                     continue
                 for conn_obj in cp.connects_system_through:
                     if (
                         conn_obj.connects_system is info["s_meta"]
-                        and conn_obj.outputPort == info["outputPort"]
+                        and conn_obj.output_port == info["output_port"]
                     ):
                         cp.set_output_component_index(conn_obj, s_ics)
                         cp.set_input_component_index(conn_obj, r_ics)
@@ -1138,14 +1372,14 @@ class Model:
         if isinstance(source, BuildingSpaceTorchSystem):
             cp_boundary = [
                 cp for cp in source.connects_at
-                if cp.inputPort == "boundaryTemperature"
+                if cp.input_port == "boundaryTemperature"
             ]
             n_boundary = (
                 len(cp_boundary[0].connects_system_through) if cp_boundary else 0
             )
             cp_adj = [
                 cp for cp in source.connects_at
-                if cp.inputPort == "adjacentZoneTemperature"
+                if cp.input_port == "adjacentZoneTemperature"
             ]
             n_adj = (
                 len(cp_adj[0].connects_system_through) if cp_adj else 0

@@ -15,11 +15,11 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import (
-    Exact,
+    StepRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 from twin4build.utils.data_loaders.load import load_from_database, load_from_spreadsheet
 from twin4build.utils.deprecation import deprecate_args
@@ -192,6 +192,20 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             torch.tensor(b, dtype=torch.float64), requires_grad=False
         )
         self.apply_correction = apply_correction
+        # Per-feed unit transformation populated by :meth:`set_transformation`
+        # (called from ``Model.set_transformations`` via the per-class
+        # dispatcher).  Only ``outdoorTemperature`` participates in the
+        # dispatcher today because the BRICK pattern adds
+        # ``Outside_Air_Temperature_Sensor`` (a subclass of
+        # ``Temperature_Sensor``) as a modeled node on this component,
+        # so the F→C rule keyed by ``Temperature_Sensor`` is the most-
+        # specific match.  ``globalIrradiation`` / ``outdoorCo2Concentration``
+        # do not have a Temperature_Sensor-compatible binding, so no
+        # F→C rule resolves to them; if a project ever needs a sibling
+        # unit conversion for those feeds (e.g. langley/min → W/m²),
+        # add a dedicated entry in :data:`TRANSFORMATIONS` and extend
+        # this hook with feed-specific setters.
+        self._transformation_outdoorTemperature = None
         self.cached_initialize_arguments = []
         self.cache_root = get_main_dir()
 
@@ -447,6 +461,20 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             self._use_spreadsheet = False
             self._use_df = False
 
+    def set_dbconfig(self, dbconfig) -> None:
+        """Apply the same database configuration to every per-feed slot.
+
+        The outdoor environment carries three independent timeseries
+        (``outdoorTemperature`` / ``globalIrradiation`` /
+        ``outdoorCo2Concentration``); a model-level
+        :meth:`SimulationModel.set_dbconfigs` call dispatches here and
+        we fan the shared ``dbconfig`` across all three.  Per-feed
+        overrides remain available via the individual properties.
+        """
+        self.dbconfig_outdoorTemperature = dbconfig
+        self.dbconfig_globalIrradiation = dbconfig
+        self.dbconfig_outdoorCo2Concentration = dbconfig
+
     @property
     def input(self) -> dict:
         """
@@ -574,7 +602,13 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             else:
                 df_temp = df_irrad = df_co2 = None
 
-            # Use TimeSeriesInputSystem for each weather parameter (handles batching correctly)
+            # Use TimeSeriesInputSystem for each weather parameter (handles batching correctly).
+            # ``transformation`` is applied INSIDE ``time_series_temp.initialize``
+            # (see :class:`TimeSeriesInputSystem`) so ``time_series_temp.values``
+            # already carries the converted values (e.g. F→C) by the time the
+            # ``apply_correction`` linear correction below runs.  This ordering
+            # is deliberate: unit conversion first, then optional calibrated
+            # ``a*x+b`` correction on the canonical-unit signal.
             time_series_temp = TimeSeriesInputSystem(
                 id=f"time series input - outdoorTemperature - {self.id}",
                 df=df_temp,
@@ -589,6 +623,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 use_database=self.use_database,
                 uuid=self.uuid_outdoorTemperature,
                 dbconfig=self.dbconfig_outdoorTemperature,
+                transformation=self._transformation_outdoorTemperature,
                 # cache=False,  # Cache is disabled for outdoor temperature data to avoid loading the same column multiple times form the same file
             )
 
@@ -612,30 +647,72 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             )
             time_series_irrad.initialize(start_time, end_time, step_size)
 
-            time_series_co2 = TimeSeriesInputSystem(
-                id=f"time series input - outdoorCo2Concentration - {self.id}",
-                df=df_co2,
-                filename=self.filename_outdoorCo2Concentration,
-                datecolumn=self.datecolumn_outdoorCo2Concentration,
-                valuecolumn=(
-                    "outdoorCo2Concentration"
-                    if self.use_df
-                    else self.valuecolumn_outdoorCo2Concentration
-                ),
-                use_spreadsheet=self.use_spreadsheet,
-                use_database=self.use_database,
-                uuid=self.uuid_outdoorCo2Concentration,
-                dbconfig=self.dbconfig_outdoorCo2Concentration,
-                # cache=False,
+            # CO2 source is optional: if no BRICK Outdoor_Co2_Sensor exists,
+            # ``uuid_outdoorCo2Concentration`` (and dbconfig / filename / df
+            # column) is unset, and the pattern-driven matcher cannot
+            # populate it.  Skipping the ``time_series_co2`` build here lets
+            # the rest of the OutdoorEnvironmentSystem initialize cleanly --
+            # ``outdoorCo2Concentration`` falls back to a constant 400 ppmv,
+            # which is the right default for buildings without a dedicated
+            # outdoor CO2 sensor.  Consumers that need a real CO2 feed
+            # (e.g. ``BuildingSpace.outdoorCO2``) can be wired from a
+            # dedicated ScheduleSystem / TimeSeriesInputSystem in the fcn
+            # callback instead.
+            _has_co2_source = (
+                self.use_df
+                or (
+                    self.use_spreadsheet
+                    and self.filename_outdoorCo2Concentration is not None
+                )
+                or (
+                    self.use_database
+                    and self.uuid_outdoorCo2Concentration is not None
+                    and self.dbconfig_outdoorCo2Concentration is not None
+                )
             )
-            time_series_co2.initialize(start_time, end_time, step_size)
+            if _has_co2_source:
+                time_series_co2 = TimeSeriesInputSystem(
+                    id=f"time series input - outdoorCo2Concentration - {self.id}",
+                    df=df_co2,
+                    filename=self.filename_outdoorCo2Concentration,
+                    datecolumn=self.datecolumn_outdoorCo2Concentration,
+                    valuecolumn=(
+                        "outdoorCo2Concentration"
+                        if self.use_df
+                        else self.valuecolumn_outdoorCo2Concentration
+                    ),
+                    use_spreadsheet=self.use_spreadsheet,
+                    use_database=self.use_database,
+                    uuid=self.uuid_outdoorCo2Concentration,
+                    dbconfig=self.dbconfig_outdoorCo2Concentration,
+                    # cache=False,
+                )
+                time_series_co2.initialize(start_time, end_time, step_size)
+            else:
+                time_series_co2 = None
 
-            # Initialize outputs using the values from TimeSeriesInputSystem
+            # Initialize outputs using the values from TimeSeriesInputSystem.
+            # When ``apply_correction=True`` we pre-transform the temperature
+            # values here (rather than only inside ``do_step``) so that the
+            # output's ``_history`` and the live ``_tensor`` carry the SAME
+            # numbers.  Leaf scalars (``is_leaf=True``) populate ``_history``
+            # at initialize time and never re-write it per-step, so without
+            # this pre-transform ``output["outdoorTemperature"].history()``
+            # returned the raw feed (e.g. Sacramento degF) while the
+            # downstream AHU / BuildingSpace correctly consumed the
+            # corrected degC value -- a confusing discrepancy for anyone
+            # plotting ``.history()``.  ``do_step`` still applies
+            # ``self._apply`` to the live ``_tensor`` slice for each step;
+            # idempotent because ``a, b`` haven't changed between init and
+            # do_step (only one expand_to_n_c happens before either runs).
+            temp_values = time_series_temp.values
+            if self.apply_correction:
+                temp_values = self._apply(temp_values)
             self.output["outdoorTemperature"].initialize(
                 n_t=time_series_temp.n_timesteps,
                 n_s=time_series_temp.batch_size,
                 n_c=1,
-                values=time_series_temp.values,
+                values=temp_values,
             )
             self.output["globalIrradiation"].initialize(
                 n_t=time_series_irrad.n_timesteps,
@@ -643,16 +720,62 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 n_c=1,
                 values=time_series_irrad.values,
             )
-            self.output["outdoorCo2Concentration"].initialize(
-                n_t=time_series_co2.n_timesteps,
-                n_s=time_series_co2.batch_size,
-                n_c=1,
-                values=time_series_co2.values,
-            )
+            if time_series_co2 is not None:
+                self.output["outdoorCo2Concentration"].initialize(
+                    n_t=time_series_co2.n_timesteps,
+                    n_s=time_series_co2.batch_size,
+                    n_c=1,
+                    values=time_series_co2.values,
+                )
+            else:
+                # Mirror the temperature time-series shape so the Scalar
+                # output buffer is aligned with the rest of the model
+                # (consumers see a constant 400 ppmv ambient CO2 at every
+                # timestep).
+                self.output["outdoorCo2Concentration"].initialize(
+                    n_t=time_series_temp.n_timesteps,
+                    n_s=time_series_temp.batch_size,
+                    n_c=1,
+                    values=torch.full_like(time_series_temp.values, 400.0),
+                )
+
+            # Expand parameters to n_c dimension for vectorization
+            self.a = self.a.expand_to_n_c(self.n_c)
+            self.b = self.b.expand_to_n_c(self.n_c)
         else:
             raise ValueError(
                 "No data source provided. Set use_spreadsheet=True, use_database=True, or use_df=True."
             )
+
+    def set_transformation(self, fn):
+        """Set the unit-conversion callable for the outdoor-temperature feed.
+
+        This is the hook :meth:`Model.set_transformations` uses to dispatch
+        per-Brick-class transformations (e.g. ``Temperature_Sensor →
+        (x - 32) * 5 / 9`` for Fahrenheit time series).  The dispatcher
+        resolves a single most-specific rule per component; for
+        :class:`OutdoorEnvironmentSystem` the only matching class
+        binding is ``Outside_Air_Temperature_Sensor`` (a subclass of
+        ``Temperature_Sensor``), so any rule routed here is unambiguously
+        the temperature-side rule.  ``globalIrradiation`` and
+        ``outdoorCo2Concentration`` are NOT touched — they have no
+        ``Temperature_Sensor``-compatible binding and their unit rules
+        (if any) would have to be plumbed via a sibling setter.
+
+        The callable is applied inside :class:`TimeSeriesInputSystem`
+        when the temperature feed is loaded at ``initialize`` time, so
+        ``self.output["outdoorTemperature"].history()`` and every
+        downstream consumer see the same converted values.  Setting it
+        after ``initialize`` has run has no effect on the already-
+        loaded ``output`` buffer; re-call ``simulator.simulate(...)`` /
+        ``initialize`` for the change to take effect.
+
+        Args:
+            fn: A callable applied element-wise to the loaded temperature
+                series (``pd.Series.apply(fn)`` semantics).  Passing
+                ``None`` disables the per-class transformation.
+        """
+        self._transformation_outdoorTemperature = fn
 
     def _apply(self, x):
         return x * self.a.get() + self.b.get()
@@ -676,14 +799,23 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """
-        # Set the values for each output
-        if self.apply_correction:
-            self._output["outdoorTemperature"]._set(
-                i_t=step_index, apply=self._apply
-            )
-        else:
-            self._output["outdoorTemperature"]._set(i_t=step_index)
-
+        # Set the values for each output.
+        #
+        # ``apply_correction`` is applied EXCLUSIVELY at ``initialize``
+        # time (where ``self._apply`` is folded into the temperature
+        # values BEFORE they're written into the leaf-scalar history),
+        # not here.  Doing the transformation per-step as well would
+        # double-correct: ``_set(transformation=self._apply)`` would
+        # read from already-corrected history and apply ``self._apply``
+        # a second time, producing values that look right in the live
+        # ``_tensor`` only by accident -- and any rerun of
+        # ``initialize`` (e.g. a fresh ``simulator.simulate(...)`` call)
+        # would compound it further.  Keeping ``do_step`` as a plain
+        # leaf-scalar passthrough also fixes the discrepancy between
+        # ``output["outdoorTemperature"].history()`` (which was raw
+        # feed) and what downstream AHU / BuildingSpace components
+        # consumed (corrected) -- both now read the corrected values.
+        self._output["outdoorTemperature"]._set(i_t=step_index)
         self._output["globalIrradiation"]._set(i_t=step_index)
         self._output["outdoorCo2Concentration"]._set(i_t=step_index)
 
@@ -708,14 +840,131 @@ def brick_signature_pattern():
     Returns:
         SignaturePattern: The BRICK signature pattern of the outdoor environment component.
     """
-    node0 = Node(cls=core.namespace.BRICK.Weather_Station)
-    # node1 = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    # node2 = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    weather_station = Node(cls=core.namespace.BRICK.Weather_Station)
+    temp = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
+    irrad = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    externalref_temp = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    externalref_irrad = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    timeseriesid_temp = Node(cls=core.namespace.XSD.string)
+    timeseriesid_irrad = Node(cls=core.namespace.XSD.string)
+    senaps_temp = Node(cls=core.namespace.XSD.string)
+    senaps_irrad = Node(cls=core.namespace.XSD.string)
+
     # node3 = Node(cls=core.namespace.BRICK.Outdoor_CO2_Concentration_Sensor)
     sp = SignaturePattern(id="outdoor_environment_signature_pattern_brick")
-    sp.add_modeled_node(node0)
+    sp.add_rule(
+        OptionalRule(
+            subject=weather_station,
+            object=temp,
+            predicate=core.namespace.BRICK.hasPoint,
+        )
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=weather_station,
+            object=irrad,
+            predicate=core.namespace.BRICK.hasPoint,
+        )
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=temp,
+            object=externalref_temp,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )  # Used in mortar
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=irrad,
+            object=externalref_irrad,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )  # Used in mortar
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=externalref_temp,
+            object=timeseriesid_temp,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )  # Used in mortar
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=externalref_irrad,
+            object=timeseriesid_irrad,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )  # Used in mortar
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=temp, object=senaps_temp, predicate=core.namespace.SENAPS.senaps_id
+        )  # Used in bts
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=irrad,
+            object=senaps_irrad,
+            predicate=core.namespace.SENAPS.senaps_id,
+        )  # Used in bts
+    )
+    sp.add_modeled_node(temp)
+    sp.add_modeled_node(irrad)
+    sp.add_parameter("_uuid_outdoorTemperature", senaps_temp)
+    sp.add_parameter("_uuid_globalIrradiation", senaps_irrad)
+    sp.add_parameter("_uuid_outdoorTemperature", timeseriesid_temp)
+    sp.add_parameter("_uuid_globalIrradiation", timeseriesid_irrad)
+
+    return sp
+
+def brick_signature_pattern_standalone():
+    """
+    BRICK signature pattern for a standalone Outside_Air_Temperature_Sensor
+    and/or Global_Solar_Irradiation_Sensor not attached to a Weather_Station.
+
+    Both sensor nodes are optional so the pattern matches even when only one
+    is present. Instantiates a single OutdoorEnvironmentSystem with both
+    uuid_outdoorTemperature and uuid_globalIrradiation populated from each
+    sensor's external reference timeseries ID.
+    """
+    temp = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
+    irrad = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    externalref_temp = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    externalref_irrad = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    timeseriesid_temp = Node(cls=core.namespace.XSD.string)
+    timeseriesid_irrad = Node(cls=core.namespace.XSD.string)
+    senaps_temp = Node(cls=core.namespace.XSD.string)
+    senaps_irrad = Node(cls=core.namespace.XSD.string)
+
+    sp = SignaturePattern(id="outdoor_environment_signature_pattern_brick_standalone")
+    sp.add_node(temp, optional=False)
+    sp.add_node(irrad, optional=False)
+    sp.add_rule(
+        OptionalRule(subject=temp, object=externalref_temp, predicate=core.namespace.BRICKREF.hasExternalReference)
+    )
+    sp.add_rule(
+        OptionalRule(subject=externalref_temp, object=timeseriesid_temp, predicate=core.namespace.BRICKREF.hasTimeseriesId)
+    )
+    sp.add_rule(
+        OptionalRule(subject=temp, object=senaps_temp, predicate=core.namespace.SENAPS.senaps_id)
+    )
+    sp.add_rule(
+        OptionalRule(subject=irrad, object=externalref_irrad, predicate=core.namespace.BRICKREF.hasExternalReference)
+    )
+    sp.add_rule(
+        OptionalRule(subject=externalref_irrad, object=timeseriesid_irrad, predicate=core.namespace.BRICKREF.hasTimeseriesId)
+    )
+    sp.add_rule(
+        OptionalRule(subject=irrad, object=senaps_irrad, predicate=core.namespace.SENAPS.senaps_id)
+    )
+    sp.add_modeled_node(temp)
+    sp.add_modeled_node(irrad)
+    sp.add_parameter("_uuid_outdoorTemperature", senaps_temp)
+    sp.add_parameter("_uuid_outdoorTemperature", timeseriesid_temp)
+    sp.add_parameter("_uuid_globalIrradiation", senaps_irrad)
+    sp.add_parameter("_uuid_globalIrradiation", timeseriesid_irrad)
+
     return sp
 
 
 OutdoorEnvironmentSystem.add_signature_pattern(brick_signature_pattern())
+OutdoorEnvironmentSystem.add_signature_pattern(brick_signature_pattern_standalone())
 OutdoorEnvironmentSystem.add_signature_pattern(saref_signature_pattern())

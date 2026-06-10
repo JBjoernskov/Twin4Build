@@ -10,12 +10,16 @@ import pandas as pd
 from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.model.model import Model
 from twin4build.optimizer.optimizer import Optimizer
 from twin4build.simulator.simulator import Simulator
 from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+
+twin4build._IS_TESTING = True
 
 
 class TestOptimizer(unittest.TestCase):
@@ -93,7 +97,9 @@ class TestOptimizer(unittest.TestCase):
         # Check that optimization found a low damper position (close to 0)
         # Since we're minimizing airflow, optimal should be minimum damper position
         # History uses time-first layout (n_t, n_s, n_c), select first batch
-        optimized_position = self.setpoint.output["value"].history(i_s=0).detach().numpy()
+        optimized_position = (
+            self.setpoint.output["value"].history(i_s=0).detach().numpy()
+        )
 
         # The optimized position should be close to the lower bound (0.0)
         # Note: We use a relaxed threshold as optimization behavior can vary

@@ -4,6 +4,10 @@ You'll find explanations of what each component does, how it interacts with othe
 and the conceptual framework behind the functionality - not the internal code structure.
 """
 
+# Test flag must be defined FIRST to avoid circular imports
+_IS_TESTING = False
+_IMPORT_COMPLETE = False
+
 # Local application imports
 from twin4build.systems.saref4syst.system import System
 from twin4build.systems.saref4syst.connection import Connection
@@ -19,3 +23,6 @@ from twin4build.optimizer.optimizer import Optimizer
 # from twin4build.core import ontologies
 import twin4build.utils.plot as plot
 from twin4build.systems import *  # Note that only names in the __all__ list are imported. It is VERY important to have this import last
+
+
+_IMPORT_COMPLETE = True

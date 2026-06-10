@@ -224,4 +224,6 @@ class CoilTorchSystem(core.System, nn.Module):
         # Update outputs
         self.output["heatingPower"]._set(heating_power, i_t=step_index)
         self.output["coolingPower"]._set(cooling_power, i_t=step_index)
-        self.output["outletAirTemperature"]._set(outlet_air_temp_setpoint, i_t=step_index)
+        self.output["outletAirTemperature"]._set(
+            outlet_air_temp_setpoint, i_t=step_index
+        )

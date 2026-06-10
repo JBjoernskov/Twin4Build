@@ -46,4 +46,22 @@ def validate_period(
         end_time = [end_time]
         step_size = [step_size]
 
+    # Semantic checks: each (start, end, step) triple must describe a
+    # forward-flowing, strictly positive-stepped period.  Catching this
+    # here means every caller (Simulator, Estimator, Optimizer, ...) gets
+    # the same error message instead of failing later with a confusing
+    # secondary error from ``get_simulation_timesteps`` or downstream
+    # tensor sizing.
+    for i, (s, e, dt) in enumerate(zip(start_time, end_time, step_size)):
+        if e <= s:
+            raise ValueError(
+                f"Invalid period at index {i}: end_time ({e!r}) must be "
+                f"strictly after start_time ({s!r})."
+            )
+        if dt <= 0:
+            raise ValueError(
+                f"Invalid step_size at index {i}: step_size must be a "
+                f"positive integer (got {dt!r})."
+            )
+
     return start_time, end_time, step_size

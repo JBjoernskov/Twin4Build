@@ -13,12 +13,12 @@ import twin4build.utils.types as tps
 from twin4build import core
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -38,6 +38,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         TAir_nominal_sh: Nominal room air temperature [°C]
         thermalMassHeatCapacity: Total thermal mass heat capacity [J/K]
         nelements: Number of finite elements
+        initialize_UA: If True (default), UA is computed via fsolve to match nominal
+            conditions on first initialization. If False, the UA value is used as-is,
+            which is useful when UA is being estimated/calibrated.
 
     Mathematical Formulation:
     =========================
@@ -244,6 +247,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         TAir_nominal_sh: float = 21,
         thermalMassHeatCapacity: float = 500000,
         nelements: int = 3,
+        initialize_UA: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -253,12 +257,14 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self.T_b_nominal_sh = T_b_nominal_sh
         self.TAir_nominal_sh = TAir_nominal_sh
         self.nelements = nelements
+        self.initialize_UA = initialize_UA
         self.UA = tps.Parameter(
             torch.tensor(10.0, dtype=torch.float64), requires_grad=False
-        )  # Placeholder, will be set in initialize
+        )  # Placeholder, will be set in initialize if initialize_UA is True
         self.thermalMassHeatCapacity = tps.Parameter(
             torch.tensor(thermalMassHeatCapacity, dtype=torch.float64),
             requires_grad=False,
+            scaling="log",
         )
 
         # Define inputs and outputs as private variables
@@ -279,6 +285,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             "TAir_nominal_sh": {},
             "thermalMassHeatCapacity": {},
             "UA": {},
+            "initialize_UA": {},
         }
         self._config = {"parameters": list(self.parameter.keys())}
         self.INITIALIZED = False
@@ -326,7 +333,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """Initialize the space heater system for simulation.
 
         This method performs the following initialization steps:
-        1. Numerically solves for the UA value that matches the nominal heat output
+        1. If ``initialize_UA`` is True and this is the first call, numerically solves
+           for the UA value that matches the nominal heat output
         2. Initializes input/output data structures
         3. Creates or reinitializes the state-space model
 
@@ -334,7 +342,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             start_time (datetime.datetime): Start time of the simulation period.
             end_time (datetime.datetime): End time of the simulation period.
             step_size (int): Time step size in seconds.
-            simulator (core.Simulator): Simulation model object.
         """
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
@@ -360,32 +367,30 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
                 n_c=self.n_c,
             )
 
-        if not self.INITIALIZED:
-            # Numerically solve for UA so that steady-state output matches
-            # Q_flow_nominal_sh.  For batched (n_c > 1) components the
-            # nominal design values are identical across rooms, so a single
-            # fsolve result is broadcast to every component index.
+        # Expand parameters to n_c dimension for vectorization
+        self.UA = self.UA.expand_to_n_c(self.n_c)
+        self.thermalMassHeatCapacity = self.thermalMassHeatCapacity.expand_to_n_c(
+            self.n_c
+        )
+
+        if not self.INITIALIZED and self.initialize_UA:
+            # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh.
+            # When initialize_UA is False, the current UA value is used directly,
+            # which is useful when UA is being estimated/calibrated.
             UA0 = float(
                 self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
             )
             root = fsolve(self._ua_residual, UA0, full_output=True)
             UA_val = root[0][0]
-            self.UA.data.fill_(UA_val)
+            self.UA.data.fill_(UA_val)  # Preserves shape (n_c,)
 
-            self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size)
+        self._create_state_space_model()
+        self.ss_model.initialize(start_time, end_time, step_size)
 
-            x0_tensor = self._get_initial_state_tensor()
-            self.ss_model.set_state(x0_tensor)
+        x0_tensor = self._get_initial_state_tensor()
+        self.ss_model.set_state(x0_tensor)
 
-            self.INITIALIZED = True
-        else:
-            # Re-initialize the state space model
-            self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size)
-
-            x0_tensor = self._get_initial_state_tensor()
-            self.ss_model.set_state(x0_tensor)
+        self.INITIALIZED = True
 
     def _ua_residual(self, UA_candidate):
         """Calculate the residual for UA optimization.
@@ -463,12 +468,11 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """
         n = self.nelements
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
-        
-        # Get parameters - shape (n_c_param,); may be 1 even when
-        # self.n_c > 1 (compiled/batched components share identical params).
-        C_elem = self.thermalMassHeatCapacity.get() / n
-        UA_elem = self.UA.get() / n
-        n_c = self.n_c
+
+        # Get parameters - shape (n_c,)
+        C_elem = self.thermalMassHeatCapacity.get() / n  # (n_c,)
+        UA_elem = self.UA.get() / n  # (n_c,)
+        n_c = C_elem.shape[0]
         c_p = constants.CP_WATER
 
         # LTI part: Only UA/C on diagonal - shape (n_c, n, n)
@@ -499,7 +503,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
         # Initial state - shape (n_c, n_states)
         x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[0, :, :]  # Take first simulation, all components: (n_c, n_states)
+        x0 = x0_tensor[
+            0, :, :
+        ]  # Take first simulation, all components: (n_c, n_states)
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -547,20 +553,24 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         )
         self.ss_model.input["u"]._set(u, i_t=step_index)
         self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
-        
+
         # y shape: (n_s, n_c, n_outputs)
         y = self.ss_model.output["y"].get()
         outletWaterTemperature = y[:, :, 0]  # (n_s, n_c)
-        
+
         # Calculate power: UA_elem * sum(T_i - T_zone) for all elements
         # UA_elem shape: (n_c,), temps shape: (n_s, n_c, n_states), u[:,:,2] shape: (n_s, n_c)
         UA_elem = self.UA.get() / self.nelements  # (n_c,)
         temps = self.ss_model.get_state()  # (n_s, n_c, n_states)
         T_zone = u[:, :, 2]  # (n_s, n_c)
         # Expand T_zone to match temps: (n_s, n_c, 1) for broadcasting
-        Power = UA_elem.unsqueeze(0) * torch.sum(temps - T_zone.unsqueeze(2), dim=2)  # (n_s, n_c)
-        
-        self.output["outletWaterTemperature"]._set(outletWaterTemperature, i_t=step_index)
+        Power = UA_elem.unsqueeze(0) * torch.sum(
+            temps - T_zone.unsqueeze(2), dim=2
+        )  # (n_s, n_c)
+
+        self.output["outletWaterTemperature"]._set(
+            outletWaterTemperature, i_t=step_index
+        )
         self.output["Power"]._set(Power, i_t=step_index)
 
 
@@ -579,18 +589,18 @@ def saref_signature_pattern():
         id="space_heater_signature_pattern",
     )
 
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
         )
     )
-    sp.add_triple(
-        Exact(
+    sp.add_rule(
+        StepRule(
             subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
         )
     )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
+    sp.add_rule(
+        StepRule(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
     )
 
     sp.add_input("waterFlowRate", node3)
@@ -616,14 +626,14 @@ def brick_signature_pattern():
         id="space_heater_signature_pattern_brick",
     )
 
-    sp.add_triple(
-        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
+    sp.add_rule(
+        StepRule(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node3, object=node1, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node3, object=node1, predicate=core.namespace.BRICK.isPointOf)
     )
 
     sp.add_input("waterFlowRate", node2, "measuredValue")

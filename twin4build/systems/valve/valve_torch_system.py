@@ -11,12 +11,12 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -93,7 +93,9 @@ class ValveTorchSystem(core.System, nn.Module):
 
         # Store parameters as tps.Parameters for gradient tracking
         self.waterFlowRateMax = tps.Parameter(
-            torch.tensor(waterFlowRateMax, dtype=torch.float64), requires_grad=False
+            torch.tensor(waterFlowRateMax, dtype=torch.float64),
+            requires_grad=False,
+            scaling="log",
         )
         self.valveAuthority = tps.Parameter(
             torch.tensor(valveAuthority, dtype=torch.float64), requires_grad=False
@@ -103,10 +105,31 @@ class ValveTorchSystem(core.System, nn.Module):
         self._input = {"valvePosition": tps.Scalar()}
         self._output = {"valvePosition": tps.Scalar(), "waterFlowRate": tps.Scalar(0)}
 
-        # Define parameters for calibration
+        # Define parameters for calibration.  Physically realistic
+        # ranges for an FCU / VAV reheat valve -- wider bounds give the
+        # auto-estimator useless feasible space and let it pin
+        # ``valveAuthority`` to 0 (valve has *no* effect on flow) or
+        # ``waterFlowRateMax`` to ridiculous 10 kg/s.  ``Valve`` is
+        # always wired downstream of a single coil in the supported
+        # topology, so loop-level sizing fits inside the bounds below.
+        #
+        # ``waterFlowRateMax`` is log-scaled (see ``tps.Parameter``
+        # constructor above), so its lower bound MUST be > 0 -- the
+        # normalisation otherwise hits a ``log(0)`` assertion inside
+        # :class:`tps.TensorParameter`.
         self.parameter = {
-            "waterFlowRateMax": {"lb": 0.0, "ub": 10.0},
-            "valveAuthority": {"lb": 0.0, "ub": 1.0},
+            # FCU / VAV reheat valve: typical 0.01 - 0.5 kg/s.  Lower
+            # cap at 5e-3 still allows a very small zone; below that
+            # the valve cannot deliver enough water to register a
+            # measurable supply-air rise.
+            "waterFlowRateMax": {"lb": 5e-3, "ub": 1.0},
+            # Authority < 0.3 in this characteristic (see class
+            # docstring: ``u_norm = u / sqrt(u^2*(1-a) + a)``) makes
+            # the valve barely affect flow over much of its travel and
+            # the resulting hydraulic loop is uncontrollable in
+            # practice, so estimates that low are not physical.  Upper
+            # bound 1.0 is the ideal linear-flow limit.
+            "valveAuthority": {"lb": 0.3, "ub": 1.0},
         }
 
         self._config = {"parameters": list(self.parameter.keys())}
@@ -170,6 +193,11 @@ class ValveTorchSystem(core.System, nn.Module):
                 n_s=batch_size,
                 n_c=self.n_c,
             )
+
+        # Expand parameters to n_c dimension for vectorization
+        self.waterFlowRateMax = self.waterFlowRateMax.expand_to_n_c(self.n_c)
+        self.valveAuthority = self.valveAuthority.expand_to_n_c(self.n_c)
+
         self.INITIALIZED = True
 
     def do_step(
@@ -192,8 +220,10 @@ class ValveTorchSystem(core.System, nn.Module):
         The water flow rate is then calculated as:
         m_w = u_norm * waterFlowRateMax
         """
-        # Get input valve position (assumed to be a tensor)
-        valve_position = self.input["valvePosition"].get()
+        # Clone to detach from the input _tensor's storage, preventing
+        # version-counter conflicts with jacrev when _tensor is overwritten
+        # at the next timestep by _assign_component_inputs.
+        valve_position = self.input["valvePosition"].get().clone()
 
         # Calculate normalized valve position using valve authority equation
         u_norm = valve_position / torch.sqrt(
@@ -221,11 +251,11 @@ def saref_signature_pattern():
     node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
     sp = SignaturePattern()
 
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
+    sp.add_rule(
+        StepRule(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
     )
 
     sp.add_input("valvePosition", node1, "inputSignal")
@@ -247,11 +277,11 @@ def brick_signature_pattern():
 
     sp = SignaturePattern(id="valve_signature_pattern_brick")
 
-    sp.add_triple(
-        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
     )
 
     sp.add_input("valvePosition", node1, "setpoint")

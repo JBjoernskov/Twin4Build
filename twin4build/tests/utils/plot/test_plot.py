@@ -14,6 +14,12 @@ import torch
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+# Local application imports
+# Set test flag
+import twin4build
+
+twin4build._IS_TESTING = True
+
 
 class TestEntry(unittest.TestCase):
     def test_entry_initialization_with_numpy(self):

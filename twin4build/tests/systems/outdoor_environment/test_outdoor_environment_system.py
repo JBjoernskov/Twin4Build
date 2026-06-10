@@ -5,13 +5,17 @@ import warnings
 
 # Third party imports
 import pandas as pd
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.outdoor_environment.outdoor_environment_system import (
     OutdoorEnvironmentSystem,
 )
+
+twin4build._IS_TESTING = True
 
 
 class TestOutdoorEnvironmentSystem(unittest.TestCase):

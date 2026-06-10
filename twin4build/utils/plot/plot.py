@@ -592,7 +592,6 @@ def plot(
     fig, ax1 = plt.subplots(figsize=(12, 6))  # 12, 6
     if title:
         fig.suptitle(title, fontsize=20)
-    # ax1.ticklabel_format(useOffset=False, style='plain')
 
     y_formatter = ScalarFormatter(useOffset=False)
     ax1.yaxis.set_major_formatter(y_formatter)
@@ -608,92 +607,17 @@ def plot(
     graphs = {}  # Will store mapping from legend entries to plot lines
     colors = [cycle(Colors.colors.copy()) for _ in range(len(time))]
 
-    if len(components_1axis) > 1:
-        assert (
-            ylabel_1axis is not None
-        ), "ylabel_1axis is required if multiple components are plotted on the first axis"
-    else:
-        if ylabel_1axis is None:
-            ylabel_1axis = components_1axis[0].label
-
-    # Plot components on the first axis
-    for t in components_1axis:
-        data, fmt, axis, kwargs = get_data(t)
-        if data is None:
-            # This should not happen in the new API since we only accept Entry objects or 2-tuples
-            raise ValueError(
-                "Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays."
-            )
-        fmt = fmt if fmt is not None else "-"
-        assert data.shape[0] == len(
-            time
-        ), "data and time must have the same number of rows (batch size)"
-        for i in range(data.shape[0]):
-            kwargs_copy = kwargs.copy()
-            color = kwargs.get("color", next(colors[i]))
-            kwargs_copy["color"] = color
-            kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
-            t, d = filter_nans(time[i], data[i, :])
-            ax1.plot(t, d, fmt, **kwargs_copy)
-
-    ax1.set_xlabel("Time")
-    if ylabel_1axis:
-        ax1.set_ylabel(ylabel_1axis)
-
-    if ylim_1axis:
-        ax1.set_ylim(ylim_1axis)
-
-    # colors = cycle(Colors.colors.copy())
-    # Plot components on the second axis if provided
+    # Create axes upfront so entries can be plotted in original order
+    ax2 = None
+    ax3 = None
     if components_2axis:
-        if len(components_2axis) > 1:
-            assert (
-                ylabel_2axis is not None
-            ), "ylabel_2axis is required if multiple components are plotted on the second axis"
-        else:
-            if ylabel_2axis is None:
-                ylabel_2axis = components_2axis[0].label
-
         ax2 = ax1.twinx()
         ax2.yaxis.set_major_formatter(y_formatter)
         axes.append(ax2)
         nticks_list.append(nticks_2axis)
         roundto_list.append(roundto_2axis)
         yoffset_list.append(yoffset_2axis)
-        for t in components_2axis:
-            data, fmt, axis, kwargs = get_data(t)
-            if data is None:
-                raise ValueError(
-                    "Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays."
-                )
-            fmt = fmt if fmt is not None else "-"
-            assert data.shape[0] == len(
-                time
-            ), "data and time must have the same number of rows (batch size)"
-            for i in range(data.shape[0]):
-                t, d = filter_nans(time[i], data[i, :])
-                kwargs_copy = kwargs.copy()
-                color = kwargs.get("color", next(colors[i]))
-                kwargs_copy["color"] = color
-                kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
-                ax2.plot(t, d, fmt, **kwargs_copy)
-
-        if ylabel_2axis:
-            ax2.set_ylabel(ylabel_2axis)
-        if ylim_2axis:
-            ax2.set_ylim(ylim_2axis)
-
-    # colors = cycle(Colors.colors.copy())
-    # Plot components on the third axis if provided
     if components_3axis:
-        if len(components_3axis) > 1:
-            assert (
-                ylabel_3axis is not None
-            ), "ylabel_3axis is required if multiple components are plotted on the third axis"
-        else:
-            if ylabel_3axis is None:
-                ylabel_3axis = components_3axis[0].label
-
         ax3 = ax1.twinx()
         ax3.yaxis.set_major_formatter(y_formatter)
         ax3.spines["right"].set_position(("outward", PlotSettings.outward))
@@ -701,39 +625,90 @@ def plot(
         nticks_list.append(nticks_3axis)
         roundto_list.append(roundto_3axis)
         yoffset_list.append(yoffset_3axis)
-        for t in components_3axis:
-            data, fmt, axis, kwargs = get_data(t)
-            if data is None:
-                raise ValueError(
-                    "Component-based tuples are not supported in the new plot() function. Use plot_component() for backward compatibility or convert to direct data arrays."
-                )
-            fmt = fmt if fmt is not None else "-"
-            assert data.shape[0] == len(
-                time
-            ), "data and time must have the same number of rows (batch size)"
-            for i in range(data.shape[0]):
-                t, d = filter_nans(time[i], data[i, :])
-                kwargs_copy = kwargs.copy()
-                color = kwargs.get("color", next(colors[i]))
-                kwargs_copy["color"] = color
-                kwargs_copy["label"] = kwargs["label"] + f" [{i}]"
-                ax3.plot(t, d, fmt, **kwargs_copy)
 
+    # Axis label inference
+    if len(components_1axis) > 1:
+        assert (
+            ylabel_1axis is not None
+        ), "ylabel_1axis is required if multiple components are plotted on the first axis"
+    elif ylabel_1axis is None:
+        ylabel_1axis = components_1axis[0].label
+
+    if components_2axis:
+        if len(components_2axis) > 1:
+            assert (
+                ylabel_2axis is not None
+            ), "ylabel_2axis is required if multiple components are plotted on the second axis"
+        elif ylabel_2axis is None:
+            ylabel_2axis = components_2axis[0].label
+
+    if components_3axis:
+        if len(components_3axis) > 1:
+            assert (
+                ylabel_3axis is not None
+            ), "ylabel_3axis is required if multiple components are plotted on the third axis"
+        elif ylabel_3axis is None:
+            ylabel_3axis = components_3axis[0].label
+
+    # Map axis number to axis object
+    axis_map = {1: ax1, None: ax1}
+    if ax2 is not None:
+        axis_map[2] = ax2
+    if ax3 is not None:
+        axis_map[3] = ax3
+
+    # Plot entries in the original order so the legend matches
+    legend_lines = []
+    legend_labels = []
+    for entry in entries:
+        data, fmt, axis, kwargs = get_data(entry)
+        if data is None:
+            raise ValueError(
+                "Component-based tuples are not supported in the new plot() function. "
+                "Use plot_component() for backward compatibility or convert to direct data arrays."
+            )
+        fmt = fmt if fmt is not None else "-"
+        target_ax = axis_map[axis]
+        assert data.shape[0] == len(
+            time
+        ), "data and time must have the same number of rows (batch size)"
+        n_s = data.shape[0]
+        for i in range(n_s):
+            kwargs_copy = kwargs.copy()
+            color = kwargs.get("color", next(colors[i]))
+            kwargs_copy["color"] = color
+            kwargs_copy["label"] = (
+                kwargs["label"] if n_s == 1 else kwargs["label"] + f" [{i}]"
+            )
+            t_i, d = filter_nans(time[i], data[i, :])
+            (line,) = target_ax.plot(t_i, d, fmt, **kwargs_copy)
+            legend_lines.append(line)
+            legend_labels.append(kwargs_copy["label"])
+
+    # Set axis labels and limits
+    ax1.set_xlabel("Time")
+    if ylabel_1axis:
+        ax1.set_ylabel(ylabel_1axis)
+    if ylim_1axis:
+        ax1.set_ylim(ylim_1axis)
+
+    if ax2 is not None:
+        if ylabel_2axis:
+            ax2.set_ylabel(ylabel_2axis)
+        if ylim_2axis:
+            ax2.set_ylim(ylim_2axis)
+
+    if ax3 is not None:
         if ylabel_3axis:
             ax3.set_ylabel(ylabel_3axis)
         if ylim_3axis:
             ax3.set_ylim(ylim_3axis)
-
         ax3.spines["right"].set_position(("outward", PlotSettings.outward))
         ax3.spines["right"].set_visible(True)
         ax3.spines["right"].set_color("black")
 
-    # Combine legends
-    lines, labels = [], []
-    for ax in axes:
-        ax_lines, ax_labels = ax.get_legend_handles_labels()
-        lines.extend(ax_lines)
-        labels.extend(ax_labels)
+    lines = legend_lines
+    labels = legend_labels
 
     legend = fig.legend(
         lines, labels, ncol=3, bbox_to_anchor=(0.5, 0.95), loc="upper center"
@@ -759,29 +734,14 @@ def plot(
 
     alignYaxes(axes, nticks_list, roundto_list, yoffset_list, align_zero=align_zero)
 
+    first_time = time[0][0]
+    tz = first_time.tzinfo if hasattr(first_time, "tzinfo") else None
     for ax in axes:
-        mylocator = mdates.HourLocator(interval=6, tz=None)
-        ax.xaxis.set_minor_locator(mylocator)
-        myFmt = mdates.DateFormatter("%H")
-        ax.xaxis.set_minor_formatter(myFmt)
-
-        mylocator = mdates.WeekdayLocator(
-            byweekday=[
-                mdates.MO,
-                mdates.TU,
-                mdates.WE,
-                mdates.TH,
-                mdates.FR,
-                mdates.SA,
-                mdates.SU,
-            ],
-            interval=1,
-            tz=None,
+        locator = mdates.AutoDateLocator()
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(
+            mdates.AutoDateFormatter(locator, tz=tz)
         )
-        ax.xaxis.set_major_locator(mylocator)
-        myFmt = mdates.DateFormatter("%a")
-        ax.xaxis.set_major_formatter(myFmt)
-        ax.tick_params(axis="x", which="major", pad=10)  # move the tick labels
 
     # Save and show plot
     # component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]

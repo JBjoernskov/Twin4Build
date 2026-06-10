@@ -10,12 +10,12 @@ import twin4build.core as core
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.translator.translator import (
-    Exact,
-    MultiPath,
+    StepRule,
+    AnyPathRule,
     Node,
-    Optional_,
+    OptionalRule,
     SignaturePattern,
-    SinglePath,
+    PathRule,
 )
 
 
@@ -86,12 +86,12 @@ class AirToAirHeatRecoverySystem(core.System):
 
     def __init__(
         self,
-        eps_75_h=None,
-        eps_100_h=None,
-        eps_75_c=None,
-        eps_100_c=None,
-        primaryAirFlowRateMax=None,
-        secondaryAirFlowRateMax=None,
+        eps_75_h=0.86,
+        eps_100_h=0.8,
+        eps_75_c=0.86,
+        eps_100_c=0.8,
+        primaryAirFlowRateMax=1.0,
+        secondaryAirFlowRateMax=1.0,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -130,16 +130,33 @@ class AirToAirHeatRecoverySystem(core.System):
             "primaryTemperatureOut": tps.Scalar(),
             "secondaryTemperatureOut": tps.Scalar(),
         }
-        self._config = {
-            "parameters": [
-                "eps_75_h",
-                "eps_100_h",
-                "eps_75_c",
-                "eps_100_c",
-                "primaryAirFlowRateMax",
-                "secondaryAirFlowRateMax",
-            ]
+        # Per-leaf bounds consumed by
+        # :meth:`twin4build.core.System.get_estimable_parameters`.
+        # Effectiveness factors are physically in ``[0, 1]``; nominal
+        # max flows are sized loosely around a residential / small
+        # commercial unit (~1 kg/s) with one order of magnitude
+        # headroom either side.
+        # Physically-realistic bounds.  Real plate / rotary air-to-air
+        # heat-recovery units land in the 0.4 - 0.95 effectiveness
+        # range across the operating envelope; allowing the solver
+        # down to 0 (no heat transfer) lets it absorb model errors
+        # from elsewhere as zero recovery, and allowing it past ~ 0.95
+        # has no physical interpretation.  The eps_75 vs eps_100
+        # labels are the same underlying physics at the two reference
+        # capacity ratios, so they share bounds.
+        self.parameter = {
+            "eps_75_h":                {"lb": 0.4, "ub": 0.95},
+            "eps_100_h":               {"lb": 0.4, "ub": 0.95},
+            "eps_75_c":                {"lb": 0.4, "ub": 0.95},
+            "eps_100_c":               {"lb": 0.4, "ub": 0.95},
+            # AHU primary / secondary air mass flow at maximum
+            # operation.  Same 0.5 - 10 kg/s envelope as the fan and
+            # damper sub-systems -- needs to bracket the same
+            # physical AHU sizes consistently.
+            "primaryAirFlowRateMax":   {"lb": 0.5, "ub": 10.0},
+            "secondaryAirFlowRateMax": {"lb": 0.5, "ub": 10.0},
         }
+        self._config = {"parameters": list(self.parameter.keys())}
 
     @property
     def config(self):
@@ -207,6 +224,17 @@ class AirToAirHeatRecoverySystem(core.System):
                 n_t=max_timesteps,
                 n_s=batch_size,
             )
+
+        # Expand parameters to n_c dimension for vectorization
+        self.eps_75_h = self.eps_75_h.expand_to_n_c(self.n_c)
+        self.eps_100_h = self.eps_100_h.expand_to_n_c(self.n_c)
+        self.eps_75_c = self.eps_75_c.expand_to_n_c(self.n_c)
+        self.eps_100_c = self.eps_100_c.expand_to_n_c(self.n_c)
+        self.primaryAirFlowRateMax = self.primaryAirFlowRateMax.expand_to_n_c(self.n_c)
+        self.secondaryAirFlowRateMax = self.secondaryAirFlowRateMax.expand_to_n_c(
+            self.n_c
+        )
+
         self.INITIALIZED = True
 
     def do_step(
@@ -335,74 +363,74 @@ def saref_signature_pattern():
     sp = SignaturePattern(id="air_to_air_heat_recovery_signature_pattern")
 
     # buildingTemperature (SecondaryTemperatureIn)
-    sp.add_triple(
-        SinglePath(
+    sp.add_rule(
+        PathRule(
             subject=node10,
             object=node1,
             predicate=core.namespace.FSO.hasFluidSuppliedBy,
         )
     )
-    sp.add_triple(
-        SinglePath(
+    sp.add_rule(
+        PathRule(
             subject=node10, object=node2, predicate=core.namespace.FSO.suppliesFluidTo
         )
     )
-    sp.add_triple(
-        SinglePath(
+    sp.add_rule(
+        PathRule(
             subject=node11,
             object=node3,
             predicate=core.namespace.FSO.hasFluidReturnedBy,
         )
     )
 
-    sp.add_triple(
-        Optional_(subject=node5, object=node6, predicate=core.namespace.SAREF.hasValue)
+    sp.add_rule(
+        OptionalRule(subject=node5, object=node6, predicate=core.namespace.SAREF.hasValue)
     )
-    sp.add_triple(
-        Optional_(
+    sp.add_rule(
+        OptionalRule(
             subject=node5,
             object=node4,
             predicate=core.namespace.SAREF.isValueOfProperty,
         )
     )
-    sp.add_triple(
-        Optional_(
+    sp.add_rule(
+        OptionalRule(
             subject=node0, object=node5, predicate=core.namespace.SAREF.hasPropertyValue
         )
     )
 
     # airFlowRateMax
-    sp.add_triple(
-        Optional_(subject=node8, object=node9, predicate=core.namespace.SAREF.hasValue)
+    sp.add_rule(
+        OptionalRule(subject=node8, object=node9, predicate=core.namespace.SAREF.hasValue)
     )
-    sp.add_triple(
-        Optional_(
+    sp.add_rule(
+        OptionalRule(
             subject=node8,
             object=node7,
             predicate=core.namespace.SAREF.isValueOfProperty,
         )
     )
-    sp.add_triple(
-        Optional_(
+    sp.add_rule(
+        OptionalRule(
             subject=node0, object=node8, predicate=core.namespace.SAREF.hasPropertyValue
         )
     )
 
-    sp.add_triple(
-        Exact(subject=node10, object=node0, predicate=core.namespace.S4SYST.subSystemOf)
+    sp.add_rule(
+        StepRule(subject=node10, object=node0, predicate=core.namespace.S4SYST.subSystemOf)
     )
-    sp.add_triple(
-        Exact(subject=node11, object=node0, predicate=core.namespace.S4SYST.subSystemOf)
+    sp.add_rule(
+        StepRule(subject=node11, object=node0, predicate=core.namespace.S4SYST.subSystemOf)
     )
 
-    sp.add_triple(
-        Exact(subject=node12, object=node13, predicate=core.namespace.SAREF.controls)
+    sp.add_rule(
+        StepRule(subject=node12, object=node13, predicate=core.namespace.SAREF.controls)
     )
-    sp.add_triple(
-        Exact(subject=node13, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
+    sp.add_rule(
+        StepRule(subject=node13, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
     )
-    sp.add_triple(
-        Exact(subject=node12, object=node14, predicate=core.namespace.SAREF.hasProfile)
+    sp.add_rule(
+        StepRule(subject=node12, object=node14, predicate=core.namespace.SAREF.hasProfile)
     )
 
     sp.add_parameter("primaryAirFlowRateMax", node6)

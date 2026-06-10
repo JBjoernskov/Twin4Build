@@ -12,11 +12,13 @@ Key Components:
 
     HVAC Components:
         - SpaceHeaterTorchSystem: Space heating system
+        - FanCoilUnitTorchSystem: Fan coil unit (heating/cooling terminal unit)
         - ValveTorchSystem: Control valve system
         - CoilTorchSystem: Heating/cooling coil system
         - DamperTorchSystem: Air flow control damper
         - FanTorchSystem: Air handling fan system
         - AirToAirHeatRecoverySystem: Heat recovery system
+        - AirHandlingUnitTorchSystem: Air handling unit system
 
     Control Systems:
         - PIControllerFMUSystem: Proportional-Integral controller
@@ -61,15 +63,32 @@ __all__ = [
     "ValveTorchSystem",
     # Coils
     "CoilTorchSystem",
+    # Fan Coil Unit
+    "FanCoilUnitTorchSystem",
     # Controllers # TODO: Convert to Torch
     "PIDControllerSystem",
+    "CascadeControllerSystem",
+    "CascadePIDControllerSystem",  # backward-compatible alias
     "OnOffControllerSystem",
+    "OnOffControllerTorchSystem",
+    "ScheduleSwitchControllerTorchSystem",
+    "SATLinearRuleSystem",
+    "SATCompensatedControllerTorchSystem",
     "ClassificationAnnControllerSystem",
     "NeuralPolicyControllerSystem",
+    "ControllerIdentificationTorchSystem",
+    "ControllerIdentificationPITorchSystem",
+    "RewireReport",
+    "LoopScore",
+    "ActuatorSeeds",
+    "score_pair",
+    "derive_actuator_seeds",
+    "confidence_label",
     # Sensors
     "SensorSystem",
     # Schedules
     "ScheduleSystem",
+    "PiecewiseLinearScheduleSystem",
     # Outdoor Environment
     "OutdoorEnvironmentSystem",
     # Junction
@@ -77,6 +96,8 @@ __all__ = [
     "ReturnFlowJunctionSystem",
     # Air to Air Heat Recovery
     "AirToAirHeatRecoverySystem",
+    # Air Handling Unit
+    "AirHandlingUnitTorchSystem",
     # Damper
     "DamperTorchSystem",
     # Fan
@@ -90,9 +111,17 @@ __all__ = [
     "MaxSystem",
     "OnOffSystem",
     "DiscreteStatespaceSystem",
+    "ScalarProductSystem",
+    "OccupancySystem",
+    "OccupancyDetectorSystem",
+    "SigmoidGate",
 ]
 
 # Local application imports
+from twin4build.systems.air_handling_unit.air_handling_unit_torch_system import (
+    AirHandlingUnitTorchSystem,
+)
+
 # Air to Air Heat Recovery
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
     AirToAirHeatRecoverySystem,
@@ -111,14 +140,51 @@ from twin4build.systems.building_space.building_space_torch_system import (
 
 # Coils
 from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
+
+# Fan Coil Unit
+from twin4build.systems.fan_coil_unit.fan_coil_unit_torch_system import (
+    FanCoilUnitTorchSystem,
+)
 from twin4build.systems.controller.classification_ann_controller.classification_ann_controller_system import (
     ClassificationAnnControllerSystem,
+)
+from twin4build.systems.controller.controller_identification.controller_identification_torch_system import (
+    ControllerIdentificationTorchSystem,
+)
+from twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system import (
+    ControllerIdentificationPITorchSystem,
+)
+from twin4build.systems.controller.controller_identification.loop_classifier import (
+    ActuatorSeeds,
+    LoopScore,
+    confidence_label,
+    derive_actuator_seeds,
+    score_pair,
+)
+from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
+    RewireReport,
 )
 from twin4build.systems.controller.neural_policy_controller.neural_policy_controller_system import (
     NeuralPolicyControllerSystem,
 )
 from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_system import (
     OnOffControllerSystem,
+)
+from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_torch_system import (
+    OnOffControllerTorchSystem,
+)
+from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_torch_system import (
+    SATCompensatedControllerTorchSystem,
+    SATLinearRuleSystem,
+)
+from twin4build.systems.controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_torch_system import (
+    ScheduleSwitchControllerTorchSystem,
+)
+from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
+    CascadePIDControllerSystem,  # backward-compatible alias
+)
+from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
+    CascadeControllerSystem,
 )
 
 # Controllers
@@ -144,6 +210,9 @@ from twin4build.systems.junction.supply_flow_junction_system import (
 from twin4build.systems.outdoor_environment.outdoor_environment_system import (
     OutdoorEnvironmentSystem,
 )
+from twin4build.systems.schedule.piecewise_linear_schedule_system import (
+    PiecewiseLinearScheduleSystem,
+)
 
 # Schedules
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
@@ -163,8 +232,12 @@ from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespa
 # Utils
 from twin4build.systems.utils.fmu_system import fmuSystem
 from twin4build.systems.utils.max_system import MaxSystem
+from twin4build.systems.utils.occupancy_detector_system import OccupancyDetectorSystem
+from twin4build.systems.utils.sigmoid_gate import SigmoidGate
+from twin4build.systems.utils.occupancy_system import OccupancySystem
 from twin4build.systems.utils.on_off_system import OnOffSystem
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
+from twin4build.systems.utils.scalar_product_system import ScalarProductSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 
 # Valves

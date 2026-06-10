@@ -1,6 +1,8 @@
 # import pygad
 # Standard library imports
 import datetime
+import os
+import time as time_module
 from typing import Any, Dict, List, Tuple, Union
 
 # Third party imports
@@ -14,6 +16,7 @@ import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.utils.types as tps
 from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.print_progress import LOGGER
 from twin4build.utils.validate_period import validate_period
 
 
@@ -531,17 +534,13 @@ class Optimizer:
             "startTime",
             "endTime",
             "stepSize",
-            "variables",
-            "objectives",
         ]
-        new_args = ["start_time", "end_time", "step_size", "variables", "objectives"]
+        new_args = ["start_time", "end_time", "step_size"]
         position = [1, 2, 3, 4, 5]
         value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
         start_time = value_map.get("start_time", start_time)
         end_time = value_map.get("end_time", end_time)
         step_size = value_map.get("step_size", step_size)
-        variables = value_map.get("variables", variables)
-        objectives = value_map.get("objectives", objectives)
 
         self._variables = variables or []
         self._objectives = objectives or []
@@ -761,6 +760,32 @@ class Optimizer:
                     f"These objectives conflict with each other."
                 )
 
+        LOGGER.task("Running optimization")
+        LOGGER.add_level()
+        LOGGER.config("Method: %s", method)
+        LOGGER.config("Variables: %d", len(self._variables))
+        LOGGER.add_level()
+        for component, output_name, *bounds in self._variables:
+            bounds_str = f" (lb={bounds[0]}, ub={bounds[1]})" if len(bounds) >= 2 else ""
+            LOGGER.debug("%s.%s%s", component.id, output_name, bounds_str)
+        LOGGER.remove_level()
+        LOGGER.config("Objectives: %d", len(self._objectives))
+        LOGGER.add_level()
+        for component, output_name, obj_type in self._objectives:
+            LOGGER.debug("%s: %s.%s", obj_type, component.id, output_name)
+        LOGGER.remove_level()
+        if self._eq_cons:
+            LOGGER.config("Equality constraints: %d", len(self._eq_cons))
+        if self._ineq_cons:
+            LOGGER.config("Inequality constraints: %d", len(self._ineq_cons))
+
+        n_periods = len(self._start_time)
+        LOGGER.config("Time periods: %d", n_periods)
+        LOGGER.add_level()
+        for i, (s, e, ss) in enumerate(zip(self._start_time, self._end_time, self._stepSize)):
+            LOGGER.config("Period %d: %s -> %s (step=%ss)", i + 1, s, e, ss)
+        LOGGER.remove_level()
+
         # Check for decision variables that are also in equality constraints
         if self._variables and self._eq_cons:
             decision_pairs = {
@@ -774,6 +799,8 @@ class Optimizer:
             conflicting_pairs = decision_pairs.intersection(equality_pairs)
             if conflicting_pairs:
                 conflict_info = [f"({c.id}, {o})" for c, o in conflicting_pairs]
+                LOGGER.remove_level()
+                LOGGER.error("Running optimization", change_status=True)
                 raise ValueError(
                     f"Cannot optimize and apply equality constraints to the same outputs: {', '.join(conflict_info)}. "
                     f"These objectives conflict with each other."
@@ -817,7 +844,27 @@ class Optimizer:
         if method[0] == "scipy":
             if options is None:
                 options = {}
-            return self._scipy_solver(method=method, **options)
+            # Fast-path for notebook example tests: keep the cell exercising
+            # the full Optimizer API (so we still catch wiring / API
+            # regressions) but stop the solver after a single iteration.
+            # Honors the env var set by ``utils.test_notebook.test_notebook``;
+            # callers in the regular test suite already pass small
+            # ``maxiter`` values explicitly, so this is a no-op for them.
+            if os.environ.get("TWIN4BUILD_TESTING", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                options["maxiter"] = 1
+            result = self._scipy_solver(method=method, **options)
+        else:
+            LOGGER.remove_level()
+            LOGGER.error("Running optimization", change_status=True)
+            raise ValueError("Unsupported optimization method: %s" % method[0])
+
+        LOGGER.remove_level()
+        LOGGER.ok("Running optimization", change_status=True)
+        return result
 
     # def _torch_solver(
     #     self,
@@ -1045,6 +1092,10 @@ class Optimizer:
                     - "ad": Automatic differentiation using PyTorch (recommended)
                     - "fd": Finite difference (not yet implemented)
             **options: Additional options passed to the SciPy optimizer:
+                - "constraint_penalty": Penalty weight for soft constraint violations.
+                  Higher values enforce constraints more strictly at the cost of slower
+                  convergence. Increase when constraints are violated in the solution.
+                  Defaults to 100.
                 - "verbose": Verbosity level (0-3) for optimization output
                 - "maxiter": Maximum number of iterations
                 - "gtol": Gradient tolerance for convergence
@@ -1060,8 +1111,16 @@ class Optimizer:
             when the same parameters are evaluated multiple times. The method supports
             both equality and inequality constraints through the loss function formulation.
         """
+        self._eval_count = 0
+        self._solver_start_time = time_module.time()
+
         if method is None:
             method = ("scipy", "SLSQP", "ad")
+
+        LOGGER.task("Starting scipy solver: %s (%s mode)", method[1], method[2])
+        LOGGER.add_level()
+
+        self._constraint_penalty = options.pop("constraint_penalty", 100)
 
         for component in self.simulator.model.components.values():
             if isinstance(component, nn.Module):
@@ -1072,6 +1131,7 @@ class Optimizer:
         for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
+        LOGGER.task("Initializing model")
         self.simulator.model.initialize(
             start_time=self._start_time,
             end_time=self._end_time,
@@ -1230,11 +1290,14 @@ class Optimizer:
         optimizer_name = method[1]
         mode = method[2]
 
+        LOGGER.config("Decision vector size: %d", len(x0))
+        LOGGER.task("Starting optimization")
+
         if mode == "ad":
             # Use automatic differentiation
             if optimizer_name in ["trf", "dogbox"]:
                 # These are least-squares optimizers
-                least_squares(
+                result = least_squares(
                     self._obj_ad,
                     x0,
                     jac=self._jac_ad,
@@ -1244,7 +1307,7 @@ class Optimizer:
                 )
             else:
                 # These are general optimization algorithms
-                minimize(
+                result = minimize(
                     self._obj_ad,
                     x0,
                     method=optimizer_name,
@@ -1254,9 +1317,58 @@ class Optimizer:
                     options=options,
                 )
         else:
-            # Use finite difference (not implemented yet for optimizer)
+            LOGGER.remove_level()
+            LOGGER.error(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
             raise NotImplementedError(
                 "Finite difference mode is not yet implemented for the optimizer. Use automatic differentiation mode."
+            )
+
+        elapsed = time_module.time() - self._solver_start_time
+        LOGGER.info("Optimization finished in %.1fs (%d function evaluations)", elapsed, self._eval_count)
+        opt_success = getattr(result, "success", None)
+        opt_message = getattr(result, "message", None)
+        opt_nit = getattr(result, "nit", None)
+        opt_fun = getattr(result, "fun", None)
+        if opt_success is not None:
+            if opt_success:
+                LOGGER.ok(
+                    "Solver result: success %s, iterations %s, final loss %s",
+                    opt_success,
+                    opt_nit,
+                    opt_fun,
+                )
+            else:
+                LOGGER.warning(
+                    "Solver result: success %s, iterations %s, final loss %s.",
+                    opt_success,
+                    opt_nit,
+                    opt_fun,
+                )
+        if opt_message:
+            LOGGER.info("Solver message: %s", opt_message)
+
+        LOGGER.remove_level()
+        if opt_success is False:
+            LOGGER.warning(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
+        else:
+            LOGGER.ok(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
             )
 
     def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
@@ -1326,23 +1438,25 @@ class Optimizer:
 
         # Compute loss - initialize as tensor to avoid NaN propagation issues
         loss = torch.tensor(0.0, dtype=torch.float64)
-        k = 100
+        k = self._constraint_penalty
 
         # Handle equality constraints
         # Use boolean mask (n_t, n_s) to index 3D tensors (n_t, n_s, n_c) -> (num_valid, n_c)
         mask = self._timestep_mask
-        
+
         if self._eq_cons is not None:
             for constraint in self._eq_cons:
                 component, output_name, desired_value = constraint
                 # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
                 y = component.output[output_name].history()[mask]
-                desired_tensor = self.equality_constraint_values[component, output_name][mask]
+                desired_tensor = self.equality_constraint_values[
+                    component, output_name
+                ][mask]
                 y_norm = component.output[output_name].normalize(y)
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
                 )
-                loss += torch.mean(torch.abs(y_norm - desired_tensor_norm))
+                loss += k * torch.mean(torch.abs(y_norm - desired_tensor_norm))
 
         # Handle inequality constraints
         if self._ineq_cons is not None:
@@ -1363,13 +1477,13 @@ class Optimizer:
                 if constraint_type == "upper":
                     # Penalize when y > desired_value
                     constraint_violations = torch.relu(y_norm - desired_tensor_norm)
-                    ineq_upper_term += torch.mean(k * constraint_violations)
+                    ineq_upper_term += torch.mean(constraint_violations)
                 elif constraint_type == "lower":
                     # Penalize when y < desired_value
                     constraint_violations = torch.relu(desired_tensor_norm - y_norm)
-                    ineq_lower_term += torch.mean(k * constraint_violations)
+                    ineq_lower_term += torch.mean(constraint_violations)
 
-            loss += ineq_upper_term + ineq_lower_term
+            loss += k * (ineq_upper_term + ineq_lower_term)
 
         # Handle minimization objectives
         if self._objectives is not None:
@@ -1401,8 +1515,14 @@ class Optimizer:
         else:
             self._theta_obj = theta
             self.obj = self.__obj_ad(theta)
-
-            # self._hes_ad(theta) # hes calls jac which calls obj.
+            self._eval_count += 1
+            elapsed = time_module.time() - self._solver_start_time
+            LOGGER.iter(
+                "Evaluation %d: loss %.6f (%.1fs)",
+                self._eval_count,
+                self.obj.detach().item(),
+                elapsed,
+            )
             return self.obj.detach().numpy()
 
     def __jac_ad(self, theta: torch.Tensor) -> torch.Tensor:

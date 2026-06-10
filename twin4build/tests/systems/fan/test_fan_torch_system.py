@@ -3,11 +3,15 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.fan.fan_torch_system import FanTorchSystem
+
+twin4build._IS_TESTING = True
 
 
 class TestFanTorchSystem(unittest.TestCase):
@@ -82,25 +86,17 @@ class TestFanTorchSystem(unittest.TestCase):
         )
 
         # Initialize inputs with batch size
-        fan_batch.input["airFlowRate"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
-        fan_batch.input["inletAirTemperature"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
+        fan_batch.input["airFlowRate"].initialize(n_t=1, n_s=batch_size, n_v=1)
+        fan_batch.input["inletAirTemperature"].initialize(n_t=1, n_s=batch_size, n_v=1)
 
         # Set inputs with batch size 2
         fan_batch.input["airFlowRate"].set(torch.tensor([1.0, 0.8]), i_t=0)
-        fan_batch.input["inletAirTemperature"].set(
-            torch.tensor([20.0, 22.0]), i_t=0
-        )
+        fan_batch.input["inletAirTemperature"].set(torch.tensor([20.0, 22.0]), i_t=0)
 
         fan_batch.output["outletAirTemperature"].initialize(
             n_t=1, n_s=batch_size, n_v=1
         )
-        fan_batch.output["Power"].initialize(
-            n_t=1, n_s=batch_size, n_v=1
-        )
+        fan_batch.output["Power"].initialize(n_t=1, n_s=batch_size, n_v=1)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)

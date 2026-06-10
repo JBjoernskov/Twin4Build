@@ -3,13 +3,17 @@ import datetime
 import unittest
 
 # Third party imports
-from dateutil import tz
 import torch
+from dateutil import tz
 
 # Local application imports
+# Set test flag
+import twin4build
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
+
+twin4build._IS_TESTING = True
 
 
 class TestPIDControllerSystem(unittest.TestCase):
@@ -55,9 +59,7 @@ class TestPIDControllerSystem(unittest.TestCase):
         start_time = [
             datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
         ] * batch_size
-        end_time = [
-            datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)
-        ] * batch_size
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)] * batch_size
         step_size = [600] * batch_size
         controller_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
