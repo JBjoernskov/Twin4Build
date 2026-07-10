@@ -11,7 +11,10 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
-from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+from twin4build.systems.utils.discrete_statespace_system import (
+    DiscreteStatespaceSystem,
+    bilinear_onestep,
+)
 
 
 class BuildingSpaceMassTorchSystem(core.System, nn.Module):
@@ -259,20 +262,27 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
         return x0
 
-    def _create_state_space_model(self):
-        """Create the state space model matrices using PyTorch tensors.
+    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = ("V", "G_occ", "m_inf")
 
-        Matrices have shape (n_c, n_states, n_states/n_inputs) to support
-        different parameter values per component.
+    def _build_matrices(self, p=None):
+        """Build the CO2 mass-balance matrices ``(A, B, C, D, E, F)`` from the
+        physical parameters -- a pure function of ``p`` (a dict of physical values
+        for :attr:`PARAM_NAMES`; defaults to ``self.<name>.get()``).  Passing ``p``
+        explicitly is the functorch fast path (plain-tensor args, so
+        ``vmap(jacrev)`` is clean); see the thermal system for the rationale.
         """
+        if p is None:
+            p = {name: getattr(self, name).get() for name in self.PARAM_NAMES}
+
         # Single state for CO2 concentration
         n_states = 1
         n_inputs = len(self.input)
 
         # Get parameter values - shape (n_c,)
-        V = self.V.get()
-        G_occ = self.G_occ.get()
-        m_inf = self.m_inf.get()
+        V = p["V"]
+        G_occ = p["G_occ"]
+        m_inf = p["m_inf"]
         n_c = self.n_c
 
         # Calculate air mass from volume and density
@@ -307,12 +317,6 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
         D = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
 
-        # Initial state - shape (n_c, n_states)
-        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[
-            0, :, :
-        ]  # Take first simulation, all components: (n_c, n_states)
-
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
         E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=torch.float64)
         # -m_ex*C (input 1, state 0)
@@ -322,6 +326,17 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=torch.float64)
         # m_sup*C_sup (inputs 0 and 2)
         F[:, 0, 0, 2] = 1 / air_mass  # supplyAirFlowRate * supplyAirCO2
+
+        return A, B, C, D, E, F
+
+    def _create_state_space_model(self):
+        """Create the internal :class:`DiscreteStatespaceSystem` used by
+        ``do_step`` from the matrices built by :meth:`_build_matrices`."""
+        A, B, C, D, E, F = self._build_matrices()
+
+        # Initial state - shape (n_c, n_states)
+        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
+        x0 = x0_tensor[0, :, :]  # first simulation, all components: (n_c, n_states)
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -335,6 +350,18 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
             E=E,
             F=F,
         )
+
+    def forward(self, x, u, params, sample_time):
+        """Pure one-step CO2 dynamics ``(state, inputs, params) -> (new_state, outputs)``.
+
+        Functorch-compatible re-expression of :meth:`do_step`; ``u`` is the input
+        vector in do_step order ``[supplyAirFlowRate, exhaustAirFlowRate,
+        outdoorCO2, numberOfPeople]``, ``params`` a dict for :attr:`PARAM_NAMES`.
+        Returns ``(x_next, {"indoorCO2"})``.
+        """
+        A, B, C, D, E, F = self._build_matrices(params)
+        x_next, y = bilinear_onestep(A, B, C, D, E, F, x, u, sample_time)
+        return x_next, {"indoorCO2": y[..., 0]}
 
     @property
     def config(self):

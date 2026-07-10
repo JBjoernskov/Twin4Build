@@ -11,6 +11,42 @@ import twin4build.utils.types as tps
 from twin4build import core
 
 
+def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time):
+    """Pure one ZOH step of a (bilinear) state-space system.
+
+    A functorch-compatible re-expression of :meth:`DiscreteStatespaceSystem.do_step`
+    with **no ports, no history, no state mutation** -- the building block of the
+    ``forward`` fast path.  Given the continuous matrices and the current
+    ``(x, u)`` it forms the input-dependent effective matrices, discretizes them
+    via the matrix-exponential block trick, and returns ``(x_next, y)``.
+
+    Shapes (``n_c`` = parallel components, ``n`` = states, ``m`` = inputs):
+        A ``(n_c, n, n)``   B ``(n_c, n, m)``   C ``(n_c, p, n)``   D ``(n_c, p, m)``
+        E ``(n_c, m, n, n)`` or None            F ``(n_c, m, n, m)`` or None
+        x ``(n_c, n)``      u ``(n_c, m)``
+    Returns ``x_next (n_c, n)``, ``y (n_c, p)``.  ``vmap`` maps this over segments.
+    """
+    A_eff = A if E is None else A + torch.einsum("cmij,cm->cij", E, u)
+    B_eff = B if F is None else B + torch.einsum("cmij,cm->cij", F, u)
+
+    n = A.shape[-1]
+    m = B.shape[-1]
+    T = sample_time
+    # Block matrix M = [[A*T, B*T], [0, 0]]; expm(M) = [[Ad, Bd], [0, I]].
+    # Built out-of-place (cat + zero-row pad) so it is ``vmap``-safe -- an
+    # in-place ``M[..., :n, :n] = ...`` fails when A_eff/B_eff carry a vmap batch
+    # dim that the freshly-allocated M does not.
+    top = torch.cat([A_eff * T, B_eff * T], dim=-1)  # (..., n, n+m)
+    M = torch.nn.functional.pad(top, (0, 0, 0, m))  # add m zero rows -> (..., n+m, n+m)
+    expM = torch.matrix_exp(M)
+    Ad = expM[..., :n, :n]
+    Bd = expM[..., :n, n:]
+
+    x_next = (Ad @ x.unsqueeze(-1)).squeeze(-1) + (Bd @ u.unsqueeze(-1)).squeeze(-1)
+    y = (C @ x_next.unsqueeze(-1)).squeeze(-1) + (D @ u.unsqueeze(-1)).squeeze(-1)
+    return x_next, y
+
+
 class DiscreteStatespaceSystem(core.System):
     r"""
     A general-purpose discrete state space system for modeling dynamical systems with batch support.
