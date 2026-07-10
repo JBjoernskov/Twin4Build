@@ -86,7 +86,12 @@ class OneStepComposer:
     def __init__(self, model, stateful, theta_spec, sample_time):
         self.model = model
         self.sample_time = float(sample_time)
-        order = list(model._flat_execution_order)
+        # Accept either the SimulationModel (``_flat_execution_order``) or the
+        # Model wrapper (``flat_execution_order`` property).
+        order = getattr(model, "_flat_execution_order", None)
+        if order is None:
+            order = model.flat_execution_order
+        order = list(order)
         self.pos = {c.id: i for i, c in enumerate(order)}
         self.order = order
         self.forward_ids = {c.id for c in order if _has_real_forward(c)}

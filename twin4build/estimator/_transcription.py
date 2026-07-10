@@ -42,6 +42,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
+from torch.func import jacrev, vmap
 
 from twin4build.utils.print_progress import LOGGER
 
@@ -457,6 +458,43 @@ def _solve_sparse_collocation(
     n_links = len(cp)
     n_g = n_links * D
 
+    # -- Stage-3 fast Jacobian via the functorch composer --------------------
+    # Try to build a pure one-step map F(states, theta_phys, captured) from the
+    # components' forward() methods.  If it works, the constraint Jacobian comes
+    # from a single vmap(jacrev(F)) call instead of D reverse passes + n_theta
+    # finite-difference re-simulations.  On any incompatibility (missing forward,
+    # n_c>1, shared/expanded theta), fall back to the exact-but-slow FD path.
+    composer = None
+    try:
+        from twin4build.estimator._composer import OneStepComposer
+
+        simple_theta = n_theta == len(self._flat_components)
+        all_nc1 = all(getattr(c, "n_c", 1) == 1 for c in layout.components)
+        if simple_theta and all_nc1:
+            theta_spec = list(zip(self._flat_components, self._parameter_names))
+            comp = OneStepComposer(
+                self.simulator.model, layout.components, theta_spec, seg_steps[0]
+            )
+            if comp.D == D:
+                # Plain (functorch-safe) denormalization from the parameters'
+                # physical bounds + scaling (tps.Parameter.denormalize is a
+                # Tensor-subclass method and breaks under functorch).
+                tp = self._flat_parameters
+                lb_t = torch.tensor([float(np.asarray(p.min_value.detach()).flatten()[0]) for p in tp])
+                ub_t = torch.tensor([float(np.asarray(p.max_value.detach()).flatten()[0]) for p in tp])
+                log_mask = torch.tensor([getattr(p, "scaling", "linear") == "log" for p in tp])
+                composer = comp
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("Composer unavailable (%s) -- using finite-difference Jacobian.", exc)
+        composer = None
+
+    def _denorm(th_norm):
+        lin = lb_t + th_norm * (ub_t - lb_t)
+        safe_lb = lb_t.clamp(min=1e-30)
+        safe_ub = ub_t.clamp(min=1e-30)
+        logv = torch.exp(torch.log(safe_lb) + th_norm * (torch.log(safe_ub) - torch.log(safe_lb)))
+        return torch.where(log_mask, logv, lin)
+
     def _simulate(theta, s_norm):
         """Run all segments; return (scaled_mse, raw_mse, end_norm)."""
         s_phys = s_from_norm(s_norm)
@@ -530,29 +568,12 @@ def _solve_sparse_collocation(
     jac_rows = np.asarray(jac_rows, dtype=np.int64)
     jac_cols = np.asarray(jac_cols, dtype=np.int64)
 
-    def g_jac_vals(z):
-        z = np.asarray(z, dtype=np.float64)
-        zt = torch.tensor(z, dtype=torch.float64, requires_grad=True)
-        _, _, end_norm = _simulate(zt[:n_theta], zt[n_theta:].reshape(n_seg, D))
-        # State blocks: D reverse passes.  grad of sum_i end_norm[i, r] wrt the
-        # s-part isolates d end_norm[i, r]/d s_norm[i, :] per segment.
-        J_s = []  # J_s[r]: (n_seg, D)
-        for r in range(D):
-            go = torch.zeros_like(end_norm)
-            go[:, r] = 1.0
-            (gz,) = torch.autograd.grad(end_norm, zt, grad_outputs=go, retain_graph=True)
-            J_s.append(gz[n_theta:].reshape(n_seg, D).detach())
-        # Theta blocks: n_theta finite differences.
-        end0 = end_norm.detach()
-        eps = 1e-6
-        J_theta = []  # J_theta[c]: (n_seg, D)
-        for c in range(n_theta):
-            zp = z.copy()
-            zp[c] += eps
-            ztp = torch.tensor(zp, dtype=torch.float64)
-            with torch.no_grad():
-                _, _, end_p = _simulate(ztp[:n_theta], ztp[n_theta:].reshape(n_seg, D))
-            J_theta.append(((end_p - end0) / eps))
+    def _assemble_vals(J_theta, J_s):
+        """Pack per-segment blocks into the (jac_rows, jac_cols) order.
+
+        ``J_theta[c][i, r]`` = d end_norm[i, r]/d theta[c];
+        ``J_s[r][i, c]``     = d end_norm[i, r]/d s_norm[i, c].
+        """
         vals = []
         for (i, j) in cp:
             for r in range(D):
@@ -563,11 +584,81 @@ def _solve_sparse_collocation(
                 vals.append(-1.0)  # d defect_r / d s_norm[j, r]
         return np.asarray(vals, dtype=np.float64)
 
+    def _capture_inputs():
+        """Sample the captured (exogenous + carried) input values per segment from
+        the current model state (post-``_simulate``).
+
+        Collocation segments are one step long, so each cone component's input
+        port ``.get()`` holds exactly the value used at that segment's step.
+        """
+        comps = self.simulator.model.components
+        cap = torch.zeros((n_seg, len(composer._captured_keys)), dtype=torch.float64)
+        for k, (cid, port) in enumerate(composer._captured_keys):
+            v = comps[cid].input[port].get()  # (n_s=n_seg, n_c)
+            cap[:, k] = v.reshape(n_seg, -1)[:, 0].detach()
+        return cap
+
+    cp_i = torch.tensor([i for i, _ in cp], dtype=torch.long)
+
+    def _end_norm_fn(s_norm_i, theta_norm, captured_i):
+        x_next = composer.F(s_from_norm(s_norm_i), _denorm(theta_norm), captured_i)
+        return s_to_norm(x_next)
+
+    def g_jac_vals_fast(z):
+        """Sparse constraint Jacobian via one vmap(jacrev(F)) over the composer."""
+        zt = torch.tensor(np.asarray(z, dtype=np.float64), dtype=torch.float64)
+        theta_norm = zt[:n_theta]
+        s_norm = zt[n_theta:].reshape(n_seg, D)
+        with torch.no_grad():
+            _simulate(theta_norm, s_norm)  # set model state + populate input history
+        captured = _capture_inputs()
+        S_i = s_norm[cp_i]          # (n_links, D)
+        CAP_i = captured[cp_i]      # (n_links, n_captured)
+        Jx = vmap(lambda si, ci: jacrev(_end_norm_fn, argnums=0)(si, theta_norm, ci))(S_i, CAP_i)
+        Jt = vmap(lambda si, ci: jacrev(_end_norm_fn, argnums=1)(si, theta_norm, ci))(S_i, CAP_i)
+        # Repack (indexed by link l, which is already the (n_links, ...) axis).
+        J_s = [Jx[:, r, :].detach() for r in range(D)]     # J_s[r][l, c]
+        J_theta = [Jt[:, :, c].detach() for c in range(n_theta)]  # J_theta[c][l, r]
+        # _assemble_vals indexes J_*[..][i, ..] with i = cp segment; here the
+        # vmap axis is already per-link, so index by link position instead.
+        vals = []
+        for l, (i, j) in enumerate(cp):
+            for r in range(D):
+                for c in range(n_theta):
+                    vals.append(float(J_theta[c][l, r]))
+                for c in range(D):
+                    vals.append(float(J_s[r][l, c]))
+                vals.append(-1.0)
+        return np.asarray(vals, dtype=np.float64)
+
+    def g_jac_vals_fd(z):
+        z = np.asarray(z, dtype=np.float64)
+        zt = torch.tensor(z, dtype=torch.float64, requires_grad=True)
+        _, _, end_norm = _simulate(zt[:n_theta], zt[n_theta:].reshape(n_seg, D))
+        J_s = []
+        for r in range(D):
+            go = torch.zeros_like(end_norm)
+            go[:, r] = 1.0
+            (gz,) = torch.autograd.grad(end_norm, zt, grad_outputs=go, retain_graph=True)
+            J_s.append(gz[n_theta:].reshape(n_seg, D).detach())
+        end0 = end_norm.detach()
+        eps = 1e-6
+        J_theta = []
+        for c in range(n_theta):
+            zp = z.copy(); zp[c] += eps
+            ztp = torch.tensor(zp, dtype=torch.float64)
+            with torch.no_grad():
+                _, _, end_p = _simulate(ztp[:n_theta], ztp[n_theta:].reshape(n_seg, D))
+            J_theta.append(((end_p - end0) / eps))
+        return _assemble_vals(J_theta, J_s)
+
+    g_jac_vals = g_jac_vals_fast if composer is not None else g_jac_vals_fd
+
     from twin4build.estimator._casadi_ipopt import solve_ipopt_constrained
 
     LOGGER.config(
-        "Sparse collocation: %d constraints, %d Jacobian nonzeros",
-        n_g, len(jac_rows),
+        "Sparse collocation: %d constraints, %d nonzeros | Jacobian=%s",
+        n_g, len(jac_rows), "composer" if composer is not None else "finite-diff",
     )
     result = solve_ipopt_constrained(
         z0, lb, ub, obj_fun, obj_grad, n_g, g_fun, g_jac_vals,
