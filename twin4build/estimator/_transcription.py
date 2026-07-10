@@ -652,7 +652,22 @@ def _solve_sparse_collocation(
             J_theta.append(((end_p - end0) / eps))
         return _assemble_vals(J_theta, J_s)
 
-    g_jac_vals = g_jac_vals_fast if composer is not None else g_jac_vals_fd
+    _jac_state = {"use_fast": composer is not None}
+
+    def g_jac_vals(z):
+        if _jac_state["use_fast"]:
+            try:
+                return g_jac_vals_fast(z)
+            except Exception as exc:  # noqa: BLE001
+                import traceback
+
+                LOGGER.warning(
+                    "Composer Jacobian failed (%s) -- falling back to "
+                    "finite-difference.\n%s",
+                    exc, traceback.format_exc(),
+                )
+                _jac_state["use_fast"] = False
+        return g_jac_vals_fd(z)
 
     from twin4build.estimator._casadi_ipopt import solve_ipopt_constrained
 

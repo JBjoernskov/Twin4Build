@@ -215,13 +215,16 @@ class OneStepComposer:
         if hasattr(comp, "PARAM_NAMES"):
             for name in comp.PARAM_NAMES:
                 if name in est:
-                    p[name] = theta[est[name]]
+                    # Estimated params come from ``theta`` as 0-dim scalars; shape
+                    # them to ``(n_c=1,)`` to match the default ``.get()`` values
+                    # (some components read n_c from a parameter's shape).
+                    p[name] = theta[est[name]].reshape(1)
                 else:
                     p[name] = getattr(comp, name).get()
         # Prefixed estimated params (composite: "thermal.C_air") -> pass through.
         for attr, idx in est.items():
             if "." in attr:
-                p[attr] = theta[idx]
+                p[attr] = theta[idx].reshape(1)
         return p
 
     def F(self, states_flat, theta, captured):
