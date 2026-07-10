@@ -259,6 +259,37 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
     # State (thermal | mass) is discovered generically by System.get_state /
     # set_state via the owned submodels' ``tps.State`` -- no per-component code.
 
+    @staticmethod
+    def _resolve_sub_params(sub, prefix, params):
+        """Full physical-parameter dict for a submodel: estimated values from
+        ``params`` (keyed ``"<prefix>.<name>"``), the rest from the submodel's own
+        ``tps.Parameter`` defaults."""
+        out = {}
+        for name in sub.PARAM_NAMES:
+            key = f"{prefix}.{name}"
+            out[name] = params[key] if key in params else getattr(sub, name).get()
+        return out
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step of the composite = thermal ++ mass.
+
+        State is ``[thermal_state | mass_state]`` (the order
+        :meth:`System.get_state` produces).  ``params`` is keyed by the composite
+        attr path (``"thermal.C_air"``, ``"mass.V"``, ...); it is routed to the two
+        submodels, filling non-estimated entries from their defaults.  Both
+        submodels read the shared ``inputs`` dict (they pick the ports they need).
+
+        Returns ``(x_next, {**thermal_outputs, **mass_outputs})`` -- i.e.
+        ``indoorTemperature``, ``wallTemperature``, ``indoorCO2``.
+        """
+        n_th = self.thermal.state_size()
+        x_th, x_ma = x[..., :n_th], x[..., n_th:]
+        p_th = self._resolve_sub_params(self.thermal, "thermal", params)
+        p_ma = self._resolve_sub_params(self.mass, "mass", params)
+        x_th_n, out_th = self.thermal.forward(x_th, inputs, p_th, sample_time)
+        x_ma_n, out_ma = self.mass.forward(x_ma, inputs, p_ma, sample_time)
+        return torch.cat([x_th_n, x_ma_n], dim=-1), {**out_th, **out_ma}
+
 
 def saref_signature_pattern_sensor():
     """

@@ -785,7 +785,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         self.output["indoorTemperature"]._set(y[:, :, 0], i_t=step_index)
         self.output["wallTemperature"]._set(y[:, :, 1], i_t=step_index)
 
-    def forward(self, x, u, params, sample_time):
+    def forward(self, x, inputs, params, sample_time):
         """Pure one-step dynamics: ``(state, inputs, params) -> (new_state, outputs)``.
 
         The functorch-compatible re-expression of :meth:`do_step` -- it rebuilds
@@ -798,9 +798,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         Args:
             x: state ``(n_c, n_states)`` = ``[T_indoor, T_wall, (T_boundary),
                 (T_adj...)]``.
-            u: input vector ``(n_c, n_inputs)`` in ``do_step`` order
-                ``[outdoorTemp, supplyFlow, exhaustFlow, supplyTemp, solar,
-                people, heatGain, (boundaryTemp), (adjZoneTemp...)]``.
+            inputs: dict of resolved input-port values (each ``(n_c,)`` scalar, or
+                ``(n_c, n_v)`` for ``adjacentZoneTemperature``).  Assembled here
+                into the ``do_step`` input order.
             params: dict of *physical* parameter values (:attr:`PARAM_NAMES`).
             sample_time: step size in seconds.
 
@@ -808,6 +808,16 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             ``(x_next (n_c, n_states), {"indoorTemperature", "wallTemperature"})``.
         """
         A, B, C, D, E, F = self._build_matrices(params)
+        cols = [
+            inputs["outdoorTemperature"], inputs["supplyAirFlowRate"],
+            inputs["exhaustAirFlowRate"], inputs["supplyAirTemperature"],
+            inputs["globalIrradiation"], inputs["numberOfPeople"], inputs["heatGain"],
+        ]
+        if self.n_boundary_temperature == 1:
+            cols.append(inputs["boundaryTemperature"])
+        u = torch.stack(cols, dim=-1)  # (n_c, n_base_inputs)
+        if self.n_adjacent_zones > 0:
+            u = torch.cat([u, inputs["adjacentZoneTemperature"]], dim=-1)
         x_next, y = bilinear_onestep(A, B, C, D, E, F, x, u, sample_time)
         return x_next, {"indoorTemperature": y[..., 0], "wallTemperature": y[..., 1]}
 

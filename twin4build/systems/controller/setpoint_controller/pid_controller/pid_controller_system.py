@@ -299,26 +299,31 @@ class PIDControllerSystem(core.System, nn.Module):
 
         self.output["inputSignal"]._set(u, i_t=step_index)
 
-    # -- Continuous state: velocity-form PID memory ---------------------------
-    # The incremental (velocity) PID carries three scalars between steps:
-    # the previous output ``u_prev`` and the last two errors
-    # ``err_prev`` / ``err_prev_m1`` (needed for the c1/c2 difference terms).
-    # These fully determine the next step given the inputs, so they are the
-    # controller's continuous state.  Stored per element as ``(n_s, n_c)``
-    # (n_c broadcasts from 1 to the port width after the first step); stacking
-    # along a new trailing axis yields the ``(n_s, n_c, 3)`` convention.
-    @property
-    def state_size(self) -> int:
-        return 3
+    # Continuous state (velocity-form memory [u_prev, err_prev, err_prev_m1]) is
+    # the ``tps.State`` ``self._state``; get/set/enumeration come from the System
+    # base class generically.
 
-    def get_state(self) -> torch.Tensor:
-        return self._state.get()
+    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = ("kp", "Ti", "Td", "output_min", "output_max")
 
-    def set_state(self, x: torch.Tensor) -> None:
-        self._state.set(x)
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step velocity-form PID ``(state, inputs, params) -> (new_state, outputs)``.
 
-    def state_names(self) -> List[str]:
-        return [f"{self.id}.u_prev", f"{self.id}.err_prev", f"{self.id}.err_prev_m1"]
+        Functorch-compatible re-expression of :meth:`do_step`.  ``x`` is the memory
+        ``(n_c, 3)`` = ``[u_prev, err_prev, err_prev_m1]``; ``inputs`` provides
+        ``setpointValue`` / ``actualValue``; ``params`` a dict for
+        :attr:`PARAM_NAMES`.  Returns ``(x_next, {"inputSignal"})``.
+        """
+        c0, c1, c2 = self._compute_pid_coefficients(
+            params["kp"], params["Ti"], params["Td"], sample_time
+        )
+        err = inputs["setpointValue"] - inputs["actualValue"]
+        if self.isReverse is False:
+            err = -err
+        u_prev, err_prev, err_prev_m1 = x[..., 0], x[..., 1], x[..., 2]
+        u = u_prev + (c0 * err + c1 * err_prev + c2 * err_prev_m1)
+        u = clamp(u, lower=params["output_min"], upper=params["output_max"])
+        return torch.stack([u, err, err_prev], dim=-1), {"inputSignal": u}
 
 
 def saref_signature_pattern():

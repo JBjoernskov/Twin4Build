@@ -351,15 +351,19 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
             F=F,
         )
 
-    def forward(self, x, u, params, sample_time):
+    def forward(self, x, inputs, params, sample_time):
         """Pure one-step CO2 dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
-        Functorch-compatible re-expression of :meth:`do_step`; ``u`` is the input
-        vector in do_step order ``[supplyAirFlowRate, exhaustAirFlowRate,
-        outdoorCO2, numberOfPeople]``, ``params`` a dict for :attr:`PARAM_NAMES`.
-        Returns ``(x_next, {"indoorCO2"})``.
+        Functorch-compatible re-expression of :meth:`do_step`; ``inputs`` is a dict
+        of resolved input-port values assembled here in do_step order
+        ``[supplyAirFlowRate, exhaustAirFlowRate, outdoorCO2, numberOfPeople]``,
+        ``params`` a dict for :attr:`PARAM_NAMES`.  Returns ``(x_next, {"indoorCO2"})``.
         """
         A, B, C, D, E, F = self._build_matrices(params)
+        u = torch.stack(
+            [inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"],
+             inputs["outdoorCO2"], inputs["numberOfPeople"]], dim=-1,
+        )
         x_next, y = bilinear_onestep(A, B, C, D, E, F, x, u, sample_time)
         return x_next, {"indoorCO2": y[..., 0]}
 

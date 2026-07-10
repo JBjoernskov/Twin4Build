@@ -529,21 +529,25 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             id=f"ss_model_{self.id}",
         )
 
-    def forward(self, x, u, params, sample_time):
+    def forward(self, x, inputs, params, sample_time):
         """Pure one-step radiator dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
-        Functorch-compatible re-expression of :meth:`do_step`.  ``u`` is the input
-        vector in do_step order ``[supplyWaterTemperature, waterFlowRate,
-        indoorTemperature]``; ``params`` a dict for :attr:`PARAM_NAMES`.  Returns
-        the next element temperatures and the named outputs
-        ``{outletWaterTemperature, Power}`` (Power = UA * sum(T_i - T_zone), the
-        heat delivered to the zone -- the coupling into the thermal component).
+        Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` is a
+        dict assembled here in do_step order ``[supplyWaterTemperature,
+        waterFlowRate, indoorTemperature]``; ``params`` a dict for
+        :attr:`PARAM_NAMES`.  Returns the next element temperatures and the named
+        outputs ``{outletWaterTemperature, Power}`` (Power = UA * sum(T_i -
+        T_zone), the heat delivered to the zone -- the coupling into thermal).
         """
         A, B, C_out, D, E, F = self._build_matrices(params)
+        u = torch.stack(
+            [inputs["supplyWaterTemperature"], inputs["waterFlowRate"],
+             inputs["indoorTemperature"]], dim=-1,
+        )
         x_next, y = bilinear_onestep(A, B, C_out, D, E, F, x, u, sample_time)
         outlet = y[..., 0]
         UA_elem = params["UA"] / self.nelements
-        T_zone = u[..., 2]
+        T_zone = inputs["indoorTemperature"]
         Power = UA_elem * torch.sum(x_next - T_zone.unsqueeze(-1), dim=-1)
         return x_next, {"outletWaterTemperature": outlet, "Power": Power}
 

@@ -255,6 +255,24 @@ class DamperTorchSystem(core.System, nn.Module):
         self.output["damperPosition"]._set(damper_position, i_t=step_index, ic=self.n_c)
         self.output["airFlowRate"]._set(air_flow_rate, i_t=step_index, ic=self.n_c)
 
+    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = ("nominalAirFlowRate", "a")
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure algebraic map ``(inputs, params) -> outputs`` (stateless).
+
+        Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` provides
+        ``damperPosition``; ``params`` a dict for :attr:`PARAM_NAMES`.  ``x`` (an
+        empty state) is passed through.  Returns
+        ``(x, {"damperPosition", "airFlowRate"})``.
+        """
+        dp = inputs["damperPosition"]
+        a = params["a"]
+        c = -a
+        b = torch.log((params["nominalAirFlowRate"] - c) / a)
+        air_flow_rate = a * torch.exp(b * dp) + c
+        return x, {"damperPosition": dp, "airFlowRate": air_flow_rate}
+
 
 def saref_signature_pattern():
     """

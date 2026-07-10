@@ -238,6 +238,23 @@ class ValveTorchSystem(core.System, nn.Module):
         self.output["valvePosition"]._set(valve_position, i_t=step_index)
         self.output["waterFlowRate"]._set(m_w, i_t=step_index)
 
+    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = ("waterFlowRateMax", "valveAuthority")
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure algebraic map ``(inputs, params) -> outputs`` (stateless).
+
+        Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` provides
+        ``valvePosition``; ``params`` a dict for :attr:`PARAM_NAMES`.  ``x`` (an
+        empty state) is passed through.  Returns
+        ``(x, {"valvePosition", "waterFlowRate"})``.
+        """
+        vp = inputs["valvePosition"]
+        a = params["valveAuthority"]
+        u_norm = vp / torch.sqrt(vp**2 * (1 - a) + a)
+        m_w = u_norm * params["waterFlowRateMax"]
+        return x, {"valvePosition": vp, "waterFlowRate": m_w}
+
 
 def saref_signature_pattern():
     """
