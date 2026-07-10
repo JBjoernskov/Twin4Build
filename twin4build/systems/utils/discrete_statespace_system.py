@@ -446,6 +446,11 @@ class DiscreteStatespaceSystem(core.System):
             self.n_states = n_states
             self.n_inputs = n_inputs
             self.n_outputs = n_outputs
+            # State as a first-class ``tps.State`` (shape (n_s, n_c, n_states)).
+            # The ``x`` property below delegates to it, so all existing
+            # ``self.x`` reads/writes keep working while state is now a declared,
+            # enumerable member (see twin4build.utils.types.State).
+            self._x_state = tps.State(n_v=n_states)
         else:
             raise ValueError("System matrices A, B, and C must be provided")
 
@@ -469,8 +474,8 @@ class DiscreteStatespaceSystem(core.System):
         else:
             self.x0 = torch.zeros((self.n_c, self.n_states), dtype=torch.float64)
 
-        # Current state will be (n_s, n_c, n_states) after initialize()
-        self.x = None
+        # Current state (n_s, n_c, n_states) is held in ``self._x_state`` and
+        # exposed via the ``x`` property; it is populated in initialize().
 
         # Names for states
         self.state_names = (
@@ -778,6 +783,23 @@ class DiscreteStatespaceSystem(core.System):
         A, B, C, D = signal.tf2ss(num, den)
         return cls(A=A, B=B, C=C, D=D, sample_time=sample_time, **kwargs)
 
+    @property
+    def x(self):
+        """Current state tensor ``(n_s, n_c, n_states)``, or ``None`` before
+        initialize().  Backed by the ``tps.State`` in ``self._x_state``."""
+        if self._x_state is None or self._x_state.tensor is None:
+            return None
+        return self._x_state.get()
+
+    @x.setter
+    def x(self, value):
+        if value is None:
+            return
+        # Adopt the assigned tensor as the whole state (syncs n_s/n_c/n_v from its
+        # shape), so ``self.x = <tensor>`` works everywhere as before -- including
+        # a re-simulation whose batch size n_s differs from the previous run.
+        self._x_state.reset(value)
+
     def get_state(self) -> torch.Tensor:
         """
         Get the current state vector.
@@ -785,7 +807,7 @@ class DiscreteStatespaceSystem(core.System):
         Returns:
             torch.Tensor: Current state vector of shape (n_s, n_c, n_states)
         """
-        return self.x.clone()
+        return self._x_state.get()
 
     def set_state(self, x: torch.Tensor) -> None:
         """

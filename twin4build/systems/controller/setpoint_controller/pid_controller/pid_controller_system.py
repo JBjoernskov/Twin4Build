@@ -103,6 +103,12 @@ class PIDControllerSystem(core.System, nn.Module):
 
         self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar(0)}
+        # Velocity-form PID memory as a first-class state (width 3):
+        # [u_prev, err_prev, err_prev_m1].  Zero initial condition.
+        self._state = tps.State(
+            n_v=3, init_value=0.0,
+            names=[f"{self.id}.u_prev", f"{self.id}.err_prev", f"{self.id}.err_prev_m1"],
+        )
         self._config = {
             "parameters": ["kp", "Ti", "Td", "output_min", "output_max", "isReverse"]
         }
@@ -141,15 +147,8 @@ class PIDControllerSystem(core.System, nn.Module):
         self.output_min = self.output_min.expand_to_n_c(self.n_c)
         self.output_max = self.output_max.expand_to_n_c(self.n_c)
 
-        self.err_prev = torch.zeros(
-            (batch_size, 1), dtype=torch.float64, requires_grad=False
-        )
-        self.err_prev_m1 = torch.zeros(
-            (batch_size, 1), dtype=torch.float64, requires_grad=False
-        )
-        self.u_prev = torch.zeros(
-            (batch_size, 1), dtype=torch.float64, requires_grad=False
-        )
+        # Allocate the velocity-form PID state (n_s, n_c, 3), zero initial value.
+        self._state.initialize(n_s=batch_size, n_c=self.n_c, n_v=3, force=True)
 
         # Cache step_size as tensor to avoid creating it every step
         # step_size may be a list with one value per batch element, so unsqueeze(1) gives shape (batch, 1)
@@ -261,6 +260,12 @@ class PIDControllerSystem(core.System, nn.Module):
 
         c0, c1, c2 = self._cached_coeffs
 
+        # Read the velocity-form memory from state: [u_prev, err_prev, err_prev_m1].
+        _st = self._state.get()  # (n_s, n_c, 3)
+        u_prev = _st[..., 0]
+        err_prev = _st[..., 1]
+        err_prev_m1 = _st[..., 2]
+
         # Compute error
         err = self.input["setpointValue"].get() - self.input["actualValue"].get()
         if self.isReverse == False:
@@ -268,9 +273,9 @@ class PIDControllerSystem(core.System, nn.Module):
 
         # Compute control increment using pre-computed coefficients
         # This reduces multiple tensor operations to just 3 multiplications + 2 additions
-        du = c0 * err + c1 * self.err_prev + c2 * self.err_prev_m1
+        du = c0 * err + c1 * err_prev + c2 * err_prev_m1
 
-        u = self.u_prev + du
+        u = u_prev + du
         # Differentiable clamp into [output_min, output_max].  The mode
         # (``"smooth"`` vs ``"hard"``) is read from the process-global
         # toggle in ``smooth_saturation``: smooth for cold-start
@@ -288,11 +293,32 @@ class PIDControllerSystem(core.System, nn.Module):
         #     u = u*0
 
         # print("DEBUG: u after saturation: ", u)
-        self.u_prev = u
-        self.err_prev_m1 = self.err_prev
-        self.err_prev = err
+        # Write new memory: u_prev<-u, err_prev<-err, err_prev_m1<-old err_prev.
+        # All of u/err/err_prev are (n_s, n_c), so the stack is (n_s, n_c, 3).
+        self._state.set(torch.stack([u, err, err_prev], dim=-1))
 
         self.output["inputSignal"]._set(u, i_t=step_index)
+
+    # -- Continuous state: velocity-form PID memory ---------------------------
+    # The incremental (velocity) PID carries three scalars between steps:
+    # the previous output ``u_prev`` and the last two errors
+    # ``err_prev`` / ``err_prev_m1`` (needed for the c1/c2 difference terms).
+    # These fully determine the next step given the inputs, so they are the
+    # controller's continuous state.  Stored per element as ``(n_s, n_c)``
+    # (n_c broadcasts from 1 to the port width after the first step); stacking
+    # along a new trailing axis yields the ``(n_s, n_c, 3)`` convention.
+    @property
+    def state_size(self) -> int:
+        return 3
+
+    def get_state(self) -> torch.Tensor:
+        return self._state.get()
+
+    def set_state(self, x: torch.Tensor) -> None:
+        self._state.set(x)
+
+    def state_names(self) -> List[str]:
+        return [f"{self.id}.u_prev", f"{self.id}.err_prev", f"{self.id}.err_prev_m1"]
 
 
 def saref_signature_pattern():

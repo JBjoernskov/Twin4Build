@@ -363,6 +363,7 @@ class Simulator:
         step_size: Union[List[int], int] = None,
         show_progress_bar: bool = True,
         iteration_method: str = "gauss-seidel",
+        after_initialize=None,
         **kwargs,
     ) -> None:
         """
@@ -423,6 +424,15 @@ class Simulator:
         self.date_time_steps = date_time_steps
         self.n_timesteps = max_timesteps
         self.model.initialize(start_time, end_time, step_size)
+        # Optional hook fired after (re)initialization, before the time loop.
+        # Used by multiple-shooting / collocation estimation to overwrite each
+        # segment's initial state with the optimizer's boundary decision
+        # variables -- ``model.initialize`` above has just reset every stateful
+        # component to its default/output-derived state, so this is the point
+        # to inject the per-segment states.  Default ``None`` => no-op, so
+        # ordinary simulation is unaffected.
+        if after_initialize is not None:
+            after_initialize()
         if show_progress_bar:
             for step_index in tqdm(
                 range(max_timesteps),

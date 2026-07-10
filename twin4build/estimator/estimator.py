@@ -715,12 +715,40 @@ class Estimator:
             ("scipy", "trust-constr", "ad"),
             ("scipy", "dual_annealing", "ad"),
             ("scipy", "basinhopping", "ad"),
+            # IPOPT via CasADi (optional dependency).  Single-shooting: same
+            # objective as the SciPy backends, only the optimizer changes.
+            ("casadi", "ipopt", "ad"),
         ]
         default_none_method = ("scipy", "SLSQP", "ad")
         default_methods = [("scipy", "SLSQP", "ad")]
         default_mode = (
             "ad"  # Always choose automatic differentiation mode when ambiguous
         )
+
+        # Transcription mode (4th, optional tuple element).  Governs *how* the
+        # dynamics enter the NLP, orthogonally to the (library, optimizer, mode)
+        # optimizer choice:
+        #   - "single_shooting" (default): parameters -> full forward simulation
+        #     -> residuals.  The classic sequential approach.
+        #   - "multiple_shooting": split the horizon into segments; each
+        #     segment's initial state becomes a decision variable, stitched by
+        #     continuity constraints (see :meth:`_transcription_solver`).
+        #   - "collocation": multiple_shooting taken to one segment per timestep
+        #     (full simultaneous transcription).
+        allowed_transcriptions = (
+            "single_shooting",
+            "multiple_shooting",
+            "collocation",
+        )
+        self._transcription = "single_shooting"
+        if isinstance(method, tuple) and len(method) == 4:
+            transcription = method[3]
+            assert transcription in allowed_transcriptions, (
+                "The 4th (transcription) element of the method tuple must be one "
+                f"of {allowed_transcriptions} - \"{transcription}\" was provided."
+            )
+            self._transcription = transcription
+            method = tuple(method[:3])
 
         # Process method specification
         if isinstance(method, str):
@@ -937,7 +965,7 @@ class Estimator:
         self._set_bounds(normalize=True)
 
         # Run optimization based on method
-        if method[0] != "scipy":
+        if method[0] not in ("scipy", "casadi"):
             raise ValueError(f"Unsupported library: {method[0]}")
 
         if options is None:
@@ -2275,7 +2303,7 @@ class Estimator:
         # RMSE diagnostic only emits on strictly-improving evaluations.
         self._best_obj_logged = float("inf")
 
-        LOGGER.task("Running scipy solver: %s (%s mode)", method[1], method[2])
+        LOGGER.task("Running %s solver: %s (%s mode)", method[0], method[1], method[2])
         LOGGER.add_level()
 
         datestr = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -2382,7 +2410,34 @@ class Estimator:
 
         # Run optimization based on method
         LOGGER.task("Running optimization")
-        if method[1] in ["trf", "dogbox"]:
+        if self._transcription != "single_shooting":
+            # Multiple-shooting / collocation transcription: the horizon is
+            # split into segments whose initial states become decision
+            # variables alongside theta, stitched by continuity penalties.
+            # Reuses the shared setup above (params/bounds/measurements) and the
+            # result-building teardown below; only the NLP itself differs.
+            from twin4build.estimator._transcription import solve_transcription
+
+            result = solve_transcription(self, method, dict(options))
+        elif method[0] == "casadi":
+            # IPOPT (via CasADi) single-shooting solve.  Reuses the exact
+            # AD objective / gradient the SciPy backends use -- only the
+            # optimizer changes.  CasADi is imported lazily so it stays an
+            # optional dependency.
+            from twin4build.estimator._casadi_ipopt import solve_ipopt
+
+            result = solve_ipopt(
+                x0=np.asarray(self._x0_norm, dtype=np.float64),
+                lb=np.asarray(self.bounds.lb, dtype=np.float64),
+                ub=np.asarray(self.bounds.ub, dtype=np.float64),
+                fun=lambda x: float(self._obj_ad(x, "scalar")),
+                jac=lambda x: self._jac_ad(x, "scalar"),
+                options=dict(options),
+            )
+            # Mirror the SciPy backends' ``nfev`` bookkeeping (CasADi does not
+            # report objective evaluations, but the Estimator counts them).
+            result.nfev = self._eval_count
+        elif method[1] in ["trf", "dogbox"]:
             if method[2] == "ad":
                 result = least_squares(
                     self._obj_ad,
@@ -2591,7 +2646,7 @@ class Estimator:
         if opt_message:
             LOGGER.result("Solver message: %s", opt_message)
 
-        if method[0] == "scipy":
+        if method[0] in ("scipy", "casadi"):
             self.simulator.model.restore_parameters(keep_values=True)
 
         # Store the normalised solution for warm-starting (used by lambda scheduling)
@@ -2638,7 +2693,8 @@ class Estimator:
         LOGGER.ok("Results saved to %s", self.result_savedir_pickle)
         LOGGER.remove_level()
         LOGGER.ok(
-            "Running scipy solver: %s (%s mode)",
+            "Running %s solver: %s (%s mode)",
+            method[0],
             method[1],
             method[2],
             change_status=True,

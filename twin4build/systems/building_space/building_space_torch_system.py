@@ -256,6 +256,9 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         self.thermal.do_step(second_time, date_time, step_size, step_index=step_index)
         self.mass.do_step(second_time, date_time, step_size, step_index=step_index)
 
+    # State (thermal | mass) is discovered generically by System.get_state /
+    # set_state via the owned submodels' ``tps.State`` -- no per-component code.
+
 
 def saref_signature_pattern_sensor():
     """
