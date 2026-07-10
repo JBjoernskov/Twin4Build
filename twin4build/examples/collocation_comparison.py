@@ -113,6 +113,19 @@ def example_parameters(model):
     ]
 
 
+def thermal_parameters(model):
+    """A temperature-focused 4-parameter subset (RC identification, Blum-et-al
+    style).  This is where collocation applies cleanly -- the composer Jacobian
+    is near-exact, so the fast path shines."""
+    space = model.components["office"]
+    return [
+        (space, "thermal.C_air", 2e6, 1e6, 1e7),
+        (space, "thermal.C_wall", 2e6, 1e6, 1e7),
+        (space, "thermal.R_out", 0.01, 1e-3, 0.1),
+        (space, "thermal.R_in", 0.05, 1e-3, 0.5),
+    ]
+
+
 def example_measurements(model):
     """The four calibration sensors from the estimation example."""
     c = model.components
@@ -123,6 +136,11 @@ def example_measurements(model):
         (c["office_co2_sensor"], 30 / percentile),
         (c["office_damper_position_sensor"], 0.05 / percentile),
     ]
+
+
+def temperature_measurement(model):
+    """Just the zone-temperature sensor (for the thermal-RC parameter set)."""
+    return [(model.components["office_temperature_sensor"], 0.05)]
 
 
 def apply_estimated(model, params, result_x):
@@ -136,19 +154,24 @@ def apply_estimated(model, params, result_x):
         rgetattr(comp, attr).set(float(value), normalized=False)
 
 
-def estimate_and_predict(tag, method, options, periods):
+def estimate_and_predict(tag, method, options, periods, param_set="full"):
     """Estimate over ``periods`` (list of (start, end)), then simulate period 0."""
     start_list = [s for s, _ in periods]
     end_list = [e for _, e in periods]
     model = load_model()
     est = tb.Estimator(tb.Simulator(model))
-    params = example_parameters(model)
+    if param_set == "thermal":
+        params = thermal_parameters(model)
+        measurements = temperature_measurement(model)
+    else:
+        params = example_parameters(model)
+        measurements = example_measurements(model)
     is_transcription = len(method) == 4
 
     t0 = time.time()
     result = est.estimate(
         parameters=params,
-        measurements=example_measurements(model),
+        measurements=measurements,
         start_time=start_list,
         end_time=end_list,
         step_size=STEP_SIZE,
@@ -242,6 +265,9 @@ def main():
     ap.add_argument("--maxiter", type=int, default=100)
     ap.add_argument("--methods", default="single_shooting,multiple_shooting",
                     help="comma list of: single_shooting, multiple_shooting, collocation, slsqp")
+    ap.add_argument("--param-set", default="full", choices=["full", "thermal"],
+                    help="'full' = 19 params + 4 sensors; 'thermal' = 4 RC params + "
+                         "temperature sensor (where collocation applies cleanly)")
     ap.add_argument("--outdir", default="collocation_plots")
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
@@ -262,7 +288,7 @@ def main():
         options = {"maxiter": args.maxiter}
         if key == "multiple_shooting":
             options["n_segments"] = args.segments
-        res = estimate_and_predict(tag, method, options, periods)
+        res = estimate_and_predict(tag, method, options, periods, args.param_set)
         results.append(res)
         save_after_calibration_plot(res, args.outdir)
 
