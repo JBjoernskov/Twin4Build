@@ -229,6 +229,14 @@ def estimate_and_predict(tag, method, options, periods, param_set="full"):
     n = min(len(pred), len(actual))
     s = min(WARMUP_SKIP, max(0, n - 1))
     temp_rmse = float(np.sqrt(np.mean((pred[s:n] - actual[s:n]) ** 2)))
+
+    def _rmse(a, b):
+        return float(np.sqrt(np.mean((pred[a:b] - actual[a:b]) ** 2))) if b > a else float("nan")
+
+    half = n // 2
+    print(f"    [{tag}] RMSE breakdown: skip20={temp_rmse:.3f}  "
+          f"first_half={_rmse(s, half):.3f}  second_half={_rmse(half, n):.3f}  "
+          f"last_day={_rmse(max(0, n - 72), n):.3f} K")
     return {
         "tag": tag, "time": elapsed, "rmse": temp_rmse,
         "x": list(result.get("result_x", [])),

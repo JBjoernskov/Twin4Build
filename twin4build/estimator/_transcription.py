@@ -803,7 +803,11 @@ def _solve_sparse_collocation(
         g_fun = g_fun_fast
 
         z_cur = np.asarray(z0, dtype=np.float64).copy()
-        n_outer = int((options or {}).get("n_recapture", 4))
+        # Outer re-capture defaults OFF (1 pass): on this example it converges to
+        # the *same* optimum as a single capture (verified: identical prediction
+        # RMSE), so extra passes only multiply the solve cost.  Raise
+        # ``n_recapture`` only for models with strong one-step feedback.
+        n_outer = int((options or {}).get("n_recapture", 1))
         result = None
         for outer in range(n_outer):
             zt = torch.tensor(z_cur, dtype=torch.float64)
