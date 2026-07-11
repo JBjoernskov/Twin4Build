@@ -199,7 +199,7 @@ def estimate_and_predict(tag, method, options, periods, param_set="full"):
     # ~27 C with C_wall pinned at its upper bound, a frozen phantom heat source).
     # A fair, apples-to-apples metric therefore uses the same default init + warmup
     # for both methods.
-    seed_initial_state = False
+    seed_initial_state = True
     est_x0 = result.get("estimated_initial_state", None)
 
     def _seed_initial_state():

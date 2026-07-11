@@ -855,6 +855,39 @@ def _solve_sparse_collocation(
         "composer(augmented)" if composer is not None else "finite-diff", n_fb,
     )
 
+    # Timestepping micro-benchmark (env TWIN4BUILD_BENCH_TIMESTEP): compute every
+    # segment's one-step transition both ways -- the new vmap(F_aug) map vs the old
+    # object-graph batched simulate (do_step traversal) -- and report wall time and
+    # agreement.  This isolates *why* collocation is fast: the per-evaluation
+    # forward cost that both the objective and the defects pay each iteration.
+    import os as _os
+    if _os.environ.get("TWIN4BUILD_BENCH_TIMESTEP") and composer is not None and CAP is not None:
+        import time as _time
+
+        th0 = torch.tensor(z0_a[:n_theta], dtype=torch.float64)
+        y0 = torch.tensor(z0_a[n_theta:], dtype=torch.float64).reshape(n_seg, Da)
+        s0 = torch.tensor(z0[n_theta:], dtype=torch.float64).reshape(n_seg, D)
+        with torch.no_grad():
+            Yn, _ = _fwd_all(th0, y0)                 # warm up vmap path
+            _, _, end_old = _simulate(th0, s0)        # warm up object-graph path
+        agree = float((Yn[:, :D] - end_old).abs().max())
+        reps = 5
+        t0 = _time.time()
+        for _ in range(reps):
+            with torch.no_grad():
+                _fwd_all(th0, y0)
+        t_new = (_time.time() - t0) / reps
+        t0 = _time.time()
+        for _ in range(reps):
+            with torch.no_grad():
+                _simulate(th0, s0)
+        t_old = (_time.time() - t0) / reps
+        LOGGER.result(
+            "TIMESTEP BENCH (%d segments x 1 step): vmap(F_aug)=%.1f ms | "
+            "object-graph simulate=%.1f ms | speedup=%.1fx | max|Δstate|=%.2e",
+            n_seg, t_new * 1e3, t_old * 1e3, (t_old / t_new if t_new else float("nan")), agree,
+        )
+
     # Augmented feedback-as-state collocation: the cut feedback signals are
     # decision variables (extra state) tied to their producer outputs by ordinary
     # continuity, so there is no frozen carry and no outer re-capture -- one solve.
