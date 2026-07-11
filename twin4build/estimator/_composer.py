@@ -83,7 +83,7 @@ class OneStepComposer:
         Segment step size in seconds.
     """
 
-    def __init__(self, model, stateful, theta_spec, sample_time):
+    def __init__(self, model, stateful, theta_spec, sample_time, measurements=None):
         self.model = model
         self.sample_time = float(sample_time)
         # Accept either the SimulationModel (``_flat_execution_order``) or the
@@ -120,6 +120,23 @@ class OneStepComposer:
         self.wiring: Dict[str, List[Tuple[str, tuple]]] = {}
         for c in self.cone:
             self.wiring[c.id] = self._resolve_inputs(c)
+
+        # Measurement sources: for each measurement sensor, where does its value
+        # come from?  ("fresh", producer_id, out_port) if produced by a cone
+        # component (F computes it), else ("captured", cap_index) sampled from a
+        # reference sim.  Lets F return the modelled measured outputs for the
+        # data-fit objective.
+        self.meas_sources: List[tuple] = []
+        for md in (measurements or []):
+            src = self._trace_source(md, "measuredValue")
+            if src is not None and src[0].id in {x.id for x in self.cone}:
+                self.meas_sources.append(("fresh", src[0].id, src[1]))
+            else:
+                key = (md.id, "measuredValue")
+                if key not in self._cap_index:
+                    self._cap_index[key] = len(self._captured_keys)
+                    self._captured_keys.append(key)
+                self.meas_sources.append(("captured", self._cap_index[key]))
 
     # -- static graph analysis ----------------------------------------------
     def _influence_cone(self) -> List:
@@ -259,4 +276,13 @@ class OneStepComposer:
             produced[c.id] = outs
             if c.id in self.state_index:
                 x_next_parts[self.state_index[c.id]] = x_next_c.reshape(-1)
-        return torch.cat(x_next_parts)
+        x_next = torch.cat(x_next_parts)
+        if not self.meas_sources:
+            return x_next
+        meas = []
+        for spec in self.meas_sources:
+            if spec[0] == "fresh":
+                meas.append(produced[spec[1]][spec[2]].reshape(-1)[0])
+            else:
+                meas.append(captured[spec[1]].reshape(-1)[0])
+        return x_next, torch.stack(meas)

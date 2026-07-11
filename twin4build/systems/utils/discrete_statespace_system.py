@@ -11,6 +11,33 @@ import twin4build.utils.types as tps
 from twin4build import core
 
 
+def _expm_ss(M, order=8, squarings=6):
+    """Matrix exponential via scaling-and-squaring + a Taylor series.
+
+    ``torch.matrix_exp`` has no ``vmap`` batching rule, so under ``vmap`` (the
+    collocation fast path maps ``F`` over segments) it silently falls back to a
+    sequential Python loop over the batch -- and its VJP, hit by ``jacrev``, is
+    slower still.  This re-expression is *pure* matmul/add, so ``vmap`` batches
+    it natively and autograd differentiates it cleanly.
+
+    ``exp(M) = (exp(M / 2^s))^(2^s)``; the scaled ``M/2^s`` has small norm so a
+    low-order Taylor series is accurate, then ``s`` repeated squarings recover
+    ``exp(M)``.  Defaults (s=6, order=8) hold ~1e-10 over the thermal-RC matrix
+    range, well inside IPOPT's tolerance.
+    """
+    N = M.shape[-1]
+    I = torch.eye(N, dtype=M.dtype, device=M.device)
+    Ms = M / (2.0 ** squarings)
+    term = I
+    acc = I
+    for k in range(1, order + 1):
+        term = term @ Ms / k  # (N,N) broadcasts against any leading batch dims
+        acc = acc + term
+    for _ in range(squarings):
+        acc = acc @ acc
+    return acc
+
+
 def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time):
     """Pure one ZOH step of a (bilinear) state-space system.
 
@@ -38,7 +65,7 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time):
     # dim that the freshly-allocated M does not.
     top = torch.cat([A_eff * T, B_eff * T], dim=-1)  # (..., n, n+m)
     M = torch.nn.functional.pad(top, (0, 0, 0, m))  # add m zero rows -> (..., n+m, n+m)
-    expM = torch.matrix_exp(M)
+    expM = _expm_ss(M)  # vmap-friendly matrix exponential (see helper)
     Ad = expM[..., :n, :n]
     Bd = expM[..., :n, n:]
 

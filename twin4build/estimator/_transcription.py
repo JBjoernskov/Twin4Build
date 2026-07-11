@@ -473,7 +473,8 @@ def _solve_sparse_collocation(
         if simple_theta and all_nc1:
             theta_spec = list(zip(self._flat_components, self._parameter_names))
             comp = OneStepComposer(
-                self.simulator.model, layout.components, theta_spec, seg_steps[0]
+                self.simulator.model, layout.components, theta_spec, seg_steps[0],
+                measurements=[md for md, _ in self._measurements],
             )
             if comp.D == D:
                 # Plain (functorch-safe) denormalization from the parameters'
@@ -599,21 +600,82 @@ def _solve_sparse_collocation(
         return cap
 
     cp_i = torch.tensor([i for i, _ in cp], dtype=torch.long)
+    cp_j = torch.tensor([j for _, j in cp], dtype=torch.long)
+
+    # -- capture exogenous+carried inputs ONCE (vmap-F path) ------------------
+    # The old per-eval object-graph simulate re-ran model.initialize (~0.2 s,
+    # re-reading every CSV) on every objective/gradient/constraint/Jacobian
+    # call -- the dominant cost.  Instead capture the captured input ports once
+    # at the warm start, then compute the objective, defects, AND Jacobian from
+    # ``vmap(F)`` alone (measured ~23x faster than the batched simulate).  The
+    # captured feedback (e.g. office.heatGain <- heater.Power) is thereby frozen
+    # at the warm start; it is a weak one-step term and the states themselves
+    # are decision variables, so the defects/objective stay accurate where it
+    # matters.  ``F`` computes the modelled measured outputs directly.
+    CAP = None
+    ACT = SD_meas = None
+    if composer is not None and composer.meas_sources:
+        z0t = torch.tensor(z0, dtype=torch.float64)
+        with torch.no_grad():
+            _simulate(z0t[:n_theta], z0t[n_theta:].reshape(n_seg, D))
+        CAP = _capture_inputs()  # (n_seg, n_captured), fixed
+        md_list = [md for md, _ in self._measurements]
+        SD_meas = torch.tensor(
+            [float(sd) for _, sd in self._measurements], dtype=torch.float64
+        )
+        ACT = torch.zeros((n_seg, len(md_list)), dtype=torch.float64)
+        for m, md in enumerate(md_list):
+            for gi in range(n_seg):
+                ACT[gi, m] = float(torch.as_tensor(seg_actual[md.id][gi]).reshape(-1)[0])
+
+    def _fwd_all(theta_norm, s_norm):
+        """vmap ``F`` over all segments -> (X_next (n_seg,D), Meas (n_seg,n_meas))."""
+        theta_phys = _denorm(theta_norm)
+        s_phys = s_from_norm(s_norm)
+        return vmap(lambda si, ci: composer.F(si, theta_phys, ci))(s_phys, CAP)
+
+    def _mse_of_z(zt):
+        _, Meas = _fwd_all(zt[:n_theta], zt[n_theta:].reshape(n_seg, D))
+        return torch.mean(((ACT - Meas) / SD_meas) ** 2)
+
+    def _obj_compute_fast(z):
+        key = z.tobytes()
+        if _c["key"] == key:
+            return _c["f"], _c["gf"]
+        self._eval_count += 1
+        zt = torch.tensor(z, dtype=torch.float64)
+        with torch.no_grad():
+            _, Meas = _fwd_all(zt[:n_theta], zt[n_theta:].reshape(n_seg, D))
+            mse = float(torch.mean(((ACT - Meas) / SD_meas) ** 2))
+            self._last_rmse = float(torch.mean((ACT - Meas) ** 2)) ** 0.5
+        gf = torch.func.grad(_mse_of_z)(zt).numpy()
+        _c.update(key=key, f=mse, gf=gf)
+        if self._eval_count % 10 == 1:
+            LOGGER.iter("eval=%d | obj=%.6f | rmse=%.4f", self._eval_count, mse, self._last_rmse)
+        return mse, gf
+
+    def g_fun_fast(z):
+        zt = torch.tensor(np.asarray(z, dtype=np.float64), dtype=torch.float64)
+        s_norm = zt[n_theta:].reshape(n_seg, D)
+        with torch.no_grad():
+            X_next, _ = _fwd_all(zt[:n_theta], s_norm)
+            end_norm = s_to_norm(X_next)
+            defect = end_norm[cp_i] - s_norm[cp_j]
+        return defect.reshape(-1).numpy()
 
     def _end_norm_fn(s_norm_i, theta_norm, captured_i):
-        x_next = composer.F(s_from_norm(s_norm_i), _denorm(theta_norm), captured_i)
+        out = composer.F(s_from_norm(s_norm_i), _denorm(theta_norm), captured_i)
+        x_next = out[0] if isinstance(out, tuple) else out
         return s_to_norm(x_next)
 
     def g_jac_vals_fast(z):
-        """Sparse constraint Jacobian via one vmap(jacrev(F)) over the composer."""
+        """Sparse constraint Jacobian via one vmap(jacrev(F)) over the composer,
+        reusing the once-captured inputs (no per-eval simulate)."""
         zt = torch.tensor(np.asarray(z, dtype=np.float64), dtype=torch.float64)
         theta_norm = zt[:n_theta]
         s_norm = zt[n_theta:].reshape(n_seg, D)
-        with torch.no_grad():
-            _simulate(theta_norm, s_norm)  # set model state + populate input history
-        captured = _capture_inputs()
         S_i = s_norm[cp_i]          # (n_links, D)
-        CAP_i = captured[cp_i]      # (n_links, n_captured)
+        CAP_i = CAP[cp_i]           # (n_links, n_captured)
         Jx = vmap(lambda si, ci: jacrev(_end_norm_fn, argnums=0)(si, theta_norm, ci))(S_i, CAP_i)
         Jt = vmap(lambda si, ci: jacrev(_end_norm_fn, argnums=1)(si, theta_norm, ci))(S_i, CAP_i)
         # Repack (indexed by link l, which is already the (n_links, ...) axis).
@@ -669,16 +731,112 @@ def _solve_sparse_collocation(
                 _jac_state["use_fast"] = False
         return g_jac_vals_fd(z)
 
+    def _jac_selfcheck():
+        """Compare the (composer) Jacobian to a finite-difference of the real
+        defect g_fun on a few columns -- ground-truth correctness check."""
+        import os as _os
+
+        if not _os.environ.get("TWIN4BUILD_JAC_CHECK"):
+            return
+        g0 = g_fun(z0)
+        vals = g_jac_vals(z0)
+        # dense lookup: column -> {row: val}
+        from collections import defaultdict
+
+        colmap = defaultdict(dict)
+        for k in range(len(jac_rows)):
+            colmap[int(jac_cols[k])][int(jac_rows[k])] = vals[k]
+        eps = 1e-6
+        cols = list(range(n_theta)) + [n_theta + 0, n_theta + n_seg // 2 * D]
+        worst = 0.0
+        for c in cols:
+            zp = z0.copy(); zp[c] += eps
+            fd = (g_fun(zp) - g0) / eps  # (n_g,) true column c
+            ana = np.zeros(n_g)
+            for r, v in colmap[c].items():
+                ana[r] = v
+            denom = max(1.0, float(np.abs(fd).max()))
+            d = float(np.abs(ana - fd).max()) / denom
+            worst = max(worst, d)
+            LOGGER.config(
+                "JAC-CHECK col %d (%s): max|ana-fd|/scale = %.3e  (|fd|max=%.3e)",
+                c, "theta" if c < n_theta else "state", d, float(np.abs(fd).max()),
+            )
+        LOGGER.config("JAC-CHECK worst relative column error = %.3e", worst)
+
     from twin4build.estimator._casadi_ipopt import solve_ipopt_constrained
 
     LOGGER.config(
         "Sparse collocation: %d constraints, %d nonzeros | Jacobian=%s",
         n_g, len(jac_rows), "composer" if composer is not None else "finite-diff",
     )
+
+    def _attach_x0(result, z_full):
+        """Record the optimised *initial state* (first segment's boundary state,
+        physical units) per stateful component.  Transcription estimates these
+        boundary states as decision variables; the caller must scatter them into
+        the model before a continuous prediction, otherwise the (long RC time
+        constant) rollout starts from the wrong default state and never recovers.
+        """
+        z_full = np.asarray(z_full, dtype=np.float64)
+        x0 = s_from_norm(
+            torch.tensor(z_full[n_theta:], dtype=torch.float64).reshape(n_seg, D)
+        )[0]  # (D,)
+        d = {}
+        for comp, (start, stop), (n_c, ss) in zip(
+            layout.components, layout.slices, layout.shapes
+        ):
+            d[comp.id] = x0[start:stop].reshape(n_c, ss).detach().clone()
+        result.estimated_initial_state = d
+        return result
+
+    # Prefer the vmap-F path (objective + defects + Jacobian from F) when the
+    # composer is available -- avoids the per-eval object-graph simulate entirely.
+    # The captured feedback (e.g. office.heatGain <- heater.Power) is frozen per
+    # solve, which biases the optimum; wrap the solve in a Gauss-Seidel *outer
+    # re-capture* loop: capture the carried inputs, solve the (fast) NLP,
+    # re-capture at the new solution, and repeat until the feedback stabilizes so
+    # the collocation optimum is consistent with the real one-step feedback.
+    if composer is not None and CAP is not None:
+        obj_fun = lambda z: _obj_compute_fast(np.asarray(z, dtype=np.float64))[0]
+        obj_grad = lambda z: _obj_compute_fast(np.asarray(z, dtype=np.float64))[1]
+        g_fun = g_fun_fast
+
+        z_cur = np.asarray(z0, dtype=np.float64).copy()
+        n_outer = int((options or {}).get("n_recapture", 4))
+        result = None
+        for outer in range(n_outer):
+            zt = torch.tensor(z_cur, dtype=torch.float64)
+            with torch.no_grad():
+                _simulate(zt[:n_theta], zt[n_theta:].reshape(n_seg, D))
+            CAP = _capture_inputs()   # re-freeze the feedback at the current point
+            _c["key"] = None          # invalidate the obj cache (CAP changed)
+            if outer == 0:
+                _jac_selfcheck()
+            result = solve_ipopt_constrained(
+                z_cur, lb, ub, obj_fun, obj_grad, n_g, g_fun, g_jac_vals,
+                jac_rows, jac_cols, options=options,
+            )
+            z_new = np.asarray(result.x, dtype=np.float64)
+            dtheta = float(np.abs(z_new[:n_theta] - z_cur[:n_theta]).max())
+            z_cur = z_new
+            LOGGER.config(
+                "Collocation outer re-capture %d/%d: max|dtheta_norm|=%.3e",
+                outer + 1, n_outer, dtheta,
+            )
+            if dtheta < 1e-4:
+                break
+        _attach_x0(result, z_cur)
+        result.x = z_cur[:n_theta]
+        result.nfev = self._eval_count
+        return result
+
+    _jac_selfcheck()
     result = solve_ipopt_constrained(
         z0, lb, ub, obj_fun, obj_grad, n_g, g_fun, g_jac_vals,
         jac_rows, jac_cols, options=options,
     )
+    _attach_x0(result, result.x)
     result.x = np.asarray(result.x, dtype=np.float64)[:n_theta]
     result.nfev = self._eval_count
     return result

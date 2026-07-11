@@ -344,6 +344,21 @@ class TimeSeriesInputSystem(core.System):
         else:
             is_cached = False
 
+        # Fast path: the window is unchanged AND the (fixed) value tensor / output
+        # port are already built -> nothing to do.  ``initialize`` is otherwise
+        # re-run on every ``model.initialize`` (i.e. every estimator objective /
+        # gradient / constraint evaluation), and even on a data cache-hit it would
+        # rebuild the value array, rescan for NaNs, and re-initialize the output
+        # port -- ~0.05 s each, thousands of times, the dominant estimation cost.
+        # The time-series "state" is just the data, which is constant for a fixed
+        # window, so skipping the rebuild is safe.
+        if (
+            is_cached
+            and getattr(self, "values", None) is not None
+            and getattr(self, "batch_size", None) == len(start_time)
+        ):
+            return
+
         if is_cached == False:
             self.df = []
             self._cached_initialize_arguments = []

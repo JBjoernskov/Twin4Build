@@ -377,6 +377,18 @@ def solve_ipopt_constrained(
             self._jac = _GJacCB(name, opts)
             return self._jac
 
+        # Declare the constraint-Jacobian *sparsity pattern* explicitly.  CasADi
+        # keeps this separate from the Jacobian evaluation function above: without
+        # it CasADi assumes a dense d(g)/dx (n_g x n) and hands IPOPT that pattern
+        # (n_g * n nonzeros) -- defeating the whole point of collocation.  With it,
+        # IPOPT allocates only the block-bidiagonal structure and its sparse linear
+        # solver factorizes the KKT system in ~linear time in the horizon.
+        def has_jac_sparsity(self, oind, iind):
+            return True
+
+        def get_jac_sparsity(self, oind, iind, symmetric):
+            return jac_sp
+
         def eval(self, arg):
             x = np.asarray(arg[0]).flatten()
             return [ca.DM(np.asarray(g_fun(x), dtype=np.float64).reshape(n_g, 1))]

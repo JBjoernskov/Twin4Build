@@ -184,19 +184,51 @@ def estimate_and_predict(tag, method, options, periods, param_set="full"):
     # Calibrated prediction over the first period (continuous rollout).
     apply_estimated(model, params, result.get("result_x", []))
     model.set_save_simulation_result(flag=True)
+
+    # Both methods are evaluated identically: a continuous rollout from the model's
+    # default initial state, with the first WARMUP_SKIP steps excluded from the
+    # RMSE (below) so the initial transient -- which depends on the unknown true
+    # initial state, not the estimated parameters -- doesn't bias the comparison.
+    #
+    # NOTE on ``seed_initial_state``: transcription also estimates the boundary
+    # states (available as ``result["estimated_initial_state"]``), but seeding the
+    # *full* estimated state here makes the rollout WORSE, not better: the observed
+    # air temperature is estimated well (~0.15 K), but the weakly-observable wall
+    # temperature and PID integral states settle at non-physical values that fit
+    # the one-step defects yet contaminate the multi-step rollout (the wall sits at
+    # ~27 C with C_wall pinned at its upper bound, a frozen phantom heat source).
+    # A fair, apples-to-apples metric therefore uses the same default init + warmup
+    # for both methods.
+    seed_initial_state = False
+    est_x0 = result.get("estimated_initial_state", None)
+
+    def _seed_initial_state():
+        if seed_initial_state and est_x0:
+            for cid, block in est_x0.items():
+                model.components[cid].set_state(block.unsqueeze(0))
+
     est.simulator.simulate(
         start_time=start_list[0], end_time=end_list[0], step_size=STEP_SIZE,
-        show_progress_bar=False,
+        show_progress_bar=False, after_initialize=_seed_initial_state,
     )
     # Temperature RMSE on the continuous prediction -- a meaningful, comparable
     # metric in K.  (The estimator's internal objective aggregates all four
     # sensors across mixed units -- K, ppm, [0-1] -- so it is dominated by CO2
     # and not a clean per-method quality measure.)
+    #
+    # Fairness: every method rolls out from the SAME default initial state, so
+    # the first ~WARMUP_SKIP steps are a settling transient that depends on the
+    # (unknown) true initial state, not on the estimated parameters.  Score only
+    # the settled portion so single-shooting (fit with n_warmup>0) and the
+    # transcription methods (which optimise+discard their own initial states) are
+    # judged on equal footing.
+    WARMUP_SKIP = 20
     space = model.components["office"]
     pred = space.output["indoorTemperature"].history(i_s=0, i_c=0).detach().numpy()
     actual = np.asarray(model.components["office_temperature_sensor"].time_series_input.values).flatten()
     n = min(len(pred), len(actual))
-    temp_rmse = float(np.sqrt(np.mean((pred[:n] - actual[:n]) ** 2)))
+    s = min(WARMUP_SKIP, max(0, n - 1))
+    temp_rmse = float(np.sqrt(np.mean((pred[s:n] - actual[s:n]) ** 2)))
     return {
         "tag": tag, "time": elapsed, "rmse": temp_rmse,
         "x": list(result.get("result_x", [])),

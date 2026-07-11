@@ -2667,6 +2667,11 @@ class Estimator:
                 seen_unique.add(param_idx)
         result_x = np.array(result_x_list)
 
+        # Transcription (multiple-shooting / collocation) also estimates the
+        # boundary states; carry the optimised initial state through so callers
+        # can seed a continuous prediction from it (see EstimationResult).
+        estimated_initial_state = getattr(result, "estimated_initial_state", None)
+
         result = EstimationResult(
             result_x=result_x,
             component_id=[com.id for com in self._flat_components],
@@ -2686,6 +2691,8 @@ class Estimator:
             success=getattr(result, "success", None),
             message=getattr(result, "message", None),
         )
+        if estimated_initial_state is not None:
+            result["estimated_initial_state"] = estimated_initial_state
 
         with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
