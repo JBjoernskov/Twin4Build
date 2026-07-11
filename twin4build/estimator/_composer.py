@@ -114,9 +114,22 @@ class OneStepComposer:
         self.cone = self._influence_cone()
 
         # Static input wiring for every cone component: port -> source spec.
-        # source is ("fresh", producer_id, out_port) or ("captured", cap_index).
-        self._captured_keys: List[Tuple[str, str]] = []  # (comp_id, port) needing capture
+        # A port's source is one of:
+        #   ("fresh",    producer_id, out_port) -- produced earlier in F this step;
+        #   ("feedback", fb_index)              -- a *cut feedback edge*: the source
+        #        is a cone forward-component that executes LATER (the cycle-broken
+        #        edge).  Its value is a decision variable, NOT frozen, because it
+        #        is a function of the states/params (e.g. office.heatGain <-
+        #        space_heater.Power).  A defect ties it to the producer's output.
+        #   ("captured", cap_index)             -- truly exogenous (weather,
+        #        schedules): frozen from a reference sim (correct -- independent of
+        #        the unknowns).
+        self.cone_ids = {c.id for c in self.cone}
+        self._captured_keys: List[Tuple[str, str]] = []  # exogenous (comp_id, port)
         self._cap_index: Dict[Tuple[str, str], int] = {}
+        self._feedback_keys: List[Tuple[str, str]] = []  # cut-feedback (consumer_id, port)
+        self._fb_index: Dict[Tuple[str, str], int] = {}
+        self._fb_producer: List[Tuple[str, str]] = []    # (producer_id, out_port) per fb
         self.wiring: Dict[str, List[Tuple[str, tuple]]] = {}
         for c in self.cone:
             self.wiring[c.id] = self._resolve_inputs(c)
@@ -185,14 +198,23 @@ class OneStepComposer:
             if isinstance(comp.input[port], tps.Vector):
                 continue
             src = self._trace_source(comp, port)
-            if (
-                src is not None
-                and src[0].id in self.forward_ids
-                and src[0].id in {c.id for c in self.cone}
-                and self.pos[src[0].id] < self.pos[comp.id]
-            ):
+            src_in_cone = src is not None and src[0].id in self.forward_ids and src[0].id in self.cone_ids
+            if src_in_cone and self.pos[src[0].id] < self.pos[comp.id]:
+                # Produced earlier in this step -> thread it fresh.
                 specs.append((port, ("fresh", src[0].id, src[1])))
+            elif src_in_cone:
+                # Source is a cone forward-component that executes LATER: this is
+                # the cycle-broken (feedback) edge.  Its value is a function of the
+                # states/params, so it becomes a decision variable tied to the
+                # producer's output by a defect -- NOT a frozen constant.
+                key = (comp.id, port)
+                if key not in self._fb_index:
+                    self._fb_index[key] = len(self._feedback_keys)
+                    self._feedback_keys.append(key)
+                    self._fb_producer.append((src[0].id, src[1]))
+                specs.append((port, ("feedback", self._fb_index[key])))
             else:
+                # Truly exogenous (no cone producer): frozen capture is correct.
                 key = (comp.id, port)
                 if key not in self._cap_index:
                     self._cap_index[key] = len(self._captured_keys)
@@ -244,17 +266,23 @@ class OneStepComposer:
                 p[attr] = theta[idx].reshape(1)
         return p
 
-    def F(self, states_flat, theta, captured):
+    def F(self, states_flat, theta, captured, feedback=None):
         """One pure step for a single segment.
 
         Args:
             states_flat: ``(D,)`` concatenated stateful-component states.
             theta: ``(n_theta,)`` physical estimated parameters (theta_spec order).
-            captured: ``(n_captured,)`` captured input values for this segment.
+            captured: ``(n_captured,)`` exogenous input values for this segment.
+            feedback: ``(n_feedback,)`` cut-feedback input values (decision
+                variables) for this segment; ``None`` -> zeros (n_feedback==0).
 
         Returns:
-            ``x_next_flat (D,)`` -- the next concatenated stateful state.
+            ``(x_next_flat (D,), meas (n_meas,), fb_out (n_feedback,))`` -- the
+            next state, the modelled measured outputs, and the producer outputs
+            that the feedback variables must match (for the feedback defects).
         """
+        if feedback is None:
+            feedback = torch.zeros(len(self._feedback_keys), dtype=states_flat.dtype)
         # Unpack per-component states.
         states = {}
         for i, c in enumerate(self.stateful):
@@ -268,6 +296,8 @@ class OneStepComposer:
             for port, spec in self.wiring[c.id]:
                 if spec[0] == "fresh":
                     inputs[port] = produced[spec[1]][spec[2]]
+                elif spec[0] == "feedback":
+                    inputs[port] = feedback[spec[1]].reshape(1)  # (n_c=1,)
                 else:
                     inputs[port] = captured[spec[1]].reshape(1)  # (n_c=1,)
             params = self._params_for(c, theta)
@@ -277,12 +307,46 @@ class OneStepComposer:
             if c.id in self.state_index:
                 x_next_parts[self.state_index[c.id]] = x_next_c.reshape(-1)
         x_next = torch.cat(x_next_parts)
-        if not self.meas_sources:
-            return x_next
+        # Producer outputs the feedback decision variables must equal.
+        if self._fb_producer:
+            fb_out = torch.stack([
+                produced[pid][port].reshape(-1)[0] for (pid, port) in self._fb_producer
+            ])
+        else:
+            fb_out = torch.zeros(0, dtype=x_next.dtype)
         meas = []
         for spec in self.meas_sources:
             if spec[0] == "fresh":
                 meas.append(produced[spec[1]][spec[2]].reshape(-1)[0])
             else:
                 meas.append(captured[spec[1]].reshape(-1)[0])
-        return x_next, torch.stack(meas)
+        meas = torch.stack(meas) if meas else torch.zeros(0, dtype=x_next.dtype)
+        return x_next, meas, fb_out
+
+    @property
+    def n_feedback(self) -> int:
+        return len(self._feedback_keys)
+
+    @property
+    def D_aug(self) -> int:
+        """Augmented-state width: component states + cut-feedback lag variables."""
+        return self.D + len(self._feedback_keys)
+
+    def F_aug(self, y_flat, theta, captured):
+        """Augmented one-step map over ``y = [state | feedback]``.
+
+        The cut-feedback signals are one-step *lag variables* -- i.e. state in a
+        discrete-time sense -- so appending them to the state turns the feedback
+        loop into ordinary state continuity: ``y_{t+1} = [F(s_t, w_t),
+        producer_output(s_t, w_t)]``.  The producer output computed at step ``t``
+        becomes the feedback consumed at ``t+1``, exactly ``do_step``'s
+        one-step-delayed (Gauss-Seidel) semantics -- with no separate defect type.
+
+        Returns ``(y_next (D_aug,), meas (n_meas,))``.
+        """
+        n_fb = len(self._feedback_keys)
+        s = y_flat[: self.D]
+        w = y_flat[self.D:] if n_fb else None
+        x_next, meas, fb_out = self.F(s, theta, captured, w)
+        y_next = torch.cat([x_next, fb_out]) if n_fb else x_next
+        return y_next, meas
