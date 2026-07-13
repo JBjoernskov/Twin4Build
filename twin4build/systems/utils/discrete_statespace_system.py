@@ -11,7 +11,7 @@ import twin4build.utils.types as tps
 from twin4build import core
 
 
-def _expm_ss(M, order=8, squarings=6):
+def _expm_ss(M, order=8, squarings=18):
     """Matrix exponential via scaling-and-squaring + a Taylor series.
 
     ``torch.matrix_exp`` has no ``vmap`` batching rule, so under ``vmap`` (the
@@ -22,8 +22,19 @@ def _expm_ss(M, order=8, squarings=6):
 
     ``exp(M) = (exp(M / 2^s))^(2^s)``; the scaled ``M/2^s`` has small norm so a
     low-order Taylor series is accurate, then ``s`` repeated squarings recover
-    ``exp(M)``.  Defaults (s=6, order=8) hold ~1e-10 over the thermal-RC matrix
-    range, well inside IPOPT's tolerance.
+    ``exp(M)``.
+
+    ``squarings`` is a FIXED count (data-dependent counts aren't ``vmap``-safe),
+    so it must cover the *stiffest* matrix reachable over the parameter bounds --
+    a heater/RC system with tiny heat capacity + large UA/flow gives ``‖M‖`` up
+    to ~3e5.  With too few squarings ``‖M/2^s‖`` stays large, the truncated Taylor
+    sum overflows (huge entries), and the squarings then amplify it to NaN -- even
+    though the true ``exp(M)`` is bounded (the block matrix has non-positive
+    eigenvalues).  s=18 keeps ``‖M/2^s‖`` < ~1.5 across the bounds, so the Taylor
+    sum stays O(1) and squaring is stable.  (s=6 was enough for mid-range params
+    but NaN'd at bound-hitting optima -- e.g. warm-starting collocation at the
+    SLSQP solution.)  Extra squarings of an O(1) stable matrix cost a few small
+    matmuls and only *improve* accuracy for well-scaled matrices.
     """
     N = M.shape[-1]
     I = torch.eye(N, dtype=M.dtype, device=M.device)

@@ -206,6 +206,7 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     warm_states: List[torch.Tensor] = []
     continuity_pairs: List[Tuple[int, int]] = []
     seg_actual: Dict[str, List[torch.Tensor]] = {md.id: [] for md, _ in self._measurements}
+    seg_is_warmup: List[bool] = []  # first n_warmup segments of each period -> excluded from the data fit
 
     g = 0
     for p, (s_p, e_p, step_p) in enumerate(zip(start_times, end_times, step_sizes)):
@@ -224,6 +225,7 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
             seg_steps.append(step_p)
             seg_len.append(bounds_p[i + 1] - bounds_p[i])
             warm_states.append(state0_p[i])
+            seg_is_warmup.append(i < self._n_warmup)
             for md, _ in self._measurements:
                 seg_actual[md.id].append(
                     torch.tensor(actual_p[md.id][bounds_p[i]:bounds_p[i + 1]], dtype=torch.float64)
@@ -369,7 +371,7 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
         return _solve_sparse_collocation(
             self, method, options, n_theta, D, n_seg, layout, seg_starts, seg_ends,
             seg_steps, seg_len, seg_actual, continuity_pairs, s_to_norm, s_from_norm,
-            z0, lb, ub,
+            z0, lb, ub, seg_is_warmup,
         )
 
     # ---- Dispatch to the optimizer backend (soft-penalty path) -------------
@@ -439,7 +441,7 @@ def _warmstart_segment_states(self, layout, bounds_idx, start_time, end_time, st
 def _solve_sparse_collocation(
     self, method, options, n_theta, D, n_seg, layout, seg_starts, seg_ends,
     seg_steps, seg_len, seg_actual, continuity_pairs, s_to_norm, s_from_norm,
-    z0, lb, ub,
+    z0, lb, ub, seg_is_warmup=None,
 ):
     """Hard-constraint collocation with a block-bidiagonal sparse Jacobian.
 
@@ -662,6 +664,16 @@ def _solve_sparse_collocation(
         for m, md in enumerate(md_list):
             for gi in range(n_seg):
                 ACT[gi, m] = float(torch.as_tensor(seg_actual[md.id][gi]).reshape(-1)[0])
+        # Warmup mask: exclude each period's first n_warmup segments from the data
+        # fit, exactly as single-shooting does -- otherwise the collocation scores
+        # the initial transient (e.g. CO2 settling from the default init, ~300 ppm)
+        # that single-shooting throws away, which dominates the (all-sensor)
+        # objective and drags the optimum off the good (temperature) solution.
+        _incl = torch.tensor([not w for w in (seg_is_warmup or [False] * n_seg)], dtype=torch.bool)
+        if not bool(_incl.any()):
+            _incl = torch.ones(n_seg, dtype=torch.bool)
+        LOGGER.config("Collocation objective: scoring %d/%d segments (%d warmup excluded)",
+                      int(_incl.sum()), n_seg, n_seg - int(_incl.sum()))
 
         def y_to_norm(y_phys):
             s_n = s_to_norm(y_phys[..., :D])
@@ -727,7 +739,7 @@ def _solve_sparse_collocation(
 
     def _mse_of_z(zt):
         _, Meas = _fwd_all(zt[:n_theta], zt[n_theta:].reshape(n_seg, Da))
-        return torch.mean(((ACT - Meas) / SD_meas) ** 2)
+        return (((ACT - Meas) / SD_meas) ** 2)[_incl].mean()
 
     def _obj_compute_fast(z):
         key = z.tobytes()
@@ -737,8 +749,8 @@ def _solve_sparse_collocation(
         zt = torch.tensor(z, dtype=torch.float64)
         with torch.no_grad():
             _, Meas = _fwd_all(zt[:n_theta], zt[n_theta:].reshape(n_seg, Da))
-            mse = float(torch.mean(((ACT - Meas) / SD_meas) ** 2))
-            self._last_rmse = float(torch.mean((ACT - Meas) ** 2)) ** 0.5
+            mse = float((((ACT - Meas) / SD_meas) ** 2)[_incl].mean())
+            self._last_rmse = float(((ACT - Meas) ** 2)[_incl].mean()) ** 0.5
         gf = torch.func.grad(_mse_of_z)(zt).numpy()
         _c.update(key=key, f=mse, gf=gf)
         if self._eval_count % 10 == 1:
