@@ -37,6 +37,7 @@ from a dynamically-consistent trajectory.
 from __future__ import annotations
 
 import datetime
+import os as _os
 from types import SimpleNamespace
 from typing import Dict, List, Tuple
 
@@ -674,9 +675,27 @@ def _solve_sparse_collocation(
                 return s_p
             return torch.cat([s_p, y_norm[..., D:] * fb_scale + fb_center], dim=-1)
 
-        # Augment the warm-start decision vector with the feedback lag variables.
-        s0_norm = torch.tensor(z0[n_theta:], dtype=torch.float64).reshape(n_seg, D)
-        y0_norm = torch.cat([s0_norm, (fb0 - fb_center) / fb_scale], dim=1) if n_fb else s0_norm
+        # Data-informed warm start: seed the directly-observed boundary states from
+        # the measurements instead of the default-parameter rollout.  Collocation's
+        # state variables let us plant the *measured* trajectory as the initial
+        # guess -- the standard trick to keep simultaneous methods out of bad local
+        # minima (single-shooting cannot do this: it has no state variables).  We
+        # discover which state dim each measurement reads from d(meas)/d(y) (a
+        # near-unit-gain readout, e.g. temp->T_air, co2->CO2, valve/damper->PID
+        # memory), then overwrite that dim with the data across all segments.
+        y0_phys = torch.cat([s0_phys, fb0], dim=1) if n_fb else s0_phys  # (n_seg, Da)
+        if _os.environ.get("TWIN4BUILD_NO_DATA_WARMSTART") is None:
+            Jm = jacrev(lambda y: composer.F_aug(y, theta0_phys, CAP[0])[1])(y0_phys[0].clone())
+            seeded, allmap = [], []
+            for m in range(len(md_list)):
+                j = int(Jm[m].abs().argmax())
+                coeff = float(Jm[m, j])
+                allmap.append((md_list[m].id, j, round(coeff, 3)))
+                if abs(coeff) > 0.2:  # a state readout (unit-gain, or attenuated by a clamp)
+                    y0_phys[:, j] = ACT[:, m] / coeff
+                    seeded.append((md_list[m].id, j, round(coeff, 3)))
+            LOGGER.config("Data-informed warm start: readouts %s | seeded %s", allmap, seeded)
+        y0_norm = y_to_norm(y0_phys)
         z0_a = np.concatenate([np.asarray(z0[:n_theta], dtype=np.float64),
                                y0_norm.reshape(-1).detach().numpy()])
         # Generous box on the boundary variables; feedback lag variables get a
@@ -860,7 +879,6 @@ def _solve_sparse_collocation(
     # object-graph batched simulate (do_step traversal) -- and report wall time and
     # agreement.  This isolates *why* collocation is fast: the per-evaluation
     # forward cost that both the objective and the defects pay each iteration.
-    import os as _os
     if _os.environ.get("TWIN4BUILD_BENCH_TIMESTEP") and composer is not None and CAP is not None:
         import time as _time
 
