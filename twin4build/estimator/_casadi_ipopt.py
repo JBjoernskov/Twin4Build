@@ -77,6 +77,9 @@ def _map_options(options: Optional[Dict]) -> Dict:
         if key.startswith("ipopt."):
             ipopt_opts[key[len("ipopt.") :]] = options.pop(key)
         elif key in ("max_iter", "tol", "print_level", "acceptable_tol",
+                     "acceptable_iter", "constr_viol_tol",
+                     "acceptable_constr_viol_tol", "acceptable_dual_inf_tol",
+                     "acceptable_compl_inf_tol", "acceptable_obj_change_tol",
                      "mu_strategy", "linear_solver", "hessian_approximation"):
             ipopt_opts[key] = options.pop(key)
 
@@ -227,6 +230,10 @@ def solve_ipopt_constrained(
     jac_cols: np.ndarray,
     options: Optional[Dict] = None,
     *,
+    hess_vals: Optional[Callable[[np.ndarray, float], np.ndarray]] = None,
+    hess_rows: Optional[np.ndarray] = None,
+    hess_cols: Optional[np.ndarray] = None,
+    early_stopping: Optional[Dict] = None,
     print_level: int = 0,
     quiet: bool = True,
 ) -> SimpleNamespace:
@@ -257,6 +264,43 @@ def solve_ipopt_constrained(
         Row/column indices of the (fixed) constraint-Jacobian sparsity pattern.
     options : dict, optional
         twin4build/SciPy-style options; see :func:`_map_options`.
+    hess_vals : callable, optional
+        ``hess_vals(x, sigma) -> (nnz_h,)`` -- the nonzeros of an (approximate)
+        Hessian of the Lagrangian ``sigma * d2f + sum(lam_g * d2g)``, aligned
+        with ``(hess_rows, hess_cols)``.  When given, IPOPT runs with this
+        second-order information (e.g. a Gauss-Newton ``J^T W J``) instead of
+        the limited-memory BFGS approximation, typically cutting the iteration
+        count by an order of magnitude.  The provider may ignore ``lam_g``
+        (constraint curvature), as Gauss-Newton does.
+    hess_rows, hess_cols : np.ndarray, optional
+        Row/column indices of the fixed Hessian sparsity pattern.  Must cover
+        only the upper triangle (``row <= col``); the matrix is symmetric.
+    early_stopping : dict, optional
+        Enable DNN-style early stopping via an IPOPT iteration callback, plus
+        best-feasible-iterate checkpointing.  Keys (all optional):
+
+        * ``feas_tol`` (default 1e-2): only iterates with ``max|g| <=
+          feas_tol`` may update the checkpoint or count as objective progress.
+        * ``patience`` (default 10): stop after this many consecutive
+          iterations without progress.  Counting starts once a feasible
+          incumbent exists and advances on EVERY iteration -- infeasible
+          iterates cannot reset the objective counter (an off-manifold f is
+          meaningless), they just fail to show progress.
+        * ``min_delta_rel`` (default 1e-3): relative objective decrease (vs the
+          best-so-far) that counts as progress.  The deliberately coarse
+          default separates the initial descent (per-iteration gains of
+          percents) from the plateau creep (noise-level fractions of a
+          percent that would otherwise keep resetting the counter for
+          hundreds of iterations).
+        * ``theta_tol`` (default 1e-4): movement of ``x[:n_theta]`` (inf-norm)
+          that counts as progress.
+        * ``n_theta`` (default ``n``): length of the leading parameter block
+          monitored by the theta-stagnation rule.
+
+        The solve aborts (``User_Requested_Stop``) when the objective rule OR
+        the theta rule fires; the returned ``x`` is the best feasible iterate
+        seen (also restored when IPOPT ends at max-iter / restoration-failure
+        with a worse or infeasible last iterate).
 
     Returns
     -------
@@ -393,15 +437,181 @@ def solve_ipopt_constrained(
             x = np.asarray(arg[0]).flatten()
             return [ca.DM(np.asarray(g_fun(x), dtype=np.float64).reshape(n_g, 1))]
 
+    # Optional user-supplied Hessian of the Lagrangian (e.g. Gauss-Newton).
+    # CasADi's nlpsol accepts a custom ``hess_lag`` Function with signature
+    # (x, p, lam_f, lam_g) -> triu_hess_gamma_x_x; wrapping the Python provider
+    # in a Callback on a fixed upper-triangular sparsity lets IPOPT run its
+    # full-Newton path instead of limited-memory BFGS.
+    hess_cb = None
+    if hess_vals is not None:
+        hess_rows = np.asarray(hess_rows, dtype=np.int64).flatten()
+        hess_cols = np.asarray(hess_cols, dtype=np.int64).flatten()
+        hess_sp = ca.Sparsity.triplet(n, n, hess_rows.tolist(), hess_cols.tolist())
+        h_rows, h_cols = hess_sp.get_triplet()
+        h_pos = {(int(r), int(c)): k for k, (r, c) in enumerate(zip(h_rows, h_cols))}
+        h_perm = np.array(
+            [h_pos[(int(r), int(c))] for r, c in zip(hess_rows, hess_cols)],
+            dtype=np.int64,
+        )
+
+        class _HessLagCB(ca.Callback):
+            def __init__(self, name):
+                ca.Callback.__init__(self)
+                self.construct(name, {})
+
+            def get_n_in(self):
+                return 4
+
+            def get_n_out(self):
+                return 1
+
+            def get_name_in(self, i):
+                return ["x", "p", "lam_f", "lam_g"][i]
+
+            def get_name_out(self, i):
+                return "triu_hess_gamma_x_x"
+
+            def get_sparsity_in(self, i):
+                if i == 0:
+                    return ca.Sparsity.dense(n, 1)
+                if i == 1:
+                    return ca.Sparsity(0, 1)  # no NLP parameters
+                if i == 2:
+                    return ca.Sparsity.dense(1, 1)
+                return ca.Sparsity.dense(n_g, 1)
+
+            def get_sparsity_out(self, i):
+                return hess_sp
+
+            def eval(self, arg):
+                x = np.asarray(arg[0]).flatten()
+                sigma = float(arg[2])
+                vals = np.asarray(hess_vals(x, sigma), dtype=np.float64).flatten()
+                reordered = np.empty_like(vals)
+                reordered[h_perm] = vals
+                return [ca.DM(hess_sp, reordered)]
+
+        hess_cb = _HessLagCB("nlp_hess_l")
+
+    # Optional early stopping: an IPOPT iteration callback implementing the
+    # patience rules from DNN training, plus a best-feasible-iterate
+    # checkpoint ("restore best weights").  IPOPT hands the callback the full
+    # primal-dual iterate each iteration; returning nonzero aborts the solve
+    # with ``User_Requested_Stop``.
+    iter_cb = None
+    es = None
+    if early_stopping is not None:
+        es = {
+            "feas_tol": float(early_stopping.get("feas_tol", 1e-2)),
+            "patience": int(early_stopping.get("patience", 10)),
+            "min_delta_rel": float(early_stopping.get("min_delta_rel", 1e-3)),
+            "theta_tol": float(early_stopping.get("theta_tol", 1e-4)),
+            "n_theta": int(early_stopping.get("n_theta", n)),
+            # state
+            "f_best": np.inf, "z_best": None,
+            "stall_f": 0, "stall_theta": 0, "stop_reason": None,
+        }
+
+        class _IterCB(ca.Callback):
+            def __init__(self, name):
+                ca.Callback.__init__(self)
+                self.construct(name, {})
+
+            def get_n_in(self):
+                return ca.nlpsol_n_out()
+
+            def get_n_out(self):
+                return 1
+
+            def get_name_in(self, i):
+                return ca.nlpsol_out(i)
+
+            def get_name_out(self, i):
+                return "ret"
+
+            def get_sparsity_in(self, i):
+                name = ca.nlpsol_out(i)
+                if name == "f":
+                    return ca.Sparsity.dense(1, 1)
+                if name in ("x", "lam_x"):
+                    return ca.Sparsity.dense(n, 1)
+                if name in ("g", "lam_g"):
+                    return ca.Sparsity.dense(n_g, 1)
+                return ca.Sparsity(0, 0)
+
+            def get_sparsity_out(self, i):
+                return ca.Sparsity.dense(1, 1)
+
+            def eval(self, arg):
+                x = np.asarray(arg[0]).flatten()
+                f = float(arg[1])
+                viol = float(np.abs(np.asarray(arg[2])).max()) if n_g else 0.0
+                feasible = viol <= es["feas_tol"]
+                # Counting starts at the first feasible incumbent: before that
+                # (initial infeasibility reduction) the objective is evaluated
+                # off the trajectory manifold and is meaningless.
+                if es["z_best"] is None:
+                    if feasible:
+                        es["f_best"] = f
+                        es["z_best"] = x.copy()
+                    return [0.0]
+                nt = es["n_theta"]
+                # Progress = a feasible iterate materially better than the
+                # incumbent.  Infeasible iterates (restoration excursions, big
+                # rejected steps) cannot reset the counter -- if the excursion
+                # pays off, the improved feasible landing point resets it.
+                improved_f = feasible and f < es["f_best"] - es[
+                    "min_delta_rel"
+                ] * max(abs(es["f_best"]), 1e-12)
+                moved_theta = (
+                    float(np.abs(x[:nt] - es["z_best"][:nt]).max()) > es["theta_tol"]
+                )
+                if feasible and f < es["f_best"]:
+                    es["f_best"] = f
+                    es["z_best"] = x.copy()
+                es["stall_f"] = 0 if improved_f else es["stall_f"] + 1
+                es["stall_theta"] = 0 if moved_theta else es["stall_theta"] + 1
+                if es["stall_f"] >= es["patience"]:
+                    es["stop_reason"] = (
+                        f"objective stagnant for {es['stall_f']} iterations"
+                    )
+                    return [1.0]
+                if es["stall_theta"] >= es["patience"]:
+                    es["stop_reason"] = (
+                        f"theta stagnant for {es['stall_theta']} iterations"
+                    )
+                    return [1.0]
+                return [0.0]
+
+        iter_cb = _IterCB("t4b_early_stop")
+
     obj_cb = _ObjCB("t4b_collocation_objective")
     g_cb = _GCB("t4b_collocation_constraints")
 
     X = ca.MX.sym("x", n)
     nlp = {"x": X, "f": obj_cb(X), "g": g_cb(X)}
 
-    ipopt_opts = {"hessian_approximation": "limited-memory", "print_level": print_level}
+    ipopt_opts = {
+        # With a user Hessian IPOPT runs its exact-Newton path; otherwise
+        # fall back to limited-memory BFGS (no second-order info available).
+        "hessian_approximation": "exact" if hess_cb is not None else "limited-memory",
+        "print_level": print_level,
+        # The equality constraints are the DYNAMICS: any violation is a
+        # non-physical forcing injected into the trajectory, and the returned
+        # "solution" is then not a trajectory of the model at all.  IPOPT's
+        # defaults (constr_viol_tol=1e-4, acceptable_constr_viol_tol=1e-2)
+        # allow per-step slack that compounds over hundreds of steps, so
+        # tighten both; callers can still override via ``options``.
+        "constr_viol_tol": 1e-8,
+        "acceptable_constr_viol_tol": 1e-8,
+    }
     ipopt_opts.update(_map_options(options))
     solver_opts = {"ipopt": ipopt_opts}
+    if hess_cb is not None:
+        solver_opts["hess_lag"] = hess_cb
+    if iter_cb is not None:
+        solver_opts["iteration_callback"] = iter_cb
+        solver_opts["iteration_callback_step"] = 1
     if quiet:
         solver_opts["print_time"] = False
 
@@ -409,11 +619,31 @@ def solve_ipopt_constrained(
     sol = solver(x0=x0, lbx=lb, ubx=ub, lbg=np.zeros(n_g), ubg=np.zeros(n_g))
 
     stats = solver.stats()
+    return_status = str(stats.get("return_status", ""))
+    message = return_status
+    x_opt = np.asarray(sol["x"]).flatten()
+    f_opt = float(sol["f"])
+    success = bool(stats.get("success", False))
+    if es is not None:
+        if es["stop_reason"]:
+            message = f"{return_status} ({es['stop_reason']})"
+            success = True  # a deliberate, feasible stop -- not a failure
+        # Restore the best feasible iterate when IPOPT's last iterate is worse
+        # or infeasible (max-iter, user-stop and restoration exits all return
+        # whatever the final iterate happened to be).
+        if es["z_best"] is not None:
+            sol_viol = (
+                float(np.abs(np.asarray(sol["g"])).max()) if n_g else 0.0
+            )
+            if sol_viol > es["feas_tol"] or es["f_best"] < f_opt:
+                x_opt = es["z_best"]
+                f_opt = es["f_best"]
+                message += " [best feasible iterate restored]"
     return SimpleNamespace(
-        x=np.asarray(sol["x"]).flatten(),
-        fun=float(sol["f"]),
-        success=bool(stats.get("success", False)),
+        x=x_opt,
+        fun=f_opt,
+        success=success,
         nit=stats.get("iter_count", None),
-        message=str(stats.get("return_status", "")),
-        status=str(stats.get("return_status", "")),
+        message=message,
+        status=return_status,
     )

@@ -59,3 +59,18 @@ class MaxSystem(core.System):
         k = 50.0
         smooth_max = torch.logsumexp(k * inputs, dim=-1) / k
         self.output["value"]._set(smooth_max, step_index)
+
+    #: No physical parameters (the ``forward`` theta contract).
+    PARAM_NAMES = ()
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
+
+        Functorch-compatible re-expression of :meth:`do_step`.  ``inputs``
+        provides ``inputs`` with the vector of values along the last dim.
+        Returns ``(x, {"value"})``.
+        """
+        vals = inputs["inputs"]
+        k = 50.0
+        smooth_max = torch.logsumexp(k * vals, dim=-1) / k
+        return x, {"value": smooth_max.reshape(1)}

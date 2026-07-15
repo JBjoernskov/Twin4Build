@@ -163,9 +163,14 @@ class OneStepComposer:
                 if c.id not in keep or c.id not in self.forward_ids:
                     continue
                 for port in list(c.input.keys()):
-                    src = self._trace_source(c, port)
-                    if src is not None:
-                        prod, _ = src
+                    if isinstance(c.input[port], tps.Vector):
+                        srcs = [
+                            (p, o) for _, p, o in self._vector_slot_sources(c, port)
+                        ]
+                    else:
+                        src = self._trace_source(c, port)
+                        srcs = [src] if src is not None else []
+                    for prod, _ in srcs:
                         if (
                             prod.id in self.forward_ids
                             and self.pos[prod.id] < self.pos[c.id]
@@ -181,45 +186,85 @@ class OneStepComposer:
         src = _single_source(comp, port)
         if src is None:
             return None
-        producer, out_port = src
+        return self._follow(*src)
+
+    def _follow(self, producer, out_port):
+        """Follow pass-through sensors from a ``(producer, out_port)`` pair."""
         if _is_passthrough_sensor(producer):
             return self._trace_source(producer, "measuredValue")
         return producer, out_port
 
+    def _vector_slot_sources(self, comp, port):
+        """Per-slot ``(slot_index, producer, out_port)`` list for a Vector input
+        port (e.g. ``MaxSystem.inputs``), pass-through sensors followed, sorted
+        by slot index."""
+        slots = []
+        for cp in comp.connects_at:
+            if cp.input_port != port:
+                continue
+            for conn in cp.connects_system_through:
+                idx = cp.input_port_index.get(conn, 0)
+                idx = int(idx.item()) if hasattr(idx, "item") else int(idx)
+                src = self._follow(conn.connects_system, conn.output_port)
+                if src is not None:
+                    slots.append((idx, src[0], src[1]))
+        return sorted(slots, key=lambda t: t[0])
+
+    def _classify_source(self, comp, key, src):
+        """Spec for one resolved input source.
+
+        ``key`` identifies the consumer slot -- ``(comp_id, port)`` for scalar
+        ports, ``(comp_id, port, slot)`` for vector-port slots -- and indexes
+        the feedback / captured tables.
+        """
+        src_in_cone = (
+            src is not None
+            and src[0].id in self.forward_ids
+            and src[0].id in self.cone_ids
+        )
+        if src_in_cone and self.pos[src[0].id] < self.pos[comp.id]:
+            # Produced earlier in this step -> thread it fresh.
+            return ("fresh", src[0].id, src[1])
+        if src_in_cone:
+            # Source is a cone forward-component that executes LATER: this is
+            # the cycle-broken (feedback) edge.  Its value is a function of the
+            # states/params, so it becomes a decision variable tied to the
+            # producer's output by a defect -- NOT a frozen constant.
+            if key not in self._fb_index:
+                self._fb_index[key] = len(self._feedback_keys)
+                self._feedback_keys.append(key)
+                self._fb_producer.append((src[0].id, src[1]))
+            return ("feedback", self._fb_index[key])
+        # Truly exogenous (no cone producer): frozen capture is correct.
+        if key not in self._cap_index:
+            self._cap_index[key] = len(self._captured_keys)
+            self._captured_keys.append(key)
+        return ("captured", self._cap_index[key])
+
     def _resolve_inputs(self, comp):
         """Per-input-port source spec for one cone component.
 
-        Vector input ports are skipped -- in the example the only one
-        (``adjacentZoneTemperature``) has ``n_v=0`` and is unused by ``forward``;
-        components that do use vector inputs would need per-slot capture (future).
+        Scalar ports resolve to a single fresh/feedback/captured spec.  Vector
+        ports (e.g. ``MaxSystem.inputs``) resolve **per slot** to a ``("vector",
+        [slot_spec, ...])`` spec, so a producer inside the cone (e.g. the CO2
+        controller feeding the damper max) is threaded fresh instead of frozen.
+        Unconnected vector ports (n_v=0, e.g. ``adjacentZoneTemperature``) are
+        skipped.
         """
         specs = []
         for port in comp.input.keys():
             if isinstance(comp.input[port], tps.Vector):
+                slot_srcs = self._vector_slot_sources(comp, port)
+                if not slot_srcs:
+                    continue
+                slot_specs = [
+                    self._classify_source(comp, (comp.id, port, slot), (prod, oport))
+                    for slot, prod, oport in slot_srcs
+                ]
+                specs.append((port, ("vector", slot_specs)))
                 continue
             src = self._trace_source(comp, port)
-            src_in_cone = src is not None and src[0].id in self.forward_ids and src[0].id in self.cone_ids
-            if src_in_cone and self.pos[src[0].id] < self.pos[comp.id]:
-                # Produced earlier in this step -> thread it fresh.
-                specs.append((port, ("fresh", src[0].id, src[1])))
-            elif src_in_cone:
-                # Source is a cone forward-component that executes LATER: this is
-                # the cycle-broken (feedback) edge.  Its value is a function of the
-                # states/params, so it becomes a decision variable tied to the
-                # producer's output by a defect -- NOT a frozen constant.
-                key = (comp.id, port)
-                if key not in self._fb_index:
-                    self._fb_index[key] = len(self._feedback_keys)
-                    self._feedback_keys.append(key)
-                    self._fb_producer.append((src[0].id, src[1]))
-                specs.append((port, ("feedback", self._fb_index[key])))
-            else:
-                # Truly exogenous (no cone producer): frozen capture is correct.
-                key = (comp.id, port)
-                if key not in self._cap_index:
-                    self._cap_index[key] = len(self._captured_keys)
-                    self._captured_keys.append(key)
-                specs.append((port, ("captured", self._cap_index[key])))
+            specs.append((port, self._classify_source(comp, (comp.id, port), src)))
         return specs
 
     # -- capture from a reference simulation --------------------------------
@@ -236,9 +281,11 @@ class OneStepComposer:
         n_seg = len(seg_starts)
         cap = torch.zeros((n_seg, len(self._captured_keys)), dtype=torch.float64)
         comps = self.model.components
-        for j, (comp_id, port) in enumerate(self._captured_keys):
-            val = comps[comp_id].input[port].history(i_t=0)  # (n_s, n_c) at step 0
-            cap[:, j] = torch.as_tensor(np.asarray(val)).reshape(n_seg, -1)[:, 0]
+        for j, key in enumerate(self._captured_keys):
+            comp_id, port = key[0], key[1]
+            slot = key[2] if len(key) > 2 else 0  # vector-port slot
+            val = comps[comp_id].input[port].history(i_t=0)  # (n_s, n_c[, n_v]) at step 0
+            cap[:, j] = torch.as_tensor(np.asarray(val)).reshape(n_seg, -1)[:, slot]
         return cap
 
     # -- the pure one-step map ----------------------------------------------
@@ -298,6 +345,16 @@ class OneStepComposer:
                     inputs[port] = produced[spec[1]][spec[2]]
                 elif spec[0] == "feedback":
                     inputs[port] = feedback[spec[1]].reshape(1)  # (n_c=1,)
+                elif spec[0] == "vector":
+                    vals = []
+                    for s in spec[1]:
+                        if s[0] == "fresh":
+                            vals.append(produced[s[1]][s[2]].reshape(-1)[0])
+                        elif s[0] == "feedback":
+                            vals.append(feedback[s[1]].reshape(-1)[0])
+                        else:
+                            vals.append(captured[s[1]].reshape(-1)[0])
+                    inputs[port] = torch.stack(vals).reshape(1, -1)  # (n_c=1, n_v)
                 else:
                     inputs[port] = captured[spec[1]].reshape(1)  # (n_c=1,)
             params = self._params_for(c, theta)

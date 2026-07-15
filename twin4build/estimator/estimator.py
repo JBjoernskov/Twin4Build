@@ -2647,6 +2647,21 @@ class Estimator:
             LOGGER.result("Solver message: %s", opt_message)
 
         if method[0] in ("scipy", "casadi"):
+            # Leave the model at the OPTIMUM, not at the last objective
+            # evaluation: the solver's final evaluation is a line-search probe
+            # (and for the transcription/collocation backends the returned x
+            # is a restored best iterate the model never saw), so without this
+            # a subsequent ``simulator.simulate()`` runs with junk parameters.
+            theta_opt = torch.tensor(
+                np.asarray(result.x, dtype=np.float64), dtype=torch.float64
+            )
+            self.simulator.model.set_parameters(
+                self._theta_to_param_values(theta_opt),
+                self._flat_components,
+                self._parameter_names,
+                normalized=True,
+                overwrite=True,
+            )
             self.simulator.model.restore_parameters(keep_values=True)
 
         # Store the normalised solution for warm-starting (used by lambda scheduling)
@@ -2671,6 +2686,7 @@ class Estimator:
         # boundary states; carry the optimised initial state through so callers
         # can seed a continuous prediction from it (see EstimationResult).
         estimated_initial_state = getattr(result, "estimated_initial_state", None)
+        transcription_audit = getattr(result, "transcription_audit", None)
 
         result = EstimationResult(
             result_x=result_x,
@@ -2693,6 +2709,8 @@ class Estimator:
         )
         if estimated_initial_state is not None:
             result["estimated_initial_state"] = estimated_initial_state
+        if transcription_audit is not None:
+            result["transcription_audit"] = transcription_audit
 
         with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)

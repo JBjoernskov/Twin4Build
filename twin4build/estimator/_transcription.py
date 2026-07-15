@@ -416,7 +416,6 @@ def _warmstart_segment_states(self, layout, bounds_idx, start_time, end_time, st
     # is model-specific, so we step manually here.
     self.simulator.get_simulation_timesteps([start_time], [end_time], [step_size])
     self.simulator.model.initialize([start_time], [end_time], [step_size])
-    self.simulator.model.initialize([start_time], [end_time], [step_size])
     second_time_steps, date_time_steps, max_timesteps, _ = (
         core.Simulator.get_simulation_timesteps([start_time], [end_time], [step_size])
     )
@@ -460,6 +459,28 @@ def _solve_sparse_collocation(
     cp = [(int(a), int(b)) for a, b in continuity_pairs]
     n_links = len(cp)
     n_g = n_links * D
+    # Segments that start a period (no incoming continuity link): their boundary
+    # state is the trajectory's *initial condition*.
+    period_starts = sorted(set(range(n_seg)) - {j for _, j in cp})
+    # ``pin_initial_state``: fix each period's initial augmented state at its
+    # warm-start value via bound equality (lb == ub).  This removes the extra
+    # initial-condition freedom relative to single-shooting, so with tight
+    # defect tolerances the feasible set is exactly the single-shooting
+    # trajectory manifold (equivalence/stationarity testing).
+    pin_initial_state = bool(options.pop("pin_initial_state", False))
+    # ``gauss_newton``: supply IPOPT with a Gauss-Newton Hessian of the
+    # least-squares objective (J^T W J from the measurement Jacobians) instead
+    # of the default limited-memory BFGS approximation.  Second-order
+    # information turns the >1000-iteration L-BFGS crawl into a
+    # Newton-type solve; constraint curvature is ignored (classic GN).
+    gauss_newton = bool(options.pop("gauss_newton", True))
+    # ``early_stopping``: patience-based stagnation stop + best-feasible-iterate
+    # checkpoint (see solve_ipopt_constrained).  False disables; a dict
+    # overrides the patience/tolerance defaults.  Default: on whenever the GN
+    # Hessian is on (that is the configuration whose dual criteria plateau).
+    early_stopping = options.pop("early_stopping", None)
+    if early_stopping is None:
+        early_stopping = gauss_newton
 
     # -- Stage-3 fast Jacobian via the functorch composer --------------------
     # Try to build a pure one-step map F(states, theta_phys, captured) from the
@@ -480,6 +501,11 @@ def _solve_sparse_collocation(
                 measurements=[md for md, _ in self._measurements],
             )
             if comp.D == D:
+                LOGGER.config(
+                    "Composer captured (frozen exogenous) inputs: %s | "
+                    "cut-feedback edges: %s",
+                    comp._captured_keys, comp._feedback_keys,
+                )
                 # Plain (functorch-safe) denormalization from the parameters'
                 # physical bounds + scaling (tps.Parameter.denormalize is a
                 # Tensor-subclass method and breaks under functorch).
@@ -588,32 +614,8 @@ def _solve_sparse_collocation(
                 vals.append(-1.0)  # d defect_r / d s_norm[j, r]
         return np.asarray(vals, dtype=np.float64)
 
-    def _capture_inputs():
-        """Sample the captured (exogenous + carried) input values per segment from
-        the current model state (post-``_simulate``).
-
-        Collocation segments are one step long, so each cone component's input
-        port ``.get()`` holds exactly the value used at that segment's step.
-        """
-        comps = self.simulator.model.components
-        cap = torch.zeros((n_seg, len(composer._captured_keys)), dtype=torch.float64)
-        for k, (cid, port) in enumerate(composer._captured_keys):
-            v = comps[cid].input[port].get()  # (n_s=n_seg, n_c)
-            cap[:, k] = v.reshape(n_seg, -1)[:, 0].detach()
-        return cap
-
     cp_i = torch.tensor([i for i, _ in cp], dtype=torch.long)
     cp_j = torch.tensor([j for _, j in cp], dtype=torch.long)
-
-    def _capture_ports(keys):
-        """Sample per-segment input-port values for ``keys`` (comp_id, port) from
-        the current model state.  Segments are one step, so ``.get()`` holds the
-        value used at that segment's step."""
-        comps = self.simulator.model.components
-        out = torch.zeros((n_seg, len(keys)), dtype=torch.float64)
-        for k, (cid, port) in enumerate(keys):
-            out[:, k] = comps[cid].input[port].get().reshape(n_seg, -1)[:, 0].detach()
-        return out
 
     # ===== Augmented-state vmap-F path ======================================
     # Compute the objective, defects AND Jacobian from a single vmap(F_aug) with
@@ -637,22 +639,59 @@ def _solve_sparse_collocation(
         z0t = torch.tensor(z0, dtype=torch.float64)
         with torch.no_grad():
             _simulate(z0t[:n_theta], z0t[n_theta:].reshape(n_seg, D))
-        CAP = _capture_ports(composer._captured_keys)      # (n_seg, n_exo), frozen
-        fb0_raw = _capture_ports(composer._feedback_keys)  # fresh-init guess (inconsistent)
-        # Consistent (delayed) feedback warm start.  Capturing from the batched
-        # 1-step segments gives each segment's *fresh-init* feedback, which
-        # violates the delayed continuity w_{t+1} = producer_output(y_t) by ~1e5
-        # -> IPOPT stalls at an infeasible point.  Instead run F on the warm-start
-        # states to get the producer outputs and shift by one segment.
         theta0_phys = _denorm(torch.tensor(z0[:n_theta], dtype=torch.float64))
         s0_phys = s_from_norm(torch.tensor(z0[n_theta:], dtype=torch.float64).reshape(n_seg, D))
-        with torch.no_grad():
-            _, _, FBout = vmap(
-                lambda si, ci, wi: composer.F(si, theta0_phys, ci, wi)
-            )(s0_phys, CAP, fb0_raw)
-        fb0 = fb0_raw.clone()
-        if n_fb:
-            fb0[1:] = FBout[:-1]   # feedback at t+1 == producer output at t
+        # Continuity chains: segment -> next segment within the same period.
+        _next_of = dict(cp)
+        _chains = []
+        for _s0 in period_starts:
+            chain = [_s0]
+            while chain[-1] in _next_of:
+                chain.append(_next_of[chain[-1]])
+            _chains.append(chain)
+        # Capture the exogenous inputs AND the delayed-feedback warm start from
+        # one CONTINUOUS do_step rollout per period at theta0, sampling every
+        # input port right after each step.  Two reasons this must be a
+        # continuous run rather than the batched 1-step segments:
+        #
+        # * Stateful exogenous drivers: e.g. ``OccupancySystem`` carries a
+        #   ``C_prev`` memory and outputs ZERO occupancy on the first step after
+        #   ``initialize`` -- batched 1-step segments would freeze
+        #   ``office.numberOfPeople`` at 0 for every segment (a silently wrong
+        #   model, CO2 has no source).
+        # * Feedback consistency: input[port] right after step i holds exactly
+        #   the value do_step consumed at step i (the producer's step-(i-1)
+        #   output), so the warm start satisfies the delayed continuity
+        #   w_{t+1} = producer_output(y_t) by construction instead of starting
+        #   IPOPT at an infeasible point.
+        import twin4build.core as _core
+
+        CAP = torch.zeros((n_seg, len(composer._captured_keys)), dtype=torch.float64)
+        fb0 = torch.zeros((n_seg, n_fb), dtype=torch.float64)
+        comps_ = self.simulator.model.components
+
+        def _sample(dst, keys, seg_index):
+            for k, key in enumerate(keys):
+                cid, port = key[0], key[1]
+                slot = key[2] if len(key) > 2 else 0
+                dst[seg_index, k] = (
+                    comps_[cid].input[port].get().reshape(-1)[slot].detach()
+                )
+
+        for chain in _chains:
+            st_, en_, sz_ = seg_starts[chain[0]], seg_ends[chain[-1]], seg_steps[chain[0]]
+            self.simulator.get_simulation_timesteps([st_], [en_], [sz_])
+            self.simulator.model.initialize([st_], [en_], [sz_])
+            sec_, dts_, n_t_p, _ = _core.Simulator.get_simulation_timesteps(
+                [st_], [en_], [sz_]
+            )
+            for i in range(min(len(chain), int(n_t_p))):
+                self.simulator._do_system_time_step(
+                    self.simulator.model, sec_[:, i], dts_[:, i], [sz_], i,
+                    "gauss-seidel",
+                )
+                _sample(CAP, composer._captured_keys, chain[i])
+                _sample(fb0, composer._feedback_keys, chain[i])
         fb_center = fb0.mean(dim=0)
         # Robust scale: a ~constant feedback has tiny std; scaling by it would blow
         # the (bounded) decision variable up.  Floor by a fraction of the magnitude.
@@ -716,6 +755,15 @@ def _solve_sparse_collocation(
         seg_ub = np.concatenate([np.full(D, 6.0), np.full(n_fb, 30.0)])
         lb_a = np.concatenate([np.asarray(lb[:n_theta], dtype=np.float64), np.tile(seg_lb, n_seg)])
         ub_a = np.concatenate([np.asarray(ub[:n_theta], dtype=np.float64), np.tile(seg_ub, n_seg)])
+        if pin_initial_state:
+            for s0 in period_starts:
+                a = n_theta + s0 * Da
+                lb_a[a:a + Da] = z0_a[a:a + Da]
+                ub_a[a:a + Da] = z0_a[a:a + Da]
+            LOGGER.config(
+                "Pinned the initial augmented state of %d period(s) at the "
+                "warm-start value (bound equality).", len(period_starts),
+            )
 
         # Augmented block-bidiagonal sparsity pattern (D -> Da).
         jr, jcc = [], []
@@ -769,26 +817,39 @@ def _solve_sparse_collocation(
         Yn, _ = composer.F_aug(y_from_norm(y_norm_i), _denorm(theta_norm), captured_i)
         return y_to_norm(Yn)
 
-    def g_jac_vals_fast(z):
-        """Sparse constraint Jacobian via one vmap(jacrev(F_aug)) over the composer."""
-        zt = torch.tensor(np.asarray(z, dtype=np.float64), dtype=torch.float64)
+    # One vmap(jacrev) evaluates d(end_norm, meas/SD)/d(y, theta) for EVERY
+    # segment; the constraint Jacobian (rows :Da at the linked segments) and the
+    # Gauss-Newton Hessian (rows Da: at the scored segments) are slices of it.
+    # IPOPT asks for jac_g and hess_lag at the same iterate, so the cache makes
+    # the Hessian nearly free on top of the Jacobian we already pay for.
+    _dcache = {"key": None}
+
+    def _derivs(z):
+        key = z.tobytes()
+        if _dcache["key"] == key:
+            return _dcache
+        zt = torch.tensor(z, dtype=torch.float64)
         theta_norm = zt[:n_theta]
         y_norm = zt[n_theta:].reshape(n_seg, Da)
-        Y_i = y_norm[cp_i]          # (n_links, Da)
-        CAP_i = CAP[cp_i]           # (n_links, n_exo)
-        Jx = vmap(lambda yi, ci: jacrev(_end_norm_fn, argnums=0)(yi, theta_norm, ci))(Y_i, CAP_i)
-        Jt = vmap(lambda yi, ci: jacrev(_end_norm_fn, argnums=1)(yi, theta_norm, ci))(Y_i, CAP_i)
-        J_s = [Jx[:, r, :].detach() for r in range(Da)]           # J_s[r][l, c]
-        J_theta = [Jt[:, :, c].detach() for c in range(n_theta)]  # J_theta[c][l, r]
-        vals = []
-        for l, (i, j) in enumerate(cp):
-            for r in range(Da):
-                for c in range(n_theta):
-                    vals.append(float(J_theta[c][l, r]))
-                for c in range(Da):
-                    vals.append(float(J_s[r][l, c]))
-                vals.append(-1.0)
-        return np.asarray(vals, dtype=np.float64)
+
+        def _both(y_i, th, cap_i):
+            Yn, meas = composer.F_aug(y_from_norm(y_i), _denorm(th), cap_i)
+            return torch.cat([y_to_norm(Yn), meas / SD_meas])
+
+        Jx = vmap(lambda yi, ci: jacrev(_both, argnums=0)(yi, theta_norm, ci))(y_norm, CAP)
+        Jt = vmap(lambda yi, ci: jacrev(_both, argnums=1)(yi, theta_norm, ci))(y_norm, CAP)
+        _dcache.update(key=key, Jx=Jx.detach(), Jt=Jt.detach())
+        return _dcache
+
+    def g_jac_vals_fast(z):
+        """Sparse constraint Jacobian from the shared per-segment derivatives."""
+        d = _derivs(np.asarray(z, dtype=np.float64))
+        Jt = d["Jt"][cp_i, :Da, :]  # (n_links, Da, n_theta)
+        Jx = d["Jx"][cp_i, :Da, :]  # (n_links, Da, Da)
+        # Value ordering matches (jac_rows_a, jac_cols_a): per link l, per defect
+        # row r: [d/d theta (n_theta), d/d y_i (Da), -1 (the y_j identity)].
+        neg1 = -torch.ones((n_links, Da, 1), dtype=torch.float64)
+        return torch.cat([Jt, Jx, neg1], dim=2).reshape(-1).numpy().astype(np.float64)
 
     def g_jac_vals_fd(z):
         z = np.asarray(z, dtype=np.float64)
@@ -862,18 +923,22 @@ def _solve_sparse_collocation(
         LOGGER.config("JAC-CHECK worst relative column error = %.3e", worst)
 
     def _attach_x0(result, z_full, dim, from_norm):
-        """Record the optimised *initial state* (first segment's boundary state,
-        physical units) per stateful component.  ``z_full`` may be augmented with
-        feedback lag variables (width ``dim`` per segment); the component states
-        are the leading ``D`` entries."""
+        """Record the optimised *initial state* (each period's first boundary
+        state, physical units) per stateful component.  ``z_full`` may be
+        augmented with feedback lag variables (width ``dim`` per segment); the
+        component states are the leading ``D`` entries.  Shapes are
+        ``(n_periods, n_c, state_size)`` so the dict can seed a batched
+        multi-period ``simulate`` directly via ``component.set_state``."""
         z_full = np.asarray(z_full, dtype=np.float64)
-        y0 = from_norm(torch.tensor(z_full[n_theta:], dtype=torch.float64).reshape(n_seg, dim))[0]
-        x0 = y0[:D]  # component-state part (feedback lag vars, if any, trail)
+        y = from_norm(torch.tensor(z_full[n_theta:], dtype=torch.float64).reshape(n_seg, dim))
+        x0 = y[list(period_starts), :D]  # (n_periods, D); feedback lag vars trail
         d = {}
         for comp, (start, stop), (n_c, ss) in zip(
             layout.components, layout.slices, layout.shapes
         ):
-            d[comp.id] = x0[start:stop].reshape(n_c, ss).detach().clone()
+            d[comp.id] = (
+                x0[:, start:stop].reshape(len(period_starts), n_c, ss).detach().clone()
+            )
         result.estimated_initial_state = d
         return result
 
@@ -918,22 +983,277 @@ def _solve_sparse_collocation(
             n_seg, t_new * 1e3, t_old * 1e3, (t_old / t_new if t_new else float("nan")), agree,
         )
 
+    def _audit_fast(result):
+        """Post-solve feasibility / self-consistency audit (fast path).
+
+        Reports (a) the max defect violation at the returned solution, (b) how
+        many boundary variables sit on their box bounds, and (c) a per-sensor
+        comparison of THREE fits:
+
+        * **NLP-internal** -- measurements evaluated at the free boundary
+          variables (what the optimizer scored);
+        * **sequential F_aug rollout** -- from each period's estimated initial
+          state (params + init incl. feedback lags).  A gap to (NLP) means the
+          solution leans on defect slack;
+        * **do_step rollout** -- the real object-graph model simulated from the
+          same estimated initial component states.  A gap to (F_aug) isolates
+          model mismatch between the composed map and ``do_step`` -- e.g.
+          captured inputs frozen from the reference simulation that actually
+          depend on theta / the states (cut control loops).
+        """
+        z = np.asarray(result.x, dtype=np.float64)
+        zt = torch.tensor(z, dtype=torch.float64)
+        theta_norm = zt[:n_theta]
+        y_norm = zt[n_theta:].reshape(n_seg, Da)
+        g_vals = np.asarray(g_fun_fast(z), dtype=np.float64)
+        max_defect = float(np.abs(g_vals).max()) if g_vals.size else 0.0
+        next_of = dict(cp)
+        with torch.no_grad():
+            _, Meas_nlp = _fwd_all(theta_norm, y_norm)
+            theta_phys = _denorm(theta_norm)
+            y_phys = y_from_norm(y_norm)
+            Meas_roll = torch.zeros_like(Meas_nlp)
+            for s0 in period_starts:
+                gi, y = s0, y_phys[s0]
+                while True:
+                    y_next, meas = composer.F_aug(y, theta_phys, CAP[gi])
+                    Meas_roll[gi] = meas
+                    nxt = next_of.get(gi)
+                    if nxt is None:
+                        break
+                    gi, y = nxt, y_next
+            # Real object-graph (do_step) rollout from the same estimated
+            # initial component states and theta.  Divergence from the F_aug
+            # rollout is *model mismatch* between the composed map and do_step
+            # (e.g. control loops cut by frozen "captured" inputs).
+            Meas_step = torch.zeros_like(Meas_nlp)
+            param_values = self._theta_to_param_values(zt[:n_theta])
+            self.simulator.model.set_parameters(
+                param_values, self._flat_components, self._parameter_names,
+                normalized=True, overwrite=True,
+            )
+            for s0 in period_starts:
+                chain = [s0]
+                while chain[-1] in next_of:
+                    chain.append(next_of[chain[-1]])
+                x0 = y_phys[s0, :D]
+
+                def _seed(x0=x0):
+                    for comp, (a, b), (n_c, ss) in zip(
+                        layout.components, layout.slices, layout.shapes
+                    ):
+                        comp.set_state(x0[a:b].reshape(1, n_c, ss))
+
+                self.simulator.simulate(
+                    start_time=[seg_starts[s0]], end_time=[seg_ends[chain[-1]]],
+                    step_size=[seg_steps[s0]], show_progress_bar=False,
+                    after_initialize=_seed,
+                )
+                for m, (md, _) in enumerate(self._measurements):
+                    vals = md.input["measuredValue"].history(
+                        i_t=slice(0, len(chain)), i_s=0, i_c=0
+                    )
+                    Meas_step[chain, m] = vals.reshape(-1).detach()
+        audit = {
+            "return_status": str(getattr(result, "status", "")),
+            "max_defect": max_defect,
+            "per_sensor": {},
+        }
+        for m, md in enumerate(md_list):
+            e_nlp = float(torch.sqrt((((ACT[:, m] - Meas_nlp[:, m]) ** 2)[_incl]).mean()))
+            e_roll = float(torch.sqrt((((ACT[:, m] - Meas_roll[:, m]) ** 2)[_incl]).mean()))
+            e_step = float(torch.sqrt((((ACT[:, m] - Meas_step[:, m]) ** 2)[_incl]).mean()))
+            audit["per_sensor"][md.id] = {
+                "nlp_rmse": e_nlp, "rollout_rmse": e_roll, "do_step_rmse": e_step,
+            }
+        # Active box bounds on the (non-pinned) boundary variables.
+        lb_m = torch.tensor(lb_a[n_theta:], dtype=torch.float64).reshape(n_seg, Da)
+        ub_m = torch.tensor(ub_a[n_theta:], dtype=torch.float64).reshape(n_seg, Da)
+        free = (ub_m - lb_m) > 1e-12
+        at_bound = ((y_norm - lb_m).abs() < 1e-6) | ((ub_m - y_norm).abs() < 1e-6)
+        audit["n_active_state_bounds"] = int(at_bound[free].sum())
+        audit["n_free_state_vars"] = int(free.sum())
+        th_lb = torch.tensor(lb_a[:n_theta], dtype=torch.float64)
+        th_ub = torch.tensor(ub_a[:n_theta], dtype=torch.float64)
+        audit["n_theta_at_bounds"] = int(
+            (((theta_norm - th_lb).abs() < 1e-6) | ((th_ub - theta_norm).abs() < 1e-6)).sum()
+        )
+        LOGGER.result(
+            "AUDIT: status=%s | max|defect|=%.3e (normalized units) | boundary "
+            "vars at box bound: %d/%d | theta at bound: %d/%d",
+            audit["return_status"], max_defect,
+            audit["n_active_state_bounds"], audit["n_free_state_vars"],
+            audit["n_theta_at_bounds"], n_theta,
+        )
+        for mid, e in audit["per_sensor"].items():
+            LOGGER.result(
+                "AUDIT %-32s NLP-internal RMSE=%.4f | sequential F_aug rollout "
+                "RMSE=%.4f | do_step rollout RMSE=%.4f (raw units)",
+                mid, e["nlp_rmse"], e["rollout_rmse"], e["do_step_rmse"],
+            )
+        result.transcription_audit = audit
+        return audit
+
     # Augmented feedback-as-state collocation: the cut feedback signals are
     # decision variables (extra state) tied to their producer outputs by ordinary
     # continuity, so there is no frozen carry and no outer re-capture -- one solve.
     if composer is not None and CAP is not None:
         obj_fun = lambda z: _obj_compute_fast(np.asarray(z, dtype=np.float64))[0]
         obj_grad = lambda z: _obj_compute_fast(np.asarray(z, dtype=np.float64))[1]
+
+        # -- Gauss-Newton Hessian of the Lagrangian ---------------------------
+        # The objective is a plain least-squares MSE, so its GN Hessian is
+        # sigma * (2/N) * sum_g J_g^T J_g with J_g = d(meas_g / SD)/d(theta, y_g)
+        # -- computable from ONE vmap(jacrev) over the measurement map (n_meas
+        # reverse passes vs Da for the constraint Jacobian, so it is cheaper
+        # than the Jacobian we already evaluate every iteration).  Constraint
+        # curvature (lam_g * d2g) is dropped, the classic GN approximation;
+        # IPOPT's inertia correction covers the indefiniteness gap.  Structure:
+        # a dense theta x theta block, theta x y_g strips and per-segment
+        # y_g x y_g diagonal blocks -- an arrowhead pattern IPOPT factorizes
+        # in ~linear time.  Only segments scored by the objective contribute.
+        hess_rows = hess_cols = hess_vals_fn = None
+        if gauss_newton:
+            # Termination: GN drops the constraint curvature (lam_g * d2g), so
+            # the dual infeasibility plateaus (oscillating ~1e-3..1e-1) and
+            # IPOPT's default tol=1e-8 is unreachable -- it then burns hundreds
+            # of iterations polishing duals with ZERO objective progress before
+            # dying in restoration.  Stop at the plateau instead: accept when
+            # the iterate is feasible (defects ~1e-9 here) and the objective
+            # has stagnated (<1e-5 relative change) for 10 consecutive
+            # iterations, ignoring the (unreachable) dual/complementarity
+            # criteria.  Callers can still override any of these via options.
+            options = dict(options or {})
+            options.setdefault("acceptable_tol", 1e3)
+            options.setdefault("acceptable_iter", 5)
+            # Loosened to 1e-2 (normalized defects): the full-horizon problem
+            # plateaus with max|defect| ~ 1e-3 that the audit shows is benign
+            # (NLP-internal fit == sequential rollout), and a tighter gate kept
+            # this exit from ever firing there.
+            options.setdefault("acceptable_constr_viol_tol", 1e-2)
+            options.setdefault("acceptable_dual_inf_tol", 1e10)
+            options.setdefault("acceptable_compl_inf_tol", 1e3)
+            options.setdefault("acceptable_obj_change_tol", 1e-4)
+            incl_np = np.nonzero(_incl.numpy())[0]
+            n_i = len(incl_np)
+            iu_t = np.triu_indices(n_theta)
+            iu_y = np.triu_indices(Da)
+            cross_r, cross_c = np.meshgrid(
+                np.arange(n_theta), np.arange(Da), indexing="ij"
+            )
+            rows_h, cols_h = [iu_t[0]], [iu_t[1]]
+            for g in incl_np:
+                base = n_theta + int(g) * Da
+                rows_h.append(cross_r.ravel())
+                cols_h.append(base + cross_c.ravel())
+                rows_h.append(base + iu_y[0])
+                cols_h.append(base + iu_y[1])
+            hess_rows = np.concatenate(rows_h).astype(np.int64)
+            hess_cols = np.concatenate(cols_h).astype(np.int64)
+            incl_t = torch.tensor(incl_np, dtype=torch.long)
+            gn_scale = 2.0 / float(n_i * len(md_list))
+
+            def hess_vals_fn(z, sigma):
+                d = _derivs(np.asarray(z, dtype=np.float64))
+                Jt_ = d["Jt"][incl_t, Da:, :]  # (n_i, n_meas, n_theta)
+                Jy = d["Jx"][incl_t, Da:, :]   # (n_i, n_meas, Da)
+                Js = torch.cat([Jt_, Jy], dim=2)  # (n_i, n_meas, nt+Da)
+                B = (torch.einsum("gmi,gmj->gij", Js, Js) * (float(sigma) * gn_scale)).numpy()
+                vals = [B[:, :n_theta, :n_theta].sum(axis=0)[iu_t]]
+                Bty = B[:, :n_theta, n_theta:]
+                Byy = B[:, n_theta:, n_theta:]
+                for k in range(n_i):
+                    vals.append(Bty[k].ravel())
+                    vals.append(Byy[k][iu_y])
+                return np.concatenate(vals)
+
+            LOGGER.config(
+                "Gauss-Newton Hessian enabled: %d nonzeros (upper triangle), "
+                "%d scored segments.", len(hess_rows), n_i,
+            )
+            if _os.environ.get("TWIN4BUILD_HESS_CHECK"):
+                # The gradient identity grad f = (2/N) J^T r is EXACT (GN only
+                # truncates the Hessian), so matching the autograd gradient
+                # validates the measurement Jacobians, scaling and assembly.
+                zt0 = torch.tensor(np.asarray(z0_a, dtype=np.float64), dtype=torch.float64)
+                th0_ = zt0[:n_theta]
+                with torch.no_grad():
+                    _, Meas0_raw = _fwd_all(th0_, zt0[n_theta:].reshape(n_seg, Da))
+                r0 = (Meas0_raw[incl_t] - ACT[incl_t]) / SD_meas
+                d0 = _derivs(np.asarray(z0_a, dtype=np.float64))
+                Jt0 = d0["Jt"][incl_t, Da:, :]
+                Jy0 = d0["Jx"][incl_t, Da:, :]
+                g_gn = np.zeros(len(z0_a))
+                g_gn[:n_theta] = (gn_scale * torch.einsum("gmt,gm->t", Jt0, r0)).numpy()
+                gy = (gn_scale * torch.einsum("gmd,gm->gd", Jy0, r0)).numpy()
+                for k, g in enumerate(incl_np):
+                    a = n_theta + int(g) * Da
+                    g_gn[a:a + Da] = gy[k]
+                g_auto = np.asarray(obj_grad(z0_a), dtype=np.float64)
+                denom = max(1.0, float(np.abs(g_auto).max()))
+                LOGGER.config(
+                    "HESS-CHECK: max|grad_GN - grad_autograd| / scale = %.3e "
+                    "(|grad|max=%.3e)",
+                    float(np.abs(g_gn - g_auto).max()) / denom,
+                    float(np.abs(g_auto).max()),
+                )
+        # Warm-start feasibility: if the initial defects are far from zero the
+        # optimizer starts OFF the trajectory manifold (either the warm start is
+        # inconsistent or F_aug does not reproduce do_step) and its first moves
+        # are feasibility restoration, not descent.
+        g0 = np.asarray(g_fun_fast(z0_a), dtype=np.float64)
+        LOGGER.config(
+            "Warm-start feasibility: max|defect(z0)| = %.3e | objective(z0) = %.6f",
+            float(np.abs(g0).max()) if g0.size else 0.0, obj_fun(z0_a),
+        )
+        if g0.size:
+            G0 = np.abs(g0).reshape(n_links, Da)
+            worst = G0.max(axis=0)
+            dim_labels = []
+            for _comp, (_a, _b) in zip(layout.components, layout.slices):
+                dim_labels += [f"{_comp.id}[{k}]" for k in range(_b - _a)]
+            dim_labels += ["fb:" + ".".join(map(str, k)) for k in composer._feedback_keys]
+            top = np.argsort(-worst)[:5]
+            LOGGER.config(
+                "Warm-start worst defect dims (normalized): %s",
+                [
+                    (dim_labels[i], round(float(worst[i]), 3),
+                     f"link={int(G0[:, i].argmax())}")
+                    for i in top
+                ],
+            )
         _jac_selfcheck(z0_a, jac_rows_a, jac_cols_a, n_g_a, g_fun_fast, g_jac_vals_fast, Da)
+        es_cfg = None
+        if early_stopping:
+            es_cfg = dict(early_stopping) if isinstance(early_stopping, dict) else {}
+            es_cfg.setdefault("n_theta", n_theta)
+            LOGGER.config(
+                "Early stopping enabled: feas_tol=%s patience=%s "
+                "min_delta_rel=%s theta_tol=%s",
+                es_cfg.get("feas_tol", 1e-2), es_cfg.get("patience", 10),
+                es_cfg.get("min_delta_rel", 1e-3), es_cfg.get("theta_tol", 1e-4),
+            )
         result = solve_ipopt_constrained(
             z0_a, lb_a, ub_a, obj_fun, obj_grad, n_g_a, g_fun_fast, g_jac_vals_fast,
             jac_rows_a, jac_cols_a, options=options,
+            hess_vals=hess_vals_fn, hess_rows=hess_rows, hess_cols=hess_cols,
+            early_stopping=es_cfg,
         )
         _attach_x0(result, result.x, Da, y_from_norm)
+        _audit_fast(result)
         result.x = np.asarray(result.x, dtype=np.float64)[:n_theta]
         result.nfev = self._eval_count
         return result
 
+    if pin_initial_state and (composer is None or CAP is None):
+        for s0 in period_starts:
+            a = n_theta + s0 * D
+            lb[a:a + D] = z0[a:a + D]
+            ub[a:a + D] = z0[a:a + D]
+        LOGGER.config(
+            "Pinned the initial state of %d period(s) at the warm-start value "
+            "(bound equality).", len(period_starts),
+        )
     _jac_selfcheck(z0, jac_rows, jac_cols, n_g, g_fun, g_jac_vals, D)
     result = solve_ipopt_constrained(
         z0, lb, ub, obj_fun, obj_grad, n_g, g_fun, g_jac_vals,

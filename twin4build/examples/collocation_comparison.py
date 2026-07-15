@@ -204,8 +204,10 @@ def estimate_and_predict(tag, method, options, periods, param_set="full"):
 
     def _seed_initial_state():
         if seed_initial_state and est_x0:
+            # est_x0 blocks are (n_periods, n_c, state); simulate below runs
+            # period 0 only, so seed with the first period's block.
             for cid, block in est_x0.items():
-                model.components[cid].set_state(block.unsqueeze(0))
+                model.components[cid].set_state(block[0:1])
 
     est.simulator.simulate(
         start_time=start_list[0], end_time=end_list[0], step_size=STEP_SIZE,
@@ -308,6 +310,12 @@ def main():
     ap.add_argument("--param-set", default="full", choices=["full", "thermal"],
                     help="'full' = 19 params + 4 sensors; 'thermal' = 4 RC params + "
                          "temperature sensor (where collocation applies cleanly)")
+    ap.add_argument("--no-gn", action="store_true",
+                    help="disable the Gauss-Newton Hessian for collocation "
+                         "(fall back to IPOPT's limited-memory BFGS)")
+    ap.add_argument("--no-early-stop", action="store_true",
+                    help="disable the patience-based early stopping for "
+                         "collocation (run until IPOPT terminates on its own)")
     ap.add_argument("--outdir", default="collocation_plots")
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
@@ -328,6 +336,10 @@ def main():
         options = {"maxiter": args.maxiter}
         if key == "multiple_shooting":
             options["n_segments"] = args.segments
+        if key == "collocation" and args.no_gn:
+            options["gauss_newton"] = False
+        if key == "collocation" and args.no_early_stop:
+            options["early_stopping"] = False
         res = estimate_and_predict(tag, method, options, periods, args.param_set)
         results.append(res)
         save_after_calibration_plot(res, args.outdir)
