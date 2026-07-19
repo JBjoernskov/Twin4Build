@@ -219,24 +219,17 @@ class ValveTorchSystem(core.System, nn.Module):
 
         The water flow rate is then calculated as:
         m_w = u_norm * waterFlowRateMax
+
+        Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the math).
         """
         # Clone to detach from the input _tensor's storage, preventing
         # version-counter conflicts with jacrev when _tensor is overwritten
         # at the next timestep by _assign_component_inputs.
-        valve_position = self.input["valvePosition"].get().clone()
-
-        # Calculate normalized valve position using valve authority equation
-        u_norm = valve_position / torch.sqrt(
-            valve_position**2 * (1 - self.valveAuthority.get())
-            + self.valveAuthority.get()
-        )
-
-        # Calculate water flow rate
-        m_w = u_norm * self.waterFlowRateMax.get()
-
-        # Update outputs
-        self.output["valvePosition"]._set(valve_position, i_t=step_index)
-        self.output["waterFlowRate"]._set(m_w, i_t=step_index)
+        inputs = {"valvePosition": self.input["valvePosition"].get().clone()}
+        _, outs = self.forward(None, inputs, self._forward_params(), step_size)
+        self.output["valvePosition"]._set(outs["valvePosition"], i_t=step_index)
+        self.output["waterFlowRate"]._set(outs["waterFlowRate"], i_t=step_index)
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     PARAM_NAMES = ("waterFlowRateMax", "valveAuthority")

@@ -393,6 +393,11 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         x0_tensor = self._get_initial_state_tensor()
         self.ss_model.set_state(x0_tensor)
 
+        # Drop per-params forward caches: a fresh simulation must not reuse
+        # matrices (or their autograd graph) from a previous run.
+        self._fwd_mat_cache = None
+        self._forward_params_cache = None
+
         self.INITIALIZED = True
 
     def _ua_residual(self, UA_candidate):
@@ -539,12 +544,22 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         outputs ``{outletWaterTemperature, Power}`` (Power = UA * sum(T_i -
         T_zone), the heat delivered to the zone -- the coupling into thermal).
         """
-        A, B, C_out, D, E, F = self._build_matrices(params)
+        # Params-only matrices, cached per params-dict identity (rebuilt once
+        # per theta in a sequential rollout, not once per step).  sample_time
+        # is part of the key: the attached disc_cache holds (Ad, Bd)
+        # discretized at a specific T.
+        cache = getattr(self, "_fwd_mat_cache", None)
+        if cache is None or cache[0] is not params or cache[2] != sample_time:
+            cache = (params, self._build_matrices(params), sample_time, {})
+            self._fwd_mat_cache = cache
+        A, B, C_out, D, E, F = cache[1]
         u = torch.stack(
             [inputs["supplyWaterTemperature"], inputs["waterFlowRate"],
              inputs["indoorTemperature"]], dim=-1,
         )
-        x_next, y = bilinear_onestep(A, B, C_out, D, E, F, x, u, sample_time)
+        x_next, y = bilinear_onestep(
+            A, B, C_out, D, E, F, x, u, sample_time, disc_cache=cache[3]
+        )
         outlet = y[..., 0]
         UA_elem = params["UA"] / self.nelements
         T_zone = inputs["indoorTemperature"]
@@ -572,37 +587,25 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             date_time (date_time, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
+
+        Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the dynamics); the inner ``ss_model`` only carries the
+        state between steps.
         """
-        # Stack along dim=2 to get shape (n_s, n_c, n_inputs) from (n_s, n_c) scalars
-        u = torch.stack(
-            [
-                self.input["supplyWaterTemperature"].get(),
-                self.input["waterFlowRate"].get(),
-                self.input["indoorTemperature"].get(),
-            ],
-            dim=2,
+        inputs = {
+            "supplyWaterTemperature": self.input["supplyWaterTemperature"].get(),
+            "waterFlowRate": self.input["waterFlowRate"].get(),
+            "indoorTemperature": self.input["indoorTemperature"].get(),
+        }
+        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
-        self.ss_model.input["u"]._set(u, i_t=step_index)
-        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
-
-        # y shape: (n_s, n_c, n_outputs)
-        y = self.ss_model.output["y"].get()
-        outletWaterTemperature = y[:, :, 0]  # (n_s, n_c)
-
-        # Calculate power: UA_elem * sum(T_i - T_zone) for all elements
-        # UA_elem shape: (n_c,), temps shape: (n_s, n_c, n_states), u[:,:,2] shape: (n_s, n_c)
-        UA_elem = self.UA.get() / self.nelements  # (n_c,)
-        temps = self.ss_model.get_state()  # (n_s, n_c, n_states)
-        T_zone = u[:, :, 2]  # (n_s, n_c)
-        # Expand T_zone to match temps: (n_s, n_c, 1) for broadcasting
-        Power = UA_elem.unsqueeze(0) * torch.sum(
-            temps - T_zone.unsqueeze(2), dim=2
-        )  # (n_s, n_c)
-
+        self.ss_model.set_state(x_next)
         self.output["outletWaterTemperature"]._set(
-            outletWaterTemperature, i_t=step_index
+            outs["outletWaterTemperature"], i_t=step_index
         )
-        self.output["Power"]._set(Power, i_t=step_index)
+        self.output["Power"]._set(outs["Power"], i_t=step_index)
 
 
 def saref_signature_pattern():

@@ -466,6 +466,11 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         self._manual_setup_n_adjacent_zones = False
         self._manual_setup_n_boundary_temperature = False
 
+        # Drop per-params forward caches: a fresh simulation must not reuse
+        # matrices (or their autograd graph) from a previous run.
+        self._fwd_mat_cache = None
+        self._forward_params_cache = None
+
     def setup_variable_inputs(self):
         if self.manual_setup_n_boundary_temperature == False:
             # Find if boundary temperature is set as input
@@ -741,49 +746,34 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             second_time: Current simulation time in seconds.
             date_time: Current simulation date/time.
             step_size: Current simulation step size.
+
+        Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the dynamics); the inner ``ss_model`` only carries the
+        state between steps.
         """
-        # Build input vector u with fixed inputs first
-        # Stack along dim=2 to get shape (n_s, n_c, n_v) from (n_s, n_c) scalars
-        u = torch.stack(
-            [
-                self.input["outdoorTemperature"].get(),
-                self.input["supplyAirFlowRate"].get(),
-                self.input["exhaustAirFlowRate"].get(),
-                self.input["supplyAirTemperature"].get(),
-                self.input["globalIrradiation"].get(),
-                self.input["numberOfPeople"].get(),
-                self.input["heatGain"].get(),
-            ],
-            dim=2,
-        )
-
-        if self.n_boundary_temperature == 1:
-            u = torch.cat(
-                [u, self.input["boundaryTemperature"].get().unsqueeze(2)], dim=2
+        inputs = {
+            port: self.input[port].get()
+            for port in (
+                "outdoorTemperature", "supplyAirFlowRate", "exhaustAirFlowRate",
+                "supplyAirTemperature", "globalIrradiation", "numberOfPeople",
+                "heatGain",
             )
-        # Add adjacent zone temperatures at the end
+        }
+        if self.n_boundary_temperature == 1:
+            inputs["boundaryTemperature"] = self.input["boundaryTemperature"].get()
         if self.n_adjacent_zones > 0:
-            # adjacentZoneTemperature is a Vector, so get() returns (n_s, n_c, n_v)
-            # We need to concatenate along dim=2
-            adj_temp = self.input["adjacentZoneTemperature"].get()
-            u = torch.cat([u, adj_temp], dim=2)
+            # Vector port: get() returns (n_s, n_c, n_v)
+            inputs["adjacentZoneTemperature"] = self.input[
+                "adjacentZoneTemperature"
+            ].get()
 
-        # Set the input vector
-        self.ss_model.input["u"]._set(u, i_t=step_index)
-
-        # Execute state space model step
-        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
-
-        # Get the output vector
-        y = self.ss_model.output["y"].get()  # Shape: (n_s, n_c, n_v)
-
-        # print(self.output["indoorTemperature"].history.size)
-        # print(self.output["wallTemperature"].history.size)
-
-        # Update individual outputs from the output vector
-        # y[:, :, 0] gives (n_s, n_c) which is correct for Scalar._set()
-        self.output["indoorTemperature"]._set(y[:, :, 0], i_t=step_index)
-        self.output["wallTemperature"]._set(y[:, :, 1], i_t=step_index)
+        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.ss_model.set_state(x_next)
+        self.output["indoorTemperature"]._set(outs["indoorTemperature"], i_t=step_index)
+        self.output["wallTemperature"]._set(outs["wallTemperature"], i_t=step_index)
 
     def forward(self, x, inputs, params, sample_time):
         """Pure one-step dynamics: ``(state, inputs, params) -> (new_state, outputs)``.
@@ -807,7 +797,16 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         Returns:
             ``(x_next (n_c, n_states), {"indoorTemperature", "wallTemperature"})``.
         """
-        A, B, C, D, E, F = self._build_matrices(params)
+        # The matrices depend only on params, not on (x, u): cache them per
+        # params-dict identity so a sequential rollout builds them once per
+        # theta instead of once per step (see OneStepComposer._params_for /
+        # System._forward_params).  sample_time is part of the key because the
+        # attached disc_cache holds (Ad, Bd) discretized at a specific T.
+        cache = getattr(self, "_fwd_mat_cache", None)
+        if cache is None or cache[0] is not params or cache[2] != sample_time:
+            cache = (params, self._build_matrices(params), sample_time, {})
+            self._fwd_mat_cache = cache
+        A, B, C, D, E, F = cache[1]
         cols = [
             inputs["outdoorTemperature"], inputs["supplyAirFlowRate"],
             inputs["exhaustAirFlowRate"], inputs["supplyAirTemperature"],
@@ -818,7 +817,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         u = torch.stack(cols, dim=-1)  # (n_c, n_base_inputs)
         if self.n_adjacent_zones > 0:
             u = torch.cat([u, inputs["adjacentZoneTemperature"]], dim=-1)
-        x_next, y = bilinear_onestep(A, B, C, D, E, F, x, u, sample_time)
+        x_next, y = bilinear_onestep(
+            A, B, C, D, E, F, x, u, sample_time, disc_cache=cache[3]
+        )
         return x_next, {"indoorTemperature": y[..., 0], "wallTemperature": y[..., 1]}
 
 

@@ -333,6 +333,45 @@ class System:
         """True iff this System owns any continuous ``tps.State``."""
         return len(self.collect_states()) > 0
 
+    @staticmethod
+    def _scalar_sample_time(step_size) -> float:
+        """Scalar sample time from the simulator's per-simulation step-size list.
+
+        Components whose ``forward`` discretizes with a single sample time
+        cannot batch simulations with different step sizes; keep the explicit
+        guard the old state-space ``do_step`` had.
+        """
+        if isinstance(step_size, (list, tuple)):
+            assert all(
+                s == step_size[0] for s in step_size
+            ), "Component supports only a single step size across batched simulations."
+            return float(step_size[0])
+        return float(step_size)
+
+    def _forward_params(self) -> dict:
+        """Own physical parameters as the ``forward`` params dict.
+
+        The single-source-of-truth contract: ``do_step`` is a thin port-I/O
+        wrapper that DELEGATES the math to ``forward`` (so the two can never
+        drift apart), and this helper supplies the params dict for that call
+        from the component's own ``tps.Parameter`` values (:attr:`PARAM_NAMES`).
+
+        Identity-stable: returns the SAME dict object for as long as every
+        underlying parameter tensor is unchanged, so the identity-keyed caches
+        inside ``forward`` (state-space matrices, PID coefficients, ...) keep
+        hitting across steps and the delegation costs nothing per step.  A
+        parameter write (estimation) swaps the tensor ``get()`` returns, which
+        invalidates the dict -- and, downstream, those caches -- automatically.
+        """
+        names = getattr(self, "PARAM_NAMES", ())
+        vals = tuple(getattr(self, n).get() for n in names)
+        cache = getattr(self, "_forward_params_cache", None)
+        if cache is not None and all(a is b for a, b in zip(cache[0], vals)):
+            return cache[1]
+        d = dict(zip(names, vals))
+        self._forward_params_cache = (vals, d)
+        return d
+
     def state_size(self) -> int:
         """Total continuous-state width ``D`` (sum of owned state widths)."""
         return sum(int(s.n_v) for s in self.collect_states())

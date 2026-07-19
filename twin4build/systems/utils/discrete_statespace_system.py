@@ -49,7 +49,47 @@ def _expm_ss(M, order=8, squarings=18):
     return acc
 
 
-def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time):
+def _functorch_active() -> bool:
+    """True when running under a torch.func transform (vmap/jacrev/grad).
+
+    Used to pick the matrix-exponential implementation: ``torch.matrix_exp``
+    is a single fused op with a native backward (fast in plain eager/autograd)
+    but has no vmap batching rule, while :func:`_expm_ss` is pure matmul (vmap
+    batches it natively) but unrolls ~26 matmuls into the autograd graph.
+    """
+    try:
+        return bool(torch._C._are_functorch_transforms_active())
+    except AttributeError:  # very old torch -- keep the always-safe path
+        return True
+
+
+def _discretize_onestep(A, B, E, F, u, sample_time):
+    """Effective-matrix ZOH discretization: ``(Ad, Bd)`` for the current ``u``."""
+    # Broadcast-friendly bilinear terms (einsum would require the batch dims of
+    # E/F and u to match exactly; the fast single-shooting rollout batches u
+    # over periods while the matrices keep their (n_c=1, ...) leading dim).
+    u_b = u.unsqueeze(-1).unsqueeze(-1)  # (..., m, 1, 1)
+    A_eff = A if E is None else A + (E * u_b).sum(dim=-3)
+    B_eff = B if F is None else B + (F * u_b).sum(dim=-3)
+
+    n = A.shape[-1]
+    m = B.shape[-1]
+    T = sample_time
+    # Block matrix M = [[A*T, B*T], [0, 0]]; expm(M) = [[Ad, Bd], [0, I]].
+    # Built out-of-place (cat + zero-row pad) so it is ``vmap``-safe -- an
+    # in-place ``M[..., :n, :n] = ...`` fails when A_eff/B_eff carry a vmap batch
+    # dim that the freshly-allocated M does not.
+    top = torch.cat([A_eff * T, B_eff * T], dim=-1)  # (..., n, n+m)
+    M = torch.nn.functional.pad(top, (0, 0, 0, m))  # add m zero rows -> (..., n+m, n+m)
+    # Under functorch transforms matrix_exp has no batching rule, so use the
+    # pure-matmul scaling-and-squaring helper; in plain eager/autograd (the
+    # fast single-shooting rollout) the fused native op is much cheaper per
+    # step and has a native backward.
+    expM = _expm_ss(M) if _functorch_active() else torch.matrix_exp(M)
+    return expM[..., :n, :n], expM[..., :n, n:]
+
+
+def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
     """Pure one ZOH step of a (bilinear) state-space system.
 
     A functorch-compatible re-expression of :meth:`DiscreteStatespaceSystem.do_step`
@@ -63,22 +103,39 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time):
         E ``(n_c, m, n, n)`` or None            F ``(n_c, m, n, m)`` or None
         x ``(n_c, n)``      u ``(n_c, m)``
     Returns ``x_next (n_c, n)``, ``y (n_c, p)``.  ``vmap`` maps this over segments.
-    """
-    A_eff = A if E is None else A + torch.einsum("cmij,cm->cij", E, u)
-    B_eff = B if F is None else B + torch.einsum("cmij,cm->cij", F, u)
 
-    n = A.shape[-1]
-    m = B.shape[-1]
-    T = sample_time
-    # Block matrix M = [[A*T, B*T], [0, 0]]; expm(M) = [[Ad, Bd], [0, I]].
-    # Built out-of-place (cat + zero-row pad) so it is ``vmap``-safe -- an
-    # in-place ``M[..., :n, :n] = ...`` fails when A_eff/B_eff carry a vmap batch
-    # dim that the freshly-allocated M does not.
-    top = torch.cat([A_eff * T, B_eff * T], dim=-1)  # (..., n, n+m)
-    M = torch.nn.functional.pad(top, (0, 0, 0, m))  # add m zero rows -> (..., n+m, n+m)
-    expM = _expm_ss(M)  # vmap-friendly matrix exponential (see helper)
-    Ad = expM[..., :n, :n]
-    Bd = expM[..., :n, n:]
+    ``disc_cache`` (a mutable dict scoped to one theta by the caller) enables
+    the same optimization ``do_step`` has had all along: the matrix exponential
+    is recomputed only when the *bilinear-relevant* inputs (nonzero E/F slices)
+    actually change between steps -- e.g. a closed damper holds the flows
+    constant for hours.  Reusing the previous step's ``(Ad, Bd)`` when they
+    haven't matches ``do_step``'s semantics exactly (gradients flow to the step
+    that computed them).  Ignored under functorch transforms, where the
+    data-dependent branch is untraceable.
+    """
+    if disc_cache is None or _functorch_active():
+        Ad, Bd = _discretize_onestep(A, B, E, F, u, sample_time)
+    else:
+        mask = disc_cache.get("mask")
+        if mask is None:
+            m_dim = B.shape[-1]
+            mask = torch.zeros(m_dim, dtype=torch.bool)
+            if E is not None:
+                mask |= (E.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
+            if F is not None:
+                mask |= (F.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
+            disc_cache["mask"] = mask
+        u_rel = u.detach()[..., mask]
+        prev = disc_cache.get("u_rel")
+        if (
+            prev is not None
+            and prev.shape == u_rel.shape
+            and torch.allclose(prev, u_rel)
+        ):
+            Ad, Bd = disc_cache["Ad"], disc_cache["Bd"]
+        else:
+            Ad, Bd = _discretize_onestep(A, B, E, F, u, sample_time)
+            disc_cache.update(u_rel=u_rel.clone(), Ad=Ad, Bd=Bd)
 
     x_next = (Ad @ x.unsqueeze(-1)).squeeze(-1) + (Bd @ u.unsqueeze(-1)).squeeze(-1)
     y = (C @ x_next.unsqueeze(-1)).squeeze(-1) + (D @ u.unsqueeze(-1)).squeeze(-1)

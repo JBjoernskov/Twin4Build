@@ -1,4 +1,4 @@
-"""Multiple-shooting / collocation transcription for :class:`Estimator`.
+"""Collocation (simultaneous) transcription for :class:`Estimator`.
 
 Single-shooting estimation evaluates the objective by simulating the *entire*
 horizon from one fixed initial condition, then backpropagating through the full
@@ -6,32 +6,31 @@ unrolled trajectory.  Over long horizons this composition-of-``f``-with-itself
 is badly conditioned (the exploding/vanishing-gradient problem of backprop
 through time) and every iterate is a full rollout.
 
-**Multiple-shooting** breaks the horizon into ``K`` segments and promotes each
-segment's *initial state* ``s_i`` to a decision variable, stacked alongside the
-physical parameters ``theta``.  The dynamics are enforced by *continuity
-defects*
+**Collocation** promotes the state at every timestep boundary ``s_i`` to a
+decision variable, stacked alongside the physical parameters ``theta``.  The
+dynamics are enforced as hard equality *continuity defects*
 
     d_i = x(t_{i+1}; s_i, theta) - s_{i+1}      (i = 0 .. K-2)
 
-where the first term is what the simulator produces running segment ``i``
-forward from ``s_i``, and ``s_{i+1}`` is read directly off the decision vector.
-Gradients only ever flow through one segment's (short) rollout, so the
-conditioning improves and the basins of attraction widen.  Taking ``K`` to one
-segment per timestep recovers full simultaneous transcription (**collocation**).
+where the first term is one step of the model from ``s_i`` and ``s_{i+1}`` is
+read directly off the decision vector.  Gradients only ever flow through a
+single step, so the conditioning improves and the basins of attraction widen.
+The boundary states are *nuisance* variables: they are discarded after the fit
+(``EstimationResult`` reports only ``theta``; the per-period initial states are
+additionally returned as ``estimated_initial_state``).
 
-This module implements the **soft** (penalty) form -- the defects enter the
-objective as ``lambda * sum ||d_i||^2`` -- which needs only an unconstrained
-scalar objective and therefore works with every backend, including the CasADi
-IPOPT wrapper (:mod:`twin4build.estimator._casadi_ipopt`) and SciPy.  The
-segment states are *nuisance* variables: they are discarded after the fit
-(``EstimationResult`` reports only ``theta``).
+The solve (:func:`_solve_sparse_collocation`) hands IPOPT the defects as sparse
+equality constraints with an explicit block-bidiagonal Jacobian, a Gauss-Newton
+Hessian of the least-squares objective, and patience-based early stopping.
+When the model is composable, the objective/constraints/derivatives all come
+from the pure one-step map built by :class:`OneStepComposer` -- no per-eval
+object-graph simulate; otherwise an exact-but-slow finite-difference fallback
+runs the object graph.  Requires the CasADi/IPOPT backend.
 
-Segments are mapped onto the simulator's existing period-batch dimension
-(``n_s``): ``K`` segments become ``K`` parallel "periods", each initialized to
-its own ``s_i`` via the ``after_initialize`` hook on
-:meth:`Simulator.simulate`.  The per-segment initial states are seeded from a
-single forward simulation at ``theta0`` (a warm start), so the optimizer begins
-from a dynamically-consistent trajectory.
+A soft-penalty multiple-shooting form (``MSE + lambda * ||d||^2`` on a coarse
+segmentation, first-order solver) used to live here; it was removed after
+benchmarking showed it wanders without converging on exactly the problems the
+hard-constraint solve handles -- see COLLOCATION_SESSION_SUMMARY.md.
 """
 
 from __future__ import annotations
@@ -46,6 +45,7 @@ import torch
 from torch.func import jacrev, vmap
 
 from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
 
 def _segment_boundaries(n_t: int, n_segments: int) -> List[int]:
@@ -135,7 +135,7 @@ def _collect_stateful(model) -> List:
 
 
 def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamespace:
-    """Run a multiple-shooting / collocation estimation solve.
+    """Run a collocation (simultaneous transcription) estimation solve.
 
     Parameters
     ----------
@@ -144,11 +144,12 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
         measurements, normalized bounds ``_x0_norm``/``_lb_norm``/``_ub_norm``,
         ``actual_readings``, and a single time period in ``_start_time`` etc.).
     method : tuple
-        ``(library, optimizer, mode)`` -- the optimizer backend for the NLP.
+        ``(library, optimizer, mode)`` -- must be the CasADi backend
+        (the sparse hard-constraint NLP needs IPOPT).
     options : dict
-        Solver options; recognises ``n_segments`` (default 10; ``collocation``
-        transcription overrides it to one-per-timestep) and
-        ``continuity_lambda`` (default 100.0, the soft-defect weight).
+        Solver options, forwarded to :func:`_solve_sparse_collocation`
+        (``gauss_newton``, ``early_stopping``, ``pin_initial_state``, plus raw
+        IPOPT options such as ``maxiter``).
 
     Returns
     -------
@@ -161,14 +162,15 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     options = dict(options or {})
     import twin4build.core as core
 
+    if method[0] != "casadi":
+        raise ValueError(
+            "Transcription solves require the CasADi/IPOPT backend -- use "
+            "method=('casadi', 'ipopt', 'ad', 'collocation')."
+        )
+
     start_times = list(self._start_time)
     end_times = list(self._end_time)
     step_sizes = list(self._stepSize)
-    continuity_lambda = float(options.pop("continuity_lambda", 100.0))
-    n_segments_opt = (
-        None if self._transcription == "collocation"
-        else int(options.pop("n_segments", 10))
-    )
 
     n_theta = len(self._x0_norm)
 
@@ -195,10 +197,11 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     D = layout.width
 
     # ---- Flatten every period's segments onto a single n_s batch axis ------
-    # Each period is split into contiguous segments; the segments of *all*
-    # periods live together on the simulator's n_s axis.  Continuity defects
-    # link only *consecutive segments within the same period* -- disjoint
-    # training windows are independent experiments (no cross-window stitching).
+    # Every period is split into one-step segments (full simultaneous
+    # transcription); the segments of *all* periods live together on the
+    # simulator's n_s axis.  Continuity defects link only *consecutive
+    # segments within the same period* -- disjoint training windows are
+    # independent experiments (no cross-window stitching).
     seg_starts: List[datetime.datetime] = []
     seg_ends: List[datetime.datetime] = []
     seg_steps: List[int] = []
@@ -211,8 +214,7 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     g = 0
     for p, (s_p, e_p, step_p) in enumerate(zip(start_times, end_times, step_sizes)):
         _, _, n_t_p, _ = core.Simulator.get_simulation_timesteps(s_p, e_p, step_p)
-        K_p = n_t_p if n_segments_opt is None else n_segments_opt
-        bounds_p = _segment_boundaries(n_t_p, K_p)
+        bounds_p = _segment_boundaries(n_t_p, n_t_p)
         Kp = len(bounds_p) - 1
         state0_p = _warmstart_segment_states(self, layout, bounds_p, s_p, e_p, step_p)
         actual_p = {
@@ -234,10 +236,15 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
                 continuity_pairs.append((g, g + 1))
             g += 1
     n_seg = g
+    if not continuity_pairs:
+        raise ValueError(
+            "Collocation requires more than one timestep per period -- there "
+            "are no continuity links to constrain.  Use single-shooting."
+        )
 
     LOGGER.config(
-        "Transcription: %s | %d periods | %d segments total | %d continuity links | lambda=%.3g",
-        self._transcription, len(start_times), n_seg, len(continuity_pairs), continuity_lambda,
+        "Transcription: %s | %d periods | %d segments total | %d continuity links",
+        self._transcription, len(start_times), n_seg, len(continuity_pairs),
     )
 
     # Per-dimension state normalization (O(1) decision vars regardless of units).
@@ -254,13 +261,6 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
 
     seg_state0_norm = s_to_norm(seg_state0)  # (n_seg, D)
 
-    # Continuity index tensors (end-of-segment i vs. start-var of segment i+1).
-    if continuity_pairs:
-        cp_i = torch.tensor([a for a, _ in continuity_pairs], dtype=torch.long)
-        cp_j = torch.tensor([b for _, b in continuity_pairs], dtype=torch.long)
-    else:
-        cp_i = cp_j = None
-
     # ---- Decision vector z = [theta_norm | s_norm.flatten()] ---------------
     z0 = np.concatenate([
         np.asarray(self._x0_norm, dtype=np.float64),
@@ -276,126 +276,17 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     ])
 
     self._eval_count = 0
-
-    def _loss(zt: torch.Tensor) -> torch.Tensor:
-        """Scalar transcription loss (data-fit MSE + lambda * continuity).
-
-        ``zt`` is a torch tensor of the full decision vector ``[theta_norm |
-        s_norm]``; the returned scalar keeps the autograd graph back to ``zt``.
-        """
-        theta = zt[:n_theta]
-        s_norm = zt[n_theta:].reshape(n_seg, D)
-        s_phys = s_from_norm(s_norm)  # (n_seg, D)
-
-        # Physical parameters from theta.
-        param_values = self._theta_to_param_values(theta)
-        self.simulator.model.set_parameters(
-            param_values, self._flat_components, self._parameter_names,
-            normalized=True, overwrite=True,
-        )
-
-        # Simulate every segment in parallel; inject per-segment initial states
-        # after (re)initialization via the simulator hook.
-        self.simulator.simulate(
-            start_time=seg_starts, end_time=seg_ends, step_size=seg_steps,
-            show_progress_bar=False, after_initialize=lambda: layout.scatter(s_phys),
-        )
-
-        # Data-fit residuals over every (sensor, segment).  Track both the
-        # sd-scaled residual (drives the objective) and the raw residual (for
-        # an RMSE diagnostic comparable to the single-shooting path, which
-        # reports raw RMSE in measurement units).
-        res_terms = []
-        res_raw_terms = []
-        for md, sd in self._measurements:
-            for gi in range(n_seg):
-                L = seg_len[gi]
-                y_model = md.input["measuredValue"].history(i_t=slice(0, L), i_s=gi, i_c=0)
-                raw = seg_actual[md.id][gi] - y_model
-                res_raw_terms.append(raw)
-                res_terms.append(raw / sd)
-        mse = torch.mean(torch.cat(res_terms) ** 2)
-        raw_mse = torch.mean(torch.cat(res_raw_terms) ** 2)
-
-        # Continuity: each segment's final state vs. the next segment's start var
-        # within the same period (both normalized so the penalty is well-scaled).
-        if cp_i is not None:
-            end_norm = s_to_norm(layout.end_states(n_seg))  # (n_seg, D)
-            defect = end_norm[cp_i] - s_norm[cp_j]  # (n_links, D)
-            continuity = torch.sum(defect ** 2) / max(1, len(continuity_pairs) * D)
-        else:
-            continuity = torch.zeros((), dtype=torch.float64)
-
-        self._last_mse = float(raw_mse.detach())
-        self._last_rmse = float(raw_mse.detach()) ** 0.5  # raw units, comparable
-        self._last_continuity = float(continuity.detach())
-        return mse + continuity_lambda * continuity
-
-    # Value+gradient are computed together and cached, so IPOPT's back-to-back
-    # objective/gradient calls at the same z trigger only one simulation.
-    _cache = {"key": None, "val": None, "grad": None}
-
-    def _compute(z: np.ndarray):
-        key = z.tobytes()
-        if _cache["key"] == key:
-            return _cache["val"], _cache["grad"]
-        self._eval_count += 1
-        zt = torch.tensor(z, dtype=torch.float64, requires_grad=True)
-        val_t = _loss(zt)
-        (grad_t,) = torch.autograd.grad(val_t, zt)
-        val = float(val_t.detach())
-        grad = grad_t.detach().numpy()
-        _cache.update(key=key, val=val, grad=grad)
-        if self._eval_count % 10 == 1:
-            LOGGER.iter(
-                "eval=%d | obj=%.6f | rmse=%.4f | continuity=%.3g",
-                self._eval_count, val, self._last_rmse, self._last_continuity,
-            )
-        return val, grad
-
-    def fun(z: np.ndarray) -> float:
-        return _compute(np.asarray(z, dtype=np.float64))[0]
-
-    def jac(z: np.ndarray) -> np.ndarray:
-        return _compute(np.asarray(z, dtype=np.float64))[1]
-
     LOGGER.config("Decision variables: %d (theta=%d, states=%d)", len(z0), n_theta, n_seg * D)
 
-    # ---- Stage 2: sparse, hard-constraint collocation ----------------------
-    # For "collocation" on the CasADi/IPOPT backend, enforce the dynamics as
-    # hard equality *defect constraints* with an explicit block-bidiagonal
-    # Jacobian, rather than as a soft penalty.  IPOPT's sparse linear solver
-    # then exploits the structure (each defect row touches only s_i, s_{i+1},
-    # theta).  The objective becomes data-fit only; continuity moves into g.
-    if self._transcription == "collocation" and method[0] == "casadi" and continuity_pairs:
-        return _solve_sparse_collocation(
-            self, method, options, n_theta, D, n_seg, layout, seg_starts, seg_ends,
-            seg_steps, seg_len, seg_actual, continuity_pairs, s_to_norm, s_from_norm,
-            z0, lb, ub, seg_is_warmup,
-        )
-
-    # ---- Dispatch to the optimizer backend (soft-penalty path) -------------
-    if method[0] == "casadi":
-        from twin4build.estimator._casadi_ipopt import solve_ipopt
-
-        result = solve_ipopt(z0, lb, ub, fun, jac, options=options)
-    else:
-        from scipy.optimize import minimize, Bounds
-
-        opt = minimize(
-            fun, z0, jac=jac, bounds=Bounds(lb, ub),
-            method=method[1] if method[1] in ("L-BFGS-B", "SLSQP", "TNC") else "L-BFGS-B",
-            options=options or None,
-        )
-        result = SimpleNamespace(
-            x=opt.x, fun=float(opt.fun), success=bool(opt.success),
-            nit=getattr(opt, "nit", None), message=str(getattr(opt, "message", "")),
-        )
-
-    # Return only theta to the Estimator's result tail; states are nuisance.
-    result.x = np.asarray(result.x, dtype=np.float64)[:n_theta]
-    result.nfev = self._eval_count
-    return result
+    # Sparse, hard-constraint collocation: the dynamics are hard equality
+    # *defect constraints* with an explicit block-bidiagonal Jacobian; IPOPT's
+    # sparse linear solver exploits the structure (each defect row touches
+    # only s_i, s_{i+1}, theta).  The objective is data-fit only.
+    return _solve_sparse_collocation(
+        self, method, options, n_theta, D, n_seg, layout, seg_starts, seg_ends,
+        seg_steps, seg_len, seg_actual, continuity_pairs, s_to_norm, s_from_norm,
+        z0, lb, ub, seg_is_warmup,
+    )
 
 
 def _warmstart_segment_states(self, layout, bounds_idx, start_time, end_time, step_size):
@@ -509,21 +400,16 @@ def _solve_sparse_collocation(
                 # Plain (functorch-safe) denormalization from the parameters'
                 # physical bounds + scaling (tps.Parameter.denormalize is a
                 # Tensor-subclass method and breaks under functorch).
-                tp = self._flat_parameters
-                lb_t = torch.tensor([float(np.asarray(p.min_value.detach()).flatten()[0]) for p in tp])
-                ub_t = torch.tensor([float(np.asarray(p.max_value.detach()).flatten()[0]) for p in tp])
-                log_mask = torch.tensor([getattr(p, "scaling", "linear") == "log" for p in tp])
+                lb_t, ub_t, log_mask = theta_bound_tensors(self._flat_parameters)
                 composer = comp
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning("Composer unavailable (%s) -- using finite-difference Jacobian.", exc)
         composer = None
 
     def _denorm(th_norm):
-        lin = lb_t + th_norm * (ub_t - lb_t)
-        safe_lb = lb_t.clamp(min=1e-30)
-        safe_ub = ub_t.clamp(min=1e-30)
-        logv = torch.exp(torch.log(safe_lb) + th_norm * (torch.log(safe_ub) - torch.log(safe_lb)))
-        return torch.where(log_mask, logv, lin)
+        # Single source of truth for the normalized->physical map
+        # (tps.Parameter.denormalize routes through the same function).
+        return denormalize_unit(th_norm, lb_t, ub_t, log_mask)
 
     def _simulate(theta, s_norm):
         """Run all segments; return (scaled_mse, raw_mse, end_norm)."""
@@ -650,48 +536,24 @@ def _solve_sparse_collocation(
                 chain.append(_next_of[chain[-1]])
             _chains.append(chain)
         # Capture the exogenous inputs AND the delayed-feedback warm start from
-        # one CONTINUOUS do_step rollout per period at theta0, sampling every
-        # input port right after each step.  Two reasons this must be a
-        # continuous run rather than the batched 1-step segments:
-        #
-        # * Stateful exogenous drivers: e.g. ``OccupancySystem`` carries a
-        #   ``C_prev`` memory and outputs ZERO occupancy on the first step after
-        #   ``initialize`` -- batched 1-step segments would freeze
-        #   ``office.numberOfPeople`` at 0 for every segment (a silently wrong
-        #   model, CO2 has no source).
-        # * Feedback consistency: input[port] right after step i holds exactly
-        #   the value do_step consumed at step i (the producer's step-(i-1)
-        #   output), so the warm start satisfies the delayed continuity
-        #   w_{t+1} = producer_output(y_t) by construction instead of starting
-        #   IPOPT at an infeasible point.
-        import twin4build.core as _core
+        # one CONTINUOUS do_step rollout per period at theta0 (the shared
+        # capture_reference_rollout; see its docstring for why this must be a
+        # continuous run: stateful exogenous drivers like OccupancySystem, and
+        # Gauss-Seidel consumption semantics for the feedback warm start).
+        # Segments are one step each, so the rollout's per-timestep rows map
+        # 1:1 onto the chain's segment indices.
+        from twin4build.estimator._composer import capture_reference_rollout
 
         CAP = torch.zeros((n_seg, len(composer._captured_keys)), dtype=torch.float64)
         fb0 = torch.zeros((n_seg, n_fb), dtype=torch.float64)
-        comps_ = self.simulator.model.components
-
-        def _sample(dst, keys, seg_index):
-            for k, key in enumerate(keys):
-                cid, port = key[0], key[1]
-                slot = key[2] if len(key) > 2 else 0
-                dst[seg_index, k] = (
-                    comps_[cid].input[port].get().reshape(-1)[slot].detach()
-                )
-
         for chain in _chains:
-            st_, en_, sz_ = seg_starts[chain[0]], seg_ends[chain[-1]], seg_steps[chain[0]]
-            self.simulator.get_simulation_timesteps([st_], [en_], [sz_])
-            self.simulator.model.initialize([st_], [en_], [sz_])
-            sec_, dts_, n_t_p, _ = _core.Simulator.get_simulation_timesteps(
-                [st_], [en_], [sz_]
+            R = capture_reference_rollout(
+                self.simulator, composer,
+                seg_starts[chain[0]], seg_ends[chain[-1]], seg_steps[chain[0]],
             )
-            for i in range(min(len(chain), int(n_t_p))):
-                self.simulator._do_system_time_step(
-                    self.simulator.model, sec_[:, i], dts_[:, i], [sz_], i,
-                    "gauss-seidel",
-                )
-                _sample(CAP, composer._captured_keys, chain[i])
-                _sample(fb0, composer._feedback_keys, chain[i])
+            idx = torch.tensor(chain[: R.n_t], dtype=torch.long)
+            CAP[idx] = R.CAP[: len(idx)]
+            fb0[idx] = R.FB[: len(idx)]
         fb_center = fb0.mean(dim=0)
         # Robust scale: a ~constant feedback has tiny std; scaling by it would blow
         # the (bounded) decision variable up.  Floor by a fraction of the magnitude.
@@ -836,8 +698,11 @@ def _solve_sparse_collocation(
             Yn, meas = composer.F_aug(y_from_norm(y_i), _denorm(th), cap_i)
             return torch.cat([y_to_norm(Yn), meas / SD_meas])
 
-        Jx = vmap(lambda yi, ci: jacrev(_both, argnums=0)(yi, theta_norm, ci))(y_norm, CAP)
-        Jt = vmap(lambda yi, ci: jacrev(_both, argnums=1)(yi, theta_norm, ci))(y_norm, CAP)
+        # One traced pass for BOTH Jacobians (the vjp sweeps over the output
+        # rows are shared), instead of two separate vmap(jacrev) evaluations.
+        Jx, Jt = vmap(
+            lambda yi, ci: jacrev(_both, argnums=(0, 1))(yi, theta_norm, ci)
+        )(y_norm, CAP)
         _dcache.update(key=key, Jx=Jx.detach(), Jt=Jt.detach())
         return _dcache
 

@@ -730,14 +730,14 @@ class Estimator:
         # optimizer choice:
         #   - "single_shooting" (default): parameters -> full forward simulation
         #     -> residuals.  The classic sequential approach.
-        #   - "multiple_shooting": split the horizon into segments; each
-        #     segment's initial state becomes a decision variable, stitched by
-        #     continuity constraints (see :meth:`_transcription_solver`).
-        #   - "collocation": multiple_shooting taken to one segment per timestep
-        #     (full simultaneous transcription).
+        #   - "collocation": every timestep-boundary state becomes a decision
+        #     variable tied by hard continuity constraints (full simultaneous
+        #     transcription; requires the CasADi/IPOPT backend -- see
+        #     twin4build.estimator._transcription).
+        # A soft-penalty "multiple_shooting" mode was removed: it wandered
+        # without converging on exactly the problems collocation handles.
         allowed_transcriptions = (
             "single_shooting",
-            "multiple_shooting",
             "collocation",
         )
         self._transcription = "single_shooting"
@@ -2408,14 +2408,37 @@ class Estimator:
         if method[1] in ["trf", "dogbox"] and method[2] == "ad":
             self._log_initial_jacobian_diagnostic()
 
+        # -- Optional fast single-shooting objective ---------------------------
+        # options={"fast": True} replaces the object-graph objective with a
+        # sequential rollout of the composed pure one-step map (F_aug) --
+        # exogenous inputs captured once, no per-eval model.initialize / CSV
+        # re-reads.  Structural compatibility is always checked at build time
+        # (un-composable models fall back to the exact path); numerical
+        # equivalence holds BY CONSTRUCTION (each component's do_step is a thin
+        # wrapper delegating to the same forward the composer threads) and is
+        # regression-checked by tests/estimator/test_fast_shooting.py, not
+        # re-proven per run.
+        # options={"fast_validate": True} additionally cross-checks value and
+        # gradient against the object-graph objective at runtime (debugging
+        # aid; costs ~3 object-graph evaluations).
+        self._fast_obj = None
+        fast_requested = bool(options.pop("fast", False))
+        fast_validate = bool(options.pop("fast_validate", False))
+        if (
+            fast_requested
+            and self._transcription == "single_shooting"
+            and method[2] == "ad"
+        ):
+            self._setup_fast_objective(validate=fast_validate)
+
         # Run optimization based on method
         LOGGER.task("Running optimization")
         if self._transcription != "single_shooting":
-            # Multiple-shooting / collocation transcription: the horizon is
-            # split into segments whose initial states become decision
-            # variables alongside theta, stitched by continuity penalties.
-            # Reuses the shared setup above (params/bounds/measurements) and the
-            # result-building teardown below; only the NLP itself differs.
+            # Collocation transcription: every timestep-boundary state becomes
+            # a decision variable alongside theta, tied by hard continuity
+            # constraints.  Reuses the shared setup above
+            # (params/bounds/measurements) and the result-building teardown
+            # below; only the NLP itself differs.
             from twin4build.estimator._transcription import solve_transcription
 
             result = solve_transcription(self, method, dict(options))
@@ -2682,9 +2705,9 @@ class Estimator:
                 seen_unique.add(param_idx)
         result_x = np.array(result_x_list)
 
-        # Transcription (multiple-shooting / collocation) also estimates the
-        # boundary states; carry the optimised initial state through so callers
-        # can seed a continuous prediction from it (see EstimationResult).
+        # Transcription (collocation) also estimates the boundary states;
+        # carry the optimised initial state through so callers can seed a
+        # continuous prediction from it (see EstimationResult).
         estimated_initial_state = getattr(result, "estimated_initial_state", None)
         transcription_audit = getattr(result, "transcription_audit", None)
 
@@ -2727,6 +2750,93 @@ class Estimator:
         )
         return result
 
+    def _setup_fast_objective(self, validate: bool = False) -> None:
+        """Build the composed-map single-shooting objective.
+
+        On success sets ``self._fast_obj`` (consumed by :meth:`_obj`); on any
+        incompatibility leaves it ``None`` and the exact object-graph objective
+        is used.  Construction itself performs the structural checks (every
+        cone component composable, no shared theta, every measurement
+        producible by the composed map).  Numerical equivalence with the
+        object-graph objective holds by construction -- each composable
+        component's ``do_step`` delegates to the same ``forward`` the composer
+        threads -- and is regression-checked by
+        ``tests/estimator/test_fast_shooting.py``.
+
+        With ``validate=True`` (``options={"fast_validate": True}``) the
+        objective value AND gradient are additionally cross-checked against
+        the object-graph objective at ``x0`` and a perturbed theta before the
+        fast path is enabled -- a runtime debugging aid costing ~3
+        object-graph evaluations.
+        """
+        t0 = time_module.time()
+        try:
+            from twin4build.estimator._shooting import FastSingleShooting
+
+            fast = FastSingleShooting(self)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning(
+                "Fast single-shooting unavailable (%s) -- using the "
+                "object-graph objective.", exc,
+            )
+            return
+        if not validate:
+            LOGGER.ok(
+                "Fast single-shooting objective enabled (setup %.1fs).",
+                time_module.time() - t0,
+            )
+            self._fast_obj = fast
+            return
+        try:
+            rng = np.random.default_rng(0)
+            lbn = np.asarray(self._lb_norm, dtype=np.float64)
+            ubn = np.asarray(self._ub_norm, dtype=np.float64)
+            x0 = np.asarray(self._x0_norm, dtype=np.float64)
+            x1 = np.clip(x0 + 0.05 * (rng.random(x0.shape) - 0.5), lbn, ubn)
+            worst_val = 0.0
+            for xi in (x0, x1):
+                zt = torch.tensor(xi, dtype=torch.float64)
+                self._mse_scaled = None
+                self._obj(zt, "scalar")
+                rmse_slow = float(self._last_rmse)
+                fast.loglike(zt, "scalar")
+                rmse_fast = float(self._last_rmse)
+                worst_val = max(
+                    worst_val,
+                    abs(rmse_fast - rmse_slow) / max(1e-12, abs(rmse_slow)),
+                )
+            # Gradient agreement at x0 (this is what steers the solver).
+            self._mse_scaled = None
+            z = torch.tensor(x0, dtype=torch.float64, requires_grad=True)
+            (g_slow,) = torch.autograd.grad(self._obj(z, "scalar"), z)
+            self._mse_scaled = None
+            z = torch.tensor(x0, dtype=torch.float64, requires_grad=True)
+            (g_fast,) = torch.autograd.grad(fast.loglike(z, "scalar"), z)
+            g_slow, g_fast = g_slow.numpy(), g_fast.numpy()
+            gscale = max(1e-12, float(np.abs(g_slow).max()))
+            worst_grad = float(np.abs(g_fast - g_slow).max()) / gscale
+            self._mse_scaled = None
+            if worst_val > 1e-4 or worst_grad > 1e-3:
+                LOGGER.warning(
+                    "Fast single-shooting objective DISAGREES with the "
+                    "object-graph objective (rel value err %.2e, rel grad err "
+                    "%.2e) -- using the object-graph objective.",
+                    worst_val, worst_grad,
+                )
+                return
+            LOGGER.ok(
+                "Fast single-shooting objective enabled (validated: rel value "
+                "err %.2e, rel grad err %.2e; setup %.1fs).",
+                worst_val, worst_grad, time_module.time() - t0,
+            )
+            self._fast_obj = fast
+        except Exception as exc:  # noqa: BLE001
+            self._mse_scaled = None
+            LOGGER.warning(
+                "Fast single-shooting validation failed (%s) -- using the "
+                "object-graph objective.", exc,
+            )
+
     def _obj(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
         Objective function for automatic differentiation.
@@ -2751,6 +2861,13 @@ class Estimator:
         ValueError
             If output format is invalid.
         """
+        # Fast path: composed one-step map rollout (see _shooting.py), built
+        # in _scipy_solver when options={"fast": True}.  Both paths end in
+        # _loglike_from_residuals, so value/diagnostics contracts are shared
+        # by construction.
+        if getattr(self, "_fast_obj", None) is not None and output == "scalar":
+            return self._fast_obj.loglike(theta, output)
+
         # Convert flat theta to per-parameter values
         param_values = self._theta_to_param_values(theta)
         self.simulator.model.set_parameters(
@@ -2818,31 +2935,66 @@ class Estimator:
 
             n_time_prev += n_time
 
-        # Compute residuals (normalized by sd) and raw residuals
-        res = torch.zeros((self._n_timesteps, len(self._measurements)))
-        res_raw = torch.zeros((self._n_timesteps, len(self._measurements)))
+        # Raw residuals over the FULL padded horizon: rows past the filled
+        # range stay zero (the historical normalization contract -- see
+        # _loglike_from_residuals).
+        res_raw = torch.zeros(
+            (self._n_timesteps, len(self._measurements)), dtype=torch.float64
+        )
         for j, (measuring_device, sd) in enumerate(self._measurements):
-            simulation_readings_ = simulation_readings[measuring_device.id]
-            actual_readings_ = actual_readings[measuring_device.id]
-            res_raw[:, j] = actual_readings_ - simulation_readings_
-            res[:, j] = res_raw[:, j] / sd
+            res_raw[:, j] = (
+                actual_readings[measuring_device.id]
+                - simulation_readings[measuring_device.id]
+            )
 
-        # Return appropriate output format.
-        # We scale the objective function to 100 initially for numerical stability.
+        return self._loglike_from_residuals(res_raw, output)
+
+    def _loglike_from_residuals(
+        self, res_raw: torch.Tensor, output: str
+    ) -> torch.Tensor:
+        """THE data-fit objective from raw residuals (single source of truth).
+
+        Both objective implementations end here: the object-graph :meth:`_obj`
+        and the composed-map fast path
+        (:meth:`twin4build.estimator._shooting.FastSingleShooting.loglike`).
+        Everything downstream of the residuals -- sd weighting, MSE
+        normalization, the rescale-to-100 trick, regularization, and the
+        ``_last_*`` diagnostics -- therefore cannot diverge between the two.
+
+        ``res_raw`` is ``(N, n_meas)`` raw residuals ``actual - model``.  ``N``
+        may be the full padded horizon (object-graph path: unfilled rows are
+        zero) or only the scored rows (fast path); either way the mean is
+        taken over ``_n_timesteps * n_meas`` -- identical values, matching the
+        historical contract the rescaled objective was tuned on.
+
+        Pure tensor math on the differentiable path (torch.func-safe); the
+        diagnostic side effects detach first.
+        """
+        n_meas = res_raw.shape[1]
+        denom = float(self._n_timesteps) * n_meas
+        sd = torch.tensor(
+            [float(sd_) for _, sd_ in self._measurements], dtype=torch.float64
+        )
+        res = res_raw / sd
+
+        # Diagnostics (identical for both output modes): raw MSE / RMSE in
+        # measurement units, per-sensor RMSE.
+        raw_sq = res_raw.detach() ** 2
+        raw_mse = (torch.sum(raw_sq) / denom).item()
+        self._last_mse = raw_mse
+        self._last_rmse = raw_mse**0.5
+        self._last_rmse_per_sensor = {
+            md.id: (torch.sum(raw_sq[:, j]).item() / self._n_timesteps) ** 0.5
+            for j, (md, _sd) in enumerate(self._measurements)
+        }
+
+        # We scale the objective to 100 on the first evaluation of a phase for
+        # numerical stability (_mse_scaled is reset per phase).
         if output == "scalar":
-            mse = torch.mean(res.flatten() ** 2)
+            mse = torch.sum(res**2) / denom
             if self._mse_scaled is None:
                 self._mse_scaled = mse.detach().item() / 100
             self._loglike = mse / self._mse_scaled
-
-            # Store diagnostics: raw MSE (in measurement units) and RMSE
-            raw_mse = torch.mean(res_raw.flatten() ** 2).detach().item()
-            self._last_mse = raw_mse
-            self._last_rmse = raw_mse**0.5
-            self._last_rmse_per_sensor = {}
-            for j, (md, _sd) in enumerate(self._measurements):
-                col = res_raw[:, j]
-                self._last_rmse_per_sensor[md.id] = (torch.mean(col**2).detach().item()) ** 0.5
 
             # Add binarization penalty if regularization is enabled
             if self._regularization_lambda > 0:
@@ -2851,41 +3003,14 @@ class Estimator:
                 self._loglike = self._loglike + self._regularization_lambda * penalty
             else:
                 self._last_penalty = 0.0
-
         elif output == "vector":
             res_flat = res.flatten()
             if self._mse_scaled is None:
                 self._mse_scaled = (
-                    torch.mean(res_flat**2).detach().item() / 100
+                    torch.sum(res.detach() ** 2).item() / denom / 100
                 ) ** 0.5  # We take squareroot because of the scipy least squares method which expects a residual vector which will later be squared
             self._loglike = res_flat / self._mse_scaled
             # Note: Regularization not supported for vector output (least squares methods)
-
-            # Populate the same diagnostics as the scalar branch so external
-            # callers (debug wrappers, loggers) work identically regardless
-            # of which scipy solver is active.
-            raw_mse = torch.mean(res_raw.flatten() ** 2).detach().item()
-            self._last_mse = raw_mse
-            self._last_rmse = raw_mse**0.5
-            self._last_rmse_per_sensor = {}
-            for j, (md, _sd) in enumerate(self._measurements):
-                col = res_raw[:, j]
-                self._last_rmse_per_sensor[md.id] = (
-                    torch.mean(col**2).detach().item()
-                ) ** 0.5
-            self._last_penalty = 0.0
-            # Note: Regularization not supported for vector output (least squares methods)
-
-            # Populate the same diagnostics as the scalar branch so external
-            # callers (debug wrappers, loggers) work identically regardless
-            # of which scipy solver is active.
-            raw_mse = torch.mean(res_raw.flatten() ** 2).detach().item()
-            self._last_mse = raw_mse
-            self._last_rmse = raw_mse**0.5
-            self._last_rmse_per_sensor = {}
-            for j, (md, _sd) in enumerate(self._measurements):
-                col = res_raw[:, j]
-                self._last_rmse_per_sensor[md.id] = (torch.mean(col**2).detach().item()) ** 0.5
             self._last_penalty = 0.0
         else:
             raise ValueError(f"Invalid output: {output}")
@@ -3290,6 +3415,26 @@ class Estimator:
 
         if torch.equal(theta, self._theta_jac):
             return np.asarray(self._jac.detach().numpy(), dtype=np.float64)
+        elif getattr(self, "_fast_obj", None) is not None and output == "scalar":
+            # Fast path: plain reverse-mode autograd through the composed-map
+            # rollout.  jacrev would work too but activates functorch, which
+            # forces the state-space components onto the unrolled
+            # scaling-and-squaring matrix exponential (no vmap/functorch rule
+            # for torch.matrix_exp) -- about 2x slower end to end.
+            self._theta_jac = theta
+            try:
+                z = theta.detach().clone().requires_grad_(True)
+                (g,) = torch.autograd.grad(self._fast_obj.loglike(z, output), z)
+                self._jac = g.detach()
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning(
+                    "fast jacobian eval failed (%s: %s) -- returning zero "
+                    "gradient", type(exc).__name__, exc,
+                )
+                self._jac = torch.zeros(theta.numel(), dtype=torch.float64)
+            jac_np = np.asarray(self._jac.numpy(), dtype=np.float64)
+            LOGGER.debug("grad_norm=%.4f", float(np.linalg.norm(jac_np.ravel())))
+            return jac_np
         else:
             self._theta_jac = theta
             # Mirror the simulation-failure recovery added to ``_obj_ad``.

@@ -271,15 +271,81 @@ Two findings from warm-start probes (full 2x4-day problem):
   valve-blind 48-objective optimum in ~60 s). The estimator_example notebook now uses
   this two-stage recipe.
 
-## 5. Speed follow-up (the more promising practical direction)
+## 5. Speed follow-up: fast single-shooting via the composed map (July 2026, done)
 
-SLSQP is the accuracy winner; making *it* fast is higher-value than fixing collocation.
-- `torch.jit` (TorchScript) needs NO compiler — try scripting the F_aug rollout (removes
-  Python overhead; modest, no fusion). NOT YET benchmarked.
-- `torch.compile` (Inductor) needs a C compiler (missing on this Windows box: `cl` not
-  found) — realistic ~5-10× on the sequential rollout+gradient; run under WSL/Linux.
-- The **gradient** (autograd through the sequential loop) is single-shooting's real cost,
-  and the prime compile/jit target.
+SLSQP is the accuracy winner; making *it* fast was higher-value than fixing collocation.
+Implemented in `estimator/_shooting.py` (`FastSingleShooting`), opt-in with
+`options={"fast": True}` on the scipy/AD single-shooting path.
+
+- **What it does**: replaces the object-graph objective (full Gauss-Seidel component
+  traversal + `model.initialize` CSV re-reads on EVERY evaluation) with a plain
+  sequential torch rollout of the composed one-step map `F_aug` — exogenous inputs
+  captured ONCE from a reference `do_step` rollout per period, cut feedback edges
+  carried as lag state (exact `do_step` semantics). Gradient = plain `autograd.grad`
+  through the rollout (NOT `jacrev`: functorch has no `matrix_exp` batching rule and
+  would force the ~2x-slower unrolled `_expm_ss`).
+- **Theta-only work hoisted out of the time loop**: parameter dicts
+  (`OneStepComposer._params_for`), state-space `_build_matrices`, and PID coefficients
+  are cached per-theta (identity-keyed); `bilinear_onestep` reuses the discretized
+  `(Ad, Bd)` when the bilinear-relevant inputs are unchanged (same optimization
+  `do_step` already had). These made the fast path actually fast — the naive rollout
+  was *slower* than the object graph.
+- **Guard rails**: construction performs the *structural* checks (every cone component
+  composable, no shared theta, every measurement producible by the composed map); any
+  incompatibility falls back to the exact path with a warning. *Numerical* equivalence
+  with the object-graph objective holds **by construction**: every composable
+  component's `do_step` is now a thin port-I/O wrapper that delegates its math to the
+  same `forward` the composer threads (single source of truth — the two cannot drift
+  apart). `tests/estimator/test_fast_shooting.py` regression-checks the end-to-end
+  value + gradient parity (guards the delegation contract and the composer's
+  wiring/capture/sensor-lag logic; observed agreement ~1e-6 / ~1e-7); it is NOT
+  re-proven on every run. `options={"fast_validate": True}` re-enables the runtime
+  cross-check as a debugging aid (~3 object-graph evaluations). One subtlety handled:
+  a pass-through sensor that executes before its producer reads the previous step's
+  output (Gauss-Seidel lag), so the fast path shifts those measurement columns to
+  match `do_step` exactly.
+- **Single source of truth outside the components too** (follow-up): the estimator-level
+  math the fast path used to duplicate now lives in exactly one torch.func-safe function
+  each. Theta denormalization is `twin4build.utils.types.denormalize_unit` /
+  `normalize_unit` — used by `tps.Parameter.denormalize`/`normalize` (both Parameter
+  classes), `FastSingleShooting._denorm` AND the collocation `_denorm` (bool per-parameter
+  scaling or a boolean mask for a mixed theta vector). Everything downstream of the raw
+  residuals (sd weighting, padded-horizon MSE normalization, rescale-to-100,
+  regularization, `_last_*` diagnostics) is `Estimator._loglike_from_residuals`, which
+  BOTH the object-graph `_obj` and `FastSingleShooting.loglike` end in — those pieces can
+  no longer drift between the paths. What remains fast-path-only (and is guarded by the
+  parity test, not by construction) is genuinely structural: cone/wiring classification,
+  exogenous capture, lag-state semantics, and the sensor-lag column shift.
+- **Measured**: per-evaluation (value+gradient) ~4.9x faster; end-to-end SLSQP on the
+  full 2x4-day problem **1.43x** faster wall-clock, same optimum (rel theta diff ~2e-3,
+  identical RMSE). The gap between 4.9x and 1.43x is the one-time capture/validation
+  setup plus scipy-side bookkeeping. The notebook's two-stage recipe now uses
+  `{"maxiter": 5, "fast": True}` for stage 1.
+- `torch.jit.trace` on `F_aug` was benchmarked: single-step trace gives ~1.3x on the
+  forward but loses it again on the backward (traced graph blocks the `matrix_exp`
+  native backward fusion); tracing the full unrolled rollout takes minutes to build.
+  Not worth it. `torch.compile` (Inductor) still needs a C compiler — not available on
+  this Windows box; realistic future gain under WSL/Linux.
+- **Collocation derivative micro-optimization** (same session): the two
+  `vmap(jacrev)` sweeps for the defect Jacobian (`Jx`) and theta Jacobian (`Jt`) were
+  merged into one `jacrev(..., argnums=(0, 1))` call sharing the traced pass;
+  regression-checked (24h run converges to the same optimum).
+
+## 5b. Soft-penalty multiple shooting removed (July 2026)
+
+The original soft-penalty transcription (`MSE + lambda * ||defect||^2` on a coarse
+segmentation, handed to IPOPT as a dense first-order problem) was benchmarked on the
+full 2x4-day example and wanders without converging: the optimizer keeps trading
+feasibility against fit (continuity spikes to 1e3-1e4, objective to 1e5-1e6, then a
+crawl back), landing at 0.59 K temperature RMSE after 309 s where hard-constraint
+collocation reaches 0.11 K in 155 s and single-shooting 0.06 K. The path (and the
+`multiple_shooting` transcription option, `n_segments` / `continuity_lambda` options)
+was deleted; `_transcription.py` now always dispatches to the sparse hard-constraint
+collocation solve and raises a clear error for non-CasADi backends. In the same
+change the two reference-rollout capture loops (fast single-shooting's `_capture` and
+fast collocation's CAP/fb warm-start loop) were unified into one
+`capture_reference_rollout` in `_composer.py`, and the duplicated
+`lb/ub/log_mask` extraction moved to `theta_bound_tensors` in `utils/types.py`.
 
 ## 6. Verdict
 

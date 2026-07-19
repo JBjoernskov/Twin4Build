@@ -1020,6 +1020,79 @@ class Scalar:
         return copy
 
 
+def normalize_unit(
+    v: torch.Tensor,
+    min_value: torch.Tensor,
+    max_value: torch.Tensor,
+    log_scaling=False,
+) -> torch.Tensor:
+    """THE physical -> normalized-[0, 1] map (single source of truth).
+
+    Pure tensor math, torch.func-safe (no Parameter access, no ``.item()``),
+    shared by :class:`Parameter` / :class:`TensorParameter` and every
+    estimator code path.  ``log_scaling`` is a bool (one parameter) or a
+    boolean tensor mask (a mixed theta vector, elementwise).
+    """
+    if isinstance(log_scaling, torch.Tensor):
+        lin = (v - min_value) / (max_value - min_value)
+        safe_lb = min_value.clamp(min=1e-30)
+        safe_ub = max_value.clamp(min=1e-30)
+        logv = (torch.log(v.clamp(min=1e-30)) - torch.log(safe_lb)) / (
+            torch.log(safe_ub) - torch.log(safe_lb)
+        )
+        return torch.where(log_scaling, logv, lin)
+    if log_scaling:
+        return (torch.log(v) - torch.log(min_value)) / (
+            torch.log(max_value) - torch.log(min_value)
+        )
+    return (v - min_value) / (max_value - min_value)
+
+
+def denormalize_unit(
+    z: torch.Tensor,
+    min_value: torch.Tensor,
+    max_value: torch.Tensor,
+    log_scaling=False,
+) -> torch.Tensor:
+    """THE normalized-[0, 1] -> physical map (single source of truth).
+
+    Inverse of :func:`normalize_unit`; same contract (torch.func-safe, bool or
+    boolean-mask ``log_scaling``).
+    """
+    if isinstance(log_scaling, torch.Tensor):
+        lin = min_value + z * (max_value - min_value)
+        safe_lb = min_value.clamp(min=1e-30)
+        safe_ub = max_value.clamp(min=1e-30)
+        logv = torch.exp(
+            torch.log(safe_lb) + z * (torch.log(safe_ub) - torch.log(safe_lb))
+        )
+        return torch.where(log_scaling, logv, lin)
+    if log_scaling:
+        log_min = torch.log(min_value)
+        return torch.exp(z * (torch.log(max_value) - log_min) + log_min)
+    return z * (max_value - min_value) + min_value
+
+
+def theta_bound_tensors(parameters):
+    """Plain ``(lb, ub, log_mask)`` tensors for a flat parameter list.
+
+    The vectorized companion to :func:`denormalize_unit`: the estimator's fast
+    paths denormalize a whole theta vector at once and need the physical
+    bounds and scaling as plain tensors (``Parameter`` itself is a Tensor
+    subclass and breaks under functorch).  Scalar bounds only (``n_c == 1``).
+    """
+    lb = torch.tensor(
+        [float(np.asarray(p.min_value.detach()).flatten()[0]) for p in parameters]
+    )
+    ub = torch.tensor(
+        [float(np.asarray(p.max_value.detach()).flatten()[0]) for p in parameters]
+    )
+    log_mask = torch.tensor(
+        [getattr(p, "scaling", "linear") == "log" for p in parameters]
+    )
+    return lb, ub, log_mask
+
+
 class Parameter(nn.Parameter):
     """
     A custom nn.Parameter implementation that normalizes the data between 0 and 1 to stabilize gradients in physical systems where the parameters scales can be different.
@@ -1194,20 +1267,14 @@ class Parameter(nn.Parameter):
             torch.allclose(min_value, max_value) == False
         ), "min_value and max_value must be different"
 
-        if self._scaling == "log":
-            return (torch.log(v) - torch.log(self._min_value)) / (
-                torch.log(self._max_value) - torch.log(self._min_value)
-            )
-        else:
-            return (v - self._min_value) / (self._max_value - self._min_value)
+        return normalize_unit(
+            v, self._min_value, self._max_value, self._scaling == "log"
+        )
 
     def denormalize(self, v: torch.Tensor):
-        if self._scaling == "log":
-            log_min = torch.log(self._min_value)
-            log_range = torch.log(self._max_value) - log_min
-            return torch.exp(v * log_range + log_min)
-        else:
-            return v * (self._max_value - self._min_value) + self._min_value
+        return denormalize_unit(
+            v, self._min_value, self._max_value, self._scaling == "log"
+        )
 
     def get(self):
         """Get the denormalized value."""
@@ -1565,20 +1632,14 @@ class TensorParameter:
             torch.allclose(min_value, max_value) == False
         ), "min_value and max_value must be different"
 
-        if self._scaling == "log":
-            return (torch.log(v) - torch.log(self._min_value)) / (
-                torch.log(self._max_value) - torch.log(self._min_value)
-            )
-        else:
-            return (v - self._min_value) / (self._max_value - self._min_value)
+        return normalize_unit(
+            v, self._min_value, self._max_value, self._scaling == "log"
+        )
 
     def denormalize(self, v: torch.Tensor):
-        if self._scaling == "log":
-            log_min = torch.log(self._min_value)
-            log_range = torch.log(self._max_value) - log_min
-            return torch.exp(v * log_range + log_min)
-        else:
-            return v * (self._max_value - self._min_value) + self._min_value
+        return denormalize_unit(
+            v, self._min_value, self._max_value, self._scaling == "log"
+        )
 
     def get(self):
         """Get the denormalized value."""

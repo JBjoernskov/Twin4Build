@@ -25,6 +25,7 @@ the block-bidiagonal collocation Jacobian in one shot.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -139,6 +140,8 @@ class OneStepComposer:
         # component (F computes it), else ("captured", cap_index) sampled from a
         # reference sim.  Lets F return the modelled measured outputs for the
         # data-fit objective.
+        self._theta_param_cache = None  # (theta_ref, {comp_id: params dict})
+
         self.meas_sources: List[tuple] = []
         for md in (measurements or []):
             src = self._trace_source(md, "measuredValue")
@@ -292,7 +295,24 @@ class OneStepComposer:
     def _params_for(self, comp, theta):
         """Physical-parameter dict for ``comp``: estimated entries from ``theta``
         (a 1-D tensor in theta_spec order), the rest from the component's
-        defaults (``getattr(comp, name).get()``)."""
+        defaults (``getattr(comp, name).get()``).
+
+        Cached per ``theta`` object: a sequential rollout calls ``F`` hundreds
+        of times with the SAME theta tensor, and rebuilding the dict each step
+        re-slices theta and re-denormalizes every default parameter -- pure
+        overhead in both the forward pass and the autograd graph.  Identity
+        keying (``is``) makes a stale hit impossible: holding the theta
+        reference in the cache also pins its id.  Downstream, stable parameter
+        -tensor identities let the components' ``_build_matrices`` cache the
+        (theta-only, step-independent) state-space matrices the same way.
+        """
+        cache = self._theta_param_cache
+        if cache is None or cache[0] is not theta:
+            cache = (theta, {})
+            self._theta_param_cache = cache
+        hit = cache[1].get(comp.id)
+        if hit is not None:
+            return hit
         p = {}
         est = self.theta_by_comp.get(comp.id, {})
         # For composites the attrs are prefixed (thermal.C_air); pass them
@@ -311,6 +331,7 @@ class OneStepComposer:
         for attr, idx in est.items():
             if "." in attr:
                 p[attr] = theta[idx].reshape(1)
+        cache[1][comp.id] = p
         return p
 
     def F(self, states_flat, theta, captured, feedback=None):
@@ -407,3 +428,87 @@ class OneStepComposer:
         x_next, meas, fb_out = self.F(s, theta, captured, w)
         y_next = torch.cat([x_next, fb_out]) if n_fb else x_next
         return y_next, meas
+
+
+def capture_reference_rollout(
+    simulator, composer, start_time, end_time, step_size,
+    layout=None, meas_ids=(),
+):
+    """THE reference-rollout capture (single source of truth).
+
+    One CONTINUOUS ``do_step`` rollout over ``[start_time, end_time)`` at the
+    model's *current* parameters, sampling every relevant input port right
+    after each step.  Every fast path that consumes ``F_aug`` (fast
+    single-shooting and fast collocation) obtains its frozen exogenous inputs
+    and warm values through this function.
+
+    Two properties only a continuous simulator run provides:
+
+    * **Stateful exogenous drivers** are evaluated correctly: e.g.
+      ``OccupancySystem`` carries a ``C_prev`` memory and outputs zero
+      occupancy on the first step after ``initialize`` -- stepping segments in
+      isolation would freeze wrong values.
+    * **Gauss-Seidel consumption semantics**: an input port read right after
+      step ``t`` holds exactly the value ``do_step`` consumed at step ``t``
+      (the producer's current- or previous-step output depending on execution
+      order), so lag warm values and lagged step-0 sensor readings come out
+      right by construction.
+
+    The captured signals are theta-independent by construction (anything theta
+    influences is inside the composer's cone, hence fresh or feedback), so
+    capturing once at the current parameters is valid for every theta.
+
+    Parameters
+    ----------
+    simulator, composer
+        The simulator (model already configured) and the ``OneStepComposer``
+        whose ``_captured_keys`` / ``_feedback_keys`` define what to sample.
+    start_time, end_time, step_size
+        One period (scalars, not lists).
+    layout : _StateLayout, optional
+        When given, the initial component states (right after ``initialize``)
+        are gathered into ``state0``.
+    meas_ids : sequence of str, optional
+        Measuring-device ids whose ``measuredValue`` input to sample per step.
+
+    Returns
+    -------
+    types.SimpleNamespace
+        ``state0`` (``(D,)`` or None), ``CAP`` ``(n_t, n_captured)``,
+        ``FB`` ``(n_t, n_feedback)``, ``MEAS`` ``(n_t, len(meas_ids))``,
+        ``n_t``.
+    """
+    import twin4build.core as core
+
+    model = simulator.model
+    comps = model.components
+    cap_keys = composer._captured_keys
+    fb_keys = composer._feedback_keys
+    meas_keys = [(mid, "measuredValue") for mid in meas_ids]
+
+    def _sample(dst_row, keys):
+        for k, key in enumerate(keys):
+            cid, port = key[0], key[1]
+            slot = key[2] if len(key) > 2 else 0
+            dst_row[k] = comps[cid].input[port].get().reshape(-1)[slot].detach()
+
+    simulator.get_simulation_timesteps([start_time], [end_time], [step_size])
+    model.initialize([start_time], [end_time], [step_size])
+    sec, dts, n_t, _ = core.Simulator.get_simulation_timesteps(
+        [start_time], [end_time], [step_size]
+    )
+    n_t = int(n_t)
+    state0 = layout.gather(0).detach().clone() if layout is not None else None
+    CAP = torch.zeros((n_t, len(cap_keys)), dtype=torch.float64)
+    FB = torch.zeros((n_t, len(fb_keys)), dtype=torch.float64)
+    MEAS = torch.zeros((n_t, len(meas_keys)), dtype=torch.float64)
+    for t in range(n_t):
+        simulator._do_system_time_step(
+            model, sec[:, t], dts[:, t], [step_size], t, "gauss-seidel"
+        )
+        _sample(CAP[t], cap_keys)
+        if fb_keys:
+            _sample(FB[t], fb_keys)
+        if meas_keys:
+            _sample(MEAS[t], meas_keys)
+    return SimpleNamespace(state0=state0, CAP=CAP, FB=FB, MEAS=MEAS, n_t=n_t)

@@ -1,4 +1,4 @@
-"""Benchmark: single-shooting vs. multiple-shooting / collocation estimation.
+"""Benchmark: single-shooting vs. collocation estimation.
 
 Compares parameter-estimation approaches on the parameter-estimation example
 model (a single-zone RC thermal + CO2 building), reporting wall-clock time and
@@ -7,23 +7,22 @@ data-fit RMSE.  All approaches use the identical ``Estimator`` API on a plain
 
     single-shooting  IPOPT   -> ("casadi", "ipopt", "ad")
     single-shooting  SLSQP   -> ("scipy",  "SLSQP", "ad")
-    multiple-shooting IPOPT  -> ("casadi", "ipopt", "ad", "multiple_shooting")
-    collocation       IPOPT  -> ("casadi", "ipopt", "ad", "collocation")
+    collocation      IPOPT   -> ("casadi", "ipopt", "ad", "collocation")
 
 The 4th (optional) tuple element selects the *transcription*: single-shooting
 runs one forward simulation per objective evaluation and backpropagates through
-the whole horizon; multiple-shooting splits the horizon into segments whose
-initial states become decision variables stitched by continuity penalties
-(``options={"n_segments": K}``); collocation is the one-segment-per-timestep
-limit.  Gradients then flow only through short segments, improving conditioning
-(the motivation is documented in ``twin4build.estimator._transcription``).
+the whole horizon; collocation promotes every timestep-boundary state to a
+decision variable tied by hard continuity constraints, so gradients flow only
+through single steps, improving conditioning (the motivation is documented in
+``twin4build.estimator._transcription``).  A soft-penalty multiple-shooting
+mode was removed after benchmarking showed it wanders without converging.
 
 IPOPT is provided by CasADi (``pip install casadi``), an optional dependency.
 
 Run e.g.::
 
-    python -m twin4build.examples.collocation_benchmark --hours 24 --segments 6 \
-        --maxiter 50 --methods ipopt_ss,ms
+    python -m twin4build.examples.collocation_benchmark --hours 24 \
+        --maxiter 50 --methods ipopt_ss,colloc
 """
 
 import argparse
@@ -98,30 +97,19 @@ def run(tag, method, options, hours):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--hours", type=int, default=24, help="estimation horizon length")
-    ap.add_argument("--segments", type=int, default=6, help="multiple-shooting segments")
     ap.add_argument("--maxiter", type=int, default=50)
     ap.add_argument(
         "--methods",
-        default="ipopt_ss,ms",
-        help="comma list of: slsqp_ss, ipopt_ss, ms, colloc",
+        default="ipopt_ss,colloc",
+        help="comma list of: slsqp_ss, ipopt_ss, colloc",
     )
     args = ap.parse_args()
     methods = args.methods.split(",")
-    print(
-        f"window={args.hours}h  step={STEP_SIZE}s  segments={args.segments}  "
-        f"maxiter={args.maxiter}\n"
-    )
+    print(f"window={args.hours}h  step={STEP_SIZE}s  maxiter={args.maxiter}\n")
     if "slsqp_ss" in methods:
         run("SLSQP single-shooting", ("scipy", "SLSQP", "ad"), {"maxiter": args.maxiter}, args.hours)
     if "ipopt_ss" in methods:
         run("IPOPT single-shooting", ("casadi", "ipopt", "ad"), {"maxiter": args.maxiter}, args.hours)
-    if "ms" in methods:
-        run(
-            "IPOPT multiple-shooting",
-            ("casadi", "ipopt", "ad", "multiple_shooting"),
-            {"maxiter": args.maxiter, "n_segments": args.segments},
-            args.hours,
-        )
     if "colloc" in methods:
         run(
             "IPOPT collocation",

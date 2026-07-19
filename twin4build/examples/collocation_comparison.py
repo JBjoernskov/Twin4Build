@@ -2,10 +2,10 @@
 
 Runs the *full* parameter-estimation example -- all 19 parameters, all four
 measurement sensors, and the example's two training periods -- through both a
-single-shooting and a multiple-shooting/collocation estimation.  The two use the
-identical ``Estimator`` API; only the ``method`` tuple differs (the 4th, optional
-tuple element selects the transcription).  A timing/RMSE table is printed, and
-for each method the estimated parameters are re-applied, the first period is
+single-shooting and a collocation estimation.  The two use the identical
+``Estimator`` API; only the ``method`` tuple differs (the 4th, optional tuple
+element selects the transcription).  A timing/RMSE table is printed, and for
+each method the estimated parameters are re-applied, the first period is
 simulated, and the estimation example's "After calibration" plot is saved -- plus
 an overlay of each method's predicted indoor temperature vs. the measurement.
 
@@ -14,10 +14,14 @@ IPOPT is provided by CasADi (``pip install casadi``).
 Usage::
 
     # Full example (2 periods, 19 parameters) -- slow, faithful to the notebook:
-    python -m twin4build.examples.collocation_comparison --methods single_shooting,multiple_shooting
+    python -m twin4build.examples.collocation_comparison --methods single_shooting,collocation
 
     # Quick single-window run for iteration:
-    python -m twin4build.examples.collocation_comparison --hours 24 --segments 6 --maxiter 30
+    python -m twin4build.examples.collocation_comparison --hours 24 --maxiter 30
+
+(A soft-penalty ``multiple_shooting`` mode used to be offered here; it was
+removed after benchmarking showed it wanders without converging on this
+problem.  Collocation is the transcription method.)
 
 Figures are written as PNGs to ``--outdir`` (default ``collocation_plots``).
 """
@@ -53,7 +57,6 @@ EXAMPLE_END = [
 
 METHODS = {
     "single_shooting": ("IPOPT single-shooting", ("casadi", "ipopt", "ad")),
-    "multiple_shooting": ("IPOPT multiple-shooting", ("casadi", "ipopt", "ad", "multiple_shooting")),
     "collocation": ("IPOPT collocation", ("casadi", "ipopt", "ad", "collocation")),
     "slsqp": ("SLSQP single-shooting", ("scipy", "SLSQP", "ad")),
 }
@@ -303,10 +306,9 @@ def main():
     ap.add_argument("--hours", type=int, default=0,
                     help="if >0, use a single window of this length instead of the "
                          "example's two periods (for quick runs)")
-    ap.add_argument("--segments", type=int, default=10, help="multiple-shooting segments per period")
     ap.add_argument("--maxiter", type=int, default=100)
-    ap.add_argument("--methods", default="single_shooting,multiple_shooting",
-                    help="comma list of: single_shooting, multiple_shooting, collocation, slsqp")
+    ap.add_argument("--methods", default="single_shooting,collocation",
+                    help="comma list of: single_shooting, collocation, slsqp")
     ap.add_argument("--param-set", default="full", choices=["full", "thermal"],
                     help="'full' = 19 params + 4 sensors; 'thermal' = 4 RC params + "
                          "temperature sensor (where collocation applies cleanly)")
@@ -324,8 +326,7 @@ def main():
         periods = [(EXAMPLE_START[0], EXAMPLE_START[0] + datetime.timedelta(hours=args.hours))]
     else:
         periods = list(zip(EXAMPLE_START, EXAMPLE_END))
-    print(f"periods={len(periods)}  step={STEP_SIZE}s  segments/period={args.segments}  "
-          f"maxiter={args.maxiter}\n")
+    print(f"periods={len(periods)}  step={STEP_SIZE}s  maxiter={args.maxiter}\n")
 
     results = []
     for key in [k.strip() for k in args.methods.split(",")]:
@@ -334,8 +335,6 @@ def main():
             continue
         tag, method = METHODS[key]
         options = {"maxiter": args.maxiter}
-        if key == "multiple_shooting":
-            options["n_segments"] = args.segments
         if key == "collocation" and args.no_gn:
             options["gauss_newton"] = False
         if key == "collocation" and args.no_early_stop:

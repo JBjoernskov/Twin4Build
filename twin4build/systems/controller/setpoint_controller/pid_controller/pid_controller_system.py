@@ -156,11 +156,10 @@ class PIDControllerSystem(core.System, nn.Module):
             step_size, dtype=torch.float64, requires_grad=False
         ).unsqueeze(1)
 
-        # Cache for PID coefficients (recomputed when parameters change)
-        self._cached_coeffs = None
-        self._cached_kp = None
-        self._cached_Ti = None
-        self._cached_Td = None
+        # Drop per-params forward caches: a fresh simulation must not reuse
+        # coefficients (or their autograd graph) from a previous run.
+        self._fwd_coef_cache = None
+        self._forward_params_cache = None
 
     @staticmethod
     def asymptotic_smooth_saturation(
@@ -236,68 +235,24 @@ class PIDControllerSystem(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
-        # Get current parameter values
-        kp = self.kp.get()
-        Ti = self.Ti.get()
-        Td = self.Td.get()
-
-        # Recompute coefficients only if parameters changed (common during estimation)
-        # Using 'is not' for tensor identity check - fast when unchanged
-        params_changed = (
-            self._cached_coeffs is None
-            or self._cached_kp is not kp
-            or self._cached_Ti is not Ti
-            or self._cached_Td is not Td
+        """Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the velocity-form PID math).  ``forward``'s identity-keyed
+        coefficient cache replaces the old per-attribute caching: the params
+        dict from ``_forward_params`` and ``self._step_size_tensor`` are both
+        identity-stable across steps, so the coefficients are recomputed only
+        when a parameter actually changes."""
+        inputs = {
+            "setpointValue": self.input["setpointValue"].get(),
+            "actualValue": self.input["actualValue"].get(),
+        }
+        x_next, outs = self.forward(
+            self._state.get(),  # (n_s, n_c, 3) = [u_prev, err_prev, err_prev_m1]
+            inputs,
+            self._forward_params(),
+            self._step_size_tensor,
         )
-
-        if params_changed:
-            self._cached_coeffs = self._compute_pid_coefficients(
-                kp, Ti, Td, self._step_size_tensor
-            )
-            self._cached_kp = kp
-            self._cached_Ti = Ti
-            self._cached_Td = Td
-
-        c0, c1, c2 = self._cached_coeffs
-
-        # Read the velocity-form memory from state: [u_prev, err_prev, err_prev_m1].
-        _st = self._state.get()  # (n_s, n_c, 3)
-        u_prev = _st[..., 0]
-        err_prev = _st[..., 1]
-        err_prev_m1 = _st[..., 2]
-
-        # Compute error
-        err = self.input["setpointValue"].get() - self.input["actualValue"].get()
-        if self.isReverse == False:
-            err = -err
-
-        # Compute control increment using pre-computed coefficients
-        # This reduces multiple tensor operations to just 3 multiplications + 2 additions
-        du = c0 * err + c1 * err_prev + c2 * err_prev_m1
-
-        u = u_prev + du
-        # Differentiable clamp into [output_min, output_max].  The mode
-        # (``"smooth"`` vs ``"hard"``) is read from the process-global
-        # toggle in ``smooth_saturation``: smooth for cold-start
-        # exploration (gradient flows through deep windup), hard for
-        # bias-correction refinement (forward exact at bounds, no
-        # faithfulness floor).  See ``estimate_with_refinement`` for
-        # the recommended two-stage workflow.
-        u = clamp(
-            u,
-            lower=self.output_min.get(),
-            upper=self.output_max.get(),
-        )
-
-        # if date_time[0].hour<5 or (date_time[0].hour==5 and date_time[0].minute==0) or date_time[0].hour>17:
-        #     u = u*0
-
-        # print("DEBUG: u after saturation: ", u)
-        # Write new memory: u_prev<-u, err_prev<-err, err_prev_m1<-old err_prev.
-        # All of u/err/err_prev are (n_s, n_c), so the stack is (n_s, n_c, 3).
-        self._state.set(torch.stack([u, err, err_prev], dim=-1))
-
-        self.output["inputSignal"]._set(u, i_t=step_index)
+        self._state.set(x_next)
+        self.output["inputSignal"]._set(outs["inputSignal"], i_t=step_index)
 
     # Continuous state (velocity-form memory [u_prev, err_prev, err_prev_m1]) is
     # the ``tps.State`` ``self._state``; get/set/enumeration come from the System
@@ -314,9 +269,22 @@ class PIDControllerSystem(core.System, nn.Module):
         ``setpointValue`` / ``actualValue``; ``params`` a dict for
         :attr:`PARAM_NAMES`.  Returns ``(x_next, {"inputSignal"})``.
         """
-        c0, c1, c2 = self._compute_pid_coefficients(
-            params["kp"], params["Ti"], params["Td"], sample_time
-        )
+        # Params-only coefficients, cached per params-dict identity (computed
+        # once per theta in a sequential rollout, not once per step).  The
+        # sample-time check is by identity too: ``do_step`` passes the stable
+        # ``_step_size_tensor`` (a ``!=`` on a batched tensor would be
+        # ambiguous), the composer a stable float.
+        cache = getattr(self, "_fwd_coef_cache", None)
+        if cache is None or cache[0] is not params or cache[1] is not sample_time:
+            cache = (
+                params,
+                sample_time,
+                self._compute_pid_coefficients(
+                    params["kp"], params["Ti"], params["Td"], sample_time
+                ),
+            )
+            self._fwd_coef_cache = cache
+        c0, c1, c2 = cache[2]
         err = inputs["setpointValue"] - inputs["actualValue"]
         if self.isReverse is False:
             err = -err

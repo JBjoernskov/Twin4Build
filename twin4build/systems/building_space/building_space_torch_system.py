@@ -219,6 +219,9 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
         self.thermal.initialize(start_time, end_time, step_size)
         self.mass.initialize(start_time, end_time, step_size)
+        # Drop the per-params routing cache (fresh graph per run, like the
+        # submodels' matrix caches).
+        self._fwd_param_cache = None
         self.INITIALIZED = True
 
     @property
@@ -284,8 +287,19 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         """
         n_th = self.thermal.state_size()
         x_th, x_ma = x[..., :n_th], x[..., n_th:]
-        p_th = self._resolve_sub_params(self.thermal, "thermal", params)
-        p_ma = self._resolve_sub_params(self.mass, "mass", params)
+        # Identity-keyed cache: a sequential rollout re-calls forward with the
+        # SAME params dict every step (see OneStepComposer._params_for), so
+        # the sub-param routing -- and, downstream, the submodels' state-space
+        # matrix builds -- are theta-only work that can be done once per theta.
+        cache = getattr(self, "_fwd_param_cache", None)
+        if cache is None or cache[0] is not params:
+            cache = (
+                params,
+                self._resolve_sub_params(self.thermal, "thermal", params),
+                self._resolve_sub_params(self.mass, "mass", params),
+            )
+            self._fwd_param_cache = cache
+        _, p_th, p_ma = cache
         x_th_n, out_th = self.thermal.forward(x_th, inputs, p_th, sample_time)
         x_ma_n, out_ma = self.mass.forward(x_ma, inputs, p_ma, sample_time)
         return torch.cat([x_th_n, x_ma_n], dim=-1), {**out_th, **out_ma}
