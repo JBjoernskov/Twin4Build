@@ -1,5 +1,5 @@
 Installation Guide
-=================
+==================
 
 This guide covers how to install Twin4Build for both users and developers.
 
@@ -16,15 +16,19 @@ The easiest way to install Twin4Build is using pip:
     pip install twin4build
 
 Install with Optional Dependencies
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For additional functionality, you can install optional dependencies:
 
 .. code-block:: bash
 
+    # For IPOPT-backed estimation (CasADi): the ("casadi", "ipopt", "ad")
+    # backend and the collocation transcription of the Estimator
+    pip install twin4build[estimation]
+
     # For database connectivity
     pip install twin4build[database]
-    
+
     # For all optional dependencies
     pip install twin4build[all]
 
@@ -35,23 +39,27 @@ Install from Source
 ~~~~~~~~~~~~~~~~~~~
 
 1. **Clone the repository**:
+
    .. code-block:: bash
 
        git clone https://github.com/JBjoernskov/Twin4Build.git
        cd Twin4Build
 
 2. **Create a virtual environment**:
+
    .. code-block:: bash
 
        python -m venv venv
        source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. **Install in development mode**:
+
    .. code-block:: bash
 
        pip install -e .
 
 4. **Install development dependencies**:
+
    .. code-block:: bash
 
        pip install -e .[dev]
@@ -60,7 +68,7 @@ Prerequisites
 -------------
 
 System Requirements
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 - **Python**: 3.9 or higher
 - **Operating System**: Windows, macOS, or Linux
@@ -69,6 +77,7 @@ Python Dependencies
 ~~~~~~~~~~~~~~~~~~~
 
 Core dependencies (automatically installed):
+
 - matplotlib
 - seaborn
 - pandas
@@ -94,17 +103,17 @@ Core dependencies (automatically installed):
 - beautifulsoup4
 - python-dateutil
 - pathlib
+- pytz
 
-Development dependencies:
-- coverage
-- black
-- flake8
-- mypy
-- sphinx
-- sphinx-rtd-theme
+Optional dependencies:
+
+- ``[estimation]``: casadi (IPOPT solver and collocation transcription for the Estimator)
+- ``[database]``: psycopg2-binary, sqlalchemy
+- ``[dev]``: coverage, black, flake8, isort, sphinx, sphinx-rtd-theme, sphinx-autodoc-typehints, myst-parser, twine
+- ``[all]``: everything above
 
 Verifying Installation
----------------------
+----------------------
 
 To ensure everything is working properly, run the test suite:
 
@@ -120,34 +129,42 @@ For developers, you can also run tests with coverage:
     coverage report
 
 Troubleshooting
---------------
+---------------
 
 Common Issues
-~~~~~~~~~~~~
+~~~~~~~~~~~~~
 
 **Import Error: No module named 'twin4build'**
+
 - Ensure you're in the correct virtual environment
-- Verify the package was installed correctly: `pip list | grep twin4build`
+- Verify the package was installed correctly: ``pip list | grep twin4build``
+
+**ImportError: No module named 'casadi'**
+
+- The CasADi/IPOPT estimation backend is an optional dependency;
+  install it with ``pip install twin4build[estimation]``
 
 **Database Connection Issues**
+
 - Ensure PostgreSQL is installed and running
-- Check database configuration in `database_config_example.ini`
+- Check database configuration in ``database_config_example.ini``
 
 **Test Failures**
-- Ensure all dependencies are installed: `pip install -e .[dev]`
+
+- Ensure all dependencies are installed: ``pip install -e .[dev]``
 - Check that the virtual environment is activated
 - Verify Python version compatibility (3.9+)
 
 Getting Help
------------
+------------
 
 If you encounter installation issues:
 
-1. Check the [GitHub Issues](https://github.com/JBjoernskov/Twin4Build/issues) for similar problems
-2. Review the [troubleshooting section](developer_reference.rst#debugging-tips) in the developer reference
+1. Check the `GitHub Issues <https://github.com/JBjoernskov/Twin4Build/issues>`_ for similar problems
+2. Review the debugging tips in :doc:`developer_reference`
 3. Create a new issue with detailed error information
 
-For more detailed development setup, see the [Developer Reference](developer_reference.rst).
+For more detailed development setup, see the :doc:`developer_reference`.
 
 
 

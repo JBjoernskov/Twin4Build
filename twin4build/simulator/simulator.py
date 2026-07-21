@@ -38,8 +38,8 @@ class Simulator:
     Args:
         model: The model to be simulated.
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
     The simulator operates on a directed multigraph :math:`G = (V, E, \iota, \alpha, \beta)` comprising:
 
@@ -72,8 +72,8 @@ class Simulator:
         - Each edge :math:`e_a \in E` with :math:`\iota(e_a) = (c_i, c_j)` indicates that component :math:`c_i` provides input to component :math:`c_j`
         - Multiple edges can map to the same vertex pair (multigraph): :math:`\iota(e_a) = \iota(e_b) = (c_i, c_j)`
 
-    Execution Sequence:
-    -------------------
+    Execution Sequence
+    ~~~~~~~~~~~~~~~~~~
 
     The execution sequence is determined by the model preparation phase
     (see :class:`~twin4build.model.simulation_model.simulation_model.SimulationModel`):
@@ -82,8 +82,8 @@ class Simulator:
 
         L = (c_1, c_2, ..., c_n)
 
-    Time-Stepping Simulation:
-    --------------------------
+    Time-Stepping Simulation
+    ~~~~~~~~~~~~~~~~~~~~~~~~
 
     For each timestep :math:`t \in (t_{start}, t_{start} + \Delta t, ..., t_{end})`,
     the simulator executes each component :math:`c_j` in the specified order :math:`L`.
@@ -117,8 +117,8 @@ class Simulator:
         - :math:`f_j` is the component's dynamics function
         - :math:`\alpha(e)` and :math:`\beta(e)` define the specific input/output ports for edge :math:`e`
 
-    Shorthand Notation:
-    -------------------
+    Shorthand Notation
+    ~~~~~~~~~~~~~~~~~~
 
     The complete simulation process described above can be represented using the compact notation:
 
@@ -162,8 +162,9 @@ class Simulator:
     ...     step_size=step_size
     ... )
     >>>
-    >>> # Access simulation results
-    >>> results = simulator.get_simulation_readings()
+    >>> # Access simulation results from the component output ports
+    >>> space = model.components["space"]
+    >>> temperature_history = space.output["indoorTemperature"].history()
     """
 
     def __init__(self, model: core.Model):
@@ -193,7 +194,6 @@ class Simulator:
         Args:
             component (core.System): The component to assign inputs to.
             step_index (int): The current timestep index.
-            debug_str (List[str], optional): Debug message list for error reporting.
 
         Raises:
             ValueError: If any input value is NaN.
@@ -257,12 +257,16 @@ class Simulator:
           are assigned for the next timestep
 
         Args:
-            model (model.Model): The model containing components to simulate.
+            model (core.Model): The model containing components to simulate.
+            second_time (List[float]): Per-period simulation time in seconds at this step.
+            date_time (List[datetime.datetime]): Per-period datetime at this step.
+            step_size (List[int]): Per-period step size in seconds.
+            step_index (int): The current timestep index.
+            iteration_method (str): "gauss-seidel" or "jacobi" (see above).
 
         Notes:
             - Components are executed sequentially based on their dependencies
             - Component execution order is determined by the model's execution_order attribute
-            - Updates are propagated through the flat_execution_order after main execution
         """
         if iteration_method == "gauss-seidel":
             for component_group in model.execution_order:
@@ -294,22 +298,28 @@ class Simulator:
         start_time: Union[List[datetime.datetime], datetime.datetime],
         end_time: Union[List[datetime.datetime], datetime.datetime],
         step_size: Union[List[int], int],
-    ) -> Tuple[List[List[float]], List[List[datetime.datetime]]]:
+    ) -> Tuple[np.ndarray, np.ndarray, int, List[int]]:
         """
         Generate simulation timesteps between start and end times.
 
-        Creates lists of both second-based and date_time-based timesteps for the simulation
-        period using the specified step size.
+        Creates arrays of both second-based and datetime-based timesteps for each
+        simulation period using the specified step sizes. Shorter periods are
+        padded with NaN up to the longest period's length.
 
         Args:
-            start_time (date_time): Start time of the simulation.
-            end_time (date_time): End time of the simulation.
-            step_size (int): Step size in seconds.
+            start_time: Start time(s) of the simulation. A single datetime or a
+                list of datetimes (one per period).
+            end_time: End time(s) of the simulation. Same form as ``start_time``.
+            step_size: Step size(s) in seconds. A single int or a list of ints.
 
-        Notes:
-            Updates the following instance attributes:
-            - second_time_steps: List of timesteps in seconds
-            - date_time_steps: List of timesteps as date_time objects
+        Returns:
+            Tuple of four elements:
+                - second_time_steps (np.ndarray): Shape ``(n_periods, max_timesteps)``,
+                  time in seconds since each period's start (NaN-padded).
+                - date_time_steps (np.ndarray): Shape ``(n_periods, max_timesteps)``,
+                  datetimes (NaN-padded).
+                - max_timesteps (int): Length of the longest period.
+                - n_timesteps (List[int]): Actual number of steps per period.
         """
         if isinstance(start_time, datetime.datetime):
             start_time = [start_time]
@@ -350,7 +360,15 @@ class Simulator:
         self, start_time: datetime.datetime, end_time: datetime.datetime, step_size: int
     ) -> None:
         """
-        Set the simulation timesteps.
+        Compute and store simulation timesteps on the simulator instance.
+
+        Sets the ``second_time_steps`` and ``date_time_steps`` attributes from
+        :meth:`get_simulation_timesteps`.
+
+        Args:
+            start_time: Start time(s) of the simulation.
+            end_time: End time(s) of the simulation.
+            step_size: Step size(s) in seconds.
         """
         self.second_time_steps, self.date_time_steps, _, _ = (
             Simulator.get_simulation_timesteps(start_time, end_time, step_size)
@@ -376,14 +394,19 @@ class Simulator:
             4. Updates component states at each timestep
 
         Args:
-            start_time: Start time of the simulation.
-            end_time: End time of the simulation.
-            step_size: Step size in seconds.
+            start_time: Start time(s) of the simulation (timezone-aware). A single
+                datetime or a list of datetimes for batched multi-period simulation.
+            end_time: End time(s) of the simulation (timezone-aware). Same form as
+                ``start_time``.
+            step_size: Step size(s) in seconds. A single int or a list of ints.
             show_progress_bar: Whether to show a progress bar during simulation.
-            debug: Whether to enable debug mode.
             iteration_method: The iteration method to use for component execution.
                 - "gauss-seidel": Components are executed sequentially with immediate input updates (default)
                 - "jacobi": All components execute first, then inputs are assigned
+            after_initialize: Optional zero-argument callable fired after model
+                (re)initialization and before the time loop. Used by the
+                collocation transcription to inject per-segment initial states;
+                ``None`` (default) is a no-op.
 
         Raises:
             AssertionError: If input parameters are invalid or missing timezone info.

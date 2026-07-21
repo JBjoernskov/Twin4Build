@@ -1,131 +1,81 @@
 Examples and Tutorials
-=====================
+======================
 
-.. .. include:: ../../../README.md
-..    :parser: myst_parser.sphinx_
-..    :start-after: ## Examples and Tutorials
-..    :end-before: ## Documentation
+All hands-on guides live in the example notebooks under
+``twin4build/examples/`` -- each is a self-contained, runnable tutorial that
+combines explanation with executable code. The theory and API reference live
+in the class docstrings (see the `API Documentation <../auto/twin4build.html>`_,
+in particular :class:`~twin4build.simulator.simulator.Simulator`,
+:class:`~twin4build.estimator.estimator.Estimator`,
+:class:`~twin4build.optimizer.optimizer.Optimizer`, and
+:class:`~twin4build.translator.translator.Translator`).
 
-
-This guide provides an overview of the available examples and tutorials for Twin4Build.
+Every notebook can be opened directly in Google Colab (badge links below) or
+run locally in Jupyter.
 
 Basics of Twin4Build
 --------------------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Connecting components, simulating a model, and visualization</p>
-
-.. code-block:: python
-
-    import twin4build as tb
-    import twin4build.utils.plot.plot as plot
-    
-    # Create a model
-    model = tb.Model(id="example_model")
-    
-    # Add components and connections
-    # Run simulation
-    # Visualize results
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Minimal example</b>: Connecting components, simulating a model, and visualizing results &mdash; the core mechanics every other example builds on</p>
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/building_space_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Building space</b>: The combined thermal + CO2 building space model driven by weather data, occupancy schedules, and ventilation</p>
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/bems_example_lecture.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Adding a custom System component - RC modeling from scratch of 2 rooms with parameter estimation and heat optimization</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_heater_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Space heater</b>: A discretized space heater (radiator) model coupled to a building space and a PID temperature controller</p>
+
+.. raw:: html
+
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>CO2 control</b>: Modeling and closed-loop control of indoor CO2 concentration with dampers and a PID controller</p>
+
+.. raw:: html
+
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/bems_example_lecture.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Custom components (lecture)</b>: Adding a custom System component &mdash; RC modeling from scratch of 2 rooms with parameter estimation and heat optimization</p>
 
 Translator
 ----------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/translator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: How to use the translator to generate simulation models from semantic models</p>
-
-.. code-block:: python
-
-    from twin4build import Translator
-    
-    # Create translator
-    translator = Translator()
-    
-    # Load semantic model
-    # Generate simulation model
-    # Validate translation
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/translator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Translator</b>: Generating simulation models automatically from semantic (ontology-based) building descriptions via signature pattern matching</p>
 
 Estimator
 ---------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/estimator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Basic parameter estimation and calibration</p>
-
-.. code-block:: python
-
-    from twin4build import Estimator
-    
-    # Create estimator
-    estimator = Estimator()
-    
-    # Load measured data
-    # Define parameters to estimate
-    # Run calibration
-    # Analyze results
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/estimator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Estimator</b>: Parameter estimation and calibration against measured data &mdash; single-shooting and collocation transcriptions, SciPy and CasADi/IPOPT backends, and result interpretation</p>
 
 Optimizer
 ---------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints</p>
-
-.. code-block:: python
-
-    from twin4build import Optimizer
-    
-    # Create optimizer
-    optimizer = Optimizer()
-    
-    # Define objective function
-    # Set constraints
-    # Run optimization
-    # Analyze optimal solutions
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Optimizer</b>: Optimization of space heater power consumption, constrained by heating and cooling setpoints</p>
 
 Full Workflow
 -------------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/full_workflow_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> End-to-end pipeline: translate a semantic model, calibrate parameters with the Estimator, and optimize a control schedule with the Optimizer</p>
-
-.. code-block:: python
-
-    import twin4build as tb
-
-    # 1. Translate a semantic model into a simulation model
-    translator = tb.Translator()
-    model = translator.translate(...)
-
-    # 2. Calibrate parameters against measurements
-    estimator = tb.Estimator(tb.Simulator(model))
-    estimator.estimate(parameters=...)
-
-    # 3. Optimize a control schedule on the calibrated model
-    optimizer = tb.Optimizer(tb.Simulator(model))
-    optimizer.optimize(variables=...)
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/full_workflow_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Full workflow</b>: End-to-end pipeline &mdash; translate a semantic model, calibrate parameters with the Estimator, and optimize a control schedule with the Optimizer</p>
 
 Running Examples
----------------
+----------------
 
 Prerequisites
 ~~~~~~~~~~~~~
 
 Before running examples, ensure you have:
 
-1. **Twin4Build installed**: See [Installation Guide](installation.rst)
-2. **Jupyter Notebook**: `pip install jupyter`
-3. **Required data files**: Some examples require specific data files
+1. **Twin4Build installed**: See the :doc:`installation` guide
+2. **Jupyter Notebook**: ``pip install jupyter``
+3. **CasADi (estimator notebook only)**: ``pip install twin4build[estimation]``
+   for the collocation stage of the estimator example
 
 Running in Jupyter
 ~~~~~~~~~~~~~~~~~~
@@ -136,75 +86,42 @@ Running in Jupyter
 
        jupyter notebook
 
-2. **Navigate** to the examples directory:
-
-   .. code-block:: bash
-
-       cd twin4build/examples
+2. **Navigate** to the ``twin4build/examples`` directory
 
 3. **Open** the desired notebook and run cells sequentially
 
-Example Structure
------------------
-
-Each example typically follows this structure:
-
-1. **Setup and Imports**
-   - Import required modules
-   - Configure logging and settings
-
-2. **Model Creation**
-   - Define building components
-   - Establish connections
-   - Set initial conditions
-
-3. **Simulation/Processing**
-   - Run simulations or analysis
-   - Handle data processing
-
-4. **Results and Visualization**
-   - Plot results
-   - Generate reports
-   - Export data
-
-5. **Analysis and Discussion**
-   - Interpret results
-   - Compare with expectations
-
 Troubleshooting Examples
------------------------
-
-Common Issues
-~~~~~~~~~~~~~
+------------------------
 
 **Import Errors**
+
 - Ensure Twin4Build is installed correctly
-- Check that all dependencies are available
-- Verify Python environment
+- Check that all dependencies are available (``pip install twin4build[estimation]`` for CasADi)
+- Verify the Python environment
 
 **Data File Errors**
-- Download required data files
-- Check file paths and permissions
-- Verify data format compatibility
+
+- The notebooks download or ship their data files alongside the notebook;
+  run them from the ``twin4build/examples`` directory so relative paths resolve
 
 **Memory Issues**
-- Reduce simulation duration
+
+- Reduce the simulation duration or step count
 - Simplify model complexity
-- Increase system memory
 
 Getting Help
------------
+------------
 
 If you encounter issues with examples:
 
-1. **Check the documentation**: Review relevant sections in the developer reference
+1. **Check the documentation**: Review relevant sections in the :doc:`developer_reference`
 2. **Examine the code**: Look at the example source code for implementation details
-3. **Search issues**: Check GitHub Issues for similar problems
+3. **Search issues**: Check `GitHub Issues <https://github.com/JBjoernskov/Twin4Build/issues>`_ for similar problems
 4. **Ask questions**: Create a new issue with specific error information
 
 Additional Resources
--------------------
+--------------------
 
-- `API Documentation <../auto/twin4build>`_
-- `Developer Reference <developer_reference>`_
+- `API Documentation <../auto/twin4build.html>`_
+- :doc:`developer_reference`
 - `GitHub Repository <https://github.com/JBjoernskov/Twin4Build/>`_
