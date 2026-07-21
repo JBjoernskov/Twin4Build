@@ -30,7 +30,7 @@ class FanTorchSystem(core.System, nn.Module):
         f_total : Total fan efficiency factor (0-1)
 
     Mathematical Formulation
-    ========================
+    ------------------------
 
     The fan power is calculated using a polynomial equation:
 
@@ -61,14 +61,15 @@ class FanTorchSystem(core.System, nn.Module):
     -----
     Model Assumptions:
        - Fan power follows polynomial relationship with flow rate
-       - All heat from fan power is added to air stream
+       - A fraction :math:`f_{total}` of the fan power is added as heat to the air stream
        - Constant air density and specific heat capacity
        - No mechanical losses considered separately
 
     Implementation Details:
        - Uses PyTorch for gradient-based optimization
-       - Parameters are stored as trainable PyTorch parameters
-       - Includes safety checks for numerical stability
+       - Parameters are stored as ``tps.Parameter`` objects (``requires_grad=False``
+         by default); they are not trained directly but can be calibrated via the
+         Estimator
        - All calculations performed in SI units
     """
 
@@ -88,7 +89,7 @@ class FanTorchSystem(core.System, nn.Module):
 
         Args:
             nominalPowerRate: Nominal power rate [W]
-            nominalAirFlowRate: Nominal air flow rate [m³/s]
+            nominalAirFlowRate: Nominal air mass flow rate [kg/s]
             c1-c4: Polynomial coefficients for power calculation
             f_total: Total fan efficiency factor
         """
@@ -168,7 +169,7 @@ class FanTorchSystem(core.System, nn.Module):
 
         Returns:
             dict: Dictionary containing input ports:
-                - "airFlowRate": Air flow rate [m³/s]
+                - "airFlowRate": Air mass flow rate [kg/s]
                 - "inletAirTemperature": Inlet air temperature [°C]
         """
         return self._input

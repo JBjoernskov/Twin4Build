@@ -13,7 +13,8 @@ class Connection:
 
     Args:
         connects_system: The system that the connection is part of. Defaults to None.
-        connects_system_at: The connection point that the connection is part of. Defaults to None.
+        connects_system_at: A list of connection points (receiver inputs) that the
+            connection connects to. Defaults to None (empty list).
         output_port: The name of the property that the connection sends. Defaults to None.
     """
 
@@ -28,7 +29,8 @@ class Connection:
 
         Args:
             connects_system: The system that the connection is part of. Defaults to None.
-            connects_system_at: The connection point that the connection is part of. Defaults to None.
+            connects_system_at: A list of connection points (receiver inputs) that the
+                connection connects to. Defaults to None (empty list).
             output_port: The name of the property that the connection sends. Defaults to None.
         """
 

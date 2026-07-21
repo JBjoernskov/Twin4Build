@@ -12,3 +12,11 @@ on\_off\_controller\_system module
    :show-inheritance:
    :undoc-members:
 
+on\_off\_controller\_torch\_system module
+-----------------------------------------
+
+.. automodule:: twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_torch_system
+   :members:
+   :show-inheritance:
+   :undoc-members:
+

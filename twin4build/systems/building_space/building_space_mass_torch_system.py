@@ -30,28 +30,38 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         G_occ: CO2 generation rate per occupant [kg_CO2/s]
         m_inf: Infiltration rate [kg/s]
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
     **Continuous-Time Differential Equation:**
 
-    The CO2 concentration dynamics are governed by the mass balance equation:
+    The CO2 concentration dynamics are governed by a mass balance on the room air.
+    With the room air mass :math:`m_{air} = \rho_{air} V` [kg], the implemented
+    equation is:
 
     .. math::
 
-       V\frac{dC}{dt} = \dot{m}_{sup}C_{out} - \dot{m}_{exh}C + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ}
+       m_{air}\frac{dC}{dt} = \dot{m}_{sup}C_{out} - \dot{m}_{exh}C + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ} \frac{M_{air}}{M_{CO2}} \cdot 10^6
 
     where:
 
-       - :math:`V`: Volume of the space [m³]
+       - :math:`m_{air} = \rho_{air} V`: Mass of air in the space [kg]
+         (:math:`\rho_{air}` is the constant air density from
+         ``twin4build.utils.constants``)
+       - :math:`V`: Volume of the space [m³] (parameter)
        - :math:`C`: Indoor CO2 concentration [ppmv] (state variable)
-       - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
-       - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
-       - :math:`\dot{m}_{inf}`: Infiltration rate [kg/s] (parameter)
+       - :math:`\dot{m}_{sup}`: Supply air mass flow rate [kg/s] (input)
+       - :math:`\dot{m}_{exh}`: Exhaust air mass flow rate [kg/s] (input)
+       - :math:`\dot{m}_{inf}`: Infiltration mass flow rate [kg/s] (parameter)
        - :math:`C_{out}`: Outdoor CO2 concentration [ppmv] (input)
        - :math:`G_{occ}`: CO2 generation rate per occupant [kg_CO2/s] (parameter)
        - :math:`N_{occ}`: Number of occupants (input)
-    
+       - :math:`M_{air}`, :math:`M_{CO2}`: Molar masses of air and CO2
+
+    The factor :math:`\frac{M_{air}}{M_{CO2}} \cdot 10^6` converts the occupant
+    CO2 mass generation [kg_CO2/s] per kg of room air into a rate of change of
+    the volumetric (molar) concentration [ppmv/s].
+
     .. note::
        Concentrations are expressed in **ppmv** (parts per million by volume), 
        which is equivalent to **ppm-moles** (molar fraction × 10⁶) for ideal gases.
@@ -60,7 +70,9 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     **State-Space Representation:**
 
-    The system is implemented using the DiscreteStatespaceSystem with matrices:
+    The system is implemented using the DiscreteStatespaceSystem (the continuous
+    dynamics above are discretized each step by ``bilinear_onestep`` using the
+    bilinear/Tustin one-step map) with matrices:
 
     *State vector:* :math:`\mathbf{x} = \begin{bmatrix}C\end{bmatrix}`
 
@@ -70,9 +82,9 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     .. math::
 
-       \mathbf{A} = \begin{bmatrix} -\frac{\dot{m}_{inf}}{V} \end{bmatrix}
+       \mathbf{A} = \begin{bmatrix} -\frac{\dot{m}_{inf}}{m_{air}} \end{bmatrix}
 
-       \mathbf{B} = \begin{bmatrix} 0 & 0 & \frac{\dot{m}_{inf}}{V} & \frac{G_{occ}}{V} \end{bmatrix}
+       \mathbf{B} = \begin{bmatrix} 0 & 0 & \frac{\dot{m}_{inf}}{m_{air}} & \frac{G_{occ}}{m_{air}}\frac{M_{air}}{M_{CO2}} \cdot 10^6 \end{bmatrix}
 
        \mathbf{C} = \begin{bmatrix} 1 \end{bmatrix}
 
@@ -86,7 +98,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
        \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \begin{bmatrix}
        \begin{bmatrix} 0 \end{bmatrix} & \text{(supply flow)} \\
-       \begin{bmatrix} -\frac{1}{V} \end{bmatrix} & \text{(exhaust flow)} \\
+       \begin{bmatrix} -\frac{1}{m_{air}} \end{bmatrix} & \text{(exhaust flow)} \\
        \begin{bmatrix} 0 \end{bmatrix} & \text{(outdoor CO2)} \\
        \begin{bmatrix} 0 \end{bmatrix} & \text{(occupants)}
        \end{bmatrix}
@@ -96,7 +108,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     .. math::
 
        \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \begin{bmatrix}
-       \begin{bmatrix} 0 & 0 & \frac{1}{V} & 0 \end{bmatrix} & \text{(supply flow)} \\
+       \begin{bmatrix} 0 & 0 & \frac{1}{m_{air}} & 0 \end{bmatrix} & \text{(supply flow)} \\
        \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(exhaust flow)} \\
        \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(outdoor CO2)} \\
        \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(occupants)}
@@ -106,11 +118,11 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     *Bilinear Effects*
 
     The bilinear terms handle specific flow-dependent mass transfer effects:
-       - :math:`\mathbf{E}[1,0,0] \cdot u_1 \cdot x_0 = -\frac{1}{V} \dot{m}_{exh} C`: Exhaust flow removing CO2
-       - :math:`\mathbf{F}[0,0,2] \cdot u_0 \cdot u_2 = \frac{1}{V} \dot{m}_{sup} C_{out}`: Supply flow bringing outdoor air
+       - :math:`\mathbf{E}[1,0,0] \cdot u_1 \cdot x_0 = -\frac{1}{m_{air}} \dot{m}_{exh} C`: Exhaust flow removing CO2
+       - :math:`\mathbf{F}[0,0,2] \cdot u_0 \cdot u_2 = \frac{1}{m_{air}} \dot{m}_{sup} C_{out}`: Supply flow bringing outdoor air
 
-    Physical Interpretation:
-    ======================
+    Physical Interpretation
+    -----------------------
 
     **Mass Balance System:**
        - Single state represents indoor CO2 concentration
@@ -121,8 +133,8 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
        - Supply air flow brings outdoor CO2 at outdoor concentration (F matrix coupling)
        - Exhaust air flow removes CO2 at indoor concentration (E matrix coupling)
 
-    Computational Features:
-    ======================
+    Computational Features
+    ----------------------
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Adaptive Discretization:** Matrices updated when flows change significantly

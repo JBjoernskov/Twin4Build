@@ -7,12 +7,14 @@ Package
 .. toctree::
    :maxdepth: 1
 
+   twin4build.systems.air_handling_unit
    twin4build.systems.air_to_air_heat_recovery
    twin4build.systems.building_space
    twin4build.systems.coil
    twin4build.systems.controller
    twin4build.systems.damper
    twin4build.systems.fan
+   twin4build.systems.fan_coil_unit
    twin4build.systems.junction
    twin4build.systems.outdoor_environment
    twin4build.systems.saref4syst

@@ -45,8 +45,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             conditions on first initialization. If False, the UA value is used as-is,
             which is useful when UA is being estimated/calibrated.
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
     **Continuous-Time Differential Equations:**
 
@@ -174,8 +174,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     Note: the gradients of this computation is not tracked, meaning that that parameters Q_flow_nominal_sh, T_a_nominal_sh, T_b_nominal_sh, TAir_nominal_sh cannot be calibrated.
 
-    Physical Interpretation:
-    ======================
+    Physical Interpretation
+    -----------------------
 
     **Finite Element Discretization:**
        - Each element represents a section of the radiator with its own thermal mass
@@ -187,8 +187,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - Water flow transfers heat between consecutive elements (E matrix coupling)
        - These effects are critical for accurate radiator performance modeling
 
-    Computational Features:
-    ======================
+    Computational Features
+    ----------------------
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Adaptive Discretization:** Matrices updated when flow conditions change significantly
@@ -233,7 +233,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
          temperature distribution modeling
        - Each element has its own thermal mass and heat transfer characteristics
        - The UA value is calculated numerically to match nominal conditions
-       - The model accounts for both convective and radiative heat transfer
+       - Heat transfer to the room is modeled as a single UA*(T_i - T_z) term
+         per element; radiative exchange is not modeled separately but lumped
+         into the overall UA coefficient
 
     Implementation Details:
        - The model uses a state-space representation for efficient computation
@@ -336,6 +338,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """Initialize the space heater system for simulation.
 
         This method performs the following initialization steps:
+
         1. If ``initialize_UA`` is True and this is the first call, numerically solves
            for the UA value that matches the nominal heat output
         2. Initializes input/output data structures

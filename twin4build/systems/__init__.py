@@ -6,9 +6,9 @@ simulation and optimization.
 
 Key Components:
     Building Spaces:
-        - BuildingSpaceTorchSystem: Basic building space model
-        - BuildingSpaceMassTorchSystem: Building space with mass effects
-        - BuildingSpaceThermalTorchSystem: Building space with thermal dynamics
+        - BuildingSpaceTorchSystem: Combined thermal + CO2 (mass balance) building space model
+        - BuildingSpaceMassTorchSystem: Building space CO2 mass balance model
+        - BuildingSpaceThermalTorchSystem: Building space thermal (RC) model
 
     HVAC Components:
         - SpaceHeaterTorchSystem: Space heating system
@@ -21,16 +21,22 @@ Key Components:
         - AirHandlingUnitTorchSystem: Air handling unit system
 
     Control Systems:
-        - PIControllerFMUSystem: Proportional-Integral controller
-        - RulebasedSetpointInputControllerSystem: Rule-based setpoint control
-        - OnOffControllerSystem: Binary control system
-        - SequenceControllerSystem: Sequential control logic
+        - PIDControllerSystem: Proportional-Integral-Derivative controller
+        - CascadeControllerSystem: Cascade (outer/inner loop) controller
+        - OnOffControllerSystem: Threshold-based on/off controller
+        - OnOffControllerTorchSystem: Torch-based on/off controller
+        - ScheduleSwitchControllerTorchSystem: Schedule-based switching controller
+        - SATLinearRuleSystem / SATCompensatedControllerTorchSystem: Supply air
+          temperature compensation rules
         - ClassificationAnnControllerSystem: ANN-based classification control
         - NeuralPolicyControllerSystem: Neural network policy control
+        - ControllerIdentificationTorchSystem / ControllerIdentificationPITorchSystem:
+          Controller identification models
 
     Monitoring & Measurement:
         - SensorSystem: Generic sensor system
         - ScheduleSystem: Time-based scheduling system
+        - PiecewiseLinearScheduleSystem: Schedule with piecewise linear interpolation
 
     Environmental:
         - OutdoorEnvironmentSystem: External environmental conditions
@@ -45,10 +51,13 @@ Key Components:
         - MaxSystem: Maximum value selection
         - OnOffSystem: Binary state system
         - DiscreteStatespaceSystem: General-purpose discrete state-space model
+        - ScalarProductSystem: Elementwise scalar product
+        - OccupancySystem / OccupancyDetectorSystem: Occupancy modeling and detection
+        - SigmoidGate: Smooth gating function
 
 Note:
-    Most systems are implemented using PyTorch for efficient computation and optimization.
-    Some legacy systems (marked with TODO) are still using FMU-based implementations.
+    Most systems are implemented using PyTorch for efficient computation and
+    optimization. FMUs can still be wrapped via fmuSystem.
 """
 
 # Define what gets exported with wildcard imports

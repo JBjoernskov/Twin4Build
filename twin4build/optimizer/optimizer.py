@@ -451,46 +451,39 @@ class Optimizer:
             ineq_cons: List of tuples (component, output_name, constraint_type, desired_value)
                 where constraint_type is "upper" or "lower".
 
-            method: Optimization method specification. Can be specified in two formats:
-
-                1. String format (legacy):
-                   - "scipy": Uses SciPy's SLSQP solver with automatic differentiation
-
-                2. Tuple format (recommended):
-                   - (library, optimizer, mode) where:
-                     - library: "scipy" (currently the only supported library)
-                     - optimizer: The specific optimization algorithm
-                     - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+            method: Optimization method specification. Either the legacy
+                string ``"scipy"`` (defaults to SLSQP with automatic
+                differentiation) or, recommended, a tuple
+                ``(library, optimizer, mode)`` where ``library`` is
+                ``"scipy"`` (currently the only supported library),
+                ``optimizer`` is the algorithm name, and ``mode`` is ``"ad"``
+                (automatic differentiation) or ``"fd"`` (finite difference).
 
                 Supported SciPy optimizers:
-                   - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
-                   - "L-BFGS-B": Limited-memory BFGS with bounds
-                   - "TNC": Truncated Newton algorithm with bounds
-                   - "trust-constr": Trust-region constrained optimization
-                   - "trf": Trust Region Reflective (for least-squares problems)
-                   - "dogbox": Dogleg algorithm (for least-squares problems)
-                   - Mode: "ad" (automatic differentiation) or "fd" (finite difference)
 
-                Method selection guidelines:
-                   - SciPy SLSQP with AD: Preferred for most constrained optimization problems
-                   - SciPy with FD: Use for non-PyTorch models or when AD is not available
+                - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
+                - "L-BFGS-B": Limited-memory BFGS with bounds
+                - "TNC": Truncated Newton algorithm with bounds
+                - "trust-constr": Trust-region constrained optimization
+                - "trf": Trust Region Reflective (for least-squares problems)
+                - "dogbox": Dogleg algorithm (for least-squares problems)
 
-                Examples:
-                   - ("scipy", "SLSQP", "ad"): Preferred for most constrained optimization problems
-                   - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
-                   - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
+                Examples: ``("scipy", "SLSQP", "ad")`` is preferred for most
+                constrained optimization problems; ``("scipy", "trf", "fd")``
+                for non-PyTorch models with a least-squares formulation.
 
             options: Additional options for the chosen method:
 
-                For SciPy methods (library="scipy"):
-                    - "verbose": Verbosity level (0-3)
-                    - "maxiter": Maximum iterations
-                    - "gtol": Gradient tolerance
-                    - "xtol": Parameter tolerance
-                    - "barrier_tol": Barrier tolerance
-                    - "initial_tr_radius": Initial trust region radius
-                    - "initial_constr_penalty": Initial constraint penalty
-                    - Additional method-specific options as supported by SciPy optimizers
+                - "verbose": Verbosity level (0-3)
+                - "maxiter": Maximum iterations
+                - "gtol": Gradient tolerance
+                - "xtol": Parameter tolerance
+                - "barrier_tol": Barrier tolerance
+                - "initial_tr_radius": Initial trust region radius
+                - "initial_constr_penalty": Initial constraint penalty
+                - "constraint_penalty": Weight of the soft constraint penalty
+                  terms in the loss (default 100)
+                - Additional method-specific options as supported by SciPy optimizers
 
         Returns:
             The SciPy optimization result object. The optimized actuator

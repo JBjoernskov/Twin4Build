@@ -445,43 +445,35 @@ class Estimator:
                 component on the model and collects parameter tuples from those
                 that implement ``get_estimable_parameters()``.
 
-                **New format (recommended)**: List of tuples where each tuple contains:
-                    - component: The component object or list of component objects
-                    - attr: Parameter attribute name (str)
-                    - x0: Initial value (float)
-                    - lb: Lower bound (float or None)
-                    - ub: Upper bound (float or None)
-                    - parameter_type: "private" or "shared" (optional, defaults to "private")
+                **New format (recommended)**: List of tuples
+                ``(component, attr, x0, lb, ub[, parameter_type])`` where
+                ``component`` is a component object or list of component
+                objects, ``attr`` is the parameter attribute name, ``x0`` is
+                the initial value, ``lb``/``ub`` are the bounds, and the
+                optional ``parameter_type`` is ``"private"`` (each listed
+                component gets its own independent parameter; default) or
+                ``"shared"`` (all listed components share one parameter
+                value).
 
-                Parameter types:
-                    - "private": Each component gets its own independent parameter
-                    - "shared": All components in the list share the same parameter value
+                Example::
 
-                Examples:
-                    ```python
                     # Private parameters (default)
                     parameters = [
                         (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # implicit "private"
                         (space, "thermal.C_wall", 2e+6, 1e+6, 1e+7, "private"),  # explicit
-                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "private"),  # separate kp for each
+                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "private"),
                     ]
 
                     # Shared parameters
                     parameters = [
-                        ([space1, space2], "thermal.C_air", 2e+6, 1e+6, 1e+7, "shared"),  # same C_air value
-                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),  # same kp value
+                        ([space1, space2], "thermal.C_air", 2e+6, 1e+6, 1e+7, "shared"),
+                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),
                     ]
-                    ```
 
-                **Legacy format (deprecated)**: Dictionary containing parameter specifications:
-                    - "private": Parameters unique to each component
-                    - "shared": Parameters shared across components
-
-                Each parameter entry contains:
-                    - "components": List of components or single component
-                    - "x0": List of initial values or single initial value
-                    - "lb": List of lower bounds or single lower bound
-                    - "ub": List of upper bounds or single upper bound
+                **Legacy format (deprecated)**: Dictionary with ``"private"``
+                and ``"shared"`` keys, where each parameter entry contains
+                ``"components"``, ``"x0"``, ``"lb"``, and ``"ub"`` lists (or
+                single values).
 
             measurements: Measurement specification. Either the string ``"auto"``
                 or a list of ``(sensor, sd)`` tuples, where ``sensor`` is a
@@ -496,73 +488,61 @@ class Estimator:
 
             n_warmup: Number of simulation steps used to initialize the model. These are not included in the likelihood calculation.
 
-            method: Estimation method specification. Can be specified in two formats:
-
-                1. String format (legacy):
-                - "scipy": Uses default SLSQP optimizer with automatic differentiation
-                - Other valid strings: Any optimizer name that matches the supported algorithms
-                    (e.g., "L-BFGS-B", "TNC", "SLSQP", "trust-constr", "trf", "dogbox")
-
-                2. Tuple format (recommended):
-                - (library, optimizer, mode) or (library, optimizer, mode, transcription) where:
-                    - library: "scipy" or "casadi"
-                    - optimizer: The specific optimization algorithm
-                    - mode: "ad" (automatic differentiation) or "fd" (finite difference)
-                    - transcription (optional 4th element): "single_shooting" (default)
-                      or "collocation" (requires the CasADi/IPOPT backend)
+            method: Estimation method specification. Either a legacy string
+                (``"scipy"`` or any supported optimizer name such as
+                ``"SLSQP"``, ``"L-BFGS-B"``, ``"TNC"``, ``"trust-constr"``,
+                ``"trf"``, ``"dogbox"``) or, recommended, a tuple
+                ``(library, optimizer, mode)`` or
+                ``(library, optimizer, mode, transcription)`` where
+                ``library`` is ``"scipy"`` or ``"casadi"``, ``optimizer`` is
+                the algorithm name, ``mode`` is ``"ad"`` (automatic
+                differentiation) or ``"fd"`` (finite difference), and the
+                optional ``transcription`` is ``"single_shooting"`` (default)
+                or ``"collocation"`` (requires the CasADi/IPOPT backend).
 
                 Supported optimizers by backend and mode:
 
-                SciPy backend, Automatic Differentiation (AD) mode — local optimizers:
-                - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
-                - "L-BFGS-B": Limited-memory BFGS with bounds
-                - "TNC": Truncated Newton algorithm with bounds
-                - "trust-constr": Trust-region constrained optimization
-                - "trf": Trust Region Reflective (for least-squares problems)
-                - "dogbox": Dogleg algorithm (for least-squares problems)
+                - SciPy backend, AD mode, local optimizers: ``"SLSQP"``
+                  (preferred for most problems), ``"L-BFGS-B"``, ``"TNC"``,
+                  ``"trust-constr"``, and the least-squares solvers ``"trf"``
+                  and ``"dogbox"``.
+                - SciPy backend, AD mode, global optimizers: ``"dual_annealing"``
+                  (generalized simulated annealing; explores broadly at high
+                  temperature to find the right basin, then anneals and
+                  polishes with a local gradient-based minimizer; options
+                  ``initial_temp``, ``restart_temp_ratio``, ``visit``,
+                  ``accept``, ``maxiter``, ``maxfun``, ``no_local_search``,
+                  ``local_search_method``) and ``"basinhopping"`` (random
+                  perturbation plus local minimization with Metropolis
+                  acceptance; options ``niter``, ``T``, ``stepsize``,
+                  ``local_search_method``). Good for non-convex landscapes
+                  with many local minima.
+                - SciPy backend, FD mode (all require ``n_cores``): ``"trf"``,
+                  ``"dogbox"``, ``"SLSQP"``, ``"L-BFGS-B"``, ``"TNC"``,
+                  ``"trust-constr"`` -- same algorithms with the Jacobian
+                  computed by parallel finite differences.
+                - CasADi backend (requires ``pip install twin4build[estimation]``):
+                  ``("casadi", "ipopt", "ad")`` is an IPOPT interior-point
+                  solve of the same single-shooting objective as the SciPy
+                  backends -- only the optimizer changes.
+                  ``("casadi", "ipopt", "ad", "collocation")`` is the
+                  simultaneous (collocation) transcription -- every
+                  timestep-boundary state becomes a decision variable tied by
+                  sparse hard continuity constraints. Preferred for long
+                  horizons where backprop-through-time gradients are badly
+                  conditioned. See the class docstring's Collocation section
+                  for the formulation.
 
-                SciPy backend, Automatic Differentiation (AD) mode — global optimizers:
-                - "dual_annealing": Generalized simulated annealing. Explores broadly at
-                  high temperature to find the right basin, then anneals and polishes with
-                  a local gradient-based minimizer (SLSQP by default). Good for non-convex
-                  landscapes with many local minima.
-                  Options: ``initial_temp`` (default 5230), ``restart_temp_ratio`` (default 2e-5),
-                  ``visit`` (default 2.62), ``accept`` (default -5.0), ``maxiter`` (default 1000),
-                  ``maxfun`` (default 1e7), ``no_local_search`` (default False),
-                  ``local_search_method`` (default "SLSQP").
-                - "basinhopping": Random perturbation + local minimization with Metropolis
-                  acceptance criterion. At each iteration: perturb the current solution,
-                  run gradient-based local optimization, accept/reject based on temperature.
-                  Options: ``niter`` (default 100), ``T`` (temperature, default 1.0),
-                  ``stepsize`` (default 0.5), ``local_search_method`` (default "SLSQP").
+                Mode selection: use ``"ad"`` when all components are
+                ``torch.nn.Module`` (preferred, faster); use ``"fd"`` for
+                non-PyTorch or mixed models (requires ``n_cores``).
 
-                SciPy backend, Finite Difference (FD) mode (all require ``n_cores``):
-                - "trf": Trust Region Reflective (for least-squares problems)
-                - "dogbox": Dogleg algorithm (for least-squares problems)
-                - "SLSQP", "L-BFGS-B", "TNC", "trust-constr": same algorithms as in
-                  AD mode, with the Jacobian computed by parallel finite differences
-
-                CasADi backend (requires ``pip install twin4build[estimation]``):
-                - ("casadi", "ipopt", "ad"): IPOPT interior-point solve of the same
-                  single-shooting objective as the SciPy backends -- only the
-                  optimizer changes.
-                - ("casadi", "ipopt", "ad", "collocation"): simultaneous
-                  (collocation) transcription -- every timestep-boundary state
-                  becomes a decision variable tied by sparse hard continuity
-                  constraints. Preferred for long horizons where backprop-
-                  through-time gradients are badly conditioned. See the class
-                  docstring's Collocation section for the formulation.
-
-                Mode selection guidelines:
-                - "ad": Use when all components are torch.nn.Module (preferred, faster)
-                - "fd": Use for non-PyTorch models or mixed model types (requires n_cores)
-
-                Examples:
-                - ("scipy", "SLSQP", "ad"): Preferred for most PyTorch models
-                - ("scipy", "dual_annealing", "ad"): For non-convex problems with many local minima
-                - ("casadi", "ipopt", "ad", "collocation"): For long-horizon problems
-                - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
-                - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
+                Examples: ``("scipy", "SLSQP", "ad")`` for most PyTorch
+                models; ``("scipy", "dual_annealing", "ad")`` for non-convex
+                problems; ``("casadi", "ipopt", "ad", "collocation")`` for
+                long horizons; ``("scipy", "trf", "fd")`` for non-PyTorch
+                least-squares problems; ``"scipy"`` defaults to
+                ``("scipy", "SLSQP", "ad")``.
 
             n_cores: Number of CPU cores to use for parallel computation. Required when using
                 finite difference (FD) mode for Jacobian computation. Not used in automatic
@@ -575,38 +555,41 @@ class Estimator:
             options: Additional options for the chosen optimization method.
 
                 Common keys (all backends):
-                    - "maxiter": Maximum iterations
-                    - "ftol": Function tolerance (SciPy: solver default applies
-                      when omitted; CasADi: mapped to IPOPT's ``tol``)
-                    - "verbose": Verbosity level
+
+                - "maxiter": Maximum iterations
+                - "ftol": Function tolerance (SciPy: solver default applies
+                  when omitted; CasADi: mapped to IPOPT's ``tol``)
+                - "verbose": Verbosity level
 
                 Fast single-shooting (SciPy/CasADi backends, torch models only):
-                    - "fast" (bool, default False): Replace the object-graph
-                      objective with the composed one-step-map rollout described
-                      in the class docstring's Single-Shooting section. Values
-                      and gradients are identical by construction; the estimator
-                      silently falls back to the object-graph objective when the
-                      model is not composable (components without ``forward``,
-                      ``n_c > 1``, shared/expanded parameters, or a measurement
-                      the composed map cannot produce).
-                    - "fast_validate" (bool, default False): Additionally
-                      cross-check the fast objective against the object-graph
-                      objective on the initial iterate (debugging aid).
+
+                - "fast" (bool, default False): Replace the object-graph
+                  objective with the composed one-step-map rollout described
+                  in the class docstring's Single-Shooting section. Values
+                  and gradients are identical by construction; the estimator
+                  silently falls back to the object-graph objective when the
+                  model is not composable (components without ``forward``,
+                  ``n_c > 1``, shared/expanded parameters, or a measurement
+                  the composed map cannot produce).
+                - "fast_validate" (bool, default False): Additionally
+                  cross-check the fast objective against the object-graph
+                  objective on the initial iterate (debugging aid).
 
                 Collocation transcription only:
-                    - "gauss_newton" (bool, default True): Supply IPOPT with a
-                      Gauss-Newton Hessian of the least-squares objective instead
-                      of the default limited-memory BFGS approximation. Turns a
-                      >1000-iteration L-BFGS crawl into a Newton-type solve.
-                    - "early_stopping" (bool or dict, default: enabled when
-                      ``gauss_newton`` is on): Patience-based stagnation stop
-                      with a best-feasible-iterate checkpoint. A dict overrides
-                      the defaults: ``patience`` (10), ``feas_tol`` (1e-2),
-                      ``min_delta_rel`` (1e-3), ``theta_tol`` (1e-4).
-                    - "pin_initial_state" (bool, default False): Fix each
-                      period's initial boundary state at its warm-start value so
-                      the feasible set is exactly the single-shooting trajectory
-                      manifold (mainly for equivalence testing).
+
+                - "gauss_newton" (bool, default True): Supply IPOPT with a
+                  Gauss-Newton Hessian of the least-squares objective instead
+                  of the default limited-memory BFGS approximation. Turns a
+                  >1000-iteration L-BFGS crawl into a Newton-type solve.
+                - "early_stopping" (bool or dict, default: enabled when
+                  ``gauss_newton`` is on): Patience-based stagnation stop
+                  with a best-feasible-iterate checkpoint. A dict overrides
+                  the defaults: ``patience`` (10), ``feas_tol`` (1e-2),
+                  ``min_delta_rel`` (1e-3), ``theta_tol`` (1e-4).
+                - "pin_initial_state" (bool, default False): Fix each
+                  period's initial boundary state at its warm-start value so
+                  the feasible set is exactly the single-shooting trajectory
+                  manifold (mainly for equivalence testing).
 
             schedule: Multi-phase continuation schedule -- the single,
                 self-contained way to drive parameter estimation.

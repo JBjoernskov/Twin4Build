@@ -105,16 +105,18 @@ class Entry:
             linestyle: Deprecated, use ``fmt`` instead.
 
     Examples:
-        # Simple data plot on axis 1
-        Entry(data=temperature_array, label="Room Temperature")
+        Basic usage::
 
-        # Data plot with custom styling on axis 2
-        Entry(data=power_array, label="Power Consumption",
-              color="red", fmt="--", axis=2)
+            # Simple data plot on axis 1
+            Entry(data=temperature_array, label="Room Temperature")
 
-        # Data plot on axis 3 with markers
-        Entry(data=flow_array, label="Flow Rate",
-              color="blue", fmt="o-", axis=3)
+            # Data plot with custom styling on axis 2
+            Entry(data=power_array, label="Power Consumption",
+                  color="red", fmt="--", axis=2)
+
+            # Data plot on axis 3 with markers
+            Entry(data=flow_array, label="Flow Rate",
+                  color="blue", fmt="o-", axis=3)
     """
 
     def __init__(

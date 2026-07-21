@@ -46,42 +46,41 @@ def sample_from_df(
     and data clipping. It handles both constant and linear resampling methods.
 
     Mathematical Formulation
-    -----------------------
+    ------------------------
 
-    1. Time Series Resampling:
-       a) Constant Resampling:
-          For each time step :math:`t`:
+    **1. Time Series Resampling**
 
-          .. math::
+    Constant resampling -- for each time step :math:`t`:
 
-             y(t) = y(t_{last})
+    .. math::
 
-          where :math:`t_{last}` is the last available data point before :math:`t`
+       y(t) = y(t_{last})
 
-       b) Linear Resampling:
-          For each time step :math:`t`:
+    where :math:`t_{last}` is the last available data point before :math:`t`.
 
-          .. math::
+    Linear resampling -- for each time step :math:`t`:
 
-             y(t) = y(t_1) + \frac{t - t_1}{t_2 - t_1} \cdot (y(t_2) - y(t_1))
+    .. math::
 
-          where:
-          - :math:`t_1` is the last available data point before :math:`t`
-          - :math:`t_2` is the first available data point after :math:`t`
+       y(t) = y(t_1) + \frac{t - t_1}{t_2 - t_1} \cdot (y(t_2) - y(t_1))
 
-    2. Time Zone Conversion:
-       For a time :math:`t` in timezone :math:`TZ_1`:
+    where :math:`t_1` is the last available data point before :math:`t` and
+    :math:`t_2` is the first available data point after :math:`t`.
 
-       .. math::
+    **2. Time Zone Conversion**
 
-          t_{TZ_2} = t_{TZ_1} + \Delta TZ
+    For a time :math:`t` in timezone :math:`TZ_1`:
 
-       where:
-       - :math:`t_{TZ_2}` is the time in target timezone
-       - :math:`\Delta TZ` is the time difference between timezones
+    .. math::
 
-    3. Data Clipping:
-       For a time series :math:`y(t)`:
+       t_{TZ_2} = t_{TZ_1} + \Delta TZ
+
+    where :math:`t_{TZ_2}` is the time in the target timezone and
+    :math:`\Delta TZ` is the time difference between timezones.
+
+    **3. Data Clipping**
+
+    For a time series :math:`y(t)`:
 
        .. math::
 
@@ -413,7 +412,7 @@ def load_from_database(
     time_column, id_column, and value_column parameters.
 
     Mathematical Formulation
-    -----------------------
+    ------------------------
 
     The database query is formulated as:
 

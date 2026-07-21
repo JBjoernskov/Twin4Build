@@ -457,7 +457,7 @@ def get_brick_damper_command_sensor_pattern():
     """
     BRICK damper command sensor — via Damper equipment.
 
-    Damper commands are modeled indirectly through a Damper equipment entity:
+    Damper commands are modeled indirectly through a Damper equipment entity::
 
         Damper  isPartOf   VAV
         Damper  hasPoint   <Damper_Position_Setpoint>
@@ -923,15 +923,30 @@ class SensorSystem(core.System):
             Defaults to None.
         df: DataFrame containing readings.
             Defaults to None.
-        useSpreadsheet: Whether to use a spreadsheet for input.
+        uuid: UUID identifying the time series in the database.
+            Defaults to None.
+        dbconfig: Configuration of the database to read sensor values from.
+            Defaults to None.
+        datecolumn: Column index containing date/time information.
+            Defaults to 0.
+        valuecolumn: Column index containing sensor values.
+            Defaults to 1.
+        use_spreadsheet: Whether to use a spreadsheet for input.
             Defaults to False.
-        useDatabase: Whether to use a database for input.
+        use_database: Whether to use a database for input.
             Defaults to False.
+        use_df: Whether to use the provided DataFrame for input.
+            Defaults to False.
+        transformation: Optional function to transform the value.
+            Defaults to None.
         **kwargs: Additional keyword arguments passed to parent class.
 
     Note:
         A sensor must either have connections to other systems (virtual sensor) or
-        have data input through filename/df (physical sensor).
+        have data input through filename/df/database (physical sensor). Flags are
+        auto-detected if only one data source is provided. The camelCase arguments
+        ``useSpreadsheet`` and ``useDatabase`` are deprecated aliases for
+        ``use_spreadsheet`` and ``use_database``.
     """
 
     sp = [

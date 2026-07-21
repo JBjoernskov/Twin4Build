@@ -4871,7 +4871,7 @@ class SignaturePattern:
 
     - Each node represents a semantic model element (e.g., a Damper, Sensor, or Property)
     - Each edge represents a relationship between elements (e.g., "observes", "controls")
-    - Rules determine how flexible the matching process is (Exact, SinglePath, MultiPath, Optional_)
+    - Rules determine how flexible the matching process is (``Exact``, ``SinglePath``, ``MultiPath``, ``Optional_``)
 
     The pattern matching process finds subgraph isomorphisms between the signature pattern
     and the semantic model, allowing the Translator to identify valid contexts for component instantiation.
@@ -5459,9 +5459,9 @@ class SignaturePattern:
             - None: Use the full output (default for scalar outputs)
             - int: Select a single element at this index
             - Node: For Vector→Scalar connections. The Node must be from this
-            (target) signature pattern and must map to semantic instances shared
-            with the source. The index is determined by finding which position in
-            the source's groups matches the semantic instance.
+              (target) signature pattern and must map to semantic instances shared
+              with the source. The index is determined by finding which position in
+              the source's groups matches the semantic instance.
             - torch.Tensor: Select multiple elements at these indices
 
         input_port_index : int, Node, or torch.Tensor, optional
@@ -5470,10 +5470,10 @@ class SignaturePattern:
             - None: Fill the entire input (default for scalar inputs)
             - int: Fill a single slot at this index
             - Node: For Scalar→Vector or Vector→Vector connections. The Node must
-            be from this (target) signature pattern. The index/indices are
-            determined by the ordering of groups matching this Node. This is the
-            primary way to specify index mapping as it directly relates to the
-            target component's structure.
+              be from this (target) signature pattern. The index/indices are
+              determined by the ordering of groups matching this Node. This is the
+              primary way to specify index mapping as it directly relates to the
+              target component's structure.
             - torch.Tensor: Fill multiple slots at these indices
 
         Connection Type Summary
@@ -6464,8 +6464,8 @@ class StepRule(Rule):
     For each SM object satisfying ``self.object.cls``, the matcher emits a
     **separate branch** in ``candidate_maps``; each branch becomes its
     own complete match group with ``group[sp_object] = one_sm_object``.
-    Sibling ``StepRule``s on the same subject produce a cross-product of
-    branches — one group per Cartesian tuple.
+    Sibling ``StepRule`` instances on the same subject produce a
+    cross-product of branches — one group per Cartesian tuple.
 
     Binding produced
     ----------------

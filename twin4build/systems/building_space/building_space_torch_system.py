@@ -40,8 +40,8 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
        mass_kwargs: Keyword arguments for BuildingSpaceMassTorchSystem
        kwargs: Additional keyword arguments (must include 'id')
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
        See individual component documentation:
           - BuildingSpaceThermalTorchSystem: RC network thermal dynamics
@@ -307,10 +307,11 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
 def saref_signature_pattern_sensor():
     """
-    Get the signature pattern of the FMU component.
+    Get the SAREF signature pattern (with supply-air temperature sensor) of the
+    building space component.
 
     Returns:
-        SignaturePattern: The signature pattern of the FMU component.
+        SignaturePattern: The signature pattern of the building space component.
     """
 
     node0 = Node(cls=core.namespace.S4BLDG.Damper)  # supply damper
@@ -370,10 +371,10 @@ def saref_signature_pattern_sensor():
 
 def saref_signature_pattern():
     """
-    Get the signature pattern of the FMU component.
+    Get the SAREF signature pattern of the building space component.
 
     Returns:
-        SignaturePattern: The signature pattern of the FMU component.
+        SignaturePattern: The signature pattern of the building space component.
     """
 
     node0 = Node(cls=core.namespace.S4BLDG.Damper)  # supply damper

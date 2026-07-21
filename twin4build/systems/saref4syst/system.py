@@ -22,12 +22,10 @@ class System:
     The methods :func:`~twin4build.systems.saref4syst.system.System.initialize`, :func:`~twin4build.systems.saref4syst.system.System.do_step` must be implemented by the subclass.
 
     Args:
-        connects_at: A list of connection points that the system connects to.
-        connected_through: A list of systems that the system connects through.
+        connects_at: A list of connection points (inputs) of the system.
+        connected_through: A list of Connection objects (outputs) of the system.
         input: A dictionary of inputs to the system.
         output: A dictionary of outputs from the system.
-        outputGradient: A dictionary of output gradients to the system.
-        parameterGradient: A dictionary of parameter gradients to the system.
         id: The id of the system.
     """
 
@@ -60,12 +58,10 @@ class System:
         Initialize a System object.
 
         Args:
-            connects_at: A list of connection points that the system connects to.
-            connected_through: A list of systems that the system connects through.
+            connects_at: A list of connection points (inputs) of the system.
+            connected_through: A list of Connection objects (outputs) of the system.
             input: A dictionary of inputs to the system.
             output: A dictionary of outputs from the system.
-            outputGradient: A dictionary of output gradients to the system.
-            parameterGradient: A dictionary of parameter gradients to the system.
             id: The id of the system.
         """
         assert isinstance(connects_at, list) or connects_at is None, (
@@ -137,7 +133,7 @@ class System:
     @property
     def connected_through(self) -> list:
         """
-        Get the connected systems through.
+        Get the list of Connection objects (outputs) of the system.
         """
         return self._connected_through
 
@@ -186,7 +182,7 @@ class System:
     @connected_through.setter
     def connected_through(self, value: list) -> None:
         """
-        Set the connected systems through.
+        Set the list of Connection objects (outputs) of the system.
         """
         self._connected_through = value
 
@@ -220,7 +216,7 @@ class System:
             input_port_name: Name of the input port to check.
 
         Returns:
-            int: Required n_v (max index + 1), or 1 if no connections found.
+            int: Required n_v (max index + 1), or None if no connections found.
         """
         max_index = 0
         found_connection = False
@@ -256,7 +252,6 @@ class System:
             start_time (datetime.datetime): The start time of the simulation.
             end_time (datetime.datetime): The end time of the simulation.
             step_size (int): The step size of the simulation in seconds.
-            simulator (core.Simulator): The simulator.
         """
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size

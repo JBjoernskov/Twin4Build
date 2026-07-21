@@ -22,7 +22,7 @@ class CoilTorchSystem(core.System, nn.Module):
     differences.
 
     Mathematical Formulation
-    -----------------------
+    ------------------------
 
     The heating/cooling power is calculated using the following equations:
 
@@ -67,7 +67,8 @@ class CoilTorchSystem(core.System, nn.Module):
          powers are set to zero
        - The model uses PyTorch tensors for gradient-based optimization
        - All calculations are performed in SI units
-       - The specific heat capacity is stored as a non-trainable PyTorch parameter
+       - The specific heat capacity of air is the constant ``CP_AIR`` from
+         ``twin4build.utils.constants`` (not a stored parameter)
     """
 
     def __init__(self, **kwargs):
@@ -129,10 +130,16 @@ class CoilTorchSystem(core.System, nn.Module):
     @property
     def specificHeatCapacityAir(self) -> tps.Parameter:
         """
-        Get the specific heat capacity of air.
+        Accessor for an externally set specific heat capacity of air.
+
+        Note:
+            This property is not used by the model: ``do_step`` uses the
+            constant ``CP_AIR`` from ``twin4build.utils.constants``, and the
+            backing attribute is never set by this class. Accessing it without
+            first assigning a value raises ``AttributeError``.
 
         Returns:
-            tps.Parameter: Specific heat capacity of air [J/(kg·K)].
+            tps.Parameter: Specific heat capacity of air [J/(kg·K)], if previously set.
         """
         return self._specificHeatCapacityAir
 
@@ -140,6 +147,10 @@ class CoilTorchSystem(core.System, nn.Module):
     def specificHeatCapacityAir(self, value: tps.Parameter) -> None:
         """
         Set the specific heat capacity of air.
+
+        Note:
+            The stored value is not used in calculations; ``do_step`` always
+            uses ``constants.CP_AIR``.
 
         Args:
             value (tps.Parameter): Specific heat capacity of air [J/(kg·K)].

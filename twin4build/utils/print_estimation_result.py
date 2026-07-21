@@ -14,12 +14,12 @@ def print_estimation_result(result: Union[str, Dict]) -> None:
     containing estimation results, or a result dictionary/object directly.
 
     Args:
-        result: Either:
-            - A string filename path to a pickle file containing estimation results
-            - A dictionary or EstimationResult object containing estimation results with keys:
-                - result_x: Array of parameter values
-                - component_id: Array of component IDs (same order as result_x)
-                - component_attr: Array of attribute names (same order as result_x)
+        result: Either a string filename path to a pickle file containing
+            estimation results, or a dictionary/EstimationResult object with
+            keys ``result_x`` (array of parameter values), ``component_id``
+            (array of component ids, same order as ``result_x``), and
+            ``component_attr`` (array of attribute names, same order as
+            ``result_x``).
 
     Raises:
         AssertionError: If the result dictionary doesn't contain required keys.

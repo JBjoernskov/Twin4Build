@@ -46,8 +46,8 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
             conditions on first initialization. If False, the UA value is used as-is,
             which is useful when UA is being estimated/calibrated.
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
     **Continuous-Time Differential Equations:**
 
@@ -151,8 +151,8 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
 
         \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
 
-    Physical Interpretation:
-    ======================
+    Physical Interpretation
+    -----------------------
 
     **Cross-Flow Heat Exchanger:**
        - Water flows through tubes in a serpentine pattern
@@ -346,6 +346,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
         """Initialize the fan coil unit system for simulation.
 
         Performs the following steps:
+
         1. If ``initialize_UA`` is True and this is the first call, numerically solves
            for the UA value that matches the nominal heat output
         2. Initializes input/output data structures

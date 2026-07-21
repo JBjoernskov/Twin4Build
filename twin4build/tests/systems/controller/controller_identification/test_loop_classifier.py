@@ -186,7 +186,7 @@ class TestScorePair(unittest.TestCase):
                 )
 
     def test_reverse_acting_loop_has_negative_slope(self) -> None:
-        """Reverse-acting -> slope < 0, ``kp`` (= |slope|) > 0."""
+        """Reverse-acting -> slope < 0, ``kp`` (= abs(slope)) > 0."""
         n = 1500
         sp, meas = self._make_unsaturated_signals(n=n, e_amp=0.05)
         # Reverse-acting: flip the sign of the constructed actuator response.
