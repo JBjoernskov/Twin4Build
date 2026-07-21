@@ -103,6 +103,12 @@ class PIDControllerSystem(core.System, nn.Module):
 
         self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar(0)}
+        # Velocity-form PID memory as a first-class state (width 3):
+        # [u_prev, err_prev, err_prev_m1].  Zero initial condition.
+        self._state = tps.State(
+            n_v=3, init_value=0.0,
+            names=[f"{self.id}.u_prev", f"{self.id}.err_prev", f"{self.id}.err_prev_m1"],
+        )
         self._config = {
             "parameters": ["kp", "Ti", "Td", "output_min", "output_max", "isReverse"]
         }
@@ -141,15 +147,8 @@ class PIDControllerSystem(core.System, nn.Module):
         self.output_min = self.output_min.expand_to_n_c(self.n_c)
         self.output_max = self.output_max.expand_to_n_c(self.n_c)
 
-        self.err_prev = torch.zeros(
-            (batch_size, 1), dtype=torch.float64, requires_grad=False
-        )
-        self.err_prev_m1 = torch.zeros(
-            (batch_size, 1), dtype=torch.float64, requires_grad=False
-        )
-        self.u_prev = torch.zeros(
-            (batch_size, 1), dtype=torch.float64, requires_grad=False
-        )
+        # Allocate the velocity-form PID state (n_s, n_c, 3), zero initial value.
+        self._state.initialize(n_s=batch_size, n_c=self.n_c, n_v=3, force=True)
 
         # Cache step_size as tensor to avoid creating it every step
         # step_size may be a list with one value per batch element, so unsqueeze(1) gives shape (batch, 1)
@@ -157,11 +156,10 @@ class PIDControllerSystem(core.System, nn.Module):
             step_size, dtype=torch.float64, requires_grad=False
         ).unsqueeze(1)
 
-        # Cache for PID coefficients (recomputed when parameters change)
-        self._cached_coeffs = None
-        self._cached_kp = None
-        self._cached_Ti = None
-        self._cached_Td = None
+        # Drop per-params forward caches: a fresh simulation must not reuse
+        # coefficients (or their autograd graph) from a previous run.
+        self._fwd_coef_cache = None
+        self._forward_params_cache = None
 
     @staticmethod
     def asymptotic_smooth_saturation(
@@ -237,62 +235,63 @@ class PIDControllerSystem(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
-        # Get current parameter values
-        kp = self.kp.get()
-        Ti = self.Ti.get()
-        Td = self.Td.get()
-
-        # Recompute coefficients only if parameters changed (common during estimation)
-        # Using 'is not' for tensor identity check - fast when unchanged
-        params_changed = (
-            self._cached_coeffs is None
-            or self._cached_kp is not kp
-            or self._cached_Ti is not Ti
-            or self._cached_Td is not Td
+        """Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the velocity-form PID math).  ``forward``'s identity-keyed
+        coefficient cache replaces the old per-attribute caching: the params
+        dict from ``_forward_params`` and ``self._step_size_tensor`` are both
+        identity-stable across steps, so the coefficients are recomputed only
+        when a parameter actually changes."""
+        inputs = {
+            "setpointValue": self.input["setpointValue"].get(),
+            "actualValue": self.input["actualValue"].get(),
+        }
+        x_next, outs = self.forward(
+            self._state.get(),  # (n_s, n_c, 3) = [u_prev, err_prev, err_prev_m1]
+            inputs,
+            self._forward_params(),
+            self._step_size_tensor,
         )
+        self._state.set(x_next)
+        self.output["inputSignal"]._set(outs["inputSignal"], i_t=step_index)
 
-        if params_changed:
-            self._cached_coeffs = self._compute_pid_coefficients(
-                kp, Ti, Td, self._step_size_tensor
+    # Continuous state (velocity-form memory [u_prev, err_prev, err_prev_m1]) is
+    # the ``tps.State`` ``self._state``; get/set/enumeration come from the System
+    # base class generically.
+
+    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = ("kp", "Ti", "Td", "output_min", "output_max")
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step velocity-form PID ``(state, inputs, params) -> (new_state, outputs)``.
+
+        Functorch-compatible re-expression of :meth:`do_step`.  ``x`` is the memory
+        ``(n_c, 3)`` = ``[u_prev, err_prev, err_prev_m1]``; ``inputs`` provides
+        ``setpointValue`` / ``actualValue``; ``params`` a dict for
+        :attr:`PARAM_NAMES`.  Returns ``(x_next, {"inputSignal"})``.
+        """
+        # Params-only coefficients, cached per params-dict identity (computed
+        # once per theta in a sequential rollout, not once per step).  The
+        # sample-time check is by identity too: ``do_step`` passes the stable
+        # ``_step_size_tensor`` (a ``!=`` on a batched tensor would be
+        # ambiguous), the composer a stable float.
+        cache = getattr(self, "_fwd_coef_cache", None)
+        if cache is None or cache[0] is not params or cache[1] is not sample_time:
+            cache = (
+                params,
+                sample_time,
+                self._compute_pid_coefficients(
+                    params["kp"], params["Ti"], params["Td"], sample_time
+                ),
             )
-            self._cached_kp = kp
-            self._cached_Ti = Ti
-            self._cached_Td = Td
-
-        c0, c1, c2 = self._cached_coeffs
-
-        # Compute error
-        err = self.input["setpointValue"].get() - self.input["actualValue"].get()
-        if self.isReverse == False:
+            self._fwd_coef_cache = cache
+        c0, c1, c2 = cache[2]
+        err = inputs["setpointValue"] - inputs["actualValue"]
+        if self.isReverse is False:
             err = -err
-
-        # Compute control increment using pre-computed coefficients
-        # This reduces multiple tensor operations to just 3 multiplications + 2 additions
-        du = c0 * err + c1 * self.err_prev + c2 * self.err_prev_m1
-
-        u = self.u_prev + du
-        # Differentiable clamp into [output_min, output_max].  The mode
-        # (``"smooth"`` vs ``"hard"``) is read from the process-global
-        # toggle in ``smooth_saturation``: smooth for cold-start
-        # exploration (gradient flows through deep windup), hard for
-        # bias-correction refinement (forward exact at bounds, no
-        # faithfulness floor).  See ``estimate_with_refinement`` for
-        # the recommended two-stage workflow.
-        u = clamp(
-            u,
-            lower=self.output_min.get(),
-            upper=self.output_max.get(),
-        )
-
-        # if date_time[0].hour<5 or (date_time[0].hour==5 and date_time[0].minute==0) or date_time[0].hour>17:
-        #     u = u*0
-
-        # print("DEBUG: u after saturation: ", u)
-        self.u_prev = u
-        self.err_prev_m1 = self.err_prev
-        self.err_prev = err
-
-        self.output["inputSignal"]._set(u, i_t=step_index)
+        u_prev, err_prev, err_prev_m1 = x[..., 0], x[..., 1], x[..., 2]
+        u = u_prev + (c0 * err + c1 * err_prev + c2 * err_prev_m1)
+        u = clamp(u, lower=params["output_min"], upper=params["output_max"])
+        return torch.stack([u, err, err_prev], dim=-1), {"inputSignal": u}
 
 
 def saref_signature_pattern():

@@ -11,7 +11,10 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
-from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+from twin4build.systems.utils.discrete_statespace_system import (
+    DiscreteStatespaceSystem,
+    bilinear_onestep,
+)
 
 
 class BuildingSpaceMassTorchSystem(core.System, nn.Module):
@@ -245,6 +248,11 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
             x0_tensor = self._get_initial_state_tensor()
             self.ss_model.set_state(x0_tensor)
 
+        # Drop per-params forward caches: a fresh simulation must not reuse
+        # matrices (or their autograd graph) from a previous run.
+        self._fwd_mat_cache = None
+        self._forward_params_cache = None
+
     def _get_initial_state_tensor(self):
         # Get dimensions from indoorCO2
         # Scalar.get() returns shape (n_s, n_c)
@@ -259,20 +267,27 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
         return x0
 
-    def _create_state_space_model(self):
-        """Create the state space model matrices using PyTorch tensors.
+    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = ("V", "G_occ", "m_inf")
 
-        Matrices have shape (n_c, n_states, n_states/n_inputs) to support
-        different parameter values per component.
+    def _build_matrices(self, p=None):
+        """Build the CO2 mass-balance matrices ``(A, B, C, D, E, F)`` from the
+        physical parameters -- a pure function of ``p`` (a dict of physical values
+        for :attr:`PARAM_NAMES`; defaults to ``self.<name>.get()``).  Passing ``p``
+        explicitly is the functorch fast path (plain-tensor args, so
+        ``vmap(jacrev)`` is clean); see the thermal system for the rationale.
         """
+        if p is None:
+            p = {name: getattr(self, name).get() for name in self.PARAM_NAMES}
+
         # Single state for CO2 concentration
         n_states = 1
         n_inputs = len(self.input)
 
         # Get parameter values - shape (n_c,)
-        V = self.V.get()
-        G_occ = self.G_occ.get()
-        m_inf = self.m_inf.get()
+        V = p["V"]
+        G_occ = p["G_occ"]
+        m_inf = p["m_inf"]
         n_c = self.n_c
 
         # Calculate air mass from volume and density
@@ -307,12 +322,6 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
         D = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
 
-        # Initial state - shape (n_c, n_states)
-        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[
-            0, :, :
-        ]  # Take first simulation, all components: (n_c, n_states)
-
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
         E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=torch.float64)
         # -m_ex*C (input 1, state 0)
@@ -322,6 +331,17 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=torch.float64)
         # m_sup*C_sup (inputs 0 and 2)
         F[:, 0, 0, 2] = 1 / air_mass  # supplyAirFlowRate * supplyAirCO2
+
+        return A, B, C, D, E, F
+
+    def _create_state_space_model(self):
+        """Create the internal :class:`DiscreteStatespaceSystem` used by
+        ``do_step`` from the matrices built by :meth:`_build_matrices`."""
+        A, B, C, D, E, F = self._build_matrices()
+
+        # Initial state - shape (n_c, n_states)
+        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
+        x0 = x0_tensor[0, :, :]  # first simulation, all components: (n_c, n_states)
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -336,6 +356,32 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
             F=F,
         )
 
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step CO2 dynamics ``(state, inputs, params) -> (new_state, outputs)``.
+
+        Functorch-compatible re-expression of :meth:`do_step`; ``inputs`` is a dict
+        of resolved input-port values assembled here in do_step order
+        ``[supplyAirFlowRate, exhaustAirFlowRate, outdoorCO2, numberOfPeople]``,
+        ``params`` a dict for :attr:`PARAM_NAMES`.  Returns ``(x_next, {"indoorCO2"})``.
+        """
+        # Params-only matrices, cached per params-dict identity (rebuilt once
+        # per theta in a sequential rollout, not once per step).  sample_time
+        # is part of the key: the attached disc_cache holds (Ad, Bd)
+        # discretized at a specific T.
+        cache = getattr(self, "_fwd_mat_cache", None)
+        if cache is None or cache[0] is not params or cache[2] != sample_time:
+            cache = (params, self._build_matrices(params), sample_time, {})
+            self._fwd_mat_cache = cache
+        A, B, C, D, E, F = cache[1]
+        u = torch.stack(
+            [inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"],
+             inputs["outdoorCO2"], inputs["numberOfPeople"]], dim=-1,
+        )
+        x_next, y = bilinear_onestep(
+            A, B, C, D, E, F, x, u, sample_time, disc_cache=cache[3]
+        )
+        return x_next, {"indoorCO2": y[..., 0]}
+
     @property
     def config(self):
         """Get the system configuration."""
@@ -348,21 +394,22 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         step_size: Optional[float] = None,
         step_index: Optional[int] = None,
     ) -> None:
-        """Execute a single simulation step using the state-space model."""
-        # Build input vector u
-        # Stack along dim=2 to get shape (n_s, n_c, n_v) from (n_s, n_c) scalars
-        u = torch.stack(
-            [
-                self.input["supplyAirFlowRate"].get(),
-                self.input["exhaustAirFlowRate"].get(),
-                self.input["outdoorCO2"].get(),
-                self.input["numberOfPeople"].get(),
-            ],
-            dim=2,
-        )
+        """Execute a single simulation step.
 
-        self.ss_model.input["u"]._set(u, i_t=step_index)
-        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
-        y = self.ss_model.output["y"].get()  # Shape: (n_s, n_c, n_v)
-        # y[:, :, 0] gives (n_s, n_c) which is correct for Scalar._set()
-        self.output["indoorCO2"]._set(y[:, :, 0], i_t=step_index)
+        Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the dynamics); the inner ``ss_model`` only carries the
+        state between steps.
+        """
+        inputs = {
+            port: self.input[port].get()
+            for port in (
+                "supplyAirFlowRate", "exhaustAirFlowRate", "outdoorCO2",
+                "numberOfPeople",
+            )
+        }
+        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.ss_model.set_state(x_next)
+        self.output["indoorCO2"]._set(outs["indoorCO2"], i_t=step_index)

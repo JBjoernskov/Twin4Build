@@ -11,7 +11,10 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
-from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+from twin4build.systems.utils.discrete_statespace_system import (
+    DiscreteStatespaceSystem,
+    bilinear_onestep,
+)
 from twin4build.translator.translator import (
     StepRule,
     AnyPathRule,
@@ -463,6 +466,11 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         self._manual_setup_n_adjacent_zones = False
         self._manual_setup_n_boundary_temperature = False
 
+        # Drop per-params forward caches: a fresh simulation must not reuse
+        # matrices (or their autograd graph) from a previous run.
+        self._fwd_mat_cache = None
+        self._forward_params_cache = None
+
     def setup_variable_inputs(self):
         if self.manual_setup_n_boundary_temperature == False:
             # Find if boundary temperature is set as input
@@ -521,16 +529,30 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
         return x0
 
-    def _create_state_space_model(self):
-        """
-        Create the state space model using PyTorch tensors.
+    #: Physical RC parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = (
+        "C_air", "C_wall", "C_boundary", "C_int",
+        "R_in", "R_out", "R_boundary", "R_int",
+        "f_air", "f_wall", "Q_occ_gain",
+    )
 
-        This formulation directly constructs the state space matrices A and B
-        using PyTorch tensors for gradient tracking.
+    def _build_matrices(self, p=None):
+        """Build the RC state-space matrices ``(A, B, C, D, E, F)`` from the
+        physical parameters -- a **pure** function of ``p`` (no side effects
+        beyond caching ``n_states`` / ``n_inputs``).
 
-        Matrices have shape (n_c, n_states, n_states) to support different
-        parameter values per component.
+        ``p`` is a dict ``{name: value}`` of *physical* parameter tensors
+        (:attr:`PARAM_NAMES`).  When ``None`` it defaults to the component's own
+        values (``self.<name>.get()`` -- the ``do_step`` path).  Passing ``p``
+        explicitly is the functorch fast path: because the parameters are plain
+        tensor *arguments* (not ``tps.Parameter`` methods), ``jacrev`` w.r.t. ``p``
+        is clean under ``vmap`` -- avoiding the Tensor-subclass fragility that
+        ``functional_call`` on ``tps.Parameter`` would hit.  Shapes:
+        ``A (n_c, n, n)``, ``B (n_c, n, m)``, ``C (n_c, n, n)``,
+        ``D (n_c, n, m)``, ``E (n_c, m, n, n)``, ``F (n_c, m, n, m)``.
         """
+        if p is None:
+            p = {name: getattr(self, name).get() for name in self.PARAM_NAMES}
 
         # Calculate number of states
         n_states = 2  # Base states: air and wall temperature
@@ -552,17 +574,17 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
         # Get parameter values - shape (n_c_param,); may be 1 even when
         # self.n_c > 1 (compiled/batched components share identical params).
-        C_air = self.C_air.get()
-        C_wall = self.C_wall.get()
-        C_boundary = self.C_boundary.get()
-        C_int = self.C_int.get()
-        R_in = self.R_in.get()
-        R_out = self.R_out.get()
-        R_boundary = self.R_boundary.get()
-        R_int = self.R_int.get()
-        f_air = self.f_air.get()
-        f_wall = self.f_wall.get()
-        Q_occ_gain = self.Q_occ_gain.get()
+        C_air = p["C_air"]
+        C_wall = p["C_wall"]
+        C_boundary = p["C_boundary"]
+        C_int = p["C_int"]
+        R_in = p["R_in"]
+        R_out = p["R_out"]
+        R_boundary = p["R_boundary"]
+        R_int = p["R_int"]
+        f_air = p["f_air"]
+        f_wall = p["f_wall"]
+        Q_occ_gain = p["Q_occ_gain"]
         n_c = self.n_c
 
         # Initialize A and B matrices with zeros - shape (n_c, n_states, n_states/n_inputs)
@@ -646,12 +668,6 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
         D = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
 
-        # Initial state - shape (n_c, n_states)
-        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[
-            0, :, :
-        ]  # Take first simulation, all components: (n_c, n_states)
-
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
         E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=torch.float64)
         # -m_ex*cp*T_air (input 2, state 0)
@@ -663,6 +679,19 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         F[:, 1, 0, 3] = (
             constants.CP_AIR / C_air
         )  # supplyAirFlowRate * supplyAirTemperature
+
+        return A, B, C_out, D, E, F
+
+    def _create_state_space_model(self):
+        """Create the internal :class:`DiscreteStatespaceSystem` used by
+        ``do_step`` from the matrices built by :meth:`_build_matrices`."""
+        A, B, C_out, D, E, F = self._build_matrices()
+
+        # Initial state - shape (n_c, n_states)
+        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
+        x0 = x0_tensor[
+            0, :, :
+        ]  # Take first simulation, all components: (n_c, n_states)
 
         # Pass E and F to DiscreteStatespaceSystem
         self.ss_model = DiscreteStatespaceSystem(
@@ -717,49 +746,81 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             second_time: Current simulation time in seconds.
             date_time: Current simulation date/time.
             step_size: Current simulation step size.
+
+        Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the dynamics); the inner ``ss_model`` only carries the
+        state between steps.
         """
-        # Build input vector u with fixed inputs first
-        # Stack along dim=2 to get shape (n_s, n_c, n_v) from (n_s, n_c) scalars
-        u = torch.stack(
-            [
-                self.input["outdoorTemperature"].get(),
-                self.input["supplyAirFlowRate"].get(),
-                self.input["exhaustAirFlowRate"].get(),
-                self.input["supplyAirTemperature"].get(),
-                self.input["globalIrradiation"].get(),
-                self.input["numberOfPeople"].get(),
-                self.input["heatGain"].get(),
-            ],
-            dim=2,
-        )
-
-        if self.n_boundary_temperature == 1:
-            u = torch.cat(
-                [u, self.input["boundaryTemperature"].get().unsqueeze(2)], dim=2
+        inputs = {
+            port: self.input[port].get()
+            for port in (
+                "outdoorTemperature", "supplyAirFlowRate", "exhaustAirFlowRate",
+                "supplyAirTemperature", "globalIrradiation", "numberOfPeople",
+                "heatGain",
             )
-        # Add adjacent zone temperatures at the end
+        }
+        if self.n_boundary_temperature == 1:
+            inputs["boundaryTemperature"] = self.input["boundaryTemperature"].get()
         if self.n_adjacent_zones > 0:
-            # adjacentZoneTemperature is a Vector, so get() returns (n_s, n_c, n_v)
-            # We need to concatenate along dim=2
-            adj_temp = self.input["adjacentZoneTemperature"].get()
-            u = torch.cat([u, adj_temp], dim=2)
+            # Vector port: get() returns (n_s, n_c, n_v)
+            inputs["adjacentZoneTemperature"] = self.input[
+                "adjacentZoneTemperature"
+            ].get()
 
-        # Set the input vector
-        self.ss_model.input["u"]._set(u, i_t=step_index)
+        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.ss_model.set_state(x_next)
+        self.output["indoorTemperature"]._set(outs["indoorTemperature"], i_t=step_index)
+        self.output["wallTemperature"]._set(outs["wallTemperature"], i_t=step_index)
 
-        # Execute state space model step
-        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step dynamics: ``(state, inputs, params) -> (new_state, outputs)``.
 
-        # Get the output vector
-        y = self.ss_model.output["y"].get()  # Shape: (n_s, n_c, n_v)
+        The functorch-compatible re-expression of :meth:`do_step` -- it rebuilds
+        the RC matrices from ``params`` (:meth:`_build_matrices`) and takes one
+        bilinear ZOH step, with **no ports/history/state mutation**.  ``params``
+        being plain-tensor arguments (not ``tps.Parameter`` methods) is what makes
+        ``vmap(jacrev(...))`` clean: it yields the per-segment collocation Jacobian
+        blocks (``dx'/dx`` and ``dx'/dtheta``) in one shot.
 
-        # print(self.output["indoorTemperature"].history.size)
-        # print(self.output["wallTemperature"].history.size)
+        Args:
+            x: state ``(n_c, n_states)`` = ``[T_indoor, T_wall, (T_boundary),
+                (T_adj...)]``.
+            inputs: dict of resolved input-port values (each ``(n_c,)`` scalar, or
+                ``(n_c, n_v)`` for ``adjacentZoneTemperature``).  Assembled here
+                into the ``do_step`` input order.
+            params: dict of *physical* parameter values (:attr:`PARAM_NAMES`).
+            sample_time: step size in seconds.
 
-        # Update individual outputs from the output vector
-        # y[:, :, 0] gives (n_s, n_c) which is correct for Scalar._set()
-        self.output["indoorTemperature"]._set(y[:, :, 0], i_t=step_index)
-        self.output["wallTemperature"]._set(y[:, :, 1], i_t=step_index)
+        Returns:
+            ``(x_next (n_c, n_states), {"indoorTemperature", "wallTemperature"})``.
+        """
+        # The matrices depend only on params, not on (x, u): cache them per
+        # params-dict identity so a sequential rollout builds them once per
+        # theta instead of once per step (see OneStepComposer._params_for /
+        # System._forward_params).  sample_time is part of the key because the
+        # attached disc_cache holds (Ad, Bd) discretized at a specific T.
+        cache = getattr(self, "_fwd_mat_cache", None)
+        if cache is None or cache[0] is not params or cache[2] != sample_time:
+            cache = (params, self._build_matrices(params), sample_time, {})
+            self._fwd_mat_cache = cache
+        A, B, C, D, E, F = cache[1]
+        cols = [
+            inputs["outdoorTemperature"], inputs["supplyAirFlowRate"],
+            inputs["exhaustAirFlowRate"], inputs["supplyAirTemperature"],
+            inputs["globalIrradiation"], inputs["numberOfPeople"], inputs["heatGain"],
+        ]
+        if self.n_boundary_temperature == 1:
+            cols.append(inputs["boundaryTemperature"])
+        u = torch.stack(cols, dim=-1)  # (n_c, n_base_inputs)
+        if self.n_adjacent_zones > 0:
+            u = torch.cat([u, inputs["adjacentZoneTemperature"]], dim=-1)
+        x_next, y = bilinear_onestep(
+            A, B, C, D, E, F, x, u, sample_time, disc_cache=cache[3]
+        )
+        return x_next, {"indoorTemperature": y[..., 0], "wallTemperature": y[..., 1]}
 
 
 def brick_signature_pattern():

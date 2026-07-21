@@ -344,6 +344,31 @@ class TimeSeriesInputSystem(core.System):
         else:
             is_cached = False
 
+        # Fast path: the window is unchanged AND the (fixed) value tensor is
+        # already built -> skip the expensive rebuild.  ``initialize`` is
+        # otherwise re-run on every ``model.initialize`` (i.e. every estimator
+        # objective / gradient / constraint evaluation), and even on a data
+        # cache-hit it would rebuild the value array and rescan for NaNs --
+        # ~0.05 s each, thousands of times, the dominant estimation cost.  The
+        # time-series "state" is just the data, which is constant for a fixed
+        # window, so skipping that rebuild is safe.  The output PORT must still
+        # be re-initialized: this may run inside a functorch grad transform
+        # (jacrev of the estimation objective), and ``do_step`` writes the port
+        # tensor in place -- mutating a tensor captured from OUTSIDE the
+        # transform is an error, so the (cheap) port init recreates it inside.
+        if (
+            is_cached
+            and getattr(self, "values", None) is not None
+            and getattr(self, "batch_size", None) == len(start_time)
+        ):
+            self.output["value"].initialize(
+                n_t=self.n_timesteps,
+                n_s=self.batch_size,
+                n_c=1,
+                values=self.values,
+            )
+            return
+
         if is_cached == False:
             self.df = []
             self._cached_initialize_arguments = []

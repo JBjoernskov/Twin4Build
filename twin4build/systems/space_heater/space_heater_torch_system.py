@@ -11,7 +11,10 @@ from scipy.optimize import fsolve
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build import core
-from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+from twin4build.systems.utils.discrete_statespace_system import (
+    DiscreteStatespaceSystem,
+    bilinear_onestep,
+)
 from twin4build.translator.translator import (
     StepRule,
     AnyPathRule,
@@ -390,6 +393,11 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         x0_tensor = self._get_initial_state_tensor()
         self.ss_model.set_state(x0_tensor)
 
+        # Drop per-params forward caches: a fresh simulation must not reuse
+        # matrices (or their autograd graph) from a previous run.
+        self._fwd_mat_cache = None
+        self._forward_params_cache = None
+
         self.INITIALIZED = True
 
     def _ua_residual(self, UA_candidate):
@@ -454,24 +462,24 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
         return x0
 
-    def _create_state_space_model(self):
-        """Create the state-space model for the space heater.
+    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = ("thermalMassHeatCapacity", "UA")
 
-        This method creates a discrete state-space model representing the thermal
-        dynamics of the space heater. The model includes:
-        - State matrix A for thermal dynamics (n_c, n, n)
-        - Input matrix B for external inputs (n_c, n, n_inputs)
-        - Output matrix C for temperature output (n_c, n_outputs, n)
-        - Feedthrough matrix D (n_c, n_outputs, n_inputs)
-        - State-input coupling matrix E for flow effects (n_c, n_inputs, n, n)
-        - Input-input coupling matrix F for supply temperature effects (n_c, n_inputs, n, n_inputs)
+    def _build_matrices(self, p=None):
+        """Build the radiator state-space matrices ``(A, B, C, D, E, F)`` from the
+        physical parameters -- a pure function of ``p`` (a dict of physical values
+        for :attr:`PARAM_NAMES`; defaults to ``self.<name>.get()``).  Passing ``p``
+        is the functorch fast path; see the thermal system for the rationale.
         """
+        if p is None:
+            p = {name: getattr(self, name).get() for name in self.PARAM_NAMES}
+
         n = self.nelements
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
 
         # Get parameters - shape (n_c,)
-        C_elem = self.thermalMassHeatCapacity.get() / n  # (n_c,)
-        UA_elem = self.UA.get() / n  # (n_c,)
+        C_elem = p["thermalMassHeatCapacity"] / n  # (n_c,)
+        UA_elem = p["UA"] / n  # (n_c,)
         n_c = C_elem.shape[0]
         c_p = constants.CP_WATER
 
@@ -501,11 +509,17 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         C_out[:, 0, n - 1] = 1.0
         D = torch.zeros((n_c, 1, n_inputs), dtype=torch.float64)
 
+        return A, B, C_out, D, E, F
+
+    def _create_state_space_model(self):
+        """Create the internal :class:`DiscreteStatespaceSystem` used by
+        ``do_step`` from the matrices built by :meth:`_build_matrices`."""
+        n = self.nelements
+        A, B, C_out, D, E, F = self._build_matrices()
+
         # Initial state - shape (n_c, n_states)
         x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[
-            0, :, :
-        ]  # Take first simulation, all components: (n_c, n_states)
+        x0 = x0_tensor[0, :, :]  # first simulation, all components: (n_c, n_states)
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A,
@@ -519,6 +533,38 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             add_noise=False,
             id=f"ss_model_{self.id}",
         )
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step radiator dynamics ``(state, inputs, params) -> (new_state, outputs)``.
+
+        Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` is a
+        dict assembled here in do_step order ``[supplyWaterTemperature,
+        waterFlowRate, indoorTemperature]``; ``params`` a dict for
+        :attr:`PARAM_NAMES`.  Returns the next element temperatures and the named
+        outputs ``{outletWaterTemperature, Power}`` (Power = UA * sum(T_i -
+        T_zone), the heat delivered to the zone -- the coupling into thermal).
+        """
+        # Params-only matrices, cached per params-dict identity (rebuilt once
+        # per theta in a sequential rollout, not once per step).  sample_time
+        # is part of the key: the attached disc_cache holds (Ad, Bd)
+        # discretized at a specific T.
+        cache = getattr(self, "_fwd_mat_cache", None)
+        if cache is None or cache[0] is not params or cache[2] != sample_time:
+            cache = (params, self._build_matrices(params), sample_time, {})
+            self._fwd_mat_cache = cache
+        A, B, C_out, D, E, F = cache[1]
+        u = torch.stack(
+            [inputs["supplyWaterTemperature"], inputs["waterFlowRate"],
+             inputs["indoorTemperature"]], dim=-1,
+        )
+        x_next, y = bilinear_onestep(
+            A, B, C_out, D, E, F, x, u, sample_time, disc_cache=cache[3]
+        )
+        outlet = y[..., 0]
+        UA_elem = params["UA"] / self.nelements
+        T_zone = inputs["indoorTemperature"]
+        Power = UA_elem * torch.sum(x_next - T_zone.unsqueeze(-1), dim=-1)
+        return x_next, {"outletWaterTemperature": outlet, "Power": Power}
 
     def do_step(
         self,
@@ -541,37 +587,25 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             date_time (date_time, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
+
+        Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the dynamics); the inner ``ss_model`` only carries the
+        state between steps.
         """
-        # Stack along dim=2 to get shape (n_s, n_c, n_inputs) from (n_s, n_c) scalars
-        u = torch.stack(
-            [
-                self.input["supplyWaterTemperature"].get(),
-                self.input["waterFlowRate"].get(),
-                self.input["indoorTemperature"].get(),
-            ],
-            dim=2,
+        inputs = {
+            "supplyWaterTemperature": self.input["supplyWaterTemperature"].get(),
+            "waterFlowRate": self.input["waterFlowRate"].get(),
+            "indoorTemperature": self.input["indoorTemperature"].get(),
+        }
+        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
-        self.ss_model.input["u"]._set(u, i_t=step_index)
-        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
-
-        # y shape: (n_s, n_c, n_outputs)
-        y = self.ss_model.output["y"].get()
-        outletWaterTemperature = y[:, :, 0]  # (n_s, n_c)
-
-        # Calculate power: UA_elem * sum(T_i - T_zone) for all elements
-        # UA_elem shape: (n_c,), temps shape: (n_s, n_c, n_states), u[:,:,2] shape: (n_s, n_c)
-        UA_elem = self.UA.get() / self.nelements  # (n_c,)
-        temps = self.ss_model.get_state()  # (n_s, n_c, n_states)
-        T_zone = u[:, :, 2]  # (n_s, n_c)
-        # Expand T_zone to match temps: (n_s, n_c, 1) for broadcasting
-        Power = UA_elem.unsqueeze(0) * torch.sum(
-            temps - T_zone.unsqueeze(2), dim=2
-        )  # (n_s, n_c)
-
+        self.ss_model.set_state(x_next)
         self.output["outletWaterTemperature"]._set(
-            outletWaterTemperature, i_t=step_index
+            outs["outletWaterTemperature"], i_t=step_index
         )
-        self.output["Power"]._set(Power, i_t=step_index)
+        self.output["Power"]._set(outs["Power"], i_t=step_index)
 
 
 def saref_signature_pattern():

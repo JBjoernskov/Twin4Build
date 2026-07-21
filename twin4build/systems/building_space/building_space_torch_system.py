@@ -219,6 +219,9 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
         self.thermal.initialize(start_time, end_time, step_size)
         self.mass.initialize(start_time, end_time, step_size)
+        # Drop the per-params routing cache (fresh graph per run, like the
+        # submodels' matrix caches).
+        self._fwd_param_cache = None
         self.INITIALIZED = True
 
     @property
@@ -255,6 +258,51 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         """
         self.thermal.do_step(second_time, date_time, step_size, step_index=step_index)
         self.mass.do_step(second_time, date_time, step_size, step_index=step_index)
+
+    # State (thermal | mass) is discovered generically by System.get_state /
+    # set_state via the owned submodels' ``tps.State`` -- no per-component code.
+
+    @staticmethod
+    def _resolve_sub_params(sub, prefix, params):
+        """Full physical-parameter dict for a submodel: estimated values from
+        ``params`` (keyed ``"<prefix>.<name>"``), the rest from the submodel's own
+        ``tps.Parameter`` defaults."""
+        out = {}
+        for name in sub.PARAM_NAMES:
+            key = f"{prefix}.{name}"
+            out[name] = params[key] if key in params else getattr(sub, name).get()
+        return out
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step of the composite = thermal ++ mass.
+
+        State is ``[thermal_state | mass_state]`` (the order
+        :meth:`System.get_state` produces).  ``params`` is keyed by the composite
+        attr path (``"thermal.C_air"``, ``"mass.V"``, ...); it is routed to the two
+        submodels, filling non-estimated entries from their defaults.  Both
+        submodels read the shared ``inputs`` dict (they pick the ports they need).
+
+        Returns ``(x_next, {**thermal_outputs, **mass_outputs})`` -- i.e.
+        ``indoorTemperature``, ``wallTemperature``, ``indoorCO2``.
+        """
+        n_th = self.thermal.state_size()
+        x_th, x_ma = x[..., :n_th], x[..., n_th:]
+        # Identity-keyed cache: a sequential rollout re-calls forward with the
+        # SAME params dict every step (see OneStepComposer._params_for), so
+        # the sub-param routing -- and, downstream, the submodels' state-space
+        # matrix builds -- are theta-only work that can be done once per theta.
+        cache = getattr(self, "_fwd_param_cache", None)
+        if cache is None or cache[0] is not params:
+            cache = (
+                params,
+                self._resolve_sub_params(self.thermal, "thermal", params),
+                self._resolve_sub_params(self.mass, "mass", params),
+            )
+            self._fwd_param_cache = cache
+        _, p_th, p_ma = cache
+        x_th_n, out_th = self.thermal.forward(x_th, inputs, p_th, sample_time)
+        x_ma_n, out_ma = self.mass.forward(x_ma, inputs, p_ma, sample_time)
+        return torch.cat([x_th_n, x_ma_n], dim=-1), {**out_th, **out_ma}
 
 
 def saref_signature_pattern_sensor():

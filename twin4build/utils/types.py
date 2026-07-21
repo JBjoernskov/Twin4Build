@@ -1020,6 +1020,79 @@ class Scalar:
         return copy
 
 
+def normalize_unit(
+    v: torch.Tensor,
+    min_value: torch.Tensor,
+    max_value: torch.Tensor,
+    log_scaling=False,
+) -> torch.Tensor:
+    """THE physical -> normalized-[0, 1] map (single source of truth).
+
+    Pure tensor math, torch.func-safe (no Parameter access, no ``.item()``),
+    shared by :class:`Parameter` / :class:`TensorParameter` and every
+    estimator code path.  ``log_scaling`` is a bool (one parameter) or a
+    boolean tensor mask (a mixed theta vector, elementwise).
+    """
+    if isinstance(log_scaling, torch.Tensor):
+        lin = (v - min_value) / (max_value - min_value)
+        safe_lb = min_value.clamp(min=1e-30)
+        safe_ub = max_value.clamp(min=1e-30)
+        logv = (torch.log(v.clamp(min=1e-30)) - torch.log(safe_lb)) / (
+            torch.log(safe_ub) - torch.log(safe_lb)
+        )
+        return torch.where(log_scaling, logv, lin)
+    if log_scaling:
+        return (torch.log(v) - torch.log(min_value)) / (
+            torch.log(max_value) - torch.log(min_value)
+        )
+    return (v - min_value) / (max_value - min_value)
+
+
+def denormalize_unit(
+    z: torch.Tensor,
+    min_value: torch.Tensor,
+    max_value: torch.Tensor,
+    log_scaling=False,
+) -> torch.Tensor:
+    """THE normalized-[0, 1] -> physical map (single source of truth).
+
+    Inverse of :func:`normalize_unit`; same contract (torch.func-safe, bool or
+    boolean-mask ``log_scaling``).
+    """
+    if isinstance(log_scaling, torch.Tensor):
+        lin = min_value + z * (max_value - min_value)
+        safe_lb = min_value.clamp(min=1e-30)
+        safe_ub = max_value.clamp(min=1e-30)
+        logv = torch.exp(
+            torch.log(safe_lb) + z * (torch.log(safe_ub) - torch.log(safe_lb))
+        )
+        return torch.where(log_scaling, logv, lin)
+    if log_scaling:
+        log_min = torch.log(min_value)
+        return torch.exp(z * (torch.log(max_value) - log_min) + log_min)
+    return z * (max_value - min_value) + min_value
+
+
+def theta_bound_tensors(parameters):
+    """Plain ``(lb, ub, log_mask)`` tensors for a flat parameter list.
+
+    The vectorized companion to :func:`denormalize_unit`: the estimator's fast
+    paths denormalize a whole theta vector at once and need the physical
+    bounds and scaling as plain tensors (``Parameter`` itself is a Tensor
+    subclass and breaks under functorch).  Scalar bounds only (``n_c == 1``).
+    """
+    lb = torch.tensor(
+        [float(np.asarray(p.min_value.detach()).flatten()[0]) for p in parameters]
+    )
+    ub = torch.tensor(
+        [float(np.asarray(p.max_value.detach()).flatten()[0]) for p in parameters]
+    )
+    log_mask = torch.tensor(
+        [getattr(p, "scaling", "linear") == "log" for p in parameters]
+    )
+    return lb, ub, log_mask
+
+
 class Parameter(nn.Parameter):
     """
     A custom nn.Parameter implementation that normalizes the data between 0 and 1 to stabilize gradients in physical systems where the parameters scales can be different.
@@ -1194,20 +1267,14 @@ class Parameter(nn.Parameter):
             torch.allclose(min_value, max_value) == False
         ), "min_value and max_value must be different"
 
-        if self._scaling == "log":
-            return (torch.log(v) - torch.log(self._min_value)) / (
-                torch.log(self._max_value) - torch.log(self._min_value)
-            )
-        else:
-            return (v - self._min_value) / (self._max_value - self._min_value)
+        return normalize_unit(
+            v, self._min_value, self._max_value, self._scaling == "log"
+        )
 
     def denormalize(self, v: torch.Tensor):
-        if self._scaling == "log":
-            log_min = torch.log(self._min_value)
-            log_range = torch.log(self._max_value) - log_min
-            return torch.exp(v * log_range + log_min)
-        else:
-            return v * (self._max_value - self._min_value) + self._min_value
+        return denormalize_unit(
+            v, self._min_value, self._max_value, self._scaling == "log"
+        )
 
     def get(self):
         """Get the denormalized value."""
@@ -1267,6 +1334,199 @@ class Parameter(nn.Parameter):
             requires_grad=self.requires_grad,
             scaling=self._scaling,
         )
+
+
+class State:
+    """A System's continuous internal state -- first-class, alongside :class:`Parameter` / :class:`Scalar` / :class:`Vector`.
+
+    A ``System`` holds three kinds of things: I/O ports (:class:`Scalar` /
+    :class:`Vector`), parameters (:class:`Parameter`), and **state**.  State was
+    historically stored as ad-hoc plain attributes (``self.x``, ``self.err_prev``,
+    ``ss_model.x``); ``State`` makes it a declared, typed member so it can be
+    enumerated generically (which components carry state, how big, get/set) --
+    the foundation for multiple-shooting / collocation, where each ``State``
+    becomes a per-segment boundary decision variable.
+
+    Semantics vs. the neighbouring types:
+
+    * Unlike ports, ``State`` keeps **no time history** -- it is a single current
+      snapshot of shape ``(n_s, n_c, n_v)`` (n_v = the state dimension).
+    * Unlike :class:`Parameter`, it is **not optimized** as ``theta`` and is **not**
+      an ``nn.Parameter`` -- in the functional one-step (``forward``) it is passed
+      as an explicit *argument*, not substituted via ``functional_call``.
+    * It carries an **initial-condition hook** (``init_value`` constant or
+      ``init_fn`` callable evaluated at :meth:`initialize`), the one thing ports /
+      parameters don't model -- e.g. seeding air/wall temperatures from a
+      component's start values or output ports.
+
+    Args:
+        n_v: State dimension (number of state variables). May be set at
+            :meth:`initialize` instead.
+        init_value: Constant initial value broadcast to ``(n_s, n_c, n_v)`` when
+            no ``init_fn`` is given.
+        init_fn: Optional ``callable(component) -> tensor`` evaluated at
+            :meth:`initialize`, returning the initial state (broadcastable to
+            ``(n_s, n_c, n_v)``).  Lets a component derive its initial condition
+            from its own parameters / output ports.
+        lb, ub: Optional physical bounds (each broadcastable to ``(n_v,)``) used to
+            box the boundary decision variables in collocation.
+        names: Optional per-dimension names for diagnostics.
+    """
+
+    def __init__(
+        self,
+        n_v: Optional[int] = None,
+        init_value: Union[float, int] = 0.0,
+        init_fn: Optional[callable] = None,
+        lb=None,
+        ub=None,
+        names: Optional[List[str]] = None,
+    ) -> None:
+        self._n_v = n_v
+        self._init_value = init_value
+        self._init_fn = init_fn
+        self._lb = lb
+        self._ub = ub
+        self._names = names
+        self._tensor = None
+        self._n_s = None
+        self._n_c = None
+        self._initialized = False
+
+    @property
+    def tensor(self):
+        return self._tensor
+
+    @property
+    def n_v(self):
+        return self._n_v
+
+    @property
+    def n_s(self):
+        return self._n_s
+
+    @property
+    def n_c(self):
+        return self._n_c
+
+    @property
+    def lb(self):
+        return self._lb
+
+    @property
+    def ub(self):
+        return self._ub
+
+    def names(self) -> List[str]:
+        if self._names is not None:
+            return list(self._names)
+        return [f"x{i}" for i in range(self._n_v or 0)]
+
+    def initialize(
+        self,
+        n_s: int = 1,
+        n_c: int = 1,
+        n_v: Optional[int] = None,
+        component=None,
+        force: bool = False,
+    ) -> "State":
+        """Allocate the state tensor and apply the initial condition.
+
+        Args:
+            n_s: Number of parallel simulations (segments in collocation).
+            n_c: Number of parallel components.
+            n_v: State dimension (overrides the constructor value if given).
+            component: The owning System, forwarded to ``init_fn`` so a component
+                can seed its state from its own attributes / ports.
+            force: Reinitialize even if already initialized (re-seeds the value).
+        """
+        if n_v is not None:
+            self._n_v = n_v
+        assert self._n_v is not None, "State.initialize requires n_v"
+        self._n_s = n_s
+        self._n_c = n_c
+
+        if self._initialized and not force:
+            # Keep the current value; just (re)validate the batch shape.  A new
+            # simulation run re-seeds explicitly via force=True or set().
+            if self._tensor is not None and self._tensor.shape == (n_s, n_c, self._n_v):
+                return self
+
+        if self._init_fn is not None and component is not None:
+            val = self._init_fn(component)
+            self._tensor = self._to_shape(val, n_s, n_c, self._n_v)
+        else:
+            self._tensor = torch.full(
+                (n_s, n_c, self._n_v), float(self._init_value), dtype=torch.float64
+            )
+        self._initialized = True
+        return self
+
+    @staticmethod
+    def _to_shape(v, n_s, n_c, n_v):
+        if not isinstance(v, torch.Tensor):
+            v = torch.as_tensor(v, dtype=torch.float64)
+        v = v.to(torch.float64)
+        if v.dim() == 1 and v.shape[0] == n_v:  # (n_v,)
+            v = v.reshape(1, 1, n_v).expand(n_s, n_c, n_v).clone()
+        elif v.dim() == 2 and v.shape == (n_c, n_v):  # (n_c, n_v)
+            v = v.reshape(1, n_c, n_v).expand(n_s, n_c, n_v).clone()
+        elif v.dim() == 3 and v.shape == (n_s, n_c, n_v):
+            v = v.clone()
+        elif v.dim() == 0:
+            v = v.reshape(1, 1, 1).expand(n_s, n_c, n_v).clone()
+        else:
+            raise ValueError(
+                f"State value shape {tuple(v.shape)} not broadcastable to "
+                f"({n_s}, {n_c}, {n_v})"
+            )
+        return v
+
+    def get(self) -> torch.Tensor:
+        """Current state, shape ``(n_s, n_c, n_v)`` (cloned so later in-place
+        writes can't invalidate tensors captured by autograd / ``jacrev``)."""
+        return None if self._tensor is None else self._tensor.clone()
+
+    def set(self, v: torch.Tensor) -> None:
+        """Set the state from a tensor broadcastable to ``(n_s, n_c, n_v)``.
+
+        Preserves gradients (does not detach) so a decision-variable slice can be
+        written straight in during multiple-shooting / collocation.  A tensor
+        already at the exact ``(n_s, n_c, n_v)`` shape is stored as-is (no clone),
+        matching the simulation hot path (``self.x = x_new``).
+        """
+        if (
+            isinstance(v, torch.Tensor)
+            and v.dim() == 3
+            and v.shape == (self._n_s, self._n_c, self._n_v)
+        ):
+            self._tensor = v
+        else:
+            self._tensor = self._to_shape(v, self._n_s, self._n_c, self._n_v)
+
+    def reset(self, tensor: torch.Tensor) -> None:
+        """Adopt ``tensor`` as the current state, syncing ``(n_s, n_c, n_v)`` from
+        its shape.  Used when a component re-assigns its whole state (e.g. on a new
+        simulation run whose batch size ``n_s`` differs)."""
+        assert (
+            isinstance(tensor, torch.Tensor) and tensor.dim() == 3
+        ), f"State.reset expects a 3D (n_s, n_c, n_v) tensor, got {getattr(tensor, 'shape', type(tensor))}"
+        self._n_s, self._n_c, self._n_v = tensor.shape
+        self._tensor = tensor
+        self._initialized = True
+
+    def copy(self) -> "State":
+        return State(
+            n_v=self._n_v,
+            init_value=self._init_value,
+            init_fn=self._init_fn,
+            lb=self._lb,
+            ub=self._ub,
+            names=self._names,
+        )
+
+    def __str__(self) -> str:
+        return str(self._tensor)
 
 
 class TensorParameter:
@@ -1372,20 +1632,14 @@ class TensorParameter:
             torch.allclose(min_value, max_value) == False
         ), "min_value and max_value must be different"
 
-        if self._scaling == "log":
-            return (torch.log(v) - torch.log(self._min_value)) / (
-                torch.log(self._max_value) - torch.log(self._min_value)
-            )
-        else:
-            return (v - self._min_value) / (self._max_value - self._min_value)
+        return normalize_unit(
+            v, self._min_value, self._max_value, self._scaling == "log"
+        )
 
     def denormalize(self, v: torch.Tensor):
-        if self._scaling == "log":
-            log_min = torch.log(self._min_value)
-            log_range = torch.log(self._max_value) - log_min
-            return torch.exp(v * log_range + log_min)
-        else:
-            return v * (self._max_value - self._min_value) + self._min_value
+        return denormalize_unit(
+            v, self._min_value, self._max_value, self._scaling == "log"
+        )
 
     def get(self):
         """Get the denormalized value."""

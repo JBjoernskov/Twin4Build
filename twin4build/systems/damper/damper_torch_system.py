@@ -238,22 +238,36 @@ class DamperTorchSystem(core.System, nn.Module):
         All calculations are vectorized via n_c dimension.
         b and c are recomputed from the current a and nominalAirFlowRate
         so that gradients flow correctly during estimation.
+
+        Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the math).
         """
-        # Get input damper position - shape: (n_s, n_c)
-        damper_position = self.input["damperPosition"].get()
+        inputs = {"damperPosition": self.input["damperPosition"].get()}
+        _, outs = self.forward(None, inputs, self._forward_params(), step_size)
+        self.output["damperPosition"]._set(
+            outs["damperPosition"], i_t=step_index, ic=self.n_c
+        )
+        self.output["airFlowRate"]._set(
+            outs["airFlowRate"], i_t=step_index, ic=self.n_c
+        )
 
-        # Recompute b, c from current a so gradient graph stays connected
-        a = self.a.get()
+    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    PARAM_NAMES = ("nominalAirFlowRate", "a")
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure algebraic map ``(inputs, params) -> outputs`` (stateless).
+
+        Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` provides
+        ``damperPosition``; ``params`` a dict for :attr:`PARAM_NAMES`.  ``x`` (an
+        empty state) is passed through.  Returns
+        ``(x, {"damperPosition", "airFlowRate"})``.
+        """
+        dp = inputs["damperPosition"]
+        a = params["a"]
         c = -a
-        b = torch.log((self.nominalAirFlowRate.get() - c) / a)
-
-        # Calculate air flow rate using exponential equation
-        # Broadcasting: (n_s, n_c) * (n_c,) -> (n_s, n_c)
-        air_flow_rate = a * torch.exp(b * damper_position) + c
-
-        # Update outputs
-        self.output["damperPosition"]._set(damper_position, i_t=step_index, ic=self.n_c)
-        self.output["airFlowRate"]._set(air_flow_rate, i_t=step_index, ic=self.n_c)
+        b = torch.log((params["nominalAirFlowRate"] - c) / a)
+        air_flow_rate = a * torch.exp(b * dp) + c
+        return x, {"damperPosition": dp, "airFlowRate": air_flow_rate}
 
 
 def saref_signature_pattern():

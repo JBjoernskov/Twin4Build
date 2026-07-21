@@ -55,7 +55,25 @@ class MaxSystem(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        inputs = self.input["inputs"].get()
+        """Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the math)."""
+        _, outs = self.forward(
+            None, {"inputs": self.input["inputs"].get()}, {}, step_size
+        )
+        self.output["value"]._set(outs["value"], step_index)
+
+    #: No physical parameters (the ``forward`` theta contract).
+    PARAM_NAMES = ()
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
+
+        ``inputs`` provides ``inputs`` with the vector of values along the
+        last dim; the smooth max reduces that dim, so the result keeps
+        whatever batch dims the input carried (``(1,)`` under the composer,
+        ``(n_s, n_c)`` under ``do_step``).  Returns ``(x, {"value"})``.
+        """
+        vals = inputs["inputs"]
         k = 50.0
-        smooth_max = torch.logsumexp(k * inputs, dim=-1) / k
-        self.output["value"]._set(smooth_max, step_index)
+        smooth_max = torch.logsumexp(k * vals, dim=-1) / k
+        return x, {"value": smooth_max}
