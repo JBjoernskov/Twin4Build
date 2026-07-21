@@ -83,6 +83,11 @@ database = [
     "psycopg2-binary",
     "sqlalchemy",
 ]
+# IPOPT-backed estimation (single-shooting via CasADi and the collocation
+# transcription).  CasADi ships IPOPT + MUMPS in a single pip wheel.
+estimation = [
+    "casadi",
+]
 all = [
     "coverage",
     "black",
@@ -94,7 +99,8 @@ all = [
     "myst-parser",
     "psycopg2-binary",
     "sqlalchemy",
-    "twine"
+    "twine",
+    "casadi"
 ]
 
 [project.urls]
