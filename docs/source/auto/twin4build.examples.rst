@@ -8,7 +8,6 @@ Package
    :maxdepth: 1
 
    twin4build.examples.estimator_example
-   twin4build.examples.neural_policy_controller_example
 
 Modules
 -------
