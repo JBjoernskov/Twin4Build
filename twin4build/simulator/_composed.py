@@ -1,26 +1,50 @@
-"""Compose component ``forward``s into one pure one-step map for fast collocation.
+"""Composed-map simulation: component ``forward``s fused into one pure step.
 
-Stage-3 collocation keeps the **defects** exact (computed by the real batched
-simulator, with full coupling/feedback) and replaces only the **Jacobian** with a
-single ``vmap(jacrev(F))`` call.  This module builds that ``F``.
+The object-graph engine (:meth:`Simulator.simulate`) steps every component's
+``do_step`` through the ports -- flexible, but each step pays Python dispatch
+(Gauss-Seidel traversal, ``tps`` port bookkeeping, history logging) and each
+run pays ``model.initialize``.  Since every composable component's ``do_step``
+is a thin port-I/O wrapper that DELEGATES its math to a pure ``forward``
+method (single source of truth -- see the developer reference's
+``do_step``/``forward`` contract), the same model can also be simulated as a
+plain sequential torch rollout of one composed function:
 
-``F(states_flat, theta, captured) -> x_next_flat`` runs the model's stateful (and
-feeding algebraic) components' ``forward`` methods in execution order for one
-segment, threading outputs to inputs.  For each input port it uses either
+    y_{t+1}, meas_t = F_aug(y_t, theta, CAP[t])
 
-* the **fresh** output of an upstream component that (a) has a ``forward`` and
-  (b) executes earlier in the order -- following pass-through sensors to their
-  source -- so the estimated-parameter and strong-state couplings are exact; or
-* a **captured** constant sampled from a reference simulation at that segment's
-  timestep -- for exogenous drivers (weather/schedules) and the few cycle-broken
-  feedback edges (e.g. ``office.heatGain <- space_heater.Power``).
+This module provides that machinery, consumed through the
+:class:`~twin4build.simulator.simulator.Simulator` facade
+(``compose`` / ``capture_rollout`` / ``rollout_composed``) by
 
-The captured feedback makes the Jacobian *approximate* only in the weak one-step
-feedback terms, which is immaterial for IPOPT convergence (it consumes
-approximate Jacobians routinely) while the defects stay exact.
+* the Estimator's fast single-shooting objective
+  (:mod:`twin4build.estimator._shooting`),
+* the Estimator's collocation transcription
+  (:mod:`twin4build.estimator._transcription`, which consumes ``F`` under
+  ``vmap(jacrev(...))`` for the sparse NLP Jacobian), and
+* the Optimizer's fast control objective
+  (:mod:`twin4build.optimizer._fast_objective`).
 
-The composed map is pure and functorch-traceable, so ``vmap(jacrev(F))`` yields
-the block-bidiagonal collocation Jacobian in one shot.
+**How the composition works.**  :class:`OneStepComposer` analyzes the model
+graph once and threads the ``forward`` methods in execution order.  For each
+input port of a composed component it uses one of
+
+* a **fresh** value -- the output of an upstream component composed earlier in
+  the same step (pass-through sensors followed to their source), so parameter
+  and state couplings are exact;
+* a **feedback** value -- a cut cycle edge (the producer executes *later* in
+  the Gauss-Seidel order, e.g. ``office.heatGain <- space_heater.Power``).
+  These are one-step *lag variables*: :meth:`OneStepComposer.F_aug` appends
+  them to the state, reproducing ``do_step``'s one-step-delayed feedback
+  semantics exactly;
+* a **captured** constant -- truly exogenous drivers (weather, schedules,
+  data-driven occupancy), frozen from one reference ``do_step`` rollout
+  (:func:`capture_reference_rollout`).  Exogenous signals are independent of
+  the unknowns by definition, so capturing once is valid for every parameter
+  or control iterate (callers that *do* optimize an exogenous trajectory --
+  the Optimizer -- override the corresponding captured slots per step).
+
+The composed map is pure and functorch-traceable: sequential rollouts
+differentiate with plain autograd, and collocation maps ``vmap(jacrev(F))``
+over segments.
 """
 
 from __future__ import annotations
@@ -39,7 +63,7 @@ import twin4build.utils.types as tps
 def _has_real_forward(comp) -> bool:
     """True iff ``comp``'s class overrides ``forward`` (not the ``nn.Module`` base
     stub, which every ``nn.Module`` inherits).  Components without their own
-    ``forward`` (sensors, schedules, weather, occupancy, Max, ...) are treated as
+    ``forward`` (sensors, schedules, weather, occupancy, ...) are treated as
     exogenous/pass-through by the composer."""
     f = getattr(type(comp), "forward", None)
     return f is not None and f is not nn.Module.forward
@@ -66,6 +90,73 @@ def _single_source(comp, port) -> Optional[Tuple[object, str]]:
                 conn = conns[0]
                 return conn.connects_system, conn.output_port
     return None
+
+
+def collect_stateful(model) -> List:
+    """Stateful components in execution order (composites only, not their subs).
+
+    A composite like ``BuildingSpaceTorchSystem`` owns state (thermal|mass) and
+    its submodels are not separate nodes in the execution order, so iterating
+    ``_flat_execution_order`` and taking ``System.is_stateful()`` (which walks the
+    owned ``tps.State``) yields each state exactly once.
+    """
+    order = getattr(model, "_flat_execution_order", None) or list(
+        model.components.values()
+    )
+    return [c for c in order if c.is_stateful()]
+
+
+class StateLayout:
+    """Flat <-> per-component packing of the stateful-component states.
+
+    Enumerates the model's stateful components (those owning a ``tps.State``, in
+    execution order) and lays their states out contiguously into a single vector
+    of width ``D = sum_c (n_c * state_size_c)``.
+    """
+
+    def __init__(self, components: List):
+        self.components = components
+        self.slices: List[Tuple[int, int]] = []  # (start, stop) into flat vector
+        self.shapes: List[Tuple[int, int]] = []  # (n_c, state_size) per component
+        offset = 0
+        for comp in components:
+            state = comp.get_state()  # (n_s, n_c, state_size)
+            n_c, ss = state.shape[1], state.shape[2]
+            width = n_c * ss
+            self.slices.append((offset, offset + width))
+            self.shapes.append((n_c, ss))
+            offset += width
+        self.width = offset  # D
+
+    def gather(self, n_s_index: int = 0) -> torch.Tensor:
+        """Flatten current component states at sim-batch index into ``(D,)``."""
+        parts = []
+        for comp, (n_c, ss) in zip(self.components, self.shapes):
+            s = comp.get_state()[n_s_index]  # (n_c, state_size)
+            parts.append(s.reshape(-1))
+        return torch.cat(parts) if parts else torch.zeros(0, dtype=torch.float64)
+
+    def scatter(self, seg_states: torch.Tensor) -> None:
+        """Write per-segment states into every component via ``set_state``.
+
+        ``seg_states`` has shape ``(K, D)`` (one flat state per segment); it is
+        unpacked and each component's ``set_state`` receives ``(K, n_c,
+        state_size)`` -- i.e. K segments live on the simulator's n_s axis.
+        """
+        K = seg_states.shape[0]
+        for comp, (start, stop), (n_c, ss) in zip(
+            self.components, self.slices, self.shapes
+        ):
+            block = seg_states[:, start:stop].reshape(K, n_c, ss)
+            comp.set_state(block)
+
+    def end_states(self, K: int) -> torch.Tensor:
+        """Collect each segment's *final* state into ``(K, D)`` after a sim."""
+        parts = []
+        for comp, (n_c, ss) in zip(self.components, self.shapes):
+            s = comp.get_state()  # (K, n_c, state_size)
+            parts.append(s.reshape(K, -1))
+        return torch.cat(parts, dim=1) if parts else torch.zeros((K, 0), dtype=torch.float64)
 
 
 class OneStepComposer:
@@ -469,13 +560,13 @@ def capture_reference_rollout(
 ):
     """THE reference-rollout capture (single source of truth).
 
-    One CONTINUOUS ``do_step`` rollout over ``[start_time, end_time)`` at the
-    model's *current* parameters, sampling every relevant input port right
-    after each step.  Every fast path that consumes ``F_aug`` (fast
-    single-shooting and fast collocation) obtains its frozen exogenous inputs
-    and warm values through this function.
+    One batched, CONTINUOUS ``do_step`` rollout over all periods at the
+    model's *current* parameters and inputs, sampling every relevant input
+    port right after each step.  Every fast path that consumes the composed
+    map obtains its frozen exogenous inputs and warm values through this
+    function.
 
-    Two properties only a continuous simulator run provides:
+    Two properties only a continuous ``do_step`` run provides:
 
     * **Stateful exogenous drivers** are evaluated correctly: e.g.
       ``OccupancySystem`` carries a ``C_prev`` memory and outputs zero
@@ -487,9 +578,17 @@ def capture_reference_rollout(
       order), so lag warm values and lagged step-0 sensor readings come out
       right by construction.
 
-    The captured signals are theta-independent by construction (anything theta
-    influences is inside the composer's cone, hence fresh or feedback), so
-    capturing once at the current parameters is valid for every theta.
+    The captured signals are independent of the unknowns by construction
+    (anything the estimated parameters influence is inside the composer's
+    cone, hence fresh or feedback; decision-variable slots are overridden by
+    the Optimizer), so capturing once at the current model state is valid for
+    every iterate.
+
+    The run is batched over the periods (all periods share one
+    ``model.initialize``), exactly like the object-graph objectives the fast
+    paths replace.  Decision-variable ports with ``requires_grad`` set keep
+    their current (initial-iterate) trajectories through the re-initialization,
+    which is what the Optimizer requires.
 
     Parameters
     ----------
@@ -497,19 +596,24 @@ def capture_reference_rollout(
         The simulator (model already configured) and the ``OneStepComposer``
         whose ``_captured_keys`` / ``_feedback_keys`` define what to sample.
     start_time, end_time, step_size
-        One period (scalars, not lists).
-    layout : _StateLayout, optional
+        Period lists (one entry per period).
+    layout : StateLayout, optional
         When given, the initial component states (right after ``initialize``)
-        are gathered into ``state0``.
+        are gathered into per-period ``state0`` vectors and per-period
+        augmented initial states ``Y0 = [state0 | FB[0]]`` are assembled.
     meas_ids : sequence of str, optional
         Measuring-device ids whose ``measuredValue`` input to sample per step.
 
     Returns
     -------
     types.SimpleNamespace
-        ``state0`` (``(D,)`` or None), ``CAP`` ``(n_t, n_captured)``,
-        ``FB`` ``(n_t, n_feedback)``, ``MEAS`` ``(n_t, len(meas_ids))``,
-        ``n_t``.
+        Per-period lists, indexed by period:
+        ``state0`` (each ``(D,)``; ``None`` without ``layout``),
+        ``Y0`` (each ``(D_aug,)``; ``None`` without ``layout``),
+        ``CAP`` (each ``(n_t_p, n_captured)``),
+        ``FB`` (each ``(n_t_p, n_feedback)``),
+        ``MEAS`` (each ``(n_t_p, len(meas_ids))``),
+        ``n_t`` (each ``int``).
     """
     import twin4build.core as core
 
@@ -519,29 +623,79 @@ def capture_reference_rollout(
     fb_keys = composer._feedback_keys
     meas_keys = [(mid, "measuredValue") for mid in meas_ids]
 
-    def _sample(dst_row, keys):
+    starts, ends, steps = list(start_time), list(end_time), list(step_size)
+    simulator.get_simulation_timesteps(starts, ends, steps)
+    model.initialize(starts, ends, steps)
+    sec, dts, max_t, n_ts = core.Simulator.get_simulation_timesteps(
+        starts, ends, steps
+    )
+    n_s = len(starts)
+    n_t = [int(n) for n in n_ts]
+
+    state0 = (
+        [layout.gather(p).detach().clone() for p in range(n_s)]
+        if layout is not None
+        else None
+    )
+    CAP = torch.zeros((int(max_t), n_s, len(cap_keys)), dtype=torch.float64)
+    FB = torch.zeros((int(max_t), n_s, len(fb_keys)), dtype=torch.float64)
+    MEAS = torch.zeros((int(max_t), n_s, len(meas_keys)), dtype=torch.float64)
+
+    def _sample(dst, keys):
         for k, key in enumerate(keys):
             cid, port = key[0], key[1]
             slot = key[2] if len(key) > 2 else 0
-            dst_row[k] = comps[cid].input[port].get().reshape(-1)[slot].detach()
+            val = comps[cid].input[port].get()
+            dst[:, k] = val.reshape(n_s, -1)[:, slot].detach()
 
-    simulator.get_simulation_timesteps([start_time], [end_time], [step_size])
-    model.initialize([start_time], [end_time], [step_size])
-    sec, dts, n_t, _ = core.Simulator.get_simulation_timesteps(
-        [start_time], [end_time], [step_size]
+    with torch.no_grad():
+        for t in range(int(max_t)):
+            simulator._do_system_time_step(
+                model, sec[:, t], dts[:, t], steps, t, "gauss-seidel"
+            )
+            _sample(CAP[t], cap_keys)
+            if fb_keys:
+                _sample(FB[t], fb_keys)
+            if meas_keys:
+                _sample(MEAS[t], meas_keys)
+
+    n_fb = len(fb_keys)
+    Y0 = None
+    if layout is not None:
+        Y0 = [
+            torch.cat([state0[p], FB[0, p]]) if n_fb else state0[p]
+            for p in range(n_s)
+        ]
+    return SimpleNamespace(
+        state0=state0,
+        Y0=Y0,
+        CAP=[CAP[: n_t[p], p, :] for p in range(n_s)],
+        FB=[FB[: n_t[p], p, :] for p in range(n_s)],
+        MEAS=[MEAS[: n_t[p], p, :] for p in range(n_s)],
+        n_t=n_t,
     )
-    n_t = int(n_t)
-    state0 = layout.gather(0).detach().clone() if layout is not None else None
-    CAP = torch.zeros((n_t, len(cap_keys)), dtype=torch.float64)
-    FB = torch.zeros((n_t, len(fb_keys)), dtype=torch.float64)
-    MEAS = torch.zeros((n_t, len(meas_keys)), dtype=torch.float64)
-    for t in range(n_t):
-        simulator._do_system_time_step(
-            model, sec[:, t], dts[:, t], [step_size], t, "gauss-seidel"
-        )
-        _sample(CAP[t], cap_keys)
-        if fb_keys:
-            _sample(FB[t], fb_keys)
-        if meas_keys:
-            _sample(MEAS[t], meas_keys)
-    return SimpleNamespace(state0=state0, CAP=CAP, FB=FB, MEAS=MEAS, n_t=n_t)
+
+
+def sequential_rollout(composer, y0, theta, cap):
+    """Roll the composed map over one period; returns ``(n_t, n_meas)``.
+
+    A plain Python loop, NOT ``vmap``: with a handful of periods the vmap
+    dispatch overhead exceeds the batching gain, and staying in ordinary eager
+    mode lets the state-space components use the fused ``torch.matrix_exp``
+    (which has no vmap rule) instead of the unrolled scaling-and-squaring
+    fallback.  Differentiable w.r.t. ``theta``, ``y0`` and ``cap``.
+
+    Args:
+        composer: The :class:`OneStepComposer`.
+        y0: ``(D_aug,)`` augmented initial state (``[state0 | FB[0]]``).
+        theta: ``(n_theta,)`` physical parameters (theta_spec order).
+        cap: ``(n_t, n_captured)`` captured inputs for the period.
+    """
+    y = y0
+    rows = []
+    for t in range(cap.shape[0]):
+        y, meas = composer.F_aug(y, theta, cap[t])
+        rows.append(meas)
+    if not rows:
+        return torch.zeros((0, len(composer.meas_sources)), dtype=torch.float64)
+    return torch.stack(rows)

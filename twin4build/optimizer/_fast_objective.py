@@ -8,9 +8,12 @@ profiling shows the cost is dominated by Python dispatch (per-step Gauss-Seidel
 traversal, ``tps`` port bookkeeping, ``model.initialize`` re-reading inputs),
 not tensor math.
 
-This module reuses the Estimator's :class:`OneStepComposer`: the model is
-composed into a pure one-step map ``F_aug(y, theta, cap)`` and the loss becomes
-a plain sequential torch rollout.  Two things differ from the Estimator:
+This module builds on the Simulator's composed-map API
+(:meth:`Simulator.compose` / :meth:`Simulator.capture_rollout` /
+:meth:`Simulator.rollout_composed`, implemented in
+:mod:`twin4build.simulator._composed`): the model is composed into a pure
+one-step map ``F_aug(y, theta, cap)`` and the loss becomes a plain sequential
+torch rollout.  Two things differ from the Estimator's fast path:
 
 * **The decision variables are exogenous trajectories** (actuator schedules),
   which the composer would normally freeze as captured constants.  Instead,
@@ -55,8 +58,6 @@ import math
 
 import torch
 
-from twin4build.estimator._composer import OneStepComposer
-from twin4build.estimator._transcription import _collect_stateful, _StateLayout
 from twin4build.utils.print_progress import LOGGER
 import twin4build.utils.types as tps
 
@@ -94,17 +95,6 @@ class FastControlObjective:
         self.opt = opt = optimizer
         model = opt.simulator.model
 
-        # -- structural checks ------------------------------------------------
-        stateful = _collect_stateful(model)
-        if not stateful:
-            raise RuntimeError("no stateful components")
-        layout = _StateLayout(stateful)
-        if any(getattr(c, "n_c", 1) != 1 for c in layout.components):
-            raise RuntimeError("n_c > 1 states")
-        step_sizes = [int(s) for s in opt._stepSize]
-        if len(set(step_sizes)) != 1:
-            raise RuntimeError("mixed step sizes across periods")
-
         # -- loss signals -----------------------------------------------------
         # Unique (component, output_port) pairs the loss reads, in first-use
         # order: objectives, then equality, then inequality constraints.
@@ -129,9 +119,10 @@ class FastControlObjective:
         var_index = {(c.id, p): v for v, (c, p) in enumerate(self.vars)}
 
         # -- compose ----------------------------------------------------------
-        composer = OneStepComposer(
-            model, layout.components, [], step_sizes[0],
-            outputs=self.loss_ports,
+        # Structural checks (stateful components exist, n_c == 1, uniform
+        # step size, state-width match) live in Simulator.compose.
+        layout, composer = opt.simulator.compose(
+            outputs=self.loss_ports, step_size=opt._stepSize
         )
 
         # Every loss output must be producible by the composed map, or BE a
@@ -267,65 +258,21 @@ class FastControlObjective:
     # -- one-time reference rollout -------------------------------------------
     def _capture(self):
         """One batched reference ``do_step`` rollout over all periods at the
-        initial iterate, sampling every captured input port right after each
-        step (Gauss-Seidel consumption semantics -- see
-        :func:`~twin4build.estimator._composer.capture_reference_rollout`;
-        this is its batched analogue, needed here because the decision-
-        variable ports hold the solver's initial trajectories, which a
-        per-period re-initialization would disturb).
+        initial iterate via :meth:`Simulator.capture_rollout` (batched matters
+        here: the decision-variable ports hold the solver's initial
+        trajectories, which a per-period re-initialization would disturb).
 
         The sampled signals are theta-independent by construction: anything a
         decision variable influences is inside the cone (fresh/feedback) or is
         one of the overridden slots.
         """
-        import twin4build.core as core
-
         opt = self.opt
-        sim = opt.simulator
-        model = sim.model
-        comps = model.components
-        composer = self.composer
-        cap_keys = composer._captured_keys
-        fb_keys = composer._feedback_keys
-
-        starts, ends, steps = opt._start_time, opt._end_time, opt._stepSize
-        sim.get_simulation_timesteps(starts, ends, steps)
-        model.initialize(starts, ends, steps)
-        sec, dts, max_t, n_ts = core.Simulator.get_simulation_timesteps(
-            starts, ends, steps
+        R = opt.simulator.capture_rollout(
+            self.composer, opt._start_time, opt._end_time, opt._stepSize,
+            layout=self.layout,
         )
-        n_s = len(starts)
-        self.n_periods = n_s
-        self.n_t = [int(n) for n in n_ts]
-
-        state0 = [
-            self.layout.gather(p).detach().clone() for p in range(n_s)
-        ]
-        CAP = torch.zeros((max_t, n_s, len(cap_keys)), dtype=torch.float64)
-        FB = torch.zeros((max_t, n_s, len(fb_keys)), dtype=torch.float64)
-
-        def _sample(dst, keys):
-            for k, key in enumerate(keys):
-                cid, port = key[0], key[1]
-                slot = key[2] if len(key) > 2 else 0
-                val = comps[cid].input[port].get()
-                dst[:, k] = val.reshape(n_s, -1)[:, slot].detach()
-
-        with torch.no_grad():
-            for t in range(int(max_t)):
-                sim._do_system_time_step(
-                    model, sec[:, t], dts[:, t], steps, t, "gauss-seidel"
-                )
-                _sample(CAP[t], cap_keys)
-                if fb_keys:
-                    _sample(FB[t], fb_keys)
-
-        self.CAP = [CAP[: self.n_t[p], p, :] for p in range(n_s)]
-        n_fb = composer.n_feedback
-        self.Y0 = [
-            torch.cat([state0[p], FB[0, p]]) if n_fb else state0[p]
-            for p in range(n_s)
-        ]
+        self.CAP, self.Y0, self.n_t = R.CAP, R.Y0, R.n_t
+        self.n_periods = len(R.n_t)
 
     # -- the differentiable loss ------------------------------------------------
     def loss(self, theta: torch.Tensor) -> torch.Tensor:
@@ -350,9 +297,10 @@ class FastControlObjective:
             theta_phys.append(torch.stack(cols, dim=1))
 
         # Rollout: per period, override the theta-driven captured slots and
-        # step the composed map.  OUT[p] is (n_t_p, n_loss_ports) in PHYSICAL
-        # units, matching the object-graph history reads.
-        F_aug = self.composer.F_aug
+        # step the composed map (the shared sequential rollout,
+        # :meth:`Simulator.rollout_composed`).  OUT[p] is (n_t_p, n_loss_ports)
+        # in PHYSICAL units, matching the object-graph history reads.
+        sim = opt.simulator
         OUT = []
         for p in range(self.n_periods):
             cap = self.CAP[p]
@@ -361,12 +309,9 @@ class FastControlObjective:
                 for v, slots in enumerate(self.var_slots):
                     for j in slots:
                         cap[:, j] = theta_phys[p][:, v]
-            y = self.Y0[p]
-            rows = []
-            for t in range(self.n_t[p]):
-                y, meas = F_aug(y, self._theta_empty, cap[t])
-                rows.append(meas)
-            M = torch.stack(rows)  # (n_t_p, n_meas)
+            M = sim.rollout_composed(
+                self.composer, self.Y0[p], self._theta_empty, cap
+            )  # (n_t_p, n_meas)
             cols = []
             for kind, idx in self.out_kind:
                 if kind == "meas":

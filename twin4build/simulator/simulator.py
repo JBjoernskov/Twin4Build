@@ -485,3 +485,112 @@ class Simulator:
                     step_index,
                     iteration_method,
                 )
+
+    # -- composed-map simulation (fast paths) ---------------------------------
+    # The model can also be simulated as a pure sequential rollout of ONE
+    # composed one-step map (every composable component's ``do_step`` delegates
+    # to a pure ``forward``; see twin4build/simulator/_composed.py).  The
+    # Estimator's fast single-shooting and collocation transcriptions and the
+    # Optimizer's fast control objective are all built on these three methods.
+
+    def compose(
+        self,
+        theta_spec=None,
+        measurements=None,
+        outputs=None,
+        step_size=None,
+    ):
+        """Build the pure one-step map for the current model.
+
+        Runs the shared structural checks and returns ``(layout, composer)``.
+        Raises ``RuntimeError`` if the model cannot be expressed as a composed
+        map; callers treat that as "fall back to the object-graph engine".
+
+        Args:
+            theta_spec: List of ``(component, attr)`` estimated parameters in
+                decision-vector order (``None`` -> no estimated parameters).
+            measurements: Measuring devices whose modelled ``measuredValue``
+                the map must return (Estimator data-fit signals).
+            outputs: List of ``(component, out_port)`` arbitrary outputs the
+                map must return (Optimizer objective/constraint signals).
+            step_size: Step size in seconds -- a scalar or the per-period
+                list; all periods must share one step size.
+
+        Returns:
+            ``(layout, composer)``: the
+            :class:`~twin4build.simulator._composed.StateLayout` of the
+            stateful components and the
+            :class:`~twin4build.simulator._composed.OneStepComposer`.
+        """
+        from twin4build.simulator._composed import (
+            OneStepComposer,
+            StateLayout,
+            collect_stateful,
+        )
+
+        stateful = collect_stateful(self.model)
+        if not stateful:
+            raise RuntimeError("no stateful components")
+        layout = StateLayout(stateful)
+        if any(getattr(c, "n_c", 1) != 1 for c in layout.components):
+            raise RuntimeError("n_c > 1 states")
+        steps = step_size if isinstance(step_size, (list, tuple)) else [step_size]
+        steps = [int(s) for s in steps]
+        if len(set(steps)) != 1:
+            raise RuntimeError("mixed step sizes across periods")
+        composer = OneStepComposer(
+            self.model,
+            layout.components,
+            list(theta_spec or []),
+            steps[0],
+            measurements=measurements,
+            outputs=outputs,
+        )
+        if composer.D != layout.width:
+            raise RuntimeError("composer state width mismatch")
+        return layout, composer
+
+    def capture_rollout(
+        self, composer, start_time, end_time, step_size, layout=None, meas_ids=()
+    ):
+        """One batched reference ``do_step`` rollout capturing the composed
+        map's frozen inputs (see
+        :func:`~twin4build.simulator._composed.capture_reference_rollout`).
+
+        Args:
+            composer: The composer returned by :meth:`compose`.
+            start_time: Per-period start times (list).
+            end_time: Per-period end times (list).
+            step_size: Per-period step sizes (list).
+            layout: Optional ``StateLayout``; when given, per-period initial
+                (augmented) states ``state0`` / ``Y0`` are also returned.
+            meas_ids: Measuring-device ids whose ``measuredValue`` to sample.
+
+        Returns:
+            ``SimpleNamespace`` of per-period lists: ``state0``, ``Y0``,
+            ``CAP``, ``FB``, ``MEAS``, ``n_t``.
+        """
+        from twin4build.simulator._composed import capture_reference_rollout
+
+        return capture_reference_rollout(
+            self, composer, start_time, end_time, step_size,
+            layout=layout, meas_ids=meas_ids,
+        )
+
+    def rollout_composed(self, composer, y0, theta, cap) -> torch.Tensor:
+        """Sequentially roll the composed map over one period (see
+        :func:`~twin4build.simulator._composed.sequential_rollout`).
+
+        Args:
+            composer: The composer returned by :meth:`compose`.
+            y0: ``(D_aug,)`` augmented initial state ``[state0 | FB[0]]``.
+            theta: ``(n_theta,)`` physical parameters in theta_spec order.
+            cap: ``(n_t, n_captured)`` captured inputs for the period.
+
+        Returns:
+            ``(n_t, n_meas)`` modelled outputs; differentiable w.r.t.
+            ``theta``, ``y0`` and ``cap``.
+        """
+        from twin4build.simulator._composed import sequential_rollout
+
+        return sequential_rollout(composer, y0, theta, cap)

@@ -29,7 +29,9 @@ The solve (:func:`_solve_sparse_collocation`) hands IPOPT the defects as sparse
 equality constraints with an explicit block-bidiagonal Jacobian, a Gauss-Newton
 Hessian of the least-squares objective, and patience-based early stopping.
 When the model is composable, the objective/constraints/derivatives all come
-from the pure one-step map built by :class:`OneStepComposer` -- no per-eval
+from the pure one-step map built by
+:class:`~twin4build.simulator._composed.OneStepComposer` (via
+:meth:`Simulator.compose`) -- no per-eval
 object-graph simulate; otherwise an exact-but-slow finite-difference fallback
 runs the object graph.  Requires the CasADi/IPOPT backend.
 
@@ -50,6 +52,8 @@ import numpy as np
 import torch
 from torch.func import jacrev, vmap
 
+from twin4build.simulator._composed import StateLayout as _StateLayout
+from twin4build.simulator._composed import collect_stateful as _collect_stateful
 from twin4build.utils.print_progress import LOGGER
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
@@ -68,76 +72,6 @@ def _segment_boundaries(n_t: int, n_segments: int) -> List[int]:
     for i in range(n_segments):
         bounds.append(bounds[-1] + base + (1 if i < extra else 0))
     return bounds
-
-
-class _StateLayout:
-    """Flat <-> per-component packing of the stateful-component states.
-
-    Enumerates the model's stateful components (those owning a ``tps.State``, in
-    execution order) and lays their states out contiguously into a single vector
-    of width ``D = sum_c (n_c * state_size_c)`` per segment boundary.  Also holds
-    the per-dimension normalization (center ``c``, scale ``sigma``) so the
-    boundary decision variables are O(1) regardless of physical units
-    (temperatures in K vs. CO2 in ppm), which the mixed-scale warning requires.
-    """
-
-    def __init__(self, components: List):
-        self.components = components
-        self.slices: List[Tuple[int, int]] = []  # (start, stop) into flat vector
-        self.shapes: List[Tuple[int, int]] = []  # (n_c, state_size) per component
-        offset = 0
-        for comp in components:
-            state = comp.get_state()  # (n_s, n_c, state_size)
-            n_c, ss = state.shape[1], state.shape[2]
-            width = n_c * ss
-            self.slices.append((offset, offset + width))
-            self.shapes.append((n_c, ss))
-            offset += width
-        self.width = offset  # D
-
-    def gather(self, n_s_index: int = 0) -> torch.Tensor:
-        """Flatten current component states at sim-batch index into ``(D,)``."""
-        parts = []
-        for comp, (n_c, ss) in zip(self.components, self.shapes):
-            s = comp.get_state()[n_s_index]  # (n_c, state_size)
-            parts.append(s.reshape(-1))
-        return torch.cat(parts) if parts else torch.zeros(0, dtype=torch.float64)
-
-    def scatter(self, seg_states: torch.Tensor) -> None:
-        """Write per-segment states into every component via ``set_state``.
-
-        ``seg_states`` has shape ``(K, D)`` (one flat state per segment); it is
-        unpacked and each component's ``set_state`` receives ``(K, n_c,
-        state_size)`` -- i.e. K segments live on the simulator's n_s axis.
-        """
-        K = seg_states.shape[0]
-        for comp, (start, stop), (n_c, ss) in zip(
-            self.components, self.slices, self.shapes
-        ):
-            block = seg_states[:, start:stop].reshape(K, n_c, ss)
-            comp.set_state(block)
-
-    def end_states(self, K: int) -> torch.Tensor:
-        """Collect each segment's *final* state into ``(K, D)`` after a sim."""
-        parts = []
-        for comp, (n_c, ss) in zip(self.components, self.shapes):
-            s = comp.get_state()  # (K, n_c, state_size)
-            parts.append(s.reshape(K, -1))
-        return torch.cat(parts, dim=1) if parts else torch.zeros((K, 0), dtype=torch.float64)
-
-
-def _collect_stateful(model) -> List:
-    """Stateful components in execution order (composites only, not their subs).
-
-    A composite like ``BuildingSpaceTorchSystem`` owns state (thermal|mass) and
-    its submodels are not separate nodes in the execution order, so iterating
-    ``_flat_execution_order`` and taking ``System.is_stateful()`` (which walks the
-    owned ``tps.State``) yields each state exactly once.
-    """
-    order = getattr(model, "_flat_execution_order", None) or list(
-        model.components.values()
-    )
-    return [c for c in order if c.is_stateful()]
 
 
 def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamespace:
@@ -387,27 +321,27 @@ def _solve_sparse_collocation(
     # n_c>1, shared/expanded theta), fall back to the exact-but-slow FD path.
     composer = None
     try:
-        from twin4build.estimator._composer import OneStepComposer
-
         simple_theta = n_theta == len(self._flat_components)
-        all_nc1 = all(getattr(c, "n_c", 1) == 1 for c in layout.components)
-        if simple_theta and all_nc1:
+        if simple_theta:
+            # Structural checks (stateful present, n_c == 1, uniform step
+            # size, state-width match) live in Simulator.compose; it raises
+            # on any incompatibility, which lands in the except below.
             theta_spec = list(zip(self._flat_components, self._parameter_names))
-            comp = OneStepComposer(
-                self.simulator.model, layout.components, theta_spec, seg_steps[0],
+            _, comp = self.simulator.compose(
+                theta_spec=theta_spec,
                 measurements=[md for md, _ in self._measurements],
+                step_size=seg_steps[0],
             )
-            if comp.D == D:
-                LOGGER.config(
-                    "Composer captured (frozen exogenous) inputs: %s | "
-                    "cut-feedback edges: %s",
-                    comp._captured_keys, comp._feedback_keys,
-                )
-                # Plain (functorch-safe) denormalization from the parameters'
-                # physical bounds + scaling (tps.Parameter.denormalize is a
-                # Tensor-subclass method and breaks under functorch).
-                lb_t, ub_t, log_mask = theta_bound_tensors(self._flat_parameters)
-                composer = comp
+            LOGGER.config(
+                "Composer captured (frozen exogenous) inputs: %s | "
+                "cut-feedback edges: %s",
+                comp._captured_keys, comp._feedback_keys,
+            )
+            # Plain (functorch-safe) denormalization from the parameters'
+            # physical bounds + scaling (tps.Parameter.denormalize is a
+            # Tensor-subclass method and breaks under functorch).
+            lb_t, ub_t, log_mask = theta_bound_tensors(self._flat_parameters)
+            composer = comp
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning("Composer unavailable (%s) -- using finite-difference Jacobian.", exc)
         composer = None
@@ -542,24 +476,25 @@ def _solve_sparse_collocation(
                 chain.append(_next_of[chain[-1]])
             _chains.append(chain)
         # Capture the exogenous inputs AND the delayed-feedback warm start from
-        # one CONTINUOUS do_step rollout per period at theta0 (the shared
-        # capture_reference_rollout; see its docstring for why this must be a
-        # continuous run: stateful exogenous drivers like OccupancySystem, and
-        # Gauss-Seidel consumption semantics for the feedback warm start).
+        # one CONTINUOUS batched do_step rollout over all periods at theta0
+        # (the shared Simulator.capture_rollout; see
+        # simulator/_composed.py::capture_reference_rollout for why this must
+        # be a continuous run: stateful exogenous drivers like OccupancySystem,
+        # and Gauss-Seidel consumption semantics for the feedback warm start).
         # Segments are one step each, so the rollout's per-timestep rows map
         # 1:1 onto the chain's segment indices.
-        from twin4build.estimator._composer import capture_reference_rollout
-
         CAP = torch.zeros((n_seg, len(composer._captured_keys)), dtype=torch.float64)
         fb0 = torch.zeros((n_seg, n_fb), dtype=torch.float64)
-        for chain in _chains:
-            R = capture_reference_rollout(
-                self.simulator, composer,
-                seg_starts[chain[0]], seg_ends[chain[-1]], seg_steps[chain[0]],
-            )
-            idx = torch.tensor(chain[: R.n_t], dtype=torch.long)
-            CAP[idx] = R.CAP[: len(idx)]
-            fb0[idx] = R.FB[: len(idx)]
+        R = self.simulator.capture_rollout(
+            composer,
+            [seg_starts[chain[0]] for chain in _chains],
+            [seg_ends[chain[-1]] for chain in _chains],
+            [seg_steps[chain[0]] for chain in _chains],
+        )
+        for p, chain in enumerate(_chains):
+            idx = torch.tensor(chain[: R.n_t[p]], dtype=torch.long)
+            CAP[idx] = R.CAP[p][: len(idx)]
+            fb0[idx] = R.FB[p][: len(idx)]
         fb_center = fb0.mean(dim=0)
         # Robust scale: a ~constant feedback has tiny std; scaling by it would blow
         # the (bounded) decision variable up.  Floor by a fraction of the magnitude.
