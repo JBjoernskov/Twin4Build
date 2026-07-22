@@ -64,6 +64,9 @@ dependencies = [
     "python-dateutil",
     "pathlib",
     "pytz",
+    # CasADi ships IPOPT + MUMPS in a single pip wheel; used by the Estimator's
+    # IPOPT backend and collocation transcription.
+    "casadi",
     "windows-curses ; platform_system == 'Windows'"
 ]
 
@@ -83,11 +86,6 @@ database = [
     "psycopg2-binary",
     "sqlalchemy",
 ]
-# IPOPT-backed estimation (single-shooting via CasADi and the collocation
-# transcription).  CasADi ships IPOPT + MUMPS in a single pip wheel.
-estimation = [
-    "casadi",
-]
 all = [
     "coverage",
     "black",
@@ -99,8 +97,7 @@ all = [
     "myst-parser",
     "psycopg2-binary",
     "sqlalchemy",
-    "twine",
-    "casadi"
+    "twine"
 ]
 
 [project.urls]

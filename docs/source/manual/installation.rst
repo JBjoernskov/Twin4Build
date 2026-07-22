@@ -22,10 +22,6 @@ For additional functionality, you can install optional dependencies:
 
 .. code-block:: bash
 
-    # For IPOPT-backed estimation (CasADi): the ("casadi", "ipopt", "ad")
-    # backend and the collocation transcription of the Estimator
-    pip install twin4build[estimation]
-
     # For database connectivity
     pip install twin4build[database]
 
@@ -104,10 +100,10 @@ Core dependencies (automatically installed):
 - python-dateutil
 - pathlib
 - pytz
+- casadi (IPOPT solver and collocation transcription for the Estimator)
 
 Optional dependencies:
 
-- ``[estimation]``: casadi (IPOPT solver and collocation transcription for the Estimator)
 - ``[database]``: psycopg2-binary, sqlalchemy
 - ``[dev]``: coverage, black, flake8, isort, sphinx, sphinx-rtd-theme, sphinx-autodoc-typehints, myst-parser, twine
 - ``[all]``: everything above
@@ -141,8 +137,8 @@ Common Issues
 
 **ImportError: No module named 'casadi'**
 
-- The CasADi/IPOPT estimation backend is an optional dependency;
-  install it with ``pip install twin4build[estimation]``
+- CasADi is a core dependency (used by the Estimator's IPOPT backend);
+  reinstall with ``pip install --upgrade twin4build`` or ``pip install casadi``
 
 **Database Connection Issues**
 

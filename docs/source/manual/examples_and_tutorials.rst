@@ -74,8 +74,6 @@ Before running examples, ensure you have:
 
 1. **Twin4Build installed**: See the :doc:`installation` guide
 2. **Jupyter Notebook**: ``pip install jupyter``
-3. **CasADi (estimator notebook only)**: ``pip install twin4build[estimation]``
-   for the collocation stage of the estimator example
 
 Running in Jupyter
 ~~~~~~~~~~~~~~~~~~
@@ -96,7 +94,6 @@ Troubleshooting Examples
 **Import Errors**
 
 - Ensure Twin4Build is installed correctly
-- Check that all dependencies are available (``pip install twin4build[estimation]`` for CasADi)
 - Verify the Python environment
 
 **Data File Errors**

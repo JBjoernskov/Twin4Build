@@ -129,7 +129,6 @@ pip install twin4build
 Optional extras:
 
 ```bat
-pip install twin4build[estimation]   # CasADi/IPOPT estimation backend (collocation)
 pip install twin4build[database]     # PostgreSQL connectivity
 pip install twin4build[all]          # Everything
 ```

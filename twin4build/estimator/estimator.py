@@ -106,9 +106,9 @@ class Estimator:
       are decision variables. Available with all optimizer backends.
     - **Collocation**: the state at every timestep boundary is promoted to a
       decision variable and the dynamics are enforced as sparse equality
-      constraints. Available with the CasADi/IPOPT backend only
-      (``pip install twin4build[estimation]``); best suited for long horizons
-      where single-shooting gradients become badly conditioned.
+      constraints. Available with the CasADi/IPOPT backend only; robust to
+      poor initial parameter guesses and returns the estimated initial state
+      as part of the fit.
 
     Two optimizer *backends* are supported:
 
@@ -310,8 +310,8 @@ class Estimator:
     explicit block-bidiagonal Jacobian, a Gauss-Newton Hessian of the
     least-squares objective, and patience-based early stopping. It requires
     the CasADi/IPOPT backend
-    (``method=("casadi", "ipopt", "ad", "collocation")``) and the
-    ``twin4build[estimation]`` extra. A defect audit is returned as
+    (``method=("casadi", "ipopt", "ad", "collocation")``). A defect audit is
+    returned as
     ``transcription_audit`` so the quality of the converged solution can be
     inspected (max defect, per-sensor RMSE consistency between the NLP
     solution and a forward rollout).
@@ -366,7 +366,7 @@ class Estimator:
     ...     options={"fast": True}
     ... )
 
-    IPOPT single-shooting via CasADi (requires ``twin4build[estimation]``):
+    IPOPT single-shooting via CasADi:
 
     >>> result = estimator.estimate(
     ...     parameters=parameters,
@@ -377,7 +377,7 @@ class Estimator:
     ...     method=("casadi", "ipopt", "ad")
     ... )
 
-    Collocation transcription for long horizons (requires ``twin4build[estimation]``):
+    Collocation transcription:
 
     >>> result = estimator.estimate(
     ...     parameters=parameters,
@@ -528,17 +528,16 @@ class Estimator:
                   ``"dogbox"``, ``"SLSQP"``, ``"L-BFGS-B"``, ``"TNC"``,
                   ``"trust-constr"`` -- same algorithms with the Jacobian
                   computed by parallel finite differences.
-                - CasADi backend (requires ``pip install twin4build[estimation]``):
+                - CasADi backend:
                   ``("casadi", "ipopt", "ad")`` is an IPOPT interior-point
                   solve of the same single-shooting objective as the SciPy
                   backends -- only the optimizer changes.
                   ``("casadi", "ipopt", "ad", "collocation")`` is the
                   simultaneous (collocation) transcription -- every
                   timestep-boundary state becomes a decision variable tied by
-                  sparse hard continuity constraints. Preferred for long
-                  horizons where backprop-through-time gradients are badly
-                  conditioned. See the class docstring's Collocation section
-                  for the formulation.
+                  sparse hard continuity constraints. Robust to poor initial
+                  parameter guesses. See the class docstring's Collocation
+                  section for the formulation.
 
                 Mode selection: use ``"ad"`` when all components are
                 ``torch.nn.Module`` (preferred, faster); use ``"fd"`` for
