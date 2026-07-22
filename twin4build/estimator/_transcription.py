@@ -2,9 +2,12 @@
 
 Single-shooting estimation evaluates the objective by simulating the *entire*
 horizon from one fixed initial condition, then backpropagating through the full
-unrolled trajectory.  Over long horizons this composition-of-``f``-with-itself
-is badly conditioned (the exploding/vanishing-gradient problem of backprop
-through time) and every iterate is a full rollout.
+unrolled trajectory.  The gradient is a product of per-step Jacobians; for
+unstable or oscillatory dynamics that product is badly conditioned on long
+horizons (the exploding/vanishing-gradient problem of backprop through time).
+Dissipative building models are largely insensitive to this -- their per-step
+Jacobians contract -- but every single-shooting iterate is still a full
+sequential rollout.
 
 **Collocation** promotes the state at every timestep boundary ``s_i`` to a
 decision variable, stacked alongside the physical parameters ``theta``.  The
@@ -14,7 +17,10 @@ dynamics are enforced as hard equality *continuity defects*
 
 where the first term is one step of the model from ``s_i`` and ``s_{i+1}`` is
 read directly off the decision vector.  Gradients only ever flow through a
-single step, so the conditioning improves and the basins of attraction widen.
+single step.  The practical benefits are robustness to poor initial parameter
+guesses (the state variables can stay close to the data while ``theta`` is
+still far off), the sparse block-bidiagonal NLP structure IPOPT exploits, and
+the estimated initial state coming out of the fit for free.
 The boundary states are *nuisance* variables: they are discarded after the fit
 (``EstimationResult`` reports only ``theta``; the per-period initial states are
 additionally returned as ``estimated_initial_state``).
@@ -30,7 +36,7 @@ runs the object graph.  Requires the CasADi/IPOPT backend.
 A soft-penalty multiple-shooting form (``MSE + lambda * ||d||^2`` on a coarse
 segmentation, first-order solver) used to live here; it was removed after
 benchmarking showed it wanders without converging on exactly the problems the
-hard-constraint solve handles -- see COLLOCATION_SESSION_SUMMARY.md.
+hard-constraint solve handles.
 """
 
 from __future__ import annotations

@@ -255,11 +255,15 @@ class Estimator:
 
     Gradients are obtained either by backpropagating through the unrolled
     trajectory (AD mode, requires all components to be torch modules) or by
-    parallel finite differences (FD mode, requires ``n_cores``). Because the
-    gradient flows through the full composition
-    :math:`f \circ f \circ \cdots \circ f`, conditioning degrades on long
-    horizons (the exploding/vanishing-gradient problem of backprop through
-    time) -- this is the regime where the collocation transcription pays off.
+    parallel finite differences (FD mode, requires ``n_cores``). The gradient
+    flows through the full composition
+    :math:`f \circ f \circ \cdots \circ f`, i.e. a product of per-step
+    Jacobians. For unstable or oscillatory dynamics this product is badly
+    conditioned on long horizons (the exploding/vanishing-gradient problem of
+    backprop through time) -- the classical argument for simultaneous
+    transcriptions. Dissipative building models are largely insensitive to
+    this: the per-step Jacobians contract, so single-shooting remains well
+    behaved even on multi-week horizons.
 
     For composable torch models, ``options={"fast": True}`` builds a pure
     one-step map :math:`F_{\text{aug}}` by composing the components'
@@ -292,12 +296,15 @@ class Estimator:
             \; \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{j,t} - \hat{Y}_{j,t}}{\sigma_j}\right)^2
             \quad \text{subject to} \quad \boldsymbol{d}_i = \boldsymbol{0} \; \forall i
 
-    Gradients only ever flow through a *single* simulation step, so the
-    conditioning improves and the basins of attraction widen compared to
-    single-shooting on long horizons. The boundary states are nuisance
-    variables: after the fit only :math:`\boldsymbol{\theta}` is reported
-    (the per-period initial states are additionally returned as
-    ``estimated_initial_state``).
+    Gradients only ever flow through a *single* simulation step. In
+    practice the benefits of this transcription are robustness to poor
+    initial parameter guesses (the state decision variables can stay close
+    to the data even while :math:`\boldsymbol{\theta}` is far off), the
+    sparse block-bidiagonal NLP structure that IPOPT exploits, and the
+    estimated initial state coming out of the fit for free. The boundary
+    states are nuisance variables: after the fit only
+    :math:`\boldsymbol{\theta}` is reported (the per-period initial states
+    are additionally returned as ``estimated_initial_state``).
 
     The solve hands IPOPT the defects as sparse equality constraints with an
     explicit block-bidiagonal Jacobian, a Gauss-Newton Hessian of the
