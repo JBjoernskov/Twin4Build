@@ -35,6 +35,16 @@ class Optimizer:
     This class optimizes model inputs (variables) (e.g., setpoints) by minimizing a loss function, using gradient-based or other optimization algorithms.
     The optimizer implements soft constraints on model outputs (embedded in the loss function) and hard constraints on variables.
 
+    For composable torch models the loss is evaluated (by default) with a fast
+    composed objective: the components' ``forward`` methods are composed into a
+    pure one-step map, the exogenous inputs are captured once from a reference
+    simulation, and each evaluation is a plain sequential torch rollout with
+    the gradient obtained in a single autograd pass -- identical values and
+    gradients by construction, several times faster than simulating the full
+    object graph per evaluation. Models the composed map cannot express fall
+    back to the object-graph objective automatically (see the ``fast`` option
+    of :meth:`optimize`).
+
     Args:
         simulator: The simulator instance for running simulations.
 
@@ -308,6 +318,7 @@ class Optimizer:
             simulator, core.Simulator
         ), "Simulator must be a twin4build.core.Simulator instance"
         self.simulator = simulator
+        self._fast_obj = None
 
     # def _closure(self):
     #     self.optimizer.zero_grad()
@@ -483,6 +494,20 @@ class Optimizer:
                 - "initial_constr_penalty": Initial constraint penalty
                 - "constraint_penalty": Weight of the soft constraint penalty
                   terms in the loss (default 100)
+                - "fast" (bool, default True): Evaluate the loss with the
+                  composed one-step-map rollout (exogenous inputs captured
+                  once, decision variables threaded through a pure torch
+                  rollout, gradient via a single autograd pass) instead of a
+                  full object-graph simulation per evaluation. Values and
+                  gradients are identical by construction; the optimizer
+                  silently falls back to the object-graph objective when the
+                  model is not composable (components without ``forward``,
+                  no stateful components, or a loss output the composed map
+                  cannot produce).
+                - "fast_validate" (bool, default False): Additionally
+                  cross-check the fast loss and gradient against the
+                  object-graph objective at the initial iterate (debugging
+                  aid; costs ~2 object-graph evaluations).
                 - Additional method-specific options as supported by SciPy optimizers
 
         Returns:
@@ -1247,6 +1272,26 @@ class Optimizer:
             torch.tensor(x0, dtype=torch.float64)
         )
 
+        # -- Fast composed objective (default ON) ------------------------------
+        # Replaces the object-graph simulate-per-evaluation with a sequential
+        # rollout of the composed pure one-step map (see _fast_objective.py):
+        # exogenous inputs captured once, decision-variable slots driven by
+        # theta, gradient via one autograd pass instead of jacrev around the
+        # simulation.  Structural compatibility is checked at build time --
+        # non-composable models silently fall back to the object-graph
+        # objective.  Numerical equivalence holds by construction (each
+        # composable component's do_step delegates to the same forward the
+        # composer threads) and is regression-checked by
+        # tests/optimizer/test_fast_objective.py.
+        # options={"fast": False} opts out; options={"fast_validate": True}
+        # additionally cross-checks value and gradient against the object-graph
+        # objective at the initial iterate (debugging aid, costs ~2 evals).
+        fast_requested = bool(options.pop("fast", True))
+        fast_validate = bool(options.pop("fast_validate", False))
+        self._fast_obj = None
+        if fast_requested and method[2] == "ad":
+            self._setup_fast_objective(x0, validate=fast_validate)
+
         # Run optimization based on method
         optimizer_name = method[1]
         mode = method[2]
@@ -1290,6 +1335,14 @@ class Optimizer:
                 "Finite difference mode is not yet implemented for the optimizer. Use automatic differentiation mode."
             )
 
+        # Apply the solution to the model: one object-graph evaluation at
+        # result.x writes the optimal trajectories into the decision-variable
+        # ports and re-runs the simulation, so component histories hold the
+        # optimized signals (guaranteed -- SciPy's last internal evaluation is
+        # not necessarily at the solution, and with the fast objective no
+        # simulation ran during the solve at all).
+        self.__obj_ad(torch.tensor(result.x, dtype=torch.float64))
+
         elapsed = time_module.time() - self._solver_start_time
         LOGGER.info("Optimization finished in %.1fs (%d function evaluations)", elapsed, self._eval_count)
         opt_success = getattr(result, "success", None)
@@ -1331,6 +1384,58 @@ class Optimizer:
                 change_status=True,
                 ignore_no_match=True,
             )
+
+    def _setup_fast_objective(self, x0, validate: bool = False) -> None:
+        """Build the composed-map objective (see ``_fast_objective.py``).
+
+        On success sets ``self._fast_obj`` (consumed by :meth:`_obj_ad` /
+        :meth:`_jac_ad`); on any structural incompatibility leaves it ``None``
+        and the exact object-graph objective is used.  With ``validate=True``
+        (``options={"fast_validate": True}``) the loss value AND gradient are
+        additionally cross-checked against the object-graph objective at the
+        initial iterate before the fast path is enabled -- a runtime debugging
+        aid costing ~2 object-graph evaluations.
+        """
+        t0 = time_module.time()
+        try:
+            from twin4build.optimizer._fast_objective import FastControlObjective
+
+            fast = FastControlObjective(self)
+        except Exception as exc:
+            LOGGER.config(
+                "Fast objective unavailable (%s); using object-graph objective",
+                exc,
+            )
+            return
+
+        if validate:
+            theta0 = torch.tensor(x0, dtype=torch.float64)
+            f_fast, g_fast = fast.value_and_grad(theta0)
+            f_slow = self.__obj_ad(theta0.clone())
+            g_slow = torch.func.jacrev(self.__obj_ad, argnums=0)(theta0.clone())
+            rel_f = float(
+                abs(f_fast - f_slow) / max(1e-12, abs(float(f_slow)))
+            )
+            gscale = max(1e-12, float(g_slow.abs().max()))
+            rel_g = float((g_fast - g_slow).abs().max()) / gscale
+            if rel_f > 1e-6 or rel_g > 1e-4:
+                LOGGER.warning(
+                    "Fast objective validation FAILED (value rel=%.3e, "
+                    "gradient rel=%.3e); using object-graph objective",
+                    rel_f,
+                    rel_g,
+                )
+                return
+            LOGGER.config(
+                "Fast objective validated (value rel=%.3e, gradient rel=%.3e)",
+                rel_f,
+                rel_g,
+            )
+
+        self._fast_obj = fast
+        LOGGER.config(
+            "Fast objective enabled (built in %.1fs)", time_module.time() - t0
+        )
 
     def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
         """
@@ -1475,7 +1580,10 @@ class Optimizer:
             return self.obj.detach().numpy()
         else:
             self._theta_obj = theta
-            self.obj = self.__obj_ad(theta)
+            if self._fast_obj is not None:
+                self.obj = self._fast_obj.loss(theta)
+            else:
+                self.obj = self.__obj_ad(theta)
             self._eval_count += 1
             elapsed = time_module.time() - self._solver_start_time
             LOGGER.iter(
@@ -1515,7 +1623,15 @@ class Optimizer:
             return self.jac.detach().numpy()
         else:
             self._theta_jac = theta
-            self.jac = self.__jac_ad(theta)
+            if self._fast_obj is not None:
+                # One autograd pass yields value AND gradient: cache both so a
+                # subsequent f(theta) query is free.
+                f, g = self._fast_obj.value_and_grad(theta)
+                self.obj = f
+                self._theta_obj = theta
+                self.jac = g
+            else:
+                self.jac = self.__jac_ad(theta)
             jac_numpy = self.jac.detach().numpy()
 
             # Check for NaN values in Jacobian and warn

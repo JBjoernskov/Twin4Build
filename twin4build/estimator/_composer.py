@@ -82,9 +82,24 @@ class OneStepComposer:
         component-relative path (e.g. ``"thermal.C_air"``, ``"kp"``).
     sample_time : float
         Segment step size in seconds.
+    measurements : list, optional
+        Measuring devices whose modelled ``measuredValue`` the map must return
+        (the Estimator's data-fit signals).
+    outputs : list of (component, out_port), optional
+        Arbitrary component outputs the map must additionally return (the
+        Optimizer's objective/constraint signals).  Their producers seed the
+        influence cone, so a purely *downstream* component (e.g. a cost
+        sensor multiplying heater power by an electricity price) is composed
+        even though no state depends on it.  Outputs whose producer cannot be
+        composed are returned as ``("external", comp_id, port)`` specs and
+        evaluate to zero inside ``F`` -- the caller decides whether it can
+        supply them (e.g. a decision-variable trajectory) or must reject.
     """
 
-    def __init__(self, model, stateful, theta_spec, sample_time, measurements=None):
+    def __init__(
+        self, model, stateful, theta_spec, sample_time, measurements=None,
+        outputs=None,
+    ):
         self.model = model
         self.sample_time = float(sample_time)
         # Accept either the SimulationModel (``_flat_execution_order``) or the
@@ -110,9 +125,13 @@ class OneStepComposer:
         for i, (comp, attr) in enumerate(theta_spec):
             self.theta_by_comp.setdefault(comp.id, {})[attr] = i
 
-        # Which components must be evaluated by F: the stateful ones plus every
-        # forward-component reverse-reachable from them over fresh edges.
-        self.cone = self._influence_cone()
+        # Which components must be evaluated by F: the stateful ones (plus any
+        # requested-output producers) plus every forward-component
+        # reverse-reachable from them over fresh edges.
+        seed_extra = {
+            comp.id for comp, _ in (outputs or []) if _has_real_forward(comp)
+        }
+        self.cone = self._influence_cone(seed_extra)
 
         # Static input wiring for every cone component: port -> source spec.
         # A port's source is one of:
@@ -154,11 +173,21 @@ class OneStepComposer:
                     self._captured_keys.append(key)
                 self.meas_sources.append(("captured", self._cap_index[key]))
 
+        # Requested outputs are appended to the same measurement vector: fresh
+        # when the producer is composed, ("external", ...) otherwise (F returns
+        # zero there; the caller supplies or rejects).
+        for comp, out_port in (outputs or []):
+            if comp.id in self.cone_ids:
+                self.meas_sources.append(("fresh", comp.id, out_port))
+            else:
+                self.meas_sources.append(("external", comp.id, out_port))
+
     # -- static graph analysis ----------------------------------------------
-    def _influence_cone(self) -> List:
+    def _influence_cone(self, seed_extra=()) -> List:
         """Forward-components reverse-reachable (over fresh edges, following
-        pass-through sensors) from the stateful components, in execution order."""
-        keep = set(c.id for c in self.stateful)
+        pass-through sensors) from the stateful components -- plus any extra
+        seed ids (requested-output producers) -- in execution order."""
+        keep = set(c.id for c in self.stateful) | set(seed_extra)
         changed = True
         while changed:
             changed = False
@@ -396,6 +425,10 @@ class OneStepComposer:
         for spec in self.meas_sources:
             if spec[0] == "fresh":
                 meas.append(produced[spec[1]][spec[2]].reshape(-1)[0])
+            elif spec[0] == "external":
+                # Not producible by the composed map; the caller supplies the
+                # signal (e.g. a decision-variable trajectory) or rejects.
+                meas.append(torch.zeros((), dtype=x_next.dtype))
             else:
                 meas.append(captured[spec[1]].reshape(-1)[0])
         meas = torch.stack(meas) if meas else torch.zeros(0, dtype=x_next.dtype)
