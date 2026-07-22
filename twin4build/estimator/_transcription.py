@@ -317,31 +317,34 @@ def _solve_sparse_collocation(
     # Try to build a pure one-step map F(states, theta_phys, captured) from the
     # components' forward() methods.  If it works, the constraint Jacobian comes
     # from a single vmap(jacrev(F)) call instead of D reverse passes + n_theta
-    # finite-difference re-simulations.  On any incompatibility (missing forward,
-    # n_c>1, shared/expanded theta), fall back to the exact-but-slow FD path.
+    # finite-difference re-simulations.  Shared parameters compose via the
+    # indexed theta spec.  On any incompatibility (missing forward, n_c>1
+    # states or multi-branch parameters), fall back to the exact-but-slow FD
+    # path.
     composer = None
     try:
-        simple_theta = n_theta == len(self._flat_components)
-        if simple_theta:
-            # Structural checks (stateful present, n_c == 1, uniform step
-            # size, state-width match) live in Simulator.compose; it raises
-            # on any incompatibility, which lands in the except below.
-            theta_spec = list(zip(self._flat_components, self._parameter_names))
-            _, comp = self.simulator.compose(
-                theta_spec=theta_spec,
-                measurements=[md for md, _ in self._measurements],
-                step_size=seg_steps[0],
-            )
-            LOGGER.config(
-                "Composer captured (frozen exogenous) inputs: %s | "
-                "cut-feedback edges: %s",
-                comp._captured_keys, comp._feedback_keys,
-            )
-            # Plain (functorch-safe) denormalization from the parameters'
-            # physical bounds + scaling (tps.Parameter.denormalize is a
-            # Tensor-subclass method and breaks under functorch).
-            lb_t, ub_t, log_mask = theta_bound_tensors(self._flat_parameters)
-            composer = comp
+        # Indexed theta spec: shared parameters route several (comp, attr)
+        # entries to one theta slot; raises on multi-branch (n_c > 1)
+        # parameters.  Structural checks (stateful present, n_c == 1 states,
+        # uniform step size, state-width match) live in Simulator.compose;
+        # any incompatibility raises and lands in the except below.
+        theta_spec, unique_parameters = self._composer_theta_spec()
+        _, comp = self.simulator.compose(
+            theta_spec=theta_spec,
+            measurements=[md for md, _ in self._measurements],
+            step_size=seg_steps[0],
+        )
+        LOGGER.config(
+            "Composer captured (frozen exogenous) inputs: %s | "
+            "cut-feedback edges: %s",
+            comp._captured_keys, comp._feedback_keys,
+        )
+        # Plain (functorch-safe) denormalization from the parameters'
+        # physical bounds + scaling (tps.Parameter.denormalize is a
+        # Tensor-subclass method and breaks under functorch) -- one
+        # representative parameter per unique theta entry.
+        lb_t, ub_t, log_mask = theta_bound_tensors(unique_parameters)
+        composer = comp
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning("Composer unavailable (%s) -- using finite-difference Jacobian.", exc)
         composer = None

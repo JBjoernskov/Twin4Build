@@ -508,7 +508,10 @@ class Simulator:
 
         Args:
             theta_spec: List of ``(component, attr)`` estimated parameters in
-                decision-vector order (``None`` -> no estimated parameters).
+                decision-vector order, or ``(component, attr, theta_index)``
+                with an explicit index into theta -- several entries may share
+                one index (shared parameters).  ``None`` -> no estimated
+                parameters.
             measurements: Measuring devices whose modelled ``measuredValue``
                 the map must return (Estimator data-fit signals).
             outputs: List of ``(component, out_port)`` arbitrary outputs the

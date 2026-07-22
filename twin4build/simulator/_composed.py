@@ -168,9 +168,13 @@ class OneStepComposer:
         The (initialized) simulation model.
     stateful : list
         Stateful components in execution order (each owns ``tps.State``).
-    theta_spec : list of (component, attr)
-        Estimated parameters, in the decision-vector order.  ``attr`` is the
-        component-relative path (e.g. ``"thermal.C_air"``, ``"kp"``).
+    theta_spec : list of (component, attr) or (component, attr, theta_index)
+        Estimated parameters.  ``attr`` is the component-relative path (e.g.
+        ``"thermal.C_air"``, ``"kp"``).  Two-element entries take their theta
+        index from their list position (one-to-one theta).  Three-element
+        entries carry it explicitly, so several entries may point at the SAME
+        theta slot -- that is how *shared* parameters (one decision variable
+        driving the same attribute on several components) are composed.
     sample_time : float
         Segment step size in seconds.
     measurements : list, optional
@@ -210,11 +214,15 @@ class OneStepComposer:
         self.D = int(self.state_offsets[-1])
         self.state_index = {c.id: i for i, c in enumerate(self.stateful)}
 
-        # theta routing: per component id -> {attr: theta_index}
+        # theta routing: per component id -> {attr: theta_index}.  Entries are
+        # (comp, attr) -- index = position -- or (comp, attr, theta_index);
+        # shared parameters route several (comp, attr) pairs to one index.
         self.theta_spec = theta_spec
         self.theta_by_comp: Dict[str, Dict[str, int]] = {}
-        for i, (comp, attr) in enumerate(theta_spec):
-            self.theta_by_comp.setdefault(comp.id, {})[attr] = i
+        for i, spec in enumerate(theta_spec):
+            comp, attr = spec[0], spec[1]
+            idx = spec[2] if len(spec) > 2 else i
+            self.theta_by_comp.setdefault(comp.id, {})[attr] = int(idx)
 
         # Which components must be evaluated by F: the stateful ones (plus any
         # requested-output producers) plus every forward-component

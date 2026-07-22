@@ -31,10 +31,12 @@ outside the components: theta denormalization is
 ``tps.Parameter.denormalize`` itself routes through) and everything downstream
 of the raw residuals (sd weighting, MSE normalization, rescale-to-100,
 diagnostics) is ``Estimator._loglike_from_residuals`` -- the method the
-object-graph ``_obj`` ends in as well.  Construction performs the structural
-checks and the estimator silently falls back to the exact path for
-un-composable models (components without ``forward``, ``n_c > 1``,
-shared/expanded theta, a measurement the composed map cannot produce).
+object-graph ``_obj`` ends in as well.  Shared parameters are supported: the
+indexed theta spec routes every member of a shared group to the same theta
+slot.  Construction performs the structural checks and the estimator silently
+falls back to the exact path for un-composable models (components without
+``forward``, ``n_c > 1`` states or multi-branch parameters, a measurement the
+composed map cannot produce).
 ``tests/estimator/test_fast_shooting.py`` regression-checks the end-to-end
 value + gradient parity (guards the delegation contract and the composer's
 wiring/capture logic); ``options={"fast_validate": True}`` re-enables the
@@ -67,12 +69,14 @@ class FastSingleShooting:
         if getattr(estimator, "_regularization_lambda", 0) > 0:
             raise RuntimeError("regularization penalty not supported")
         n_theta = len(estimator._x0_norm)
-        if n_theta != len(estimator._flat_components):
-            raise RuntimeError("shared/expanded theta (n_c>1 parameters)")
+
+        # Indexed theta spec: shared parameters route several (comp, attr)
+        # entries to one theta slot.  Raises on multi-branch (n_c > 1)
+        # parameters, which the composed map cannot express.
+        theta_spec, unique_parameters = estimator._composer_theta_spec()
 
         # Structural checks (stateful components exist, n_c == 1, uniform
         # step size, state-width match) live in Simulator.compose.
-        theta_spec = list(zip(estimator._flat_components, estimator._parameter_names))
         layout, composer = estimator.simulator.compose(
             theta_spec=theta_spec,
             measurements=[md for md, _ in estimator._measurements],
@@ -89,9 +93,10 @@ class FastSingleShooting:
         self.composer = composer
         self.n_theta = n_theta
 
-        # Plain (functorch-safe) denormalization from the physical bounds.
+        # Plain (functorch-safe) denormalization from the physical bounds --
+        # one representative parameter per unique theta entry.
         self._lb_t, self._ub_t, self._log_mask = theta_bound_tensors(
-            estimator._flat_parameters
+            unique_parameters
         )
 
         # Sensor lag: a pass-through sensor that executes BEFORE its producer
