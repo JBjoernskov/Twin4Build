@@ -98,10 +98,12 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
     ``(x, u)`` it forms the input-dependent effective matrices, discretizes them
     via the matrix-exponential block trick, and returns ``(x_next, y)``.
 
-    Shapes (``n_c`` = parallel components, ``n`` = states, ``m`` = inputs):
-        A ``(n_c, n, n)``   B ``(n_c, n, m)``   C ``(n_c, p, n)``   D ``(n_c, p, m)``
-        E ``(n_c, m, n, n)`` or None            F ``(n_c, m, n, m)`` or None
-        x ``(n_c, n)``      u ``(n_c, m)``
+    Shapes (``n_c`` = parallel components, ``n`` = states, ``m`` = inputs)::
+
+        A (n_c, n, n)     B (n_c, n, m)     C (n_c, p, n)     D (n_c, p, m)
+        E (n_c, m, n, n) or None            F (n_c, m, n, m) or None
+        x (n_c, n)        u (n_c, m)
+
     Returns ``x_next (n_c, n)``, ``y (n_c, p)``.  ``vmap`` maps this over segments.
 
     ``disc_cache`` (a mutable dict scoped to one theta by the caller) enables
@@ -150,36 +152,40 @@ class DiscreteStatespaceSystem(core.System):
     dynamics through state-input and input-input coupling terms. The system serves as the
     computational core for various physical models in the Twin4Build framework, including
     thermal RC networks and mass balance systems.
-    
-    **NESTED BATCH DIMENSION SUMMARY:**
-    ===================================
-    
+
+    Nested Batch Dimensions
+    -----------------------
+
     This system supports nested batch operations with two batch dimensions:
-    
+
     1. **System Batch Dimension**: Different system configurations (A, B, C, D matrices)
     2. **Simulation Batch Dimension**: Parallel simulations of each system configuration
-    
+
     **Total Batch Size = sim_batch_size × system_batch_size**
-    
+
     Core matrices (after expansion):
-        - A: (sim_batch_size × system_batch_size, n_states, n_states) - System dynamics matrix
-        - B: (sim_batch_size × system_batch_size, n_states, n_inputs) - Input matrix  
-        - C: (sim_batch_size × system_batch_size, n_outputs, n_states) - Output matrix
-        - D: (sim_batch_size × system_batch_size, n_outputs, n_inputs) - Feedthrough matrix
-        
+
+    - A: (sim_batch_size × system_batch_size, n_states, n_states) - System dynamics matrix
+    - B: (sim_batch_size × system_batch_size, n_states, n_inputs) - Input matrix
+    - C: (sim_batch_size × system_batch_size, n_outputs, n_states) - Output matrix
+    - D: (sim_batch_size × system_batch_size, n_outputs, n_inputs) - Feedthrough matrix
+
     Bilinear matrices (optional, after expansion):
-        - E: (sim_batch_size × system_batch_size, n_inputs, n_states, n_states) - State-input coupling
-        - F: (sim_batch_size × system_batch_size, n_inputs, n_states, n_inputs) - Input-input coupling
-        
+
+    - E: (sim_batch_size × system_batch_size, n_inputs, n_states, n_states) - State-input coupling
+    - F: (sim_batch_size × system_batch_size, n_inputs, n_states, n_inputs) - Input-input coupling
+
     State and I/O vectors (after expansion):
-        - x: (sim_batch_size × system_batch_size, n_states) - State vector
-        - u: (sim_batch_size × system_batch_size, n_inputs) - Input vector
-        - y: (sim_batch_size × system_batch_size, n_outputs) - Output vector
-        
+
+    - x: (sim_batch_size × system_batch_size, n_states) - State vector
+    - u: (sim_batch_size × system_batch_size, n_inputs) - Input vector
+    - y: (sim_batch_size × system_batch_size, n_outputs) - Output vector
+
     **Expansion Pattern (sim_batch_size first):**
-    Simulation batches cycle through all systems:
-    [sim0_sys0, sim0_sys1, ..., sim0_sysN, sim1_sys0, sim1_sys1, ..., sim1_sysN, ...]
-     |------- all systems for sim0 -------|  |------- all systems for sim1 -------|
+    Simulation batches cycle through all systems::
+
+        [sim0_sys0, sim0_sys1, ..., sim0_sysN, sim1_sys0, sim1_sys1, ..., sim1_sysN, ...]
+         |------- all systems for sim0 -------|  |------- all systems for sim1 -------|
 
     
     Args:
@@ -205,8 +211,8 @@ class DiscreteStatespaceSystem(core.System):
         to match the simulation batch size. This allows creating a system with batch_size=1
         and then expanding it to simulate multiple instances in parallel.
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
     **Continuous-Time State-Space Representation:**
 
@@ -256,7 +262,7 @@ class DiscreteStatespaceSystem(core.System):
     *Step 1: Compute Equivalent Matrices*
 
     
-    We can calculate the \textit{equivalent} A and B matrices by factoring out the state and input vectors :math:`\mathbf{x}` and :math:`\mathbf{u}`:
+    We can calculate the *equivalent* A and B matrices by factoring out the state and input vectors :math:`\mathbf{x}` and :math:`\mathbf{u}`:
 
     .. math::
 
@@ -315,8 +321,8 @@ class DiscreteStatespaceSystem(core.System):
            \mathbf{0} & \mathbf{I}
        \end{bmatrix}
 
-    Physical Interpretation:
-    =======================
+    Physical Interpretation
+    -----------------------
 
     **In Thermal Systems:**
        - States: Temperatures of thermal nodes (air, walls, etc.)
@@ -332,8 +338,8 @@ class DiscreteStatespaceSystem(core.System):
        - B matrix: Source terms and boundary inflows
        - E/F matrices: Flow-dependent transport
 
-    Computational Features:
-    ======================
+    Computational Features
+    ----------------------
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Adaptive Discretization:** Matrices updated when inputs change significantly

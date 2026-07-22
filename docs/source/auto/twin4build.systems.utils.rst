@@ -28,6 +28,22 @@ max\_system module
    :show-inheritance:
    :undoc-members:
 
+occupancy\_detector\_system module
+----------------------------------
+
+.. automodule:: twin4build.systems.utils.occupancy_detector_system
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+occupancy\_system module
+------------------------
+
+.. automodule:: twin4build.systems.utils.occupancy_system
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 on\_off\_system module
 ----------------------
 
@@ -48,6 +64,30 @@ piecewise\_linear\_system module
 --------------------------------
 
 .. automodule:: twin4build.systems.utils.piecewise_linear_system
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+scalar\_product\_system module
+------------------------------
+
+.. automodule:: twin4build.systems.utils.scalar_product_system
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+sigmoid\_gate module
+--------------------
+
+.. automodule:: twin4build.systems.utils.sigmoid_gate
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+smooth\_saturation module
+-------------------------
+
+.. automodule:: twin4build.systems.utils.smooth_saturation
    :members:
    :show-inheritance:
    :undoc-members:

@@ -152,14 +152,14 @@ class SimulationModel:
         id: Unique identifier for the model.
         dir_conf: List of directories to store model-related files.
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
     The simulation model preparation process involves two main steps: cycle removal and
     topological sorting to create an executable simulation sequence.
 
-    Component Dependency Graph:
-    ---------------------------
+    Component Dependency Graph
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     The simulation model can be represented as a directed multigraph :math:`G = (V, E, \iota)` comprising:
 
@@ -182,8 +182,8 @@ class SimulationModel:
         - Each edge :math:`e_i \in E` with :math:`\iota(e_i) = (c_j, c_k)` indicates that component :math:`c_j` provides input to component :math:`c_k`
         - Multiple edges can map to the same vertex pair (multigraph): :math:`\iota(e_i) = \iota(e_j) = (c_p, c_q)`
 
-    Optimized Cycle Removal Process:
-    --------------------------------
+    Optimized Cycle Removal Process
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     To find the execution order of the components (i.e. the topologically sorted order), we need to remove cycles from the dependency graph first.
     Such cycles can arise in the simulation model due to different reasons, e.g. modeling of feedback control loops or mutual dependencies between components (model a requires an input from model b and model b requires an input from model a).
@@ -232,8 +232,8 @@ class SimulationModel:
        This means, for all :math:`(c_i, c_j) \in E_{init}`, :math:`c_j` must have initial values provided.
 
 
-    Topological Sorting Process:
-    -----------------------------
+    Topological Sorting Process
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     After cycle removal, we need to find a topological ordering of the acyclic graph :math:`G_{acyclic} = (V, E_{acyclic})`.
     A topological ordering is a linear arrangement of vertices :math:`L` such that for every directed edge :math:`(c_i, c_j) \in E_{acyclic}`,
@@ -279,7 +279,8 @@ class SimulationModel:
     Examples:
         Basic model setup and preparation:
 
-        >>> model = SimulationModel(id="building_model")
+        >>> import twin4build as tb
+        >>> model = tb.SimulationModel(id="building_model")
         >>> # Create components
         >>> schedule = tb.ScheduleSystem(id="schedule")
         >>> damper = tb.DamperTorchSystem(id="damper")
@@ -348,7 +349,7 @@ class SimulationModel:
 
     def __init__(self, id: str, dir_conf: List[str] = None) -> None:
         """
-        Initialize the Model instance.
+        Initialize the SimulationModel instance.
 
         Args:
             id: Unique identifier for the model.
@@ -739,6 +740,13 @@ class SimulationModel:
             receiver_component (core.System): The component receiving the connection.
             output_port (str): Name of the sender property.
             input_port (str): Name of the receiver property.
+            output_port_index (Optional[Union[int, torch.Tensor]]): Index into the sender's
+                output port when it is a vector port. Defaults to None (scalar ports).
+            input_port_index (Optional[Union[int, torch.Tensor]]): Index into the receiver's
+                input port when it is a vector port. Defaults to None (scalar ports).
+            components (Optional[Dict[str, core.System]]): Component dictionary to operate on.
+                Defaults to the model's own component dictionary.
+
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
@@ -1137,9 +1145,22 @@ class SimulationModel:
         self._is_loaded = False
 
     def count_components(self) -> int:
+        """
+        Count the number of components in the model.
+
+        Returns:
+            int: The number of components.
+        """
         return len(self._components)
 
     def count_connections(self) -> int:
+        """
+        Count the number of connections in the model, based on the
+        s4syst:connectsSystemAt triples in the internal semantic model.
+
+        Returns:
+            int: The number of connections.
+        """
         return self._semantic_model.count_triples(
             s=None, p=core.namespace.S4SYST.connectsSystemAt, o=None
         )
@@ -1284,6 +1305,10 @@ class SimulationModel:
             values (List[Any]): List of parameter values.
             components (List[core.System]): List of components to set parameters for.
             parameter_names (List[str]): List of attribute names corresponding to the parameters.
+            min_values (Optional[List[Any]]): List of lower bounds to set on the parameters.
+                Must be provided together with max_values (both None or both given).
+            max_values (Optional[List[Any]]): List of upper bounds to set on the parameters.
+                Must be provided together with min_values (both None or both given).
             normalized (List[bool]): List of booleans indicating if values are normalized.
             overwrite (bool): Whether to overwrite existing parameters.
             save_original (bool): Whether to save original parameters for later restoration.
@@ -1396,6 +1421,16 @@ class SimulationModel:
         return self.set_parameters(*args, **kwargs)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
+        """
+        Restore parameter objects previously saved by set_parameters
+        (called with save_original=True).
+
+        Args:
+            keep_values (bool): If True, the restored parameter objects keep the
+                current values; only the original parameter objects (with their
+                bounds/metadata) are put back. If False, the original values are
+                restored as well.
+        """
         for obj_key in self._saved_parameters:
             saved = self._saved_parameters[obj_key]
             component = saved["__ref__"]
@@ -1768,6 +1803,8 @@ class SimulationModel:
             start_time (Optional[datetime.datetime]): Start time for caching.
             end_time (Optional[datetime.datetime]): End time for caching.
             step_size (Optional[int]): Time step size for caching.
+            simulator (Optional[core.Simulator]): Simulator instance passed to the
+                data-source components' initialize methods.
         """
         c = self.get_component_by_class(
             self._components,
@@ -1796,9 +1833,9 @@ class SimulationModel:
         Initialize the model for simulation.
 
         Args:
-            start_time (datetime.datetime): Start time for the simulation.
-            end_time (datetime.datetime): End time for the simulation.
-            step_size (int): Time step size for the simulation.
+            start_time (List[datetime.datetime]): Start time for each batched simulation.
+            end_time (List[datetime.datetime]): End time for each batched simulation.
+            step_size (List[int]): Time step size for each batched simulation.
         """
         assert (
             self._is_loaded
@@ -2246,7 +2283,6 @@ class SimulationModel:
         Args:
             rdf_file: Path to a serialized model.
             fcn: Custom function to be applied during model loading.
-            verbose: Verbosity level controlling the amount of output. 0 to disable, 1-n to contol how many levels to print.
             validate_model: Whether to perform model validation.
             force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
@@ -2291,7 +2327,6 @@ class SimulationModel:
         Args:
             rdf_file: Path to a serialized model.
             fcn: Custom function to be applied during model loading.
-            verbose: Verbosity level controlling the amount of output. 0 to disable, 1-n to contol how many levels to print.
             validate_model: Whether to perform model validation.
             force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
@@ -2354,6 +2389,17 @@ class SimulationModel:
         #     print(self)
 
     def set_save_simulation_result(self, flag: bool = True, c: list = None):
+        """
+        Enable or disable history logging of simulation results for components.
+
+        Sets the log_history flag on every scalar input and output port of the
+        selected components.
+
+        Args:
+            flag (bool): Whether to save (log) simulation results.
+            c (Optional[list]): List of components to apply the flag to.
+                If None, the flag is applied to all components in the model.
+        """
         assert isinstance(flag, bool), "The flag must be a boolean."
         if c is not None:
             assert isinstance(c, list), "The c must be a list."
@@ -2697,12 +2743,11 @@ class SimulationModel:
         # verbose: int = 0,
     ) -> None:
         """
-        Load a chain log from a file or dictionary.
+        Load an estimation result from a file or dictionary.
 
         Args:
-            filename (Optional[str]): The filename to load the chain log from.
-            result (Optional[Dict]): The chain log dictionary to load.
-            verbose (int): If > 0, print applied parameter values for verification.
+            filename (Optional[str]): The filename to load the estimation result from.
+            result (Optional[Dict]): The estimation result dictionary to load.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -3136,7 +3181,12 @@ class SimulationModel:
 
     def serialize(self):
         """
-        Serialize the simulation model.
+        Serialize the simulation model to disk.
+
+        Updates the literals of the internal semantic model from the current
+        component/connection state and serializes it, writing
+        ``ontology_graph.ttl`` and ``instance_graph.ttl`` (Turtle format) to
+        the model's semantic_model directory.
         """
         # dummy_start_time = [datetime.datetime.now()] * len(self._components)
         # dummy_end_time = [datetime.datetime.now()] * len(self._components)

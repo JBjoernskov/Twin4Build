@@ -5,7 +5,7 @@ A comprehensive guide for developers who want to contribute to Twin4Build.
 This guide will help you understand the codebase structure, development workflow, and how to contribute effectively.
 
 Architecture Overview
---------------------
+---------------------
 
 .. image:: ../_static/Twin4Build_UML_diagram.png
    :width: 600
@@ -42,7 +42,7 @@ Package Structure
     └── tests/          # Test suite
 
 Development Environment Setup
-----------------------------
+-----------------------------
 
 Prerequisites
 ~~~~~~~~~~~~~
@@ -106,7 +106,7 @@ If you prefer to set up manually or need a different environment manager:
 **Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.9+ environment.
 
 Code Style and Conventions
--------------------------
+--------------------------
 
 Python Style Guide
 ~~~~~~~~~~~~~~~~~~
@@ -117,7 +117,7 @@ Python Style Guide
 - Use meaningful variable and function names
 
 Naming Conventions
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 - **Classes**: PascalCase (e.g., `Model`, `SpaceHeaterSystem`)
 - **Functions and variables**: snake_case (e.g., `run_simulation`, `temperature_data`)
@@ -127,7 +127,7 @@ Naming Conventions
 - **Keys used in System.input and System.output dictionaries**: camelCase (e.g., `indoorTemperature`, `co2Concentration`)
 
 Docstring Standards
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 Use Google-style docstrings and type hints:
 
@@ -171,10 +171,10 @@ If necessary, define a setter method for the property.
             self._property_name = value
 
 Development Workflow
--------------------
+--------------------
 
 Branching Strategy
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 Twin4Build follows a disciplined branching model to keep development organized and reversible:
 
@@ -187,7 +187,7 @@ Twin4Build follows a disciplined branching model to keep development organized a
   - Main contributors can make exemptions to this rule
 
 Git Workflow
-~~~~~~~~~~~
+~~~~~~~~~~~~
 
 1. **Create a GitHub issue** describing the work to be done
 
@@ -211,7 +211,7 @@ Git Workflow
        git push origin feature/issue-XX/description
 
 Branch Naming Conventions
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 All branches must reference a GitHub issue and follow this pattern: `type/issue-XX/description`
 
@@ -228,7 +228,7 @@ All branches must reference a GitHub issue and follow this pattern: `type/issue-
 - `docs/issue-15/update-installation-guide`
 
 Definition of Done
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 A feature is considered "done" when:
 
@@ -241,7 +241,7 @@ A feature is considered "done" when:
 This checklist ensures consistency, transparency, and predictable development velocity.
 
 Pull Request Process
-~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
 
 1. **Run code validation**: `python scripts/validate_code.py`
 2. **Run test suite locally**: Ensure all tests pass before pushing
@@ -257,7 +257,7 @@ Testing
 -------
 
 Testing Strategy
-~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
 
 Twin4Build aims for a practical balance: ensure stability without over-engineering.
 
@@ -272,7 +272,7 @@ Twin4Build aims for a practical balance: ensure stability without over-engineeri
 Tests serve two purposes: quality assurance and developer guidance, helping newcomers understand expected behavior.
 
 Running Tests
-~~~~~~~~~~~~
+~~~~~~~~~~~~~
 
 Run the test suite using unittest:
 ::
@@ -325,7 +325,7 @@ Run with coverage:
     pytest twin4build/tests/ --cov=twin4build --cov-report=html --cov-report=term-missing
 
 Code Quality Validation
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Before committing code, run the validation script to ensure your code meets Twin4Build standards:
 
@@ -370,7 +370,7 @@ Before committing code, run the validation script to ensure your code meets Twin
     flake8 .
 
 Writing Tests
-~~~~~~~~~~~~
+~~~~~~~~~~~~~
 
 Use unittest framework for all tests:
 
@@ -401,7 +401,7 @@ Use unittest framework for all tests:
         unittest.main()
 
 Test Organization
-~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
 
 Organize tests using unittest's test discovery patterns:
 
@@ -436,10 +436,10 @@ Use unittest's advanced features for better testing:
                     self.assertTrue(case > 0)
 
 Documentation
-------------
+-------------
 
 Documentation Standards
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 - Keep documentation up to date with code changes
 - Include code examples for all public APIs
@@ -448,7 +448,7 @@ Documentation Standards
 - Follow reStructuredText formatting for manual pages
 
 Architecture Documentation
-~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For moderately complex features, contributors should provide lightweight but effective architecture documentation:
 
@@ -462,7 +462,7 @@ This documentation supports knowledge transfer, helps reviewers rapidly understa
 **Note**: Features naturally change the architecture of the library over time. The goal of architecture documentation is not purely technical—it's communicational: to define a ubiquitous language for developer onboarding and establish a traceable history of architectural decisions.
 
 Building Documentation
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
 
 Twin4Build uses Sphinx for documentation generation. The documentation build process requires **two steps**:
 
@@ -510,7 +510,7 @@ This step compiles all documentation (manual + API) into HTML:
 For viewing and browsing the documentation, open the `Twin4Build/build/html/index.html` file in your browser.
 
 Writing Documentation
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 
 **Manual Documentation**: Edit files in `docs/source/manual/`
 
@@ -539,7 +539,7 @@ Writing Documentation
         return temperature * duration * 1.2
 
 Troubleshooting Documentation Build
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Common Issues:**
 
@@ -571,10 +571,10 @@ Creating Examples
 - After adding an example, also add it to the test suite: `twin4build/tests/test_examples.py`
 
 Contributing Guidelines
-----------------------
+-----------------------
 
 Reporting Bugs
-~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
 
 - Provide python version and operating system
 - Twin4Build version
@@ -583,7 +583,7 @@ Reporting Bugs
 - Error messages and stack traces
 
 Suggesting Features
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 - Describe the use case and motivation
 - Provide examples of how the feature would be used
@@ -605,48 +605,83 @@ Code Contribution Process
 9. **Submit a pull request** with a clear description
 
 Advanced Topics
---------------
+---------------
 
 Extending the Package
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 
 Creating Custom Components
-^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To create a custom component:
 
-1. Inherit from :class:`~twin4build.systems.saref4syst.system.System` and either :class:`~torch.nn.Module` or :class:`~twin4build.systems.utils.fmu_system.FMUSystem`
-2. Implement required methods
-3. Add proper type hints and documentation
-4. Include tests for your component
+1. Inherit from :class:`~twin4build.systems.saref4syst.system.System` (exposed as ``twin4build.core.System``)
+2. Declare the component's ``input`` and ``output`` ports as
+   :class:`~twin4build.utils.types.Scalar` / :class:`~twin4build.utils.types.Vector`
+   objects in ``__init__``
+3. Implement ``initialize`` (allocate the port tensors for the simulation
+   horizon) and ``do_step`` (advance the component one timestep)
+4. Add proper type hints and documentation
+5. Include tests for your component
 
-Example:
-::
-    class CustomHVACComponent(System):
-        """Custom HVAC component for specific use case."""
-        
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            # Initialize component-specific attributes
+Example (a minimal pass-through gate; see
+:class:`~twin4build.systems.utils.on_off_system.OnOffSystem` for the full version):
 
-        def initialize(self, start_time=None, end_time=None, step_size=None, simulator=None):
+.. code-block:: python
+
+    import torch
+    import twin4build.core as core
+    import twin4build.utils.types as tps
+
+    class CustomComponent(core.System):
+        """Pass "value" through when "criteriaValue" >= threshold, else 0."""
+
+        def __init__(self, threshold=0.5, **kwargs):
             super().__init__(**kwargs)
-            # Initialize component-specific attributes
-            
+            self.threshold = threshold
+            self.input = {"value": tps.Scalar(), "criteriaValue": tps.Scalar()}
+            self.output = {"value": tps.Scalar()}
+
+        def initialize(self, start_time, end_time, step_size):
+            _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+                start_time, end_time, step_size
+            )
+            batch_size = len(start_time)
+            for port in list(self.input.values()) + list(self.output.values()):
+                port.initialize(n_t=max_timesteps, n_s=batch_size)
+
         def do_step(self, second_time, date_time, step_size, step_index):
-            """Perform one simulation step."""
-            # Implement simulation logic
-            pass
+            criteria = self.input["criteriaValue"].get()
+            value = self.input["value"].get()
+            out = torch.where(criteria >= self.threshold, value, torch.zeros_like(value))
+            self.output["value"]._set(out, i_t=step_index)
+
+The ``do_step``/``forward`` contract
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Components that should be usable by the *fast* estimation paths (the
+``options={"fast": True}`` single-shooting objective and the collocation
+transcription's composed Jacobian) additionally implement a **pure**
+``forward(state, inputs, parameters, ...)`` method: a side-effect-free
+function from tensors to tensors. For such components, ``do_step`` MUST be a
+thin port-I/O wrapper that reads its inputs from the ports, delegates all
+math to ``forward``, and writes the results back to the output ports. This
+single-source-of-truth rule guarantees by construction that the composed
+one-step map used by the Estimator computes exactly what the object-graph
+simulation computes -- the two cannot drift apart, because there is only one
+implementation of the physics. Components without ``forward`` still work
+everywhere else; the estimator silently falls back to the object-graph
+objective for models containing them.
 
 Performance Considerations
-~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Always use torch operations to enable automatic differentiation
 - Use vectorized operations when possible
 - Profile code to identify bottlenecks
 
 Debugging Tips
-~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
 
 - Use logging for debugging information
 - Set breakpoints in your IDE
@@ -654,10 +689,10 @@ Debugging Tips
 - Check component connections and data flow
 
 Release Process
---------------
+---------------
 
 Version Management
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 Twin4Build follows semantic versioning (MAJOR.MINOR.PATCH) to maintain clarity for users and contributors:
 
@@ -686,7 +721,7 @@ Building and Distributing
 7. Upload to PyPI (maintainers only)
 
 Getting Help
------------
+------------
 
 - **GitHub Issues**: For bug reports and feature requests
 - **Documentation**: Check the online docs first
@@ -694,7 +729,7 @@ Getting Help
 - **Code**: Examine the source code and tests
 
 Contact Information
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 - **Maintainer**: Jakob Bjørnskov (jabj@mmmi.sdu.dk)
 - **GitHub**: https://github.com/JBjoernskov/Twin4Build/

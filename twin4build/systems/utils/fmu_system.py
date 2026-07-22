@@ -48,11 +48,15 @@ class fmuSystem(core.System):
     r"""
     FMU System.
 
-    This class implements a FMU system for a given system.
+    Wraps a Functional Mock-up Unit (FMU, co-simulation FMI 2.0) as a Twin4Build
+    system component. The FMU is loaded with ``fmpy``, its variables are mapped
+    to the component's input/output ports via ``FMUmap``, and each ``do_step``
+    call advances the FMU one step. Intended as a base class for components
+    backed by an FMU model.
 
     Args:
         fmu_path: Path to the FMU file
-        unzipdir: Path to the unzip directory
+        unzipdir: Path to the directory where the FMU archive is (or will be) extracted
     """
 
     # This init function is not safe for multiprocessing

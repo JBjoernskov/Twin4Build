@@ -54,6 +54,20 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
       - Coil: trims the supply air temperature to the setpoint and reports power
       - Fans: add temperature rise and electrical power on supply/return streams
 
+    Args:
+        supply_damper_kwargs: Keyword arguments for the supply DamperTorchSystem.
+            Can include 'a' and 'nominalAirFlowRate' as scalars (broadcast to
+            all branches) or lists/tensors per branch.
+        exhaust_damper_kwargs: Keyword arguments for the exhaust DamperTorchSystem.
+        coil_kwargs: Keyword arguments for CoilTorchSystem.
+        heat_recovery_kwargs: Keyword arguments for AirToAirHeatRecoverySystem.
+        junction_kwargs: Keyword arguments for ReturnFlowJunctionSystem.
+        supply_fan_kwargs: Keyword arguments for FanTorchSystem (supply).
+        exhaust_fan_kwargs: Keyword arguments for FanTorchSystem (exhaust).
+        n_branches: Number of branches/zones served by the AHU. Defaults to 1.
+        **kwargs: Additional arguments passed to the System base class
+            (must include 'id').
+
     External interface
     ------------------
     Inputs:

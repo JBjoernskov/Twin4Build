@@ -30,7 +30,8 @@ class Model:
     modeling capabilities for building digital twins. It combines the functionality of
     :class:`SimulationModel` and :class:`SemanticModel` into a single, user-friendly interface.
 
-    **Composition Architecture:**
+    Composition Architecture
+    ------------------------
 
     The Model class acts as a facade that orchestrates two core components:
 
@@ -41,7 +42,8 @@ class Model:
     2. **SemanticModel:** Manages the ontological representation using SAREF4SYST,
        RDF graphs, semantic queries, and metadata for interoperability.
 
-    **Key Responsibilities:**
+    Key Responsibilities
+    --------------------
 
     - **Unified Interface:** Provides a single entry point for both simulation and semantic operations
     - **Component Management:** Delegates component operations to the appropriate underlying model
@@ -49,7 +51,8 @@ class Model:
     - **Data Integration:** Coordinates between semantic metadata and simulation execution
     - **Interoperability:** Ensures consistent SAREF-compliant representation across both models
 
-    **Usage Pattern:**
+    Usage Pattern
+    -------------
 
     Users typically interact with this Model class rather than directly with SimulationModel
     or SemanticModel. The Model class automatically handles the coordination between the two
@@ -86,13 +89,13 @@ class Model:
     >>> model = tb.Model(id="building_model")
     >>>
     >>> # Add components (delegates to simulation_model)
-    >>> space = tb.SpaceSystem(id="office_space")
-    >>> heater = tb.SpaceHeaterSystem(id="radiator")
+    >>> space = tb.BuildingSpaceTorchSystem(id="office_space")
+    >>> heater = tb.SpaceHeaterTorchSystem(id="radiator")
     >>> model.add_component(space)
     >>> model.add_component(heater)
     >>>
     >>> # Add connections (updates both simulation and semantic models)
-    >>> model.add_connection(space, heater, "indoorTemperature", "zoneTemperature")
+    >>> model.add_connection(space, heater, "indoorTemperature", "indoorTemperature")
     >>>
     >>> # Load model (applies Algorithms 1-2, prepares semantic representation)
     >>> model.load()
@@ -116,7 +119,7 @@ class Model:
     >>> print(f"Components: {len(model.simulation_model.components)}")
     >>>
     >>> # Check if model is ready for simulation
-    >>> if model.simulation_model._is_loaded:
+    >>> if model.simulation_model.is_loaded:
     ...     simulator = tb.Simulator(model)
     ...     # Run simulation...
 
@@ -124,7 +127,7 @@ class Model:
 
     >>> # Load existing semantic model and convert to simulation model
     >>> model = tb.Model(id="restored_model")
-    >>> model.load(rdf_file="my_building.ttl")
+    >>> model.load(semantic_model_filename="my_building.ttl")
     >>> # Model now contains both semantic and simulation representations
     """
 
@@ -376,6 +379,11 @@ class Model:
             receiver_component (core.System): The component receiving the connection.
             output_port (str): Name of the sender property.
             input_port (str): Name of the receiver property.
+            output_port_index (Optional[Union[int, torch.Tensor]]): Index into the sender's
+                output port when it is a vector port. Defaults to None (scalar ports).
+            input_port_index (Optional[Union[int, torch.Tensor]]): Index into the receiver's
+                input port when it is a vector port. Defaults to None (scalar ports).
+
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
@@ -721,6 +729,8 @@ class Model:
             start_time (Optional[datetime.datetime]): Start time for caching.
             end_time (Optional[datetime.datetime]): End time for caching.
             step_size (Optional[int]): Time step size for caching.
+            simulator (Optional[core.Simulator]): Simulator instance passed to the
+                data-source components' initialize methods.
         """
         self.simulation_model.cache(
             start_time=start_time,
@@ -780,11 +790,14 @@ class Model:
 
         Args:
             semantic_model_filename: Path to the semantic model configuration file.
-            fcn Custom function to be applied during model loading.
+            simulation_model_filename: Path to a serialized simulation model file.
+                Cannot be provided together with semantic_model_filename.
+            fcn: Custom function to be applied during model loading.
             draw_semantic_model: Whether to create and save the semantic model graph.
             draw_simulation_model: Whether to create and save the simulation model graph.
-            verbose: Verbosity level controlling the amount of output. 0 to disable, 1-n to contol how many levels to print.
             validate_model: Whether to perform model validation.
+            force_config_overwrite: If True, all parameters are read from the config file.
+                If False, only the parameters that are None are read from the config file.
             logfile: Path to the log file.
         """
         if LOGGER.verbose:
@@ -837,9 +850,9 @@ class Model:
             fcn: Custom function to be applied during model loading.
             draw_semantic_model: Whether to create and save the object graph.
             draw_simulation_model: Whether to create and save the system graph.
-            verbose: Verbosity level controlling the amount of output. 0 to disable, 1-n to contol how many levels to print.
             validate_model: Whether to perform model validation.
             force_config_overwrite: Whether to force the configuration file to be overwritten.
+            logfile: Path to the log file.
         """
         assert (
             semantic_model_filename is None or simulation_model_filename is None
@@ -925,6 +938,14 @@ class Model:
         """
 
     def set_save_simulation_result(self, flag: bool = True, c: list = None):
+        """
+        Enable or disable history logging of simulation results for components.
+
+        Args:
+            flag (bool): Whether to save (log) simulation results.
+            c (Optional[list]): List of components to apply the flag to.
+                If None, the flag is applied to all components in the model.
+        """
         self.simulation_model.set_save_simulation_result(flag=flag, c=c)
 
     def load_estimation_result(
@@ -934,12 +955,11 @@ class Model:
         # verbose: int = 0,
     ) -> None:
         """
-        Load a chain log from a file or dictionary.
+        Load an estimation result from a file or dictionary.
 
         Args:
-            filename (Optional[str]): The filename to load the chain log from.
-            result (Optional[Dict]): The chain log dictionary to load.
-            verbose (int): If > 0, print applied parameter values for verification.
+            filename (Optional[str]): The filename to load the estimation result from.
+            result (Optional[Dict]): The estimation result dictionary to load.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -967,7 +987,7 @@ class Model:
             key (str): The key of the component.
 
         Returns:
-            core.System: The system component.
+            core.SemanticObject: The semantic object mapped to the simulation component.
 
         Raises:
             AssertionError: If the mapping is not 1-to-1.

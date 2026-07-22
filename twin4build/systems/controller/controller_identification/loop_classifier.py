@@ -58,7 +58,7 @@ class LoopScore:
         slope: Signed slope ``kp`` from the joint regression on ``Δe``.
             Positive means a direct-acting loop (rising error opens the
             actuator further); negative means reverse-acting.
-        kp: ``|slope|``.  Always non-negative.
+        kp: The absolute value of ``slope``.  Always non-negative.
         Ti: Integral time recovered from the joint coefficient on ``e``.
             ``None`` when the integral coefficient is too small to identify
             (purely-P loop, no significant accumulated error).

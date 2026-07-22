@@ -16,7 +16,8 @@ class ConnectionPoint:
 
     Args:
         connection_point_of: The system that the connection point is part of. Defaults to None.
-        connects_system_through: A list of systems that the connection point connects to. Defaults to None.
+        connects_system_through: A list of Connection objects that the connection point
+            receives from. Defaults to None (empty list).
         input_port: The name of the property that the connection point receives. Defaults to None.
     """
 
@@ -31,7 +32,8 @@ class ConnectionPoint:
 
         Args:
             connection_point_of: The system that the connection point is part of. Defaults to None.
-            connects_system_through: A list of systems that the connection point connects to. Defaults to None.
+            connects_system_through: A list of Connection objects that the connection point
+                receives from. Defaults to None (empty list).
             input_port: The name of the property that the connection point receives. Defaults to None.
         """
         assert (
@@ -89,14 +91,14 @@ class ConnectionPoint:
     @property
     def connects_system_through(self) -> list:
         """
-        Get the list of systems that the connection point connects to.
+        Get the list of Connection objects that the connection point receives from.
         """
         return self._connectsSystemThrough
 
     @connects_system_through.setter
     def connects_system_through(self, value: list) -> None:
         """
-        Set the list of systems that the connection point connects to.
+        Set the list of Connection objects that the connection point receives from.
         """
         self._connectsSystemThrough = value
 
@@ -117,14 +119,16 @@ class ConnectionPoint:
     @property
     def input_port_index(self) -> Union[int, torch.Tensor]:
         """
-        Get the index of the input port.
+        Get the dict mapping each Connection to its input port index
+        (an int or torch.Tensor).
         """
         return self._input_port_index
 
     @property
     def output_port_index(self) -> Union[int, torch.Tensor]:
         """
-        Get the index of the output port.
+        Get the dict mapping each Connection to its output port index
+        (an int or torch.Tensor).
         """
         return self._output_port_index
 

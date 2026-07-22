@@ -41,21 +41,34 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
     Args:
         df: Input DataFrame containing weather data.
             Must have columns 'outdoorTemperature', 'globalIrradiation', and 'outdoorCo2Concentration'.
-        useSpreadsheet: Whether to use spreadsheet files for data loading.
-        useDatabase: Whether to use database for data loading.
-        usedf: Whether to use the provided DataFrame for data loading.
+        use_spreadsheet: Whether to use spreadsheet files for data loading.
+        use_database: Whether to use a database for data loading.
+        use_df: Whether to use the provided DataFrame for data loading.
+            If none of the three flags is set, the source is auto-detected from
+            the provided arguments; at most one flag may be True.
         filename_outdoorTemperature: Path to CSV file containing outdoor temperature data.
-        datecolumn_outdoorTemperature: Name of the date column in temperature file.
-        valuecolumn_outdoorTemperature: Name of the temperature value column.
+        datecolumn_outdoorTemperature: Column index of the date column in the temperature file.
+        valuecolumn_outdoorTemperature: Column index of the temperature value column.
         filename_globalIrradiation: Path to CSV file containing global irradiation data.
-        datecolumn_globalIrradiation: Name of the date column in irradiation file.
-        valuecolumn_globalIrradiation: Name of the irradiation value column.
+        datecolumn_globalIrradiation: Column index of the date column in the irradiation file.
+        valuecolumn_globalIrradiation: Column index of the irradiation value column.
         filename_outdoorCo2Concentration: Path to CSV file containing CO2 concentration data.
-        datecolumn_outdoorCo2Concentration: Name of the date column in CO2 file.
-        valuecolumn_outdoorCo2Concentration: Name of the CO2 value column.
+        datecolumn_outdoorCo2Concentration: Column index of the date column in the CO2 file.
+        valuecolumn_outdoorCo2Concentration: Column index of the CO2 value column.
+        uuid_outdoorTemperature: UUID identifying the temperature time series in the database.
+        dbconfig_outdoorTemperature: Database configuration for the temperature time series.
+        uuid_globalIrradiation: UUID identifying the irradiation time series in the database.
+        dbconfig_globalIrradiation: Database configuration for the irradiation time series.
+        uuid_outdoorCo2Concentration: UUID identifying the CO2 time series in the database.
+        dbconfig_outdoorCo2Concentration: Database configuration for the CO2 time series.
         a: Correction factor for linear correction of temperature data.
         b: Correction offset for linear correction of temperature data.
         apply_correction: Whether to apply linear correction to temperature data.
+
+    Note:
+        The camelCase arguments ``useSpreadsheet`` and ``useDatabase`` (and
+        ``usedf``) are deprecated aliases for ``use_spreadsheet``,
+        ``use_database``, and ``use_df``.
     """
 
     def __init__(
@@ -567,6 +580,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         """Initialize the outdoor environment system.
 
         This method performs the following initialization steps:
+
         1. Validates and resolves the weather data file paths
         2. Loads weather data from 3 separate files/database or DataFrame
         3. Verifies required data columns are present

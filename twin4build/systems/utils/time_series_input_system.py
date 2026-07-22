@@ -37,6 +37,10 @@ class TimeSeriesInputSystem(core.System):
         use_database: Whether to use a database for input. Defaults to False.
         uuid: UUID for database operations.
         dbconfig: Database configuration parameters.
+        cache: Whether to cache loaded/resampled data on disk for faster
+            re-initialization. Defaults to True.
+        transformation: Optional function applied to the loaded values
+            (e.g. unit conversion). Defaults to None.
         **kwargs: Additional keyword arguments
     """
 
@@ -65,6 +69,10 @@ class TimeSeriesInputSystem(core.System):
             use_database: Whether to use a database for input. Defaults to False.
             uuid: UUID for database operations.
             dbconfig: Database configuration parameters.
+            cache: Whether to cache loaded/resampled data on disk for faster
+                re-initialization. Defaults to True.
+            transformation: Optional function applied to the loaded values
+                (e.g. unit conversion). Defaults to None.
             **kwargs: Additional keyword arguments passed to parent System class.
 
         Raises:

@@ -1,14 +1,6 @@
 coil
 ====
 
-Package
----------
-
-.. toctree::
-   :maxdepth: 1
-
-   twin4build.systems.coil.tests
-
 Modules
 -------
 

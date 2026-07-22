@@ -642,13 +642,13 @@ class SemanticType(SemanticEntity):
             List[Union[str, "SemanticType"]],
         ],
     ) -> bool:
-        """Check if this instance is of any of the given class types (including inheritance)
+        """Check if this type is, or is a subclass of, any of the given class types.
 
         Args:
             cls: Single class or tuple/list of classes to check against
 
         Returns:
-            True if instance matches any of the specified classes
+            True if this type matches or inherits from any of the specified classes
         """
         # Convert single class to tuple for consistent handling
         if not isinstance(cls, (tuple, list)):
@@ -1429,6 +1429,31 @@ class SemanticLiteral(SemanticObject):
 
 @autoreset_print
 class SemanticModel:
+    """
+    An RDF graph wrapper for managing the semantic (ontological) representation of a model.
+
+    The class maintains two separate rdflib graphs: an instance graph holding the
+    instance data (optionally parsed from an RDF file or URL) and an ontology graph
+    holding the ontologies (TBox) that the instances refer to. Ontologies referenced
+    by namespace are parsed on demand.
+
+    Key capabilities:
+
+    - Namespace management: registered namespace prefixes are accessible as
+      attributes (e.g. ``model.SAREF``) and bound on both graphs.
+    - Instance access: :meth:`get_instance`, :meth:`get_type`, and
+      :meth:`get_instances_of_type` return cached wrapper objects
+      (:class:`SemanticInstance`, :class:`SemanticType`, etc.) around RDF resources.
+    - Querying and filtering: SPARQL CONSTRUCT queries via :meth:`filter_graph`,
+      with optional BFS/DFS traversal and triple/node limits.
+    - Visualization: :meth:`visualize` renders the instance graph with Graphviz.
+    - Reasoning and serialization: :meth:`reason` adds inferred triples;
+      :meth:`serialize` writes both graphs to Turtle files.
+
+    Instances of this class are consumed by the :class:`Translator`, which
+    translates a semantic model into an executable :class:`SimulationModel`.
+    """
+
     def __init__(
         self,
         rdf_file: Optional[str] = None,
@@ -2462,7 +2487,9 @@ class SemanticModel:
                         - An integer: keep the last slice_uri characters
                         - A tuple (start, end): slice the URI using [start:end]
             dpi: DPI of the visualization. Only used if format is "png".
-            limit: Limit the number of triples to visualize
+            triple_limit: Maximum number of triples to include in the visualized graph
+            node_limit: Maximum number of nodes to visit when using BFS/DFS traversal.
+                        This can help control the "spread" of the traversal
             generate_subgraphs: If True, generate subgraphs for each isolated subgraph
             traversal_mode: Traversal mode to use. Can be "bfs" for breadth-first search or "dfs" for depth-first search
             initial_node: Initial node to start traversal from. If not provided, a random node will be selected from the query results
@@ -3358,7 +3385,19 @@ class SemanticModel:
         filename_ontology_graph: str = "ontology_graph.ttl",
         filename_instance_graph: str = "instance_graph.ttl",
     ):
-        """Serialize the instance_graph to a file"""
+        """Serialize both graphs to files in Turtle format.
+
+        Writes the ontology graph to ``filename_ontology_graph`` and the
+        instance graph (including inferred types and predicate-object pairs
+        of cached instances) to ``filename_instance_graph``, both inside the
+        model's directory.
+
+        Args:
+            folder_list: Optional list of subfolders (relative to the model
+                directory) to write the files into.
+            filename_ontology_graph: Filename for the serialized ontology graph.
+            filename_instance_graph: Filename for the serialized instance graph.
+        """
         dirname_ontology_graph, _ = self.get_dir(
             folder_list=folder_list, filename=filename_ontology_graph
         )

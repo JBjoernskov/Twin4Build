@@ -14,12 +14,16 @@ class OnOffSystem(core.System):
     r"""
     On-Off System.
 
-    If value>=threshold set to on_value else set to off_value
+    Gates a signal based on a criteria input: if the "criteriaValue" input is
+    greater than or equal to ``threshold``, the "value" input is passed through
+    to the output; otherwise the output is set to ``is_off_value``.
 
     Args:
-        threshold: Threshold value
-        is_on_value: Value to set when value>=threshold
-        is_off_value: Value to set when value<threshold
+        threshold: Threshold that the "criteriaValue" input is compared against.
+        is_on_value: Currently unused. The argument is accepted but never
+            stored; when the criteria is met, the "value" input is passed
+            through instead.
+        is_off_value: Output value when criteriaValue < threshold.
         **kwargs: Additional keyword arguments
     """
 

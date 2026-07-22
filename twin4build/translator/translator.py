@@ -169,10 +169,12 @@ class Translator:
     r"""
     Class for ontology-driven automated model generation and calibration in building energy systems.
 
-    Args:
-        sim2sem_map: Dictionary mapping simulation model components to semantic model instances
-        sem2sim_map: Dictionary mapping semantic model instances to simulation model components
-        instance_to_group_map: Dictionary mapping simulation model components to their corresponding signature pattern groups
+    The constructor takes no arguments; the mapping attributes below are
+    populated by :meth:`translate`.
+
+    Attributes:
+        sim2sem_map: Dictionary mapping simulation model components to semantic model instances.
+        sem2sim_map: Dictionary mapping semantic model instances to simulation model components.
 
     This class implements a general methodology for translating semantic models of building systems into executable simulation models, as described in:
 
@@ -223,7 +225,7 @@ class Translator:
     3. **Model Assembly**: Components are connected according to the relationships defined in the semantic model and signature patterns, resulting in an executable simulation model.
 
     Mathematical Formulation
-    -----------------------
+    ------------------------
     The task of searching for signature patterns in the semantic model is formulated as a subgraph isomorphism problem:
 
     Given the pattern signature represented by the graph :math:`p = (V_p, E_p, L_p)` and the semantic model represented by the graph :math:`G = (V_G, E_G, L_G)`, find the map :math:`f: V_p \rightarrow V_G` such that:
@@ -4864,12 +4866,12 @@ class SignaturePattern:
     - **Inputs**: Define which nodes provide input connections for the component
 
     Pattern Structure
-    ----------------
+    -----------------
     Signature patterns are defined using a graph-based approach where:
 
     - Each node represents a semantic model element (e.g., a Damper, Sensor, or Property)
     - Each edge represents a relationship between elements (e.g., "observes", "controls")
-    - Rules determine how flexible the matching process is (Exact, SinglePath, MultiPath, Optional_)
+    - Rules determine how flexible the matching process is (``Exact``, ``SinglePath``, ``MultiPath``, ``Optional_``)
 
     The pattern matching process finds subgraph isomorphisms between the signature pattern
     and the semantic model, allowing the Translator to identify valid contexts for component instantiation.
@@ -4909,9 +4911,7 @@ class SignaturePattern:
     ...     float_value = Node(cls=core.namespace.XSD.float)
     ...
     ...     # Create signature pattern with real parameters
-    ...     sp = SignaturePattern(
-    ...         semantic_model_=core.ontologies,
-    ...     )
+    ...     sp = SignaturePattern()
     ...
     ...     # Add required relationships using Exact rules
     ...     sp.add_triple(
@@ -4951,9 +4951,7 @@ class SignaturePattern:
     ...     schedule_node = Node(cls=core.namespace.S4BLDG.Schedule)
     ...     reverse_node = Node(cls=core.namespace.XSD.boolean)
     ...
-    ...     sp = SignaturePattern(
-    ...         semantic_model_=core.ontologies,
-    ...     )
+    ...     sp = SignaturePattern()
     ...
     ...     # All relationships are exact for precise control logic
     ...     sp.add_triple(
@@ -4998,9 +4996,7 @@ class SignaturePattern:
     ...         core.namespace.S4BLDG.Fan,
     ...     ))
     ...
-    ...     sp = SignaturePattern(
-    ...         semantic_model_=core.ontologies,
-    ...     )
+    ...     sp = SignaturePattern()
     ...
     ...     # Exact relationships for system topology
     ...     sp.add_triple(
@@ -5045,9 +5041,7 @@ class SignaturePattern:
     ...     flow_setpoint = Node(cls=core.namespace.BRICK.Air_Flow_Setpoint)
     ...     float_value = Node(cls=core.namespace.XSD.float)
     ...
-    ...     sp = SignaturePattern(
-    ...         semantic_model_=core.ontologies,
-    ...     )
+    ...     sp = SignaturePattern()
     ...
     ...     # BRICK-specific relationships
     ...     sp.add_triple(
@@ -5094,9 +5088,7 @@ class SignaturePattern:
     ...     temperature_node = Node(cls=core.namespace.SAREF.Temperature)
     ...     space_node = Node(cls=core.namespace.S4BLDG.BuildingSpace)
     ...
-    ...     sp = SignaturePattern(
-    ...         semantic_model_=core.ontologies,
-    ...     )
+    ...     sp = SignaturePattern()
     ...
     ...     sp.add_triple(
     ...         Exact(subject=sensor_node, object=temperature_node,
@@ -5467,9 +5459,9 @@ class SignaturePattern:
             - None: Use the full output (default for scalar outputs)
             - int: Select a single element at this index
             - Node: For Vector→Scalar connections. The Node must be from this
-            (target) signature pattern and must map to semantic instances shared
-            with the source. The index is determined by finding which position in
-            the source's groups matches the semantic instance.
+              (target) signature pattern and must map to semantic instances shared
+              with the source. The index is determined by finding which position in
+              the source's groups matches the semantic instance.
             - torch.Tensor: Select multiple elements at these indices
 
         input_port_index : int, Node, or torch.Tensor, optional
@@ -5478,10 +5470,10 @@ class SignaturePattern:
             - None: Fill the entire input (default for scalar inputs)
             - int: Fill a single slot at this index
             - Node: For Scalar→Vector or Vector→Vector connections. The Node must
-            be from this (target) signature pattern. The index/indices are
-            determined by the ordering of groups matching this Node. This is the
-            primary way to specify index mapping as it directly relates to the
-            target component's structure.
+              be from this (target) signature pattern. The index/indices are
+              determined by the ordering of groups matching this Node. This is the
+              primary way to specify index mapping as it directly relates to the
+              target component's structure.
             - torch.Tensor: Fill multiple slots at these indices
 
         Connection Type Summary
@@ -5979,10 +5971,10 @@ class Rule:
     Overview
     --------
     Rules define the mapping between signature pattern elements and semantic model elements through:
+
     - **Subject**: A Node representing the source
     - **Object**: A Node representing the target
     - **Predicate**: A Predicate object (can hold multiple predicates for cross-ontology matching)
-    - **Priority**: The precedence level for rule application (higher values take precedence)
 
     Rule Types
     ----------
@@ -6006,7 +5998,7 @@ class Rule:
     >>> rule = Exact(subject=damper_node, object=space_node, predicate=pred)
 
     Rule Composition
-    ---------------
+    ----------------
     Rules can be combined using logical operators:
     - **And**: Both rules must be satisfied
     - **Or**: Either rule can be satisfied
@@ -6035,8 +6027,8 @@ class Rule:
     object : Node
         The target node in the signature pattern
     predicate : Predicate
-        The predicate(s) for this rule (holds tuple of SemanticPredicate like Node holds tuple of SemanticType)
-        The precedence level for rule application
+        The predicate(s) for this rule (holds a tuple of SemanticPredicate,
+        like Node holds a tuple of SemanticType)
     """
 
     def __init__(
@@ -6472,8 +6464,8 @@ class StepRule(Rule):
     For each SM object satisfying ``self.object.cls``, the matcher emits a
     **separate branch** in ``candidate_maps``; each branch becomes its
     own complete match group with ``group[sp_object] = one_sm_object``.
-    Sibling ``StepRule``s on the same subject produce a cross-product of
-    branches — one group per Cartesian tuple.
+    Sibling ``StepRule`` instances on the same subject produce a
+    cross-product of branches — one group per Cartesian tuple.
 
     Binding produced
     ----------------
@@ -7329,9 +7321,10 @@ class OptionalRule(Rule):
 
     Name
     ----
-    ``Optional`` names the modality (conditional presence); the wrapped
-    rule supplies the topology and binding shape. Reads as "rule whose
-    assertion is evaluated but whose failure is tolerated".
+    ``OptionalRule`` names the modality (conditional presence); the
+    wrapped rule supplies the topology and binding shape. Reads as "rule
+    whose assertion is evaluated but whose failure is tolerated".
+    (``Optional_`` remains as a deprecated alias.)
 
     Asserts
     -------

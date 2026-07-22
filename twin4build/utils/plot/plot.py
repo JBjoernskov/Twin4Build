@@ -87,32 +87,36 @@ class Entry:
     A simple class for specifying plot data with named parameters (matplotlib-like API).
 
     Args:
-        data: Data array/tensor to plot (required)
-        label: Display label for the plot line (required)
-        color: Plot line color (None for automatic color selection)
-        fmt: Plot format string combining linestyle and marker (None for automatic style selection)
-        axis: Which y-axis to plot on (1, 2, or 3, defaults to 1)
-        linewidth: Plot line width (None for automatic width selection)
+        data: Data array/tensor to plot (required).
+        fmt: Plot format string combining linestyle and marker (None for automatic style selection).
+        axis: Which y-axis to plot on (1, 2, or 3, defaults to 1).
+        **kwargs: Additional matplotlib line properties, passed through to the
+            plot call and set as attributes on the entry. ``label`` (display
+            label for the plot line) is required; common optional keys include
+            ``color`` (None for automatic color selection) and ``linewidth``
+            (None for automatic width selection).
 
-        # Deprecated parameters (for backward compatibility)
-        component: Deprecated, use direct data instead
-        port: Deprecated, use direct data instead
-        io_type: Deprecated, use direct data instead
-        input_idx: Deprecated, use direct data instead
-        attribute: Deprecated, use label instead
-        linestyle: Deprecated, use fmt instead
+        Deprecated parameters (backward compatibility):
+            component: Deprecated, use direct data instead.
+            port: Deprecated, use direct data instead.
+            io_type: Deprecated, use direct data instead.
+            input_idx: Deprecated, use direct data instead.
+            attribute: Deprecated, use ``label`` instead.
+            linestyle: Deprecated, use ``fmt`` instead.
 
     Examples:
-        # Simple data plot on axis 1
-        Entry(data=temperature_array, label="Room Temperature")
+        Basic usage::
 
-        # Data plot with custom styling on axis 2
-        Entry(data=power_array, label="Power Consumption",
-              color="red", fmt="--", axis=2)
+            # Simple data plot on axis 1
+            Entry(data=temperature_array, label="Room Temperature")
 
-        # Data plot on axis 3 with markers
-        Entry(data=flow_array, label="Flow Rate",
-              color="blue", fmt="o-", axis=3)
+            # Data plot with custom styling on axis 2
+            Entry(data=power_array, label="Power Consumption",
+                  color="red", fmt="--", axis=2)
+
+            # Data plot on axis 3 with markers
+            Entry(data=flow_array, label="Flow Rate",
+                  color="blue", fmt="o-", axis=3)
     """
 
     def __init__(
@@ -554,6 +558,14 @@ def plot(
         ylim_2axis (tuple, optional): Y-axis limits for the second axis.
         ylim_3axis (tuple, optional): Y-axis limits for the third axis.
         title (str, optional): Plot title.
+        nticks (int): Number of y-axis ticks on each axis (default 11).
+        roundto_1axis (float, optional): Round the first axis' tick values to this resolution.
+        roundto_2axis (float, optional): Round the second axis' tick values to this resolution.
+        roundto_3axis (float, optional): Round the third axis' tick values to this resolution.
+        yoffset_1axis (float, optional): Extra headroom offset applied to the first axis' limits.
+        yoffset_2axis (float, optional): Extra headroom offset applied to the second axis' limits.
+        yoffset_3axis (float, optional): Extra headroom offset applied to the third axis' limits.
+        align_zero (bool): Align the zero (or common reference) level across the y-axes (default True).
         show (bool): Whether to display the plot.
 
     Returns:
@@ -766,6 +778,22 @@ def get_fig_axes(
     ax_dim=(0.65, 0.6),
     y_offset_add_default=0.04,
 ):
+    """
+    Create a figure with a grid of manually positioned axes.
+
+    Args:
+        title_name: Figure suptitle.
+        n_plots: Number of axes to create.
+        cols: Number of columns in the grid.
+        K: Vertical scaling factor used for row offsets.
+        size_inches: Figure size ``(width, height)`` in inches.
+        offset: ``(x, y)`` offset of the first axes in figure fraction.
+        ax_dim: ``(width, height)`` of each axes in figure fraction.
+        y_offset_add_default: Extra vertical spacing between rows.
+
+    Returns:
+        tuple: Figure and list of axes (ordered top-left to bottom-right).
+    """
     fig = plt.figure()
     fig.set_size_inches(size_inches)
     rows = math.ceil(n_plots / cols)
@@ -819,7 +847,13 @@ def plot_component(
     show=False,
 ):
     """
-    Deprecated: Use plot() with time parameter and Entry objects instead.
+    Deprecated: Use :func:`plot` with a ``time`` parameter and :class:`Entry` objects instead.
+
+    Plots component outputs directly from a simulator by converting legacy
+    ``(component, port)``-style tuples into :class:`Entry` objects and
+    delegating to :func:`plot`. The ``components_*axis`` lists select what is
+    drawn on each of the up-to-three y-axes; all remaining parameters have the
+    same meaning as in :func:`plot`.
 
     This function is maintained for backward compatibility but will be removed in a future version.
     """

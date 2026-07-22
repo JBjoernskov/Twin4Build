@@ -1,19 +1,25 @@
 """
-Core module for Twin4Build package.
+Core module for the Twin4Build package.
 
-This module provides the fundamental components and ontologies used throughout the Twin4Build package.
-It defines essential namespaces and provides access to the semantic model that underpins the digital twin functionality.
+This module re-exports the central classes of the package so they can be accessed
+via ``twin4build.core`` without importing the individual submodules, and defines
+namespace/ontology constants and small shared helpers.
 
-Key Components:
-    - Namespaces (FSO, SAREF, S4BLDG, S4SYST, XSD, T4B): Core ontologies for building systems
-    - SemanticModel: The central model for managing building system semantics
-    - Ontology Management: Functions for accessing and managing building system ontologies
+Re-exported classes:
+    - Model, SimulationModel, SemanticModel: Model interfaces (unified, simulation, semantic)
+    - Semantic wrappers: SemanticEntity, SemanticObject, SemanticInstance,
+      SemanticLiteral, SemanticProperty, SemanticType, SemanticPredicate
+    - Simulator, Estimator: Simulation and parameter estimation
+    - Translator and signature-pattern classes: SignaturePattern, Diff, StepRule,
+      NoStepRule, SetStepRule, OptionalRule, PathRule, AnyPathRule
+    - SAREF4SYST base classes: System, Connection, ConnectionPoint
 
-The module integrates various building system ontologies including:
-    - FSO (Facility Smart Objects)
-    - SAREF (Smart Applications REFerence)
-    - S4BLDG (SAREF for Building)
-    - S4SYST (SAREF for System)
+Defined here:
+    - BlankNode: Sentinel for matching untyped RDF blank nodes in signature patterns
+    - sanitize_id / LEGAL_ID_CHARS: Component-id sanitization helper
+    - namespace: rdflib Namespace constants (FSO, SAREF, S4BLDG, S4SYST, BRICK, XSD,
+      T4B, RDF, RDFS, REC, OWL, FPO, BOT, SENAPS, BRICKREF)
+    - ontology: URLs of the ontology files used for on-demand parsing
 """
 
 # Third party imports

@@ -46,8 +46,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         f_air: Radiation factor for air
         Q_occ_gain: Heat gain per occupant [W]
 
-    Mathematical Formulation:
-    =========================
+    Mathematical Formulation
+    ------------------------
 
     **Continuous-Time Differential Equations:**
 
@@ -183,8 +183,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
        - :math:`\mathbf{E}[2,0,0] \cdot u_2 \cdot x_0 = -\frac{c_p}{C_{air}} \dot{m}_{exh} T_i`: Exhaust air removing heat
        - :math:`\mathbf{F}[1,0,3] \cdot u_1 \cdot u_3 = \frac{c_p}{C_{air}} \dot{m}_{sup} T_{sup}`: Supply air bringing heat
 
-    Physical Interpretation:
-    ======================
+    Physical Interpretation
+    -----------------------
 
     **Thermal Network:**
        - RC network represents building thermal mass and resistances
@@ -197,8 +197,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
        - Exhaust air flow removes heat at indoor temperature (E matrix coupling)
        - These effects are critical for accurate HVAC modeling
 
-    Computational Features:
-    ======================
+    Computational Features
+    ----------------------
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Adaptive Discretization:** Matrices updated when flows change significantly

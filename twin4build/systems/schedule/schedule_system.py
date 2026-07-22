@@ -33,16 +33,28 @@ class ScheduleSystem(core.System):
         fridayRulesetDict: A dictionary of rulesets for Fridays.
         saturdayRulesetDict: A dictionary of rulesets for Saturdays.
         sundayRulesetDict: A dictionary of rulesets for Sundays.
-        add_noise: A boolean to add noise to the schedule value.
-        useSpreadsheet: A boolean to use a spreadsheet to read the schedule value.
-        useDatabase: A boolean to use a database to read the schedule value.
-        filename: The filename of the spreadsheet to read the schedule value.
+        add_noise: A boolean to add random noise to the ruleset-based schedule value.
+        noise_hour_range: Half-width of the uniform noise component redrawn each
+            hour (sampled from [-noise_hour_range, +noise_hour_range]) when
+            ``add_noise`` is True.
+        noise_day_range: Half-width of the uniform noise component redrawn each
+            day (sampled from [-noise_day_range, +noise_day_range]) when
+            ``add_noise`` is True.
+        use_spreadsheet: A boolean to read the schedule value from a spreadsheet file.
+        use_database: A boolean to read the schedule value from a database.
+        use_dict: A boolean to generate the schedule value from the ruleset dictionaries.
+            If none of the three flags is set, the source is auto-detected from the
+            provided arguments; at most one flag may be True.
+        filename: The filename of the spreadsheet to read the schedule value from.
         datecolumn: The column index of the date in the spreadsheet.
         valuecolumn: The column index of the value in the spreadsheet.
-        uuid: The uuid of the database to read the schedule value.
-        name: The name of the database to read the schedule value.
-        dbconfig: The configuration of the database to read the schedule value.
+        uuid: The uuid identifying the time series in the database.
+        name: The name identifying the time series in the database.
+        dbconfig: The configuration of the database to read the schedule value from.
 
+    Note:
+        The camelCase arguments ``useSpreadsheet`` and ``useDatabase`` are
+        deprecated aliases for ``use_spreadsheet`` and ``use_database``.
     """
 
     def __init__(

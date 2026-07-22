@@ -40,13 +40,14 @@ class SigmoidGate(core.System, nn.Module):
 
     Input ports:
         inputSignal: The value to threshold (Scalar).
+
         controllerSignal: Optional controller output to blend with
             ``default_output`` using the gate (Scalar). When wired, the
-            output becomes
-            ``gate * controllerSignal + (1 - gate) * default_output``
-            instead of the raw gate signal.  This lets the gate double as
-            a signal-blender (controller "switch") without needing a
-            separate wrapper System.
+            output becomes ``gate * controllerSignal + (1 - gate) *
+            default_output`` instead of the raw gate signal.  This lets
+            the gate double as a signal-blender (controller "switch")
+            without needing a separate wrapper System.
+
     Output ports:
         outputSignal: Either the 0--1 gate signal (when ``controllerSignal``
             is unwired) or the blended controller output (when wired).

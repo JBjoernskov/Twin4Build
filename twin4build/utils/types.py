@@ -1107,14 +1107,14 @@ class Parameter(nn.Parameter):
         min_value: Minimum value for normalization.
         max_value: Maximum value for normalization.
         requires_grad: Whether to track gradients for this parameter.
+        n_c: Optional number of parallel components. When given, ``data`` is
+            broadcast to shape ``(n_c,)`` at construction. When ``None``
+            (default), ``n_c`` is inferred from ``data`` and can be expanded
+            later with ``expand_to_n_c()`` during ``initialize()``.
         scaling: Normalization scaling mode. ``"linear"`` (default) uses standard
             min-max normalization. ``"log"`` uses logarithmic normalization so that
             equal steps in normalized [0, 1] space correspond to equal multiplicative
             changes in the physical value. Log scaling requires ``min_value > 0``.
-
-    Note:
-        n_c (number of parallel components) is not specified at construction time.
-        Use expand_to_n_c() method during initialize() when n_c is known.
     """
 
     def __new__(

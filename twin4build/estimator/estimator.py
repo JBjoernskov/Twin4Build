@@ -88,15 +88,47 @@ class Estimator:
     r"""
     A class for parameter estimation in the twin4build framework.
 
-    This class provides methods for estimating model parameters using maximum likelihood
-    estimation (MLE), with two different optimization approaches: Automatic Differentiation (AD)
-    and Finite Difference (FD) methods.
+    This class estimates model parameters from measured data using maximum
+    likelihood estimation (MLE). Gradients are computed either by automatic
+    differentiation (AD, preferred for torch-based models) or by finite
+    differences (FD, for FMU/non-torch models).
 
     Args:
-        simulator : The simulator instance for running simulations.
+        simulator: The simulator instance for running simulations.
 
-    Mathematical Formulation:
-    =========================
+    Overview
+    --------
+
+    Two *transcriptions* of the estimation problem are supported:
+
+    - **Single-shooting** (default): the model is simulated over the full
+      horizon from a fixed initial state, and only the physical parameters
+      are decision variables. Available with all optimizer backends.
+    - **Collocation**: the state at every timestep boundary is promoted to a
+      decision variable and the dynamics are enforced as sparse equality
+      constraints. Available with the CasADi/IPOPT backend only; robust to
+      poor initial parameter guesses and returns the estimated initial state
+      as part of the fit.
+
+    Two optimizer *backends* are supported:
+
+    - **SciPy** (``method=("scipy", <optimizer>, <mode>)``): local optimizers
+      (SLSQP, L-BFGS-B, TNC, trust-constr, trf, dogbox) and global optimizers
+      (dual_annealing, basinhopping).
+    - **CasADi/IPOPT** (``method=("casadi", "ipopt", "ad")``): the IPOPT
+      interior-point solver, optionally with the collocation transcription
+      (``method=("casadi", "ipopt", "ad", "collocation")``).
+
+    For composable torch models, ``options={"fast": True}`` replaces the
+    object-graph objective with an equivalent composed one-step map that
+    skips the per-step Python dispatch (see the Single-Shooting section
+    below); values and gradients are identical by construction.
+
+    Mathematical Formulation
+    ------------------------
+
+    Maximum Likelihood Estimation
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     The general parameter estimation problem is formulated as a maximum likelihood estimation:
 
@@ -112,14 +144,16 @@ class Estimator:
         - :math:`\mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y})` is the likelihood function
         - :math:`\boldsymbol{Y}` are the observed measurements
 
-    **Dimensions:**
+    Dimensions
+    ^^^^^^^^^^
 
     - :math:`n_t`: Number of time steps in the simulation period
     - :math:`n_p`: Number of parameters to estimate
     - :math:`n_x`: Number of input variables (disturbances, setpoints, etc.)
     - :math:`n_y`: Number of output variables (measurements, performance metrics)
 
-    **Model Structure:**
+    Model Structure
+    ^^^^^^^^^^^^^^^
 
     The building model :math:`\mathcal{M}` is represented as a directed graph where nodes are dynamic components
     and edges represent input/output connections.
@@ -141,7 +175,8 @@ class Estimator:
     where :math:`\mathcal{M}` represents the complete simulation model. See :class:`~twin4build.simulator.simulator.Simulator`
     for detailed explanation of the simulation process.
 
-    **Likelihood Function:**
+    Likelihood Function
+    ^^^^^^^^^^^^^^^^^^^
 
     Using the Kennedy-O'Hagan (KOH) Bayesian model formulation, the relationship between observations
     :math:`\boldsymbol{Y}`, model response :math:`\boldsymbol{\hat{Y}}`, and measurement errors :math:`\boldsymbol{\epsilon}` is:
@@ -184,7 +219,8 @@ class Estimator:
 
 
 
-    **Parameter Bounds:**
+    Parameter Bounds
+    ^^^^^^^^^^^^^^^^
 
     For each parameter :math:`\theta_{i}`:
 
@@ -197,7 +233,88 @@ class Estimator:
         - :math:`\theta_{i}^{lb}` is the lower bound
         - :math:`\theta_{i}^{ub}` is the upper bound
 
-    See method docstrings for details on the specific optimization algorithms and implementation.
+    Single-Shooting (default)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    Single-shooting evaluates the objective by simulating the *entire*
+    horizon from a fixed initial state :math:`\boldsymbol{x}_0`. With the
+    one-step state-transition map :math:`f` (one simulator step of the full
+    model) the predicted trajectory is the :math:`n_t`-fold composition of
+    :math:`f` with itself:
+
+    .. math::
+
+            \boldsymbol{x}_{t+1} = f(\boldsymbol{x}_t, \boldsymbol{X}_t, \boldsymbol{\theta}),
+            \qquad
+            \hat{\boldsymbol{Y}}_t = g(\boldsymbol{x}_t, \boldsymbol{X}_t, \boldsymbol{\theta}),
+            \qquad t = 0, \ldots, n_t - 1
+
+    and only :math:`\boldsymbol{\theta} \in \mathbb{R}^{n_p}` is a decision
+    variable. The problem is solved as the unconstrained (bound-constrained)
+    minimization of the negative log-likelihood above.
+
+    Gradients are obtained either by backpropagating through the unrolled
+    trajectory (AD mode, requires all components to be torch modules) or by
+    parallel finite differences (FD mode, requires ``n_cores``). The gradient
+    flows through the full composition
+    :math:`f \circ f \circ \cdots \circ f`, i.e. a product of per-step
+    Jacobians. For unstable or oscillatory dynamics this product is badly
+    conditioned on long horizons (the exploding/vanishing-gradient problem of
+    backprop through time) -- the classical argument for simultaneous
+    transcriptions. Dissipative building models are largely insensitive to
+    this: the per-step Jacobians contract, so single-shooting remains well
+    behaved even on multi-week horizons.
+
+    For composable torch models, ``options={"fast": True}`` builds a pure
+    one-step map :math:`F_{\text{aug}}` by composing the components'
+    ``forward`` methods, captures the exogenous inputs once from a reference
+    rollout, and evaluates the same objective as a plain sequential torch
+    rollout -- removing the per-step object-graph dispatch. Every composable
+    component's ``do_step`` delegates to the same ``forward`` the composed
+    map threads, so the fast objective is exact by construction; the
+    estimator silently falls back to the object-graph objective for
+    non-composable models.
+
+    Collocation
+    ~~~~~~~~~~~
+
+    The collocation (simultaneous) transcription promotes the state at every
+    timestep boundary :math:`\boldsymbol{s}_i` to a decision variable,
+    stacked alongside the physical parameters. The dynamics are enforced as
+    hard equality *continuity defects*:
+
+    .. math::
+
+            \boldsymbol{d}_i = f(\boldsymbol{s}_i, \boldsymbol{X}_i, \boldsymbol{\theta}) - \boldsymbol{s}_{i+1} = \boldsymbol{0},
+            \qquad i = 0, \ldots, n_t - 2
+
+    yielding the equality-constrained problem:
+
+    .. math::
+
+            \underset{\boldsymbol{\theta}, \boldsymbol{s}_0, \ldots, \boldsymbol{s}_{n_t-1}}{\operatorname{minimize}}
+            \; \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{j,t} - \hat{Y}_{j,t}}{\sigma_j}\right)^2
+            \quad \text{subject to} \quad \boldsymbol{d}_i = \boldsymbol{0} \; \forall i
+
+    Gradients only ever flow through a *single* simulation step. In
+    practice the benefits of this transcription are robustness to poor
+    initial parameter guesses (the state decision variables can stay close
+    to the data even while :math:`\boldsymbol{\theta}` is far off), the
+    sparse block-bidiagonal NLP structure that IPOPT exploits, and the
+    estimated initial state coming out of the fit for free. The boundary
+    states are nuisance variables: after the fit only
+    :math:`\boldsymbol{\theta}` is reported (the per-period initial states
+    are additionally returned as ``estimated_initial_state``).
+
+    The solve hands IPOPT the defects as sparse equality constraints with an
+    explicit block-bidiagonal Jacobian, a Gauss-Newton Hessian of the
+    least-squares objective, and patience-based early stopping. It requires
+    the CasADi/IPOPT backend
+    (``method=("casadi", "ipopt", "ad", "collocation")``). A defect audit is
+    returned as
+    ``transcription_audit`` so the quality of the converged solution can be
+    inspected (max defect, per-sensor RMSE consistency between the NLP
+    solution and a forward rollout).
 
     Examples
     --------
@@ -212,28 +329,15 @@ class Estimator:
     >>> simulator = tb.Simulator(model)
     >>> estimator = tb.Estimator(simulator)
     >>>
-    >>> # Define parameters to estimate
-    >>> parameters = {
-    ...     "private": {
-    ...         "efficiency": {
-    ...             "components": [component1, component2],
-    ...             "x0": [0.8, 0.85],
-    ...             "lb": [0.5, 0.6],
-    ...             "ub": [1.0, 1.0]
-    ...         }
-    ...     },
-    ...     "shared": {
-    ...         "heatTransferCoefficient": {
-    ...             "components": [[component1, component2]],
-    ...             "x0": [[0.5]],
-    ...             "lb": [[0.1]],
-    ...             "ub": [[2.0]]
-    ...         }
-    ...     }
-    ... }
+    >>> # Define parameters to estimate: (component, attribute, x0, lb, ub)
+    >>> parameters = [
+    ...     (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),
+    ...     (space, "thermal.C_wall", 2e+6, 1e+6, 1e+7),
+    ...     ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),
+    ... ]
     >>>
-    >>> # Define measuring devices
-    >>> measurements = [measuring_device1, measuring_device2]
+    >>> # Define measuring devices (sensors with historical readings)
+    >>> measurements = [temperature_sensor, co2_sensor]
     >>>
     >>> # Set time period
     >>> start = datetime.datetime(2024, 1, 1, tzinfo=pytz.UTC)
@@ -250,17 +354,43 @@ class Estimator:
     ...     method=("scipy", "SLSQP", "ad")  # Preferred for most problems
     ... )
 
-    >>> # Alternative: Use L-BFGS-B with automatic differentiation
+    Fast single-shooting for composable torch models (same result, faster):
+
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
     ...     start_time=start,
     ...     end_time=end,
     ...     step_size=step,
-    ...     method=("scipy", "L-BFGS-B", "ad")
+    ...     method=("scipy", "SLSQP", "ad"),
+    ...     options={"fast": True}
     ... )
 
-    >>> # For non-PyTorch models: Use finite difference method
+    IPOPT single-shooting via CasADi:
+
+    >>> result = estimator.estimate(
+    ...     parameters=parameters,
+    ...     measurements=measurements,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
+    ...     method=("casadi", "ipopt", "ad")
+    ... )
+
+    Collocation transcription:
+
+    >>> result = estimator.estimate(
+    ...     parameters=parameters,
+    ...     measurements=measurements,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
+    ...     method=("casadi", "ipopt", "ad", "collocation"),
+    ...     options={"maxiter": 500, "early_stopping": {"patience": 20}}
+    ... )
+
+    For non-PyTorch models, use the finite difference mode:
+
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
@@ -269,16 +399,6 @@ class Estimator:
     ...     step_size=step,
     ...     method=("scipy", "trf", "fd"),
     ...     n_cores=4  # Required for FD mode
-    ... )
-
-    >>> # Legacy string format (still supported)
-    >>> result = estimator.estimate(
-    ...     parameters=parameters,
-    ...     measurements=measurements,
-    ...     start_time=start,
-    ...     end_time=end,
-    ...     step_size=step,
-    ...     method="scipy"  # Defaults to SLSQP with AD
     ... )
     """
 
@@ -325,103 +445,110 @@ class Estimator:
             step_size: Step size(s) for simulation in seconds. Can be a single value or list
                 of values for multiple periods.
 
-            parameters: Parameter specifications in one of two formats:
+            parameters: Parameter specifications. Either the string ``"auto"`` or
+                a list/dict as described below.
 
-                **New format (recommended)**: List of tuples where each tuple contains:
-                    - component: The component object or list of component objects
-                    - attr: Parameter attribute name (str)
-                    - x0: Initial value (float)
-                    - lb: Lower bound (float or None)
-                    - ub: Upper bound (float or None)
-                    - parameter_type: "private" or "shared" (optional, defaults to "private")
+                **Auto-discovery**: Passing ``parameters="auto"`` walks every
+                component on the model and collects parameter tuples from those
+                that implement ``get_estimable_parameters()``.
 
-                Parameter types:
-                    - "private": Each component gets its own independent parameter
-                    - "shared": All components in the list share the same parameter value
+                **New format (recommended)**: List of tuples
+                ``(component, attr, x0, lb, ub[, parameter_type])`` where
+                ``component`` is a component object or list of component
+                objects, ``attr`` is the parameter attribute name, ``x0`` is
+                the initial value, ``lb``/``ub`` are the bounds, and the
+                optional ``parameter_type`` is ``"private"`` (each listed
+                component gets its own independent parameter; default) or
+                ``"shared"`` (all listed components share one parameter
+                value).
 
-                Examples:
-                    ```python
+                Example::
+
                     # Private parameters (default)
                     parameters = [
                         (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # implicit "private"
                         (space, "thermal.C_wall", 2e+6, 1e+6, 1e+7, "private"),  # explicit
-                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "private"),  # separate kp for each
+                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "private"),
                     ]
 
                     # Shared parameters
                     parameters = [
-                        ([space1, space2], "thermal.C_air", 2e+6, 1e+6, 1e+7, "shared"),  # same C_air value
-                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),  # same kp value
+                        ([space1, space2], "thermal.C_air", 2e+6, 1e+6, 1e+7, "shared"),
+                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),
                     ]
-                    ```
 
-                **Legacy format (deprecated)**: Dictionary containing parameter specifications:
-                    - "private": Parameters unique to each component
-                    - "shared": Parameters shared across components
+                **Legacy format (deprecated)**: Dictionary with ``"private"``
+                and ``"shared"`` keys, where each parameter entry contains
+                ``"components"``, ``"x0"``, ``"lb"``, and ``"ub"`` lists (or
+                single values).
 
-                Each parameter entry contains:
-                    - "components": List of components or single component
-                    - "x0": List of initial values or single initial value
-                    - "lb": List of lower bounds or single lower bound
-                    - "ub": List of upper bounds or single upper bound
+            measurements: Measurement specification. Either the string ``"auto"``
+                or a list of ``(sensor, sd)`` tuples, where ``sensor`` is a
+                measuring device whose ``input["measuredValue"]`` holds historical
+                data and ``sd`` is the measurement standard deviation used to
+                weight that sensor's residuals (:math:`\\sigma_j` in the likelihood).
 
-            measurements : List of measuring devices used for estimation. Each device should have
-                an "input" attribute with a "measuredValue" that contains historical data.
+                Passing ``measurements="auto"`` includes every sensor that is
+                driven by a non-sensor upstream component and has a wired data
+                source, with ``sd = max(0.1 * data_std, 0.05)``. Build the list
+                manually for custom weighting or sensor selection.
 
-            n_warmup : Number of simulation steps used to initialize the model. These are not included in the likelihood calculation.
+            n_warmup: Number of simulation steps used to initialize the model. These are not included in the likelihood calculation.
 
-            method: Estimation method specification. Can be specified in two formats:
+            method: Estimation method specification. Either a legacy string
+                (``"scipy"`` or any supported optimizer name such as
+                ``"SLSQP"``, ``"L-BFGS-B"``, ``"TNC"``, ``"trust-constr"``,
+                ``"trf"``, ``"dogbox"``) or, recommended, a tuple
+                ``(library, optimizer, mode)`` or
+                ``(library, optimizer, mode, transcription)`` where
+                ``library`` is ``"scipy"`` or ``"casadi"``, ``optimizer`` is
+                the algorithm name, ``mode`` is ``"ad"`` (automatic
+                differentiation) or ``"fd"`` (finite difference), and the
+                optional ``transcription`` is ``"single_shooting"`` (default)
+                or ``"collocation"`` (requires the CasADi/IPOPT backend).
 
-                1. String format (legacy):
-                - "scipy": Uses default SLSQP optimizer with automatic differentiation
-                - Other valid strings: Any optimizer name that matches the supported algorithms
-                    (e.g., "L-BFGS-B", "TNC", "SLSQP", "trust-constr", "trf", "dogbox")
+                Supported optimizers by backend and mode:
 
-                2. Tuple format (recommended):
-                - (library, optimizer, mode) where:
-                    - library: "scipy" (currently the only supported library)
-                    - optimizer: The specific optimization algorithm
-                    - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+                - SciPy backend, AD mode, local optimizers: ``"SLSQP"``
+                  (preferred for most problems), ``"L-BFGS-B"``, ``"TNC"``,
+                  ``"trust-constr"``, and the least-squares solvers ``"trf"``
+                  and ``"dogbox"``.
+                - SciPy backend, AD mode, global optimizers: ``"dual_annealing"``
+                  (generalized simulated annealing; explores broadly at high
+                  temperature to find the right basin, then anneals and
+                  polishes with a local gradient-based minimizer; options
+                  ``initial_temp``, ``restart_temp_ratio``, ``visit``,
+                  ``accept``, ``maxiter``, ``maxfun``, ``no_local_search``,
+                  ``local_search_method``) and ``"basinhopping"`` (random
+                  perturbation plus local minimization with Metropolis
+                  acceptance; options ``niter``, ``T``, ``stepsize``,
+                  ``local_search_method``). Good for non-convex landscapes
+                  with many local minima.
+                - SciPy backend, FD mode (all require ``n_cores``): ``"trf"``,
+                  ``"dogbox"``, ``"SLSQP"``, ``"L-BFGS-B"``, ``"TNC"``,
+                  ``"trust-constr"`` -- same algorithms with the Jacobian
+                  computed by parallel finite differences.
+                - CasADi backend:
+                  ``("casadi", "ipopt", "ad")`` is an IPOPT interior-point
+                  solve of the same single-shooting objective as the SciPy
+                  backends -- only the optimizer changes.
+                  ``("casadi", "ipopt", "ad", "collocation")`` is the
+                  simultaneous (collocation) transcription -- every
+                  timestep-boundary state becomes a decision variable tied by
+                  sparse hard continuity constraints. Robust to poor initial
+                  parameter guesses. See the class docstring's Collocation
+                  section for the formulation.
 
-                Supported optimizers by mode:
+                Mode selection: use ``"ad"`` when all components are
+                ``torch.nn.Module`` (preferred, faster); use ``"fd"`` for
+                non-PyTorch or mixed models (requires ``n_cores``).
 
-                Automatic Differentiation (AD) mode — local optimizers:
-                - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
-                - "L-BFGS-B": Limited-memory BFGS with bounds
-                - "TNC": Truncated Newton algorithm with bounds
-                - "trust-constr": Trust-region constrained optimization
-                - "trf": Trust Region Reflective (for least-squares problems)
-                - "dogbox": Dogleg algorithm (for least-squares problems)
-
-                Automatic Differentiation (AD) mode — global optimizers:
-                - "dual_annealing": Generalized simulated annealing. Explores broadly at
-                  high temperature to find the right basin, then anneals and polishes with
-                  a local gradient-based minimizer (SLSQP by default). Good for non-convex
-                  landscapes with many local minima.
-                  Options: ``initial_temp`` (default 5230), ``restart_temp_ratio`` (default 2e-5),
-                  ``visit`` (default 2.62), ``accept`` (default -5.0), ``maxiter`` (default 1000),
-                  ``maxfun`` (default 1e7), ``no_local_search`` (default False),
-                  ``local_search_method`` (default "SLSQP").
-                - "basinhopping": Random perturbation + local minimization with Metropolis
-                  acceptance criterion. At each iteration: perturb the current solution,
-                  run gradient-based local optimization, accept/reject based on temperature.
-                  Options: ``niter`` (default 100), ``T`` (temperature, default 1.0),
-                  ``stepsize`` (default 0.5), ``local_search_method`` (default "SLSQP").
-
-                Finite Difference (FD) mode:
-                - "trf": Trust Region Reflective (for least-squares problems)
-                - "dogbox": Dogleg algorithm (for least-squares problems)
-
-                Mode selection guidelines:
-                - "ad": Use when all components are torch.nn.Module (preferred, faster)
-                - "fd": Use for non-PyTorch models or mixed model types (requires n_cores)
-
-                Examples:
-                - ("scipy", "SLSQP", "ad"): Preferred for most PyTorch models
-                - ("scipy", "dual_annealing", "ad"): For non-convex problems with many local minima
-                - ("scipy", "basinhopping", "ad"): Alternative global optimizer with basin-hopping
-                - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
-                - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
+                Examples: ``("scipy", "SLSQP", "ad")`` for most PyTorch
+                models; ``("scipy", "dual_annealing", "ad")`` for non-convex
+                problems; ``("casadi", "ipopt", "ad", "collocation")`` for
+                long horizons; ``("scipy", "trf", "fd")`` for non-PyTorch
+                least-squares problems; ``"scipy"`` defaults to
+                ``("scipy", "SLSQP", "ad")``.
 
             n_cores: Number of CPU cores to use for parallel computation. Required when using
                 finite difference (FD) mode for Jacobian computation. Not used in automatic
@@ -431,14 +558,44 @@ class Estimator:
                 - For AD mode: Ignored (not needed for automatic differentiation)
                 - Default: None (will raise error if FD mode is used without specifying)
 
-            options: Additional options for the chosen optimization method:
+            options: Additional options for the chosen optimization method.
 
-                For scipy optimizers:
-                    - "ftol": Function tolerance (default: 1e-8)
-                    - "xtol": Parameter tolerance (default: 1e-8)
-                    - "gtol": Gradient tolerance (default: 1e-8)
-                    - "maxiter": Maximum iterations
-                    - "verbose": Verbosity level
+                Common keys (all backends):
+
+                - "maxiter": Maximum iterations
+                - "ftol": Function tolerance (SciPy: solver default applies
+                  when omitted; CasADi: mapped to IPOPT's ``tol``)
+                - "verbose": Verbosity level
+
+                Fast single-shooting (SciPy/CasADi backends, torch models only):
+
+                - "fast" (bool, default False): Replace the object-graph
+                  objective with the composed one-step-map rollout described
+                  in the class docstring's Single-Shooting section. Values
+                  and gradients are identical by construction; the estimator
+                  silently falls back to the object-graph objective when the
+                  model is not composable (components without ``forward``,
+                  ``n_c > 1``, shared/expanded parameters, or a measurement
+                  the composed map cannot produce).
+                - "fast_validate" (bool, default False): Additionally
+                  cross-check the fast objective against the object-graph
+                  objective on the initial iterate (debugging aid).
+
+                Collocation transcription only:
+
+                - "gauss_newton" (bool, default True): Supply IPOPT with a
+                  Gauss-Newton Hessian of the least-squares objective instead
+                  of the default limited-memory BFGS approximation. Turns a
+                  >1000-iteration L-BFGS crawl into a Newton-type solve.
+                - "early_stopping" (bool or dict, default: enabled when
+                  ``gauss_newton`` is on): Patience-based stagnation stop
+                  with a best-feasible-iterate checkpoint. A dict overrides
+                  the defaults: ``patience`` (10), ``feas_tol`` (1e-2),
+                  ``min_delta_rel`` (1e-3), ``theta_tol`` (1e-4).
+                - "pin_initial_state" (bool, default False): Fix each
+                  period's initial boundary state at its warm-start value so
+                  the feasible set is exactly the single-shooting trajectory
+                  manifold (mainly for equivalence testing).
 
             schedule: Multi-phase continuation schedule -- the single,
                 self-contained way to drive parameter estimation.
@@ -492,64 +649,59 @@ class Estimator:
                          "options": {"ftol": 1e-9}},
                     ]
 
-        Returns
-        -------
-        EstimationResult
-            Object containing the estimation results including optimized parameters,
-            component information, and metadata.
+        Returns:
+            EstimationResult: Dict-like object containing the optimized parameters
+                (``result_x``), component information, bounds, iteration metadata,
+                and convergence status. Additional fields:
 
-        Raises
-        ------
-        AssertionError
-            If method specification is invalid or input parameters are inconsistent.
-        ValueError
-            If method format is incorrect or unsupported.
-        FMICallException
-            If simulation fails during parameter evaluation.
+                - ``estimated_initial_state``: Per-component initial states
+                  recovered from the fit (collocation also estimates the
+                  boundary states; single-shooting reports the warm-up result).
+                - ``transcription_audit`` (collocation only): Solution-quality
+                  audit with the maximum continuity defect, per-sensor RMSE
+                  consistency (NLP solution vs. forward rollout vs. object-graph
+                  ``do_step`` rollout), and active-bound counts.
 
-        Notes
-        -----
-        - The method automatically handles parameter normalization and bounds checking.
-        - For AD mode, all components must be torch.nn.Module instances.
-        - For FD mode, n_cores must be specified for parallel Jacobian computation.
-        - Results are automatically saved to disk in the model's estimation_results directory.
-        - Multiple time periods are supported by providing lists for start_time, end_time, and step_size.
+        Raises:
+            AssertionError: If method specification is invalid or input parameters are inconsistent.
+            ValueError: If method format is incorrect or unsupported.
+            FMICallException: If simulation fails during parameter evaluation.
 
-        Examples
-        --------
-        >>> # New list format (recommended)
-        >>> parameters = [
-        ...     (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # private (default)
-        ...     ([space1, space2], "thermal.C_wall", 2e+6, 1e+6, 1e+7, "shared"),  # shared
-        ...     (heating_controller, "kp", 0.001, 1e-5, 1, "private"),  # explicit private
-        ... ]
-        >>> result = estimator.estimate(
-        ...     parameters=parameters,
-        ...     measurements=devices,
-        ...     start_time=start,
-        ...     end_time=end,
-        ...     step_size=3600,
-        ...     method=("scipy", "SLSQP", "ad")
-        ... )
+        Notes:
+            - The method automatically handles parameter normalization and bounds checking.
+            - For AD mode, all components must be torch.nn.Module instances.
+            - For FD mode, n_cores must be specified for parallel Jacobian computation.
+            - Results are automatically saved to disk in the model's estimation_results
+              directory and can be reloaded with
+              :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
+            - Multiple time periods are supported by providing lists for start_time, end_time, and step_size.
 
-        >>> # Legacy dict format (deprecated but still supported)
-        >>> parameters = {
-        ...     "private": {
-        ...         "efficiency": {
-        ...             "components": [component1, component2],
-        ...             "x0": [0.8, 0.85],
-        ...             "lb": [0.5, 0.6],
-        ...             "ub": [1.0, 1.0]
-        ...         }
-        ...     }
-        ... }
-        >>> result = estimator.estimate(
-        ...     parameters=parameters,
-        ...     measurements=devices,
-        ...     start_time=start,
-        ...     end_time=end,
-        ...     step_size=3600
-        ... )
+        Examples:
+            >>> # New list format (recommended)
+            >>> parameters = [
+            ...     (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # private (default)
+            ...     ([space1, space2], "thermal.C_wall", 2e+6, 1e+6, 1e+7, "shared"),  # shared
+            ...     (heating_controller, "kp", 0.001, 1e-5, 1, "private"),  # explicit private
+            ... ]
+            >>> result = estimator.estimate(
+            ...     parameters=parameters,
+            ...     measurements=[(temperature_sensor, 0.1)],
+            ...     start_time=start,
+            ...     end_time=end,
+            ...     step_size=3600,
+            ...     method=("scipy", "SLSQP", "ad")
+            ... )
+
+            >>> # Collocation transcription for long horizons
+            >>> result = estimator.estimate(
+            ...     parameters=parameters,
+            ...     measurements=[(temperature_sensor, 0.1)],
+            ...     start_time=start,
+            ...     end_time=end,
+            ...     step_size=3600,
+            ...     method=("casadi", "ipopt", "ad", "collocation"),
+            ...     options={"maxiter": 500}
+            ... )
         """
         deprecated_args = ["startTime", "endTime", "stepSize", "n_initialization_steps"]
         new_args = ["start_time", "end_time", "step_size", "n_warmup"]
@@ -3531,7 +3683,10 @@ class EstimationResult(dict):
         result_x: Optimized parameter values.
         component_id: List of component IDs.
         component_attr: List of attribute names.
-        theta_mask: Parameter mask.
+        theta_mask: Parameter mask mapping flat theta entries to unique parameters.
+        theta_slices: Per-parameter ``(start, stop)`` slices into the flat theta
+            vector (multi-branch parameters occupy more than one slot).
+        unique_param_n_c: Number of branches (``n_c``) per unique parameter.
         start_time: Training start times.
         end_time: Training end times.
         step_size: Training step sizes.
@@ -3544,29 +3699,37 @@ class EstimationResult(dict):
         success: Whether the optimization was successful.
         message: Optimization result message.
 
-    Examples
-    --------
-    >>> result = EstimationResult(
-    ...     result_x=np.array([0.8, 0.9]),
-    ...     component_id=["comp1", "comp2"],
-    ...     component_attr=["efficiency", "efficiency"],
-    ...     theta_mask=np.array([0, 1]),
-    ...     start_time=[datetime.datetime(2024, 1, 1)],
-    ...     end_time=[datetime.datetime(2024, 1, 2)],
-    ...     step_size=[3600],
-    ...     x0=np.array([0.7, 0.8]),
-    ...     lb=np.array([0.5, 0.6]),
-    ...     ub=np.array([1.0, 1.0]),
-    ...     iterations=15,
-    ...     nfev=45,
-    ...     final_objective=0.00123,
-    ...     success=True,
-    ...     message="Optimization terminated successfully"
-    ... )
-    >>> print(result["result_x"])
-    [0.8 0.9]
-    >>> print(result["iterations"])
-    15
+    Notes:
+        Depending on the estimation configuration, additional keys may be
+        present on the result dict: ``estimated_initial_state`` (per-component
+        initial states) and ``transcription_audit`` (collocation
+        solution-quality audit). Results saved to disk can be reloaded with
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
+
+    Examples:
+        >>> result = EstimationResult(
+        ...     result_x=np.array([0.8, 0.9]),
+        ...     component_id=["comp1", "comp2"],
+        ...     component_attr=["efficiency", "efficiency"],
+        ...     theta_mask=np.array([0, 1]),
+        ...     theta_slices=[(0, 1), (1, 2)],
+        ...     unique_param_n_c=[1, 1],
+        ...     start_time=[datetime.datetime(2024, 1, 1)],
+        ...     end_time=[datetime.datetime(2024, 1, 2)],
+        ...     step_size=[3600],
+        ...     x0=np.array([0.7, 0.8]),
+        ...     lb=np.array([0.5, 0.6]),
+        ...     ub=np.array([1.0, 1.0]),
+        ...     iterations=15,
+        ...     nfev=45,
+        ...     final_objective=0.00123,
+        ...     success=True,
+        ...     message="Optimization terminated successfully"
+        ... )
+        >>> print(result["result_x"])
+        [0.8 0.9]
+        >>> print(result["iterations"])
+        15
     """
 
     def __init__(
@@ -3596,7 +3759,9 @@ class EstimationResult(dict):
             result_x: Optimized parameter values.
             component_id: List of component IDs.
             component_attr: List of attribute names.
-            theta_mask: Parameter mask.
+            theta_mask: Parameter mask mapping flat theta entries to unique parameters.
+            theta_slices: Per-parameter ``(start, stop)`` slices into the flat theta vector.
+            unique_param_n_c: Number of branches (``n_c``) per unique parameter.
             start_time: Training start times.
             end_time: Training end times.
             step_size: Training step sizes.

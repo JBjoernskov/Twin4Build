@@ -223,7 +223,7 @@ def _rewire_pi_loops(
         kp_lb_floor, kp_ub_ceil: Hard bounds on ``kp``.
         n_min_active, sat_lo, sat_hi: Forwarded to
             :func:`loop_classifier.score_pair`.
-        sp_fb_corr_max: Maximum allowed |Pearson(sp, fb)| for a setpoint
+        sp_fb_corr_max: Maximum allowed ``|Pearson(sp, fb)|`` for a setpoint
             candidate to be considered a real schedule setpoint.  When
             a BRICK ontology tags both the *active resolved control
             reference* (which closely tracks the zone temperature) and
@@ -235,7 +235,7 @@ def _rewire_pi_loops(
             schedule-setpoint candidate has a fair shot.  Default
             ``0.95`` rejects measurement clones while keeping legitimate
             setpoints (typical occupied-mode ``corr ~ 0.5--0.8``).
-        fb_actuator_corr_max: Maximum allowed |Pearson(fb, u)| for a
+        fb_actuator_corr_max: Maximum allowed ``|Pearson(fb, u)|`` for a
             feedback-sensor candidate.  BRICK ontologies frequently wire
             *every* sensor near a VAV (zone temperature, supply-air
             temp, supply-air flow, percent-air-flow, ...) onto the
@@ -290,7 +290,7 @@ def _rewire_pi_loops(
             mechanical link is so direct that the regression
             identifies a *spurious* high-R^2 negative slope, but the
             relationship is causality (u causes Δfb), not the
-            closed-loop PI law (e drives Δu).  Median |fb - sp| during
+            closed-loop PI law (e drives Δu).  Median ``|fb - sp|`` during
             the active mask cleanly separates the regimes empirically
             observed on the bldg1 / Mortar dataset:
 

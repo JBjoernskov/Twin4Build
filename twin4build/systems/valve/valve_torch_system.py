@@ -35,7 +35,7 @@ class ValveTorchSystem(core.System, nn.Module):
         **kwargs: Additional keyword arguments
 
     Mathematical Formulation
-    -----------------------
+    ------------------------
 
     The valve characteristic is calculated using the valve authority equation:
 
@@ -61,14 +61,20 @@ class ValveTorchSystem(core.System, nn.Module):
     Notes
     -----
     Valve Authority Characteristics:
-       - Linear (a = 0): Flow rate is directly proportional to valve position
-       - Equal Percentage (a = 1): Flow rate changes exponentially with valve position
-       - Mixed (0 < a < 1): Combination of linear and equal percentage characteristics
+       This is the installed characteristic of an inherently linear valve with
+       authority :math:`a`:
+
+       - :math:`a = 1` (default): :math:`u_{norm} = u`, i.e. an ideal linear
+         characteristic where flow rate is directly proportional to valve position
+       - :math:`a \rightarrow 0`: the flow saturates rapidly — even small openings
+         yield close to full flow (quick-opening distortion), so the valve loses
+         control over most of its travel
+       - :math:`0 < a < 1`: intermediate distortion of the linear characteristic
 
     Implementation Details:
        - The model uses PyTorch tensors for gradient-based optimization
        - All parameters are stored as non-trainable PyTorch parameters
-       - The valve authority equation provides better control at low flow rates
+         (calibratable via the Estimator)
        - The model assumes ideal valve behavior (no hysteresis or deadband)
     """
 

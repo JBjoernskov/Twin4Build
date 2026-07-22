@@ -39,7 +39,7 @@ class Optimizer:
         simulator: The simulator instance for running simulations.
 
     Mathematical Formulation
-    =======================
+    ------------------------
 
     The general optimization problem is formulated as:
 
@@ -54,7 +54,7 @@ class Optimizer:
         - :math:`\mathcal{L}(\boldsymbol{U})` is the loss function
 
     Dimensions
-    ----------
+    ~~~~~~~~~~
 
     - :math:`n_t`: Number of time steps in the simulation period
     - :math:`n_u`: Number of control inputs (actuators)
@@ -62,7 +62,7 @@ class Optimizer:
     - :math:`n_y`: Number of system outputs (sensors, performance metrics)
 
     Model Structure
-    ---------------
+    ~~~~~~~~~~~~~~~
 
     The building model :math:`\mathcal{M}` is represented as a directed graph where nodes are dynamic components
     and edges represent input/output connections as shown in a simple example below.
@@ -90,11 +90,12 @@ class Optimizer:
     for detailed explanation of the simulation process.
 
     Loss Function
-    -------------
+    ~~~~~~~~~~~~~
 
     The loss function :math:`\mathcal{L}(\boldsymbol{U})` is composed of the following terms:
 
-    **Equality Constraints**
+    Equality Constraints
+    ^^^^^^^^^^^^^^^^^^^^
 
         .. math::
 
@@ -102,7 +103,8 @@ class Optimizer:
 
         where :math:`\mathcal{C}_{eq}` is the set of equality constraints, each element is (output index :math:`j`, desired value :math:`\boldsymbol{y}_{t}`).
 
-    **Inequality Constraints**
+    Inequality Constraints
+    ^^^^^^^^^^^^^^^^^^^^^^
 
         Upper constraints:
 
@@ -124,7 +126,8 @@ class Optimizer:
 
             \mathcal{L}_{ineq} = \mathcal{L}_{ineq}^{upper} + \mathcal{L}_{ineq}^{lower}
 
-    **Objective Terms**
+    Objective Terms
+    ^^^^^^^^^^^^^^^
 
         .. math::
 
@@ -132,7 +135,8 @@ class Optimizer:
 
         where :math:`\mathcal{O}_{obj}` is the set of outputs to minimize or maximize, and :math:`w` is a weight (+1 for minimization, -1 for maximization).
 
-    **Total Loss**
+    Total Loss
+    ^^^^^^^^^^
 
         .. math::
 
@@ -142,7 +146,7 @@ class Optimizer:
 
     Examples
     --------
-    Basic optimization with PyTorch method:
+    Basic optimization:
 
     >>> import twin4build as tb
     >>> import datetime
@@ -153,7 +157,7 @@ class Optimizer:
     >>> simulator = tb.Simulator(model)
     >>> optimizer = tb.Optimizer(simulator)
     >>>
-    >>> # Define decision variables (actuators to optimize)
+    >>> # Define decision variables (actuators to optimize) with bounds
     >>> variables = [
     ...     (heater_component, "setpointValue", 18.0, 25.0),  # Temperature setpoint bounds
     ...     (ventilation_component, "flowRate", 0.1, 1.0)    # Ventilation flow rate bounds
@@ -170,33 +174,14 @@ class Optimizer:
     >>> end = datetime.datetime(2024, 1, 2, tzinfo=pytz.UTC)
     >>> step = 3600
     >>>
-    >>> # Run optimization with PyTorch (default SGD)
+    >>> # Run optimization (SLSQP with automatic differentiation, the default)
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
     ...     start_time=start,
     ...     end_time=end,
     ...     step_size=step,
-    ...     method="torch",
-    ...     options={"lr": 0.1, "iterations": 100}
-    ... )
-
-    Advanced PyTorch optimization with scheduler:
-
-    >>> # Use Adam optimizer with cosine annealing scheduler
-    >>> optimizer.optimize(
-    ...     variables=variables,
-    ...     objectives=objectives,
-    ...     start_time=start,
-    ...     end_time=end,
-    ...     step_size=step,
-    ...     method=("torch", "Adam", "ad"),
-    ...     options={
-    ...         "lr": 0.01,
-    ...         "iterations": 200,
-    ...         "scheduler_type": "cosine",
-    ...         "scheduler_params": {"T_max": 200, "eta_min": 1e-6}
-    ...     }
+    ...     method=("scipy", "SLSQP", "ad")
     ... )
 
     SciPy optimization with constraints:
@@ -315,16 +300,6 @@ class Optimizer:
     ...     end_time=end,
     ...     step_size=step,
     ...     method="scipy"  # Defaults to ("scipy", "SLSQP", "ad")
-    ... )
-
-    >>> # PyTorch method with defaults
-    >>> optimizer.optimize(
-    ...     variables=variables,
-    ...     objectives=objectives,
-    ...     start_time=start,
-    ...     end_time=end,
-    ...     step_size=step,
-    ...     method="torch"  # Defaults to ("torch", "SGD", "ad")
     ... )
     """
 
@@ -454,80 +429,66 @@ class Optimizer:
         **kwargs,
     ):
         """
-        Optimize the model using various optimization methods.
+        Optimize the model control inputs using the specified optimization method.
+
+        The decision variables are the full time series of the given actuator
+        outputs (one value per timestep per variable), bounded by the supplied
+        lower/upper bounds. Output constraints are handled as soft penalties in
+        the loss function (see the class docstring's Loss Function section).
 
         Args:
-            start_time: Start time for simulation
-            end_time: End time for simulation
-            step_size: Step size for simulation
-            variables: List of tuples (component, output_name, lower_bound, upper_bound)
+            start_time: Start time(s) for simulation (timezone-aware). A single
+                datetime or a list of datetimes for multiple periods.
+            end_time: End time(s) for simulation. Same form as ``start_time``.
+            step_size: Step size(s) for simulation in seconds.
+            variables: List of tuples (component, output_name, lower_bound, upper_bound).
+                The decision variables (actuator trajectories) to optimize.
             objectives: List of tuples (component, output_name, objective_type)
-                where objective_type is "min" or "max"
-            eq_cons: List of tuples (component, output_name, desired_value)
+                where objective_type is "min" or "max".
+            eq_cons: List of tuples (component, output_name, desired_value) where
+                desired_value is a constant or a schedule component providing the
+                time-varying target.
             ineq_cons: List of tuples (component, output_name, constraint_type, desired_value)
-                where constraint_type is "upper" or "lower"
+                where constraint_type is "upper" or "lower".
 
-            method: Optimization method specification. Can be specified in two formats:
+            method: Optimization method specification. Either the legacy
+                string ``"scipy"`` (defaults to SLSQP with automatic
+                differentiation) or, recommended, a tuple
+                ``(library, optimizer, mode)`` where ``library`` is
+                ``"scipy"`` (currently the only supported library),
+                ``optimizer`` is the algorithm name, and ``mode`` is ``"ad"``
+                (automatic differentiation) or ``"fd"`` (finite difference).
 
-                1. String format (legacy):
-                   - "torch": Uses PyTorch-based gradient optimization
-                   - "scipy": Uses SciPy's SLSQP solver with automatic differentiation
+                Supported SciPy optimizers:
 
-                2. Tuple format (recommended):
-                   - (library, optimizer, mode) where:
-                     - library: "torch" or "scipy"
-                     - optimizer: The specific optimization algorithm
-                     - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+                - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
+                - "L-BFGS-B": Limited-memory BFGS with bounds
+                - "TNC": Truncated Newton algorithm with bounds
+                - "trust-constr": Trust-region constrained optimization
+                - "trf": Trust Region Reflective (for least-squares problems)
+                - "dogbox": Dogleg algorithm (for least-squares problems)
 
-                Supported optimizers by library:
-
-                # PyTorch-based methods (library="torch"):
-                #    - "SGD": Stochastic Gradient Descent (default)
-                #    - "Adam": Adam optimizer
-                #    - "LBFGS": Limited-memory BFGS
-                #    - Mode: Always "ad" (automatic differentiation)
-
-                SciPy-based methods (library="scipy"):
-                   - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
-                   - "L-BFGS-B": Limited-memory BFGS with bounds
-                   - "TNC": Truncated Newton algorithm with bounds
-                   - "trust-constr": Trust-region constrained optimization
-                   - "trf": Trust Region Reflective (for least-squares problems)
-                   - "dogbox": Dogleg algorithm (for least-squares problems)
-                   - Mode: "ad" (automatic differentiation) or "fd" (finite difference)
-
-                Method selection guidelines:
-                   # - PyTorch methods: Good for simple optimization problems, easy to configure
-                   - SciPy SLSQP with AD: Preferred for most constrained optimization problems
-                   - SciPy with FD: Use for non-PyTorch models or when AD is not available
-
-                Examples:
-                   - ("scipy", "SLSQP", "ad"): Preferred for most constrained optimization problems
-                   # - ("torch", "Adam", "ad"): Good for simple unconstrained problems
-                   - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
-                   - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
+                Examples: ``("scipy", "SLSQP", "ad")`` is preferred for most
+                constrained optimization problems; ``("scipy", "trf", "fd")``
+                for non-PyTorch models with a least-squares formulation.
 
             options: Additional options for the chosen method:
-                # For PyTorch methods (library="torch"):
-                #     - "lr": Learning rate for optimizer (default: 1.0)
-                #     - "iterations": Number of optimization iterations (default: 100)
-                #     - "optimizer_type": Type of PyTorch optimizer ("SGD", "Adam", "LBFGS")
-                #     - "scheduler_type": Type of learning rate scheduler ("step", "exponential", "cosine", "reduce_on_plateau", None)
-                #     - "scheduler_params": Parameters for learning rate scheduler
-                #         - For "step": step_size (default: 30), gamma (default: 0.1)
-                #         - For "exponential": gamma (default: 0.95)
-                #         - For "cosine": T_max (default: 100), eta_min (default: 0)
-                #         - For "reduce_on_plateau": mode (default: "min"), factor (default: 0.9), patience (default: 10), threshold (default: 1e-4)
 
-                For SciPy methods (library="scipy"):
-                    - "verbose": Verbosity level (0-3)
-                    - "maxiter": Maximum iterations
-                    - "gtol": Gradient tolerance
-                    - "xtol": Parameter tolerance
-                    - "barrier_tol": Barrier tolerance
-                    - "initial_tr_radius": Initial trust region radius
-                    - "initial_constr_penalty": Initial constraint penalty
-                    - Additional method-specific options as supported by SciPy optimizers
+                - "verbose": Verbosity level (0-3)
+                - "maxiter": Maximum iterations
+                - "gtol": Gradient tolerance
+                - "xtol": Parameter tolerance
+                - "barrier_tol": Barrier tolerance
+                - "initial_tr_radius": Initial trust region radius
+                - "initial_constr_penalty": Initial constraint penalty
+                - "constraint_penalty": Weight of the soft constraint penalty
+                  terms in the loss (default 100)
+                - Additional method-specific options as supported by SciPy optimizers
+
+        Returns:
+            The SciPy optimization result object. The optimized actuator
+            trajectories are also applied to the model, so a subsequent
+            ``simulator.simulate(...)`` runs with the optimal inputs.
         """
 
         deprecated_args = [

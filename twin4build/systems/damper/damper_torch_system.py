@@ -31,7 +31,7 @@ class DamperTorchSystem(core.System, nn.Module):
         nominalAirFlowRate : Nominal air flow rate [kg/s] at fully open position.
 
     Mathematical Formulation
-    ========================
+    ------------------------
 
     The damper characteristic is calculated using an exponential equation:
 
@@ -120,8 +120,8 @@ class DamperTorchSystem(core.System, nn.Module):
         # auto-estimator can't pin a damper at 1e-4 kg/s (effectively
         # zero flow, makes the coil's energy balance singular) or run
         # the shape coefficient ``a`` into a region where the
-        # ``m = b + a*u + c*log(u)`` characteristic is monotone but
-        # numerically ill-conditioned at low ``u``.
+        # exponential characteristic ``m = a*exp(b*u) + c`` is monotone
+        # but numerically ill-conditioned.
         self.parameter = {
             # log-scaled (lb > 0 mandatory).  ``a`` is a unit-less
             # shape coefficient; values much above 5 give very steep

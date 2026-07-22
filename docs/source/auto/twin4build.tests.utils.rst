@@ -7,9 +7,7 @@ Package
 .. toctree::
    :maxdepth: 1
 
-   twin4build.tests.utils.data_loaders
    twin4build.tests.utils.plot
-   twin4build.tests.utils.unit_converters
 
 Modules
 -------

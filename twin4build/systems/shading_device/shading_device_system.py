@@ -46,7 +46,6 @@ class ShadingDeviceSystem(core.System):
             start_time (datetime.datetime): Start time of the simulation period.
             end_time (datetime.datetime): End time of the simulation period.
             step_size (int): Time step size in seconds.
-            simulator (core.Simulator): Simulation model object.
         """
         pass
 

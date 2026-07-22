@@ -14,7 +14,17 @@ class MaxSystem(core.System):
     r"""
     Max System.
 
-    This class implements a max system for a given system.
+    Reduces a vector input to a single scalar output by taking a smooth
+    (differentiable) maximum over its elements, computed as
+    :math:`\mathrm{logsumexp}(k \cdot x) / k` with sharpness :math:`k = 50`.
+    Useful e.g. for combining several control signals into one, while keeping
+    the operation differentiable for gradient-based optimization.
+
+    Inputs:
+        - "inputs": Vector of values to take the maximum over.
+
+    Outputs:
+        - "value": Smooth maximum of the input values.
 
     Args:
         **kwargs: Additional keyword arguments

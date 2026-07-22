@@ -25,7 +25,7 @@ Twin4Build provides several top-level classes for building, simulating, translat
   Automatically generates a Model from a semantic model (ontology-based building description) and maintains a link between these. Enables ontology-driven, automated model creation.
 
 - **Estimator**:  
-  Performs parameter estimation (calibration) for your Model using measured data. Supports both least-squares and PyTorch-based optimization.
+  Performs parameter estimation (calibration) for your Model using measured data. Supports gradient-based optimization with automatic differentiation (SciPy and CasADi/IPOPT backends, single-shooting or collocation).
 
 - **Optimizer**:  
   Optimizes building operation by adjusting setpoints or control variables to minimize objectives or satisfy constraints, using gradient-based methods.
@@ -54,7 +54,7 @@ More examples are coming soon.
 <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration<br>
 
-<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/feature/issue-74/batched-component-execution/twin4build/examples/bems_lecture/bems_example_lecture.ipynb">
+<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/bems_example_lecture.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Adding a custom System component - RC modeling from scratch of 2 rooms with parameter estimation and heat optimization
 
 ### Translator
@@ -72,15 +72,12 @@ More examples are coming soon.
 <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints.
 
-<!-- ### Neural Policy Controller
-
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/neural_policy_controller_example/neural_policy_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Training a neural policy controller for the space model -->
-
 ## Documentation
 The documentation can be found [online](https://twin4build.readthedocs.io/en/latest/index.html).
 Below is a code snippet showing the basic functionality of the package.
-```python 
+```python
+import datetime
+import pytz
 import twin4build as tb
 
 # Create a model
@@ -91,8 +88,8 @@ damper = tb.DamperTorchSystem(id="damper")
 space = tb.BuildingSpaceTorchSystem(id="space")
 
 # Add connections to the model
-model.add_connection(damper, space, 
-                    "airFlowRate", "supplyAirFlowRate")
+model.add_connection(damper, space,
+                     "airFlowRate", "supplyAirFlowRate")
 
 # Load the model
 model.load()
@@ -100,22 +97,25 @@ model.load()
 # Create a simulator instance
 simulator = tb.Simulator(model)
 
-# Simulate the model
-step_size = 600 #Seconds
-start_time = datetime.datetime(year=2025, month=1, day=10, hour=0, minute=0, second=0) # Optionally set the timezone
-end_time = datetime.datetime(year=2025, month=1, day=12, hour=0, minute=0, second=0) # Optionally set the timezone
+# Simulate the model (timezone-aware datetimes are required)
+step_size = 600  # Seconds
+start_time = datetime.datetime(year=2025, month=1, day=10, tzinfo=pytz.UTC)
+end_time = datetime.datetime(year=2025, month=1, day=12, tzinfo=pytz.UTC)
 simulator.simulate(step_size=step_size,
                    start_time=start_time,
                    end_time=end_time)
 
 # Plot the results
-plot.plot_component(simulator, 
-                    components_1axis=[("Damper", "airFlowRate")],
-                    components_2axis=[("Damper", "damperPosition")],
-                    ylabel_1axis="Air flow rate", #Optional
-                    ylabel_2axis="Damper position", #Optional
-                    show=True,
-                    nticks=11)
+tb.plot.plot(
+    simulator.date_time_steps,
+    entries=[
+        tb.plot.Entry(data=damper.output["airFlowRate"].history(), label="Air flow rate", axis=1),
+        tb.plot.Entry(data=damper.output["damperPosition"].history(), label="Damper position", axis=2),
+    ],
+    ylabel_1axis="Air flow rate [kg/s]",
+    ylabel_2axis="Damper position",
+    show=True,
+)
 ```
 
 ## Installation
@@ -124,6 +124,13 @@ The package is installed with pip:
 
 ```bat
 pip install twin4build
+```
+
+Optional extras:
+
+```bat
+pip install twin4build[database]     # PostgreSQL connectivity
+pip install twin4build[all]          # Everything
 ```
 
 The following python versions are supported:
