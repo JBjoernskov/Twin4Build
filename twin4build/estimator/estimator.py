@@ -3653,6 +3653,14 @@ class Estimator:
             try:
                 z = theta.detach().clone().requires_grad_(True)
                 (g,) = torch.autograd.grad(self._fast_obj.loglike(z, output), z)
+                if not torch.isfinite(g).all():
+                    # A partially-diverged rollout can produce a finite loss
+                    # with nan gradient entries; hand the solver zeros so it
+                    # backtracks instead of stepping on nan.
+                    LOGGER.warning(
+                        "fast jacobian non-finite -- returning zero gradient"
+                    )
+                    g = torch.zeros_like(g)
                 self._jac = g.detach()
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
