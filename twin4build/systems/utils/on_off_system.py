@@ -56,15 +56,16 @@ class OnOffSystem(core.System):
         for output in self.output.values():
             output.initialize(n_t=max_timesteps, n_s=batch_size)
 
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        criteria_value = self.input["criteriaValue"].get()
-        input_value = self.input["value"].get()
+    PARAM_NAMES = ()  # threshold / is_off_value are plain numbers (structural)
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step gate (functorch-safe, stateless).
+
+        ``threshold`` and ``is_off_value`` are plain (non-estimable) numbers,
+        read from ``self`` as structural constants.
+        """
+        criteria_value = inputs["criteriaValue"]
+        input_value = inputs["value"]
 
         # Vectorized conditional: where criteria >= threshold, use input_value, else use is_off_value
         output_value = torch.where(
@@ -72,4 +73,20 @@ class OnOffSystem(core.System):
             input_value,
             torch.full_like(input_value, self.is_off_value),
         )
-        self.output["value"]._set(output_value, i_t=step_index)
+        return x, {"value": output_value}
+
+    def do_step(
+        self,
+        second_time: float,
+        date_time: datetime.datetime,
+        step_size: int,
+        step_index: int,
+    ) -> None:
+        inputs = {
+            "value": self.input["value"].get(),
+            "criteriaValue": self.input["criteriaValue"].get(),
+        }
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["value"]._set(outs["value"], i_t=step_index)

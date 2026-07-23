@@ -24,8 +24,9 @@ thin port-I/O wrapper that DELEGATES its math to the same ``forward`` the
 composer threads (single source of truth -- the two cannot drift apart), and
 cut feedback edges are carried as one-step lag state inside ``y`` (exactly
 ``do_step``'s delayed Gauss-Seidel semantics).  Only truly exogenous inputs
-(weather, schedules, data-driven occupancy) are frozen -- and those are
-theta-independent by definition.  The same single-source-of-truth rule holds
+(weather, schedules, measured data series) are frozen -- and those are
+theta-independent by definition; ``OneStepComposer._validate_theta_influence``
+refuses to compose if a theta path would leak into a frozen signal.  The same single-source-of-truth rule holds
 outside the components: theta denormalization is
 :func:`twin4build.utils.types.denormalize_unit` (the function
 ``tps.Parameter.denormalize`` itself routes through) and everything downstream

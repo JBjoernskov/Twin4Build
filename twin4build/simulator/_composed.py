@@ -58,6 +58,7 @@ import torch.nn as nn
 
 import twin4build.systems as systems
 import twin4build.utils.types as tps
+from twin4build.utils.rgetattr import rgetattr
 
 
 def _has_real_forward(comp) -> bool:
@@ -281,7 +282,88 @@ class OneStepComposer:
             else:
                 self.meas_sources.append(("external", comp.id, out_port))
 
+        # Gradients must not be silently lost: every theta path through the
+        # real system has to be threaded through F, never frozen into a
+        # captured constant.
+        self._validate_theta_influence()
+
     # -- static graph analysis ----------------------------------------------
+    def _validate_theta_influence(self):
+        """Refuse to compose when theta gradients would silently be lost.
+
+        The composed map freezes every input without a composed producer into
+        a captured constant.  That is exact -- in value AND gradient -- only
+        when the frozen signal is truly exogenous (weather, schedules).  Two
+        structural violations make the frozen value theta-dependent, so the
+        composed objective would MATCH the object graph in value at the
+        reference theta while its gradient silently loses the paths through
+        the frozen signal (observed historically: an ``OccupancySystem`` --
+        before it grew its pure ``forward`` -- with estimated
+        ``V``/``G_occ``/``m_inf`` feeding ``numberOfPeople``):
+
+        1. a theta component outside the influence cone (not composed at
+           all -- e.g. no functorch-safe ``forward``, or only reachable
+           through a non-composable component);
+        2. a captured input whose upstream object-graph ancestry contains a
+           theta component (theta leaks into the "constant" through a
+           non-composable intermediary).
+
+        Raises ``RuntimeError``; callers treat that as "fall back to the
+        object-graph engine".
+        """
+        missing = sorted(
+            cid for cid in self.theta_by_comp if cid not in self.cone_ids
+        )
+        if missing:
+            raise RuntimeError(
+                "theta components not composable (their gradient paths would "
+                f"be frozen into captured constants): {missing}"
+            )
+
+        by_id = {c.id: c for c in self.order}
+        for key in self._captured_keys:
+            comp = by_id.get(key[0])
+            if comp is None:
+                continue
+            if len(key) == 3:
+                starts = [
+                    (prod, oport)
+                    for slot, prod, oport in self._vector_slot_sources(comp, key[1])
+                    if slot == key[2]
+                ]
+            else:
+                src = _single_source(comp, key[1])
+                starts = [src] if src is not None else []
+            hit = self._upstream_theta_component([p for p, _ in starts])
+            if hit is not None:
+                raise RuntimeError(
+                    f"captured input {key} depends on theta component "
+                    f"'{hit}' (freezing it would drop its gradient)"
+                )
+
+    def _upstream_theta_component(self, start_comps):
+        """Walk the object graph upstream (over ALL edges, composable or not)
+        from ``start_comps``; return the id of the first theta component
+        reached, or ``None``."""
+        stack = list(start_comps)
+        visited = set()
+        while stack:
+            c = stack.pop()
+            if c is None or c.id in visited:
+                continue
+            visited.add(c.id)
+            if c.id in self.theta_by_comp:
+                return c.id
+            for port in list(c.input.keys()):
+                if isinstance(c.input[port], tps.Vector):
+                    for _, prod, _ in self._vector_slot_sources(c, port):
+                        stack.append(prod)
+                else:
+                    src = _single_source(c, port)
+                    if src is not None:
+                        stack.append(src[0])
+        return None
+
     def _influence_cone(self, seed_extra=()) -> List:
         """Forward-components reverse-reachable (over fresh edges, following
         pass-through sensors) from the stateful components -- plus any extra
@@ -379,7 +461,7 @@ class OneStepComposer:
         ports (e.g. ``MaxSystem.inputs``) resolve **per slot** to a ``("vector",
         [slot_spec, ...])`` spec, so a producer inside the cone (e.g. the CO2
         controller feeding the damper max) is threaded fresh instead of frozen.
-        Unconnected vector ports (n_v=0, e.g. ``adjacentZoneTemperature``) are
+        Unconnected vector ports (n_v=0, e.g. ``wallHeatGain``) are
         skipped.
         """
         specs = []
@@ -398,28 +480,11 @@ class OneStepComposer:
             specs.append((port, self._classify_source(comp, (comp.id, port), src)))
         return specs
 
-    # -- capture from a reference simulation --------------------------------
-    def capture(self, simulator, seg_starts, seg_ends, seg_steps) -> np.ndarray:
-        """Run one reference simulation over the segments and sample every
-        captured input-port value at each segment's first step.
-
-        Returns an array ``(n_seg, n_captured)`` aligned with ``self._captured_keys``.
-        """
-        simulator.simulate(
-            start_time=seg_starts, end_time=seg_ends, step_size=seg_steps,
-            show_progress_bar=False,
-        )
-        n_seg = len(seg_starts)
-        cap = torch.zeros((n_seg, len(self._captured_keys)), dtype=torch.float64)
-        comps = self.model.components
-        for j, key in enumerate(self._captured_keys):
-            comp_id, port = key[0], key[1]
-            slot = key[2] if len(key) > 2 else 0  # vector-port slot
-            val = comps[comp_id].input[port].history(i_t=0)  # (n_s, n_c[, n_v]) at step 0
-            cap[:, j] = torch.as_tensor(np.asarray(val)).reshape(n_seg, -1)[:, slot]
-        return cap
-
     # -- the pure one-step map ----------------------------------------------
+    # (Captured-input sampling lives in :func:`capture_reference_rollout` --
+    # the single continuous-rollout source of truth; a per-segment capture
+    # would evaluate stateful/data-indexed signals like the OccupancySystem's
+    # ``previousIndoorCo2Measured`` at the wrong step.)
     def _params_for(self, comp, theta):
         """Physical-parameter dict for ``comp``: estimated entries from ``theta``
         (a 1-D tensor in theta_spec order), the rest from the component's
@@ -454,7 +519,9 @@ class OneStepComposer:
                     # (some components read n_c from a parameter's shape).
                     p[name] = theta[est[name]].reshape(1)
                 else:
-                    p[name] = getattr(comp, name).get()
+                    # rgetattr: PARAM_NAMES may contain dotted paths into
+                    # owned sub-objects (e.g. "supply_damper.a").
+                    p[name] = rgetattr(comp, name).get()
         # Prefixed estimated params (composite: "thermal.C_air") -> pass through.
         for attr, idx in est.items():
             if "." in attr:
@@ -576,10 +643,10 @@ def capture_reference_rollout(
 
     Two properties only a continuous ``do_step`` run provides:
 
-    * **Stateful exogenous drivers** are evaluated correctly: e.g.
-      ``OccupancySystem`` carries a ``C_prev`` memory and outputs zero
-      occupancy on the first step after ``initialize`` -- stepping segments in
-      isolation would freeze wrong values.
+    * **Step-indexed exogenous drivers** are evaluated correctly: e.g. the
+      ``OccupancySystem``'s ``previousIndoorCo2Measured`` is the data sample
+      one step back -- stepping segments in isolation (every segment at its
+      own ``step_index = 0``) would freeze wrong values.
     * **Gauss-Seidel consumption semantics**: an input port read right after
       step ``t`` holds exactly the value ``do_step`` consumed at step ``t``
       (the producer's current- or previous-step output depending on execution

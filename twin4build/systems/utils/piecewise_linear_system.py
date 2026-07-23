@@ -177,6 +177,14 @@ class PiecewiseLinearSystem(core.System):
 
         return Y
 
+    PARAM_NAMES = ()  # the (X, Y) interpolation table is structural data
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step piecewise-linear interpolation (functorch-safe,
+        stateless).  The interpolation table is fixed (structural) data, so
+        :meth:`_get_Y` is a pure function of the input."""
+        return x, {"y": self._get_Y(inputs["x"])}
+
     def do_step(
         self,
         second_time: float,
@@ -184,7 +192,9 @@ class PiecewiseLinearSystem(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        """Perform a single interpolation step using new implementation.
+        """Perform a single interpolation step.
+
+        Thin port-I/O wrapper delegating the math to :meth:`forward`.
 
         Args:
             second_time (Optional[float], optional): Current simulation time in seconds.
@@ -194,5 +204,8 @@ class PiecewiseLinearSystem(core.System):
             step_size (Optional[float], optional): Time step size in seconds.
                 Defaults to None.
         """
-        X = self.input["x"].get()
-        self.output["y"]._set(self._get_Y(X), i_t=step_index)
+        inputs = {"x": self.input["x"].get()}
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["y"]._set(outs["y"], i_t=step_index)

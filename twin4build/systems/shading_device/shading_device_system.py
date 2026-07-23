@@ -49,6 +49,12 @@ class ShadingDeviceSystem(core.System):
         """
         pass
 
+    PARAM_NAMES = ()
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step pass-through (functorch-safe, stateless)."""
+        return x, {"shadePosition": inputs["shadePosition"]}
+
     def do_step(
         self,
         second_time: float,
@@ -58,8 +64,9 @@ class ShadingDeviceSystem(core.System):
     ) -> None:
         """Perform one simulation step.
 
-        This method passes through the shade position from input to output.
-        The shade position is typically controlled by a schedule or control system.
+        Passes through the shade position from input to output (typically
+        controlled by a schedule or control system).  Thin port-I/O wrapper
+        delegating to :meth:`forward`.
 
         Args:
             second_time (float, optional): Current simulation time in seconds.
@@ -67,4 +74,8 @@ class ShadingDeviceSystem(core.System):
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """
-        self.output["shadePosition"]._set(self.input["shadePosition"], i_t=step_index)
+        inputs = {"shadePosition": self.input["shadePosition"].get()}
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["shadePosition"]._set(outs["shadePosition"], i_t=step_index)

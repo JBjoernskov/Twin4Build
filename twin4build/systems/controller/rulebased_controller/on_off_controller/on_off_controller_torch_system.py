@@ -166,6 +166,35 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         )
         return off_value + switch_signal * (on_value - off_value)
 
+    PARAM_NAMES = ("offValue", "onValue", "steepness")
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step on-off switching (functorch-safe, stateless).
+
+        - Reverse mode (heating): ON when actual < setpoint
+        - Normal mode (cooling): ON when actual > setpoint
+
+        ``isReverse`` is a structural (non-estimable) flag, fixed at
+        construction.
+        """
+        # Reverse: want to turn ON when actual < setpoint (error > 0)
+        # Normal: want to turn ON when actual > setpoint (error > 0)
+        if self.isReverse:
+            error = inputs["setpointValue"] - inputs["actualValue"]
+        else:
+            error = inputs["actualValue"] - inputs["setpointValue"]
+
+        # Smooth sigmoid switching
+        # sigmoid(k * error) → 1 when error >> 0 (ON)
+        # sigmoid(k * error) → 0 when error << 0 (OFF)
+        output_signal = self.power_law_saturation(
+            error,
+            off_value=params["offValue"],
+            on_value=params["onValue"],
+            steepness=params["steepness"],
+        )
+        return x, {"inputSignal": output_signal}
+
     def do_step(
         self,
         second_time: float,
@@ -176,36 +205,16 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         """
         Perform one simulation step with differentiable on-off switching.
 
-        Uses sigmoid function for smooth, differentiable transition:
-        - Reverse mode (heating): ON when actual < setpoint
-        - Normal mode (cooling): ON when actual > setpoint
+        Thin port-I/O wrapper delegating the math to :meth:`forward`.
         """
-        actual_value = self.input["actualValue"].get()
-        setpoint_value = self.input["setpointValue"].get()
-
-        k = self.steepness.get()
-        off_val = self.offValue.get()
-        on_val = self.onValue.get()
-
-        # Compute error based on mode
-        # Reverse: want to turn ON when actual < setpoint (error > 0)
-        # Normal: want to turn ON when actual > setpoint (error > 0)
-        if self.isReverse:
-            error = setpoint_value - actual_value
-        else:
-            error = actual_value - setpoint_value
-
-        # Smooth sigmoid switching
-        # sigmoid(k * error) → 1 when error >> 0 (ON)
-        # sigmoid(k * error) → 0 when error << 0 (OFF)
-        output_signal = self.power_law_saturation(
-            error, off_value=off_val, on_value=on_val, steepness=k
+        inputs = {
+            "actualValue": self.input["actualValue"].get(),
+            "setpointValue": self.input["setpointValue"].get(),
+        }
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
-
-        # Interpolate between off and on values
-        # output_signal = off_val + switch_signal * (on_val - off_val)
-
-        self.output["inputSignal"].set(output_signal, step_index)
+        self.output["inputSignal"].set(outs["inputSignal"], step_index)
 
     def get_switch_state(
         self, actual_value: torch.Tensor, setpoint_value: torch.Tensor

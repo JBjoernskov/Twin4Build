@@ -11,7 +11,10 @@ from scipy.optimize import fsolve
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build import core
-from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+from twin4build.systems.utils.discrete_statespace_system import (
+    DiscreteStatespaceSystem,
+    bilinear_onestep,
+)
 from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
 from twin4build.translator.translator import (
     StepRule,
@@ -443,19 +446,32 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
             x0[:, :, i] = t_outlet
         return x0
 
-    def _create_state_space_model(self):
-        """Create the bilinear state-space model for the fan coil unit.
+    PARAM_NAMES = (
+        "thermalMassHeatCapacity",
+        "UA",
+        "_valve.waterFlowRateMax",
+        "_valve.valveAuthority",
+    )
 
-        The matrix structure is identical to SpaceHeaterTorchSystem: the water side is
-        discretized into n finite elements with advection handled by bilinear E/F matrices.
-        The air inlet temperature plays the same role as the zone temperature in the
-        space heater model.
+    def _build_matrices(self, p=None):
+        """Build the coil state-space matrices ``(A, B, C, D, E, F)`` from the
+        physical parameters -- a pure function of ``p`` (a dict of physical
+        values for :attr:`PARAM_NAMES`; defaults to the component's own
+        values).  Passing ``p`` is the functorch fast path; the structure is
+        identical to ``SpaceHeaterTorchSystem`` with the air inlet
+        temperature in the zone-temperature role.
         """
+        if p is None:
+            p = {
+                "thermalMassHeatCapacity": self.thermalMassHeatCapacity.get(),
+                "UA": self.UA.get(),
+            }
+
         n = self.nelements
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, inletAirTemperature]
 
-        C_elem = self.thermalMassHeatCapacity.get() / n  # (n_c,)
-        UA_elem = self.UA.get() / n  # (n_c,)
+        C_elem = p["thermalMassHeatCapacity"] / n  # (n_c,)
+        UA_elem = p["UA"] / n  # (n_c,)
         n_c = C_elem.shape[0]
         c_p_w = constants.CP_WATER
 
@@ -485,6 +501,14 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
         C_out[:, 0, n - 1] = 1.0
         D = torch.zeros((n_c, 1, n_inputs), dtype=torch.float64)
 
+        return A, B, C_out, D, E, F
+
+    def _create_state_space_model(self):
+        """Create the bilinear state-space model for the fan coil unit from
+        the matrices built by :meth:`_build_matrices`."""
+        n = self.nelements
+        A, B, C_out, D, E, F = self._build_matrices()
+
         x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
         x0 = x0_tensor[0, :, :]  # (n_c, n_states)
 
@@ -500,6 +524,84 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
             add_noise=False,
             id=f"ss_model_{self.id}",
         )
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step FCU dynamics ``(state, inputs, params) -> (new_state, outputs)``.
+
+        Functorch-compatible single source of truth for :meth:`do_step`.
+        The internal valve's pure ``forward`` converts ``valvePosition`` to a
+        water flow (its params come from the dotted ``_valve.*`` entries),
+        the bilinear state-space advances the water elements, and the
+        air side uses the effectiveness-NTU formulation (see the class
+        docstring for the physics and limiting behavior).
+        """
+        # Valve: position -> water flow (delegates to the valve's own pure
+        # forward -- single source of truth for the valve characteristic).
+        _, v_out = self._valve.forward(
+            None,
+            {"valvePosition": inputs["valvePosition"]},
+            {
+                "waterFlowRateMax": params["_valve.waterFlowRateMax"],
+                "valveAuthority": params["_valve.valveAuthority"],
+            },
+            sample_time,
+        )
+        waterFlowRate = v_out["waterFlowRate"]
+
+        # Params-only matrices, cached per params-dict identity (rebuilt once
+        # per theta in a sequential rollout, not once per step).
+        cache = getattr(self, "_fwd_mat_cache", None)
+        if cache is None or cache[0] is not params or cache[2] != sample_time:
+            cache = (params, self._build_matrices(params), sample_time, {})
+            self._fwd_mat_cache = cache
+        A, B, C_out, D, E, F = cache[1]
+
+        u = torch.stack(
+            [
+                inputs["supplyWaterTemperature"],
+                waterFlowRate,
+                inputs["inletAirTemperature"],
+            ],
+            dim=-1,
+        )
+        x_next, y = bilinear_onestep(
+            A, B, C_out, D, E, F, x, u, sample_time, disc_cache=cache[3]
+        )
+        outletWaterTemperature = y[..., 0]
+
+        # Air-side heat transfer using the effectiveness-NTU method (see the
+        # class docstring / do_step history for the physical rationale).
+        UA = params["UA"]
+        T_air_in = inputs["inletAirTemperature"]
+        m_dot_a = inputs["airFlowRate"]
+        T_water_avg = torch.mean(x_next, dim=-1)
+
+        # Use |m_dot_a| for the heat-capacity rate; clamp to avoid div-by-0
+        # in NTU. ``tol`` is small enough to give eff ~ 1 (full equilibration)
+        # while keeping ``C_air`` numerically safe.
+        tol = 1e-8
+        abs_m_dot_a = torch.clamp(m_dot_a.abs(), min=tol)
+        C_air = abs_m_dot_a * constants.CP_AIR
+        NTU = UA / C_air
+        effectiveness = 1.0 - torch.exp(-NTU)  # in [0, 1]
+
+        outletAirTemperature = T_air_in + effectiveness * (T_water_avg - T_air_in)
+        # Power is the heat actually delivered to the air stream (bounded).
+        # Using the original m_dot_a sign so backflow (m_dot_a < 0) keeps a
+        # signed Power consistent with the airflow direction.
+        sign_m_dot_a = torch.where(
+            m_dot_a >= 0,
+            torch.ones_like(m_dot_a),
+            -torch.ones_like(m_dot_a),
+        )
+        Power = sign_m_dot_a * C_air * effectiveness * (T_water_avg - T_air_in)
+
+        return x_next, {
+            "outletWaterTemperature": outletWaterTemperature,
+            "outletAirTemperature": outletAirTemperature,
+            "waterFlowRate": waterFlowRate,
+            "Power": Power,
+        }
 
     def do_step(
         self,
@@ -521,95 +623,30 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
             step_size: Time step size in seconds.
             step_index: Current simulation step index.
         """
-        # Compute water flow rate via the internal valve model
-        # (valvePosition input is shared, so no manual copy needed)
-        self._valve.do_step(second_time, date_time, step_size, step_index=step_index)
-        waterFlowRate = self._valve.output["waterFlowRate"].get()
-
-        # The state-space model uses 3 inputs: [T_w_supply, m_dot_w, T_air_in]
-        u_ss = torch.stack(
-            [
-                self.input["supplyWaterTemperature"].get(),
-                waterFlowRate,
-                self.input["inletAirTemperature"].get(),
-            ],
-            dim=2,
+        # Thin port-I/O wrapper around :meth:`forward` (the single source of
+        # truth for the valve characteristic, water-side dynamics and
+        # effectiveness-NTU air side); the inner ``ss_model`` only carries
+        # the state between steps.
+        inputs = {
+            "supplyWaterTemperature": self.input["supplyWaterTemperature"].get(),
+            "valvePosition": self.input["valvePosition"].get(),
+            "airFlowRate": self.input["airFlowRate"].get(),
+            "inletAirTemperature": self.input["inletAirTemperature"].get(),
+        }
+        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
-        self.ss_model.input["u"]._set(u_ss, i_t=step_index)
-        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
-
-        # Outlet water temperature from state-space output
-        y = self.ss_model.output["y"].get()
-        outletWaterTemperature = y[:, :, 0]  # (n_s, n_c)
-
-        # ------------------------------------------------------------------
-        # Air-side heat transfer using the effectiveness-NTU method.
-        #
-        # The previous formulation used Q = UA * (T_w_avg - T_air_in) and
-        # T_a_out = T_air_in + Q / (m_dot_a * c_p_a).  When ``m_dot_a`` is
-        # small (e.g. a VAV near minimum or fully closed overnight) this
-        # produces a non-physical air outlet temperature: a finite heat
-        # transfer ``Q`` over a vanishing air stream blows up.  The
-        # effectiveness-NTU formulation instead bounds the outlet air
-        # temperature by ``T_water_avg`` (the limiting case where the air
-        # fully equilibrates with the water) and scales the actual heat
-        # transfer ``Q`` by ``m_dot_a * c_p_a``, so it vanishes as
-        # ``m_dot_a -> 0``:
-        #
-        #   NTU = UA / (m_dot_a * c_p_a)
-        #   eff = 1 - exp(-NTU)
-        #   T_a_out = T_air_in + eff * (T_water_avg - T_air_in)
-        #   Q       = eff * m_dot_a * c_p_a * (T_water_avg - T_air_in)
-        #
-        # Limits:
-        #   - m_dot_a -> 0: NTU -> inf, eff -> 1, T_a_out -> T_water_avg,
-        #       Q -> 0 (air cannot carry away heat).
-        #   - m_dot_a -> inf (NTU << 1): eff -> NTU, Q -> UA * (T_w_avg - T_air_in),
-        #       which matches the original constant-UA limit.
-        #
-        # The water-side state still uses constant UA in its A/B matrices,
-        # which makes the water cool slightly faster than the air can
-        # actually carry the heat away when ``m_dot_a`` is small.  This is
-        # an accepted simplification; the important guarantee is that the
-        # public outputs (``outletAirTemperature``, ``Power``) stay
-        # physically bounded.
-        # ------------------------------------------------------------------
-        UA = self.UA.get()  # (n_c,)
-        temps = self.ss_model.get_state()  # (n_s, n_c, n_states)
-        T_air_in = self.input["inletAirTemperature"].get()  # (n_s, n_c)
-        m_dot_a = self.input["airFlowRate"].get()  # (n_s, n_c)
-        T_water_avg = torch.mean(temps, dim=2)  # (n_s, n_c)
-
-        # Use |m_dot_a| for the heat-capacity rate; clamp to avoid div-by-0
-        # in NTU. ``tol`` is small enough to give eff ~ 1 (full equilibration)
-        # while keeping ``C_air`` numerically safe.
-        tol = 1e-8
-        abs_m_dot_a = torch.clamp(m_dot_a.abs(), min=tol)
-        C_air = abs_m_dot_a * constants.CP_AIR  # (n_s, n_c)
-        NTU = UA.unsqueeze(0) / C_air  # (n_s, n_c)
-        effectiveness = 1.0 - torch.exp(-NTU)  # in [0, 1]
-
-        outletAirTemperature = T_air_in + effectiveness * (
-            T_water_avg - T_air_in
-        )
-        # Power is the heat actually delivered to the air stream (bounded).
-        # Using the original m_dot_a sign so backflow (m_dot_a < 0) keeps a
-        # signed Power consistent with the airflow direction.
-        sign_m_dot_a = torch.where(
-            m_dot_a >= 0,
-            torch.ones_like(m_dot_a),
-            -torch.ones_like(m_dot_a),
-        )
-        Power = sign_m_dot_a * C_air * effectiveness * (
-            T_water_avg - T_air_in
-        )  # (n_s, n_c)
+        self.ss_model.set_state(x_next)
 
         self.output["outletWaterTemperature"]._set(
-            outletWaterTemperature, i_t=step_index
+            outs["outletWaterTemperature"], i_t=step_index
         )
-        self.output["outletAirTemperature"]._set(outletAirTemperature, i_t=step_index)
-        self.output["waterFlowRate"]._set(waterFlowRate, i_t=step_index)
-        self.output["Power"]._set(Power, i_t=step_index)
+        self.output["outletAirTemperature"]._set(
+            outs["outletAirTemperature"], i_t=step_index
+        )
+        self.output["waterFlowRate"]._set(outs["waterFlowRate"], i_t=step_index)
+        self.output["Power"]._set(outs["Power"], i_t=step_index)
 
 
 def brick_signature_pattern():

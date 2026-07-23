@@ -1814,6 +1814,21 @@ class Estimator:
         n_private_unique = len(private_params)
 
         for components, attr, x0, lb, ub in shared_params:
+            # All members of a shared group MUST use the same normalization
+            # scaling: the objective denormalizes each member with its own
+            # parameter's scaling, so a mismatch would silently assign
+            # DIFFERENT physical values (and gradients) to the "shared"
+            # parameter for the same normalized theta.
+            scalings = {
+                getattr(rgetattr(c, attr), "scaling", "linear") for c in components
+            }
+            if len(scalings) > 1:
+                raise ValueError(
+                    f"Shared parameter group {[c.id for c in components]} attr "
+                    f"'{attr}' mixes normalization scalings {sorted(scalings)}; "
+                    "all members of a shared group must use the same "
+                    "tps.Parameter scaling."
+                )
             # Get n_c from first component (all shared components should have same n_c)
             param = rgetattr(components[0], attr)
             n_c = param.n_c if hasattr(param, "n_c") else 1
@@ -1929,11 +1944,38 @@ class Estimator:
             zip(self._flat_components, self._parameter_names)
         ):
             idx = int(self._theta_slices[int(self._theta_mask[j])][0])
-            theta_spec.append((comp, attr, idx))
+            owner, owner_attr = self._composed_owner(comp, attr)
+            theta_spec.append((owner, owner_attr, idx))
             rep.setdefault(idx, self._flat_parameters[j])
         unique_parameters = [rep[i] for i in range(len(rep))]
         assert len(unique_parameters) == len(self._x0_norm)
         return theta_spec, unique_parameters
+
+    def _composed_owner(self, comp, attr) -> Tuple[object, str]:
+        """Remap a theta entry on a nested sub-object onto its owning model
+        component with a prefixed attribute path.
+
+        Users may put theta directly on an owned sub-object -- e.g. the
+        ``OccupancySystem``'s internal ``supply_damper`` (shared with a model
+        damper).  The composer routes parameters by *model component*, so such
+        entries must become ``(owner, "supply_damper.a")``.  Components that
+        are themselves in the model pass through unchanged (including
+        composites addressed with dotted attrs like ``(office,
+        "thermal.C_air")``).
+        """
+        components = self.simulator.model.components
+        cid = getattr(comp, "id", None)
+        if cid is not None and components.get(cid) is comp:
+            return comp, attr
+        for owner in components.values():
+            # nn.Module owners keep sub-module attributes in ``_modules``
+            # (e.g. OccupancySystem.supply_damper), not ``__dict__``.
+            attrs = dict(vars(owner))
+            attrs.update(getattr(owner, "_modules", None) or {})
+            for name, val in attrs.items():
+                if val is comp:
+                    return owner, f"{name}.{attr}"
+        return comp, attr
 
     def _param_values_to_theta(self, values: List[np.ndarray]) -> np.ndarray:
         """

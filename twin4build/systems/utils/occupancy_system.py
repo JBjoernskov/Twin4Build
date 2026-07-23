@@ -43,8 +43,13 @@ class _DamperParams(core.System, nn.Module):
     def __init__(self, id: str, a: float = 1.0, nominalAirFlowRate: float = 0.001):
         core.System.__init__(self, id=id)
         nn.Module.__init__(self)
+        # Scalings MUST match ``DamperTorchSystem`` (``a`` is log-scaled
+        # there): the object-graph estimation path denormalizes each member
+        # of a "shared" group with its OWN parameter scaling, so a scaling
+        # mismatch silently gives the two members different physical values
+        # for the same normalized theta (and different gradients).
         self.a = tps.Parameter(
-            torch.tensor(a, dtype=torch.float64), requires_grad=False
+            torch.tensor(a, dtype=torch.float64), requires_grad=False, scaling="log"
         )
         self.nominalAirFlowRate = tps.Parameter(
             torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False
@@ -60,12 +65,13 @@ class _DamperParams(core.System, nn.Module):
         Uses the same exponential characteristic as ``DamperTorchSystem``:
         ``m = a * exp(b * u) + c``  where  ``c = -a``,
         ``b = ln((nominalAirFlowRate + a) / a)``.
+
+        Delegates to :meth:`OccupancySystem._airflow` (single source of truth
+        with the pure ``forward``).
         """
-        a = self.a.get()
-        nom = self.nominalAirFlowRate.get()
-        c = -a
-        b = torch.log((nom - c) / a)
-        return a * torch.exp(b * position) + c
+        return OccupancySystem._airflow(
+            self.a.get(), self.nominalAirFlowRate.get(), position
+        )
 
 
 class OccupancySystem(core.System, nn.Module):
@@ -73,6 +79,14 @@ class OccupancySystem(core.System, nn.Module):
 
     All measured inputs (indoor CO2, damper position) are read from CSV files
     so that no gradient feedback loop is created during calibration.
+
+    The per-step math lives in the pure :meth:`forward` (``do_step`` is a thin
+    port-I/O wrapper), so the component is composable by ``Simulator.compose``:
+    the measured data is published on unconnected input ports
+    (``indoorCo2Measured``, ``previousIndoorCo2Measured``,
+    ``damperPositionMeasured``) that the fast paths capture per step.  At the
+    first step the previous CO2 sample equals the current one (``dC = 0``), so
+    the initial occupancy comes from the static balance.
 
     Internal ``supply_damper`` and ``exhaust_damper`` convert measured damper
     positions to airflows.  Their parameters (``a``, ``nominalAirFlowRate``)
@@ -139,6 +153,14 @@ class OccupancySystem(core.System, nn.Module):
 
         self._input = {
             "outdoorCo2Concentration": tps.Scalar(),
+            # Measured-data ports: NOT connected to any producer.  ``do_step``
+            # publishes the CSV samples here each step so that the composed
+            # fast paths (Simulator.compose) can capture them per step like
+            # any exogenous signal -- freezing them is exact because they are
+            # measured data, independent of any estimated parameter.
+            "indoorCo2Measured": tps.Scalar(),
+            "previousIndoorCo2Measured": tps.Scalar(),
+            "damperPositionMeasured": tps.Scalar(),
         }
         self._output = {"scheduleValue": tps.Scalar()}
         self._config = {
@@ -211,8 +233,65 @@ class OccupancySystem(core.System, nn.Module):
         self.supply_damper.expand_to_n_c(self.n_c)
         self.exhaust_damper.expand_to_n_c(self.n_c)
 
-        self.C_prev = None
         self.INITIALIZED = True
+
+    PARAM_NAMES = (
+        "mass.V",
+        "mass.G_occ",
+        "mass.m_inf",
+        "supply_damper.a",
+        "supply_damper.nominalAirFlowRate",
+        "exhaust_damper.a",
+        "exhaust_damper.nominalAirFlowRate",
+    )
+
+    @staticmethod
+    def _airflow(
+        a: torch.Tensor, nominal: torch.Tensor, position: torch.Tensor
+    ) -> torch.Tensor:
+        """Damper position (0-1) -> airflow [kg/s]; same exponential
+        characteristic as ``DamperTorchSystem`` (``_DamperParams.compute_airflow``
+        expressed on explicit parameter tensors so ``forward`` stays pure)."""
+        c = -a
+        b = torch.log((nominal - c) / a)
+        return a * torch.exp(b * position) + c
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step occupancy estimate (functorch-safe, stateless).
+
+        Inverts the zone CO2 balance: all data enters through ``inputs``
+        (the measured-data ports plus ``outdoorCo2Concentration``), all
+        estimable parameters through ``params``, so the composed fast paths
+        thread theta gradients exactly.
+        """
+        C_indoor = inputs["indoorCo2Measured"]
+        C_prev = inputs["previousIndoorCo2Measured"]
+        damper_pos = inputs["damperPositionMeasured"]
+        C_outdoor = inputs["outdoorCo2Concentration"]
+
+        m_sup = self._airflow(
+            params["supply_damper.a"],
+            params["supply_damper.nominalAirFlowRate"],
+            damper_pos,
+        )
+        m_exh = self._airflow(
+            params["exhaust_damper.a"],
+            params["exhaust_damper.nominalAirFlowRate"],
+            damper_pos,
+        )
+
+        air_mass = params["mass.V"] * constants.RHO_AIR
+        alpha = params["mass.G_occ"] * (constants.M_AIR / constants.M_CO2) * 1e6
+        m_inf = params["mass.m_inf"]
+
+        dC = C_indoor - C_prev
+        N_occ = (
+            air_mass * dC / sample_time
+            + (m_inf + m_exh) * C_prev
+            - (m_inf + m_sup) * C_outdoor
+        ) / alpha
+        N_occ = clamp(N_occ, lower=0.0, upper=1e6)
+        return x, {"scheduleValue": N_occ}
 
     def do_step(
         self,
@@ -222,34 +301,25 @@ class OccupancySystem(core.System, nn.Module):
         step_index: int,
     ) -> None:
         C_indoor = self._co2_ts.values[step_index]  # (n_s, 1) - measured
+        C_prev = (
+            self._co2_ts.values[step_index - 1] if step_index > 0 else C_indoor
+        )
         damper_pos = self._damper_ts.values[step_index]  # (n_s, 1) - measured
-        C_outdoor = self.input["outdoorCo2Concentration"].get()
 
-        m_sup = self.supply_damper.compute_airflow(damper_pos)
-        m_exh = self.exhaust_damper.compute_airflow(damper_pos)
+        # Publish the data samples on the (unconnected) measured-data input
+        # ports: the composed fast paths capture input-port histories per
+        # step, so this makes the data visible to Simulator.compose.
+        self.input["indoorCo2Measured"]._set(C_indoor, i_t=step_index)
+        self.input["previousIndoorCo2Measured"]._set(C_prev, i_t=step_index)
+        self.input["damperPositionMeasured"]._set(damper_pos, i_t=step_index)
 
-        if self.C_prev is None:
-            self.C_prev = C_indoor.detach().clone()
-            self.output["scheduleValue"]._set(
-                torch.zeros_like(C_indoor), i_t=step_index
-            )
-            return
-
-        V = self.mass.V.get()
-        G_occ = self.mass.G_occ.get()
-        m_inf = self.mass.m_inf.get()
-        air_mass = V * constants.RHO_AIR
-        alpha = G_occ * (constants.M_AIR / constants.M_CO2) * 1e6
-
-        dt = torch.tensor(step_size, dtype=torch.float64).unsqueeze(-1)
-
-        dC = C_indoor - self.C_prev
-        N_occ = (
-            air_mass * dC / dt
-            + (m_inf + m_exh) * self.C_prev
-            - (m_inf + m_sup) * C_outdoor
-        ) / alpha
-        N_occ = clamp(N_occ, lower=0.0, upper=1e6)
-
-        self.C_prev = C_indoor.detach().clone()
-        self.output["scheduleValue"]._set(N_occ, i_t=step_index)
+        inputs = {
+            "indoorCo2Measured": C_indoor,
+            "previousIndoorCo2Measured": C_prev,
+            "damperPositionMeasured": damper_pos,
+            "outdoorCo2Concentration": self.input["outdoorCo2Concentration"].get(),
+        }
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["scheduleValue"]._set(outs["scheduleValue"], i_t=step_index)

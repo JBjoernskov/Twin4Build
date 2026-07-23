@@ -128,6 +128,17 @@ class SupplyFlowJunctionSystem(core.System):
             n_input_ports = len(connection_point[0].connects_system_through)
             self.n_input_ports = n_input_ports
 
+    PARAM_NAMES = ()  # airFlowRateBias is a plain number (structural constant)
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step flow summation (functorch-safe, stateless).
+
+        ``airFlowRateBias`` is a plain (non-estimable) number, so it is read
+        from ``self`` as a structural constant rather than through ``params``.
+        """
+        total = inputs["airFlowRateOut"].sum(dim=-1) + self.airFlowRateBias
+        return x, {"airFlowRateIn": total}
+
     def do_step(
         self,
         second_time: float,
@@ -137,9 +148,8 @@ class SupplyFlowJunctionSystem(core.System):
     ) -> None:
         """Perform one simulation step.
 
-        This method sums all input flow rates and adds the bias to calculate
-        the total flow rate. The input flow rates are provided as a vector,
-        and the output is a scalar representing the total flow rate.
+        Sums all input flow rates and adds the bias.  Thin port-I/O wrapper
+        delegating the math to :meth:`forward`.
 
         Args:
             second_time (float, optional): Current simulation time in seconds.
@@ -147,10 +157,11 @@ class SupplyFlowJunctionSystem(core.System):
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """
-        self.output["airFlowRateIn"]._set(
-            (self.input["airFlowRateOut"].get().sum(dim=-1)) + self.airFlowRateBias,
-            step_index,
+        inputs = {"airFlowRateOut": self.input["airFlowRateOut"].get()}
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
+        self.output["airFlowRateIn"]._set(outs["airFlowRateIn"], step_index)
 
 
 def saref_signature_pattern():

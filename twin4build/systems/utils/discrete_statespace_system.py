@@ -809,6 +809,37 @@ class DiscreteStatespaceSystem(core.System):
         # Clear previous input for bilinear term detection
         self._prev_u = None
 
+    PARAM_NAMES = ()  # the state-space matrices are structural constructor data
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one ZOH step ``(state, inputs) -> (new_state, outputs)``.
+
+        Functorch-compatible re-expression of :meth:`do_step`, delegating to
+        :func:`bilinear_onestep` (the shared building block used by the
+        components that embed this system).  The matrices are structural
+        constructor data, so ``params`` is unused.  The attached
+        ``disc_cache`` reproduces the input-change discretization reuse the
+        stepwise path has always had -- including the gradient-safety guard
+        that recomputes whenever the bilinear-relevant inputs carry grad.
+        """
+        cache = getattr(self, "_fwd_disc_cache", None)
+        if cache is None or cache[0] != sample_time:
+            cache = (sample_time, {})
+            self._fwd_disc_cache = cache
+        x_next, y = bilinear_onestep(
+            self._A_base,
+            self._B_base,
+            self._C,
+            self._D,
+            self._E,
+            self._F,
+            x,
+            inputs["u"],
+            sample_time,
+            disc_cache=cache[1],
+        )
+        return x_next, {"y": y}
+
     def do_step(
         self,
         second_time: float,
@@ -819,79 +850,28 @@ class DiscreteStatespaceSystem(core.System):
         """
         Perform one step of the state space model simulation.
 
-        Supports bilinear (state-input coupled) terms using proper (n_s, n_c, ...) dimensions.
-        Ad and Bd are recomputed when inputs change significantly.
+        Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the dynamics).  Supports bilinear (state-input coupled)
+        terms; the discretized matrices are recomputed only when the
+        bilinear-relevant inputs change (see :func:`bilinear_onestep`).
 
         Tensor shapes:
             u: (n_s, n_c, n_inputs)
             x: (n_s, n_c, n_states)
-            Ad: (n_s, n_c, n_states, n_states) or (n_c, n_states, n_states) for linear systems
-            Bd: (n_s, n_c, n_states, n_inputs) or (n_c, n_states, n_inputs) for linear systems
             y: (n_s, n_c, n_outputs)
         """
         assert all(
             [step_size_ == step_size[0] for step_size_ in step_size]
         ), "DiscreteStatespaceSystem currently only supports a single step size."
         step_size = step_size[0]
-        first_step = step_index == 0
 
         if step_size != self.sample_time:
             self.sample_time = step_size
 
-        # Get current input: (n_s, n_c, n_inputs)
-        u = self.input["u"].get().clone()
-        x = self.x  # (n_s, n_c, n_states)
-
-        # Check if we need to recompute discretized matrices
-        need_rediscretize = first_step or self._prev_u is None
-
-        if not need_rediscretize and self._E is not None and len(self.non_zero_E) > 0:
-            u_relevant = u[:, :, self.non_zero_E]
-            prev_u_relevant = self._prev_u[:, :, self.non_zero_E]
-            need_rediscretize = not torch.allclose(u_relevant, prev_u_relevant)
-
-        if not need_rediscretize and self._F is not None and len(self.non_zero_F) > 0:
-            u_relevant = u[:, :, self.non_zero_F]
-            prev_u_relevant = self._prev_u[:, :, self.non_zero_F]
-            need_rediscretize = not torch.allclose(u_relevant, prev_u_relevant)
-
-        # Compute effective matrices and discretize if needed
-        if need_rediscretize:
-            # Expand base matrices to (n_s, n_c, ...) shape
-            A_eff = self._A_base.unsqueeze(0).expand(
-                self.n_s, -1, -1, -1
-            )  # (n_s, n_c, n_states, n_states)
-            B_eff = self._B_base.unsqueeze(0).expand(
-                self.n_s, -1, -1, -1
-            )  # (n_s, n_c, n_states, n_inputs)
-
-            if self._E is not None:
-                # Add bilinear E term: E (n_c, n_inputs, n_states, n_states), u (n_s, n_c, n_inputs)
-                A_eff = A_eff + torch.einsum("cmij,scm->scij", self._E, u)
-
-            if self._F is not None:
-                # Add bilinear F term: F (n_c, n_inputs, n_states, n_inputs), u (n_s, n_c, n_inputs)
-                B_eff = B_eff + torch.einsum("cmij,scm->scij", self._F, u)
-
-            self.Ad, self.Bd = self.discretize_system(A_eff, B_eff)
-            self._prev_u = u.clone()
-
-        # State update: x_new = Ad @ x + Bd @ u
-        # Using batched matmul instead of einsum for ~1.6-1.9x speedup
-        # Ad: (n_s, n_c, n_states, n_states), x: (n_s, n_c, n_states) -> x.unsqueeze(-1): (n_s, n_c, n_states, 1)
-        x_new = (self.Ad @ x.unsqueeze(-1)).squeeze(-1) + (
-            self.Bd @ u.unsqueeze(-1)
-        ).squeeze(-1)
-        self.x = x_new
-
-        # Output: y = C @ x + D @ u
-        # Using pre-expanded C and D with batched matmul for ~1.7x speedup
-        # _C_expanded: (1, n_c, n_outputs, n_states), x: (n_s, n_c, n_states)
-        y = (self._C_expanded @ x_new.unsqueeze(-1)).squeeze(-1) + (
-            self._D_expanded @ u.unsqueeze(-1)
-        ).squeeze(-1)
-
-        self.output["y"]._set(y, i_t=step_index)
+        u = self.input["u"].get()  # (n_s, n_c, n_inputs)
+        x_next, outs = self.forward(self.x, {"u": u}, {}, float(step_size))
+        self.x = x_next
+        self.output["y"]._set(outs["y"], i_t=step_index)
 
     @classmethod
     def from_matrices(cls, A, B, C, D=None, sample_time=1.0, **kwargs):

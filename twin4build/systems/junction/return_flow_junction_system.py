@@ -140,18 +140,19 @@ class ReturnFlowJunctionSystem(core.System):
                 n_s=batch_size,
             )
 
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
+    PARAM_NAMES = ()  # airFlowRateBias is a plain number (structural constant)
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step flow mixing (functorch-safe, stateless).
+
+        Total flow is the sum of the input flows plus the bias; the output
+        temperature is the flow-weighted average (20 °C fallback when there
+        is no flow).  ``airFlowRateBias`` is a plain (non-estimable) number,
+        read from ``self`` as a structural constant.
+        """
         # Sum over last dimension (input flows dimension) to preserve batch dimension
-        m_dot_in = self.input["airFlowRateIn"].get().sum(dim=-1)
-        Q_dot_in = (
-            self.input["airTemperatureIn"].get() * self.input["airFlowRateIn"].get()
-        ).sum(dim=-1)
+        m_dot_in = inputs["airFlowRateIn"].sum(dim=-1)
+        Q_dot_in = (inputs["airTemperatureIn"] * inputs["airFlowRateIn"]).sum(dim=-1)
 
         tol = 1e-5
         has_flow = m_dot_in > tol
@@ -168,9 +169,27 @@ class ReturnFlowJunctionSystem(core.System):
         air_temp_out = torch.where(
             has_flow, temp_out_flow, torch.full_like(m_dot_in, 20.0)
         )
+        return x, {
+            "airFlowRateOut": air_flow_rate_out,
+            "airTemperatureOut": air_temp_out,
+        }
 
-        self.output["airFlowRateOut"]._set(air_flow_rate_out, i_t=step_index)
-        self.output["airTemperatureOut"]._set(air_temp_out, i_t=step_index)
+    def do_step(
+        self,
+        second_time: float,
+        date_time: datetime.datetime,
+        step_size: int,
+        step_index: int,
+    ) -> None:
+        inputs = {
+            "airFlowRateIn": self.input["airFlowRateIn"].get(),
+            "airTemperatureIn": self.input["airTemperatureIn"].get(),
+        }
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["airFlowRateOut"]._set(outs["airFlowRateOut"], i_t=step_index)
+        self.output["airTemperatureOut"]._set(outs["airTemperatureOut"], i_t=step_index)
 
 
 def saref_signature_pattern():

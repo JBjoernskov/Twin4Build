@@ -359,7 +359,9 @@ class System:
         invalidates the dict -- and, downstream, those caches -- automatically.
         """
         names = getattr(self, "PARAM_NAMES", ())
-        vals = tuple(getattr(self, n).get() for n in names)
+        # rgetattr: PARAM_NAMES may contain dotted paths into owned
+        # sub-objects (e.g. OccupancySystem's "supply_damper.a").
+        vals = tuple(rgetattr(self, n).get() for n in names)
         cache = getattr(self, "_forward_params_cache", None)
         if cache is not None and all(a is b for a, b in zip(cache[0], vals)):
             return cache[1]
