@@ -22,7 +22,7 @@ Basics of Twin4Build
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/building_space_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Building space</b>: The combined thermal + CO2 building space model driven by weather data, occupancy schedules, and ventilation</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/building_space_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Building space</b>: The combined thermal + CO2 building space model driven by weather data, occupancy schedules, and ventilation, plus two zones coupled by an energy-conserving partition wall component</p>
 
 .. raw:: html
 

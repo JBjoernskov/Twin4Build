@@ -196,11 +196,9 @@ def build_multi_room_model(n_rooms: int, model_id: str = "multi_room") -> Model:
             thermal_kwargs={
                 "C_air": 100000.0,
                 "C_wall": 500000.0,
-                "C_int": 100000.0,
                 "C_boundary": 100000.0,
                 "R_out": 0.01,
                 "R_in": 0.001,
-                "R_int": 0.005,
                 "R_boundary": 0.01,
                 "f_wall": 0.5,
                 "f_air": 0.5,

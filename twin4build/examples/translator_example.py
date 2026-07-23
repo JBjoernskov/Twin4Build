@@ -41,12 +41,32 @@ def fcn(self):
         id="boundary_temp_schedule",
     )
 
-    # Add missing connections
+    # Add missing connections.  The office couples to the boundary-temperature
+    # schedule through a 2R1C WallTorchSystem (energy-consistent wall model).
+    boundary_wall = tb.WallTorchSystem(
+        C=1e6,
+        R_a=0.02,
+        R_b=0.02,
+        id="office_boundary_wall",
+    )
+    self.add_connection(
+        self.components["office"],
+        boundary_wall,
+        "indoorTemperature",
+        "temperatureA",
+    )
     self.add_connection(
         boundary_temp_schedule,
-        self.components["office"],
+        boundary_wall,
         "scheduleValue",
-        "boundaryTemperature",
+        "temperatureB",
+    )
+    self.add_connection(
+        boundary_wall,
+        self.components["office"],
+        "heatFlowRateA",
+        "wallHeatGain",
+        input_port_index=0,
     )
     self.add_connection(
         supply_water_schedule,

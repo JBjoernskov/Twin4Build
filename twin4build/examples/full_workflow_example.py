@@ -42,6 +42,7 @@ def fcn(self):
 
     Called after the translator generates the simulation model. Adds:
     - Supply water temperature and boundary temperature schedules
+    - A wall component coupling the office to the boundary temperature
     - Sensor data file connections
     - Control setpoints
     - Outdoor environment data
@@ -72,11 +73,34 @@ def fcn(self):
         id="boundary_temp_schedule",
     )
 
+    # The wall toward the neighbouring (unmodeled) space: the office couples
+    # to the boundary-temperature schedule through a 2R1C WallTorchSystem.
+    # The wall owns the wall state, so the heat exchange is energy-consistent
+    # by construction (see the WallTorchSystem docstring).
+    boundary_wall = tb.WallTorchSystem(
+        C=1e6,
+        R_a=0.02,
+        R_b=0.02,
+        id="office_boundary_wall",
+    )
+    self.add_connection(
+        self.components["office"],
+        boundary_wall,
+        "indoorTemperature",
+        "temperatureA",
+    )
     self.add_connection(
         boundary_temp_schedule,
-        self.components["office"],
+        boundary_wall,
         "scheduleValue",
-        "boundaryTemperature",
+        "temperatureB",
+    )
+    self.add_connection(
+        boundary_wall,
+        self.components["office"],
+        "heatFlowRateA",
+        "wallHeatGain",
+        input_port_index=0,
     )
     self.add_connection(
         self.components["outdoor_environment"],
@@ -368,6 +392,7 @@ def main():
     occupancy_system = model.components["office_occupancy"]
     occupancy_detector = model.components["office_occupancy_detector"]
     occupancy_controller = model.components["office_occupancy_controller"]
+    boundary_wall = model.components["office_boundary_wall"]
 
     print("Key components:")
     for name, comp in [
@@ -388,10 +413,12 @@ def main():
         # Thermal parameters
         (space, "thermal.C_air", 5e5, 1e4, 5e5),
         (space, "thermal.C_wall", 1e6, 1e5, 3e6),
-        (space, "thermal.C_boundary", 1e6, 1e4, 1e6),
         (space, "thermal.R_out", 0.5, 0.01, 1),
         (space, "thermal.R_in", 0.1, 0.01, 1),
-        (space, "thermal.R_boundary", 0.04, 0.0001, 1),
+        # Boundary wall (WallTorchSystem toward the boundary-temperature schedule)
+        (boundary_wall, "C", 1e6, 1e4, 1e7),
+        (boundary_wall, "R_a", 0.04, 0.0001, 1),
+        (boundary_wall, "R_b", 0.04, 0.0001, 1),
         (space, "thermal.f_wall", 0.1, 0, 10),
         (space, "thermal.f_air", 0.1, 0, 10),
         (space, "thermal.Q_occ_gain", 100.0, 10, 200),

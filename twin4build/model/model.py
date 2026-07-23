@@ -1371,7 +1371,7 @@ class Model:
         Supports dotted paths for composite components.
 
         Additionally, for composite building-space components, topology
-        values (``n_adjacent_zones``, ``n_boundary_temperature``) are
+        values (``n_walls``, ``n_boundary_temperature``) are
         computed from the source component's connection graph -- which is
         available even before ``initialize()`` has been called.
         """
@@ -1397,14 +1397,14 @@ class Model:
             n_boundary = (
                 len(cp_boundary[0].connects_system_through) if cp_boundary else 0
             )
-            cp_adj = [
+            cp_wall = [
                 cp for cp in source.connects_at
-                if cp.input_port == "adjacentZoneTemperature"
+                if cp.input_port == "wallHeatGain"
             ]
-            n_adj = (
-                len(cp_adj[0].connects_system_through) if cp_adj else 0
+            n_walls = (
+                len(cp_wall[0].connects_system_through) if cp_wall else 0
             )
-            meta.thermal.n_adjacent_zones = n_adj
+            meta.thermal.n_walls = n_walls
             meta.thermal.n_boundary_temperature = n_boundary
 
     # -- signature helpers ------------------------------------------------

@@ -24,4 +24,5 @@ Package
    twin4build.systems.space_heater
    twin4build.systems.utils
    twin4build.systems.valve
+   twin4build.systems.wall
 
