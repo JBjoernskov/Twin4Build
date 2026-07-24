@@ -221,10 +221,17 @@ def fcn(self):
         "damperPosition",
     )
 
-    # Occupancy detector: continuous N_occ → smooth binary (0/1)
+    # Occupancy detector: continuous N_occ → smooth binary (0/1).
+    # The threshold must sit between the unoccupied noise floor (~0) and the
+    # occupied-hours signal: this room's CO2 elevation is weak (~50 ppm at
+    # damper 0.3), which back-solves to only ~0.25 inferred occupants, so a
+    # threshold of 1 person would never trigger and the ventilation branch
+    # would stay off (with a saturated sigmoid the calibration gradient dies
+    # and no solver can recover it).  A moderate steepness keeps the sigmoid
+    # differentiable near the threshold instead of a hard step.
     occupancy_detector = tb.OccupancyDetectorSystem(
-        threshold=1,
-        # steepness=100.0,
+        threshold=0.15,
+        steepness=30.0,
         id="office_occupancy_detector",
     )
     self.add_connection(
@@ -452,14 +459,23 @@ def main():
             1,
             "shared",
         ),
-        # Mass-balance / occupancy parameters (shared between space and occupancy estimator)
+        # Mass-balance / occupancy parameters (shared between space and occupancy
+        # estimator).  G_occ and m_inf must stay in physically justified ranges:
+        # per-person CO2 generation is well-known physics (~5e-6 kg/s per
+        # person), and if infiltration can grow freely the estimator explains
+        # the indoor-outdoor CO2 elevation with air exchange instead of
+        # occupants -- inferred occupancy drops below the detection threshold,
+        # the ventilation branch never fires (its sigmoid gradient dies), and
+        # the simulated damper/CO2 collapse even though temperature fits.
         ([space, occupancy_system], "mass.V", 65, 50, 80, "shared"),
-        ([space, occupancy_system], "mass.G_occ", 1e-6, 1e-6, 1e-5, "shared"),
-        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 0.01, "shared"),
+        ([space, occupancy_system], "mass.G_occ", 5e-6, 4e-6, 7e-6, "shared"),
+        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 2e-3, "shared"),
         # Occupancy detector threshold
         # (occupancy_detector, "threshold", 0.5, 0.001, 5.0),
-        # Occupancy on/off controller on-value (minimum damper position when occupied)
-        (occupancy_controller, "onValue", 0.3, 0.05, 1.0),
+        # NOTE: the occupancy controller's onValue (minimum damper position
+        # when occupied) is NOT estimated: it is a known BMS constant (0.3 in
+        # the measured damper data), and leaving it free lets the solver
+        # strand it at an arbitrary value once the detection branch is quiet.
     ]
 
     print(f"Total parameter groups: {len(parameters)}")
