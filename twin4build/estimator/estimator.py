@@ -575,8 +575,9 @@ class Estimator:
                   and gradients are identical by construction; the estimator
                   silently falls back to the object-graph objective when the
                   model is not composable (components without ``forward``,
-                  ``n_c > 1``, shared/expanded parameters, or a measurement
-                  the composed map cannot produce).
+                  ``n_c > 1`` states or multi-branch parameters, or a
+                  measurement the composed map cannot produce). Shared
+                  parameters are supported.
                 - "fast_validate" (bool, default False): Additionally
                   cross-check the fast objective against the object-graph
                   objective on the initial iterate (debugging aid).
@@ -1900,6 +1901,39 @@ class Estimator:
             start, end = self._theta_slices[param_idx]
             values.append(theta[start:end])
         return values
+
+    def _composer_theta_spec(self) -> Tuple[List[Tuple], List]:
+        """Indexed theta spec + representative parameters for the composed map.
+
+        Returns ``(theta_spec, unique_parameters)``:
+
+        - ``theta_spec``: one ``(component, attr, theta_index)`` entry per flat
+          parameter, with ``theta_index`` pointing into the *unique* theta
+          vector (``_theta_slices[_theta_mask[j]]``).  Shared parameters route
+          several entries to the same index, which is exactly how
+          ``OneStepComposer`` composes them.
+        - ``unique_parameters``: one representative ``tps.Parameter`` per theta
+          entry (the first flat occurrence), for bounds/scaling extraction
+          (all members of a shared group are configured with identical
+          bounds).
+
+        Raises:
+            RuntimeError: If any parameter is multi-branch (``n_c > 1``) --
+                the composed map only supports scalar theta entries.
+        """
+        if any(int(n) != 1 for n in self._unique_param_n_c):
+            raise RuntimeError("multi-branch (n_c > 1) parameters")
+        theta_spec = []
+        rep: Dict[int, object] = {}
+        for j, (comp, attr) in enumerate(
+            zip(self._flat_components, self._parameter_names)
+        ):
+            idx = int(self._theta_slices[int(self._theta_mask[j])][0])
+            theta_spec.append((comp, attr, idx))
+            rep.setdefault(idx, self._flat_parameters[j])
+        unique_parameters = [rep[i] for i in range(len(rep))]
+        assert len(unique_parameters) == len(self._x0_norm)
+        return theta_spec, unique_parameters
 
     def _param_values_to_theta(self, values: List[np.ndarray]) -> np.ndarray:
         """

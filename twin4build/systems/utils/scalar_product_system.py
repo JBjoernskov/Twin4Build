@@ -85,6 +85,30 @@ class ScalarProductSystem(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        v1 = self.input["input_1"].get()
-        v2 = self.input["input_2"].get()
-        self.output["output"]._set(v1 * v2 * self._scale_factor, i_t=step_index)
+        """Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the math)."""
+        _, outs = self.forward(
+            None,
+            {
+                "input_1": self.input["input_1"].get(),
+                "input_2": self.input["input_2"].get(),
+            },
+            {},
+            step_size,
+        )
+        self.output["output"]._set(outs["output"], i_t=step_index)
+
+    #: No estimated physical parameters (the ``forward`` theta contract);
+    #: ``scale_factor`` is a fixed constant read from the instance.
+    PARAM_NAMES = ()
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
+
+        ``output = input_1 * input_2 * scale_factor``.  Functorch-compatible;
+        keeps whatever batch dims the inputs carry (``(1,)`` under the
+        composer, ``(n_s, n_c)`` under ``do_step``).  Returns
+        ``(x, {"output"})``.
+        """
+        out = inputs["input_1"] * inputs["input_2"] * self._scale_factor
+        return x, {"output": out}

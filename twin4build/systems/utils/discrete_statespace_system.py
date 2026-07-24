@@ -113,7 +113,13 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
     constant for hours.  Reusing the previous step's ``(Ad, Bd)`` when they
     haven't matches ``do_step``'s semantics exactly (gradients flow to the step
     that computed them).  Ignored under functorch transforms, where the
-    data-dependent branch is untraceable.
+    data-dependent branch is untraceable, and whenever the bilinear-relevant
+    inputs *carry gradient* (e.g. the optimizer's fast rollout, where a flow
+    is a decision variable): value-equal inputs at different steps have
+    DIFFERENT gradients, so reusing the first step's matrices would misroute
+    the discretization sensitivity to that step.  Recomputing per step keeps
+    the gradient exact (it is what ``jacrev`` over ``do_step`` does anyway --
+    functorch bypasses the cache).
     """
     if disc_cache is None or _functorch_active():
         Ad, Bd = _discretize_onestep(A, B, E, F, u, sample_time)
@@ -127,17 +133,23 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
             if F is not None:
                 mask |= (F.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
             disc_cache["mask"] = mask
-        u_rel = u.detach()[..., mask]
-        prev = disc_cache.get("u_rel")
-        if (
-            prev is not None
-            and prev.shape == u_rel.shape
-            and torch.allclose(prev, u_rel)
-        ):
-            Ad, Bd = disc_cache["Ad"], disc_cache["Bd"]
-        else:
+        u_rel_live = u[..., mask]
+        if u_rel_live.requires_grad:
+            # Differentiable bilinear inputs: gradient must flow through THIS
+            # step's discretization -- no reuse.
             Ad, Bd = _discretize_onestep(A, B, E, F, u, sample_time)
-            disc_cache.update(u_rel=u_rel.clone(), Ad=Ad, Bd=Bd)
+        else:
+            u_rel = u_rel_live.detach()
+            prev = disc_cache.get("u_rel")
+            if (
+                prev is not None
+                and prev.shape == u_rel.shape
+                and torch.allclose(prev, u_rel)
+            ):
+                Ad, Bd = disc_cache["Ad"], disc_cache["Bd"]
+            else:
+                Ad, Bd = _discretize_onestep(A, B, E, F, u, sample_time)
+                disc_cache.update(u_rel=u_rel.clone(), Ad=Ad, Bd=Bd)
 
     x_next = (Ad @ x.unsqueeze(-1)).squeeze(-1) + (Bd @ u.unsqueeze(-1)).squeeze(-1)
     y = (C @ x_next.unsqueeze(-1)).squeeze(-1) + (D @ u.unsqueeze(-1)).squeeze(-1)

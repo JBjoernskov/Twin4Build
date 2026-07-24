@@ -130,5 +130,46 @@ class TestFastSingleShooting(unittest.TestCase):
             )
 
 
+def shared_example_parameters(model):
+    """The example parameter set with the two damper flow rates collapsed
+    into ONE shared parameter (a single theta entry driving both dampers)."""
+    c = model.components
+    supply = c["office_supply_damper"]
+    exhaust = c["office_exhaust_damper"]
+    params = [p for p in example_parameters(model) if p[0] not in (supply, exhaust)]
+    params.append(([supply, exhaust], "nominalAirFlowRate", 0.1, 0.001, 1.0, "shared"))
+    return params
+
+
+class TestFastSingleShootingSharedTheta(TestFastSingleShooting):
+    """Same value+gradient parity checks with a SHARED parameter group.
+
+    Shared parameters make theta shorter than the flat (component, attr) list;
+    the indexed theta spec (``Estimator._composer_theta_spec``) routes both
+    dampers' ``nominalAirFlowRate`` to one theta slot.  Inherits both parity
+    tests from :class:`TestFastSingleShooting`.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        model = load_model()
+        cls.estimator = tb.Estimator(tb.Simulator(model))
+        cls.parameters = shared_example_parameters(model)
+        cls.measurements = example_measurements(model)
+        start = EXAMPLE_START[0]
+        end = start + datetime.timedelta(hours=24)
+
+        cls.estimator.estimate(
+            parameters=cls.parameters,
+            measurements=cls.measurements,
+            start_time=[start],
+            end_time=[end],
+            step_size=STEP_SIZE,
+            n_warmup=5,
+            method=("scipy", "SLSQP", "ad"),
+            options={"maxiter": 1, "fast": True},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,17 +6,18 @@ dispatch -- the per-step Gauss-Seidel traversal over components, ``tps``
 wrapper bookkeeping, history logging -- and ``model.initialize`` re-reading
 every CSV input on EVERY objective evaluation.  None of it is tensor math.
 
-This module reuses the collocation composer (:class:`OneStepComposer`): the
-model's stateful cone is composed into a pure one-step map
-``F_aug(y, theta, cap)``, the truly-exogenous inputs are captured ONCE from a
-reference ``do_step`` rollout, and the objective becomes a plain sequential
-torch rollout
+This module builds on the Simulator's composed-map API
+(:meth:`Simulator.compose` / :meth:`Simulator.capture_rollout` /
+:meth:`Simulator.rollout_composed`, implemented in
+:mod:`twin4build.simulator._composed`): the model's stateful cone is composed
+into a pure one-step map ``F_aug(y, theta, cap)``, the truly-exogenous inputs
+are captured ONCE from a reference ``do_step`` rollout, and the objective
+becomes a plain sequential torch rollout
 
     y_{t+1}, meas_t = F_aug(y_t, theta, CAP[t])
 
-vmapped across the training periods.  Autograd back through this rollout is
-the same reverse pass single-shooting already paid for -- minus the
-object-graph overhead.
+per training period.  Autograd back through this rollout is the same reverse
+pass single-shooting already paid for -- minus the object-graph overhead.
 
 Exactness: **by construction**.  Every composable component's ``do_step`` is a
 thin port-I/O wrapper that DELEGATES its math to the same ``forward`` the
@@ -30,10 +31,12 @@ outside the components: theta denormalization is
 ``tps.Parameter.denormalize`` itself routes through) and everything downstream
 of the raw residuals (sd weighting, MSE normalization, rescale-to-100,
 diagnostics) is ``Estimator._loglike_from_residuals`` -- the method the
-object-graph ``_obj`` ends in as well.  Construction performs the structural
-checks and the estimator silently falls back to the exact path for
-un-composable models (components without ``forward``, ``n_c > 1``,
-shared/expanded theta, a measurement the composed map cannot produce).
+object-graph ``_obj`` ends in as well.  Shared parameters are supported: the
+indexed theta spec routes every member of a shared group to the same theta
+slot.  Construction performs the structural checks and the estimator silently
+falls back to the exact path for un-composable models (components without
+``forward``, ``n_c > 1`` states or multi-branch parameters, a measurement the
+composed map cannot produce).
 ``tests/estimator/test_fast_shooting.py`` regression-checks the end-to-end
 value + gradient parity (guards the delegation contract and the composer's
 wiring/capture logic); ``options={"fast_validate": True}`` re-enables the
@@ -47,8 +50,6 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from twin4build.estimator._composer import OneStepComposer, capture_reference_rollout
-from twin4build.estimator._transcription import _collect_stateful, _StateLayout
 from twin4build.utils.print_progress import LOGGER
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
@@ -64,32 +65,23 @@ class FastSingleShooting:
 
     def __init__(self, estimator):
         self.est = estimator
-        model = estimator.simulator.model
 
         if getattr(estimator, "_regularization_lambda", 0) > 0:
             raise RuntimeError("regularization penalty not supported")
         n_theta = len(estimator._x0_norm)
-        if n_theta != len(estimator._flat_components):
-            raise RuntimeError("shared/expanded theta (n_c>1 parameters)")
 
-        stateful = _collect_stateful(model)
-        if not stateful:
-            raise RuntimeError("no stateful components")
-        layout = _StateLayout(stateful)
-        if any(getattr(c, "n_c", 1) != 1 for c in layout.components):
-            raise RuntimeError("n_c > 1 states")
+        # Indexed theta spec: shared parameters route several (comp, attr)
+        # entries to one theta slot.  Raises on multi-branch (n_c > 1)
+        # parameters, which the composed map cannot express.
+        theta_spec, unique_parameters = estimator._composer_theta_spec()
 
-        step_sizes = [int(s) for s in estimator._stepSize]
-        if len(set(step_sizes)) != 1:
-            raise RuntimeError("mixed step sizes across periods")
-
-        theta_spec = list(zip(estimator._flat_components, estimator._parameter_names))
-        composer = OneStepComposer(
-            model, layout.components, theta_spec, step_sizes[0],
+        # Structural checks (stateful components exist, n_c == 1, uniform
+        # step size, state-width match) live in Simulator.compose.
+        layout, composer = estimator.simulator.compose(
+            theta_spec=theta_spec,
             measurements=[md for md, _ in estimator._measurements],
+            step_size=estimator._stepSize,
         )
-        if composer.D != layout.width:
-            raise RuntimeError("composer state width mismatch")
         if not composer.meas_sources:
             raise RuntimeError("no measurement sources")
         if any(s[0] != "fresh" for s in composer.meas_sources):
@@ -101,9 +93,10 @@ class FastSingleShooting:
         self.composer = composer
         self.n_theta = n_theta
 
-        # Plain (functorch-safe) denormalization from the physical bounds.
+        # Plain (functorch-safe) denormalization from the physical bounds --
+        # one representative parameter per unique theta entry.
         self._lb_t, self._ub_t, self._log_mask = theta_bound_tensors(
-            estimator._flat_parameters
+            unique_parameters
         )
 
         # Sensor lag: a pass-through sensor that executes BEFORE its producer
@@ -129,63 +122,47 @@ class FastSingleShooting:
 
     # -- one-time capture of exogenous inputs + initial state ----------------
     def _capture(self):
-        """One reference ``do_step`` rollout per training period (at the
-        model's current parameters, i.e. x0) via the shared
-        :func:`capture_reference_rollout`: per-step captured (exogenous)
-        inputs, the initial component states after ``initialize``, the
-        feedback-lag warm values consumed at step 0 (``FB[0]``) and the lagged
-        sensors' step-0 readings (``MEAS[0]``).  Also stacks the measured
-        data per period."""
+        """One batched reference ``do_step`` rollout over all training periods
+        (at the model's current parameters, i.e. x0) via
+        :meth:`Simulator.capture_rollout`: per-step captured (exogenous)
+        inputs, the augmented initial states ``Y0``, the lagged sensors'
+        step-0 readings (``MEAS[0]``).  Also stacks the measured data per
+        period."""
         est = self.est
-        n_fb = self.composer.n_feedback
         md_list = [md for md, _ in est._measurements]
 
-        self.CAP, self.Y0, self.ACT, self.n_t, self.M0 = [], [], [], [], []
-        for p, (s, e, sz) in enumerate(
-            zip(est._start_time, est._end_time, est._stepSize)
-        ):
-            R = capture_reference_rollout(
-                est.simulator, self.composer, s, e, sz,
-                layout=self.layout, meas_ids=[md.id for md in md_list],
-            )
-            self.CAP.append(R.CAP)
-            self.Y0.append(torch.cat([R.state0, R.FB[0]]) if n_fb else R.state0)
-            self.n_t.append(R.n_t)
-            self.M0.append(R.MEAS[0])
-            act = torch.zeros((R.n_t, len(md_list)), dtype=torch.float64)
+        R = est.simulator.capture_rollout(
+            self.composer, est._start_time, est._end_time, est._stepSize,
+            layout=self.layout, meas_ids=[md.id for md in md_list],
+        )
+        self.CAP, self.Y0, self.n_t = R.CAP, R.Y0, R.n_t
+        self.M0 = [M[0] for M in R.MEAS]
+        self.ACT = []
+        for p, n_t in enumerate(self.n_t):
+            act = torch.zeros((n_t, len(md_list)), dtype=torch.float64)
             for m, md in enumerate(md_list):
                 vals = np.asarray(
                     est.actual_readings[md.id][p].to_numpy(), dtype=np.float64
                 ).flatten()
-                act[:, m] = torch.tensor(vals[: R.n_t], dtype=torch.float64)
+                act[:, m] = torch.tensor(vals[:n_t], dtype=torch.float64)
             self.ACT.append(act)
 
         LOGGER.config(
             "Fast single-shooting: %d period(s) x %s steps | captured inputs=%d | "
             "feedback lags=%d",
-            len(self.n_t), self.n_t, len(self.composer._captured_keys), n_fb,
+            len(self.n_t), self.n_t, len(self.composer._captured_keys),
+            self.composer.n_feedback,
         )
 
     # -- the rollout ----------------------------------------------------------
     def _rollout_meas(self, theta_phys: torch.Tensor):
-        """Modelled measurements per period: list of ``(n_t, n_meas)``.
-
-        Periods are rolled out in a plain Python loop, NOT under ``vmap``:
-        with a handful of periods the vmap dispatch overhead exceeds the
-        batching gain, and staying in ordinary eager mode lets the state-space
-        components use the fused ``torch.matrix_exp`` (which has no vmap rule)
-        instead of the unrolled scaling-and-squaring fallback.
-        """
-        F_aug = self.composer.F_aug
-        out = []
-        for p in range(len(self.n_t)):
-            y = self.Y0[p]
-            meas_steps = []
-            for t in range(self.n_t[p]):
-                y, meas = F_aug(y, theta_phys, self.CAP[p][t])
-                meas_steps.append(meas)
-            out.append(torch.stack(meas_steps))
-        return out
+        """Modelled measurements per period: list of ``(n_t, n_meas)``
+        (the shared sequential rollout, :meth:`Simulator.rollout_composed`)."""
+        sim = self.est.simulator
+        return [
+            sim.rollout_composed(self.composer, self.Y0[p], theta_phys, self.CAP[p])
+            for p in range(len(self.n_t))
+        ]
 
     # -- Estimator._obj drop-in (scalar mode) ---------------------------------
     def loglike(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:
