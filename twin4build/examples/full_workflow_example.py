@@ -669,7 +669,8 @@ def main():
     # are for a simulation starting from the ESTIMATED initial state.  Seed it,
     # otherwise the default initial conditions (e.g. wall temperature 20 degC,
     # with day-scale wall time constants) bias the whole horizon.
-    _init_state = result["estimated_initial_state"]
+    # Single-shooting results carry no estimated state, so skip seeding there.
+    _init_state = result.get("estimated_initial_state")
 
     def _seed_estimated_initial_state():
         # get_component: the office+wall pair executes as one fused
@@ -681,7 +682,7 @@ def main():
         step_size=step_size,
         start_time=start_time,
         end_time=end_time,
-        after_initialize=_seed_estimated_initial_state,
+        after_initialize=_seed_estimated_initial_state if _init_state else None,
     )
     print("Calibration complete.")
 

@@ -108,6 +108,19 @@ class WallTorchSystem(core.System, nn.Module):
          unmodeled neighbour), replacing the deprecated in-zone
          ``boundaryTemperature`` / ``R_boundary`` / ``C_boundary`` path.
 
+    Numerical Coupling
+    ------------------
+
+    The zone <-> wall connections form an algebraic loop that plain
+    Gauss-Seidel co-simulation would resolve with a one-step lag -- which for
+    stiff couplings (loop gain :math:`\Delta t/(R\,C) > 1`) diverges for any
+    execution order.  The framework therefore FUSES the connected zone(s) and
+    wall(s) into one monolithic state-space block at ``model.load()`` (see
+    :class:`~twin4build.systems.utils.fused_statespace_system.FusedStateSpaceSystem`):
+    the coupling is eliminated exactly at the matrix level, so the pair is
+    integrated jointly with zero lag and is unconditionally stable for any
+    positive :math:`R`, :math:`C` and step size.
+
     Computational Features
     ----------------------
 
