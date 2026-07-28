@@ -85,23 +85,15 @@ def build_two_zone_model():
     model.add_connection(heater_a, zone_a, "scheduleValue", "heatGain")
     model.add_connection(zero, zone_b, "scheduleValue", "heatGain")
 
-    # The partition wall: both sides fed by the zones' air temperatures; each
-    # zone receives the wall temperature and its side conductance and
-    # integrates the exchange inside its own exact discretization (stable for
-    # any R/C -- see the WallTorchSystem docstring).
+    # The partition wall: both sides fed by the zones' air temperatures, both
+    # heat flows returned to the zones' wallHeatGain ports.
     model.add_connection(zone_a, wall, "indoorTemperature", "temperatureA")
     model.add_connection(zone_b, wall, "indoorTemperature", "temperatureB")
     model.add_connection(
-        wall, zone_a, "wallTemperature", "wallTemperature", input_port_index=0
+        wall, zone_a, "heatFlowRateA", "wallHeatGain", input_port_index=0
     )
     model.add_connection(
-        wall, zone_a, "thermalConductanceA", "wallConductance", input_port_index=0
-    )
-    model.add_connection(
-        wall, zone_b, "wallTemperature", "wallTemperature", input_port_index=0
-    )
-    model.add_connection(
-        wall, zone_b, "thermalConductanceB", "wallConductance", input_port_index=0
+        wall, zone_b, "heatFlowRateB", "wallHeatGain", input_port_index=0
     )
 
     # Calibration sensors on both zone temperatures (synthetic readings are

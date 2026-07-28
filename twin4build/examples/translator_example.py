@@ -64,15 +64,8 @@ def fcn(self):
     self.add_connection(
         boundary_wall,
         self.components["office"],
-        "wallTemperature",
-        "wallTemperature",
-        input_port_index=0,
-    )
-    self.add_connection(
-        boundary_wall,
-        self.components["office"],
-        "thermalConductanceA",
-        "wallConductance",
+        "heatFlowRateA",
+        "wallHeatGain",
         input_port_index=0,
     )
     self.add_connection(

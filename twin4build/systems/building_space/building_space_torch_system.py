@@ -83,8 +83,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
        **Thermal-Only Inputs:**
           - supplyAirTemperature, globalIrradiation, heatGain
-          - wallTemperature / wallConductance (state and side conductance of
-            connected WallTorchSystem components)
+          - wallHeatGain (heat flows from connected WallTorchSystem components)
           - boundaryTemperature (deprecated -- use WallTorchSystem)
 
        **Combined Outputs:**
@@ -210,7 +209,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
             # Find number of connected walls
             connection_point = [
-                cp for cp in self.connects_at if cp.input_port == "wallTemperature"
+                cp for cp in self.connects_at if cp.input_port == "wallHeatGain"
             ]
             n_walls = (
                 len(connection_point[0].connects_system_through) if connection_point else 0

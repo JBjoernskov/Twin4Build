@@ -461,7 +461,7 @@ class OneStepComposer:
         ports (e.g. ``MaxSystem.inputs``) resolve **per slot** to a ``("vector",
         [slot_spec, ...])`` spec, so a producer inside the cone (e.g. the CO2
         controller feeding the damper max) is threaded fresh instead of frozen.
-        Unconnected vector ports (n_v=0, e.g. ``wallTemperature``) are
+        Unconnected vector ports (n_v=0, e.g. ``wallHeatGain``) are
         skipped.
         """
         specs = []

@@ -4,22 +4,22 @@
 @prefix t4b: <http://twin4build.org/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-t4b:102433557911 a s4syst:Connection .
+t4b:136776366142 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port_index "{\"136777653240\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777653240\": null}"^^rdf:JSON .
 
-t4b:102433587259 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port_index "{\"102434734196\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434734196\": null}"^^rdf:JSON .
+t4b:136776524198 a s4syst:Connection .
 
-t4b:102434312166 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port_index "{\"102433557911\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102433557911\": null}"^^rdf:JSON .
+t4b:136777854902 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port_index "{\"136776524198\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136776524198\": null}"^^rdf:JSON .
 
-t4b:102436345845 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port_index "{\"102434734196\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434734196\": null}"^^rdf:JSON .
+t4b:136778849471 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port_index "{\"136777653240\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777653240\": null}"^^rdf:JSON .
 
 t4b:BuildingSpaceTorchSystem rdfs:subClassOf s4syst:System .
 
@@ -63,7 +63,7 @@ t4b:boundary_temp_schedule a t4b:ScheduleSystem ;
     t4b:wednesdayRulesetDict "None" ;
     t4b:weekDayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
     t4b:weekendRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102434543545 .
+    s4syst:connectedThrough t4b:136777971927 .
 
 t4b:office_co2_setpoint a t4b:ScheduleSystem ;
     t4b:add_noise false ;
@@ -87,7 +87,7 @@ t4b:office_co2_setpoint a t4b:ScheduleSystem ;
     t4b:wednesdayRulesetDict "None" ;
     t4b:weekDayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
     t4b:weekendRulesetDict "None" ;
-    s4syst:connectedThrough t4b:102436345551 .
+    s4syst:connectedThrough t4b:136776858082 .
 
 t4b:office_damper_position_sensor a t4b:SensorSystem ;
     t4b:datecolumn 2 ;
@@ -98,7 +98,7 @@ t4b:office_damper_position_sensor a t4b:SensorSystem ;
     t4b:use_spreadsheet true ;
     t4b:uuid "None" ;
     t4b:valuecolumn 4 ;
-    s4syst:connectsAt t4b:102434310094 .
+    s4syst:connectsAt t4b:136777912871 .
 
 t4b:office_occupancy_controller_setpoint a t4b:ScheduleSystem ;
     t4b:add_noise false ;
@@ -122,7 +122,7 @@ t4b:office_occupancy_controller_setpoint a t4b:ScheduleSystem ;
     t4b:wednesdayRulesetDict "None" ;
     t4b:weekDayRulesetDict "{\"ruleset_default_value\": 0.5, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
     t4b:weekendRulesetDict "None" ;
-    s4syst:connectedThrough t4b:102436376833 .
+    s4syst:connectedThrough t4b:136778883437 .
 
 t4b:office_temperature_heating_setpoint a t4b:ScheduleSystem ;
     t4b:add_noise false ;
@@ -146,7 +146,7 @@ t4b:office_temperature_heating_setpoint a t4b:ScheduleSystem ;
     t4b:wednesdayRulesetDict "None" ;
     t4b:weekDayRulesetDict "None" ;
     t4b:weekendRulesetDict "None" ;
-    s4syst:connectedThrough t4b:102436354407 .
+    s4syst:connectedThrough t4b:136778861227 .
 
 t4b:office_valve_position_sensor a t4b:SensorSystem ;
     t4b:datecolumn 2 ;
@@ -157,7 +157,7 @@ t4b:office_valve_position_sensor a t4b:SensorSystem ;
     t4b:use_spreadsheet true ;
     t4b:uuid "None" ;
     t4b:valuecolumn 4 ;
-    s4syst:connectsAt t4b:102436354848 .
+    s4syst:connectsAt t4b:136778861428 .
 
 t4b:supply_air_temperature_sensor a t4b:SensorSystem ;
     t4b:datecolumn 2 ;
@@ -168,388 +168,373 @@ t4b:supply_air_temperature_sensor a t4b:SensorSystem ;
     t4b:use_spreadsheet true ;
     t4b:uuid "None" ;
     t4b:valuecolumn 4 ;
-    s4syst:connectedThrough t4b:102436345743 .
+    s4syst:connectedThrough t4b:136777695663 .
 
-t4b:102432504446 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "valvePosition" ;
-    t4b:input_port_index "{\"102436354935\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436354935\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_space_heater_valve ;
-    s4syst:connectsSystemThrough t4b:102436354935 .
-
-t4b:102433564166 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "temperatureB" ;
-    t4b:input_port_index "{\"102434543545\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434543545\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_boundary_wall ;
-    s4syst:connectsSystemThrough t4b:102434543545 .
-
-t4b:102433598036 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "outdoorCo2Concentration" ;
-    t4b:input_port_index "{\"102434734463\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434734463\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_occupancy ;
-    s4syst:connectsSystemThrough t4b:102434734463 .
-
-t4b:102433598327 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "measuredValue" ;
-    t4b:input_port_index "{\"102436328660\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436328660\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_co2_sensor ;
-    s4syst:connectsSystemThrough t4b:102436328660 .
-
-t4b:102433608739 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "heatGain" ;
-    t4b:input_port_index "{\"102436329368\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436329368\": null}"^^rdf:JSON ;
+t4b:136775009366 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "wallHeatGain" ;
+    t4b:input_port_index "{\"136778830390\": 0}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778830390\": null}"^^rdf:JSON ;
     s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102436329368 .
+    s4syst:connectsSystemThrough t4b:136778830390 .
 
-t4b:102433955502 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "globalIrradiation" ;
-    s4syst:connectsSystem t4b:outdoor_environment ;
-    s4syst:connectsSystemAt t4b:102436329461 .
-
-t4b:102433962571 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "outdoorTemperature" ;
-    t4b:input_port_index "{\"102434014615\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434014615\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102434014615 .
-
-t4b:102434010522 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "wallTemperature" ;
-    s4syst:connectsSystem t4b:office_boundary_wall ;
-    s4syst:connectsSystemAt t4b:102434774204 .
-
-t4b:102434050611 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "airFlowRate" ;
-    s4syst:connectsSystem t4b:office_exhaust_damper ;
-    s4syst:connectsSystemAt t4b:102434187575 .
-
-t4b:102434153915 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "waterFlowRate" ;
-    s4syst:connectsSystem t4b:office_space_heater_valve ;
-    s4syst:connectsSystemAt t4b:102436329419 .
-
-t4b:102434187575 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "exhaustAirFlowRate" ;
-    t4b:input_port_index "{\"102434050611\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434050611\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102434050611 .
-
-t4b:102434310094 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "measuredValue" ;
-    t4b:input_port_index "{\"102434782594\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434782594\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_damper_position_sensor ;
-    s4syst:connectsSystemThrough t4b:102434782594 .
-
-t4b:102434543545 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "scheduleValue" ;
-    s4syst:connectsSystem t4b:boundary_temp_schedule ;
-    s4syst:connectsSystemAt t4b:102433564166 .
-
-t4b:102434644924 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "airFlowRate" ;
-    s4syst:connectsSystem t4b:office_supply_damper ;
-    s4syst:connectsSystemAt t4b:102435192170 .
-
-t4b:102434734163 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "numberOfPeople" ;
-    t4b:input_port_index "{\"102436345248\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436345248\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102436345248 .
-
-t4b:102434734196 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "inputSignal" ;
-    s4syst:connectsSystem t4b:office_co2_controller ;
-    s4syst:connectsSystemAt t4b:102436354611 .
-
-t4b:102434734679 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "temperatureA" ;
-    t4b:input_port_index "{\"102434774150\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434774150\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_boundary_wall ;
-    s4syst:connectsSystemThrough t4b:102434774150 .
-
-t4b:102434774204 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "wallTemperature" ;
-    t4b:input_port_index "{\"102434010522\": 0}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434010522\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102434010522 .
-
-t4b:102434791167 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "thermalConductanceA" ;
-    s4syst:connectsSystem t4b:office_boundary_wall ;
-    s4syst:connectsSystemAt t4b:102436328645 .
-
-t4b:102435192170 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "supplyAirFlowRate" ;
-    t4b:input_port_index "{\"102434644924\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434644924\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102434644924 .
-
-t4b:102435338614 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "occupancy" ;
-    t4b:input_port_index "{\"102436345248\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436345248\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_occupancy_detector ;
-    s4syst:connectsSystemThrough t4b:102436345248 .
-
-t4b:102435621094 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "scheduleValue" ;
-    s4syst:connectsSystem t4b:supply_water_schedule ;
-    s4syst:connectsSystemAt t4b:102436345812 .
-
-t4b:102436248893 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "actualValue" ;
-    t4b:input_port_index "{\"102436365722\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436365722\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_occupancy_controller ;
-    s4syst:connectsSystemThrough t4b:102436365722 .
-
-t4b:102436328621 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
+t4b:136775010056 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
     t4b:input_port "outdoorCO2" ;
-    t4b:input_port_index "{\"102434734463\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434734463\": null}"^^rdf:JSON ;
+    t4b:input_port_index "{\"136777942750\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777942750\": null}"^^rdf:JSON ;
     s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102434734463 .
+    s4syst:connectsSystemThrough t4b:136777942750 .
 
-t4b:102436328645 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "wallConductance" ;
-    t4b:input_port_index "{\"102434791167\": 0}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434791167\": null}"^^rdf:JSON ;
+t4b:136775010239 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "outdoorTemperature" ;
+    t4b:input_port_index "{\"136777955942\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777955942\": null}"^^rdf:JSON ;
     s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102434791167 .
+    s4syst:connectsSystemThrough t4b:136777955942 .
 
-t4b:102436328660 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "indoorCO2" ;
-    s4syst:connectsSystem t4b:office ;
-    s4syst:connectsSystemAt t4b:102433598327 .
-
-t4b:102436329368 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "Power" ;
-    s4syst:connectsSystem t4b:office_space_heater ;
-    s4syst:connectsSystemAt t4b:102433608739 .
-
-t4b:102436329419 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "waterFlowRate" ;
-    t4b:input_port_index "{\"102434153915\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434153915\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_space_heater ;
-    s4syst:connectsSystemThrough t4b:102434153915 .
-
-t4b:102436329461 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "globalIrradiation" ;
-    t4b:input_port_index "{\"102433955502\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102433955502\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102433955502 .
-
-t4b:102436345551 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
+t4b:136776858082 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
     t4b:output_port "scheduleValue" ;
     s4syst:connectsSystem t4b:office_co2_setpoint ;
-    s4syst:connectsSystemAt t4b:102436354383 .
+    s4syst:connectsSystemAt t4b:136778860882 .
 
-t4b:102436345716 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "x" ;
-    t4b:input_port_index "{\"102434014615\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434014615\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:supply_water_schedule ;
-    s4syst:connectsSystemThrough t4b:102434014615 .
-
-t4b:102436345731 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "supplyAirTemperature" ;
-    t4b:input_port_index "{\"102436345743\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436345743\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office ;
-    s4syst:connectsSystemThrough t4b:102436345743 .
-
-t4b:102436345743 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "measuredValue" ;
-    s4syst:connectsSystem t4b:supply_air_temperature_sensor ;
-    s4syst:connectsSystemAt t4b:102436345731 .
-
-t4b:102436345812 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "supplyWaterTemperature" ;
-    t4b:input_port_index "{\"102435621094\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102435621094\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_space_heater ;
-    s4syst:connectsSystemThrough t4b:102435621094 .
-
-t4b:102436354281 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "damperPosition" ;
-    t4b:input_port_index "{\"102434782594\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434782594\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_exhaust_damper ;
-    s4syst:connectsSystemThrough t4b:102434782594 .
-
-t4b:102436354299 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "measuredValue" ;
-    s4syst:connectsSystem t4b:office_co2_sensor ;
-    s4syst:connectsSystemAt t4b:102436354320 .
-
-t4b:102436354305 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "actualValue" ;
-    t4b:input_port_index "{\"102436354335\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436354335\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_temperature_heating_controller ;
-    s4syst:connectsSystemThrough t4b:102436354335 .
-
-t4b:102436354320 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "actualValue" ;
-    t4b:input_port_index "{\"102436354299\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436354299\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_co2_controller ;
-    s4syst:connectsSystemThrough t4b:102436354299 .
-
-t4b:102436354335 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "measuredValue" ;
-    s4syst:connectsSystem t4b:office_temperature_sensor ;
-    s4syst:connectsSystemAt t4b:102436354305 .
-
-t4b:102436354362 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "damperPosition" ;
-    t4b:input_port_index "{\"102434782594\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434782594\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_supply_damper ;
-    s4syst:connectsSystemThrough t4b:102434782594 .
-
-t4b:102436354383 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "setpointValue" ;
-    t4b:input_port_index "{\"102436345551\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436345551\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_co2_controller ;
-    s4syst:connectsSystemThrough t4b:102436345551 .
-
-t4b:102436354407 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "scheduleValue" ;
-    s4syst:connectsSystem t4b:office_temperature_heating_setpoint ;
-    s4syst:connectsSystemAt t4b:102436354440 .
-
-t4b:102436354428 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "measuredValue" ;
-    t4b:input_port_index "{\"102434774150\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434774150\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_temperature_sensor ;
-    s4syst:connectsSystemThrough t4b:102434774150 .
-
-t4b:102436354440 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "setpointValue" ;
-    t4b:input_port_index "{\"102436354407\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436354407\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_temperature_heating_controller ;
-    s4syst:connectsSystemThrough t4b:102436354407 .
-
-t4b:102436354848 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "measuredValue" ;
-    t4b:input_port_index "{\"102436354935\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436354935\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_valve_position_sensor ;
-    s4syst:connectsSystemThrough t4b:102436354935 .
-
-t4b:102436354965 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
-    t4b:input_port "indoorTemperature" ;
-    t4b:input_port_index "{\"102434774150\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434774150\": null}"^^rdf:JSON ;
-    s4syst:connectionPointOf t4b:office_space_heater ;
-    s4syst:connectsSystemThrough t4b:102434774150 .
-
-t4b:102436365365 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "inputSignal" ;
-    s4syst:connectsSystem t4b:office_occupancy_controller ;
-    s4syst:connectsSystemAt t4b:102436354611 .
-
-t4b:102436365722 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
+t4b:136777328813 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
     t4b:output_port "occupancySignal" ;
     s4syst:connectsSystem t4b:office_occupancy_detector ;
-    s4syst:connectsSystemAt t4b:102436248893 .
+    s4syst:connectsSystemAt t4b:136778873755 .
 
-t4b:102436376833 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
+t4b:136777385808 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "measuredValue" ;
+    s4syst:connectsSystem t4b:office_co2_sensor ;
+    s4syst:connectsSystemAt t4b:136778860915 .
+
+t4b:136777385820 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "occupancy" ;
+    t4b:input_port_index "{\"136777673510\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777673510\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_occupancy_detector ;
+    s4syst:connectsSystemThrough t4b:136777673510 .
+
+t4b:136777459179 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "indoorTemperature" ;
+    t4b:input_port_index "{\"136777498770\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777498770\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_space_heater ;
+    s4syst:connectsSystemThrough t4b:136777498770 .
+
+t4b:136777464371 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "supplyAirFlowRate" ;
+    t4b:input_port_index "{\"136777464638\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777464638\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office ;
+    s4syst:connectsSystemThrough t4b:136777464638 .
+
+t4b:136777464638 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "airFlowRate" ;
+    s4syst:connectsSystem t4b:office_supply_damper ;
+    s4syst:connectsSystemAt t4b:136777464371 .
+
+t4b:136777464683 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "airFlowRate" ;
+    s4syst:connectsSystem t4b:office_exhaust_damper ;
+    s4syst:connectsSystemAt t4b:136777671135 .
+
+t4b:136777653240 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "inputSignal" ;
+    s4syst:connectsSystem t4b:office_co2_controller ;
+    s4syst:connectsSystemAt t4b:136778850164 .
+
+t4b:136777671135 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "exhaustAirFlowRate" ;
+    t4b:input_port_index "{\"136777464683\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777464683\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office ;
+    s4syst:connectsSystemThrough t4b:136777464683 .
+
+t4b:136777673258 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "outdoorCo2Concentration" ;
+    t4b:input_port_index "{\"136777942750\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777942750\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_occupancy ;
+    s4syst:connectsSystemThrough t4b:136777942750 .
+
+t4b:136777673519 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "x" ;
+    t4b:input_port_index "{\"136777955942\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777955942\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:supply_water_schedule ;
+    s4syst:connectsSystemThrough t4b:136777955942 .
+
+t4b:136777695663 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "measuredValue" ;
+    s4syst:connectsSystem t4b:supply_air_temperature_sensor ;
+    s4syst:connectsSystemAt t4b:136778850263 .
+
+t4b:136777849734 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "scheduleValue" ;
+    s4syst:connectsSystem t4b:supply_water_schedule ;
+    s4syst:connectsSystemAt t4b:136778873776 .
+
+t4b:136777871794 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "waterFlowRate" ;
+    s4syst:connectsSystem t4b:office_space_heater_valve ;
+    s4syst:connectsSystemAt t4b:136778830489 .
+
+t4b:136777912871 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "measuredValue" ;
+    t4b:input_port_index "{\"136778860819\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778860819\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_damper_position_sensor ;
+    s4syst:connectsSystemThrough t4b:136778860819 .
+
+t4b:136777956095 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "temperatureA" ;
+    t4b:input_port_index "{\"136777498770\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777498770\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_boundary_wall ;
+    s4syst:connectsSystemThrough t4b:136777498770 .
+
+t4b:136777971927 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "scheduleValue" ;
+    s4syst:connectsSystem t4b:boundary_temp_schedule ;
+    s4syst:connectsSystemAt t4b:136778873416 .
+
+t4b:136778830195 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "measuredValue" ;
+    t4b:input_port_index "{\"136778849516\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778849516\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_co2_sensor ;
+    s4syst:connectsSystemThrough t4b:136778849516 .
+
+t4b:136778830378 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "heatGain" ;
+    t4b:input_port_index "{\"136778830828\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778830828\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office ;
+    s4syst:connectsSystemThrough t4b:136778830828 .
+
+t4b:136778830390 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "heatFlowRateA" ;
+    s4syst:connectsSystem t4b:office_boundary_wall ;
+    s4syst:connectsSystemAt t4b:136775009366 .
+
+t4b:136778830489 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "waterFlowRate" ;
+    t4b:input_port_index "{\"136777871794\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777871794\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_space_heater ;
+    s4syst:connectsSystemThrough t4b:136777871794 .
+
+t4b:136778830828 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "Power" ;
+    s4syst:connectsSystem t4b:office_space_heater ;
+    s4syst:connectsSystemAt t4b:136778830378 .
+
+t4b:136778849516 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "indoorCO2" ;
+    s4syst:connectsSystem t4b:office ;
+    s4syst:connectsSystemAt t4b:136778830195 .
+
+t4b:136778849789 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "numberOfPeople" ;
+    t4b:input_port_index "{\"136777673510\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777673510\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office ;
+    s4syst:connectsSystemThrough t4b:136777673510 .
+
+t4b:136778850014 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "globalIrradiation" ;
+    s4syst:connectsSystem t4b:outdoor_environment ;
+    s4syst:connectsSystemAt t4b:136778850116 .
+
+t4b:136778850116 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "globalIrradiation" ;
+    t4b:input_port_index "{\"136778850014\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778850014\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office ;
+    s4syst:connectsSystemThrough t4b:136778850014 .
+
+t4b:136778850263 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "supplyAirTemperature" ;
+    t4b:input_port_index "{\"136777695663\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777695663\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office ;
+    s4syst:connectsSystemThrough t4b:136777695663 .
+
+t4b:136778860612 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "inputSignal" ;
+    s4syst:connectsSystem t4b:office_occupancy_controller ;
+    s4syst:connectsSystemAt t4b:136778850164 .
+
+t4b:136778860870 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "damperPosition" ;
+    t4b:input_port_index "{\"136778860819\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778860819\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_exhaust_damper ;
+    s4syst:connectsSystemThrough t4b:136778860819 .
+
+t4b:136778860882 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "setpointValue" ;
+    t4b:input_port_index "{\"136776858082\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136776858082\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_co2_controller ;
+    s4syst:connectsSystemThrough t4b:136776858082 .
+
+t4b:136778860900 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "damperPosition" ;
+    t4b:input_port_index "{\"136778860819\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778860819\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_supply_damper ;
+    s4syst:connectsSystemThrough t4b:136778860819 .
+
+t4b:136778860915 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "actualValue" ;
+    t4b:input_port_index "{\"136777385808\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777385808\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_co2_controller ;
+    s4syst:connectsSystemThrough t4b:136777385808 .
+
+t4b:136778861059 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "actualValue" ;
+    t4b:input_port_index "{\"136778861062\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778861062\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_temperature_heating_controller ;
+    s4syst:connectsSystemThrough t4b:136778861062 .
+
+t4b:136778861062 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "measuredValue" ;
+    s4syst:connectsSystem t4b:office_temperature_sensor ;
+    s4syst:connectsSystemAt t4b:136778861059 .
+
+t4b:136778861137 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "measuredValue" ;
+    t4b:input_port_index "{\"136777498770\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777498770\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_temperature_sensor ;
+    s4syst:connectsSystemThrough t4b:136777498770 .
+
+t4b:136778861224 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "setpointValue" ;
+    t4b:input_port_index "{\"136778861227\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778861227\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_temperature_heating_controller ;
+    s4syst:connectsSystemThrough t4b:136778861227 .
+
+t4b:136778861227 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "scheduleValue" ;
+    s4syst:connectsSystem t4b:office_temperature_heating_setpoint ;
+    s4syst:connectsSystemAt t4b:136778861224 .
+
+t4b:136778861428 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "measuredValue" ;
+    t4b:input_port_index "{\"136778861515\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778861515\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_valve_position_sensor ;
+    s4syst:connectsSystemThrough t4b:136778861515 .
+
+t4b:136778861497 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "valvePosition" ;
+    t4b:input_port_index "{\"136778861515\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778861515\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_space_heater_valve ;
+    s4syst:connectsSystemThrough t4b:136778861515 .
+
+t4b:136778873416 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "temperatureB" ;
+    t4b:input_port_index "{\"136777971927\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777971927\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_boundary_wall ;
+    s4syst:connectsSystemThrough t4b:136777971927 .
+
+t4b:136778873755 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "actualValue" ;
+    t4b:input_port_index "{\"136777328813\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777328813\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_occupancy_controller ;
+    s4syst:connectsSystemThrough t4b:136777328813 .
+
+t4b:136778873776 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
+    t4b:input_port "supplyWaterTemperature" ;
+    t4b:input_port_index "{\"136777849734\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777849734\": null}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_space_heater ;
+    s4syst:connectsSystemThrough t4b:136777849734 .
+
+t4b:136778883437 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
     t4b:output_port "scheduleValue" ;
     s4syst:connectsSystem t4b:office_occupancy_controller_setpoint ;
-    s4syst:connectsSystemAt t4b:102436376905 .
+    s4syst:connectsSystemAt t4b:136778883452 .
 
-t4b:102436376905 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
+t4b:136778883452 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
     t4b:input_port "setpointValue" ;
-    t4b:input_port_index "{\"102436376833\": null}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102436376833\": null}"^^rdf:JSON ;
+    t4b:input_port_index "{\"136778883437\": null}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136778883437\": null}"^^rdf:JSON ;
     s4syst:connectionPointOf t4b:office_occupancy_controller ;
-    s4syst:connectsSystemThrough t4b:102436376833 .
+    s4syst:connectsSystemThrough t4b:136778883437 .
 
 t4b:DamperTorchSystem rdfs:subClassOf s4syst:System .
 
@@ -564,18 +549,18 @@ t4b:office_co2_sensor a t4b:SensorSystem ;
     t4b:use_spreadsheet true ;
     t4b:uuid "None" ;
     t4b:valuecolumn 4 ;
-    s4syst:connectedThrough t4b:102436354299 ;
-    s4syst:connectsAt t4b:102433598327 .
+    s4syst:connectedThrough t4b:136777385808 ;
+    s4syst:connectsAt t4b:136778830195 .
 
 t4b:office_damper_max a t4b:MaxSystem ;
-    s4syst:connectedThrough t4b:102434782594 ;
-    s4syst:connectsAt t4b:102436354611 .
+    s4syst:connectedThrough t4b:136778860819 ;
+    s4syst:connectsAt t4b:136778850164 .
 
 t4b:office_exhaust_damper a t4b:DamperTorchSystem ;
     t4b:a "[1.0]"^^rdf:JSON ;
     t4b:nominalAirFlowRate "[0.10174305555555556]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102434050611 ;
-    s4syst:connectsAt t4b:102436354281 .
+    s4syst:connectedThrough t4b:136777464683 ;
+    s4syst:connectsAt t4b:136778860870 .
 
 t4b:office_occupancy a t4b:OccupancySystem ;
     t4b:co2_datecolumn 2 ;
@@ -591,28 +576,28 @@ t4b:office_occupancy a t4b:OccupancySystem ;
     t4b:mass.m_inf "[0.001]"^^rdf:JSON ;
     t4b:supply_damper.a "[1.0]"^^rdf:JSON ;
     t4b:supply_damper.nominalAirFlowRate "[0.001]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102436345248 ;
-    s4syst:connectsAt t4b:102433598036 .
+    s4syst:connectedThrough t4b:136777673510 ;
+    s4syst:connectsAt t4b:136777673258 .
 
 t4b:office_occupancy_detector a t4b:OccupancyDetectorSystem ;
     t4b:default_output "[0.0]"^^rdf:JSON ;
     t4b:polarity "[1.0]"^^rdf:JSON ;
     t4b:steepness "[100.0]"^^rdf:JSON ;
     t4b:threshold "[1.0]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102436365722 ;
-    s4syst:connectsAt t4b:102435338614 .
+    s4syst:connectedThrough t4b:136777328813 ;
+    s4syst:connectsAt t4b:136777385820 .
 
 t4b:office_space_heater_valve a t4b:ValveTorchSystem ;
     t4b:valveAuthority "[1.0]"^^rdf:JSON ;
     t4b:waterFlowRateMax "[0.01594896331738437]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102434153915 ;
-    s4syst:connectsAt t4b:102432504446 .
+    s4syst:connectedThrough t4b:136777871794 ;
+    s4syst:connectsAt t4b:136778861497 .
 
 t4b:office_supply_damper a t4b:DamperTorchSystem ;
     t4b:a "[1.0]"^^rdf:JSON ;
     t4b:nominalAirFlowRate "[0.10174305555555556]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102434644924 ;
-    s4syst:connectsAt t4b:102436354362 .
+    s4syst:connectedThrough t4b:136777464638 ;
+    s4syst:connectsAt t4b:136778860900 .
 
 t4b:office_temperature_sensor a t4b:SensorSystem ;
     t4b:datecolumn 2 ;
@@ -623,8 +608,8 @@ t4b:office_temperature_sensor a t4b:SensorSystem ;
     t4b:use_spreadsheet true ;
     t4b:uuid "None" ;
     t4b:valuecolumn 4 ;
-    s4syst:connectedThrough t4b:102436354335 ;
-    s4syst:connectsAt t4b:102436354428 .
+    s4syst:connectedThrough t4b:136778861062 ;
+    s4syst:connectsAt t4b:136778861137 .
 
 t4b:supply_water_schedule a t4b:PiecewiseLinearScheduleSystem ;
     t4b:add_noise false ;
@@ -639,49 +624,57 @@ t4b:supply_water_schedule a t4b:PiecewiseLinearScheduleSystem ;
     t4b:wednesdayRulesetDict "None" ;
     t4b:weekDayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
     t4b:weekendRulesetDict "None" ;
-    s4syst:connectedThrough t4b:102435621094 ;
-    s4syst:connectsAt t4b:102436345716 .
+    s4syst:connectedThrough t4b:136777849734 ;
+    s4syst:connectsAt t4b:136777673519 .
 
-t4b:102434014615 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "outdoorTemperature" ;
-    s4syst:connectsSystem t4b:outdoor_environment ;
-    s4syst:connectsSystemAt t4b:102433962571,
-        t4b:102436345716 .
-
-t4b:102434734463 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
-    t4b:output_port "outdoorCo2Concentration" ;
-    s4syst:connectsSystem t4b:outdoor_environment ;
-    s4syst:connectsSystemAt t4b:102433598036,
-        t4b:102436328621 .
-
-t4b:102436345248 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
+t4b:136777673510 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
     t4b:output_port "scheduleValue" ;
     s4syst:connectsSystem t4b:office_occupancy ;
-    s4syst:connectsSystemAt t4b:102434734163,
-        t4b:102435338614 .
+    s4syst:connectsSystemAt t4b:136777385820,
+        t4b:136778849789 .
 
-t4b:102436354611 a s4syst:ConnectionPoint,
-        <nbf9d53bb48ec46998dfebe603bb286fab3> ;
+t4b:136777942750 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "outdoorCo2Concentration" ;
+    s4syst:connectsSystem t4b:outdoor_environment ;
+    s4syst:connectsSystemAt t4b:136775010056,
+        t4b:136777673258 .
+
+t4b:136777955942 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
+    t4b:output_port "outdoorTemperature" ;
+    s4syst:connectsSystem t4b:outdoor_environment ;
+    s4syst:connectsSystemAt t4b:136775010239,
+        t4b:136777673519 .
+
+t4b:136778850164 a s4syst:ConnectionPoint,
+        <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
     t4b:input_port "inputs" ;
-    t4b:input_port_index "{\"102434734196\": 0, \"102436365365\": 1}"^^rdf:JSON ;
-    t4b:output_port_index "{\"102434734196\": null, \"102436365365\": null}"^^rdf:JSON ;
+    t4b:input_port_index "{\"136777653240\": 0, \"136778860612\": 1}"^^rdf:JSON ;
+    t4b:output_port_index "{\"136777653240\": null, \"136778860612\": null}"^^rdf:JSON ;
     s4syst:connectionPointOf t4b:office_damper_max ;
-    s4syst:connectsSystemThrough t4b:102434734196,
-        t4b:102436365365 .
+    s4syst:connectsSystemThrough t4b:136777653240,
+        t4b:136778860612 .
 
-t4b:102436354935 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
+t4b:136778861515 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
     t4b:output_port "inputSignal" ;
     s4syst:connectsSystem t4b:office_temperature_heating_controller ;
-    s4syst:connectsSystemAt t4b:102432504446,
-        t4b:102436354848 .
+    s4syst:connectsSystemAt t4b:136778861428,
+        t4b:136778861497 .
+
+t4b:office_boundary_wall a t4b:WallTorchSystem ;
+    t4b:C "[999999.9999999995]"^^rdf:JSON ;
+    t4b:R_a "[0.02]"^^rdf:JSON ;
+    t4b:R_b "[0.02]"^^rdf:JSON ;
+    s4syst:connectedThrough t4b:136778830390 ;
+    s4syst:connectsAt t4b:136777956095,
+        t4b:136778873416 .
 
 t4b:office_co2_controller a t4b:PIDControllerSystem ;
     t4b:Td "[0.0]"^^rdf:JSON ;
@@ -690,18 +683,18 @@ t4b:office_co2_controller a t4b:PIDControllerSystem ;
     t4b:kp "[0.0010000000000000002]"^^rdf:JSON ;
     t4b:output_max "[1.0]"^^rdf:JSON ;
     t4b:output_min "[0.0]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102434734196 ;
-    s4syst:connectsAt t4b:102436354320,
-        t4b:102436354383 .
+    s4syst:connectedThrough t4b:136777653240 ;
+    s4syst:connectsAt t4b:136778860882,
+        t4b:136778860915 .
 
 t4b:office_occupancy_controller a t4b:OnOffControllerTorchSystem ;
     t4b:isReverse false ;
     t4b:offValue "[0.0]"^^rdf:JSON ;
     t4b:onValue "[0.3]"^^rdf:JSON ;
     t4b:steepness "[10.0]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102436365365 ;
-    s4syst:connectsAt t4b:102436248893,
-        t4b:102436376905 .
+    s4syst:connectedThrough t4b:136778860612 ;
+    s4syst:connectsAt t4b:136778873755,
+        t4b:136778883452 .
 
 t4b:office_temperature_heating_controller a t4b:PIDControllerSystem ;
     t4b:Td "[0.0]"^^rdf:JSON ;
@@ -710,9 +703,9 @@ t4b:office_temperature_heating_controller a t4b:PIDControllerSystem ;
     t4b:kp "[0.0010000000000000002]"^^rdf:JSON ;
     t4b:output_max "[1.0]"^^rdf:JSON ;
     t4b:output_min "[0.0]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102436354935 ;
-    s4syst:connectsAt t4b:102436354305,
-        t4b:102436354440 .
+    s4syst:connectedThrough t4b:136778861515 ;
+    s4syst:connectsAt t4b:136778861059,
+        t4b:136778861224 .
 
 t4b:outdoor_environment a t4b:OutdoorEnvironmentSystem ;
     t4b:a "[1.0]"^^rdf:JSON ;
@@ -736,38 +729,29 @@ t4b:outdoor_environment a t4b:OutdoorEnvironmentSystem ;
     t4b:valuecolumn_globalIrradiation 2 ;
     t4b:valuecolumn_outdoorCo2Concentration 3 ;
     t4b:valuecolumn_outdoorTemperature 1 ;
-    s4syst:connectedThrough t4b:102433955502,
-        t4b:102434014615,
-        t4b:102434734463 .
+    s4syst:connectedThrough t4b:136777942750,
+        t4b:136777955942,
+        t4b:136778850014 .
 
-t4b:102434774150 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
+t4b:136777498770 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
     t4b:output_port "indoorTemperature" ;
     s4syst:connectsSystem t4b:office ;
-    s4syst:connectsSystemAt t4b:102434734679,
-        t4b:102436354428,
-        t4b:102436354965 .
+    s4syst:connectsSystemAt t4b:136777459179,
+        t4b:136777956095,
+        t4b:136778861137 .
 
-t4b:102434782594 a s4syst:Connection,
-        <nbf9d53bb48ec46998dfebe603bb286fab1>,
-        <nbf9d53bb48ec46998dfebe603bb286fab2> ;
+t4b:136778860819 a s4syst:Connection,
+        <n9411526c0c9c4b9f9fea134fb6f03758b1>,
+        <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
     t4b:output_port "value" ;
     s4syst:connectsSystem t4b:office_damper_max ;
-    s4syst:connectsSystemAt t4b:102434310094,
-        t4b:102436354281,
-        t4b:102436354362 .
+    s4syst:connectsSystemAt t4b:136777912871,
+        t4b:136778860870,
+        t4b:136778860900 .
 
 t4b:ScheduleSystem rdfs:subClassOf s4syst:System .
-
-t4b:office_boundary_wall a t4b:WallTorchSystem ;
-    t4b:C "[999999.9999999995]"^^rdf:JSON ;
-    t4b:R_a "[0.02]"^^rdf:JSON ;
-    t4b:R_b "[0.02]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102434010522,
-        t4b:102434791167 ;
-    s4syst:connectsAt t4b:102433564166,
-        t4b:102434734679 .
 
 t4b:office_space_heater a t4b:SpaceHeaterTorchSystem ;
     t4b:Q_flow_nominal_sh 1000 ;
@@ -777,10 +761,10 @@ t4b:office_space_heater a t4b:SpaceHeaterTorchSystem ;
     t4b:UA "[10.0]"^^rdf:JSON ;
     t4b:initialize_UA false ;
     t4b:thermalMassHeatCapacity "[499999.9999999997]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102436329368 ;
-    s4syst:connectsAt t4b:102436329419,
-        t4b:102436345812,
-        t4b:102436354965 .
+    s4syst:connectedThrough t4b:136778830828 ;
+    s4syst:connectsAt t4b:136777459179,
+        t4b:136778830489,
+        t4b:136778873776 .
 
 t4b:SensorSystem rdfs:subClassOf s4syst:System .
 
@@ -797,16 +781,15 @@ t4b:office a t4b:BuildingSpaceTorchSystem ;
     t4b:thermal.R_out "[0.05000000000000001]"^^rdf:JSON ;
     t4b:thermal.f_air "[0.1]"^^rdf:JSON ;
     t4b:thermal.f_wall "[0.3]"^^rdf:JSON ;
-    s4syst:connectedThrough t4b:102434774150,
-        t4b:102436328660 ;
-    s4syst:connectsAt t4b:102433608739,
-        t4b:102433962571,
-        t4b:102434187575,
-        t4b:102434734163,
-        t4b:102434774204,
-        t4b:102435192170,
-        t4b:102436328621,
-        t4b:102436328645,
-        t4b:102436329461,
-        t4b:102436345731 .
+    s4syst:connectedThrough t4b:136777498770,
+        t4b:136778849516 ;
+    s4syst:connectsAt t4b:136775009366,
+        t4b:136775010056,
+        t4b:136775010239,
+        t4b:136777464371,
+        t4b:136777671135,
+        t4b:136778830378,
+        t4b:136778849789,
+        t4b:136778850116,
+        t4b:136778850263 .
 
