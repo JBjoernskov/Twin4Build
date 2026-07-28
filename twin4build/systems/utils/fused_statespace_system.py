@@ -218,6 +218,8 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                     )
 
         self._config = {"parameters": []}
+        self._fwd_mat_cache = None
+        self._do_step_params = None
         self.INITIALIZED = False
 
     @property

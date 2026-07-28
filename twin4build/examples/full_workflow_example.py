@@ -672,8 +672,10 @@ def main():
     _init_state = result["estimated_initial_state"]
 
     def _seed_estimated_initial_state():
+        # get_component: the office+wall pair executes as one fused
+        # state-space block, so the state keys are executing-component ids.
         for comp_id, x0 in _init_state.items():
-            model.components[comp_id].set_state(x0)
+            model.get_component(comp_id).set_state(x0)
 
     simulator.simulate(
         step_size=step_size,

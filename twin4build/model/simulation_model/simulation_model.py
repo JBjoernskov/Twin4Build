@@ -2592,6 +2592,24 @@ class SimulationModel:
             return comp
         return self._fused_components[component_id]
 
+    def get_component(self, component_id: str) -> core.System:
+        """Component by id.
+
+        Resolves regular components and the fused state-space blocks that
+        execute in place of clusters (e.g. for seeding an estimated initial
+        state, whose keys are executing-component ids).
+
+        Args:
+            component_id: The component id.
+
+        Returns:
+            core.System: The component.
+
+        Raises:
+            KeyError: If no component with that id exists.
+        """
+        return self._resolve_execution_component(component_id)
+
     def _copy_components(self) -> core.System:
         """
         Copy the components of the model.

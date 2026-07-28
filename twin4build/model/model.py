@@ -307,6 +307,12 @@ class Model:
         ), f"The set value must be of type {list} and contain strings"
         self._dir_conf = dir_conf
 
+    def get_component(self, component_id: str):
+        """Component by id -- regular components and the fused state-space
+        blocks that execute in place of clusters (see
+        :meth:`SimulationModel.get_component`)."""
+        return self.simulation_model.get_component(component_id)
+
     @property
     def execution_order(self) -> List[str]:
         return self.simulation_model.execution_order
