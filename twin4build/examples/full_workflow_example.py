@@ -95,11 +95,22 @@ def fcn(self):
         "scheduleValue",
         "temperatureB",
     )
+    # The wall hands the zone its temperature and side conductance; the zone
+    # integrates the exchange g*(T_wall - T_air) inside its own exact
+    # discretization, which keeps the co-simulated space-wall loop stable for
+    # any R/C values (see the WallTorchSystem docstring).
     self.add_connection(
         boundary_wall,
         self.components["office"],
-        "heatFlowRateA",
-        "wallHeatGain",
+        "wallTemperature",
+        "wallTemperature",
+        input_port_index=0,
+    )
+    self.add_connection(
+        boundary_wall,
+        self.components["office"],
+        "thermalConductanceA",
+        "wallConductance",
         input_port_index=0,
     )
     self.add_connection(
@@ -222,16 +233,10 @@ def fcn(self):
     )
 
     # Occupancy detector: continuous N_occ → smooth binary (0/1).
-    # The threshold must sit between the unoccupied noise floor (~0) and the
-    # occupied-hours signal: this room's CO2 elevation is weak (~50 ppm at
-    # damper 0.3), which back-solves to only ~0.25 inferred occupants, so a
-    # threshold of 1 person would never trigger and the ventilation branch
-    # would stay off (with a saturated sigmoid the calibration gradient dies
-    # and no solver can recover it).  A moderate steepness keeps the sigmoid
-    # differentiable near the threshold instead of a hard step.
+    # The threshold (1 person) sits between the unoccupied noise floor (~0)
+    # and the occupied-hours signal inferred from the CO2 balance.
     occupancy_detector = tb.OccupancyDetectorSystem(
-        threshold=0.15,
-        steepness=30.0,
+        threshold=1,
         id="office_occupancy_detector",
     )
     self.add_connection(
@@ -422,10 +427,13 @@ def main():
         (space, "thermal.C_wall", 1e6, 1e5, 3e6),
         (space, "thermal.R_out", 0.5, 0.01, 1),
         (space, "thermal.R_in", 0.1, 0.01, 1),
-        # Boundary wall (WallTorchSystem toward the boundary-temperature schedule)
-        (boundary_wall, "C", 1e6, 1e4, 1e7),
-        (boundary_wall, "R_a", 0.04, 0.0001, 1),
-        (boundary_wall, "R_b", 0.04, 0.0001, 1),
+        # Boundary wall (WallTorchSystem toward the boundary-temperature schedule).
+        # The zone integrates the wall exchange implicitly (temperature +
+        # conductance coupling), so the loop is numerically stable even for
+        # very small resistances.
+        (boundary_wall, "C", 1e6, 1e4, 1e6),
+        (boundary_wall, "R_a", 0.04, 1e-4, 1),
+        (boundary_wall, "R_b", 0.04, 1e-4, 1),
         (space, "thermal.f_wall", 0.1, 0, 10),
         (space, "thermal.f_air", 0.1, 0, 10),
         (space, "thermal.Q_occ_gain", 100.0, 10, 200),
@@ -459,23 +467,12 @@ def main():
             1,
             "shared",
         ),
-        # Mass-balance / occupancy parameters (shared between space and occupancy
-        # estimator).  G_occ and m_inf must stay in physically justified ranges:
-        # per-person CO2 generation is well-known physics (~5e-6 kg/s per
-        # person), and if infiltration can grow freely the estimator explains
-        # the indoor-outdoor CO2 elevation with air exchange instead of
-        # occupants -- inferred occupancy drops below the detection threshold,
-        # the ventilation branch never fires (its sigmoid gradient dies), and
-        # the simulated damper/CO2 collapse even though temperature fits.
+        # Mass-balance / occupancy parameters (shared between space and occupancy estimator)
         ([space, occupancy_system], "mass.V", 65, 50, 80, "shared"),
-        ([space, occupancy_system], "mass.G_occ", 5e-6, 4e-6, 7e-6, "shared"),
-        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 2e-3, "shared"),
-        # Occupancy detector threshold
-        # (occupancy_detector, "threshold", 0.5, 0.001, 5.0),
-        # NOTE: the occupancy controller's onValue (minimum damper position
-        # when occupied) is NOT estimated: it is a known BMS constant (0.3 in
-        # the measured damper data), and leaving it free lets the solver
-        # strand it at an arbitrary value once the detection branch is quiet.
+        ([space, occupancy_system], "mass.G_occ", 1e-6, 1e-6, 1e-5, "shared"),
+        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 0.01, "shared"),
+        # Occupancy on/off controller on-value (minimum damper position when occupied)
+        (occupancy_controller, "onValue", 0.3, 0.05, 1.0),
     ]
 
     print(f"Total parameter groups: {len(parameters)}")
@@ -639,7 +636,7 @@ def main():
 
     # --- 2.7 Run Parameter Estimation ---
     estimator = tb.Estimator(simulator)
-    options = {"maxiter": 300, "ftol": 1e-15}
+    options = {"maxiter": 300, "ftol": 1e-15, "fast": True}
 
     result = estimator.estimate(
         start_time,
@@ -665,21 +662,13 @@ def main():
     # --- 2.8 Plot Calibrated Results ---
     model.set_save_simulation_result(flag=True)
 
-    # Collocation estimates the boundary states along with theta; its RMSEs
-    # are for a simulation starting from the ESTIMATED initial state.  Seed it,
-    # otherwise the default initial conditions (e.g. wall temperature 20 degC,
-    # with day-scale wall time constants) bias the whole horizon.
-    _init_state = result["estimated_initial_state"]
-
-    def _seed_estimated_initial_state():
-        for comp_id, x0 in _init_state.items():
-            model.components[comp_id].set_state(x0)
-
+    # Single shooting scores exactly this simulation (starting from the
+    # component defaults), so a plain simulate() reproduces the fitted
+    # trajectory.
     simulator.simulate(
         step_size=step_size,
         start_time=start_time,
         end_time=end_time,
-        after_initialize=_seed_estimated_initial_state,
     )
     print("Calibration complete.")
 

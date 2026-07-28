@@ -35,7 +35,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     state-space dynamics. Heat exchange with neighbouring zones or other boundary
     temperatures is modeled by connecting one or more
     :class:`~twin4build.systems.wall.wall_torch_system.WallTorchSystem` components
-    to the ``wallHeatGain`` vector input port.
+    to the ``wallTemperature`` / ``wallConductance`` vector input ports.
 
     Args:
         C_air: Thermal capacitance of indoor air [J/K]
@@ -59,7 +59,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     .. math::
 
-       C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j}\dot{Q}_{wall,j} + Q_{occ} N_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) - c_p\dot{m}_{exh}T_i
+       C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j} g_j (T_{w,j} - T_i) + Q_{occ} N_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) - c_p\dot{m}_{exh}T_i
 
     *2. Exterior Wall Temperature:*
 
@@ -81,9 +81,16 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
        - :math:`T_o`: Outdoor temperature [°C] (input)
        - :math:`T_{sup}`: Supply air temperature [°C] (input)
        - :math:`T_{bound}`: Boundary temperature [°C] (input, optional, deprecated)
-       - :math:`\dot{Q}_{wall,j}`: Heat flow from connected wall j [W] (input,
-         optional; produced by a ``WallTorchSystem``, which owns the wall state
-         so the interzonal energy balance holds by construction)
+       - :math:`T_{w,j}`: Temperature of connected wall j [°C] (input, optional;
+         the state of a ``WallTorchSystem``, which owns the wall mass so the
+         interzonal energy balance holds by construction)
+       - :math:`g_j`: Conductance toward connected wall j [W/K] (input,
+         optional; the wall's side conductance :math:`1/R`).  The exchange term
+         :math:`g_j (T_{w,j} - T_i)` is integrated *inside* this component's
+         exact discretization (bilinear terms below) with :math:`T_{w,j}` held
+         over the step, which keeps the co-simulated space-wall loop stable
+         for any positive parameters and step size -- see the
+         ``WallTorchSystem`` docstring for the stability argument.
        - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
        - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
        - :math:`\Phi_{sol}`: Solar radiation [W/m²] (input)
@@ -96,7 +103,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     *State vector:* :math:`\mathbf{x} = \begin{bmatrix}T_i \\ T_w \\ T_{bw}\end{bmatrix}`
 
-    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_o \\ \dot{m}_{sup} \\ \dot{m}_{exh} \\ T_{sup} \\ \Phi_{sol} \\ N_{occ} \\ Q_{sh} \\ T_{bound} \\ \dot{Q}_{wall,1} \\ \vdots \\ \dot{Q}_{wall,n}\end{bmatrix}`
+    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_o \\ \dot{m}_{sup} \\ \dot{m}_{exh} \\ T_{sup} \\ \Phi_{sol} \\ N_{occ} \\ Q_{sh} \\ T_{bound} \\ T_{w,1} \\ \vdots \\ T_{w,n} \\ g_1 \\ \vdots \\ g_n\end{bmatrix}`
 
     *Base System Matrices:*
 
@@ -130,29 +137,35 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     *State-Input Coupling (E matrices):*
 
-    The only state-input coupling is the exhaust flow removing heat at the
-    indoor air temperature:
+    The exhaust flow removes heat at the indoor air temperature, and each
+    connected wall's conductance couples the air state to the held wall
+    temperature:
 
     .. math::
 
        \mathbf{E}[2, 0, 0] = -\frac{c_p}{C_{air}} \quad \text{(exhaust flow} \cdot T_i\text{)}
 
+       \mathbf{E}[g_j, 0, 0] = -\frac{1}{C_{air}} \quad \text{(wall conductance} \cdot T_i\text{)}
+
     *Input-Input Coupling (F matrices):*
 
-    The only input-input coupling is the supply flow bringing heat at the
-    supply air temperature:
+    The supply flow brings heat at the supply air temperature, and each wall
+    conductance multiplies the held wall temperature:
 
     .. math::
 
        \mathbf{F}[1, 0, 3] = \frac{c_p}{C_{air}} \quad \text{(supply flow} \cdot T_{sup}\text{)}
 
-    Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, \dot{Q}_{wall,1}]^T`
+       \mathbf{F}[g_j, 0, T_{w,j}] = \frac{1}{C_{air}} \quad \text{(wall conductance} \cdot T_{w,j}\text{)}
+
+    Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{w,1..n}, g_{1..n}]^T`
 
     *Bilinear Effects*
 
-    The bilinear terms handle specific flow-dependent heat transfer effects:
+    The bilinear terms handle flow- and conductance-dependent heat transfer:
        - :math:`\mathbf{E}[2,0,0] \cdot u_2 \cdot x_0 = -\frac{c_p}{C_{air}} \dot{m}_{exh} T_i`: Exhaust air removing heat
        - :math:`\mathbf{F}[1,0,3] \cdot u_1 \cdot u_3 = \frac{c_p}{C_{air}} \dot{m}_{sup} T_{sup}`: Supply air bringing heat
+       - :math:`(\mathbf{E} + \mathbf{F})` wall terms :math:`= \frac{g_j}{C_{air}} (T_{w,j} - T_i)`: Interzonal wall exchange, integrated exactly against the held wall temperature
 
     Physical Interpretation
     -----------------------
@@ -166,10 +179,13 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     **Interzonal Heat Transfer:**
        - Partition walls between zones are modeled by a separate
          ``WallTorchSystem``: the zone sends its ``indoorTemperature`` to the
-         wall and receives the wall's heat flow on ``wallHeatGain``
+         wall and receives the wall's temperature on ``wallTemperature`` and
+         its side conductance on ``wallConductance``
        - Because a single wall component owns the wall state, the heat leaving
          one zone equals the heat stored in the wall plus the heat entering the
          other zone (energy-consistent by construction)
+       - Exchanging temperature + conductance (rather than a heat flow) keeps
+         the explicitly-coupled space-wall loop unconditionally stable
 
     **Flow-Dependent Effects:**
        - Supply air flow brings heat at supply temperature (F matrix coupling)
@@ -204,7 +220,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     >>> wall = tb.WallTorchSystem(C=2e5, R_a=0.05, R_b=0.05, id="wall_AB")
     >>> # zone_a.indoorTemperature -> wall.temperatureA
-    >>> # wall.heatFlowRateA -> zone_a.wallHeatGain (and mirrored for zone_b)
+    >>> # wall.wallTemperature     -> zone_a.wallTemperature (slot 0)
+    >>> # wall.thermalConductanceA -> zone_a.wallConductance (slot 0)
+    >>> # (mirrored with thermalConductanceB for zone_b)
     """
 
     def __init__(
@@ -291,9 +309,12 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             "boundaryTemperature": tps.Scalar(
                 21, optional=True
             ),  # Boundary temperature [°C], optional (deprecated: use WallTorchSystem)
-            "wallHeatGain": tps.Vector(
+            "wallTemperature": tps.Vector(
                 optional=True
-            ),  # Heat flow from connected WallTorchSystem components [W], optional
+            ),  # Temperature of connected WallTorchSystem components [degC], optional
+            "wallConductance": tps.Vector(
+                optional=True
+            ),  # Side conductance (1/R) of connected WallTorchSystem components [W/K], optional
         }
 
         # Define outputs
@@ -374,9 +395,10 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             self.n_c = 1
 
         self.setup_variable_inputs()
-        self.input["wallHeatGain"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_c=self.n_c, n_v=self.n_walls
-        )
+        for port in ("wallTemperature", "wallConductance"):
+            self.input[port].initialize(
+                n_t=max_timesteps, n_s=batch_size, n_c=self.n_c, n_v=self.n_walls
+            )
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
@@ -452,7 +474,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             warnings.warn(
                 "The in-zone boundary-wall path (boundaryTemperature / R_boundary / "
                 "C_boundary) is deprecated. Connect a WallTorchSystem to the "
-                "wallHeatGain port instead.",
+                "wallTemperature / wallConductance ports instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -460,7 +482,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         if self.manual_setup_n_walls == False:
             # Find number of connected walls
             connection_point = [
-                cp for cp in self.connects_at if cp.input_port == "wallHeatGain"
+                cp for cp in self.connects_at if cp.input_port == "wallTemperature"
             ]
             n_walls = (
                 len(connection_point[0].connects_system_through)
@@ -520,9 +542,12 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         n_states += self.n_boundary_temperature  # Add boundary wall state
         self.n_states = n_states
 
-        # Calculate number of inputs based on input dictionary
-        n_inputs = len(self.input) - 2  # Base inputs from input dictionary
-        n_inputs += self.n_walls  # Add one input for each connected wall
+        # Calculate number of inputs based on input dictionary: the always-
+        # present scalar ports, plus the actual multiplicities of the optional
+        # boundary port and the two per-wall vector ports (temperature +
+        # conductance).
+        n_inputs = len(self.input) - 3  # Base scalar inputs
+        n_inputs += 2 * self.n_walls  # (T_w, g) pair per connected wall
         n_inputs += (
             self.n_boundary_temperature
         )  # Add one input for boundary temperature
@@ -580,11 +605,10 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             # Boundary temperature
             B[:, 2, 7] = 1 / (R_boundary * C_boundary)  # T_bound coefficient
 
-        # Wall heat gains (at the end of the input vector): heat flow [W]
-        # produced by connected WallTorchSystem components enters the air node.
-        for i in range(self.n_walls):
-            wall_input_idx = (n_inputs - self.n_walls) + i
-            B[:, 0, wall_input_idx] = 1 / C_air  # Q_wall coefficient
+        # Connected walls enter as bilinear terms (built into E/F below): the
+        # input vector ends with [T_w_1..T_w_n, g_1..g_n] and the air node
+        # integrates g_j*(T_w_j - T_air)/C_air exactly with T_w_j held over
+        # the step.  Nothing enters the linear B matrix.
 
         # Output matrix C - Identity matrix for direct observation of all states
         # Shape: (n_c, n_states, n_states)
@@ -609,6 +633,20 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         F[:, 1, 0, 3] = (
             constants.CP_AIR / C_air
         )  # supplyAirFlowRate * supplyAirTemperature
+
+        # Interzonal wall exchange g_j*(T_w_j - T_air)/C_air: the conductance
+        # input g_j scales both the air-state leak (E) and the held wall
+        # temperature drive (F).  Integrating this inside the exact ZOH
+        # discretization makes the air update a convex combination of its own
+        # state and the held wall temperature -- the co-simulated space-wall
+        # loop is then stable for any positive R, C and step size (see the
+        # WallTorchSystem docstring).
+        base_end = n_inputs - 2 * self.n_walls
+        for i in range(self.n_walls):
+            idx_T = base_end + i  # wall temperature input
+            idx_g = base_end + self.n_walls + i  # wall conductance input
+            E[:, idx_g, 0, 0] = -1 / C_air  # g_j * T_air
+            F[:, idx_g, 0, idx_T] = 1 / C_air  # g_j * T_w_j
 
         return A, B, C_out, D, E, F
 
@@ -692,8 +730,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         if self.n_boundary_temperature == 1:
             inputs["boundaryTemperature"] = self.input["boundaryTemperature"].get()
         if self.n_walls > 0:
-            # Vector port: get() returns (n_s, n_c, n_v)
-            inputs["wallHeatGain"] = self.input["wallHeatGain"].get()
+            # Vector ports: get() returns (n_s, n_c, n_v)
+            inputs["wallTemperature"] = self.input["wallTemperature"].get()
+            inputs["wallConductance"] = self.input["wallConductance"].get()
 
         x = self.ss_model.get_state()  # (n_s, n_c, n_states)
         x_next, outs = self.forward(
@@ -717,8 +756,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             x: state ``(n_c, n_states)`` = ``[T_indoor, T_wall,
                 (T_boundary)]``.
             inputs: dict of resolved input-port values (each ``(n_c,)`` scalar, or
-                ``(n_c, n_v)`` for ``wallHeatGain``).  Assembled here
-                into the ``do_step`` input order.
+                ``(n_c, n_v)`` for ``wallTemperature`` / ``wallConductance``).
+                Assembled here into the ``do_step`` input order.
             params: dict of *physical* parameter values (:attr:`PARAM_NAMES`).
             sample_time: step size in seconds.
 
@@ -744,7 +783,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             cols.append(inputs["boundaryTemperature"])
         u = torch.stack(cols, dim=-1)  # (n_c, n_base_inputs)
         if self.n_walls > 0:
-            u = torch.cat([u, inputs["wallHeatGain"]], dim=-1)
+            u = torch.cat(
+                [u, inputs["wallTemperature"], inputs["wallConductance"]], dim=-1
+            )
         x_next, y = bilinear_onestep(
             A, B, C, D, E, F, x, u, sample_time, disc_cache=cache[3]
         )

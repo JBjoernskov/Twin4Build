@@ -53,17 +53,43 @@ class WallTorchSystem(core.System, nn.Module):
        - :math:`C`: Wall thermal capacitance [J/K]
        - :math:`R_a, R_b`: Side resistances [K/W]
 
-    **Heat Flow Outputs:**
+    **Coupling Outputs (temperature + conductance):**
 
-    The heat flows delivered INTO each side (positive = heating that side) are
+    The wall exposes its state :math:`T_w` and the side conductances
+
+    .. math::
+
+       g_a = \frac{1}{R_a}, \qquad g_b = \frac{1}{R_b}
+
+    to the connected zones.  Each zone integrates the exchange term
+    :math:`g\,(T_w - T_{air})/C_{air}` *inside its own exact discretization*
+    (a bilinear state-input term), with :math:`T_w` held over the step.
+
+    .. note::
+       **Why temperature + conductance instead of heat flow?**  Components are
+       co-simulated Gauss-Seidel style: each steps once per timestep against
+       the other's held (one step lagged) outputs.  If the zone received a
+       heat *flow* and integrated it as a constant, the air update would be
+       :math:`T_{air}^+ \approx (1 - \Delta t\, g / C_{air})\,T_{air} + \dots`
+       -- for :math:`\Delta t\, g / C_{air} > 2` the coefficient falls below
+       :math:`-1` and the space-wall loop oscillates with exponentially
+       growing amplitude (NaN within a few dozen steps for small ``R``).
+       With the temperature + conductance interface, each side's exact ZOH
+       update is a *convex combination* of its own state and the held
+       neighbour temperature: the coupled iteration matrix is nonnegative
+       with row sums :math:`\le 1`, so its spectral radius is :math:`\le 1`
+       and the loop is stable for **any** positive ``R``, ``C`` and step
+       size.
+
+    The instantaneous heat flows delivered INTO each side (positive = heating
+    that side) are still exposed for inspection:
 
     .. math::
 
        \dot{Q}_a = \frac{T_w - T_a}{R_a}, \qquad
        \dot{Q}_b = \frac{T_w - T_b}{R_b}
 
-    Energy conservation follows directly: the wall stores exactly what the two
-    sides exchange,
+    and the wall stores exactly what the two sides exchange,
 
     .. math::
 
@@ -98,7 +124,8 @@ class WallTorchSystem(core.System, nn.Module):
 
     **Zone-zone partitions:**
        - Each zone connects its ``indoorTemperature`` to one side and receives
-         the corresponding heat flow back on its ``wallHeatGain`` port.
+         back the wall temperature on its ``wallTemperature`` port and the
+         corresponding side conductance on its ``wallConductance`` port.
        - Because one component owns the wall state, the heat leaving zone A
          through the wall equals the heat absorbed by the wall plus the heat
          entering zone B -- no double-counted wall mass.
@@ -125,8 +152,10 @@ class WallTorchSystem(core.System, nn.Module):
     >>> wall = tb.WallTorchSystem(C=2e5, R_a=0.05, R_b=0.05, id="wall_AB")
     >>> # zone_a.indoorTemperature -> wall.temperatureA
     >>> # zone_b.indoorTemperature -> wall.temperatureB
-    >>> # wall.heatFlowRateA -> zone_a.wallHeatGain (slot 0)
-    >>> # wall.heatFlowRateB -> zone_b.wallHeatGain (slot 0)
+    >>> # wall.wallTemperature      -> zone_a.wallTemperature (slot 0)
+    >>> # wall.thermalConductanceA  -> zone_a.wallConductance (slot 0)
+    >>> # wall.wallTemperature      -> zone_b.wallTemperature (slot 0)
+    >>> # wall.thermalConductanceB  -> zone_b.wallConductance (slot 0)
 
     Wall toward a known boundary temperature (e.g. corridor schedule):
 
@@ -161,9 +190,11 @@ class WallTorchSystem(core.System, nn.Module):
             "temperatureB": tps.Scalar(),  # Side-B temperature [degC]
         }
         self._output = {
-            "heatFlowRateA": tps.Scalar(0),  # Heat flow into side A [W]
-            "heatFlowRateB": tps.Scalar(0),  # Heat flow into side B [W]
+            "heatFlowRateA": tps.Scalar(0),  # Heat flow into side A [W] (diagnostic)
+            "heatFlowRateB": tps.Scalar(0),  # Heat flow into side B [W] (diagnostic)
             "wallTemperature": tps.Scalar(T_init),  # Wall temperature [degC]
+            "thermalConductanceA": tps.Scalar(1.0 / R_a),  # 1/R_a [W/K]
+            "thermalConductanceB": tps.Scalar(1.0 / R_b),  # 1/R_b [W/K]
         }
         self.parameter = {
             "C": {"lb": 1e3, "ub": 1e8},
@@ -201,9 +232,11 @@ class WallTorchSystem(core.System, nn.Module):
 
         Returns:
             dict: Dictionary containing output ports:
-                - "heatFlowRateA": Heat flow into side A [W]
-                - "heatFlowRateB": Heat flow into side B [W]
+                - "heatFlowRateA": Heat flow into side A [W] (diagnostic)
+                - "heatFlowRateB": Heat flow into side B [W] (diagnostic)
                 - "wallTemperature": Wall temperature [degC]
+                - "thermalConductanceA": Side-A conductance 1/R_a [W/K]
+                - "thermalConductanceB": Side-B conductance 1/R_b [W/K]
         """
         return self._output
 
@@ -331,8 +364,10 @@ class WallTorchSystem(core.System, nn.Module):
         Functorch-compatible re-expression of :meth:`do_step`. ``inputs`` is a
         dict with ``temperatureA`` and ``temperatureB``; ``params`` a dict for
         :attr:`PARAM_NAMES`. Returns the next wall temperature and the named
-        outputs ``{heatFlowRateA, heatFlowRateB, wallTemperature}`` (heat
-        flows INTO each side, computed from the end-of-step wall state).
+        outputs ``{heatFlowRateA, heatFlowRateB, wallTemperature,
+        thermalConductanceA, thermalConductanceB}`` (heat flows INTO each
+        side, computed from the end-of-step wall state; conductances are the
+        theta-dependent coupling coefficients the zones integrate against).
         """
         # Params-only matrices, cached per params-dict identity (rebuilt once
         # per theta in a sequential rollout, not once per step).  sample_time
@@ -349,10 +384,15 @@ class WallTorchSystem(core.System, nn.Module):
         x_next, y = bilinear_onestep(
             A, B, C_out, D, E, F, x, u, sample_time, disc_cache=cache[3]
         )
+        # Conductances are pure functions of theta; broadcast them to the
+        # batch shape of the other outputs.
+        ones = torch.ones_like(y[..., 2])
         return x_next, {
             "heatFlowRateA": y[..., 0],
             "heatFlowRateB": y[..., 1],
             "wallTemperature": y[..., 2],
+            "thermalConductanceA": ones / params["R_a"],
+            "thermalConductanceB": ones / params["R_b"],
         }
 
     def do_step(
@@ -386,3 +426,9 @@ class WallTorchSystem(core.System, nn.Module):
         self.output["heatFlowRateA"]._set(outs["heatFlowRateA"], i_t=step_index)
         self.output["heatFlowRateB"]._set(outs["heatFlowRateB"], i_t=step_index)
         self.output["wallTemperature"]._set(outs["wallTemperature"], i_t=step_index)
+        self.output["thermalConductanceA"]._set(
+            outs["thermalConductanceA"], i_t=step_index
+        )
+        self.output["thermalConductanceB"]._set(
+            outs["thermalConductanceB"], i_t=step_index
+        )

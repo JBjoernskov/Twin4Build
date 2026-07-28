@@ -1399,7 +1399,7 @@ class Model:
             )
             cp_wall = [
                 cp for cp in source.connects_at
-                if cp.input_port == "wallHeatGain"
+                if cp.input_port == "wallTemperature"
             ]
             n_walls = (
                 len(cp_wall[0].connects_system_through) if cp_wall else 0
