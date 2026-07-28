@@ -263,6 +263,16 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
     # State (thermal | mass) is discovered generically by System.get_state /
     # set_state via the owned submodels' ``tps.State`` -- no per-component code.
 
+    #: Fusable coupling ports (see FusedStateSpaceSystem): delegated to the
+    #: thermal submodel, which owns the wall coupling.
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain"})
+    FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
+
+    def _ss_units(self):
+        """State-space leaf units in state order (``thermal`` then ``mass`` --
+        the order :meth:`System.get_state` concatenates)."""
+        return [("thermal", self.thermal), ("mass", self.mass)]
+
     @staticmethod
     def _resolve_sub_params(sub, prefix, params):
         """Full physical-parameter dict for a submodel: estimated values from

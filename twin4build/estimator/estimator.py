@@ -1963,10 +1963,26 @@ class Estimator:
         composites addressed with dotted attrs like ``(office,
         "thermal.C_air")``).
         """
-        components = self.simulator.model.components
+        model = self.simulator.model
+        sim_model = getattr(model, "_simulation_model", None) or model
+        components = model.components
+
+        def _fused_owner(base, base_attr):
+            # A fused-cluster member is in ``components`` but does not
+            # execute; its theta is routed through the owning
+            # FusedStateSpaceSystem under the member's module key (see
+            # FusedStateSpaceSystem._unit_params).
+            fusion_map = (
+                getattr(sim_model, "_fusion_member_to_fused", None) or {}
+            )
+            fused = fusion_map.get(getattr(base, "id", None))
+            if fused is not None:
+                return fused, f"{fused._member_keys[base.id]}.{base_attr}"
+            return base, base_attr
+
         cid = getattr(comp, "id", None)
         if cid is not None and components.get(cid) is comp:
-            return comp, attr
+            return _fused_owner(comp, attr)
         for owner in components.values():
             # nn.Module owners keep sub-module attributes in ``_modules``
             # (e.g. OccupancySystem.supply_damper), not ``__dict__``.
@@ -1974,7 +1990,7 @@ class Estimator:
             attrs.update(getattr(owner, "_modules", None) or {})
             for name, val in attrs.items():
                 if val is comp:
-                    return owner, f"{name}.{attr}"
+                    return _fused_owner(owner, f"{name}.{attr}")
         return comp, attr
 
     def _param_values_to_theta(self, values: List[np.ndarray]) -> np.ndarray:

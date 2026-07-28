@@ -268,6 +268,24 @@ class WallTorchSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     PARAM_NAMES = ("C", "R_a", "R_b")
 
+    #: Fusable coupling ports: both temperature inputs enter the linear B
+    #: matrix, and all outputs are exact linear functions of (state, inputs),
+    #: so a zone<->wall connection can be eliminated into one monolithic
+    #: state-space block (see FusedStateSpaceSystem).
+    FUSABLE_INPUT_PORTS = frozenset({"temperatureA", "temperatureB"})
+    FUSABLE_OUTPUT_PORTS = frozenset(
+        {"heatFlowRateA", "heatFlowRateB", "wallTemperature"}
+    )
+
+    def _ss_layout(self):
+        """Port <-> matrix index map, mirroring :meth:`forward` exactly:
+        ``u = [temperatureA, temperatureB]``; output rows
+        ``[heatFlowRateA, heatFlowRateB, wallTemperature]``."""
+        return {
+            "u": [("temperatureA", 1), ("temperatureB", 1)],
+            "y": {"heatFlowRateA": 0, "heatFlowRateB": 1, "wallTemperature": 2},
+        }
+
     def _build_matrices(self, p=None):
         """Build the wall state-space matrices ``(A, B, C, D, E, F)`` from the
         physical parameters -- a pure function of ``p`` (a dict of physical

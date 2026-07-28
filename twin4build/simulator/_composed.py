@@ -101,9 +101,15 @@ def collect_stateful(model) -> List:
     ``_flat_execution_order`` and taking ``System.is_stateful()`` (which walks the
     owned ``tps.State``) yields each state exactly once.
     """
-    order = getattr(model, "_flat_execution_order", None) or list(
-        model.components.values()
-    )
+    order = getattr(model, "_flat_execution_order", None)
+    if order is None:
+        # Model wrapper: delegate to the simulation model's execution order.
+        # This must NOT fall back to ``components`` -- fused state-space
+        # clusters execute (and own their joint state) through a
+        # FusedStateSpaceSystem that only appears in the execution order.
+        order = getattr(model, "flat_execution_order", None)
+    if order is None:
+        order = list(model.components.values())
     return [c for c in order if c.is_stateful()]
 
 
@@ -207,6 +213,13 @@ class OneStepComposer:
         self.pos = {c.id: i for i, c in enumerate(order)}
         self.order = order
         self.forward_ids = {c.id for c in order if _has_real_forward(c)}
+        # Fused-cluster members are not executing nodes; their produced
+        # signals resolve to the fused block's namespaced outputs (_follow)
+        # and their theta associations to the fused block's id.
+        sim_model = getattr(model, "_simulation_model", None) or model
+        self._fusion_alias = dict(
+            getattr(sim_model, "_fusion_member_to_fused", None) or {}
+        )
 
         # Stateful components and their flat state layout (widths, offsets).
         self.stateful = list(stateful)
@@ -354,6 +367,10 @@ class OneStepComposer:
             visited.add(c.id)
             if c.id in self.theta_by_comp:
                 return c.id
+            # A fused-cluster member carries its theta under the fused id.
+            fused = self._fusion_alias.get(c.id)
+            if fused is not None and fused.id in self.theta_by_comp:
+                return c.id
             for port in list(c.input.keys()):
                 if isinstance(c.input[port], tps.Vector):
                     for _, prod, _ in self._vector_slot_sources(c, port):
@@ -402,9 +419,15 @@ class OneStepComposer:
         return self._follow(*src)
 
     def _follow(self, producer, out_port):
-        """Follow pass-through sensors from a ``(producer, out_port)`` pair."""
+        """Follow pass-through sensors from a ``(producer, out_port)`` pair,
+        and translate fused-cluster members to their executing
+        ``FusedStateSpaceSystem`` (which publishes the member's outputs under
+        namespaced port names)."""
         if _is_passthrough_sensor(producer):
             return self._trace_source(producer, "measuredValue")
+        fused = self._fusion_alias.get(producer.id)
+        if fused is not None:
+            return fused, f"{producer.id}.{out_port}"
         return producer, out_port
 
     def _vector_slot_sources(self, comp, port):
@@ -693,7 +716,11 @@ def capture_reference_rollout(
     import twin4build.core as core
 
     model = simulator.model
-    comps = model.components
+    comps = dict(model.components)
+    # Fused state-space clusters consume their members' exogenous inputs
+    # under the fused component's id (namespaced ports).
+    sim_model = getattr(model, "_simulation_model", None) or model
+    comps.update(getattr(sim_model, "_fused_components", None) or {})
     cap_keys = composer._captured_keys
     fb_keys = composer._feedback_keys
     meas_keys = [(mid, "measuredValue") for mid in meas_ids]

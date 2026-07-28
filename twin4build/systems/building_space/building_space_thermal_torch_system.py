@@ -497,6 +497,32 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         "f_air", "f_wall", "Q_occ_gain",
     )
 
+    #: Fusable coupling ports (see FusedStateSpaceSystem): connected
+    #: WallTorchSystem heat flows enter the linear B matrix, and
+    #: ``indoorTemperature`` is a pure state observation.
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain"})
+    FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
+
+    def _ss_layout(self):
+        """Port <-> matrix index map, mirroring :meth:`forward` exactly.
+
+        ``u = [outdoorTemperature, supplyAirFlowRate, exhaustAirFlowRate,
+        supplyAirTemperature, globalIrradiation, numberOfPeople, heatGain,
+        (boundaryTemperature,) wallHeatGain x n_walls]``; output rows are the
+        observed states.  Valid after :meth:`initialize` (needs ``n_walls`` /
+        ``n_boundary_temperature``).
+        """
+        u = [
+            ("outdoorTemperature", 1), ("supplyAirFlowRate", 1),
+            ("exhaustAirFlowRate", 1), ("supplyAirTemperature", 1),
+            ("globalIrradiation", 1), ("numberOfPeople", 1), ("heatGain", 1),
+        ]
+        if self.n_boundary_temperature == 1:
+            u.append(("boundaryTemperature", 1))
+        if self.n_walls > 0:
+            u.append(("wallHeatGain", self.n_walls))
+        return {"u": u, "y": {"indoorTemperature": 0, "wallTemperature": 1}}
+
     def _build_matrices(self, p=None):
         """Build the RC state-space matrices ``(A, B, C, D, E, F)`` from the
         physical parameters -- a **pure** function of ``p`` (no side effects
