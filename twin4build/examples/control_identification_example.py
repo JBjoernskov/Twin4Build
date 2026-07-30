@@ -144,10 +144,8 @@ def generate_data_with_twin4build(
     building_space = tb.BuildingSpaceThermalTorchSystem(
         C_air=5e5,  # Thermal capacitance of air [J/K]
         C_wall=2e6,  # Wall thermal capacitance [J/K]
-        C_int=1e5,  # Internal mass [J/K]
         R_out=0.01,  # Outdoor resistance [K/W]
         R_in=0.01,  # Indoor resistance [K/W]
-        R_int=0.02,  # Internal resistance [K/W]
         f_wall=0.4,  # Solar to wall fraction
         f_air=0.2,  # Solar to air fraction
         Q_occ_gain=80.0,  # Heat per occupant [W]

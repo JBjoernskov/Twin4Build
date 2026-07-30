@@ -258,6 +258,73 @@ class CascadeControllerSystem(core.System, nn.Module):
             if hasattr(ctrl, "reset_state"):
                 ctrl.reset_state()
 
+    # -- composed-map support (mirrors BuildingSpaceTorchSystem) -------------
+
+    @staticmethod
+    def _resolve_sub_params(sub, prefix, params):
+        """Full physical-parameter dict for a sub-controller: estimated values
+        from ``params`` (keyed ``"<prefix>.<name>"``), the rest from the
+        sub-controller's own ``tps.Parameter`` defaults."""
+        out = {}
+        for name in sub.PARAM_NAMES:
+            key = f"{prefix}.{name}"
+            out[name] = params[key] if key in params else getattr(sub, name).get()
+        return out
+
+    @staticmethod
+    def _route_forward_inputs(ctrl, setpoint, feedback):
+        """Pure-input analogue of :meth:`_route_inputs`: the inputs dict a
+        sub-controller's ``forward`` expects, given the cascade signals."""
+        if "setpointValue" in ctrl.input and "actualValue" in ctrl.input:
+            # PID-like controller: uses setpoint and feedback
+            return {"setpointValue": setpoint, "actualValue": feedback}
+        if "supplyAirTemp" in ctrl.input:
+            # SAT-compensated controller: feedback signal is the supply air temp
+            return {"supplyAirTemp": feedback}
+        raise ValueError(
+            f"Cannot route signals to {ctrl.__class__.__name__}: "
+            f"unrecognized input ports {list(ctrl.input.keys())}"
+        )
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step of the composite cascade = ctrl_a -> ctrl_b.
+
+        State is ``[ctrl_a_state | ctrl_b_state]`` (the order
+        :meth:`System.get_state` produces; a stateless sub-controller such as
+        ``SATLinearRuleSystem`` contributes zero width).  ``params`` is keyed
+        by the composite attr path (``"ctrl_a.kp"``, ``"ctrl_b.Ti"``, ...).
+        Controller A's output feeds controller B *within the same step*,
+        exactly like :meth:`do_step`'s sequential sub-stepping.
+        """
+        # Identity-keyed cache: a sequential rollout re-calls forward with the
+        # SAME params dict every step (see OneStepComposer._params_for).
+        cache = getattr(self, "_fwd_param_cache", None)
+        if cache is None or cache[0] is not params:
+            cache = (
+                params,
+                self._resolve_sub_params(self.ctrl_a, "ctrl_a", params),
+                self._resolve_sub_params(self.ctrl_b, "ctrl_b", params),
+            )
+            self._fwd_param_cache = cache
+        _, p_a, p_b = cache
+
+        n_a = self.ctrl_a.state_size()
+        x_a, x_b = x[..., :n_a], x[..., n_a:]
+
+        in_a = self._route_forward_inputs(
+            self.ctrl_a, inputs["setpointValue_a"], inputs["actualValue_a"]
+        )
+        x_a_n, out_a = self.ctrl_a.forward(x_a, in_a, p_a, sample_time)
+
+        in_b = self._route_forward_inputs(
+            self.ctrl_b, out_a["inputSignal"], inputs["actualValue_b"]
+        )
+        x_b_n, out_b = self.ctrl_b.forward(x_b, in_b, p_b, sample_time)
+
+        return torch.cat([x_a_n, x_b_n], dim=-1), {
+            "inputSignal": out_b["inputSignal"]
+        }
+
 
 # Backward-compatible alias
 CascadePIDControllerSystem = CascadeControllerSystem

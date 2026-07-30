@@ -10,6 +10,9 @@ Key Components:
         - BuildingSpaceMassTorchSystem: Building space CO2 mass balance model
         - BuildingSpaceThermalTorchSystem: Building space thermal (RC) model
 
+    Building Envelope:
+        - WallTorchSystem: 2R1C wall between two zones (or zone and boundary)
+
     HVAC Components:
         - SpaceHeaterTorchSystem: Space heating system
         - FanCoilUnitTorchSystem: Fan coil unit (heating/cooling terminal unit)
@@ -66,6 +69,8 @@ __all__ = [
     "BuildingSpaceTorchSystem",
     "BuildingSpaceMassTorchSystem",
     "BuildingSpaceThermalTorchSystem",
+    # Wall
+    "WallTorchSystem",
     # Space Heater
     "SpaceHeaterTorchSystem",
     # Valves
@@ -251,5 +256,8 @@ from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSys
 
 # Valves
 from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
+
+# Wall
+from twin4build.systems.wall.wall_torch_system import WallTorchSystem
 
 # Time series input

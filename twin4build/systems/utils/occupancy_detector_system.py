@@ -1,6 +1,3 @@
-# Standard library imports
-import datetime
-
 # Local application imports
 import twin4build.utils.types as tps
 from twin4build.systems.utils.sigmoid_gate import SigmoidGate
@@ -27,6 +24,9 @@ class OccupancyDetectorSystem(SigmoidGate):
         **kwargs: Forwarded to ``core.System`` (must include ``id``).
     """
 
+    INPUT_PORT = "occupancy"
+    OUTPUT_PORT = "occupancySignal"
+
     def __init__(
         self,
         threshold: float = 0.5,
@@ -36,14 +36,3 @@ class OccupancyDetectorSystem(SigmoidGate):
         super().__init__(threshold=threshold, steepness=steepness, **kwargs)
         self._input = {"occupancy": tps.Scalar()}
         self._output = {"occupancySignal": tps.Scalar()}
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        occupancy = self.input["occupancy"].get()
-        signal = self.compute_gate(occupancy)
-        self.output["occupancySignal"]._set(signal, i_t=step_index)

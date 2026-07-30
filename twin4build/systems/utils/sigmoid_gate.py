@@ -61,6 +61,13 @@ class SigmoidGate(core.System, nn.Module):
         **kwargs: Forwarded to ``core.System`` (must include ``id``).
     """
 
+    # Port names as class attributes so subclasses (OccupancyDetectorSystem)
+    # can rename ports while reusing do_step/forward unchanged.
+    INPUT_PORT = "inputSignal"
+    OUTPUT_PORT = "outputSignal"
+
+    PARAM_NAMES = ("threshold", "steepness", "polarity", "default_output")
+
     def __init__(
         self,
         threshold: float = 0.5,
@@ -137,19 +144,55 @@ class SigmoidGate(core.System, nn.Module):
 
         self.INITIALIZED = True
 
+    @staticmethod
+    def _gate(
+        x: torch.Tensor,
+        threshold: torch.Tensor,
+        steepness: torch.Tensor,
+        polarity: torch.Tensor,
+    ) -> torch.Tensor:
+        """Pure sigmoid threshold math on explicit tensors (single source of
+        truth for both :meth:`compute_gate` and :meth:`forward`).
+
+        Always uses ``mode="smooth"``: a hard step would zero the gradient
+        with respect to ``threshold`` everywhere, making the gate threshold
+        structurally non-estimable.
+        """
+        u = 0.5 + polarity * (x - threshold) * steepness
+        return clamp(u, lower=0.0, upper=1.0, curve_start=0.1, mode="smooth")
+
     def compute_gate(self, x: torch.Tensor) -> torch.Tensor:
         """Core sigmoid threshold logic -- reusable by subclasses and parent systems.
 
         polarity > 0: gate ≈ 1 when x > threshold (active above).
         polarity < 0: gate ≈ 1 when x < threshold (active below).
-
-        Always uses ``mode="smooth"``: a hard step would zero the
-        gradient with respect to ``threshold`` everywhere, making the
-        gate threshold structurally non-estimable.
         """
-        error = self.polarity.get() * (x - self.threshold.get())
-        u = 0.5 + error * self.steepness.get()
-        return clamp(u, lower=0.0, upper=1.0, curve_start=0.1, mode="smooth")
+        return self._gate(
+            x, self.threshold.get(), self.steepness.get(), self.polarity.get()
+        )
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step gate (functorch-safe, stateless).
+
+        Reads the input from ``inputs[self.INPUT_PORT]`` (subclasses rename
+        the ports via the class attributes) and blends with
+        ``controllerSignal`` when that optional port is wired (a structural
+        property fixed at ``initialize``).
+        """
+        gate = self._gate(
+            inputs[self.INPUT_PORT],
+            params["threshold"],
+            params["steepness"],
+            params["polarity"],
+        )
+        if self._controller_wired:
+            signal = (
+                gate * inputs["controllerSignal"]
+                + (1.0 - gate) * params["default_output"]
+            )
+        else:
+            signal = gate
+        return x, {self.OUTPUT_PORT: signal}
 
     def do_step(
         self,
@@ -158,14 +201,13 @@ class SigmoidGate(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
-        x = self.input["inputSignal"].get()
-        gate = self.compute_gate(x)
+        inputs = {self.INPUT_PORT: self.input[self.INPUT_PORT].get()}
         if self._controller_wired:
-            ctrl = self.input["controllerSignal"].get()
-            signal = gate * ctrl + (1.0 - gate) * self.default_output.get()
-        else:
-            signal = gate
-        self.output["outputSignal"]._set(signal, i_t=step_index)
+            inputs["controllerSignal"] = self.input["controllerSignal"].get()
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output[self.OUTPUT_PORT]._set(outs[self.OUTPUT_PORT], i_t=step_index)
 
 
 class BandGate(SigmoidGate):
@@ -256,6 +298,8 @@ class BandGate(SigmoidGate):
             "default_output",
         ]
 
+    PARAM_NAMES = ("threshold", "band", "steepness", "default_output")
+
     @property
     def threshold_high(self) -> torch.Tensor:
         """Derived upper edge ``T_hi = threshold + band``.
@@ -278,17 +322,44 @@ class BandGate(SigmoidGate):
         super().initialize(start_time, end_time, step_size)
         self.band = self.band.expand_to_n_c(self.n_c)
 
-    def compute_gate(self, x: torch.Tensor) -> torch.Tensor:
-        """Band-pass gate: product of a lower rising sigmoid and an upper
-        falling sigmoid.  ``polarity`` is ignored.  Always uses
-        ``mode="smooth"`` so that ``threshold`` and ``band`` retain
-        non-zero gradient everywhere.
-        """
-        k = self.steepness.get()
-        lo = self.threshold.get()
-        w = self.band.get()
-        u_lo = 0.5 + (x - lo) * k
-        u_hi = 0.5 + (lo + w - x) * k
+    @staticmethod
+    def _band_gate(
+        x: torch.Tensor,
+        threshold: torch.Tensor,
+        band: torch.Tensor,
+        steepness: torch.Tensor,
+    ) -> torch.Tensor:
+        """Pure band-pass gate math on explicit tensors (single source of
+        truth for both :meth:`compute_gate` and :meth:`forward`).  Always
+        uses ``mode="smooth"`` so that ``threshold`` and ``band`` retain
+        non-zero gradient everywhere."""
+        u_lo = 0.5 + (x - threshold) * steepness
+        u_hi = 0.5 + (threshold + band - x) * steepness
         s_lo = clamp(u_lo, lower=0.0, upper=1.0, curve_start=0.1, mode="smooth")
         s_hi = clamp(u_hi, lower=0.0, upper=1.0, curve_start=0.1, mode="smooth")
         return s_lo * s_hi
+
+    def compute_gate(self, x: torch.Tensor) -> torch.Tensor:
+        """Band-pass gate: product of a lower rising sigmoid and an upper
+        falling sigmoid.  ``polarity`` is ignored.
+        """
+        return self._band_gate(
+            x, self.threshold.get(), self.band.get(), self.steepness.get()
+        )
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step band gate (functorch-safe, stateless)."""
+        gate = self._band_gate(
+            inputs[self.INPUT_PORT],
+            params["threshold"],
+            params["band"],
+            params["steepness"],
+        )
+        if self._controller_wired:
+            signal = (
+                gate * inputs["controllerSignal"]
+                + (1.0 - gate) * params["default_output"]
+            )
+        else:
+            signal = gate
+        return x, {self.OUTPUT_PORT: signal}

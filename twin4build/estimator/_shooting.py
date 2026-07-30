@@ -24,8 +24,9 @@ thin port-I/O wrapper that DELEGATES its math to the same ``forward`` the
 composer threads (single source of truth -- the two cannot drift apart), and
 cut feedback edges are carried as one-step lag state inside ``y`` (exactly
 ``do_step``'s delayed Gauss-Seidel semantics).  Only truly exogenous inputs
-(weather, schedules, data-driven occupancy) are frozen -- and those are
-theta-independent by definition.  The same single-source-of-truth rule holds
+(weather, schedules, measured data series) are frozen -- and those are
+theta-independent by definition; ``OneStepComposer._validate_theta_influence``
+refuses to compose if a theta path would leak into a frozen signal.  The same single-source-of-truth rule holds
 outside the components: theta denormalization is
 :func:`twin4build.utils.types.denormalize_unit` (the function
 ``tps.Parameter.denormalize`` itself routes through) and everything downstream
@@ -194,4 +195,28 @@ class FastSingleShooting:
         # two paths cannot diverge there by construction.  ``raw`` holds only
         # the scored rows; the object-graph path passes the padded horizon
         # with zero rows -- identical sums either way.
-        return est._loglike_from_residuals(raw, output)
+        loss = est._loglike_from_residuals(raw, output)
+        if not torch.isfinite(loss.detach()).all():
+            # Mirror the object-graph recovery for diverging iterates.  The
+            # do_step path VALIDATES port values and raises on NaN, which
+            # ``_obj_ad`` converts to a large penalty + zero gradient; the
+            # composed rollout has no such validation, so a physically
+            # unstable theta would otherwise hand the solver a silent nan
+            # (SLSQP then stalls and can terminate AT the nan iterate).
+            LOGGER.warning(
+                "fast objective non-finite at this theta -- returning penalty"
+            )
+            try:
+                for line in est._format_theta_dump(theta.detach().numpy()):
+                    LOGGER.warning("%s", line)
+            except Exception:  # noqa: BLE001
+                pass
+            est._last_rmse = float("nan")
+            est._last_rmse_per_sensor = {}
+            # ``0 * theta.sum()`` keeps the result attached to theta so the
+            # autograd path yields a well-defined ZERO gradient (same
+            # backtracking behaviour as the object-graph recovery).
+            penalty = 0.0 * theta.sum() + 1e10
+            est._loglike = penalty
+            return penalty
+        return loss

@@ -194,8 +194,22 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
         )
 
         # --- I/O ---
-        self.input = {"inputSignal": tps.Scalar()}
+        # hourOfDay / dayOfWeek are measured-data ports: NOT connected to any
+        # producer.  ``do_step`` publishes the wall-clock features here each
+        # step so the composed fast paths (Simulator.compose) can capture
+        # them per step like any exogenous signal -- they are pure time
+        # features, independent of any estimated parameter.
+        self.input = {
+            "inputSignal": tps.Scalar(),
+            "hourOfDay": tps.Scalar(),
+            "dayOfWeek": tps.Scalar(),
+        }
         self.output = {"inputSignal": tps.Scalar()}
+
+        # All schedule weights + override are estimable -> route through the
+        # ``forward`` params dict (PARAM_NAMES is per-instance because the
+        # weight set depends on ``factored``).
+        self.PARAM_NAMES = tuple(self._config["parameters"])
 
     # ------------------------------------------------------------------
     # Helpers
@@ -247,10 +261,11 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        self.input["inputSignal"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
-        )
+        for inp in self.input.values():
+            inp.initialize(
+                n_timesteps=max_timesteps,
+                batch_size=batch_size,
+            )
         self.output["inputSignal"].initialize(
             n_timesteps=max_timesteps,
             batch_size=batch_size,
@@ -277,6 +292,47 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
     # Simulation step
     # ------------------------------------------------------------------
 
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step schedule blend (functorch-safe, stateless).
+
+        Computes ``output = s * input + (1 - s) * override_value`` where *s*
+        is the schedule weight for the current (hour, day) pair.  The time
+        features enter through the ``hourOfDay`` / ``dayOfWeek`` data ports
+        (captured per step by the composed fast paths), so all estimable
+        weights keep their gradient paths through ``params``.
+        """
+        input_signal = inputs["inputSignal"]
+        hour_idx = inputs["hourOfDay"].reshape(-1).long()
+        day_idx = inputs["dayOfWeek"].reshape(-1).long()
+
+        if self._factored:
+            # Bilinear: schedule_weight = hour_w[h] * day_w[d]
+            hw = torch.stack(
+                [params[f"hour_weight_{h}"] for h in range(self.N_HOURS)], dim=0
+            )  # (24, n_c)
+            dw = torch.stack(
+                [params[f"day_weight_{d}"] for d in range(self.N_DAYS)], dim=0
+            )  # (7, n_c)
+            schedule_signal = hw[hour_idx] * dw[day_idx]  # (n_s, n_c)
+        else:
+            # Independent: look up (hour, day) weight directly
+            all_weights = torch.stack(
+                [
+                    params[f"schedule_h{h}_d{d}"]
+                    for h in range(self.N_HOURS)
+                    for d in range(self.N_DAYS)
+                ],
+                dim=0,
+            ).reshape(self.N_HOURS, self.N_DAYS, -1)
+            schedule_signal = all_weights[hour_idx, day_idx]  # (n_s, n_c)
+
+        # --- Blend: active -> input, inactive -> override_value ---
+        override = params["override_value"]
+        output_signal = (
+            schedule_signal * input_signal + (1 - schedule_signal) * override
+        )
+        return x, {"inputSignal": output_signal}
+
     def do_step(
         self,
         second_time: float,
@@ -287,11 +343,10 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
         """
         Perform one simulation step: blend between input signal and override value.
 
-        Computes ``output = s * input + (1 - s) * override_value`` where *s* is
-        the schedule weight for the current (hour, day) pair.
+        Thin port-I/O wrapper: extracts the wall-clock features, publishes
+        them on the (unconnected) data ports and delegates the math to
+        :meth:`forward`.
         """
-        input_signal = self.input["inputSignal"].get()
-
         # --- Extract time features from date_time ---
         if isinstance(date_time, np.ndarray):
             dt_list = [pd.Timestamp(dt) for dt in date_time.flat]
@@ -310,39 +365,23 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
                 hours.append(dt.hour)
                 weekdays.append(dt.weekday())
 
-        hour_idx = torch.tensor(hours, dtype=torch.long)
-        day_idx = torch.tensor(weekdays, dtype=torch.long)
+        hour_t = torch.tensor(hours, dtype=torch.float64).unsqueeze(-1)  # (n_s, 1)
+        day_t = torch.tensor(weekdays, dtype=torch.float64).unsqueeze(-1)
 
-        if self._factored:
-            # Bilinear: schedule_weight = hour_w[h] * day_w[d]
-            hw = torch.stack(
-                [getattr(self, f"hour_weight_{h}").get() for h in range(self.N_HOURS)],
-                dim=0,
-            )  # (24, n_c)
-            dw = torch.stack(
-                [getattr(self, f"day_weight_{d}").get() for d in range(self.N_DAYS)],
-                dim=0,
-            )  # (7, n_c)
-            schedule_signal = hw[hour_idx] * dw[day_idx]  # (n_s, n_c)
-        else:
-            # Independent: look up (hour, day) weight directly
-            all_weights = torch.stack(
-                [
-                    getattr(self, f"schedule_h{h}_d{d}").get()
-                    for h in range(self.N_HOURS)
-                    for d in range(self.N_DAYS)
-                ],
-                dim=0,
-            ).reshape(self.N_HOURS, self.N_DAYS, -1)
-            schedule_signal = all_weights[hour_idx, day_idx]  # (n_s, n_c)
+        # Publish the time features on the (unconnected) data input ports so
+        # the composed fast paths can capture them per step.
+        self.input["hourOfDay"]._set(hour_t, i_t=step_index)
+        self.input["dayOfWeek"]._set(day_t, i_t=step_index)
 
-        # --- Blend: active -> input, inactive -> override_value ---
-        override = self.override_value.get()
-        output_signal = (
-            schedule_signal * input_signal + (1 - schedule_signal) * override
+        inputs = {
+            "inputSignal": self.input["inputSignal"].get(),
+            "hourOfDay": hour_t,
+            "dayOfWeek": day_t,
+        }
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
-
-        self.output["inputSignal"].set(output_signal, step_index)
+        self.output["inputSignal"].set(outs["inputSignal"], step_index)
 
     # ------------------------------------------------------------------
     # Parameter estimation support

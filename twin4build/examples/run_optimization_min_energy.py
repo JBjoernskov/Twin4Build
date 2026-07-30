@@ -65,7 +65,7 @@ def main():
     model.load(simulation_model_filename=filename_simulation)
 
     result_path = utils.get_path([RESULT_PICKLE])
-    model.load_estimation_result(filename=result_path, verbose=1)
+    model.load_estimation_result(filename=result_path)
     print("Calibrated model loaded.")
 
     # ── 2. Component references ───────────────────────────────────────────

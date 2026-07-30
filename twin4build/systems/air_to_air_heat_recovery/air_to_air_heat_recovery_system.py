@@ -237,39 +237,29 @@ class AirToAirHeatRecoverySystem(core.System):
 
         self.INITIALIZED = True
 
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """Perform one simulation step.
+    PARAM_NAMES = (
+        "eps_75_h",
+        "eps_100_h",
+        "eps_75_c",
+        "eps_100_c",
+        "primaryAirFlowRateMax",
+        "secondaryAirFlowRateMax",
+    )
 
-        This method calculates the heat recovery between supply and exhaust air streams
-        based on the current flow rates and temperatures. The effectiveness is interpolated
-        based on the flow rates, and the operation mode (heating/cooling) is determined
-        by comparing inlet temperatures and setpoints.
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step heat-recovery model (functorch-safe, stateless).
 
-        The method handles the following cases:
-        1. No flow in either stream: Pass-through temperatures
-        2. Heat recovery feasible: Calculate effectiveness and heat transfer
-        3. Heat recovery not feasible: Pass-through temperatures
-
-        Args:
-            second_time: Current simulation time in seconds.
-            date_time: Current simulation date and time.
-            step_size: Time step size in seconds.
-            step_index: Current simulation step index.
+        Effectiveness interpolated between the 75%/100% reference points,
+        operation mode selected from inlet temperatures vs the setpoint,
+        pass-through when there is no flow or recovery is infeasible.
         """
         tol = 1e-5
 
-        # Get input values
-        primary_flow = self.input["primaryAirFlowRate"].get()
-        secondary_flow = self.input["secondaryAirFlowRate"].get()
-        primary_temp_in = self.input["primaryTemperatureIn"].get()
-        secondary_temp_in = self.input["secondaryTemperatureIn"].get()
-        primary_temp_setpoint = self.input["primaryTemperatureOutSetpoint"].get()
+        primary_flow = inputs["primaryAirFlowRate"]
+        secondary_flow = inputs["secondaryAirFlowRate"]
+        primary_temp_in = inputs["primaryTemperatureIn"]
+        secondary_temp_in = inputs["secondaryTemperatureIn"]
+        primary_temp_setpoint = inputs["primaryTemperatureOutSetpoint"]
 
         # Condition: both flow rates above tolerance
         has_flow = (primary_flow > tol) & (secondary_flow > tol)
@@ -279,10 +269,10 @@ class AirToAirHeatRecoverySystem(core.System):
 
         # Select effectiveness values based on feasible mode
         eps_75 = torch.where(
-            is_heating_feasible, self.eps_75_h.get(), self.eps_75_c.get()
+            is_heating_feasible, params["eps_75_h"], params["eps_75_c"]
         )
         eps_100 = torch.where(
-            is_heating_feasible, self.eps_100_h.get(), self.eps_100_c.get()
+            is_heating_feasible, params["eps_100_h"], params["eps_100_c"]
         )
 
         # Determine operation mode (heating if primary < setpoint, else cooling)
@@ -296,7 +286,7 @@ class AirToAirHeatRecoverySystem(core.System):
 
         # Calculate heat recovery values (computed for all, selected later)
         m_a_max = torch.max(
-            self.primaryAirFlowRateMax.get(), self.secondaryAirFlowRateMax.get()
+            params["primaryAirFlowRateMax"], params["secondaryAirFlowRateMax"]
         )
 
         f_flow = 0.5 * (primary_flow + secondary_flow) / m_a_max
@@ -338,10 +328,40 @@ class AirToAirHeatRecoverySystem(core.System):
         secondary_temp_out = torch.where(
             do_heat_recovery, secondary_temp_out_hr, secondary_temp_in
         )
+        return x, {
+            "primaryTemperatureOut": primary_temp_out,
+            "secondaryTemperatureOut": secondary_temp_out,
+        }
 
-        # Set outputs
-        self.output["primaryTemperatureOut"]._set(primary_temp_out, i_t=step_index)
-        self.output["secondaryTemperatureOut"]._set(secondary_temp_out, i_t=step_index)
+    def do_step(
+        self,
+        second_time: float,
+        date_time: datetime.datetime,
+        step_size: int,
+        step_index: int,
+    ) -> None:
+        """Perform one simulation step.
+
+        Thin port-I/O wrapper delegating the math to :meth:`forward` (heat
+        recovery between supply and exhaust air streams with interpolated
+        effectiveness and heating/cooling mode selection).
+
+        Args:
+            second_time: Current simulation time in seconds.
+            date_time: Current simulation date and time.
+            step_size: Time step size in seconds.
+            step_index: Current simulation step index.
+        """
+        inputs = {name: port.get() for name, port in self.input.items()}
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["primaryTemperatureOut"]._set(
+            outs["primaryTemperatureOut"], i_t=step_index
+        )
+        self.output["secondaryTemperatureOut"]._set(
+            outs["secondaryTemperatureOut"], i_t=step_index
+        )
 
 
 def saref_signature_pattern():

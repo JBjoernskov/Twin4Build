@@ -189,27 +189,18 @@ class CoilTorchSystem(core.System, nn.Module):
             )
         self.INITIALIZED = True
 
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """
-        Perform one step of the coil system simulation.
+    PARAM_NAMES = ()
 
-        The model calculates heating/cooling power based on:
-        - Air flow rate
-        - Inlet air temperature
-        - Outlet air temperature setpoint
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step ideal-coil model (functorch-safe, stateless).
 
-        If the air flow rate is zero, the output power is set to 0.
+        Heating/cooling power from the air-side energy balance with a
+        perfect-transfer assumption (outlet temperature equals the setpoint);
+        zero power below the flow tolerance.
         """
-        # Get inputs (assumed to be tensors)
-        inlet_air_temp = self.input["inletAirTemperature"].get()
-        outlet_air_temp_setpoint = self.input["outletAirTemperatureSetpoint"].get()
-        air_flow_rate = self.input["airFlowRate"].get()
+        inlet_air_temp = inputs["inletAirTemperature"]
+        outlet_air_temp_setpoint = inputs["outletAirTemperatureSetpoint"]
+        air_flow_rate = inputs["airFlowRate"]
 
         # Calculate heating/cooling power based on temperature difference
         tol = 1e-5
@@ -231,10 +222,36 @@ class CoilTorchSystem(core.System, nn.Module):
         # Select heating/cooling power based on mode and flow
         heating_power = torch.where(has_flow & is_heating_mode, power, zero)
         cooling_power = torch.where(has_flow & (~is_heating_mode), power, zero)
+        return x, {
+            "heatingPower": heating_power,
+            "coolingPower": cooling_power,
+            "outletAirTemperature": outlet_air_temp_setpoint,
+        }
 
-        # Update outputs
-        self.output["heatingPower"]._set(heating_power, i_t=step_index)
-        self.output["coolingPower"]._set(cooling_power, i_t=step_index)
+    def do_step(
+        self,
+        second_time: float,
+        date_time: datetime.datetime,
+        step_size: int,
+        step_index: int,
+    ) -> None:
+        """
+        Perform one step of the coil system simulation.
+
+        Thin port-I/O wrapper delegating the math to :meth:`forward`.
+        """
+        inputs = {
+            "inletAirTemperature": self.input["inletAirTemperature"].get(),
+            "outletAirTemperatureSetpoint": self.input[
+                "outletAirTemperatureSetpoint"
+            ].get(),
+            "airFlowRate": self.input["airFlowRate"].get(),
+        }
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["heatingPower"]._set(outs["heatingPower"], i_t=step_index)
+        self.output["coolingPower"]._set(outs["coolingPower"], i_t=step_index)
         self.output["outletAirTemperature"]._set(
-            outlet_air_temp_setpoint, i_t=step_index
+            outs["outletAirTemperature"], i_t=step_index
         )

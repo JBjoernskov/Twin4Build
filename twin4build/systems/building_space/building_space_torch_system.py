@@ -83,7 +83,8 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
        **Thermal-Only Inputs:**
           - supplyAirTemperature, globalIrradiation, heatGain
-          - boundaryTemperature, adjacentZoneTemperature
+          - wallHeatGain (heat flows from connected WallTorchSystem components)
+          - boundaryTemperature (deprecated -- use WallTorchSystem)
 
        **Combined Outputs:**
           - indoorTemperature: From thermal subsystem
@@ -188,7 +189,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
             self.thermal._n_c_compiled = self._n_c_compiled
             self.mass._n_c_compiled = self._n_c_compiled
 
-        if is_compiled and self.thermal.manual_setup_n_adjacent_zones:
+        if is_compiled and self.thermal.manual_setup_n_walls:
             # Compiled meta component: topology values were pre-set by
             # _copy_init_attrs during model compilation.  The meta
             # component's connects_at may have a different connection
@@ -206,15 +207,15 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
                 n_boundary_temperature == 0 or n_boundary_temperature == 1
             ), "Maximum one boundary temperature input is allowed"
 
-            # Find number of adjacent zones
+            # Find number of connected walls
             connection_point = [
-                cp for cp in self.connects_at if cp.input_port == "adjacentZoneTemperature"
+                cp for cp in self.connects_at if cp.input_port == "wallHeatGain"
             ]
-            n_adjacent_zones = (
+            n_walls = (
                 len(connection_point[0].connects_system_through) if connection_point else 0
             )
 
-            self.thermal.n_adjacent_zones = n_adjacent_zones
+            self.thermal.n_walls = n_walls
             self.thermal.n_boundary_temperature = n_boundary_temperature
 
         self.thermal.initialize(start_time, end_time, step_size)
@@ -261,6 +262,16 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
     # State (thermal | mass) is discovered generically by System.get_state /
     # set_state via the owned submodels' ``tps.State`` -- no per-component code.
+
+    #: Fusable coupling ports (see FusedStateSpaceSystem): delegated to the
+    #: thermal submodel, which owns the wall coupling.
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain"})
+    FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
+
+    def _ss_units(self):
+        """State-space leaf units in state order (``thermal`` then ``mass`` --
+        the order :meth:`System.get_state` concatenates)."""
+        return [("thermal", self.thermal), ("mass", self.mass)]
 
     @staticmethod
     def _resolve_sub_params(sub, prefix, params):
@@ -353,7 +364,6 @@ def saref_signature_pattern_sensor():
     sp.add_rule(
         StepRule(subject=node7, object=node8, predicate=core.namespace.SAREF.observes)
     )
-    # sp.add_rule(AnyPathRule(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
     sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
     sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
@@ -363,7 +373,8 @@ def saref_signature_pattern_sensor():
     sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
     sp.add_input("supplyAirTemperature", node7, "measuredValue")
-    # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
+    # Interzonal/boundary coupling is modeled by a separate WallTorchSystem
+    # (wired manually, or via a future wall/adjacency signature pattern).
 
     sp.add_modeled_node(node2)
     return sp
@@ -390,7 +401,6 @@ def saref_signature_pattern():
             core.namespace.S4BLDG.Fan,
         )
     )
-    # node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
 
     sp = SignaturePattern(
         id="building_space_signature_pattern",
@@ -420,7 +430,6 @@ def saref_signature_pattern():
             subject=node0, object=node7, predicate=core.namespace.FSO.hasFluidSuppliedBy
         )
     )
-    # sp.add_rule(AnyPathRule(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
     sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
     sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
@@ -434,7 +443,8 @@ def saref_signature_pattern():
         node7,
         ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"),
     )
-    # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
+    # Interzonal/boundary coupling is modeled by a separate WallTorchSystem
+    # (wired manually, or via a future wall/adjacency signature pattern).
 
     sp.add_modeled_node(node2)
     return sp
@@ -499,7 +509,8 @@ def brick_signature_pattern():  # Fits to site A
     )
     sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
 
-    # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
+    # Interzonal/boundary coupling is modeled by a separate WallTorchSystem
+    # (wired manually, or via a future wall/adjacency signature pattern).
     sp.add_modeled_node(space)
 
     # sp_eq = SignaturePattern(

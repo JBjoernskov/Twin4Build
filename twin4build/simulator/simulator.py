@@ -280,8 +280,16 @@ class Simulator:
                     )
 
         elif iteration_method == "jacobi":
+            # Iterate the EXECUTING components (flat execution order), not
+            # model.components: fused state-space clusters execute through
+            # their FusedStateSpaceSystem, and the member components must not
+            # step themselves.
+            executing = getattr(model, "_flat_execution_order", None)
+            if executing is None:
+                executing = model.flat_execution_order
+
             # Execute all components first
-            for component in model.components.values():
+            for component in executing:
                 component.do_step(
                     second_time,
                     date_time,
@@ -290,7 +298,7 @@ class Simulator:
                 )
 
             # Then assign inputs for next timestep
-            for component in model.components.values():
+            for component in executing:
                 Simulator._assign_component_inputs(component, step_index)
 
     @staticmethod

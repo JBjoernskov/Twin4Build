@@ -228,6 +228,43 @@ class FanTorchSystem(core.System, nn.Module):
 
         self.INITIALIZED = True
 
+    PARAM_NAMES = (
+        "nominalPowerRate",
+        "nominalAirFlowRate",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "f_total",
+    )
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step fan model (functorch-safe, stateless).
+
+        Fan power from the polynomial power curve:
+        ``P = P_nom * (c1 + c2*(m/m_nom) + c3*(m/m_nom)^2 + c4*(m/m_nom)^3)``,
+        outlet temperature from the heat added to the air stream:
+        ``T_out = T_in + (P * f_total) / (m * c_p)``.
+        """
+        m_dot = inputs["airFlowRate"]
+        inlet_temp = inputs["inletAirTemperature"]
+
+        # Calculate normalized flow rate
+        m_norm = m_dot / params["nominalAirFlowRate"]
+
+        # Calculate fan power using polynomial equation
+        power = params["nominalPowerRate"] * (
+            params["c1"]
+            + params["c2"] * m_norm
+            + params["c3"] * m_norm**2
+            + params["c4"] * m_norm**3
+        )
+
+        # Calculate temperature rise
+        delta_T = (power * params["f_total"]) / (m_dot * constants.CP_AIR)
+        outlet_temp = inlet_temp + delta_T
+        return x, {"outletAirTemperature": outlet_temp, "Power": power}
+
     def do_step(
         self,
         second_time: float,
@@ -238,42 +275,16 @@ class FanTorchSystem(core.System, nn.Module):
         """
         Perform one step of the fan system simulation.
 
-        The fan power is calculated using a polynomial equation:
-        P = P_nom * (c1 + c2*(m/m_nom) + c3*(m/m_nom)^2 + c4*(m/m_nom)^3)
-        where:
-        - P is the fan power
-        - P_nom is the nominal power
-        - m is the air flow rate
-        - m_nom is the nominal air flow rate
-        - c1-c4 are polynomial coefficients
-
-        The outlet air temperature is calculated considering the heat added by the fan:
-        T_out = T_in + (P * f_total) / (m * c_p)
-        where:
-        - T_out is the outlet temperature
-        - T_in is the inlet temperature
-        - f_total is the total fan efficiency
-        - c_p is the specific heat capacity of air
+        Thin port-I/O wrapper delegating the math to :meth:`forward`.
         """
-        # Get inputs
-        m_dot = self.input["airFlowRate"].get()
-        inlet_temp = self.input["inletAirTemperature"].get()
-
-        # Calculate normalized flow rate
-        m_norm = m_dot / self.nominalAirFlowRate.get()
-
-        # Calculate fan power using polynomial equation
-        power = self.nominalPowerRate.get() * (
-            self.c1.get()
-            + self.c2.get() * m_norm
-            + self.c3.get() * m_norm**2
-            + self.c4.get() * m_norm**3
+        inputs = {
+            "airFlowRate": self.input["airFlowRate"].get(),
+            "inletAirTemperature": self.input["inletAirTemperature"].get(),
+        }
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
-
-        # Calculate temperature rise
-        delta_T = (power * self.f_total.get()) / (m_dot * constants.CP_AIR)
-        outlet_temp = inlet_temp + delta_T
-
-        # Update outputs
-        self.output["outletAirTemperature"]._set(outlet_temp, i_t=step_index)
-        self.output["Power"]._set(power, i_t=step_index)
+        self.output["outletAirTemperature"]._set(
+            outs["outletAirTemperature"], i_t=step_index
+        )
+        self.output["Power"]._set(outs["Power"], i_t=step_index)

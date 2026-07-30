@@ -24,11 +24,9 @@ def build_model():
     building_space = tb.BuildingSpaceThermalTorchSystem(
         C_air=2000000.0,
         C_wall=10000000.0,
-        C_int=500000.0,
         C_boundary=800000.0,
         R_out=0.005,
         R_in=0.005,
-        R_int=100000,
         R_boundary=10000,
         f_wall=0,
         f_air=0,

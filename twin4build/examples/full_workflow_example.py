@@ -42,6 +42,7 @@ def fcn(self):
 
     Called after the translator generates the simulation model. Adds:
     - Supply water temperature and boundary temperature schedules
+    - A wall component coupling the office to the boundary temperature
     - Sensor data file connections
     - Control setpoints
     - Outdoor environment data
@@ -72,11 +73,34 @@ def fcn(self):
         id="boundary_temp_schedule",
     )
 
+    # The wall toward the neighbouring (unmodeled) space: the office couples
+    # to the boundary-temperature schedule through a 2R1C WallTorchSystem.
+    # The wall owns the wall state, so the heat exchange is energy-consistent
+    # by construction (see the WallTorchSystem docstring).
+    boundary_wall = tb.WallTorchSystem(
+        C=1e6,
+        R_a=0.02,
+        R_b=0.02,
+        id="office_boundary_wall",
+    )
+    self.add_connection(
+        self.components["office"],
+        boundary_wall,
+        "indoorTemperature",
+        "temperatureA",
+    )
     self.add_connection(
         boundary_temp_schedule,
-        self.components["office"],
+        boundary_wall,
         "scheduleValue",
-        "boundaryTemperature",
+        "temperatureB",
+    )
+    self.add_connection(
+        boundary_wall,
+        self.components["office"],
+        "heatFlowRateA",
+        "wallHeatGain",
+        input_port_index=0,
     )
     self.add_connection(
         self.components["outdoor_environment"],
@@ -197,10 +221,17 @@ def fcn(self):
         "damperPosition",
     )
 
-    # Occupancy detector: continuous N_occ → smooth binary (0/1)
+    # Occupancy detector: continuous N_occ → smooth binary (0/1).
+    # The threshold must sit between the unoccupied noise floor (~0) and the
+    # occupied-hours signal: this room's CO2 elevation is weak (~50 ppm at
+    # damper 0.3), which back-solves to only ~0.25 inferred occupants, so a
+    # threshold of 1 person would never trigger and the ventilation branch
+    # would stay off (with a saturated sigmoid the calibration gradient dies
+    # and no solver can recover it).  A moderate steepness keeps the sigmoid
+    # differentiable near the threshold instead of a hard step.
     occupancy_detector = tb.OccupancyDetectorSystem(
-        threshold=1,
-        # steepness=100.0,
+        threshold=0.15,
+        steepness=30.0,
         id="office_occupancy_detector",
     )
     self.add_connection(
@@ -368,6 +399,7 @@ def main():
     occupancy_system = model.components["office_occupancy"]
     occupancy_detector = model.components["office_occupancy_detector"]
     occupancy_controller = model.components["office_occupancy_controller"]
+    boundary_wall = model.components["office_boundary_wall"]
 
     print("Key components:")
     for name, comp in [
@@ -388,10 +420,12 @@ def main():
         # Thermal parameters
         (space, "thermal.C_air", 5e5, 1e4, 5e5),
         (space, "thermal.C_wall", 1e6, 1e5, 3e6),
-        (space, "thermal.C_boundary", 1e6, 1e4, 1e6),
         (space, "thermal.R_out", 0.5, 0.01, 1),
         (space, "thermal.R_in", 0.1, 0.01, 1),
-        (space, "thermal.R_boundary", 0.04, 0.0001, 1),
+        # Boundary wall (WallTorchSystem toward the boundary-temperature schedule)
+        (boundary_wall, "C", 1e6, 1e4, 1e7),
+        (boundary_wall, "R_a", 0.04, 0.0001, 1),
+        (boundary_wall, "R_b", 0.04, 0.0001, 1),
         (space, "thermal.f_wall", 0.1, 0, 10),
         (space, "thermal.f_air", 0.1, 0, 10),
         (space, "thermal.Q_occ_gain", 100.0, 10, 200),
@@ -425,14 +459,23 @@ def main():
             1,
             "shared",
         ),
-        # Mass-balance / occupancy parameters (shared between space and occupancy estimator)
+        # Mass-balance / occupancy parameters (shared between space and occupancy
+        # estimator).  G_occ and m_inf must stay in physically justified ranges:
+        # per-person CO2 generation is well-known physics (~5e-6 kg/s per
+        # person), and if infiltration can grow freely the estimator explains
+        # the indoor-outdoor CO2 elevation with air exchange instead of
+        # occupants -- inferred occupancy drops below the detection threshold,
+        # the ventilation branch never fires (its sigmoid gradient dies), and
+        # the simulated damper/CO2 collapse even though temperature fits.
         ([space, occupancy_system], "mass.V", 65, 50, 80, "shared"),
-        ([space, occupancy_system], "mass.G_occ", 1e-6, 1e-6, 1e-5, "shared"),
-        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 0.01, "shared"),
+        ([space, occupancy_system], "mass.G_occ", 5e-6, 4e-6, 7e-6, "shared"),
+        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 2e-3, "shared"),
         # Occupancy detector threshold
         # (occupancy_detector, "threshold", 0.5, 0.001, 5.0),
-        # Occupancy on/off controller on-value (minimum damper position when occupied)
-        (occupancy_controller, "onValue", 0.3, 0.05, 1.0),
+        # NOTE: the occupancy controller's onValue (minimum damper position
+        # when occupied) is NOT estimated: it is a known BMS constant (0.3 in
+        # the measured damper data), and leaving it free lets the solver
+        # strand it at an arbitrary value once the detection branch is quiet.
     ]
 
     print(f"Total parameter groups: {len(parameters)}")
@@ -621,7 +664,26 @@ def main():
 
     # --- 2.8 Plot Calibrated Results ---
     model.set_save_simulation_result(flag=True)
-    simulator.simulate(step_size=step_size, start_time=start_time, end_time=end_time)
+
+    # Collocation estimates the boundary states along with theta; its RMSEs
+    # are for a simulation starting from the ESTIMATED initial state.  Seed it,
+    # otherwise the default initial conditions (e.g. wall temperature 20 degC,
+    # with day-scale wall time constants) bias the whole horizon.
+    # Single-shooting results carry no estimated state, so skip seeding there.
+    _init_state = result.get("estimated_initial_state")
+
+    def _seed_estimated_initial_state():
+        # get_component: the office+wall pair executes as one fused
+        # state-space block, so the state keys are executing-component ids.
+        for comp_id, x0 in _init_state.items():
+            model.get_component(comp_id).set_state(x0)
+
+    simulator.simulate(
+        step_size=step_size,
+        start_time=start_time,
+        end_time=end_time,
+        after_initialize=_seed_estimated_initial_state if _init_state else None,
+    )
     print("Calibration complete.")
 
     print(len(simulator.date_time_steps[0]))

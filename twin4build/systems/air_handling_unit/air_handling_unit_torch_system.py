@@ -417,6 +417,152 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         self.output["supplyFanPower"]._set(supply_fan_power, i_t=step_index)
         self.output["exhaustFanPower"]._set(exhaust_fan_power, i_t=step_index)
 
+    # -- composed-map support (mirrors BuildingSpaceTorchSystem) -------------
+
+    PARAM_NAMES = ()  # all parameters live on the owned submodels (prefixed)
+
+    _SUB_NAMES = (
+        "supply_damper",
+        "exhaust_damper",
+        "supply_junction",
+        "return_junction",
+        "coil",
+        "heat_recovery",
+        "supply_fan",
+        "exhaust_fan",
+    )
+
+    @staticmethod
+    def _resolve_sub_params(sub, prefix, params):
+        """Full physical-parameter dict for a submodel: estimated values from
+        ``params`` (keyed ``"<prefix>.<name>"``), the rest from the submodel's
+        own ``tps.Parameter`` defaults."""
+        out = {}
+        for name in sub.PARAM_NAMES:
+            key = f"{prefix}.{name}"
+            out[name] = params[key] if key in params else getattr(sub, name).get()
+        return out
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step of the composite AHU (functorch-safe, stateless).
+
+        Chains the submodels' pure ``forward``s in exactly the order
+        :meth:`do_step` steps them (dampers -> junctions -> exhaust fan ->
+        heat recovery -> coil -> supply fan).  ``params`` is keyed by the
+        composite attr path (``"supply_damper.a"``, ``"coil..."``, ...);
+        non-estimated entries fall back to the submodels' defaults.
+        """
+        # Identity-keyed cache: a sequential rollout re-calls forward with the
+        # SAME params dict every step (see OneStepComposer._params_for).
+        cache = getattr(self, "_fwd_param_cache", None)
+        if cache is None or cache[0] is not params:
+            cache = (
+                params,
+                {
+                    n: self._resolve_sub_params(getattr(self, n), n, params)
+                    for n in self._SUB_NAMES
+                },
+            )
+            self._fwd_param_cache = cache
+        P = cache[1]
+
+        # 1) Supply damper: vectorized position -> flow calculation
+        supply_pos_vec = inputs["supplyDamperPosition"]
+        supply_pos_flat = supply_pos_vec.reshape(supply_pos_vec.shape[0], -1)
+        _, d_sup = self.supply_damper.forward(
+            None, {"damperPosition": supply_pos_flat}, P["supply_damper"], sample_time
+        )
+        supply_flow_vec = d_sup["airFlowRate"].reshape(supply_pos_vec.shape)
+
+        # 2) Supply junction: sum branch flows
+        _, j_sup = self.supply_junction.forward(
+            None, {"airFlowRateOut": supply_flow_vec}, P["supply_junction"],
+            sample_time,
+        )
+        supply_flow_total = j_sup["airFlowRateIn"]
+
+        # 3) Exhaust damper: vectorized position -> flow calculation
+        exhaust_pos_vec = inputs["exhaustDamperPosition"]
+        exhaust_pos_flat = exhaust_pos_vec.reshape(exhaust_pos_vec.shape[0], -1)
+        _, d_exh = self.exhaust_damper.forward(
+            None, {"damperPosition": exhaust_pos_flat}, P["exhaust_damper"],
+            sample_time,
+        )
+        exhaust_flow_vec = d_exh["airFlowRate"].reshape(exhaust_pos_vec.shape)
+
+        # 4) Return junction: combine exhaust flows and temperatures
+        _, j_ret = self.return_junction.forward(
+            None,
+            {
+                "airFlowRateIn": exhaust_flow_vec,
+                "airTemperatureIn": inputs["exhaustTemperature"],
+            },
+            P["return_junction"],
+            sample_time,
+        )
+        secondary_flow = j_ret["airFlowRateOut"]
+        return_temp = j_ret["airTemperatureOut"]
+
+        # 5) Exhaust fan (on return stream before heat recovery)
+        _, f_exh = self.exhaust_fan.forward(
+            None,
+            {"airFlowRate": secondary_flow, "inletAirTemperature": return_temp},
+            P["exhaust_fan"],
+            sample_time,
+        )
+
+        # 6) Heat recovery
+        _, hr = self.heat_recovery.forward(
+            None,
+            {
+                "primaryAirFlowRate": supply_flow_total,
+                "secondaryAirFlowRate": secondary_flow,
+                "primaryTemperatureIn": inputs["outdoorAirTemperature"],
+                "secondaryTemperatureIn": f_exh["outletAirTemperature"],
+                "primaryTemperatureOutSetpoint": inputs[
+                    "supplyAirTemperatureSetpoint"
+                ],
+            },
+            P["heat_recovery"],
+            sample_time,
+        )
+
+        # 7) Coil: trim to setpoint & report power
+        _, coil = self.coil.forward(
+            None,
+            {
+                "inletAirTemperature": hr["primaryTemperatureOut"],
+                "outletAirTemperatureSetpoint": inputs[
+                    "supplyAirTemperatureSetpoint"
+                ],
+                "airFlowRate": supply_flow_total,
+            },
+            P["coil"],
+            sample_time,
+        )
+
+        # 8) Supply fan after coil to add temperature rise and power
+        _, f_sup = self.supply_fan.forward(
+            None,
+            {
+                "airFlowRate": supply_flow_total,
+                "inletAirTemperature": coil["outletAirTemperature"],
+            },
+            P["supply_fan"],
+            sample_time,
+        )
+
+        return x, {
+            "supplyAirFlowRate": supply_flow_vec,
+            "exhaustAirFlowRate": exhaust_flow_vec,
+            "supplyAirTemperature": f_sup["outletAirTemperature"],
+            "exhaustAirTemperatureOut": hr["secondaryTemperatureOut"],
+            "heatingPower": coil["heatingPower"],
+            "coolingPower": coil["coolingPower"],
+            "supplyFanPower": f_sup["Power"],
+            "exhaustFanPower": f_exh["Power"],
+        }
+
 
 def brick_signature_pattern():
     """

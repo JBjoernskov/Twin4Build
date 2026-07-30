@@ -304,6 +304,9 @@ class SimulationModel:
         "_flat_execution_order",
         "_required_initialization_connections",
         "_components_no_cycles",
+        "_fused_components",
+        "_fusion_member_to_fused",
+        "enable_fusion",
         "_is_loaded",
         "_is_validated",
         "_result",
@@ -370,6 +373,8 @@ class SimulationModel:
         self._flat_execution_order = []
         self._required_initialization_connections = []
         self._components_no_cycles = {}
+        self._fused_components = {}
+        self._fusion_member_to_fused = {}
         self._saved_parameters = {}
         self._custom_initial_dict = None
         self._is_loaded = False
@@ -2360,6 +2365,10 @@ class SimulationModel:
             fcn(self)
             LOGGER.ok("Applying user-defined function", change_status=True)
 
+        LOGGER.task("Fusing state-space clusters")
+        self._build_fused_clusters()
+        LOGGER.ok("Fusing state-space clusters", change_status=True)
+
         LOGGER.task("Preparing for topological sorting")
         self._get_components_no_cycles()
         LOGGER.ok("Preparing for topological sorting", change_status=True)
@@ -2430,6 +2439,8 @@ class SimulationModel:
         self._flat_execution_order = []  ###
         self._required_initialization_connections = []  ###
         self._components_no_cycles = {}  ###
+        self._fused_components = {}  ###
+        self._fusion_member_to_fused = {}  ###
         self._saved_parameters = {}  ###
 
         # Reset the loaded state
@@ -2472,46 +2483,192 @@ class SimulationModel:
         cycles = simple_cycles(G)
         return cycles
 
+    def _build_fused_clusters(self) -> None:
+        """Detect clusters of components connected through *fusable* arcs and
+        build one :class:`FusedStateSpaceSystem` per cluster.
+
+        A connection is fusable iff its output port is in the sender's
+        ``FUSABLE_OUTPUT_PORTS`` and its input port is in the receiver's
+        ``FUSABLE_INPUT_PORTS`` (e.g. a zone <-> ``WallTorchSystem`` pair).
+        The fused block replaces its members in the execution order -- the
+        internal arcs are eliminated exactly into one monolithic state-space
+        model, so the coupling has no co-simulation lag and is unconditionally
+        stable.  The members stay in ``self._components`` (parameter
+        targeting, port history, serialization); only the topological-sorting
+        graph and the execution order are contracted.
+
+        Populates ``self._fused_components`` (fused id -> fused component)
+        and ``self._fusion_member_to_fused`` (member id -> fused component).
+        Fusion can be disabled by setting ``self.enable_fusion = False``
+        before ``load()``.
+        """
+        from twin4build.systems.utils.fused_statespace_system import (
+            FusedStateSpaceSystem,
+        )
+
+        self._fused_components = {}
+        self._fusion_member_to_fused = {}
+        if not getattr(self, "enable_fusion", True):
+            return
+
+        arcs = []
+        for comp in self._components.values():
+            outs = getattr(type(comp), "FUSABLE_OUTPUT_PORTS", frozenset())
+            if not outs:
+                continue
+            for conn in comp.connected_through:
+                if conn.output_port not in outs:
+                    continue
+                for cp in conn.connects_system_at:
+                    recv = cp.connection_point_of
+                    ins = getattr(type(recv), "FUSABLE_INPUT_PORTS", frozenset())
+                    if cp.input_port not in ins:
+                        continue
+                    if self._components.get(recv.id) is not recv:
+                        continue
+                    slot = cp.input_port_index.get(conn)
+                    if slot is None:
+                        slot = 0  # scalar port
+                    slot = int(slot.item()) if hasattr(slot, "item") else int(slot)
+                    arcs.append((comp, conn.output_port, recv, cp.input_port, slot))
+        if not arcs:
+            return
+
+        # Union-find over member ids.
+        parent = {}
+
+        def find(cid):
+            parent.setdefault(cid, cid)
+            while parent[cid] != cid:
+                parent[cid] = parent[parent[cid]]
+                cid = parent[cid]
+            return cid
+
+        for sender, _, receiver, _, _ in arcs:
+            ra, rb = find(sender.id), find(receiver.id)
+            if ra != rb:
+                parent[ra] = rb
+
+        clusters = {}
+        for cid in parent:
+            clusters.setdefault(find(cid), []).append(cid)
+
+        for root, member_ids in clusters.items():
+            # Deterministic member order: model insertion order.
+            members = [c for c in self._components.values() if c.id in set(member_ids)]
+            if len(members) < 2:
+                continue
+            # Batched (compiled) components are outside fusion's v1 scope.
+            if any(int(getattr(m, "n_c", 1) or 1) != 1 for m in members):
+                LOGGER.info(
+                    "Skipping fusion of cluster %s (batched members)",
+                    [m.id for m in members],
+                )
+                continue
+            member_id_set = {m.id for m in members}
+            internal_arcs = [
+                a for a in arcs
+                if a[0].id in member_id_set and a[2].id in member_id_set
+            ]
+            fused = FusedStateSpaceSystem(
+                members=members,
+                internal_arcs=internal_arcs,
+                id="fused[" + "][".join(m.id for m in members) + "]",
+            )
+            self._fused_components[fused.id] = fused
+            for m in members:
+                self._fusion_member_to_fused[m.id] = fused
+            LOGGER.info(
+                "Fused state-space cluster %s <- %s",
+                fused.id,
+                [m.id for m in members],
+            )
+
+    def _resolve_execution_component(self, component_id: str) -> core.System:
+        """The executing component for an id: a regular component, or the
+        fused block that replaced a cluster in the execution order."""
+        comp = self._components.get(component_id)
+        if comp is not None:
+            return comp
+        return self._fused_components[component_id]
+
+    def get_component(self, component_id: str) -> core.System:
+        """Component by id.
+
+        Resolves regular components and the fused state-space blocks that
+        execute in place of clusters (e.g. for seeding an estimated initial
+        state, whose keys are executing-component ids).
+
+        Args:
+            component_id: The component id.
+
+        Returns:
+            core.System: The component.
+
+        Raises:
+            KeyError: If no component with that id exists.
+        """
+        return self._resolve_execution_component(component_id)
+
     def _copy_components(self) -> core.System:
         """
         Copy the components of the model.
+
+        Fused clusters are contracted here: every member maps to a single
+        copied node standing in for its ``FusedStateSpaceSystem`` (namespaced
+        ports ``"<member_id>.<port>"``), and intra-cluster connections are
+        dropped -- they are eliminated inside the fused block, so cycle
+        removal and topological sorting must not see them.
         """
+        fusion_map = getattr(self, "_fusion_member_to_fused", {})
+
+        def node_of(component):
+            return fusion_map.get(component.id, component)
+
+        def port_names(sender, out_port, receiver, in_port):
+            s_node, r_node = node_of(sender), node_of(receiver)
+            if s_node is not sender:
+                out_port = f"{sender.id}.{out_port}"
+            if r_node is not receiver:
+                in_port = f"{receiver.id}.{in_port}"
+            return out_port, in_port
+
         _new_components = {}
         new_to_old_mapping = {}
         old_to_new_mapping = {}
+
+        def copy_of(component):
+            node = node_of(component)
+            if node not in old_to_new_mapping:
+                new_node = copy.copy(node)
+                new_node.connected_through = []
+                new_node.connects_at = []
+                new_to_old_mapping[new_node] = node
+                old_to_new_mapping[node] = new_node
+                self.add_component(new_node, _new_components)
+            return old_to_new_mapping[node]
+
         for component in self._components.values():
-            if component not in old_to_new_mapping:
-                new_component = copy.copy(component)
-                new_component.connected_through = []
-                new_component.connects_at = []
-                new_to_old_mapping[new_component] = component
-                old_to_new_mapping[component] = new_component
-                self.add_component(new_component, _new_components)
-            else:
-                new_component = old_to_new_mapping[component]
+            new_component = copy_of(component)
 
             for connection in component.connected_through:
                 for connection_point in connection.connects_system_at:
                     connected_component = connection_point.connection_point_of
-                    if connected_component not in old_to_new_mapping:
-                        new_connected_component = copy.copy(connected_component)
-                        new_connected_component.connected_through = []
-                        new_connected_component.connects_at = []
-                        new_to_old_mapping[new_connected_component] = (
-                            connected_component
-                        )
-                        old_to_new_mapping[connected_component] = (
-                            new_connected_component
-                        )
-                    else:
-                        new_connected_component = old_to_new_mapping[
-                            connected_component
-                        ]
+                    if node_of(connected_component) is node_of(component):
+                        # Intra-cluster arc: eliminated inside the fused block.
+                        continue
+                    new_connected_component = copy_of(connected_component)
+                    out_port, in_port = port_names(
+                        component,
+                        connection.output_port,
+                        connected_component,
+                        connection_point.input_port,
+                    )
                     self.add_connection(
                         new_component,
                         new_connected_component,
-                        connection.output_port,
-                        connection_point.input_port,
+                        out_port,
+                        in_port,
                         output_port_index=connection_point.output_port_index[
                             connection
                         ],
@@ -2914,9 +3071,14 @@ class SimulationModel:
         while len(activeComponents) > 0:
             activeComponents = _traverse(self, activeComponents)
 
-        # Map the execution order from the no cycles component dictionary to the full component dictionary.
+        # Map the execution order from the no cycles component dictionary to the
+        # full component dictionary (fused cluster nodes resolve to their
+        # FusedStateSpaceSystem, which executes in place of its members).
         self._execution_order = [
-            [self._components[component.id] for component in component_group]
+            [
+                self._resolve_execution_component(component.id)
+                for component in component_group
+            ]
             for component_group in self._execution_order
         ]
 
@@ -2924,9 +3086,9 @@ class SimulationModel:
         self._required_initialization_connections = [
             connection
             for no_cycle_connection in self._required_initialization_connections
-            for connection in self._components[
+            for connection in self._resolve_execution_component(
                 no_cycle_connection.connects_system.id
-            ].connected_through
+            ).connected_through
             if connection.output_port == no_cycle_connection.output_port
         ]
 

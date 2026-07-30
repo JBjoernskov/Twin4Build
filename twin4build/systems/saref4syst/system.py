@@ -359,13 +359,41 @@ class System:
         invalidates the dict -- and, downstream, those caches -- automatically.
         """
         names = getattr(self, "PARAM_NAMES", ())
-        vals = tuple(getattr(self, n).get() for n in names)
+        # rgetattr: PARAM_NAMES may contain dotted paths into owned
+        # sub-objects (e.g. OccupancySystem's "supply_damper.a").
+        vals = tuple(rgetattr(self, n).get() for n in names)
         cache = getattr(self, "_forward_params_cache", None)
         if cache is not None and all(a is b for a, b in zip(cache[0], vals)):
             return cache[1]
         d = dict(zip(names, vals))
         self._forward_params_cache = (vals, d)
         return d
+
+    #: Ports through which this component may be fused into a monolithic
+    #: state-space block (see ``FusedStateSpaceSystem``).  A connection is
+    #: *fusable* -- eliminable exactly at the matrix level -- iff its output
+    #: port is in the sender's ``FUSABLE_OUTPUT_PORTS`` and its input port is
+    #: in the receiver's ``FUSABLE_INPUT_PORTS``.  Empty on the base class:
+    #: components opt in explicitly.
+    FUSABLE_INPUT_PORTS: frozenset = frozenset()
+    FUSABLE_OUTPUT_PORTS: frozenset = frozenset()
+
+    def _ss_units(self):
+        """The linear/bilinear state-space *leaf* units owned by this component,
+        as ``[(prefix, unit), ...]`` in state order (the order
+        :meth:`collect_states` walks them).
+
+        Each unit exposes ``_build_matrices(p)`` and ``_ss_layout()``; the
+        prefix is the attribute path used to route prefixed parameter names
+        (empty for a leaf component that is its own unit).  Composites
+        override this to enumerate their submodels.
+        """
+        if hasattr(self, "_build_matrices"):
+            return [("", self)]
+        raise NotImplementedError(
+            f"{type(self).__name__} declares fusable ports but has no "
+            "state-space units (_ss_units)."
+        )
 
     def state_size(self) -> int:
         """Total continuous-state width ``D`` (sum of owned state widths)."""

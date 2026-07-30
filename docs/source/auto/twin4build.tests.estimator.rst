@@ -20,3 +20,11 @@ test\_fast\_shooting module
    :show-inheritance:
    :undoc-members:
 
+test\_two\_zone\_wall module
+----------------------------
+
+.. automodule:: twin4build.tests.estimator.test_two_zone_wall
+   :members:
+   :show-inheritance:
+   :undoc-members:
+

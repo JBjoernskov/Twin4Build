@@ -282,6 +282,18 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     PARAM_NAMES = ("V", "G_occ", "m_inf")
 
+    def _ss_layout(self):
+        """Port <-> matrix index map, mirroring :meth:`forward` exactly:
+        ``u = [supplyAirFlowRate, exhaustAirFlowRate, outdoorCO2,
+        numberOfPeople]``; single output row ``indoorCO2``."""
+        return {
+            "u": [
+                ("supplyAirFlowRate", 1), ("exhaustAirFlowRate", 1),
+                ("outdoorCO2", 1), ("numberOfPeople", 1),
+            ],
+            "y": {"indoorCO2": 0},
+        }
+
     def _build_matrices(self, p=None):
         """Build the CO2 mass-balance matrices ``(A, B, C, D, E, F)`` from the
         physical parameters -- a pure function of ``p`` (a dict of physical values

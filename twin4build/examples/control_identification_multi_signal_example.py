@@ -124,10 +124,8 @@ def generate_data_with_twin4build(
     building_space = tb.BuildingSpaceThermalTorchSystem(
         C_air=5e5,
         C_wall=2e6,
-        C_int=1e5,
         R_out=0.01,
         R_in=0.01,
-        R_int=0.02,
         f_wall=0.4,
         f_air=0.2,
         Q_occ_gain=80.0,

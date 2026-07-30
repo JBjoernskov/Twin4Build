@@ -54,6 +54,14 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     # auto-match this class from semantic models.
     sp = None
 
+    # NOT composable: unlike the parent ``PiecewiseLinearSystem`` (fixed
+    # interpolation table -> pure ``forward``), this schedule re-resolves its
+    # (X, Y) table from the wall clock every step (``_resolve_xy(date_time)``)
+    # -- a time source.  Overriding ``forward`` back to ``None`` makes
+    # ``_has_real_forward`` treat it as exogenous, so the composed fast paths
+    # capture its output per step (theta-independent by construction).
+    forward = None
+
     def __init__(
         self,
         defaultX: Optional[List[float]] = None,

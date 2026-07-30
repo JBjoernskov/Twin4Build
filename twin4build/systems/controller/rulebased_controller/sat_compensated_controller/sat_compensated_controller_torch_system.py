@@ -163,6 +163,21 @@ class SATLinearRuleSystem(core.System, nn.Module):
         self.output_min = self.output_min.expand_to_n_c(self.n_c)
         self.output_max = self.output_max.expand_to_n_c(self.n_c)
 
+    PARAM_NAMES = ("base_position", "sat_design", "gain", "output_min", "output_max")
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step linear SAT compensation (functorch-safe, stateless).
+
+        ``output = clamp(base_position + gain * (SAT - sat_design),
+        output_min, output_max)``
+        """
+        deviation = inputs["supplyAirTemp"] - params["sat_design"]
+        raw_output = params["base_position"] + params["gain"] * deviation
+        output = clamp(
+            raw_output, lower=params["output_min"], upper=params["output_max"]
+        )
+        return x, {"inputSignal": output}
+
     def do_step(
         self,
         second_time: float,
@@ -173,23 +188,13 @@ class SATLinearRuleSystem(core.System, nn.Module):
         """
         Compute minimum airflow setpoint from AHU supply air temperature.
 
-        output = clamp(base_position + gain * (SAT - sat_design), output_min, output_max)
+        Thin port-I/O wrapper delegating the math to :meth:`forward`.
         """
-        sat = self.input["supplyAirTemp"].get()
-
-        base = self.base_position.get()
-        design = self.sat_design.get()
-        k = self.gain.get()
-        o_min = self.output_min.get()
-        o_max = self.output_max.get()
-
-        # Linear compensation
-        deviation = sat - design
-        raw_output = base + k * deviation
-
-        output = clamp(raw_output, lower=o_min, upper=o_max)
-
-        self.output["inputSignal"].set(output, step_index)
+        inputs = {"supplyAirTemp": self.input["supplyAirTemp"].get()}
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["inputSignal"].set(outs["inputSignal"], step_index)
 
     def reset_state(self) -> None:
         """Reset controller state (stateless controller, no-op)."""

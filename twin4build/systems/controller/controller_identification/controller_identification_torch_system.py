@@ -104,6 +104,18 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         ...     ],
         ...     id="custom_controller"
         ... )
+
+    Note:
+        This component deliberately has **no composer-style** ``forward``:
+        its estimable parameters (``alpha_{a}``, ``beta_{a}``, ``gamma_{a}``,
+        ``gamma_gate_{a}``, ...) are multi-element (``n_c > 1``)
+        ``tps.Parameter`` vectors, which the composed fast paths reject
+        upstream (``Estimator._composer_theta_spec`` raises on any
+        multi-branch parameter) -- so a pure ``forward`` here could never be
+        exercised by those paths.  Estimation with theta on this component
+        always uses the exact object-graph objective;
+        ``OneStepComposer._validate_theta_influence`` guarantees the
+        fallback instead of silently freezing theta-dependent signals.
     """
 
     # Controller type constants -- each defines a signal routing strategy

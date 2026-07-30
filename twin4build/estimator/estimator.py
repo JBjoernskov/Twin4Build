@@ -1814,6 +1814,21 @@ class Estimator:
         n_private_unique = len(private_params)
 
         for components, attr, x0, lb, ub in shared_params:
+            # All members of a shared group MUST use the same normalization
+            # scaling: the objective denormalizes each member with its own
+            # parameter's scaling, so a mismatch would silently assign
+            # DIFFERENT physical values (and gradients) to the "shared"
+            # parameter for the same normalized theta.
+            scalings = {
+                getattr(rgetattr(c, attr), "scaling", "linear") for c in components
+            }
+            if len(scalings) > 1:
+                raise ValueError(
+                    f"Shared parameter group {[c.id for c in components]} attr "
+                    f"'{attr}' mixes normalization scalings {sorted(scalings)}; "
+                    "all members of a shared group must use the same "
+                    "tps.Parameter scaling."
+                )
             # Get n_c from first component (all shared components should have same n_c)
             param = rgetattr(components[0], attr)
             n_c = param.n_c if hasattr(param, "n_c") else 1
@@ -1929,11 +1944,54 @@ class Estimator:
             zip(self._flat_components, self._parameter_names)
         ):
             idx = int(self._theta_slices[int(self._theta_mask[j])][0])
-            theta_spec.append((comp, attr, idx))
+            owner, owner_attr = self._composed_owner(comp, attr)
+            theta_spec.append((owner, owner_attr, idx))
             rep.setdefault(idx, self._flat_parameters[j])
         unique_parameters = [rep[i] for i in range(len(rep))]
         assert len(unique_parameters) == len(self._x0_norm)
         return theta_spec, unique_parameters
+
+    def _composed_owner(self, comp, attr) -> Tuple[object, str]:
+        """Remap a theta entry on a nested sub-object onto its owning model
+        component with a prefixed attribute path.
+
+        Users may put theta directly on an owned sub-object -- e.g. the
+        ``OccupancySystem``'s internal ``supply_damper`` (shared with a model
+        damper).  The composer routes parameters by *model component*, so such
+        entries must become ``(owner, "supply_damper.a")``.  Components that
+        are themselves in the model pass through unchanged (including
+        composites addressed with dotted attrs like ``(office,
+        "thermal.C_air")``).
+        """
+        model = self.simulator.model
+        sim_model = getattr(model, "_simulation_model", None) or model
+        components = model.components
+
+        def _fused_owner(base, base_attr):
+            # A fused-cluster member is in ``components`` but does not
+            # execute; its theta is routed through the owning
+            # FusedStateSpaceSystem under the member's module key (see
+            # FusedStateSpaceSystem._unit_params).
+            fusion_map = (
+                getattr(sim_model, "_fusion_member_to_fused", None) or {}
+            )
+            fused = fusion_map.get(getattr(base, "id", None))
+            if fused is not None:
+                return fused, f"{fused._member_keys[base.id]}.{base_attr}"
+            return base, base_attr
+
+        cid = getattr(comp, "id", None)
+        if cid is not None and components.get(cid) is comp:
+            return _fused_owner(comp, attr)
+        for owner in components.values():
+            # nn.Module owners keep sub-module attributes in ``_modules``
+            # (e.g. OccupancySystem.supply_damper), not ``__dict__``.
+            attrs = dict(vars(owner))
+            attrs.update(getattr(owner, "_modules", None) or {})
+            for name, val in attrs.items():
+                if val is comp:
+                    return _fused_owner(owner, f"{name}.{attr}")
+        return comp, attr
 
     def _param_values_to_theta(self, values: List[np.ndarray]) -> np.ndarray:
         """
@@ -3611,6 +3669,14 @@ class Estimator:
             try:
                 z = theta.detach().clone().requires_grad_(True)
                 (g,) = torch.autograd.grad(self._fast_obj.loglike(z, output), z)
+                if not torch.isfinite(g).all():
+                    # A partially-diverged rollout can produce a finite loss
+                    # with nan gradient entries; hand the solver zeros so it
+                    # backtracks instead of stepping on nan.
+                    LOGGER.warning(
+                        "fast jacobian non-finite -- returning zero gradient"
+                    )
+                    g = torch.zeros_like(g)
                 self._jac = g.detach()
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(

@@ -1082,10 +1082,12 @@ def theta_bound_tensors(parameters):
     subclass and breaks under functorch).  Scalar bounds only (``n_c == 1``).
     """
     lb = torch.tensor(
-        [float(np.asarray(p.min_value.detach()).flatten()[0]) for p in parameters]
+        [float(np.asarray(p.min_value.detach()).flatten()[0]) for p in parameters],
+        dtype=torch.float64,
     )
     ub = torch.tensor(
-        [float(np.asarray(p.max_value.detach()).flatten()[0]) for p in parameters]
+        [float(np.asarray(p.max_value.detach()).flatten()[0]) for p in parameters],
+        dtype=torch.float64,
     )
     log_mask = torch.tensor(
         [getattr(p, "scaling", "linear") == "log" for p in parameters]

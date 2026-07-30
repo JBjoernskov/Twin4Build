@@ -42,6 +42,12 @@ class PassInputToOutput(core.System):
         for output in self.output.values():
             output.initialize(n_t=max_timesteps, n_s=batch_size)
 
+    PARAM_NAMES = ()
+
+    def forward(self, x, inputs, params, sample_time):
+        """Pure one-step pass-through (functorch-safe, stateless)."""
+        return x, {"value": inputs["value"]}
+
     def do_step(
         self,
         second_time: float,
@@ -49,4 +55,8 @@ class PassInputToOutput(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        self.output["value"]._set(self.input["value"].get(), i_t=step_index)
+        inputs = {"value": self.input["value"].get()}
+        _, outs = self.forward(
+            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        )
+        self.output["value"]._set(outs["value"], i_t=step_index)

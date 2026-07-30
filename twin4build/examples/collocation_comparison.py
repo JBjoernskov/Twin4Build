@@ -209,8 +209,10 @@ def estimate_and_predict(tag, method, options, periods, param_set="full"):
         if seed_initial_state and est_x0:
             # est_x0 blocks are (n_periods, n_c, state); simulate below runs
             # period 0 only, so seed with the first period's block.
+            # get_component: state keys are EXECUTING-component ids, which for
+            # fused clusters (e.g. office+wall) is the fused block's id.
             for cid, block in est_x0.items():
-                model.components[cid].set_state(block[0:1])
+                model.get_component(cid).set_state(block[0:1])
 
     est.simulator.simulate(
         start_time=start_list[0], end_time=end_list[0], step_size=STEP_SIZE,

@@ -171,5 +171,105 @@ class TestFastSingleShootingSharedTheta(TestFastSingleShooting):
         )
 
 
+def occupancy_theta_parameters(model):
+    """The example parameter set with the space's ``mass.V`` SHARED with the
+    ``OccupancySystem`` (theta flows through the occupancy estimator's
+    inverse-CO2 balance -- the configuration behind the full-workflow
+    stage-1 NaN bug when occupancy was not composable)."""
+    occupancy = model.components["office_occupancy"]
+    space = model.components["office"]
+    params = [
+        p
+        for p in example_parameters(model)
+        if not (p[0] is space and p[1] == "mass.V")
+    ]
+    params.append(([space, occupancy], "mass.V", 80, 10, 300, "shared"))
+    return params
+
+
+class TestFastSingleShootingOccupancyTheta(TestFastSingleShooting):
+    """Value+gradient parity with theta THROUGH the occupancy estimator.
+
+    ``OccupancySystem`` composes via its pure ``forward``: the measured CO2 /
+    damper data enters through captured data ports (theta-independent by
+    construction) while ``mass.V`` -- here shared with the space and remapped
+    onto the occupancy's internal sub-object path by
+    ``Estimator._composer_theta_spec`` -- is threaded through ``F``.  This is
+    the exact configuration that previously forced the object-graph fallback
+    (and, before the ``_validate_theta_influence`` guard, silently dropped
+    the gradient paths through the frozen ``numberOfPeople`` signal).
+    Inherits both parity tests from :class:`TestFastSingleShooting`.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        model = load_model()
+        cls.estimator = tb.Estimator(tb.Simulator(model))
+        cls.parameters = occupancy_theta_parameters(model)
+        cls.measurements = example_measurements(model)
+        start = EXAMPLE_START[0]
+        end = start + datetime.timedelta(hours=24)
+
+        cls.estimator.estimate(
+            parameters=cls.parameters,
+            measurements=cls.measurements,
+            start_time=[start],
+            end_time=[end],
+            step_size=STEP_SIZE,
+            n_warmup=5,
+            method=("scipy", "SLSQP", "ad"),
+            options={"maxiter": 1, "fast": True},
+        )
+
+
+class TestFastSingleShootingNonComposableTheta(unittest.TestCase):
+    """Theta on a NON-composable component must disable the fast path.
+
+    A component without a functorch-safe ``forward`` is treated as exogenous:
+    the composed map freezes its outputs into captured constants.  With a
+    theta parameter on such a component the frozen signal is theta-dependent:
+    the composed objective would match the object graph in VALUE at the
+    reference theta while its gradient silently dropped the paths through the
+    frozen signal.  ``OneStepComposer._validate_theta_influence`` must reject
+    the build and the estimator must fall back to the object graph.
+
+    ``OccupancySystem`` is composable nowadays (and its ``do_step`` delegates
+    to ``forward``), so the scenario is recreated by making the composer's
+    composability predicate reject it.
+    """
+
+    def test_falls_back_to_object_graph(self):
+        import twin4build.simulator._composed as composed
+        from twin4build.systems.utils.occupancy_system import OccupancySystem
+
+        model = load_model()
+        estimator = tb.Estimator(tb.Simulator(model))
+        start = EXAMPLE_START[0]
+        end = start + datetime.timedelta(hours=6)
+
+        saved = composed._has_real_forward
+        composed._has_real_forward = (
+            lambda c: not isinstance(c, OccupancySystem) and saved(c)
+        )
+        try:
+            estimator.estimate(
+                parameters=occupancy_theta_parameters(model),
+                measurements=example_measurements(model),
+                start_time=[start],
+                end_time=[end],
+                step_size=STEP_SIZE,
+                n_warmup=0,
+                method=("scipy", "SLSQP", "ad"),
+                options={"maxiter": 1, "fast": True},
+            )
+        finally:
+            composed._has_real_forward = saved
+        self.assertIsNone(
+            estimator._fast_obj,
+            "fast objective was built although a theta component "
+            "(office_occupancy) is outside the composed influence cone",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
