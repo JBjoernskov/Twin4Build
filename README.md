@@ -118,6 +118,21 @@ tb.plot.plot(
 )
 ```
 
+### GPU support
+
+Models expose a torch-style `to(device, dtype)` API. After `model.load()`, a single call moves every component tensor (parameters and their bounds, states, state-space matrices, schedule tables) to the target device, and the Simulator, Estimator, and Optimizer compute there end to end - data only returns to the CPU at the scipy/IPOPT and plotting boundaries:
+
+```python
+model.to("cuda")                     # run on the GPU in float64 (the default dtype)
+model.to("cuda", torch.float32)      # opt-in single precision (fast on consumer GPUs)
+model.to("cpu", torch.float64)       # back to the defaults
+```
+
+Two things to know:
+
+- **`float32` is the mode that pays off on consumer GPUs** (e.g. a Colab T4 runs float64 at 1/32 of its float32 throughput). The default stays `float64` everywhere; `dtype` is a process-wide setting, so use one dtype per process.
+- **A single small-model run is not faster on the GPU.** Simulation steps of a few-zone model are microsecond-scale operations, so kernel-launch latency dominates at batch size 1. GPU execution is the enabler for *batched* workflows - multi-start estimation, scenario/ensemble studies, portfolios of buildings (via the component batch dimension `n_c`) - and for large many-zone models. See `twin4build/examples/gpu_benchmark_estimation.ipynb` and `twin4build/examples/gpu_benchmark_optimizer.ipynb` for measurements.
+
 ## Installation
 
 The package is installed with pip:

@@ -662,7 +662,7 @@ class ScheduleSystem(core.System):
 
             # Convert values from (n_s, n_t) to time-first (n_t, n_s, n_c) where n_c=1
             # First transpose to (n_t, n_s), then unsqueeze to (n_t, n_s, 1)
-            values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(
+            values = torch.tensor(values, dtype=tps.float_dtype()).T.unsqueeze(
                 -1
             )  # (n_t, n_s, 1)
             self.output["scheduleValue"].initialize(

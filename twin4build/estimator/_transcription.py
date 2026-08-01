@@ -52,6 +52,7 @@ import numpy as np
 import torch
 from torch.func import jacrev, vmap
 
+import twin4build.utils.types as tps
 from twin4build.simulator._composed import StateLayout as _StateLayout
 from twin4build.simulator._composed import collect_stateful as _collect_stateful
 from twin4build.utils.print_progress import LOGGER
@@ -102,6 +103,11 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     options = dict(options or {})
     import twin4build.core as core
 
+    # IPOPT/CasADi stays on the CPU (small numpy vectors); the torch rollouts
+    # and Jacobians run on the model's device.  Inbound z vectors are placed
+    # on `dev`, outbound values go through .cpu().numpy().
+    dev = self.simulator.model.device
+
     if method[0] != "casadi":
         raise ValueError(
             "Transcription solves require the CasADi/IPOPT backend -- use "
@@ -118,7 +124,7 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     # Builds the state layout and seeds each segment's initial state from a
     # dynamically-consistent trajectory.
     x0_param_values = self._theta_to_param_values(
-        torch.tensor(self._x0_norm, dtype=torch.float64)
+        torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=dev)
     )
     self.simulator.model.set_parameters(
         x0_param_values, self._flat_components, self._parameter_names,
@@ -170,7 +176,7 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
             seg_is_warmup.append(i < self._n_warmup)
             for md, _ in self._measurements:
                 seg_actual[md.id].append(
-                    torch.tensor(actual_p[md.id][bounds_p[i]:bounds_p[i + 1]], dtype=torch.float64)
+                    torch.tensor(actual_p[md.id][bounds_p[i]:bounds_p[i + 1]], dtype=tps.float_dtype(), device=dev)
                 )
             if i < Kp - 1:
                 continuity_pairs.append((g, g + 1))
@@ -204,7 +210,7 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     # ---- Decision vector z = [theta_norm | s_norm.flatten()] ---------------
     z0 = np.concatenate([
         np.asarray(self._x0_norm, dtype=np.float64),
-        seg_state0_norm.reshape(-1).detach().numpy(),
+        seg_state0_norm.reshape(-1).detach().cpu().numpy(),
     ])
     lb = np.concatenate([
         np.asarray(self._lb_norm, dtype=np.float64),
@@ -287,6 +293,9 @@ def _solve_sparse_collocation(
       differences (theta is low-dimensional, so this is cheap).
     * ``d defect_l / d s_norm[j]`` = ``-I``.
     """
+    # IPOPT itself stays on the CPU; the torch evaluations run on the model's
+    # device (inbound z -> dev, outbound -> .cpu().numpy()).
+    dev = self.simulator.model.device
     cp = [(int(a), int(b)) for a, b in continuity_pairs]
     n_links = len(cp)
     n_g = n_links * D
@@ -343,7 +352,7 @@ def _solve_sparse_collocation(
         # physical bounds + scaling (tps.Parameter.denormalize is a
         # Tensor-subclass method and breaks under functorch) -- one
         # representative parameter per unique theta entry.
-        lb_t, ub_t, log_mask = theta_bound_tensors(unique_parameters)
+        lb_t, ub_t, log_mask = theta_bound_tensors(unique_parameters, device=dev)
         composer = comp
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning("Composer unavailable (%s) -- using finite-difference Jacobian.", exc)
@@ -388,11 +397,11 @@ def _solve_sparse_collocation(
         if _c["key"] == key:
             return _c["f"], _c["gf"]
         self._eval_count += 1
-        zt = torch.tensor(z, dtype=torch.float64, requires_grad=True)
+        zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev, requires_grad=True)
         mse, raw_mse, _ = _simulate(zt[:n_theta], zt[n_theta:].reshape(n_seg, D))
         (gf,) = torch.autograd.grad(mse, zt)
         self._last_rmse = float(raw_mse.detach()) ** 0.5
-        _c.update(key=key, f=float(mse.detach()), gf=gf.detach().numpy())
+        _c.update(key=key, f=float(mse.detach()), gf=gf.detach().cpu().numpy())
         if self._eval_count % 10 == 1:
             LOGGER.iter("eval=%d | obj=%.6f | rmse=%.4f", self._eval_count, _c["f"], self._last_rmse)
         return _c["f"], _c["gf"]
@@ -408,11 +417,11 @@ def _solve_sparse_collocation(
         return torch.stack(rows, dim=0)  # (n_links, D)
 
     def g_fun(z):
-        zt = torch.tensor(z, dtype=torch.float64)
+        zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev)
         with torch.no_grad():
             _, _, end_norm = _simulate(zt[:n_theta], zt[n_theta:].reshape(n_seg, D))
         s_norm = zt[n_theta:].reshape(n_seg, D)
-        return _defect_from_end(end_norm, s_norm).reshape(-1).numpy()
+        return _defect_from_end(end_norm, s_norm).reshape(-1).cpu().numpy()
 
     # Fixed sparsity pattern (rows, cols), in the exact order g_jac_vals fills.
     jac_rows, jac_cols = [], []
@@ -443,8 +452,8 @@ def _solve_sparse_collocation(
                 vals.append(-1.0)  # d defect_r / d s_norm[j, r]
         return np.asarray(vals, dtype=np.float64)
 
-    cp_i = torch.tensor([i for i, _ in cp], dtype=torch.long)
-    cp_j = torch.tensor([j for _, j in cp], dtype=torch.long)
+    cp_i = torch.tensor([i for i, _ in cp], dtype=torch.long, device=dev)
+    cp_j = torch.tensor([j for _, j in cp], dtype=torch.long, device=dev)
 
     # ===== Augmented-state vmap-F path ======================================
     # Compute the objective, defects AND Jacobian from a single vmap(F_aug) with
@@ -465,11 +474,11 @@ def _solve_sparse_collocation(
     jac_rows_a = jac_cols_a = None
     n_g_a = n_links * Da
     if composer is not None and composer.meas_sources:
-        z0t = torch.tensor(z0, dtype=torch.float64)
+        z0t = torch.tensor(z0, dtype=tps.float_dtype(), device=dev)
         with torch.no_grad():
             _simulate(z0t[:n_theta], z0t[n_theta:].reshape(n_seg, D))
-        theta0_phys = _denorm(torch.tensor(z0[:n_theta], dtype=torch.float64))
-        s0_phys = s_from_norm(torch.tensor(z0[n_theta:], dtype=torch.float64).reshape(n_seg, D))
+        theta0_phys = _denorm(torch.tensor(z0[:n_theta], dtype=tps.float_dtype(), device=dev))
+        s0_phys = s_from_norm(torch.tensor(z0[n_theta:], dtype=tps.float_dtype(), device=dev).reshape(n_seg, D))
         # Continuity chains: segment -> next segment within the same period.
         _next_of = dict(cp)
         _chains = []
@@ -486,8 +495,8 @@ def _solve_sparse_collocation(
         # and Gauss-Seidel consumption semantics for the feedback warm start).
         # Segments are one step each, so the rollout's per-timestep rows map
         # 1:1 onto the chain's segment indices.
-        CAP = torch.zeros((n_seg, len(composer._captured_keys)), dtype=torch.float64)
-        fb0 = torch.zeros((n_seg, n_fb), dtype=torch.float64)
+        CAP = torch.zeros((n_seg, len(composer._captured_keys)), dtype=tps.float_dtype(), device=dev)
+        fb0 = torch.zeros((n_seg, n_fb), dtype=tps.float_dtype(), device=dev)
         R = self.simulator.capture_rollout(
             composer,
             [seg_starts[chain[0]] for chain in _chains],
@@ -495,7 +504,7 @@ def _solve_sparse_collocation(
             [seg_steps[chain[0]] for chain in _chains],
         )
         for p, chain in enumerate(_chains):
-            idx = torch.tensor(chain[: R.n_t[p]], dtype=torch.long)
+            idx = torch.tensor(chain[: R.n_t[p]], dtype=torch.long, device=dev)
             CAP[idx] = R.CAP[p][: len(idx)]
             fb0[idx] = R.FB[p][: len(idx)]
         fb_center = fb0.mean(dim=0)
@@ -504,8 +513,8 @@ def _solve_sparse_collocation(
         fb_scale = torch.maximum(fb0.std(dim=0), 0.1 * fb_center.abs() + 1e-3)
 
         md_list = [md for md, _ in self._measurements]
-        SD_meas = torch.tensor([float(sd) for _, sd in self._measurements], dtype=torch.float64)
-        ACT = torch.zeros((n_seg, len(md_list)), dtype=torch.float64)
+        SD_meas = torch.tensor([float(sd) for _, sd in self._measurements], dtype=tps.float_dtype(), device=dev)
+        ACT = torch.zeros((n_seg, len(md_list)), dtype=tps.float_dtype(), device=dev)
         for m, md in enumerate(md_list):
             for gi in range(n_seg):
                 ACT[gi, m] = float(torch.as_tensor(seg_actual[md.id][gi]).reshape(-1)[0])
@@ -514,9 +523,9 @@ def _solve_sparse_collocation(
         # the initial transient (e.g. CO2 settling from the default init, ~300 ppm)
         # that single-shooting throws away, which dominates the (all-sensor)
         # objective and drags the optimum off the good (temperature) solution.
-        _incl = torch.tensor([not w for w in (seg_is_warmup or [False] * n_seg)], dtype=torch.bool)
+        _incl = torch.tensor([not w for w in (seg_is_warmup or [False] * n_seg)], dtype=torch.bool, device=dev)
         if not bool(_incl.any()):
-            _incl = torch.ones(n_seg, dtype=torch.bool)
+            _incl = torch.ones(n_seg, dtype=torch.bool, device=dev)
         LOGGER.config("Collocation objective: scoring %d/%d segments (%d warmup excluded)",
                       int(_incl.sum()), n_seg, n_seg - int(_incl.sum()))
 
@@ -554,7 +563,7 @@ def _solve_sparse_collocation(
             LOGGER.config("Data-informed warm start: readouts %s | seeded %s", allmap, seeded)
         y0_norm = y_to_norm(y0_phys)
         z0_a = np.concatenate([np.asarray(z0[:n_theta], dtype=np.float64),
-                               y0_norm.reshape(-1).detach().numpy()])
+                               y0_norm.reshape(-1).detach().cpu().numpy()])
         # Generous box on the boundary variables; feedback lag variables get a
         # wider box than states since their robust scale can under-shoot.
         seg_lb = np.concatenate([np.full(D, -6.0), np.full(n_fb, -30.0)])
@@ -600,24 +609,24 @@ def _solve_sparse_collocation(
         if _c["key"] == key:
             return _c["f"], _c["gf"]
         self._eval_count += 1
-        zt = torch.tensor(z, dtype=torch.float64)
+        zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev)
         with torch.no_grad():
             _, Meas = _fwd_all(zt[:n_theta], zt[n_theta:].reshape(n_seg, Da))
             mse = float((((ACT - Meas) / SD_meas) ** 2)[_incl].mean())
             self._last_rmse = float(((ACT - Meas) ** 2)[_incl].mean()) ** 0.5
-        gf = torch.func.grad(_mse_of_z)(zt).numpy()
+        gf = torch.func.grad(_mse_of_z)(zt).cpu().numpy()
         _c.update(key=key, f=mse, gf=gf)
         if self._eval_count % 10 == 1:
             LOGGER.iter("eval=%d | obj=%.6f | rmse=%.4f", self._eval_count, mse, self._last_rmse)
         return mse, gf
 
     def g_fun_fast(z):
-        zt = torch.tensor(np.asarray(z, dtype=np.float64), dtype=torch.float64)
+        zt = torch.tensor(np.asarray(z, dtype=np.float64), dtype=tps.float_dtype(), device=dev)
         y_norm = zt[n_theta:].reshape(n_seg, Da)
         with torch.no_grad():
             Y_next, _ = _fwd_all(zt[:n_theta], y_norm)
             defect = Y_next[cp_i] - y_norm[cp_j]
-        return defect.reshape(-1).numpy()
+        return defect.reshape(-1).cpu().numpy()
 
     def _end_norm_fn(y_norm_i, theta_norm, captured_i):
         Yn, _ = composer.F_aug(y_from_norm(y_norm_i), _denorm(theta_norm), captured_i)
@@ -634,7 +643,7 @@ def _solve_sparse_collocation(
         key = z.tobytes()
         if _dcache["key"] == key:
             return _dcache
-        zt = torch.tensor(z, dtype=torch.float64)
+        zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev)
         theta_norm = zt[:n_theta]
         y_norm = zt[n_theta:].reshape(n_seg, Da)
 
@@ -657,12 +666,14 @@ def _solve_sparse_collocation(
         Jx = d["Jx"][cp_i, :Da, :]  # (n_links, Da, Da)
         # Value ordering matches (jac_rows_a, jac_cols_a): per link l, per defect
         # row r: [d/d theta (n_theta), d/d y_i (Da), -1 (the y_j identity)].
-        neg1 = -torch.ones((n_links, Da, 1), dtype=torch.float64)
-        return torch.cat([Jt, Jx, neg1], dim=2).reshape(-1).numpy().astype(np.float64)
+        neg1 = -torch.ones((n_links, Da, 1), dtype=tps.float_dtype(), device=dev)
+        return (
+            torch.cat([Jt, Jx, neg1], dim=2).reshape(-1).cpu().numpy().astype(np.float64)
+        )
 
     def g_jac_vals_fd(z):
         z = np.asarray(z, dtype=np.float64)
-        zt = torch.tensor(z, dtype=torch.float64, requires_grad=True)
+        zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev, requires_grad=True)
         _, _, end_norm = _simulate(zt[:n_theta], zt[n_theta:].reshape(n_seg, D))
         J_s = []
         for r in range(D):
@@ -675,7 +686,7 @@ def _solve_sparse_collocation(
         J_theta = []
         for c in range(n_theta):
             zp = z.copy(); zp[c] += eps
-            ztp = torch.tensor(zp, dtype=torch.float64)
+            ztp = torch.tensor(zp, dtype=tps.float_dtype(), device=dev)
             with torch.no_grad():
                 _, _, end_p = _simulate(ztp[:n_theta], ztp[n_theta:].reshape(n_seg, D))
             J_theta.append(((end_p - end0) / eps))
@@ -739,7 +750,7 @@ def _solve_sparse_collocation(
         ``(n_periods, n_c, state_size)`` so the dict can seed a batched
         multi-period ``simulate`` directly via ``component.set_state``."""
         z_full = np.asarray(z_full, dtype=np.float64)
-        y = from_norm(torch.tensor(z_full[n_theta:], dtype=torch.float64).reshape(n_seg, dim))
+        y = from_norm(torch.tensor(z_full[n_theta:], dtype=tps.float_dtype(), device=dev).reshape(n_seg, dim))
         x0 = y[list(period_starts), :D]  # (n_periods, D); feedback lag vars trail
         d = {}
         for comp, (start, stop), (n_c, ss) in zip(
@@ -768,9 +779,9 @@ def _solve_sparse_collocation(
     if _os.environ.get("TWIN4BUILD_BENCH_TIMESTEP") and composer is not None and CAP is not None:
         import time as _time
 
-        th0 = torch.tensor(z0_a[:n_theta], dtype=torch.float64)
-        y0 = torch.tensor(z0_a[n_theta:], dtype=torch.float64).reshape(n_seg, Da)
-        s0 = torch.tensor(z0[n_theta:], dtype=torch.float64).reshape(n_seg, D)
+        th0 = torch.tensor(z0_a[:n_theta], dtype=tps.float_dtype(), device=dev)
+        y0 = torch.tensor(z0_a[n_theta:], dtype=tps.float_dtype(), device=dev).reshape(n_seg, Da)
+        s0 = torch.tensor(z0[n_theta:], dtype=tps.float_dtype(), device=dev).reshape(n_seg, D)
         with torch.no_grad():
             Yn, _ = _fwd_all(th0, y0)                 # warm up vmap path
             _, _, end_old = _simulate(th0, s0)        # warm up object-graph path
@@ -811,7 +822,7 @@ def _solve_sparse_collocation(
           depend on theta / the states (cut control loops).
         """
         z = np.asarray(result.x, dtype=np.float64)
-        zt = torch.tensor(z, dtype=torch.float64)
+        zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev)
         theta_norm = zt[:n_theta]
         y_norm = zt[n_theta:].reshape(n_seg, Da)
         g_vals = np.asarray(g_fun_fast(z), dtype=np.float64)
@@ -876,14 +887,14 @@ def _solve_sparse_collocation(
                 "nlp_rmse": e_nlp, "rollout_rmse": e_roll, "do_step_rmse": e_step,
             }
         # Active box bounds on the (non-pinned) boundary variables.
-        lb_m = torch.tensor(lb_a[n_theta:], dtype=torch.float64).reshape(n_seg, Da)
-        ub_m = torch.tensor(ub_a[n_theta:], dtype=torch.float64).reshape(n_seg, Da)
+        lb_m = torch.tensor(lb_a[n_theta:], dtype=tps.float_dtype(), device=dev).reshape(n_seg, Da)
+        ub_m = torch.tensor(ub_a[n_theta:], dtype=tps.float_dtype(), device=dev).reshape(n_seg, Da)
         free = (ub_m - lb_m) > 1e-12
         at_bound = ((y_norm - lb_m).abs() < 1e-6) | ((ub_m - y_norm).abs() < 1e-6)
         audit["n_active_state_bounds"] = int(at_bound[free].sum())
         audit["n_free_state_vars"] = int(free.sum())
-        th_lb = torch.tensor(lb_a[:n_theta], dtype=torch.float64)
-        th_ub = torch.tensor(ub_a[:n_theta], dtype=torch.float64)
+        th_lb = torch.tensor(lb_a[:n_theta], dtype=tps.float_dtype(), device=dev)
+        th_ub = torch.tensor(ub_a[:n_theta], dtype=tps.float_dtype(), device=dev)
         audit["n_theta_at_bounds"] = int(
             (((theta_norm - th_lb).abs() < 1e-6) | ((th_ub - theta_norm).abs() < 1e-6)).sum()
         )
@@ -943,7 +954,7 @@ def _solve_sparse_collocation(
             options.setdefault("acceptable_dual_inf_tol", 1e10)
             options.setdefault("acceptable_compl_inf_tol", 1e3)
             options.setdefault("acceptable_obj_change_tol", 1e-4)
-            incl_np = np.nonzero(_incl.numpy())[0]
+            incl_np = np.nonzero(_incl.cpu().numpy())[0]
             n_i = len(incl_np)
             iu_t = np.triu_indices(n_theta)
             iu_y = np.triu_indices(Da)
@@ -959,7 +970,7 @@ def _solve_sparse_collocation(
                 cols_h.append(base + iu_y[1])
             hess_rows = np.concatenate(rows_h).astype(np.int64)
             hess_cols = np.concatenate(cols_h).astype(np.int64)
-            incl_t = torch.tensor(incl_np, dtype=torch.long)
+            incl_t = torch.tensor(incl_np, dtype=torch.long, device=dev)
             gn_scale = 2.0 / float(n_i * len(md_list))
 
             def hess_vals_fn(z, sigma):
@@ -967,7 +978,9 @@ def _solve_sparse_collocation(
                 Jt_ = d["Jt"][incl_t, Da:, :]  # (n_i, n_meas, n_theta)
                 Jy = d["Jx"][incl_t, Da:, :]   # (n_i, n_meas, Da)
                 Js = torch.cat([Jt_, Jy], dim=2)  # (n_i, n_meas, nt+Da)
-                B = (torch.einsum("gmi,gmj->gij", Js, Js) * (float(sigma) * gn_scale)).numpy()
+                B = (
+                    torch.einsum("gmi,gmj->gij", Js, Js) * (float(sigma) * gn_scale)
+                ).cpu().numpy()
                 vals = [B[:, :n_theta, :n_theta].sum(axis=0)[iu_t]]
                 Bty = B[:, :n_theta, n_theta:]
                 Byy = B[:, n_theta:, n_theta:]
@@ -984,7 +997,7 @@ def _solve_sparse_collocation(
                 # The gradient identity grad f = (2/N) J^T r is EXACT (GN only
                 # truncates the Hessian), so matching the autograd gradient
                 # validates the measurement Jacobians, scaling and assembly.
-                zt0 = torch.tensor(np.asarray(z0_a, dtype=np.float64), dtype=torch.float64)
+                zt0 = torch.tensor(np.asarray(z0_a, dtype=np.float64), dtype=tps.float_dtype(), device=dev)
                 th0_ = zt0[:n_theta]
                 with torch.no_grad():
                     _, Meas0_raw = _fwd_all(th0_, zt0[n_theta:].reshape(n_seg, Da))
@@ -993,8 +1006,10 @@ def _solve_sparse_collocation(
                 Jt0 = d0["Jt"][incl_t, Da:, :]
                 Jy0 = d0["Jx"][incl_t, Da:, :]
                 g_gn = np.zeros(len(z0_a))
-                g_gn[:n_theta] = (gn_scale * torch.einsum("gmt,gm->t", Jt0, r0)).numpy()
-                gy = (gn_scale * torch.einsum("gmd,gm->gd", Jy0, r0)).numpy()
+                g_gn[:n_theta] = (
+                    gn_scale * torch.einsum("gmt,gm->t", Jt0, r0)
+                ).cpu().numpy()
+                gy = (gn_scale * torch.einsum("gmd,gm->gd", Jy0, r0)).cpu().numpy()
                 for k, g in enumerate(incl_np):
                     a = n_theta + int(g) * Da
                     g_gn[a:a + Da] = gy[k]

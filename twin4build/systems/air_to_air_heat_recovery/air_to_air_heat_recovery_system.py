@@ -98,23 +98,23 @@ class AirToAirHeatRecoverySystem(core.System):
 
         # Store attributes as private variables
         self.eps_75_h = tps.Parameter(
-            torch.tensor(eps_75_h, dtype=torch.float64), requires_grad=False
+            torch.tensor(eps_75_h, dtype=tps.float_dtype()), requires_grad=False
         )
         self.eps_100_h = tps.Parameter(
-            torch.tensor(eps_100_h, dtype=torch.float64), requires_grad=False
+            torch.tensor(eps_100_h, dtype=tps.float_dtype()), requires_grad=False
         )
         self.eps_75_c = tps.Parameter(
-            torch.tensor(eps_75_c, dtype=torch.float64), requires_grad=False
+            torch.tensor(eps_75_c, dtype=tps.float_dtype()), requires_grad=False
         )
         self.eps_100_c = tps.Parameter(
-            torch.tensor(eps_100_c, dtype=torch.float64), requires_grad=False
+            torch.tensor(eps_100_c, dtype=tps.float_dtype()), requires_grad=False
         )
         self.primaryAirFlowRateMax = tps.Parameter(
-            torch.tensor(primaryAirFlowRateMax, dtype=torch.float64),
+            torch.tensor(primaryAirFlowRateMax, dtype=tps.float_dtype()),
             requires_grad=False,
         )
         self.secondaryAirFlowRateMax = tps.Parameter(
-            torch.tensor(secondaryAirFlowRateMax, dtype=torch.float64),
+            torch.tensor(secondaryAirFlowRateMax, dtype=tps.float_dtype()),
             requires_grad=False,
         )
 

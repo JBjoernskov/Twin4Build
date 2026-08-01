@@ -334,7 +334,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 self,
                 f"alpha_{a}",
                 tps.Parameter(
-                    torch.full((self.n_candidates,), alpha_init, dtype=torch.float64),
+                    torch.full((self.n_candidates,), alpha_init, dtype=tps.float_dtype()),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
@@ -347,7 +347,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 self,
                 f"beta_{a}",
                 tps.Parameter(
-                    torch.full((n_sensors,), beta_init, dtype=torch.float64),
+                    torch.full((n_sensors,), beta_init, dtype=tps.float_dtype()),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
@@ -360,7 +360,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 self,
                 f"gamma_{a}",
                 tps.Parameter(
-                    torch.full((n_setpoints,), gamma_init, dtype=torch.float64),
+                    torch.full((n_setpoints,), gamma_init, dtype=tps.float_dtype()),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
@@ -373,7 +373,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                     self,
                     f"beta_b_{a}",
                     tps.Parameter(
-                        torch.full((n_sensors,), beta_init, dtype=torch.float64),
+                        torch.full((n_sensors,), beta_init, dtype=tps.float_dtype()),
                         min_value=0.0,
                         max_value=1.0,
                         requires_grad=False,
@@ -412,7 +412,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 self,
                 f"gamma_gate_{a}",
                 tps.Parameter(
-                    torch.full((n_on_off_signals,), gamma_init, dtype=torch.float64),
+                    torch.full((n_on_off_signals,), gamma_init, dtype=tps.float_dtype()),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
@@ -425,7 +425,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 self,
                 f"alpha_gate_{a}",
                 tps.Parameter(
-                    torch.tensor(0.5, dtype=torch.float64),
+                    torch.tensor(0.5, dtype=tps.float_dtype()),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
@@ -437,7 +437,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 self,
                 f"default_output_{a}",
                 tps.Parameter(
-                    torch.tensor(0.0, dtype=torch.float64),
+                    torch.tensor(0.0, dtype=tps.float_dtype()),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
@@ -459,10 +459,10 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         # Plain ``torch.Tensor`` (not ``tps.Parameter``) -- they are
         # constants, never estimated, never gradient-tracked.
         self.on_off_signal_norm_min = torch.zeros(
-            n_on_off_signals, dtype=torch.float64
+            n_on_off_signals, dtype=tps.float_dtype()
         )
         self.on_off_signal_norm_max = torch.ones(
-            n_on_off_signals, dtype=torch.float64
+            n_on_off_signals, dtype=tps.float_dtype()
         )
 
         # Build config - include parameters from all candidate controllers
@@ -868,7 +868,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         n_c = self.input["sensorValue"].n_c
 
         # Process each actuator
-        actuator_outputs = torch.zeros(n_s, n_c, self.n_actuators, dtype=torch.float64)
+        actuator_outputs = torch.zeros(n_s, n_c, self.n_actuators, dtype=tps.float_dtype())
 
         for a in range(self.n_actuators):
             # Compute per-actuator weighted signals (each actuator has own beta/gamma/beta_b)
@@ -955,7 +955,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         Returns:
             torch.Tensor: Sum of x*(1-x) over all alpha, beta, gamma weights.
         """
-        penalty = torch.tensor(0.0, dtype=torch.float64)
+        penalty = torch.tensor(0.0, dtype=tps.float_dtype())
         for a in range(self.n_actuators):
             alpha = self._get_alpha_vector(a)
             penalty = penalty + torch.sum(alpha * (1 - alpha))

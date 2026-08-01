@@ -244,39 +244,39 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
         # Store thermal parameters as tps.Parameters
         self.C_air = tps.Parameter(
-            torch.tensor(C_air, dtype=torch.float64), requires_grad=False, scaling="log"
+            torch.tensor(C_air, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.C_wall = tps.Parameter(
-            torch.tensor(C_wall, dtype=torch.float64),
+            torch.tensor(C_wall, dtype=tps.float_dtype()),
             requires_grad=False,
             scaling="log",
         )
         self.C_boundary = tps.Parameter(
-            torch.tensor(C_boundary, dtype=torch.float64),
+            torch.tensor(C_boundary, dtype=tps.float_dtype()),
             requires_grad=False,
             scaling="log",
         )
         self.R_out = tps.Parameter(
-            torch.tensor(R_out, dtype=torch.float64), requires_grad=False, scaling="log"
+            torch.tensor(R_out, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.R_in = tps.Parameter(
-            torch.tensor(R_in, dtype=torch.float64), requires_grad=False, scaling="log"
+            torch.tensor(R_in, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.R_boundary = tps.Parameter(
-            torch.tensor(R_boundary, dtype=torch.float64),
+            torch.tensor(R_boundary, dtype=tps.float_dtype()),
             requires_grad=False,
             scaling="log",
         )
 
         # Store other parameters as tps.Parameters
         self.f_wall = tps.Parameter(
-            torch.tensor(f_wall, dtype=torch.float64), requires_grad=False
+            torch.tensor(f_wall, dtype=tps.float_dtype()), requires_grad=False
         )
         self.f_air = tps.Parameter(
-            torch.tensor(f_air, dtype=torch.float64), requires_grad=False
+            torch.tensor(f_air, dtype=tps.float_dtype()), requires_grad=False
         )
         self.Q_occ_gain = tps.Parameter(
-            torch.tensor(Q_occ_gain, dtype=torch.float64), requires_grad=False
+            torch.tensor(Q_occ_gain, dtype=tps.float_dtype()), requires_grad=False
         )
 
         # Define inputs and outputs
@@ -477,7 +477,11 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         n_c = t_indoor.shape[1]
 
         # x0 shape: (n_s, n_c, n_states)
-        x0 = torch.zeros((n_s, n_c, self.n_states), dtype=torch.float64)
+        x0 = torch.zeros(
+            (n_s, n_c, self.n_states),
+            dtype=t_indoor.dtype,
+            device=t_indoor.device,
+        )
 
         t_wall = self.output["wallTemperature"].get()  # (n_s, n_c)
 
@@ -566,10 +570,13 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         f_wall = p["f_wall"]
         Q_occ_gain = p["Q_occ_gain"]
         n_c = self.n_c
+        # Allocate on the parameters' device/dtype: _build_matrices re-runs on
+        # cache miss during stepping, outside initialize()'s device context.
+        dev, dt = C_air.device, C_air.dtype
 
         # Initialize A and B matrices with zeros - shape (n_c, n_states, n_states/n_inputs)
-        A = torch.zeros((n_c, n_states, n_states), dtype=torch.float64)
-        B = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
+        A = torch.zeros((n_c, n_states, n_states), dtype=dt, device=dev)
+        B = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
         # Air temperature equation coefficients
         A[:, 0, 0] = -1 / (R_in * C_air)
@@ -615,22 +622,22 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # Output matrix C - Identity matrix for direct observation of all states
         # Shape: (n_c, n_states, n_states)
         C_out = (
-            torch.eye(n_states, dtype=torch.float64)
+            torch.eye(n_states, dtype=dt, device=dev)
             .unsqueeze(0)
             .expand(n_c, -1, -1)
             .clone()
         )
 
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
-        D = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
+        D = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
-        E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=torch.float64)
+        E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=dt, device=dev)
         # -m_ex*cp*T_air (input 2, state 0)
         E[:, 2, 0, 0] = -constants.CP_AIR / C_air  # exhaustAirFlowRate * T_air
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
-        F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=torch.float64)
+        F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=dt, device=dev)
         # m_sup*cp*T_sup (inputs 1 and 3)
         F[:, 1, 0, 3] = (
             constants.CP_AIR / C_air

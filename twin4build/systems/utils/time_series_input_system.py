@@ -464,7 +464,7 @@ class TimeSeriesInputSystem(core.System):
         self.batch_size = len(start_time)
         # Convert values from (n_s, n_t) to time-first (n_t, n_s, n_c) where n_c=1
         # First transpose to (n_t, n_s), then unsqueeze to (n_t, n_s, 1)
-        self.values = torch.tensor(values, dtype=torch.float64).T.unsqueeze(
+        self.values = torch.tensor(values, dtype=tps.float_dtype()).T.unsqueeze(
             -1
         )  # (n_t, n_s, 1)
         self.output["value"].initialize(

@@ -99,12 +99,12 @@ class ValveTorchSystem(core.System, nn.Module):
 
         # Store parameters as tps.Parameters for gradient tracking
         self.waterFlowRateMax = tps.Parameter(
-            torch.tensor(waterFlowRateMax, dtype=torch.float64),
+            torch.tensor(waterFlowRateMax, dtype=tps.float_dtype()),
             requires_grad=False,
             scaling="log",
         )
         self.valveAuthority = tps.Parameter(
-            torch.tensor(valveAuthority, dtype=torch.float64), requires_grad=False
+            torch.tensor(valveAuthority, dtype=tps.float_dtype()), requires_grad=False
         )
 
         # Define inputs and outputs as private variables

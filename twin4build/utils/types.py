@@ -19,6 +19,38 @@ from dateutil import tz
 import twin4build.core as core
 from twin4build.utils.deprecation import deprecate_args
 
+# ---------------------------------------------------------------------------
+# Framework-wide floating-point dtype.
+#
+# Twin4Build allocates simulation tensors in many places (ports, states,
+# state-space matrices, data tables).  All of them resolve their dtype through
+# float_dtype() so the whole framework can switch precision in one place --
+# Model.to(dtype=...) calls set_float_dtype().  The default (float64) matches
+# the historical behavior.  Note this is a process-wide setting, not
+# per-model: running two models with different dtypes in one process is not
+# supported.
+# ---------------------------------------------------------------------------
+_FLOAT_DTYPE: torch.dtype = torch.float64
+
+
+def float_dtype() -> torch.dtype:
+    """The framework-wide floating-point dtype (default ``torch.float64``)."""
+    return _FLOAT_DTYPE
+
+
+def set_float_dtype(dtype: torch.dtype) -> None:
+    """Set the framework-wide floating-point dtype.
+
+    Called by ``Model.to(dtype=...)``.  Only floating-point dtypes are
+    accepted; ``torch.float32`` trades accuracy for large speedups on
+    consumer GPUs whose float64 throughput is fractional.
+    """
+    global _FLOAT_DTYPE
+    dtype = torch.empty(0, dtype=dtype).dtype  # normalize/validate
+    if not dtype.is_floating_point:
+        raise ValueError(f"float dtype required, got {dtype}")
+    _FLOAT_DTYPE = dtype
+
 
 class Vector:
     """A custom vector implementation.
@@ -234,10 +266,10 @@ class Vector:
         if self.tensor is not None:
             if self.n_v > 0:
                 self.tensor = torch.tensor(
-                    [self.tensor.item()], dtype=torch.float64, requires_grad=False
+                    [self.tensor.item()], dtype=float_dtype(), requires_grad=False
                 )
             else:
-                self.tensor = torch.tensor([], dtype=torch.float64, requires_grad=False)
+                self.tensor = torch.tensor([], dtype=float_dtype(), requires_grad=False)
 
         # _init_value is already a simple float/int, nothing to do
 
@@ -304,12 +336,12 @@ class Vector:
         # Create tensor with shape (n_s, n_c, n_v) from _init_value
         if self._init_value is None:
             self._tensor = torch.zeros(
-                (self.n_s, self.n_c, self.n_v), dtype=torch.float64
+                (self.n_s, self.n_c, self.n_v), dtype=float_dtype()
             )
         else:
             # Broadcast init_value to full tensor
             self._tensor = torch.full(
-                (self.n_s, self.n_c, self.n_v), self._init_value, dtype=torch.float64
+                (self.n_s, self.n_c, self.n_v), self._init_value, dtype=float_dtype()
             )
 
         if values is not None:
@@ -358,7 +390,7 @@ class Vector:
                 self.n_s,
                 self.n_c,
                 self.n_v,
-                dtype=torch.float64,
+                dtype=float_dtype(),
                 requires_grad=False,
             )
             self._history_is_populated = False
@@ -444,6 +476,7 @@ class Vector:
                 v,
                 target_shape=(self.n_s, self.n_c, self.n_v),
                 indices={"i_s": i_s, "i_c": i_c, "i_v": i_v},
+                device=self._tensor.device if self._tensor is not None else None,
             )
 
         # Delegate to efficient private method
@@ -522,15 +555,15 @@ class Vector:
             self._max_history = torch.max(no_nan_history).item()
 
         # Convert cached floats to tensors when needed
-        min_val = torch.tensor(self._min_history, dtype=torch.float64)
-        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+        min_val = torch.tensor(self._min_history, dtype=float_dtype())
+        max_val = torch.tensor(self._max_history, dtype=float_dtype())
 
         if torch.allclose(min_val, max_val):
-            min_val = torch.tensor(0, dtype=torch.float64)
-            if torch.allclose(max_val, torch.tensor(0, dtype=torch.float64)):
-                max_val = torch.tensor(1, dtype=torch.float64)
+            min_val = torch.tensor(0, dtype=float_dtype())
+            if torch.allclose(max_val, torch.tensor(0, dtype=float_dtype())):
+                max_val = torch.tensor(1, dtype=float_dtype())
             else:
-                max_val = torch.tensor(1, dtype=torch.float64)
+                max_val = torch.tensor(1, dtype=float_dtype())
 
         self._is_normalized = True
         return (v - min_val) / (max_val - min_val)
@@ -546,8 +579,8 @@ class Vector:
         """
         assert self._is_normalized, ".normalize() must be called before denormalizing"
         # Use cached float values and convert to tensors
-        min_val = torch.tensor(self._min_history, dtype=torch.float64)
-        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+        min_val = torch.tensor(self._min_history, dtype=float_dtype())
+        max_val = torch.tensor(self._max_history, dtype=float_dtype())
         return v * (max_val - min_val) + min_val
 
 
@@ -790,11 +823,11 @@ class Scalar:
 
         # Create tensor with shape (n_s, n_c) from _init_value
         if self._init_value is None:
-            self._tensor = torch.zeros((self.n_s, self.n_c), dtype=torch.float64)
+            self._tensor = torch.zeros((self.n_s, self.n_c), dtype=float_dtype())
         else:
             # Broadcast init_value to full tensor
             self._tensor = torch.full(
-                (self.n_s, self.n_c), self._init_value, dtype=torch.float64
+                (self.n_s, self.n_c), self._init_value, dtype=float_dtype()
             )
 
         if values is not None:
@@ -836,7 +869,7 @@ class Scalar:
             # Pre-allocate history with time-first layout for efficient writes
             # Internal shape: (n_t, n_s, n_c)
             self._history = torch.zeros(
-                self.n_t, self.n_s, self.n_c, dtype=torch.float64, requires_grad=False
+                self.n_t, self.n_s, self.n_c, dtype=float_dtype(), requires_grad=False
             )
             self._history_is_populated = False
 
@@ -915,7 +948,10 @@ class Scalar:
         # For non-leaf, prepare value with unified conversion logic
         if not self._is_leaf:
             v = _prepare_value_for_set(
-                v, target_shape=(self.n_s, self.n_c), indices={"i_s": i_s, "i_c": i_c}
+                v,
+                target_shape=(self.n_s, self.n_c),
+                indices={"i_s": i_s, "i_c": i_c},
+                device=self._tensor.device if self._tensor is not None else None,
             )
 
         # Delegate to efficient private method
@@ -961,7 +997,7 @@ class Scalar:
 
         # Handle different input shapes - don't force 3D for scalar inputs
         if not isinstance(v, torch.Tensor):
-            v = torch.tensor(v, dtype=torch.float64)
+            v = torch.tensor(v, dtype=float_dtype())
 
         # Cache min/max as Python floats to avoid GradTrackingTensor issues
         if self._min_history is None:
@@ -974,15 +1010,15 @@ class Scalar:
             self._max_history = torch.max(no_nan_history).item()
 
         # Convert cached floats to tensors when needed
-        min_val = torch.tensor(self._min_history, dtype=torch.float64)
-        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+        min_val = torch.tensor(self._min_history, dtype=float_dtype())
+        max_val = torch.tensor(self._max_history, dtype=float_dtype())
 
         if torch.allclose(min_val, max_val):
-            min_val = torch.tensor(0, dtype=torch.float64)
-            if torch.allclose(max_val, torch.tensor(0, dtype=torch.float64)):
-                max_val = torch.tensor(1, dtype=torch.float64)
+            min_val = torch.tensor(0, dtype=float_dtype())
+            if torch.allclose(max_val, torch.tensor(0, dtype=float_dtype())):
+                max_val = torch.tensor(1, dtype=float_dtype())
             else:
-                max_val = torch.tensor(1, dtype=torch.float64)
+                max_val = torch.tensor(1, dtype=float_dtype())
 
         self._is_normalized = True
         return (v - min_val) / (max_val - min_val)
@@ -992,8 +1028,8 @@ class Scalar:
             self._is_normalized == True
         ), ".normalize() must be called before denormalizing"
         # Use cached float values and convert to tensors
-        min_val = torch.tensor(self._min_history, dtype=torch.float64)
-        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+        min_val = torch.tensor(self._min_history, dtype=float_dtype())
+        max_val = torch.tensor(self._max_history, dtype=float_dtype())
         return v * (max_val - min_val) + min_val
 
     def get_float(self) -> float:
@@ -1073,24 +1109,28 @@ def denormalize_unit(
     return z * (max_value - min_value) + min_value
 
 
-def theta_bound_tensors(parameters):
+def theta_bound_tensors(parameters, device=None):
     """Plain ``(lb, ub, log_mask)`` tensors for a flat parameter list.
 
     The vectorized companion to :func:`denormalize_unit`: the estimator's fast
     paths denormalize a whole theta vector at once and need the physical
     bounds and scaling as plain tensors (``Parameter`` itself is a Tensor
     subclass and breaks under functorch).  Scalar bounds only (``n_c == 1``).
+    ``device`` places the bounds where the rollout runs (the model's device).
     """
     lb = torch.tensor(
-        [float(np.asarray(p.min_value.detach()).flatten()[0]) for p in parameters],
-        dtype=torch.float64,
+        [float(np.asarray(p.min_value.detach().cpu()).flatten()[0]) for p in parameters],
+        dtype=float_dtype(),
+        device=device,
     )
     ub = torch.tensor(
-        [float(np.asarray(p.max_value.detach()).flatten()[0]) for p in parameters],
-        dtype=torch.float64,
+        [float(np.asarray(p.max_value.detach().cpu()).flatten()[0]) for p in parameters],
+        dtype=float_dtype(),
+        device=device,
     )
     log_mask = torch.tensor(
-        [getattr(p, "scaling", "linear") == "log" for p in parameters]
+        [getattr(p, "scaling", "linear") == "log" for p in parameters],
+        device=device,
     )
     return lb, ub, log_mask
 
@@ -1146,15 +1186,15 @@ class Parameter(nn.Parameter):
                 # Log scaling requires min > 0; default to data/10
                 min_value = (data.detach().clone().abs() * 0.1).clamp(min=1e-10)
             else:
-                min_value = torch.zeros(n_c, dtype=torch.float64)
+                min_value = torch.zeros(n_c, dtype=float_dtype())
         else:
             min_value = _prepare_bound_value(min_value, data.shape, n_c)
 
         if max_value is None:
             if torch.all(data < 0):
-                max_value = torch.zeros(n_c, dtype=torch.float64)
+                max_value = torch.zeros(n_c, dtype=float_dtype())
             elif torch.allclose(data, torch.zeros_like(data)):
-                max_value = torch.ones(n_c, dtype=torch.float64)
+                max_value = torch.ones(n_c, dtype=float_dtype())
             else:
                 max_value = data.detach().clone()
         else:
@@ -1459,7 +1499,7 @@ class State:
             self._tensor = self._to_shape(val, n_s, n_c, self._n_v)
         else:
             self._tensor = torch.full(
-                (n_s, n_c, self._n_v), float(self._init_value), dtype=torch.float64
+                (n_s, n_c, self._n_v), float(self._init_value), dtype=float_dtype()
             )
         self._initialized = True
         return self
@@ -1467,8 +1507,8 @@ class State:
     @staticmethod
     def _to_shape(v, n_s, n_c, n_v):
         if not isinstance(v, torch.Tensor):
-            v = torch.as_tensor(v, dtype=torch.float64)
-        v = v.to(torch.float64)
+            v = torch.as_tensor(v, dtype=float_dtype())
+        v = v.to(float_dtype())
         if v.dim() == 1 and v.shape[0] == n_v:  # (n_v,)
             v = v.reshape(1, 1, n_v).expand(n_s, n_c, n_v).clone()
         elif v.dim() == 2 and v.shape == (n_c, n_v):  # (n_c, n_v)
@@ -1728,7 +1768,7 @@ def _expand_to_3D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     if isinstance(v, Scalar):
         v = v.get()
     elif isinstance(v, (float, int)):
-        v = torch.tensor([[[v]]], dtype=torch.float64)
+        v = torch.tensor([[[v]]], dtype=float_dtype())
     elif isinstance(v, torch.Tensor):
         assert v.dim() == 3, f"Value must have 3 dimensions, got {v.dim()} dimensions"
         # if v.dim() == 2:
@@ -1751,7 +1791,7 @@ def _convert_to_2D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     if isinstance(v, Scalar):
         v = _convert_to_2D_scalar_tensor(v.get())
     elif isinstance(v, (float, int)):
-        v = torch.tensor([[v]], dtype=torch.float64)
+        v = torch.tensor([[v]], dtype=float_dtype())
     elif isinstance(v, torch.Tensor):
         assert (
             v.dim() == 2
@@ -1783,7 +1823,7 @@ def _expand_to_2D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     if isinstance(v, Scalar):
         v = _expand_to_2D_tensor(v.get())
     elif isinstance(v, (float, int)):
-        v = torch.tensor([[v]], dtype=torch.float64)
+        v = torch.tensor([[v]], dtype=float_dtype())
     elif isinstance(v, torch.Tensor):
         assert (
             v.dim() <= 2
@@ -1820,7 +1860,7 @@ def _expand_to_2D_scalar_tensor(
     if isinstance(v, Scalar):
         v = v.get()  # Already (n_s, n_c)
     elif isinstance(v, (float, int)):
-        v = torch.full((n_s, n_c), v, dtype=torch.float64)
+        v = torch.full((n_s, n_c), v, dtype=float_dtype())
     elif isinstance(v, torch.Tensor):
         # Handle scalar tensor
         if v.dim() == 0:
@@ -1863,7 +1903,7 @@ def _expand_to_3D_scalar_tensor(
         torch.Tensor with shape (n_t, n_s, n_c).
     """
     if isinstance(v, (list, np.ndarray)):
-        v = torch.tensor(v, dtype=torch.float64)
+        v = torch.tensor(v, dtype=float_dtype())
 
     if isinstance(v, torch.Tensor):
         assert (
@@ -1893,7 +1933,7 @@ def _expand_to_4D_tensor(
         torch.Tensor with shape (n_t, n_s, n_c, n_v).
     """
     if isinstance(v, (list, np.ndarray)):
-        v = torch.tensor(v, dtype=torch.float64)
+        v = torch.tensor(v, dtype=float_dtype())
 
     if isinstance(v, torch.Tensor):
         assert (
@@ -1912,7 +1952,7 @@ def _expand_to_1D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     if isinstance(v, Scalar):
         v = _expand_to_1D_scalar_tensor(v.get())
     elif isinstance(v, (float, int)):
-        v = torch.tensor([v], dtype=torch.float64)
+        v = torch.tensor([v], dtype=float_dtype())
     elif isinstance(v, torch.Tensor):
         assert (
             v.dim() <= 1
@@ -1928,7 +1968,7 @@ def _convert_to_1D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     if isinstance(v, Scalar):
         v = _convert_to_1D_scalar_tensor(v.get())
     elif isinstance(v, (float, int)):
-        v = torch.tensor([v], dtype=torch.float64)
+        v = torch.tensor([v], dtype=float_dtype())
     elif isinstance(v, torch.Tensor):
         assert (
             v.dim() <= 1
@@ -1943,13 +1983,13 @@ def _convert_to_1D_scalar_tensor(v: Union[Scalar, float, int, torch.Tensor]):
 def _to_float64_tensor(v):
     """Convert input to a float64 tensor."""
     if isinstance(v, (float, int)):
-        return torch.tensor(v, dtype=torch.float64)
+        return torch.tensor(v, dtype=float_dtype())
     elif isinstance(v, torch.Tensor):
-        return v.to(dtype=torch.float64)
+        return v.to(dtype=float_dtype())
     elif isinstance(v, np.ndarray):
-        return torch.tensor(v, dtype=torch.float64)
+        return torch.tensor(v, dtype=float_dtype())
     elif isinstance(v, (list, tuple)):
-        return torch.tensor(v, dtype=torch.float64)
+        return torch.tensor(v, dtype=float_dtype())
     else:
         raise TypeError(f"Unsupported type: {type(v)}")
 
@@ -2010,6 +2050,7 @@ def _prepare_value_for_set(
     v: Union[float, int, torch.Tensor, "Scalar"],
     target_shape: tuple,
     indices: dict = None,
+    device: Optional[torch.device] = None,
 ) -> torch.Tensor:
     """
     Prepare a value for setting into a Scalar or Vector tensor.
@@ -2037,10 +2078,14 @@ def _prepare_value_for_set(
 
     # Convert Python scalars to tensors
     if isinstance(v, (int, float)):
-        v = torch.tensor(v, dtype=torch.float64)
+        v = torch.tensor(v, dtype=float_dtype(), device=device)
 
     if not isinstance(v, torch.Tensor):
         raise TypeError(f"Expected tensor, got {type(v)}")
+
+    # Match the target tensor's device (no-op when already there)
+    if device is not None and v.device != device:
+        v = v.to(device)
 
     # Determine expected shape based on which indices are set
     # If index is slice(None), we need that dimension in v
