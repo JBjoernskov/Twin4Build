@@ -510,7 +510,12 @@ def _solve_sparse_collocation(
         fb_center = fb0.mean(dim=0)
         # Robust scale: a ~constant feedback has tiny std; scaling by it would blow
         # the (bounded) decision variable up.  Floor by a fraction of the magnitude.
-        fb_scale = torch.maximum(fb0.std(dim=0), 0.1 * fb_center.abs() + 1e-3)
+        # (std needs >= 2 samples and a non-empty feedback dim, else it warns.)
+        fb_floor = 0.1 * fb_center.abs() + 1e-3
+        if n_fb and n_seg > 1:
+            fb_scale = torch.maximum(fb0.std(dim=0), fb_floor)
+        else:
+            fb_scale = fb_floor
 
         md_list = [md for md, _ in self._measurements]
         SD_meas = torch.tensor([float(sd) for _, sd in self._measurements], dtype=tps.float_dtype(), device=dev)
