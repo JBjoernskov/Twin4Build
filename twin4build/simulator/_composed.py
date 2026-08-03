@@ -292,10 +292,14 @@ class OneStepComposer:
 
         # Requested outputs are appended to the same measurement vector: fresh
         # when the producer is composed, ("external", ...) otherwise (F returns
-        # zero there; the caller supplies or rejects).
+        # zero there; the caller supplies or rejects).  ``_follow`` translates
+        # fused-cluster members to the executing FusedStateSpaceSystem, which
+        # publishes their outputs under namespaced port names -- without it,
+        # every output on a fused zone would be wrongly classified external.
         for comp, out_port in (outputs or []):
-            if comp.id in self.cone_ids:
-                self.meas_sources.append(("fresh", comp.id, out_port))
+            resolved = self._follow(comp, out_port)
+            if resolved is not None and resolved[0].id in self.cone_ids:
+                self.meas_sources.append(("fresh", resolved[0].id, resolved[1]))
             else:
                 self.meas_sources.append(("external", comp.id, out_port))
 

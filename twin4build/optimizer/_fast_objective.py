@@ -146,7 +146,11 @@ class FastControlObjective:
         # freezes every exogenous consumer-input as a captured slot.  Find the
         # slots whose traced source is a decision variable: those columns of
         # the captured matrix are overridden with theta at every step.
-        comps = model.components
+        # Fused state-space clusters consume their members' exogenous inputs
+        # under the fused component's id (namespaced ports), so include them.
+        comps = dict(model.components)
+        sim_model = getattr(model, "_simulation_model", None) or model
+        comps.update(getattr(sim_model, "_fused_components", None) or {})
         self.var_slots = [[] for _ in self.vars]
         for j, key in enumerate(composer._captured_keys):
             consumer_id, port = key[0], key[1]
