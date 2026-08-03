@@ -1237,14 +1237,22 @@ class Optimizer:
                     device=self._device,
                 )
             elif isinstance(component_or_value, systems.ScheduleSystem):
+                # The schedule may be standalone (not part of the model), in
+                # which case Model.to() never moved it -- align explicitly.
                 component_or_value.initialize(
                     start_time=self._start_time,
                     end_time=self._end_time,
                     step_size=self._stepSize,
                 )
-                return component_or_value.output["scheduleValue"].history()
+                return (
+                    component_or_value.output["scheduleValue"]
+                    .history()
+                    .to(device=self._device, dtype=tps.float_dtype())
+                )
             elif isinstance(component_or_value, torch.Tensor):
-                return component_or_value
+                return component_or_value.to(
+                    device=self._device, dtype=tps.float_dtype()
+                )
             else:
                 raise ValueError(
                     f"Invalid constraint value type: {type(component_or_value)}"
