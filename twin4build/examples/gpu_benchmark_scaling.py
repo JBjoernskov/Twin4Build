@@ -378,11 +378,19 @@ def run_optimization_case(n_zones, device="cpu", dtype=torch.float64, maxiter=5)
     }
 
 
-def sweep(case_fn, sizes, configs, **kwargs) -> pd.DataFrame:
-    """Run ``case_fn`` over every (size, device/dtype) combination."""
+def sweep(case_fn, sizes, configs, max_n=None, **kwargs) -> pd.DataFrame:
+    """Run ``case_fn`` over every (size, device/dtype) combination.
+
+    ``max_n`` optionally caps the size per device (e.g. ``{"cpu": 64}``):
+    combinations above the cap are skipped, so slow CPU rows do not dominate
+    the sweep runtime once the outcome at that size is no longer in doubt.
+    """
     rows = []
+    max_n = max_n or {}
     for n in sizes:
         for device, dtype in configs:
+            if n > max_n.get(device, float("inf")):
+                continue
             row = case_fn(n, device=device, dtype=dtype, **kwargs)
             rows.append(row)
             util = row["gpu_util_pct"]
