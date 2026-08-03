@@ -644,6 +644,24 @@ def _solve_sparse_collocation(
     # the Hessian nearly free on top of the Jacobian we already pay for.
     _dcache = {"key": None}
 
+    # The batched reverse pass materializes gradient buffers of roughly
+    # (segments x cotangents x Da^2) per matrix_exp intermediate -- growth is
+    # ~quartic in model size, and evaluating all segments at once OOM-kills
+    # the process (no traceback) already at ~50 states on a 12 GB host.
+    # Chunk the segment dimension of the vmap (exact, only trades speed) so
+    # the peak stays within a budget (bytes; TWIN4BUILD_DERIV_BYTES overrides).
+    _n_cot = Da + len(md_list)
+    _itemsize = torch.empty(0, dtype=tps.float_dtype()).element_size()
+    _seg_bytes = float(_n_cot * Da * Da * _itemsize * 24)  # ~24 saved intermediates
+    _budget = float(_os.environ.get("TWIN4BUILD_DERIV_BYTES", 2e9))
+    _deriv_chunk = max(1, min(n_seg, int(_budget / max(1.0, _seg_bytes))))
+    if _deriv_chunk < n_seg:
+        LOGGER.config(
+            "Derivative evaluation chunked: %d segments per chunk "
+            "(%d segments, %d cotangents, Da=%d).",
+            _deriv_chunk, n_seg, _n_cot, Da,
+        )
+
     def _derivs(z):
         key = z.tobytes()
         if _dcache["key"] == key:
@@ -659,7 +677,8 @@ def _solve_sparse_collocation(
         # One traced pass for BOTH Jacobians (the vjp sweeps over the output
         # rows are shared), instead of two separate vmap(jacrev) evaluations.
         Jx, Jt = vmap(
-            lambda yi, ci: jacrev(_both, argnums=(0, 1))(yi, theta_norm, ci)
+            lambda yi, ci: jacrev(_both, argnums=(0, 1))(yi, theta_norm, ci),
+            chunk_size=None if _deriv_chunk >= n_seg else _deriv_chunk,
         )(y_norm, CAP)
         _dcache.update(key=key, Jx=Jx.detach(), Jt=Jt.detach())
         return _dcache
