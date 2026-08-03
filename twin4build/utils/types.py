@@ -1279,11 +1279,18 @@ class Parameter(nn.Parameter):
 
     @min_value.setter
     def min_value(self, value):
-        self._min_value = _broadcast_for_n_c(value, self._n_c)
+        # Bounds follow the parameter's device/dtype so they stay valid after
+        # Model.to (bounds are often assigned after the move, e.g. by
+        # Estimator._set_bounds).
+        self._min_value = _match_tensor(
+            _broadcast_for_n_c(value, self._n_c), self.data
+        )
 
     @max_value.setter
     def max_value(self, value):
-        self._max_value = _broadcast_for_n_c(value, self._n_c)
+        self._max_value = _match_tensor(
+            _broadcast_for_n_c(value, self._n_c), self.data
+        )
 
     def normalize(
         self,
@@ -1291,7 +1298,7 @@ class Parameter(nn.Parameter):
         min_value: torch.Tensor = None,
         max_value: torch.Tensor = None,
     ):
-        v = _broadcast_for_n_c(v, self._n_c)
+        v = _match_tensor(_broadcast_for_n_c(v, self._n_c), self.data)
 
         if min_value is None:
             min_value = self._min_value
@@ -1303,6 +1310,8 @@ class Parameter(nn.Parameter):
         else:
             max_value = _broadcast_for_n_c(max_value, self._n_c)
 
+        min_value = _match_tensor(min_value, self.data)
+        max_value = _match_tensor(max_value, self.data)
         self._min_value = min_value
         self._max_value = max_value
         assert (
@@ -1644,11 +1653,16 @@ class TensorParameter:
 
     @min_value.setter
     def min_value(self, value):
-        self._min_value = _broadcast_for_n_c(value, self._n_c)
+        # Bounds follow the owned tensor's device/dtype (see Parameter).
+        self._min_value = _match_tensor(
+            _broadcast_for_n_c(value, self._n_c), getattr(self, "tensor", None)
+        )
 
     @max_value.setter
     def max_value(self, value):
-        self._max_value = _broadcast_for_n_c(value, self._n_c)
+        self._max_value = _match_tensor(
+            _broadcast_for_n_c(value, self._n_c), getattr(self, "tensor", None)
+        )
 
     def normalize(
         self,
@@ -1656,7 +1670,8 @@ class TensorParameter:
         min_value: torch.Tensor = None,
         max_value: torch.Tensor = None,
     ):
-        v = _broadcast_for_n_c(v, self._n_c)
+        anchor = getattr(self, "tensor", None)
+        v = _match_tensor(_broadcast_for_n_c(v, self._n_c), anchor)
 
         if min_value is None:
             min_value = self._min_value
@@ -1668,6 +1683,8 @@ class TensorParameter:
         else:
             max_value = _broadcast_for_n_c(max_value, self._n_c)
 
+        min_value = _match_tensor(min_value, anchor)
+        max_value = _match_tensor(max_value, anchor)
         self._min_value = min_value
         self._max_value = max_value
         assert (
@@ -2121,6 +2138,15 @@ def _prepare_value_for_set(
                 pass  # Let it fail later with a clearer error
 
     return v
+
+
+def _match_tensor(t: torch.Tensor, anchor) -> torch.Tensor:
+    """Move ``t`` to ``anchor``'s device/dtype (no-op when already there, or
+    when ``anchor`` is not a tensor -- e.g. during ``TensorParameter.__init__``
+    before the data tensor exists)."""
+    if not isinstance(anchor, torch.Tensor):
+        return t
+    return t.to(device=anchor.device, dtype=anchor.dtype)
 
 
 def _broadcast_for_n_c(value, n_c):
