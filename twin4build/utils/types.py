@@ -1626,6 +1626,16 @@ class TensorParameter:
         self._min_value = _prepare_bound_value(min_value, tensor.shape, n_c)
         self._max_value = _prepare_bound_value(max_value, tensor.shape, n_c)
 
+        # The bounds inherit their device from the source parameter (the model
+        # device after Model.to), while ``tensor`` may arrive as a CPU scalar
+        # from a scipy/IPOPT theta vector -- follow the bounds.
+        bound_anchor = (
+            self._min_value
+            if isinstance(self._min_value, torch.Tensor)
+            else self._max_value
+        )
+        tensor = _match_tensor(tensor, bound_anchor)
+
         if scaling == "log" and self._min_value is not None:
             assert torch.all(
                 self._min_value > 0
@@ -1713,6 +1723,10 @@ class TensorParameter:
     def set(self, value, normalized: bool = True):
         """Set the parameter value (will be normalized internally)."""
         value = _broadcast_for_n_c(value, self._n_c)
+        anchor = getattr(self, "tensor", None)
+        if not isinstance(anchor, torch.Tensor):
+            anchor = self._min_value  # during __init__, before tensor exists
+        value = _match_tensor(value, anchor)
 
         if normalized:
             value = self.denormalize(value)
