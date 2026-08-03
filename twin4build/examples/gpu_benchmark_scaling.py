@@ -5,11 +5,22 @@ N-zone building -- zones in a chain, each consecutive pair coupled by a
 ``WallTorchSystem``, every zone with its own heater schedule and temperature
 sensor -- and times:
 
-- ``run_estimation_case``:  ``Estimator.estimate`` (scipy SLSQP, AD, fast
-  single-shooting objective) calibrating one ``C_air`` per zone and one wall
-  ``C`` per wall against synthetic noisy measurements.  The reported number
-  is seconds per objective+gradient evaluation, the cost every solver
-  iteration pays.
+- ``run_simulation_case``:  plain forward ``Simulator.simulate`` (no
+  gradients, no solver) -- the baseline cost every other pipeline builds on.
+  Reported as seconds per simulate call (mean over repeats after a warm-up).
+- ``run_estimation_case``:  ``Estimator.estimate`` calibrating one ``C_air``
+  per zone and one wall ``C`` per wall against synthetic noisy measurements,
+  in two transcriptions:
+
+  - ``transcription="shooting"`` (default): scipy SLSQP + AD with the fast
+    single-shooting objective -- a *sequential* 144-step rollout per
+    evaluation.  Reported as seconds per objective+gradient evaluation.
+  - ``transcription="collocation"``: CasADi/IPOPT with every
+    timestep-boundary state promoted to a decision variable -- defects are
+    evaluated for *all timesteps at once* (batched one-step map), so the
+    per-iteration work is far more parallel and GPU-friendly.  Reported as
+    seconds per IPOPT iteration.
+
 - ``run_optimization_case``:  ``Optimizer.optimize`` (scipy SLSQP, AD, fast
   composed objective) choosing every zone's heater schedule to minimize
   energy subject to a comfort constraint.  Reported as seconds per SLSQP
@@ -195,11 +206,65 @@ def _attach_synthetic_measurements(model, zones, sensors, step_size):
     return simulator
 
 
-def run_estimation_case(n_zones, device="cpu", dtype=torch.float64, maxiter=2):
-    """Time the real estimation pipeline; returns a result row (dict)."""
+def run_simulation_case(
+    n_zones, device="cpu", dtype=torch.float64, n_repeats=3
+):
+    """Time a plain forward simulation (144 steps, no gradients, no solver)."""
+    tps.set_float_dtype(torch.float64)
+    model, zones, walls, sensors, _ = build_chain_model(
+        n_zones, f"bench_sim_{n_zones}_{device}_{str(dtype).replace('torch.', '')}"
+    )
+    model.to(device, dtype)
+    simulator = tb.Simulator(model)
+    end = START + datetime.timedelta(hours=N_HOURS)
+    kw = dict(
+        start_time=START, end_time=end, step_size=EST_STEP,
+        show_progress_bar=False,
+    )
+
+    simulator.simulate(**kw)  # warm-up: initialization, fusion, cuda context
+    with GpuUtilSampler(enabled=device != "cpu") as util:
+        t0 = time.perf_counter()
+        for _ in range(n_repeats):
+            simulator.simulate(**kw)
+        if device != "cpu":
+            torch.cuda.synchronize()
+        wall_s = time.perf_counter() - t0
+
+    tps.set_float_dtype(torch.float64)
+    return {
+        "case": "simulation",
+        "method": "forward",
+        "n_zones": n_zones,
+        "n_states": 3 * n_zones - 1,
+        "device": device,
+        "dtype": str(dtype).replace("torch.", ""),
+        "wall_s": wall_s,
+        "metric_s": wall_s / n_repeats,
+        "metric": "s_per_sim",
+        "gpu_util_pct": util.mean,
+    }
+
+
+def run_estimation_case(
+    n_zones,
+    device="cpu",
+    dtype=torch.float64,
+    maxiter=2,
+    transcription="shooting",
+):
+    """Time the real estimation pipeline; returns a result row (dict).
+
+    ``transcription="shooting"``: scipy SLSQP + AD, fast single-shooting
+    objective (sequential rollout per evaluation; metric: s per evaluation).
+    ``transcription="collocation"``: CasADi/IPOPT simultaneous transcription
+    (all-timestep batched defect evaluation; metric: s per IPOPT iteration).
+    """
     tps.set_float_dtype(torch.float64)  # fresh default before each build
     model, zones, walls, sensors, _ = build_chain_model(
-        n_zones, f"bench_est_{n_zones}_{device}_{str(dtype).replace('torch.', '')}"
+        n_zones,
+        f"bench_est_{transcription}_{n_zones}_{device}_"
+        f"{str(dtype).replace('torch.', '')}",
     )
     simulator = _attach_synthetic_measurements(model, zones, sensors, EST_STEP)
     model.to(device, dtype)
@@ -208,6 +273,13 @@ def run_estimation_case(n_zones, device="cpu", dtype=torch.float64, maxiter=2):
     parameters += [(w, "C", 2e5, 1e4, 1e7) for w in walls]
     measurements = [(s, 0.05) for s in sensors]
     end = START + datetime.timedelta(hours=N_HOURS)
+
+    if transcription == "collocation":
+        method = ("casadi", "ipopt", "ad", "collocation")
+        options = {"maxiter": maxiter}
+    else:
+        method = ("scipy", "SLSQP", "ad")
+        options = {"maxiter": maxiter, "fast": True}
 
     estimator = tb.Estimator(simulator)
     with GpuUtilSampler(enabled=device != "cpu") as util:
@@ -219,15 +291,22 @@ def run_estimation_case(n_zones, device="cpu", dtype=torch.float64, maxiter=2):
             end_time=[end],
             step_size=EST_STEP,
             n_warmup=0,
-            method=("scipy", "SLSQP", "ad"),
-            options={"maxiter": maxiter, "fast": True},
+            method=method,
+            options=options,
         )
         wall_s = time.perf_counter() - t0
-    n_eval = result["nfev"] if "nfev" in result else None
+    n_eval = result.get("nfev")
+    n_iter = result.get("iterations")
+
+    if transcription == "collocation":
+        denom, metric = n_iter, "s_per_iter"
+    else:
+        denom, metric = n_eval, "s_per_eval"
 
     tps.set_float_dtype(torch.float64)
     return {
         "case": "estimation",
+        "method": transcription,
         "n_zones": n_zones,
         "n_states": 3 * n_zones - 1,
         "n_theta": len(parameters),
@@ -236,7 +315,9 @@ def run_estimation_case(n_zones, device="cpu", dtype=torch.float64, maxiter=2):
         "fast": estimator._fast_obj is not None,
         "wall_s": wall_s,
         "n_eval": n_eval,
-        "s_per_eval": wall_s / n_eval if n_eval else float("nan"),
+        "n_iter": n_iter,
+        "metric_s": wall_s / denom if denom else float("nan"),
+        "metric": metric,
         "gpu_util_pct": util.mean,
     }
 
@@ -282,6 +363,7 @@ def run_optimization_case(n_zones, device="cpu", dtype=torch.float64, maxiter=5)
     tps.set_float_dtype(torch.float64)
     return {
         "case": "optimization",
+        "method": "shooting",
         "n_zones": n_zones,
         "n_states": 3 * n_zones - 1,
         "n_vars": n_zones * n_steps,
@@ -290,7 +372,8 @@ def run_optimization_case(n_zones, device="cpu", dtype=torch.float64, maxiter=5)
         "fast": optimizer._fast_obj is not None,
         "wall_s": wall_s,
         "maxiter": maxiter,
-        "s_per_iter": wall_s / maxiter,
+        "metric_s": wall_s / maxiter,
+        "metric": "s_per_iter",
         "gpu_util_pct": util.mean,
     }
 
@@ -302,18 +385,18 @@ def sweep(case_fn, sizes, configs, **kwargs) -> pd.DataFrame:
         for device, dtype in configs:
             row = case_fn(n, device=device, dtype=dtype, **kwargs)
             rows.append(row)
-            metric = row.get("s_per_eval", row.get("s_per_iter"))
             util = row["gpu_util_pct"]
             util_txt = f"{util:5.1f}% GPU-busy" if util == util else "  cpu"
             print(
-                f"{row['case']:>12} | N={n:>3} | {device}/{row['dtype']:<7} | "
-                f"total {row['wall_s']:7.1f} s | {metric:7.3f} s/step-unit | "
-                f"{util_txt} | fast={row['fast']}"
+                f"{row['case']:>12}/{row['method']:<11} | N={n:>3} | "
+                f"{device}/{row['dtype']:<7} | total {row['wall_s']:7.1f} s | "
+                f"{row['metric_s']:7.3f} {row['metric']} | {util_txt}"
             )
     return pd.DataFrame(rows)
 
 
-def breakeven(df: pd.DataFrame, metric: str, gpu_config=("cuda", "float64")):
+def breakeven(df: pd.DataFrame, metric: str = "metric_s",
+              gpu_config=("cuda", "float64")):
     """Smallest N where the GPU config beats cpu/float64 (None if never)."""
     cpu = df[(df.device == "cpu")].set_index("n_zones")[metric]
     gpu = df[
@@ -329,9 +412,16 @@ if __name__ == "__main__":
     configs = [("cpu", torch.float64)]
     if torch.cuda.is_available():
         configs += [("cuda", torch.float64), ("cuda", torch.float32)]
-    print("== estimation ==")
+    print("== simulation ==")
+    df_s = sweep(run_simulation_case, [1, 2, 4], configs)
+    print("== estimation: single shooting ==")
     df_e = sweep(run_estimation_case, [1, 2, 4], configs)
+    print("== estimation: collocation ==")
+    df_c = sweep(
+        run_estimation_case, [1, 2, 4], configs,
+        maxiter=10, transcription="collocation",
+    )
     print("== optimization ==")
     df_o = sweep(run_optimization_case, [1, 2, 4], configs, maxiter=3)
-    print(df_e.to_string(index=False))
-    print(df_o.to_string(index=False))
+    for df in (df_s, df_e, df_c, df_o):
+        print(df.to_string(index=False))
