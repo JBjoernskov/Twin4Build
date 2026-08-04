@@ -1606,9 +1606,18 @@ class SemanticModel:
     def parse_namespaces(self, namespaces=None):
         """Parse namespaces dynamically on demand into ontology_graph.
 
-        This method is called when ontology information is needed (e.g., class hierarchies).
-        It first tries to use fallback ontologies from core.ontology, then parses
-        namespace URIs directly if no fallback is available.
+        This method is called when ontology information is needed (e.g., class
+        hierarchies).  Per namespace, sources are tried in order:
+
+        1. the vendored local ontology file (``core.ontology``) -- primary, so
+           translation-time reasoning does not depend on the network;
+        2. the remote ontology URL (``core.ontology_remote``);
+        3. the namespace URI itself.
+
+        A namespace that fails ALL sources degrades signature-pattern matching
+        (subclass reasoning misses classes and translated models silently lose
+        components -- issue #114), so total failures additionally raise a
+        ``UserWarning`` listing the affected namespaces.
 
         Args:
             namespaces: Dict of {prefix: namespace} to parse. If None, parses all namespaces
@@ -1620,6 +1629,7 @@ class SemanticModel:
         if namespaces is None:
             namespaces = self.namespaces
 
+        failed = []
         for prefix, namespace in namespaces.items():
             uri = str(namespace)
 
@@ -1627,77 +1637,64 @@ class SemanticModel:
             if uri in self.parsed_namespaces or uri in self.error_namespaces:
                 continue
 
+            # Candidate sources, most reliable first.
+            sources = []
+            local = core.ontology.local_source(uri)
+            if local is None and hasattr(core.ontology, prefix.upper()):
+                # Back-compat: prefix-keyed lookup for graphs that bind a
+                # known prefix to a non-canonical namespace URI.
+                local = getattr(core.ontology, prefix.upper())
+            if local is not None and os.path.isfile(local):
+                sources.append(("vendored file", local))
+            remote = core.ontology_remote.remote_source(uri)
+            if remote is None:
+                remote = getattr(core.ontology_remote, prefix.upper(), None)
+            if remote is not None:
+                sources.append(("remote URL", remote))
+            if all(src != uri for _, src in sources):
+                sources.append(("namespace URI", namespace))
+
             success = False
 
             LOGGER.task("Parsing namespace: %s (%s)", prefix, uri)
             LOGGER.add_level()
 
-            # First, try to use fallback from core.ontology
-            if hasattr(core.ontology, prefix.upper()):
-                fallback_ontology_uri = getattr(core.ontology, prefix.upper())
-                LOGGER.task(
-                    "Attempting to parse namespace from core.ontology using URI: %s",
-                    fallback_ontology_uri,
-                )
+            for kind, source in sources:
+                LOGGER.task("Attempting to parse namespace from %s: %s", kind, source)
                 try:
-                    parse_wrapper(self._ontology_graph, source=fallback_ontology_uri)
+                    parse_wrapper(self._ontology_graph, source=source)
                     self.parsed_namespaces.add(uri)
+                    success = True
                     LOGGER.ok(
-                        "Attempting to parse namespace from core.ontology using URI: %s",
-                        fallback_ontology_uri,
+                        "Attempting to parse namespace from %s: %s",
+                        kind,
+                        source,
                         change_status=True,
                     )
-                    success = True
-                except Exception as e:
-                    success = False
-                    LOGGER.add_level()
-                    LOGGER.error("Error: %s.", str(e))
-                    LOGGER.remove_level()
-                    LOGGER.error(
-                        "Attempting to parse namespace from core.ontology using URI: %s",
-                        fallback_ontology_uri,
-                        change_status=True,
-                    )
-
-            # If no fallback or fallback failed, try parsing namespace directly
-            if not success:
-                LOGGER.task("Attempting to parse namespace directly using URI: %s", uri)
-                try:
-                    parse_wrapper(self._ontology_graph, source=namespace)
-                    self.parsed_namespaces.add(uri)
-                    success = True
+                    break
                 except HTTPError as http_err:
-                    success = False
                     LOGGER.add_level()
                     LOGGER.error("HTTP error: %s.", str(http_err))
                     LOGGER.error(
                         "Sometimes this error occurs when the ontology is not available at the same address as the namespace.",
                     )
                     LOGGER.remove_level()
-
                 except Exception as e:
-                    success = False
                     LOGGER.add_level()
                     LOGGER.error("Error: %s.", str(e))
                     LOGGER.remove_level()
-
-                if success:
-                    LOGGER.ok(
-                        "Attempting to parse namespace directly using URI: %s",
-                        uri,
-                        change_status=True,
-                    )
-                else:
+                if not success:
                     LOGGER.error(
-                        "Attempting to parse namespace directly using URI: %s",
-                        uri,
+                        "Attempting to parse namespace from %s: %s",
+                        kind,
+                        source,
                         change_status=True,
                     )
 
-            # If both methods failed, add to error namespaces
+            # If all sources failed, add to error namespaces
             if not success:
                 self.error_namespaces.add(uri)
-                # return False
+                failed.append(f"{prefix} ({uri})")
 
             overall_success = overall_success and success
 
@@ -1716,6 +1713,17 @@ class SemanticModel:
                     uri,
                     change_status=True,
                 )
+
+        if failed:
+            warnings.warn(
+                "Failed to parse ontology namespace(s): "
+                + ", ".join(failed)
+                + ". Class-hierarchy reasoning is incomplete for these "
+                "namespaces, so signature-pattern matching may silently drop "
+                "components from the translated model (see issue #114).",
+                UserWarning,
+                stacklevel=2,
+            )
 
         return overall_success
 
