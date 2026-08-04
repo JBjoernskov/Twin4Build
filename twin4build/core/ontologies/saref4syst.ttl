@@ -1,0 +1,168 @@
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix s4syst: <https://saref.etsi.org/saref4syst/> .
+@prefix vann: <http://purl.org/vocab/vann/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+dcterms:abstract a owl:AnnotationProperty .
+
+dcterms:created a owl:AnnotationProperty .
+
+dcterms:creator a owl:AnnotationProperty .
+
+dcterms:description a owl:AnnotationProperty .
+
+dcterms:issued a owl:AnnotationProperty .
+
+dcterms:license a owl:AnnotationProperty .
+
+dcterms:modified a owl:AnnotationProperty .
+
+dcterms:publisher a owl:AnnotationProperty .
+
+dcterms:source a owl:AnnotationProperty .
+
+dcterms:title a owl:AnnotationProperty .
+
+vann:preferredNamespacePrefix a owl:AnnotationProperty .
+
+vann:preferredNamespaceUri a owl:AnnotationProperty .
+
+s4syst: a owl:Ontology ;
+    dcterms:abstract "The present document specifies a new reference ontology pattern for the [SAREF semantic model](https://saref.etsi.org/), which leverages the experience of the [EUREKA ITEA 12004 SEAS (Smart Energy Aware Systems) project](http://w3id.org/seas/), and the development of the [OGC&W3C SSN (Semantic Sensor Network) ontology](https://www.w3.org/TR/vocab-ssn/). It also defines how this pattern may be instantiated for the verticals, and point to examples for the Smart Energy and the Smart Building domains. The present document is based on the requirements and guidelines defined in the associated [ETSI TS 103 549 document](https://www.etsi.org/deliver/etsi_tr/103500_103599/103549/01.01.01_60/tr_103549v010101p.pdf)."^^<https://www.iana.org/assignments/media-types/text/markdown> ;
+    dcterms:creator <http://maxime-lefrancois.info/me#> ;
+    dcterms:description """The present document is the technical specification of SAREF4SYST, a generic extension of [ETSI TS 103 264 SAREF](https://www.etsi.org/deliver/etsi_ts/103200_103299/103264/02.01.01_60/ts_103264v020101p.pdf) that defines an ontology pattern which can be instantiated for different domains. SAREF4SYST defines Systems, Connections between systems, and Connection Points at which systems may be connected. These core concepts can be used generically to define the topology of features of interest, and can be specialized for multiple domains. The topology of features of interest is highly important in many use cases. If a room holds a lighting device, and if it is adjacent with an open window to a room whose luminosity is low, then by turning on the lighting device in the former room one may expect that the luminosity in the latter room will rise.
+
+The SAREF4SYST ontology pattern can be instantiated for different domains. For example to describe zones inside a building (systems), that share a frontier (connections). Properties of systems are typically state variables (e.g. agent population, temperature), whereas properties of connections are typically flows (e.g. heat flow).
+
+SAREF4SYST has two main aims: on the one hand, to extend SAREF with the capability or representing general topology of systems and how they are connected or interact and, on the other hand, to exemplify how ontology patterns may help to ensure an homogeneous structure of the overall SAREF ontology and speed up the development of extensions.
+
+SAREF4SYST consists both of a core ontology, and guidelines to create ontologies following the SAREF4SYST ontology pattern. The core ontology is a lightweight OWL-DL ontology that defines 3 classes and 9 object properties.
+
+Use cases for ontology patterns are described extensively in  [ETSI TR 103 549 Clauses 4.2 and 4.3](https://www.etsi.org/deliver/etsi_tr/103500_103599/103549/01.01.01_60/tr_103549v010101p.pdf).
+
+For the Smart Energy domain:
+
+- Electric power systems can exchange electricity with other electric power systems. The electric energy can flow both ways in some cases (from the Public Grid to a Prosumer), or in only one way (from the Public Grid to a Load). Electric power systems can be made up of different sub-systems. Generic sub-types of electric power systems include producers, consumers, storage systems, transmission systems. 
+- Electric power systems may be connected one to another through electrical connection points. An Electric power system may have multiple connection points (Multiple Winding Transformer generally have one single primary winding with two or more secondary windings). Generic sub-types of electrical connection points include plugs, sockets, direct-current, single-phase, three-phase, connection points. 
+- An Electrical connection may exist between two Electric power systems at two of their respective connection points. Generic sub-types of electrical connections include Single-phase Buses, Three-phase Buses. A single-phase electric power system can be connected using different configurations at a three-phase bus (RN, SN, TN types).
+
+For the Smart Building domain:
+
+- Buildings, Storeys, Spaces, are different sub-types of Zones. Zones can contain sub-zones. Zones can be adjacent or intersect with other zones. 
+- Two zones may share one or more connections. For example some fresh air may be created inside a storey if it has two controllable openings to the exterior at different cardinal points. 
+
+A graphical overview of the SAREF4SYST ontology is provided in Figure 1. In such figure:
+
+- Rectangles are used to denote Classes. The label of the rectangle is the identifier of the Class.
+- Plain arrows are used to represent Object Properties between Classes. The label of the arrow is the identifier of the Object Property. The origin of the arrow is the domain Class of the property, and the target of the arrow is the range Class of the property.
+- Dashed arrows with identifiers between stereotype signs (i.e. "`<< >>`") refer to OWL axioms that are applied to some property. Four pairs of properties are inverse one of the other; the property `s4syst:connectedTo` is symmetric, and properties `s4syst:hasSubSystem` and `s4syst:hasSubSystem` are transitive.
+- A symbol =1 near the target of an arrow denotes that the associated property is functional. A symbol ∃ denotes a local existential restriction.
+
+
+![SAREF4SYST overview](diagrams/overview.png)
+"""^^<https://www.iana.org/assignments/media-types/text/markdown> ;
+    dcterms:issued "2019-06-06"^^xsd:date ;
+    dcterms:license <https://forge.etsi.org/etsi-software-license> ;
+    dcterms:modified "2020-06-14"^^xsd:date ;
+    dcterms:publisher <https://www.etsi.org/> ;
+    dcterms:source <https://saref.etsi.org/sources/saref4syst/> ;
+    dcterms:title "SAREF4SYST: an extension of SAREF for typology of systems and their inter-connections"@en ;
+    vann:preferredNamespacePrefix "s4syst" ;
+    vann:preferredNamespaceUri "https://saref.etsi.org/saref4syst/" ;
+    rdfs:seeAlso <http://www.etsi.org/deliver/etsi_ts/103500_103599/103548/01.01.02_60/ts_103548v010102p.pdf> ;
+    owl:versionIRI <https://saref.etsi.org/saref4syst/v1.1.2/> ;
+    owl:versionInfo "v1.1.2" .
+
+s4syst:connectedTo a owl:ObjectProperty,
+        owl:SymmetricProperty ;
+    rdfs:label "connected to"@en ;
+    rdfs:comment "Links a system to a system it is connected to. Connected systems interact in some way. The exact meaning of \"interact\" is defined by sub properties of s4syst:connectedTo. Property s4syst:connectedTo is symmetric. This property can be qualified using class s4syst:Connection, which connects the two systems. If there is a connection between several systems, then one may infer these systems are pairwise connected."@en ;
+    rdfs:domain s4syst:System ;
+    rdfs:range s4syst:System .
+
+s4syst:connectedThrough a owl:ObjectProperty ;
+    rdfs:label "connected through"@en ;
+    rdfs:comment "Links a system to one of its connections to other systems."@en ;
+    rdfs:domain s4syst:System ;
+    rdfs:range s4syst:Connection ;
+    owl:inverseOf s4syst:connectsSystem ;
+    owl:propertyChainAxiom ( s4syst:connectsAt s4syst:connectsSystemThrough ) .
+
+s4syst:hasSubSystem a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:label "has sub system"@en ;
+    rdfs:comment "Links a system to one of its sub systems."@en ;
+    rdfs:domain s4syst:System ;
+    rdfs:range s4syst:System ;
+    owl:inverseOf s4syst:subSystemOf .
+
+s4syst:subSystemOf a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:label "sub system of"@en ;
+    rdfs:comment "Links a system to its super system. Properties of subsystems somehow contribute to the properties of the super system. The exact meaning of \"contribute is defined by sub properties of s4syst:subSystemOf. Property s4syst:subSystemOf is transitive."@en ;
+    rdfs:domain s4syst:System ;
+    rdfs:range s4syst:System ;
+    owl:inverseOf s4syst:hasSubSystem .
+
+s4syst:connectsAt a owl:InverseFunctionalProperty,
+        owl:ObjectProperty ;
+    rdfs:label "connects at"@en ;
+    rdfs:comment "Links a system to one of the connection points at which it connects."@en ;
+    rdfs:domain s4syst:System ;
+    rdfs:range s4syst:ConnectionPoint ;
+    owl:inverseOf s4syst:connectionPointOf .
+
+s4syst:connectsSystem a owl:ObjectProperty ;
+    rdfs:label "connects system"@en ;
+    rdfs:comment "Links a connection to one of the systems it connects."@en ;
+    rdfs:domain s4syst:Connection ;
+    rdfs:range s4syst:System ;
+    owl:inverseOf s4syst:connectedThrough ;
+    owl:propertyChainAxiom ( s4syst:connectsSystemAt s4syst:connectionPointOf ) .
+
+s4syst:connectsSystemThrough a owl:ObjectProperty ;
+    rdfs:label "connects system through"@en ;
+    rdfs:comment "Links a connection point to one of the connections through which it connects its system."@en ;
+    rdfs:domain s4syst:ConnectionPoint ;
+    rdfs:range s4syst:Connection ;
+    owl:inverseOf s4syst:connectsSystemAt .
+
+s4syst:connectionPointOf a owl:FunctionalProperty,
+        owl:ObjectProperty ;
+    rdfs:label "connection point to"@en ;
+    rdfs:comment "Links a connection point to the one and only one system it belongs to."@en ;
+    rdfs:domain s4syst:ConnectionPoint ;
+    rdfs:range s4syst:System ;
+    owl:inverseOf s4syst:connectsAt .
+
+s4syst:connectsSystemAt a owl:ObjectProperty ;
+    rdfs:label "connects system at"@en ;
+    rdfs:comment "Links a connection to one of the connection points at which it connects a system."@en ;
+    rdfs:domain s4syst:Connection ;
+    rdfs:range s4syst:ConnectionPoint ;
+    owl:inverseOf s4syst:connectsSystemThrough .
+
+s4syst:Connection a owl:Class ;
+    rdfs:label "Connection"@en ;
+    rdfs:comment "The class of connections between systems. This class qualifies property s4syst:connectedTo. A connection describes potential interactions between systems. Any two connected systems are connected through a connection. A connection can connect more than two systems at the same time."@en ;
+    rdfs:subClassOf [ owl:onProperty s4syst:connectsSystem ;
+            owl:someValuesFrom s4syst:System ],
+        [ owl:onProperty s4syst:connectsSystemAt ;
+            owl:someValuesFrom s4syst:ConnectionPoint ] ;
+    owl:disjointWith s4syst:System .
+
+s4syst:ConnectionPoint a owl:Class ;
+    rdfs:label "Connection Point"@en ;
+    rdfs:comment "The class of connection points of systems, at which they may be connected to other systems. This class qualifies properties s4syst:connectsSystem and s4syst:connectedThrough. A connection point belongs to exactly one system. Any system connected through a connection is connected at one of its connection points to the connection. The system of a connection point that is connected through a connection is itself connected through the connection."@en ;
+    rdfs:subClassOf [ owl:cardinality 1 ;
+            owl:onProperty s4syst:connectionPointOf ] ;
+    owl:disjointWith s4syst:Connection,
+        s4syst:System .
+
+s4syst:System a owl:Class ;
+    rdfs:label "System"@en ;
+    rdfs:comment "The class of systems, i.e., systems virtually isolated from the environment, whose behaviour and interactions with the environment are modeled. Systems can be connected to other systems. Connected systems interact in some ways. Systems can also have subsystems. Properties of subsystems somehow contribute to the properties of the supersystem."@en .
+

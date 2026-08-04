@@ -10,6 +10,7 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 "*" = ["*.xlsm", "*.ttl", "*.csv"]
+"twin4build.core" = ["ontologies/*.ttl"]
 "twin4build.model.semantic_model.mappings" = ["*.yml"]
 
 [project]

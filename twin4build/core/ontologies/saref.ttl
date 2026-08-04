@@ -1,0 +1,998 @@
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix saref: <https://saref.etsi.org/core/> .
+@prefix vann: <http://purl.org/vocab/vann/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+dcterms:creator a owl:AnnotationProperty .
+
+dcterms:description a owl:AnnotationProperty .
+
+dcterms:issued a owl:AnnotationProperty .
+
+dcterms:license a owl:AnnotationProperty .
+
+dcterms:modified a owl:AnnotationProperty .
+
+dcterms:publisher a owl:AnnotationProperty .
+
+dcterms:source a owl:AnnotationProperty .
+
+dcterms:title a owl:AnnotationProperty .
+
+vann:preferredNamespacePrefix a owl:AnnotationProperty .
+
+vann:preferredNamespaceUri a owl:AnnotationProperty .
+
+saref: a owl:Ontology ;
+    dcterms:creator <http://maxime-lefrancois.info/me#>,
+        <http://www.garcia-castro.com/foaf.rdf#me>,
+        <https://w3id.org/people/mpoveda/>,
+        <https://www.linkedin.com/in/lauradaniele> ;
+    dcterms:description "The Smart Applications REFerence ontology (SAREF) is intended to enable interoperability between solutions from different providers and among various activity sectors in the Internet of Things (IoT), thus contributing to the development of the global digital market."@en ;
+    dcterms:issued "2020-02-11"^^xsd:date ;
+    dcterms:license <https://forge.etsi.org/etsi-software-license> ;
+    dcterms:modified "2020-05-29"^^xsd:date ;
+    dcterms:publisher <https://www.etsi.org/> ;
+    dcterms:source <https://saref.etsi.org/sources/saref-core/> ;
+    dcterms:title "SAREF: the Smart Applications REFerence ontology"@en ;
+    vann:preferredNamespacePrefix "saref" ;
+    vann:preferredNamespaceUri "https://saref.etsi.org/core/" ;
+    rdfs:comment """Information about changes compared to version 1.1.1:
+ - The classes and properties related to how to represent devices in building spaces (such as the saref:BuildingSpace class,  saref:BuildingObject class and saref:isLocatedIn property) have been removed from SAREF and incorporated  into the SAREF4BLDG extension related to buildings, including the reuse of the W3C? WGS84 geo positioning vocabulary.
+ - The saref:DeviceCategory and saref:FunctionCategory classes have been removed. Instead, the hierarchy of device categories has been implemented directly as subclasses of the saref:Device class.
+ - The information specific for energy efficiency has been moved to the SAREF4ENER extension. For example, the saref:Profile class has been redefined to accommodate only the properties that are general enough for any type of profile, not only for energy and power. Details on how to specifically model a power profile can be found in the SAREF4ENER extension. 
+ - The subclasses of the saref:Energy class  have been removed (i.e., Average Energy, Maximum Energy, Minimum Energy, Total Energy, HVAC Energy, Hot Water Energy and Lighting Energy).
+ - The saref:Property class has been split into two classes (saref:Property and saref:Measurement), as it is done in the SAREF4ENVI extension, in order to properly accommodate the distinction between the concept of property (an observable quality of something) and the concept of measurement (a concrete value observed for a property).
+ - Too restrictive cardinality restrictions have been revised, sometimes making them optional rather than mandatory (better to make properties mandatory in the extensions that specialize SAREF for a specific purpose, rather than restricting SAREF, whose purpose is more general). For example, definitions of units of measurement using an enumeration (owl:oneOf) were too restrictive because they did not allow using other units than those enumerated. Therefore, the individuals of each class are still there, but the owl:oneOf enumeration has been removed.
+ - The saref:UnitOfMeasure subclasses use individuals from the OM ontology for unit of measures, but this is not the only solution. It has been clarified in the comments that the OM ontology is an example, but other ontologies can be used.
+ - The global restrictions (rdfs:domain and rdfs:range) in object properties have been completely removed not to hinder interoperability. Object properties are now only restricted locally in the classes. 
+ - The subclasses of saref:Task have been transormed in individuals.
+ - The saref:hasTask property has been removed from the saref:Profile class to resolve an ambiguity with the saref:Task class.""",
+        """Information about changes compared to version 2.1.1: 
+ - Added the saref:FeatureOfInterest class and the properties used to relate it to saref:Measurement (saref:hasMeasurement and saref:isMeasurementOf) and to saref:Property (saref:hasProperty and saref:isPropertyOf).
+ - Added the saref:measurementMadeBy property as inverse of saref:makesMeasurement.
+ - The saref:relatesToProperty and saref:relatesToMeasurement properties are now inverse of each other.
+ - The range of saref:hasValue, which was defined as xsd:float, has been removed to support other datatypes for measurements.
+ - The range of datatype properties, which was defined as xsd:string, has been removed in order to support strings with language tags (rdf:langString). This affects saref:hasDescription, saref:hasManufacturer, saref:hasModel and saref:hasName, which now have implicitly a range of rdfs:Literal.
+ - The saref:hasName property has been removed and the use of rdfs:label is recommended. 
+ - The saref:hasDescription property has been deprecated and the use of rdfs:comment is recommended. 
+ - Too restrictive restrictions have been removed and in some cases the ontology documentation has been updated to reflect this: a saref:Command having at most one saref:hasDescription; a saref:Task being accomplished by at least one saref:Device; a saref:Device having a typical consumption of only energy or power; a saref:Commodity being measured in units of measure; restrictions on the values of saref:accomplishes that only covered specific use cases; universal restrictions on the saref:actsUpon property have been changed to existential ones; restrictions on the commands that a saref:Function may have, since there could be others not included in the defined enumerations; restrictive documentation of saref:EventFunction and saref:SmokeSensor.
+ - Bugs have been fixed: some devices (saref:DoorSwitch, saref:EnergyMeter, saref:LigthSwitch, saref:SmokeSensor, and saref:TemperatureSensor) were defined as subclass of a device and at the same time as consisting of such device; a saref:LightSwitch controls light and does not measure light, since it is an actuator; incorrect documentation of saref:OnState and saref:OffState.
+ - The saref:BuildingRelated, saref:EnergyRelated and saref:FunctionRelated classes have been removed, since the different extensions already classify the device types.
+ - The instances of the subclasses of saref:Command have been removed, since they represent examples.
+ - The instances of saref:UnitOfMeasure have been moved to examples.
+ - The classes related to the SAREF4ENER extension have been removed: saref:Generator, saref:Storage, saref:Load and saref:EnergyMeter.
+ - Some instances of saref:Device have been moved to examples: saref:WashingMachine, saref:LightingDevice, saref:MicroRenewable, saref:Multimedia, and saref:Network.
+ - Added domain and range axioms wherever the definition of a property unambiguously identifies the domain or the range of the property.
+ - The OWL Time ontology is not imported anymore.
+ - The documentation of some ontology terms has been updated for clarification.
+ - Language tags have been added to all labels and comments.
+""" ;
+    rdfs:seeAlso <https://www.etsi.org/deliver/etsi_ts/103200_103299/103264/03.01.01_60/ts_103264v030101p.pdf> ;
+    owl:versionIRI <https://saref.etsi.org/core/v3.1.1/> ;
+    owl:versionInfo "v3.1.1" .
+
+saref:Appliance a owl:Class ;
+    rdfs:label "Appliance"@en ;
+    rdfs:comment "An electrical/mechanical machine that accomplish some household functions, such as cleaning or cooking"@en ;
+    rdfs:subClassOf saref:Device .
+
+saref:Cleaning a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "Cleaning"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:CloseCommand a owl:Class ;
+    rdfs:label "Close command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:OpenCloseState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:OpenCloseFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command ;
+    owl:disjointWith saref:OpenCommand .
+
+saref:CloseState a owl:Class ;
+    rdfs:label "Close state"@en ;
+    rdfs:comment "The state of a device that is CLOSE"@en ;
+    rdfs:subClassOf saref:OpenCloseState .
+
+saref:Coal a owl:Class ;
+    rdfs:label "Coal"@en ;
+    rdfs:comment "A type of commodity"@en ;
+    rdfs:subClassOf saref:Commodity .
+
+saref:Comfort a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "Comfort"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:Currency a owl:Class ;
+    rdfs:label "Currency"@en ;
+    rdfs:comment "The class of units of measure for price"@en ;
+    rdfs:subClassOf saref:UnitOfMeasure .
+
+saref:DoorSwitch a owl:Class ;
+    rdfs:label "Door switch"@en ;
+    rdfs:comment "A switch that performs the saref:OpenCloseFunction, is used for controlling a door, and can be found in the state saref:OpenCloseState. A saref:DoorSwitch is typically used to accomplish saref:Safety."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:hasFunction ;
+            owl:someValuesFrom saref:OpenCloseFunction ],
+        [ a owl:Restriction ;
+            owl:onProperty saref:hasState ;
+            owl:someValuesFrom saref:OpenCloseState ],
+        saref:Switch .
+
+saref:Drying a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "Drying"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:Electricity a owl:Class ;
+    rdfs:label "Electricity"@en ;
+    rdfs:comment "A type of commodity"@en ;
+    rdfs:subClassOf saref:Commodity .
+
+saref:Energy a owl:Class ;
+    rdfs:label "Energy"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value measured in an energy unit (such as Kilowatt_Hour or Watt_hour). Furter specializations of the saref:Energy class can be found in the SAREF4ENER extension, where classes such as EnergyMax, EnergyMin and EnergyExpected are defined. "@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:EnergyEfficiency a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "EnergyEfficiency"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:EnergyUnit a owl:Class ;
+    rdfs:label "Energy unit"@en ;
+    rdfs:comment "The unit of measure for energy"@en ;
+    rdfs:subClassOf saref:UnitOfMeasure .
+
+saref:Entertainment a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "Entertainment"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:Gas a owl:Class ;
+    rdfs:label "Gas"@en ;
+    rdfs:comment "A type of commodity"@en ;
+    rdfs:subClassOf saref:Commodity .
+
+saref:GetCurrentMeterValueCommand a owl:Class ;
+    rdfs:label "Get current meter value command"@en ;
+    rdfs:comment "A type of get command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:MeteringFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:GetCommand .
+
+saref:GetMeterDataCommand a owl:Class ;
+    rdfs:label "Get meter data command"@en ;
+    rdfs:comment "A type of get command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:MeteringFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:GetCommand .
+
+saref:GetMeterHistoryCommand a owl:Class ;
+    rdfs:label "Get meter history command"@en ;
+    rdfs:comment "A type of get command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:MeteringFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:GetCommand .
+
+saref:GetSensingDataCommand a owl:Class ;
+    rdfs:label "Get sensing data command"@en ;
+    rdfs:comment "A type of get command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:SensingFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:GetCommand .
+
+saref:HVAC a owl:Class ;
+    rdfs:label "HVAC"@en ;
+    rdfs:comment "Heating, Ventilation and Air Conditioning (HVAC) device that provides indoor environmental comfort. A saref:HVAC is typically used to accomplish saref:Comfort."@en ;
+    rdfs:subClassOf saref:Device .
+
+saref:Humidity a owl:Class ;
+    rdfs:label "Humidity"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value that is measured in a humidity unit"@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:IlluminanceUnit a owl:Class ;
+    rdfs:label "Illuminance unit"@en ;
+    rdfs:comment "The unit of measure for light"@en ;
+    rdfs:subClassOf saref:UnitOfMeasure .
+
+saref:Lighting a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "Lighting"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:Meter a owl:Class ;
+    rdfs:label "Meter"@en ;
+    rdfs:comment "A device built to accurately detect and display a quantity in a form readable by a human being. Further, a device of category saref:Meter that performs a saref:MeteringFunction."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:hasFunction ;
+            owl:someValuesFrom saref:MeteringFunction ],
+        saref:Device .
+
+saref:MeterReading a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "Meter reading"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:Motion a owl:Class ;
+    rdfs:label "Motion"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value that is measured in a unit of measure for motion"@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:NotifyCommand a owl:Class ;
+    rdfs:label "Notify command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:EventFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command .
+
+saref:Occupancy a owl:Class ;
+    rdfs:label "Occupancy"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value (saref:hasValue property) that is measured in a unit of measure for occupancy"@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:OffCommand a owl:Class ;
+    rdfs:label "Off command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:OnOffState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:OnOffFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command ;
+    owl:disjointWith saref:OnCommand .
+
+saref:OffState a owl:Class ;
+    rdfs:label "Off state"@en ;
+    rdfs:comment "The state of a device that is Off"@en ;
+    rdfs:subClassOf saref:OnOffState .
+
+saref:OnState a owl:Class ;
+    rdfs:label "On state"@en ;
+    rdfs:comment "The state of a device that is On"@en ;
+    rdfs:subClassOf saref:OnOffState .
+
+saref:OpenState a owl:Class ;
+    rdfs:label "Open state"@en ;
+    rdfs:comment "The state of a device that is OPEN "@en ;
+    rdfs:subClassOf saref:OpenCloseState .
+
+saref:PauseCommand a owl:Class ;
+    rdfs:label "Pause command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf saref:Command .
+
+saref:Power a owl:Class ;
+    rdfs:label "Power"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value that is measured in a power unit (such as watt or kilowatt).  Further specializations of the saref:Power class can be found in the SAREF4ENER extension, where classes such as PowerMax, PowerMin and PowerExpected are defined."@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:PowerUnit a owl:Class ;
+    rdfs:label "Power unit"@en ;
+    rdfs:comment "The unit of measure for power"@en ;
+    rdfs:subClassOf saref:UnitOfMeasure .
+
+saref:Pressure a owl:Class ;
+    rdfs:label "Pressure"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value that is measured in a pressure unit (bar or pascal)"@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:PressureUnit a owl:Class ;
+    rdfs:label "Pressure unit"@en ;
+    rdfs:comment "The unit of measure for pressure"@en ;
+    rdfs:subClassOf saref:UnitOfMeasure .
+
+saref:Safety a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "Safety"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:SetAbsoluteLevelCommand a owl:Class ;
+    rdfs:label "Set absolute level command"@en ;
+    rdfs:comment "A type of set level command"@en ;
+    rdfs:subClassOf saref:SetLevelCommand .
+
+saref:SetRelativeLevelCommand a owl:Class ;
+    rdfs:label "Set relative level command"@en ;
+    rdfs:comment "A type of set level command"@en ;
+    rdfs:subClassOf saref:SetLevelCommand .
+
+saref:SmokeSensor a owl:Class ;
+    rdfs:label "Smoke sensor"@en ;
+    rdfs:comment "A sensor that performs the saref:SensingFunction and the saref:EventFunction, and is used for the purpose of sensing a property of type saref:Smoke. A saref:SmokeSensor is typically used to saref:accomplish saref:Safety."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:hasFunction ;
+            owl:someValuesFrom saref:EventFunction ],
+        [ a owl:Restriction ;
+            owl:onProperty saref:hasFunction ;
+            owl:someValuesFrom saref:SensingFunction ],
+        [ a owl:Restriction ;
+            owl:onProperty saref:measuresProperty ;
+            owl:someValuesFrom saref:Smoke ],
+        saref:Sensor .
+
+saref:StartCommand a owl:Class ;
+    rdfs:label "Start command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:StartStopState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:StartStopFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command ;
+    owl:disjointWith saref:StopCommand .
+
+saref:StartState a owl:Class ;
+    rdfs:label "Start state"@en ;
+    rdfs:comment "The state of a device that is STARTED"@en ;
+    rdfs:subClassOf saref:StartStopState .
+
+saref:StepDownCommand a owl:Class ;
+    rdfs:label "Step down command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:MultiLevelState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:LevelControlFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command ;
+    owl:disjointWith saref:StepUpCommand .
+
+saref:StopState a owl:Class ;
+    rdfs:label "Stop state"@en ;
+    rdfs:comment "The state of a device that is STOPPED"@en ;
+    rdfs:subClassOf saref:StartStopState .
+
+saref:TemperatureSensor a owl:Class ;
+    rdfs:label "Temperature sensor"@en ;
+    rdfs:comment "A sensor that is used for the purpose of sensing a property of type saref:Temperature. A saref:TemperatureSensor is typically used to saref:accomplish saref:Comfort."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:hasFunction ;
+            owl:someValuesFrom saref:SensingFunction ],
+        [ a owl:Restriction ;
+            owl:onProperty saref:measuresProperty ;
+            owl:someValuesFrom saref:Temperature ],
+        saref:Sensor .
+
+saref:TemperatureUnit a owl:Class ;
+    rdfs:label "Temperature unit"@en ;
+    rdfs:comment "The unit of measure for temperature"@en ;
+    rdfs:subClassOf saref:UnitOfMeasure .
+
+saref:ToggleCommand a owl:Class ;
+    rdfs:label "Toggle command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:OnOffFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command .
+
+saref:Washing a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "Washing"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:Water a owl:Class ;
+    rdfs:label "Water"@en ;
+    rdfs:comment "A type of commodity"@en ;
+    rdfs:subClassOf saref:Commodity .
+
+saref:WellBeing a owl:NamedIndividual,
+        saref:Task ;
+    rdfs:label "WellBeing"@en ;
+    rdfs:comment "A type of task for which a device is designed"@en .
+
+saref:hasDescription a owl:DatatypeProperty ;
+    rdfs:label "has description"@en ;
+    rdfs:comment "A relationship providing a description of an entity (e.g., device). The value is expected to be a string or a string with language tag."@en,
+        "DEPRECATED: The use of rdfs:comment is recommended instead."@en ;
+    owl:deprecated true .
+
+saref:hasTypicalConsumption a owl:ObjectProperty ;
+    rdfs:label "has typical consumption"@en ;
+    rdfs:comment "A relationship identifying the typical (energy or power) consumption of a device"@en .
+
+saref:Actuator a owl:Class ;
+    rdfs:label "Actuator"@en ;
+    rdfs:comment "A device responsible for moving or controlling a mechanism or system by performing an actuating function"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:hasFunction ;
+            owl:someValuesFrom saref:ActuatingFunction ],
+        saref:Device .
+
+saref:Light a owl:Class ;
+    rdfs:label "Light"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value that is measured in a illuminance unit (lux)"@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:LightSwitch a owl:Class ;
+    rdfs:label "Light switch"@en ;
+    rdfs:comment "A switch that performs the saref:OnOffFunction, controls the property saref:Light, and can be found in the state saref:OnOffState. It can offer a switch on service. A saref:LightSwitch is typically used to accomplish saref:Lighting."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:hasFunction ;
+            owl:someValuesFrom saref:OnOffFunction ],
+        [ a owl:Restriction ;
+            owl:onProperty saref:hasState ;
+            owl:someValuesFrom saref:OnOffState ],
+        [ a owl:Restriction ;
+            owl:onProperty saref:controlsProperty ;
+            owl:someValuesFrom saref:Light ],
+        [ a owl:Restriction ;
+            owl:onProperty saref:offers ;
+            owl:someValuesFrom saref:SwitchOnService ],
+        saref:Switch .
+
+saref:OnCommand a owl:Class ;
+    rdfs:label "On command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:OnOffState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:OnOffFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command .
+
+saref:OpenCommand a owl:Class ;
+    rdfs:label "Open command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:OpenCloseState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:OpenCloseFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command .
+
+saref:Smoke a owl:Class ;
+    rdfs:label "Smoke"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value that is measured in a unit of measure for smoke"@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:StepUpCommand a owl:Class ;
+    rdfs:label "Step up command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:MultiLevelState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:LevelControlFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command .
+
+saref:StopCommand a owl:Class ;
+    rdfs:label "Stop command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:StartStopState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:StartStopFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command .
+
+saref:SwitchOnService a owl:Class ;
+    rdfs:label "Switch on service"@en ;
+    rdfs:comment "A type of service that represents an on/off function to the network"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:isOfferedBy ;
+            owl:someValuesFrom saref:LightSwitch ],
+        [ a owl:Restriction ;
+            owl:onProperty saref:represents ;
+            owl:someValuesFrom saref:OnOffFunction ],
+        saref:Service .
+
+saref:Temperature a owl:Class ;
+    rdfs:label "Temperature"@en ;
+    rdfs:comment "A saref:Property related to some measurements that are characterized by a certain value that is measured in a temperature unit (degree_Celsius, degree_Fahrenheit, or degree_kelvin)"@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:accomplishes a owl:ObjectProperty ;
+    rdfs:label "accomplishes"@en ;
+    rdfs:comment "A relationship between a certain entity (e.g., a device) and the task it accomplishes"@en ;
+    rdfs:range saref:Task ;
+    owl:inverseOf saref:isAccomplishedBy .
+
+saref:hasCommand a owl:ObjectProperty ;
+    rdfs:label "has command"@en ;
+    rdfs:comment "A relationship between a function and a command"@en ;
+    rdfs:domain saref:Function ;
+    rdfs:range saref:Command ;
+    owl:inverseOf saref:isCommandOf .
+
+saref:hasManufacturer a owl:DatatypeProperty ;
+    rdfs:label "has manufacturer"@en ;
+    rdfs:comment "A relationship identifying the manufacturer of an entity (e.g., device). The value is expected to be a string or a string with language tag."@en .
+
+saref:hasMeterReading a owl:ObjectProperty ;
+    rdfs:label "has meter reading"@en ;
+    rdfs:comment "A relationship between a metering function and the measurement of the reading"@en ;
+    rdfs:domain saref:MeteringFunction ;
+    rdfs:range saref:Measurement .
+
+saref:hasMeterReadingType a owl:ObjectProperty ;
+    rdfs:label "has meter reading type"@en ;
+    rdfs:comment "A relationship identifying the reading type of a metering function (e.g., Water, Gas, Pressure , Energy , Power, etc.)"@en ;
+    rdfs:domain saref:MeteringFunction ;
+    rdfs:range saref:Property .
+
+saref:hasModel a owl:DatatypeProperty ;
+    rdfs:label "has model"@en ;
+    rdfs:comment "A relationship identifying the model of an entity (e.g., device). The value is expected to be a string or a string with language tag."@en .
+
+saref:hasPrice a owl:ObjectProperty ;
+    rdfs:label "has price"@en ;
+    rdfs:comment "A relationship indentifying the price associated to an entity"@en ;
+    rdfs:range saref:Price .
+
+saref:hasProfile a owl:ObjectProperty ;
+    rdfs:label "has profile"@en ;
+    rdfs:comment "A relationship associating a profile to a certain device"@en ;
+    rdfs:domain saref:Device ;
+    rdfs:range saref:Profile .
+
+saref:hasProperty a owl:ObjectProperty ;
+    rdfs:label "has property"@en ;
+    rdfs:comment "A relationship between a feature of interest and a property of that feature"@en ;
+    rdfs:domain saref:FeatureOfInterest ;
+    rdfs:range saref:Property ;
+    owl:inverseOf saref:isPropertyOf .
+
+saref:hasSensingRange a owl:ObjectProperty ;
+    rdfs:label "has sensing range"@en ;
+    rdfs:comment "A relationship between a sensing function and a measurement identifying the range of a sensor detection"@en ;
+    rdfs:domain saref:SensingFunction ;
+    rdfs:range saref:Measurement .
+
+saref:hasSensorType a owl:ObjectProperty ;
+    rdfs:label "has sensor type"@en ;
+    rdfs:comment "A relationship identifying the sensing type of a sensor detection (i.e., Temperature, Occupancy, Humidity, Motion , Smoke, Pressure, etc.) "@en ;
+    rdfs:domain saref:SensingFunction ;
+    rdfs:range saref:Property .
+
+saref:hasThresholdMeasurement a owl:ObjectProperty ;
+    rdfs:label "has threshold measurement"@en ;
+    rdfs:comment "A relationship associated with an event function to notify that a certain threshold measurement has been exceeded"@en ;
+    rdfs:domain saref:EventFunction ;
+    rdfs:range saref:Measurement .
+
+saref:hasTime a owl:ObjectProperty ;
+    rdfs:label "has time"@en ;
+    rdfs:comment "A relationship to associate time information to an entity"@en ;
+    rdfs:range saref:Time .
+
+saref:hasTimestamp a owl:DatatypeProperty ;
+    rdfs:label "has timestamp"@en ;
+    rdfs:comment "A relationship stating the timestamp of an entity (e.g. a measurement)."@en .
+
+saref:hasValue a owl:DatatypeProperty ;
+    rdfs:label "has value"@en ;
+    rdfs:comment "A relationship defining the value of a certain property, e.g., energy or power. Note that, even if numeric values are expected to enable reasoning, measurement values could use other datatypes."@en .
+
+saref:isAbout a owl:ObjectProperty ;
+    rdfs:label "isAbout"@en ;
+    rdfs:comment "A relationship identifying what an entity, such as a profile, is about"@en .
+
+saref:isAccomplishedBy a owl:ObjectProperty ;
+    rdfs:label "is accomplished by"@en ;
+    rdfs:comment "A relationship identifying an entity (e.g., a device) that can accomplish a task."@en ;
+    rdfs:domain saref:Task .
+
+saref:isControlledByDevice a owl:ObjectProperty ;
+    rdfs:label "is controlled by device"@en ;
+    rdfs:comment "A relationship specifying the devices that can control a certain property"@en ;
+    rdfs:domain saref:Property ;
+    rdfs:range saref:Device .
+
+saref:isMeasuredByDevice a owl:ObjectProperty ;
+    rdfs:label "is measured by device"@en ;
+    rdfs:comment "A relationship specifying the devices that can measure a certain property"@en ;
+    rdfs:domain saref:Property ;
+    rdfs:range saref:Device .
+
+saref:isMeasurementOf a owl:ObjectProperty ;
+    rdfs:label "isMeasurementOf"@en ;
+    rdfs:comment "A relationship between a measurement and the feature of interest whose quality was measured"@en ;
+    rdfs:domain saref:Measurement ;
+    rdfs:range saref:FeatureOfInterest ;
+    owl:inverseOf saref:hasMeasurement .
+
+saref:isUsedFor a owl:ObjectProperty ;
+    rdfs:label "is used for"@en ;
+    rdfs:comment "A relationship specifying the commodity for which a device is used for"@en .
+
+saref:makesMeasurement a owl:ObjectProperty ;
+    rdfs:label "makes measurement"@en ;
+    rdfs:comment "A relation between a device and the measurements it makes. Such measurement will link together the value of the measurement, its unit of measure and the property to which it relates."@en ;
+    rdfs:domain saref:Device ;
+    rdfs:range saref:Measurement ;
+    owl:inverseOf saref:measurementMadeBy .
+
+saref:measurementMadeBy a owl:ObjectProperty ;
+    rdfs:label "measurement made by"@en ;
+    rdfs:comment "A relation between a measurement and the device that made it."@en ;
+    rdfs:domain saref:Measurement ;
+    rdfs:range saref:Device .
+
+saref:Price a owl:Class ;
+    rdfs:label "Price"@en ;
+    rdfs:comment "A saref:Property crelated to some measurements that are characterized by a certain value that is measured using saref:Currency"@en ;
+    rdfs:subClassOf saref:Property .
+
+saref:Sensor a owl:Class ;
+    rdfs:label "Sensor"@en ;
+    rdfs:comment "A device that detects and responds to events or changes in the physical environment such as light, motion, or temperature changes. Further, a device of category saref:Sensor that performs a saref:SensingFunction."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:hasFunction ;
+            owl:someValuesFrom saref:SensingFunction ],
+        saref:Device .
+
+saref:SetLevelCommand a owl:Class ;
+    rdfs:label "Set level command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:actsUpon ;
+            owl:someValuesFrom saref:MultiLevelState ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:LevelControlFunction ;
+            owl:onProperty saref:isCommandOf ],
+        saref:Command .
+
+saref:StartStopFunction a owl:Class ;
+    rdfs:label "Start stop function"@en ;
+    rdfs:comment "An actuating function that allows to start and stop a device"@en ;
+    rdfs:subClassOf saref:ActuatingFunction .
+
+saref:Switch a owl:Class ;
+    rdfs:label "Switch"@en ;
+    rdfs:comment "A device of category saref:Actuator that performs an actuating function of type saref:OnOffFunction or saref:OpenCloseFunction"@en ;
+    rdfs:subClassOf saref:Actuator .
+
+saref:Time a owl:Class ;
+    rdfs:label "Time"@en ;
+    rdfs:comment "A class that allows to specify the time concept."@en .
+
+saref:consistsOf a owl:ObjectProperty ;
+    rdfs:label "consists of"@en ;
+    rdfs:comment "A relationship indicating a composite entity that consists of other entities (e.g., a temperature/humidity sensor that consists of a temperature sensor and a humidity sensor)"@en .
+
+saref:controlsProperty a owl:ObjectProperty ;
+    rdfs:label "controls property"@en ;
+    rdfs:comment "A relationship specifying the property that can be controlled by a certain device"@en ;
+    rdfs:domain saref:Device ;
+    rdfs:range saref:Property .
+
+saref:hasMeasurement a owl:ObjectProperty ;
+    rdfs:label "has measurement"@en ;
+    rdfs:comment "A relationship between a feature of interest and a measurement about it"@en ;
+    rdfs:domain saref:FeatureOfInterest ;
+    rdfs:range saref:Measurement .
+
+saref:isMeasuredIn a owl:ObjectProperty ;
+    rdfs:label "is measured in"@en ;
+    rdfs:comment "A relationship identifying the unit of measure used for a certain entity."@en ;
+    rdfs:domain saref:Measurement ;
+    rdfs:range saref:UnitOfMeasure .
+
+saref:isOfferedBy a owl:ObjectProperty ;
+    rdfs:label "is offered by"@en ;
+    rdfs:comment "A relationship between a service and a device that offers the service"@en ;
+    rdfs:domain saref:Service ;
+    rdfs:range saref:Device ;
+    owl:inverseOf saref:offers .
+
+saref:isPropertyOf a owl:ObjectProperty ;
+    rdfs:label "is property of"@en ;
+    rdfs:comment "A relationship between a property and the feature of interest it belongs to"@en ;
+    rdfs:domain saref:Property ;
+    rdfs:range saref:FeatureOfInterest .
+
+saref:relatesToMeasurement a owl:ObjectProperty ;
+    rdfs:label "relates to measurement"@en ;
+    rdfs:comment "A relationship between a property and the measurements it relates to"@en ;
+    rdfs:domain saref:Property ;
+    rdfs:range saref:Measurement .
+
+saref:relatesToProperty a owl:ObjectProperty ;
+    rdfs:label "relates to property"@en ;
+    rdfs:comment "A relationship between a measurement and the property it relates to"@en ;
+    rdfs:domain saref:Measurement ;
+    rdfs:range saref:Property ;
+    owl:inverseOf saref:relatesToMeasurement .
+
+saref:represents a owl:ObjectProperty ;
+    rdfs:label "represents"@en ;
+    rdfs:comment "A relationship between a service and a function."@en ;
+    rdfs:domain saref:Service ;
+    rdfs:range saref:Function .
+
+saref:EventFunction a owl:Class ;
+    rdfs:label "Event function"@en ;
+    rdfs:comment "A function that allows to notify about some relevant activity; e.g., that a certain threshold value has been exceeded or that some object has moved."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onClass saref:Measurement ;
+            owl:onProperty saref:hasThresholdMeasurement ],
+        saref:Function .
+
+saref:LevelControlFunction a owl:Class ;
+    rdfs:label "Level control function"@en ;
+    rdfs:comment "An actuating function that allows to do level adjustments of a property in a certain range (e.g., 0%-100%), such as dimming a light in a room or setting the speed of an electric motor. "@en ;
+    rdfs:subClassOf saref:ActuatingFunction .
+
+saref:MultiLevelState a owl:Class ;
+    rdfs:label "Multi level state"@en ;
+    rdfs:comment "A type of state"@en ;
+    rdfs:subClassOf saref:State .
+
+saref:OpenCloseFunction a owl:Class ;
+    rdfs:label "Open close function"@en ;
+    rdfs:comment "An actuating function that allows to open and close a device"@en ;
+    rdfs:subClassOf saref:ActuatingFunction .
+
+saref:Profile a owl:Class ;
+    rdfs:label "Profile"@en ;
+    rdfs:comment "A specification associated to a device to collect information about a certain Property (e.g., Energy) for optimizing its usage in the home, office or building in which the device is located. This specification is about a certain Property (saref:isAbout), can be calculated over a time span (saref:hasTime) and can be associated to some costs (saref:hasPrice). An example is the Power Profile defined in the SAREF4ENER extension that can be associated to a device for optimizing the Energy efficiency in the home, office or building in which the device is located."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Profile ;
+            owl:onProperty saref:consistsOf ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Price ;
+            owl:onProperty saref:hasPrice ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Time ;
+            owl:onProperty saref:hasTime ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a owl:Class ;
+                    owl:unionOf ( saref:Commodity saref:Property ) ] ;
+            owl:onProperty saref:isAbout ] .
+
+saref:hasState a owl:ObjectProperty ;
+    rdfs:label "has state"@en ;
+    rdfs:comment "A relationship identifying the type of state of a device"@en ;
+    rdfs:domain saref:Device ;
+    rdfs:range saref:State .
+
+saref:measuresProperty a owl:ObjectProperty ;
+    rdfs:label "measures property"@en ;
+    rdfs:comment "A relationship specifying the property that can be measured by a certain device"@en ;
+    rdfs:domain saref:Device ;
+    rdfs:range saref:Property .
+
+saref:offers a owl:ObjectProperty ;
+    rdfs:label "offers"@en ;
+    rdfs:comment "A relationship between a device and a service"@en ;
+    rdfs:domain saref:Device ;
+    rdfs:range saref:Service .
+
+saref:GetCommand a owl:Class ;
+    rdfs:label "Get command"@en ;
+    rdfs:comment "A type of command"@en ;
+    rdfs:subClassOf saref:Command .
+
+saref:StartStopState a owl:Class ;
+    rdfs:label "Start stop state"@en ;
+    rdfs:comment "A type of state"@en ;
+    rdfs:subClassOf saref:State .
+
+saref:ActuatingFunction a owl:Class ;
+    rdfs:label "Actuating function"@en ;
+    rdfs:comment "A function that allows to transmit data to actuators, such as level settings (e.g., temperature) or binary switching (e.g., open/close, on/off)"@en ;
+    rdfs:subClassOf saref:Function .
+
+saref:OnOffFunction a owl:Class ;
+    rdfs:label "On off function"@en ;
+    rdfs:comment "An actuating function that allows to switch on and off an actuator"@en ;
+    rdfs:subClassOf saref:ActuatingFunction .
+
+saref:OnOffState a owl:Class ;
+    rdfs:label "On off state"@en ;
+    rdfs:comment "A type of state"@en ;
+    rdfs:subClassOf saref:State .
+
+saref:OpenCloseState a owl:Class ;
+    rdfs:label "Open close state"@en ;
+    rdfs:comment "A type of state"@en ;
+    rdfs:subClassOf saref:State .
+
+saref:Service a owl:Class ;
+    rdfs:label "Service"@en ;
+    rdfs:comment "A service is a representation of a function to a network that makes the function discoverable, registerable, remotely controllable by other devices in the network. A service can represent one or more functions. A Service is offered by a device that wants (a certain set of) its function(s) to be discoverable, registerable, remotely controllable by other devices in the network. A Service must specify the device that is offering the service and the function(s) to be represented."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onClass saref:Device ;
+            owl:onProperty saref:isOfferedBy ],
+        [ a owl:Restriction ;
+            owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onClass saref:Function ;
+            owl:onProperty saref:represents ] .
+
+saref:FeatureOfInterest a owl:Class ;
+    rdfs:label "Feature of interest"@en ;
+    rdfs:comment "A feature of interest represents any real world entity from which a property is measured."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Property ;
+            owl:onProperty saref:hasProperty ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty saref:hasMeasurement ] .
+
+saref:MeteringFunction a owl:Class ;
+    rdfs:label "Metering function"@en ;
+    rdfs:comment "A function that allows to get data from a meter, such as current meter reading or instantaneous demand"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty saref:hasMeterReading ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a owl:Class ;
+                    owl:unionOf ( saref:Commodity saref:Property ) ] ;
+            owl:onProperty saref:hasMeterReadingType ],
+        saref:Function .
+
+saref:SensingFunction a owl:Class ;
+    rdfs:label "Sensing function"@en ;
+    rdfs:comment "A function that allows to transmit data from sensors, such as measurement values (e.g., temperature) or sensing data (e.g., occupancy)"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:onProperty saref:hasSensingRange ;
+            owl:someValuesFrom saref:Measurement ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Property ;
+            owl:onProperty saref:hasSensorType ],
+        saref:Function .
+
+saref:Commodity a owl:Class ;
+    rdfs:label "Commodity"@en ;
+    rdfs:comment "A marketable item for which there is demand, but which is supplied without qualitative differentiation across a market. SAREF refers to energy commodities such as electricity, gas, coal and oil. "@en .
+
+saref:State a owl:Class ;
+    rdfs:label "State"@en ;
+    rdfs:comment "The state in which a device can be found, e.g, ON/OFF/STANDBY, or ONLINE/OFFLINE. We propose here a list of states that are relevant for the purpose of SAREF, but this list can be extended."@en .
+
+saref:UnitOfMeasure a owl:Class ;
+    rdfs:label "Unit of measure"@en ;
+    rdfs:comment "The unit of measure is a standard for measurement of a quantity, such as a Property. For example,  Power is a property and Watt is a unit of power that represents a definite predetermined power: when we say 10 Watt, we actually mean 10 times the definite predetermined power called \"watt\". Our definition is based on the definition of unit of measure in the Ontology of units of Measure (OM). We propose here a list of some units of measure that are relevant for the purpose of SAREF, but this list can be extended, also using some other ontologies rather than the Ontology of units of Measure (OM)."@en .
+
+saref:hasFunction a owl:ObjectProperty ;
+    rdfs:label "has function"@en ;
+    rdfs:comment "A relationship identifying the function of a device"@en ;
+    rdfs:domain saref:Device ;
+    rdfs:range saref:Function .
+
+saref:actsUpon a owl:ObjectProperty ;
+    rdfs:label "acts upon"@en ;
+    rdfs:comment "A relationship between a command and a state"@en ;
+    rdfs:domain saref:Command ;
+    rdfs:range saref:State .
+
+saref:Function a owl:Class ;
+    rdfs:label "Function"@en ;
+    rdfs:comment "The functionality necessary to accomplish the task for which a device is designed. A device can be designed to perform more than one function. Functions can be structured in categories (subclasses) that reflect different points of view, for example, considering the specific application area for which a function can be used (e.g., light, temperature, motion, heat, power, etc.), or the capability that a function can support (e.g., receive, reply, notify, etc.), and so forth. "@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onClass saref:Command ;
+            owl:onProperty saref:hasCommand ] .
+
+saref:Task a owl:Class ;
+    rdfs:label "Task"@en ;
+    rdfs:comment "The goal for which a device is designed (from a user perspective). For example, a washing machine is designed for the task of washing. We propose here a list of tasks that are relevant for the purpose of SAREF, but this list can be extended. Tasks can be accomplished by devices (saref:isAccomplishedBy)."@en .
+
+saref:Measurement a owl:Class ;
+    rdfs:label "Measurement"@en ;
+    rdfs:comment "Represents the measured value made over a property. It is also linked to the unit of measure in which the value is expressed and the timestamp of the measurement."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:FeatureOfInterest ;
+            owl:onProperty saref:isMeasurementOf ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:UnitOfMeasure ;
+            owl:onProperty saref:isMeasuredIn ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Property ;
+            owl:onProperty saref:relatesToProperty ],
+        [ a owl:Restriction ;
+            owl:onClass saref:UnitOfMeasure ;
+            owl:onProperty saref:isMeasuredIn ;
+            owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ],
+        [ a owl:Restriction ;
+            owl:onClass saref:Property ;
+            owl:onProperty saref:relatesToProperty ;
+            owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:dateTime ;
+            owl:onProperty saref:hasTimestamp ],
+        [ a owl:Restriction ;
+            owl:cardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onProperty saref:hasValue ] .
+
+saref:Command a owl:Class ;
+    rdfs:label "Command"@en ;
+    rdfs:comment "A directive that a device must support to perform a certain function. A command may act upon a state, but does not necessarily act upon a state. For example, the ON command acts upon the ON/OFF state, but the GET command does not act upon any state, it simply gives a directive to retrieve a certain value. We propose here a list of commands that are relevant for the purpose of SAREF, but this list can be extended."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:State ;
+            owl:onProperty saref:actsUpon ],
+        [ a owl:Restriction ;
+            owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onClass saref:Function ;
+            owl:onProperty saref:isCommandOf ] .
+
+saref:isCommandOf a owl:ObjectProperty ;
+    rdfs:label "is command of"@en ;
+    rdfs:comment "A relationship between a command and a function."@en ;
+    rdfs:domain saref:Command ;
+    rdfs:range saref:Function .
+
+saref:Device a owl:Class ;
+    rdfs:label "Device"@en ;
+    rdfs:comment "A tangible object designed to accomplish a particular task. In order to accomplish this task, the device performs one or more functions. For example, a washing machine is designed to wash (task) and to accomplish this task it performs a start and stop function."@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Commodity ;
+            owl:onProperty saref:isUsedFor ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty saref:makesMeasurement ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Property ;
+            owl:onProperty saref:measuresProperty ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Service ;
+            owl:onProperty saref:offers ],
+        [ a owl:Restriction ;
+            owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onClass saref:Task ;
+            owl:onProperty saref:accomplishes ],
+        [ a owl:Restriction ;
+            owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onClass saref:Function ;
+            owl:onProperty saref:hasFunction ],
+        [ a owl:Restriction ;
+            owl:maxCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onProperty saref:hasManufacturer ],
+        [ a owl:Restriction ;
+            owl:maxCardinality "1"^^xsd:nonNegativeInteger ;
+            owl:onProperty saref:hasModel ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Device ;
+            owl:onProperty saref:consistsOf ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Property ;
+            owl:onProperty saref:controlsProperty ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Profile ;
+            owl:onProperty saref:hasProfile ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:State ;
+            owl:onProperty saref:hasState ] .
+
+saref:Property a owl:Class ;
+    rdfs:label "Property"@en ;
+    rdfs:comment "A quality of a feature of interest that can be measured; an aspect of a feature of interest that is intrinsic to and cannot exist without the feature"@en ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom saref:Device ;
+            owl:onProperty saref:isControlledByDevice ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Device ;
+            owl:onProperty saref:isMeasuredByDevice ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:FeatureOfInterest ;
+            owl:onProperty saref:isPropertyOf ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom saref:Measurement ;
+            owl:onProperty saref:relatesToMeasurement ] .
+
