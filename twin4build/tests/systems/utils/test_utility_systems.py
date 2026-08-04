@@ -13,6 +13,7 @@ from dateutil import tz
 # Set test flag
 import twin4build
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+from twin4build.systems.utils.function_system import FunctionSystem
 from twin4build.systems.utils.max_system import MaxSystem
 from twin4build.systems.utils.on_off_system import OnOffSystem
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
@@ -183,6 +184,63 @@ class TestOnOffSystem(unittest.TestCase):
         # Check output should be value (100) since criteriaValue (0.8) >= threshold (0.5)
         output = self.system.output["value"].get()
         self.assertEqual(output.item(), 100)
+
+
+class TestFunctionSystem(unittest.TestCase):
+    def setUp(self):
+        # Comfort residual: relu(setpoint - measured)
+        self.system = FunctionSystem(
+            inputs=["setpoint", "measured"],
+            fn=lambda d: torch.relu(d["setpoint"] - d["measured"]),
+            id="test_function",
+        )
+
+    def test_initialization(self):
+        self.assertIsNotNone(self.system)
+        self.assertEqual(self.system.id, "test_function")
+        self.assertEqual(set(self.system.input), {"setpoint", "measured"})
+        self.assertEqual(set(self.system.output), {"output"})
+
+    def test_do_step_residual(self):
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
+        step_size = [600]
+        self.system.initialize(
+            start_time=start_time, end_time=end_time, step_size=step_size
+        )
+
+        # Below the setpoint: positive residual.
+        self.system.input["setpoint"].set(torch.tensor([21.0]), i_t=0)
+        self.system.input["measured"].set(torch.tensor([19.5]), i_t=0)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        self.system.do_step(
+            second_time=0, date_time=datetime_val, step_size=600, step_index=0
+        )
+        self.assertAlmostEqual(
+            self.system.output["output"].get().item(), 1.5, places=8
+        )
+
+        # Above the setpoint: clamped to zero.
+        self.system.input["setpoint"].set(torch.tensor([21.0]), i_t=1)
+        self.system.input["measured"].set(torch.tensor([23.0]), i_t=1)
+        self.system.do_step(
+            second_time=600, date_time=datetime_val, step_size=600, step_index=1
+        )
+        self.assertAlmostEqual(
+            self.system.output["output"].get().item(), 0.0, places=8
+        )
+
+    def test_forward_is_differentiable(self):
+        """Gradients flow through the user-supplied transformation."""
+        measured = torch.tensor([19.0], requires_grad=True)
+        _, outs = self.system.forward(
+            None,
+            {"setpoint": torch.tensor([21.0]), "measured": measured},
+            {},
+            600,
+        )
+        outs["output"].sum().backward()
+        self.assertAlmostEqual(measured.grad.item(), -1.0, places=8)
 
 
 class TestPassInputToOutput(unittest.TestCase):

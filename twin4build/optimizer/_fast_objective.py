@@ -55,6 +55,7 @@ out.
 from __future__ import annotations
 
 import math
+from types import SimpleNamespace
 
 import torch
 
@@ -196,6 +197,25 @@ class FastControlObjective:
         self.composer = composer
         self._theta_empty = torch.zeros(0, dtype=tps.float_dtype(), device=model.device)
 
+        # Functional slot override: instead of in-place column writes into a
+        # cloned captured matrix (which torch.func.vmap cannot batch), the
+        # theta-driven columns are selected with a boolean mask and a
+        # (n_vars, n_captured) 0/1 matrix S so that ``theta_phys @ S`` scatters
+        # each variable's trajectory into its captured columns.  Values are
+        # identical to the in-place form; the loss becomes vmap-able over an
+        # extra leading theta batch dimension (used by the Pareto prepass).
+        n_cap = len(composer._captured_keys)
+        slot_mask = torch.zeros(n_cap, dtype=torch.bool, device=model.device)
+        S = torch.zeros(
+            (len(self.vars), n_cap), dtype=tps.float_dtype(), device=model.device
+        )
+        for v, slots in enumerate(self.var_slots):
+            for j in slots:
+                slot_mask[j] = True
+                S[v, j] = 1.0
+        self._slot_mask = slot_mask
+        self._slot_matrix = S
+
         # -- reference rollout (captures exogenous inputs, initial state) ------
         self._capture()
 
@@ -279,10 +299,10 @@ class FastControlObjective:
         self.n_periods = len(R.n_t)
 
     # -- the differentiable loss ------------------------------------------------
-    def loss(self, theta: torch.Tensor) -> torch.Tensor:
-        """Same value as ``Optimizer.__obj_ad(theta)``; differentiable w.r.t.
-        ``theta`` (the solver's flattened, interleaved, normalized decision
-        vector)."""
+    def _rollout(self, theta: torch.Tensor):
+        """Composed-map rollout at ``theta``: per-period loss-port
+        trajectories ``OUT[p]`` of shape ``(n_t_p, n_loss_ports)`` in PHYSICAL
+        units, matching the object-graph history reads."""
         opt = self.opt
         n_vars = len(self.vars)
         theta_m = theta.reshape(-1, n_vars)  # (sum n_t, n_vars)
@@ -300,19 +320,16 @@ class FastControlObjective:
                 cols.append(block[:, v] * (mx - mn) + mn)
             theta_phys.append(torch.stack(cols, dim=1))
 
-        # Rollout: per period, override the theta-driven captured slots and
-        # step the composed map (the shared sequential rollout,
-        # :meth:`Simulator.rollout_composed`).  OUT[p] is (n_t_p, n_loss_ports)
-        # in PHYSICAL units, matching the object-graph history reads.
+        # Rollout: per period, override the theta-driven captured slots
+        # (functionally -- see __init__) and step the composed map (the shared
+        # sequential rollout, :meth:`Simulator.rollout_composed`).
         sim = opt.simulator
         OUT = []
         for p in range(self.n_periods):
             cap = self.CAP[p]
-            if any(self.var_slots):
-                cap = cap.clone()
-                for v, slots in enumerate(self.var_slots):
-                    for j in slots:
-                        cap[:, j] = theta_phys[p][:, v]
+            if bool(self._slot_mask.any()):
+                theta_cap = theta_phys[p] @ self._slot_matrix  # (n_t_p, n_cap)
+                cap = torch.where(self._slot_mask, theta_cap, cap)
             M = sim.rollout_composed(
                 self.composer, self.Y0[p], self._theta_empty, cap
             )  # (n_t_p, n_meas)
@@ -323,24 +340,46 @@ class FastControlObjective:
                 else:  # theta-driven loss output
                     cols.append(theta_phys[p][:, idx])
             OUT.append(torch.stack(cols, dim=1) if cols else M[:, :0])
+        return OUT
 
-        # Loss: replicates Optimizer.__obj_ad term by term.  Means over the
-        # per-period concatenation equal the object graph's masked means (the
-        # mask selects the same entries; means are order-invariant).
+    def parts(self, theta: torch.Tensor) -> SimpleNamespace:
+        """The loss decomposed into its differentiable components (one rollout).
+
+        Returns a namespace with:
+
+        - ``eq``: list of k-weighted equality-penalty scalars (one per
+          equality constraint, in ``_eq_terms`` order),
+        - ``ineq``: the k-weighted inequality-penalty scalar (``None`` when
+          there are no inequality constraints),
+        - ``objs``: per-objective *min-oriented* normalized means (``+mean``
+          for "min", ``-mean`` for "max"), in ``opt._objectives`` order,
+        - ``phys``: per-objective PHYSICAL (unnormalized, unsigned) means --
+          reporting values for e.g. Pareto fronts.
+
+        ``loss()`` reassembles exactly the object-graph accumulation order, so
+        existing callers see bit-identical values.
+        """
+        opt = self.opt
+        OUT = self._rollout(theta)
+
+        # Means over the per-period concatenation equal the object graph's
+        # masked means (the mask selects the same entries; means are
+        # order-invariant).
         def _norm_col(j):
             mn, mx = self._out_norm[j]
             return torch.cat(
                 [(OUT[p][:, j] - mn) / (mx - mn) for p in range(self.n_periods)]
             )
 
-        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=opt._device)
         k = opt._constraint_penalty
 
+        eq = []
         for j, desired in self._eq_terms:
             y_norm = _norm_col(j)
             d_norm = torch.cat(desired)
-            loss = loss + k * torch.mean(torch.abs(y_norm - d_norm))
+            eq.append(k * torch.mean(torch.abs(y_norm - d_norm)))
 
+        ineq = None
         if self._ineq_terms:
             upper = torch.tensor(0.0, dtype=tps.float_dtype(), device=opt._device)
             lower = torch.tensor(0.0, dtype=tps.float_dtype(), device=opt._device)
@@ -351,15 +390,46 @@ class FastControlObjective:
                     upper = upper + torch.mean(torch.relu(y_norm - d_norm))
                 else:
                     lower = lower + torch.mean(torch.relu(d_norm - y_norm))
-            loss = loss + k * (upper + lower)
+            ineq = k * (upper + lower)
 
+        objs = []
+        phys = []
         for j, objective_type in self._obj_terms:
             y_norm = _norm_col(j)
-            if objective_type == "min":
-                loss = loss + torch.mean(y_norm)
-            else:
-                loss = loss - torch.mean(y_norm)
+            m = torch.mean(y_norm)
+            objs.append(m if objective_type == "min" else -m)
+            phys.append(
+                torch.mean(
+                    torch.cat([OUT[p][:, j] for p in range(self.n_periods)])
+                )
+            )
 
+        return SimpleNamespace(eq=eq, ineq=ineq, objs=objs, phys=phys)
+
+    def penalty(self, p: SimpleNamespace) -> torch.Tensor:
+        """Sum of the constraint-penalty components of ``parts()`` output, in
+        the same accumulation order as ``loss()``."""
+        total = torch.tensor(
+            0.0, dtype=tps.float_dtype(), device=self.opt._device
+        )
+        for e in p.eq:
+            total = total + e
+        if p.ineq is not None:
+            total = total + p.ineq
+        return total
+
+    def loss(self, theta: torch.Tensor) -> torch.Tensor:
+        """Same value as ``Optimizer.__obj_ad(theta)``; differentiable w.r.t.
+        ``theta`` (the solver's flattened, interleaved, normalized decision
+        vector)."""
+        p = self.parts(theta)
+        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=self.opt._device)
+        for e in p.eq:
+            loss = loss + e
+        if p.ineq is not None:
+            loss = loss + p.ineq
+        for o in p.objs:
+            loss = loss + o
         return loss
 
     def value_and_grad(self, theta: torch.Tensor):
