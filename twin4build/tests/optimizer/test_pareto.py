@@ -261,6 +261,17 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
         f2n = (res.f2_min - ideal2) / (nadir2 - ideal2)
         np.testing.assert_array_less(f2n, res.eps + 1e-3)
 
+        # Regression (weak anchor): relu discomfort is flat at 0, so the RAW
+        # f2 anchor stops at an arbitrary over-heated profile (its f1 is the
+        # nadir estimate).  The eps=0 endpoint must be solved as a sweep
+        # subproblem instead, recovering a clearly cheaper f2-optimal point.
+        f1_range = res.nadir[0] - res.ideal[0]
+        self.assertGreater(
+            (res.nadir[0] - res.f1_min[-1]) / f1_range, 0.05,
+            "eps=0 endpoint is no cheaper than the raw f2 anchor -- "
+            "weakly Pareto-optimal endpoint is back",
+        )
+
 
 class TestOptimizeReturnsResult(unittest.TestCase):
     """Regression: _scipy_solver used to swallow the scipy result object."""

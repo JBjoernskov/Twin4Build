@@ -6,15 +6,24 @@ methods (NSGA-II and friends) that ignore gradients and handle dynamics
 constraints poorly.  Twin4Build's simulator is differentiable, so each Pareto
 point can instead be an exact gradient-based NLP solve:
 
-1. Solve the two **anchor** problems (each objective alone) -> ideal/nadir
-   estimates of the second objective.
-2. Normalize f2 with them and lay an **epsilon grid** between the anchors.
+1. Solve the two **anchor** problems with an AUGMECON-augmented objective
+   ``f_i + delta * f_other``.  The anchors only build the payoff table
+   (ideal/nadir estimates for normalization); they are NOT reported as front
+   points, because an anchor whose objective has a flat optimum (e.g. a relu
+   discomfort residual, which is exactly zero for every sufficiently-heated
+   trajectory) stops at an arbitrary point of the flat region and is only
+   *weakly* Pareto optimal.
+2. Normalize f2 with them and lay an **epsilon grid** spanning the anchors,
+   endpoints included.
 3. Per grid point solve ``min f1 + delta*f2_norm  s.t.  f2_norm <= eps``
    (SLSQP with the epsilon constraint as a HARD scipy constraint, warm-started
    from the neighbouring solution).  The small ``delta*f2_norm`` term is the
    AUGMECON augmentation: it guarantees *properly* Pareto-optimal points
    instead of weakly optimal ones, and -- unlike a weighted sum -- the
-   epsilon-constraint scheme recovers non-convex front regions.
+   epsilon-constraint scheme recovers non-convex front regions.  Solving the
+   eps=0 endpoint this way (instead of reporting the raw f2 anchor)
+   approaches the f2 optimum from the infeasible side, where the constraint
+   gradient is informative, and finds the CHEAPEST f2-optimal solution.
 4. Filter dominated points; report the finite-difference front slope
    ``-d f1 / d eps`` (the marginal price of the second objective; exact
    multipliers arrive with the IPOPT backend).
@@ -135,15 +144,20 @@ class _EpsSubproblem:
     adds one extra backward for the constraint gradient, the object-graph
     fallback evaluates a 2-row ``jacrev``).
 
-    ``obj_index`` picks which objective is scalarized (anchor solves) and
-    ``delta`` adds the AUGMECON term; f2 normalization is
-    ``f2_norm = (f2_min - ideal2) / range2`` (identity until the anchors set
-    it via :meth:`set_normalization`).
+    ``obj_index`` picks which objective is scalarized (anchor solves),
+    ``con_index`` which one the epsilon constraint bounds (the second
+    objective in the sweep; the FIRST during the lexicographic anchor
+    polish), and ``delta`` adds the AUGMECON term.  The constrained
+    objective is normalized as ``(f - ideal) / range`` (identity until
+    :meth:`set_normalization`).
     """
 
-    def __init__(self, opt, obj_index: int = 0, delta: float = 0.0):
+    def __init__(
+        self, opt, obj_index: int = 0, con_index: int = 1, delta: float = 0.0
+    ):
         self.opt = opt
         self.obj_index = obj_index
+        self.con_index = con_index
         self.delta = float(delta)
         self.ideal2 = 0.0
         self.range2 = 1.0
@@ -160,7 +174,7 @@ class _EpsSubproblem:
         z = z.detach().clone().requires_grad_(True)
         p = fast.parts(z)
         pen = fast.penalty(p)
-        f2n = (p.objs[1] - self.ideal2) / self.range2
+        f2n = (p.objs[self.con_index] - self.ideal2) / self.range2
         f = p.objs[self.obj_index] + pen
         if self.delta:
             f = f + self.delta * f2n
@@ -187,7 +201,7 @@ class _EpsSubproblem:
                 pen = pen + e
             if p.ineq is not None:
                 pen = pen + p.ineq
-            f2n = (p.objs[1] - self.ideal2) / self.range2
+            f2n = (p.objs[self.con_index] - self.ideal2) / self.range2
             f = p.objs[self.obj_index] + pen
             if self.delta:
                 f = f + self.delta * f2n
@@ -242,6 +256,37 @@ class _EpsSubproblem:
 
     def values(self, x) -> dict:
         return self._compute(x)
+
+
+def _anchor_solve(
+    opt,
+    obj_index: int,
+    x_init: np.ndarray,
+    bounds_obj,
+    solver_options: dict,
+    method_name: str,
+    delta: float,
+):
+    """Augmented anchor solve (payoff-table entry).
+
+    Minimizes ``f_obj + delta * f_other`` instead of ``f_obj`` alone
+    (approximate lexicographic payoff table).  Without the delta term, an
+    anchor whose objective has a flat optimum (e.g. a relu discomfort
+    residual, which is exactly 0 for EVERY sufficiently-heated trajectory)
+    stops at an arbitrary point of the flat region and is only *weakly*
+    Pareto optimal: the gradient vanishes and the solver declares
+    convergence while the other objective is far from its best attainable
+    value.  The delta term keeps a descent direction alive across the flat
+    region and drives the solve to the proper Pareto anchor.
+
+    Returns ``(x, values_dict, success, nit)``.
+    """
+    sub = _EpsSubproblem(
+        opt, obj_index=obj_index, con_index=1 - obj_index, delta=delta
+    )
+    res = _solve_subproblem(sub, x_init, bounds_obj, solver_options, method_name)
+    v = sub.values(res.x)
+    return res.x, v, bool(res.success), int(res.nit)
 
 
 def _solve_subproblem(
@@ -412,17 +457,14 @@ def pareto_front(
         f"{c.id}.{p} ({t})" for c, p, t in opt._objectives
     )
 
-    # -- anchors (payoff table) ---------------------------------------------
+    # -- anchors (lexicographic payoff table) ---------------------------------
     LOGGER.task("Pareto sweep: anchor solves")
-    sub1 = _EpsSubproblem(opt, obj_index=0)
-    res_a1 = _solve_subproblem(sub1, x0, bounds_obj, solver_options, method_name)
-    v_a1 = sub1.values(res_a1.x)
-
-    sub2 = _EpsSubproblem(opt, obj_index=1)
-    res_a2 = _solve_subproblem(
-        sub2, res_a1.x, bounds_obj, solver_options, method_name
+    x_a1, v_a1, ok_a1, nit_a1 = _anchor_solve(
+        opt, 0, x0, bounds_obj, solver_options, method_name, delta
     )
-    v_a2 = sub2.values(res_a2.x)
+    x_a2, v_a2, ok_a2, nit_a2 = _anchor_solve(
+        opt, 1, x_a1, bounds_obj, solver_options, method_name, delta
+    )
 
     ideal = (v_a1["objs"][0], v_a2["objs"][1])
     nadir = (v_a2["objs"][0], v_a1["objs"][1])
@@ -434,7 +476,6 @@ def pareto_front(
     )
 
     rows = []  # (eps, values dict, theta, success, nit)
-    rows.append((1.0, v_a1, res_a1.x, bool(res_a1.success), int(res_a1.nit)))
 
     if abs(range2) < 1e-9:
         # Non-conflicting objectives: the front is a single point.
@@ -442,23 +483,29 @@ def pareto_front(
             "Objectives are non-conflicting (f2 range ~ 0); returning the "
             "anchor solutions only."
         )
-        rows.append(
-            (0.0, v_a2, res_a2.x, bool(res_a2.success), int(res_a2.nit))
-        )
+        rows.append((1.0, v_a1, x_a1, ok_a1, nit_a1))
+        rows.append((0.0, v_a2, x_a2, ok_a2, nit_a2))
     else:
-        # -- interior epsilon grid ------------------------------------------
-        n_interior = max(0, n_points - 2)
-        eps_grid = np.linspace(1.0, 0.0, n_interior + 2)[1:-1]
+        # -- epsilon grid (endpoints included) --------------------------------
+        # Every front point -- endpoints too -- is solved as an AUGMECON
+        # epsilon-subproblem (min f1 + delta*f2n s.t. f2n <= eps) with
+        # warm-started sequential solves.  The anchors above only build the
+        # payoff table: a raw anchor with a flat optimum (e.g. relu
+        # discomfort at exactly 0) is only *weakly* Pareto optimal, whereas
+        # the eps=0 subproblem approaches the same f2 level from the
+        # infeasible side, where the constraint gradient is informative, and
+        # finds the CHEAPEST f2-optimal solution.
+        eps_grid = np.linspace(1.0, 0.0, n_points)
 
         sub = _EpsSubproblem(opt, obj_index=0, delta=delta)
         sub.set_normalization(ideal2, nadir2)
 
         warm = None
-        if use_prepass and n_interior > 0 and opt._fast_obj is not None:
-            LOGGER.task("Pareto sweep: batched prepass (%d copies)" % n_interior)
+        if use_prepass and opt._fast_obj is not None:
+            LOGGER.task("Pareto sweep: batched prepass (%d copies)" % n_points)
             try:
                 warm = batched_prepass(
-                    opt, eps_grid, res_a1.x, res_a2.x, ideal2, range2, delta,
+                    opt, eps_grid, x_a1, x_a2, ideal2, range2, delta,
                     bounds_obj, **(prepass_options or {}),
                 )
             except Exception as exc:
@@ -467,8 +514,8 @@ def pareto_front(
                     "warm starts.", exc,
                 )
 
-        LOGGER.task("Pareto sweep: %d epsilon solves" % n_interior)
-        x_prev = res_a1.x
+        LOGGER.task("Pareto sweep: %d epsilon solves" % n_points)
+        x_prev = x_a1
         for i, eps in enumerate(eps_grid):
             x_init = warm[i] if warm is not None else x_prev
             res = _solve_subproblem(
@@ -482,10 +529,6 @@ def pareto_front(
                 eps, v["objs"][0], v["objs"][1],
                 max(0.0, v["f2n"] - eps), res.success,
             )
-
-        rows.append(
-            (0.0, v_a2, res_a2.x, bool(res_a2.success), int(res_a2.nit))
-        )
 
     # -- assemble -------------------------------------------------------------
     eps_arr = np.array([r[0] for r in rows])
