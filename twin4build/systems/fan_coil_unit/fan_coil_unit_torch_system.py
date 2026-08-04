@@ -243,10 +243,10 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
         # captures a valid ``x0`` even when called before the parent
         # ``SimulationModel.initialize`` has run fsolve on this FCU.
         self.UA = tps.Parameter(
-            torch.tensor(100.0, dtype=torch.float64), requires_grad=False
+            torch.tensor(100.0, dtype=tps.float_dtype()), requires_grad=False
         )
         self.thermalMassHeatCapacity = tps.Parameter(
-            torch.tensor(thermalMassHeatCapacity, dtype=torch.float64),
+            torch.tensor(thermalMassHeatCapacity, dtype=tps.float_dtype()),
             requires_grad=False,
             scaling="log",
         )
@@ -416,8 +416,8 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
 
         # Build steady-state A, B (bilinear terms collapsed at nominal flow)
         # Input vector: [T_w_supply, m_dot_w, T_air_in]
-        A = torch.zeros((n, n), dtype=torch.float64)
-        B = torch.zeros((n, 3), dtype=torch.float64)
+        A = torch.zeros((n, n), dtype=tps.float_dtype())
+        B = torch.zeros((n, 3), dtype=tps.float_dtype())
         for i in range(n):
             A[i, i] = -(m_dot_w * c_p_w + UA_elem) / C_elem
             if i > 0:
@@ -428,7 +428,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
 
         u = torch.tensor(
             [self.T_w_supply_nominal, m_dot_w, self.T_air_in_nominal],
-            dtype=torch.float64,
+            dtype=tps.float_dtype(),
         )
         try:
             x_ss = -torch.linalg.solve(A, B @ u)
@@ -441,7 +441,11 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
         t_outlet = self.output["outletWaterTemperature"].get()
         n_s = t_outlet.shape[0]
         n_c = t_outlet.shape[1]
-        x0 = torch.zeros((n_s, n_c, self.nelements), dtype=torch.float64)
+        x0 = torch.zeros(
+            (n_s, n_c, self.nelements),
+            dtype=t_outlet.dtype,
+            device=t_outlet.device,
+        )
         for i in range(self.nelements):
             x0[:, :, i] = t_outlet
         return x0
@@ -474,32 +478,35 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
         UA_elem = p["UA"] / n  # (n_c,)
         n_c = C_elem.shape[0]
         c_p_w = constants.CP_WATER
+        # Parameters' device/dtype: _build_matrices re-runs on cache miss
+        # during stepping, outside initialize()'s device context.
+        dev, dt = C_elem.device, C_elem.dtype
 
         # A matrix: UA/C on diagonal (heat exchange with air) - shape (n_c, n, n)
-        A = torch.zeros((n_c, n, n), dtype=torch.float64)
+        A = torch.zeros((n_c, n, n), dtype=dt, device=dev)
         for i in range(n):
             A[:, i, i] = -UA_elem / C_elem
 
         # B matrix: UA/C for air temperature input - shape (n_c, n, n_inputs)
-        B = torch.zeros((n_c, n, n_inputs), dtype=torch.float64)
+        B = torch.zeros((n_c, n, n_inputs), dtype=dt, device=dev)
         for i in range(n):
             B[:, i, 2] = UA_elem / C_elem
 
         # E matrix: water flow rate coupling - shape (n_c, n_inputs, n, n)
-        E = torch.zeros((n_c, n_inputs, n, n), dtype=torch.float64)
+        E = torch.zeros((n_c, n_inputs, n, n), dtype=dt, device=dev)
         for i in range(n):
             E[:, 1, i, i] = -c_p_w / C_elem
             if i > 0:
                 E[:, 1, i, i - 1] = c_p_w / C_elem
 
         # F matrix: supply temperature * flow for first element - shape (n_c, n_inputs, n, n_inputs)
-        F = torch.zeros((n_c, n_inputs, n, n_inputs), dtype=torch.float64)
+        F = torch.zeros((n_c, n_inputs, n, n_inputs), dtype=dt, device=dev)
         F[:, 0, 0, 1] = c_p_w / C_elem
 
         # Output: last element temperature
-        C_out = torch.zeros((n_c, 1, n), dtype=torch.float64)
+        C_out = torch.zeros((n_c, 1, n), dtype=dt, device=dev)
         C_out[:, 0, n - 1] = 1.0
-        D = torch.zeros((n_c, 1, n_inputs), dtype=torch.float64)
+        D = torch.zeros((n_c, 1, n_inputs), dtype=dt, device=dev)
 
         return A, B, C_out, D, E, F
 

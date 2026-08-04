@@ -264,10 +264,10 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self.nelements = nelements
         self.initialize_UA = initialize_UA
         self.UA = tps.Parameter(
-            torch.tensor(10.0, dtype=torch.float64), requires_grad=False
+            torch.tensor(10.0, dtype=tps.float_dtype()), requires_grad=False
         )  # Placeholder, will be set in initialize if initialize_UA is True
         self.thermalMassHeatCapacity = tps.Parameter(
-            torch.tensor(thermalMassHeatCapacity, dtype=torch.float64),
+            torch.tensor(thermalMassHeatCapacity, dtype=tps.float_dtype()),
             requires_grad=False,
             scaling="log",
         )
@@ -426,8 +426,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         )
         c_p = float(constants.CP_WATER)
         # Build A, B
-        A = torch.zeros((n, n), dtype=torch.float64)
-        B = torch.zeros((n, 3), dtype=torch.float64)
+        A = torch.zeros((n, n), dtype=tps.float_dtype())
+        B = torch.zeros((n, 3), dtype=tps.float_dtype())
         for i in range(n):
             A[i, i] = -(m_dot * c_p + UA_elem) / C_elem
             if i > 0:
@@ -436,7 +436,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         for i in range(n):
             B[i, 2] = UA_elem / C_elem
         u = torch.tensor(
-            [self.T_a_nominal_sh, m_dot, self.TAir_nominal_sh], dtype=torch.float64
+            [self.T_a_nominal_sh, m_dot, self.TAir_nominal_sh], dtype=tps.float_dtype()
         )
         try:
             x_ss = -torch.linalg.solve(
@@ -457,7 +457,11 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         n_c = t_outlet.shape[1]
 
         # x0 shape: (n_s, n_c, n_states) where n_states = nelements
-        x0 = torch.zeros((n_s, n_c, self.nelements), dtype=torch.float64)
+        x0 = torch.zeros(
+            (n_s, n_c, self.nelements),
+            dtype=t_outlet.dtype,
+            device=t_outlet.device,
+        )
 
         # Initialize all elements with outlet water temperature
         for i in range(self.nelements):
@@ -485,32 +489,35 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         UA_elem = p["UA"] / n  # (n_c,)
         n_c = C_elem.shape[0]
         c_p = constants.CP_WATER
+        # Parameters' device/dtype: _build_matrices re-runs on cache miss
+        # during stepping, outside initialize()'s device context.
+        dev, dt = C_elem.device, C_elem.dtype
 
         # LTI part: Only UA/C on diagonal - shape (n_c, n, n)
-        A = torch.zeros((n_c, n, n), dtype=torch.float64)
+        A = torch.zeros((n_c, n, n), dtype=dt, device=dev)
         for i in range(n):
             A[:, i, i] = -UA_elem / C_elem
 
         # B matrix: Only UA/C for indoor temperature input - shape (n_c, n, n_inputs)
-        B = torch.zeros((n_c, n, n_inputs), dtype=torch.float64)
+        B = torch.zeros((n_c, n, n_inputs), dtype=dt, device=dev)
         for i in range(n):
             B[:, i, 2] = UA_elem / C_elem
 
         # State-input coupling (E): waterFlowRate - shape (n_c, n_inputs, n, n)
-        E = torch.zeros((n_c, n_inputs, n, n), dtype=torch.float64)
+        E = torch.zeros((n_c, n_inputs, n, n), dtype=dt, device=dev)
         for i in range(n):
             E[:, 1, i, i] = -c_p / C_elem
             if i > 0:
                 E[:, 1, i, i - 1] = c_p / C_elem
 
         # Input-input coupling (F): T_supply * m_dot for first state - shape (n_c, n_inputs, n, n_inputs)
-        F = torch.zeros((n_c, n_inputs, n, n_inputs), dtype=torch.float64)
+        F = torch.zeros((n_c, n_inputs, n, n_inputs), dtype=dt, device=dev)
         F[:, 0, 0, 1] = c_p / C_elem  # Only first state, T_supply * m_dot
 
         # Output matrices - shape (n_c, n_outputs, n) and (n_c, n_outputs, n_inputs)
-        C_out = torch.zeros((n_c, 1, n), dtype=torch.float64)
+        C_out = torch.zeros((n_c, 1, n), dtype=dt, device=dev)
         C_out[:, 0, n - 1] = 1.0
-        D = torch.zeros((n_c, 1, n_inputs), dtype=torch.float64)
+        D = torch.zeros((n_c, 1, n_inputs), dtype=dt, device=dev)
 
         return A, B, C_out, D, E, F
 

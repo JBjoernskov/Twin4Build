@@ -314,6 +314,57 @@ class Model:
         return self.simulation_model.get_component(component_id)
 
     @property
+    def device(self):
+        """Device on which simulation tensors live (default cpu)."""
+        return self.simulation_model.device
+
+    @property
+    def dtype(self):
+        """Floating-point dtype used for simulation tensors."""
+        return self.simulation_model.dtype
+
+    def to(self, device=None, dtype=None) -> "Model":
+        """Move the model to a device and/or floating-point dtype.
+
+        Torch-style API: ``model.to("cuda")`` moves all component tensors to
+        the GPU and makes the simulator, estimator and optimizer compute
+        there; ``model.to("cuda", torch.float32)`` additionally switches to
+        single precision (a large speedup on consumer GPUs, where fp64
+        throughput is typically 1/32 of fp32, at reduced accuracy).
+        Scipy/IPOPT solvers and plotting remain on the CPU -- only small
+        parameter vectors cross that boundary per iteration.
+
+        Performance expectation: for a single simulation or estimation of a
+        small model (a handful of zones), the GPU does NOT beat the CPU --
+        each step is a microsecond-scale operation and kernel-launch latency
+        dominates.  Device support is the enabler for *batched* workflows
+        (multi-start estimation, scenario/ensemble studies, portfolios of
+        buildings via the ``n_c`` component-batch dimension) and for large
+        many-zone models, where per-candidate cost falls almost linearly
+        with batch size.  See
+        ``twin4build/examples/gpu_benchmark_estimation.ipynb`` and
+        ``twin4build/examples/gpu_benchmark_optimizer.ipynb``.
+
+        Example:
+            >>> model.load()
+            >>> model.to("cuda")                      # fp64 on the GPU
+            >>> model.to("cuda", torch.float32)       # fp32 (consumer GPUs)
+            >>> model.to("cpu", torch.float64)        # back to the default
+
+        Args:
+            device: Target device (``"cpu"``, ``"cuda"``, ``torch.device``).
+            dtype: Optional floating-point dtype.  Note this is a
+                process-wide setting (it configures the framework default
+                used for new tensor allocations), so all models in the
+                process should use the same dtype.
+
+        Returns:
+            The model itself, for chaining.
+        """
+        self.simulation_model.to(device=device, dtype=dtype)
+        return self
+
+    @property
     def execution_order(self) -> List[str]:
         return self.simulation_model.execution_order
 

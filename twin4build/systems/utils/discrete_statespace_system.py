@@ -127,7 +127,7 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
         mask = disc_cache.get("mask")
         if mask is None:
             m_dim = B.shape[-1]
-            mask = torch.zeros(m_dim, dtype=torch.bool)
+            mask = torch.zeros(m_dim, dtype=torch.bool, device=u.device)
             if E is not None:
                 mask |= (E.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
             if F is not None:
@@ -575,7 +575,9 @@ class DiscreteStatespaceSystem(core.System):
             if D is not None:
                 _D = self._expand_to_batch(D, (n_c, n_outputs, n_inputs), n_c)
             else:
-                _D = torch.zeros((n_c, n_outputs, n_inputs), dtype=torch.float64)
+                _D = torch.zeros(
+                    (n_c, n_outputs, n_inputs), dtype=A.dtype, device=A.device
+                )
 
             # Store base matrices (n_c, ...) - these don't change
             self._A_base = _A.clone()
@@ -621,7 +623,11 @@ class DiscreteStatespaceSystem(core.System):
             else:
                 raise ValueError(f"x0 must have 1, 2, or 3 dimensions, got {x0.dim()}")
         else:
-            self.x0 = torch.zeros((self.n_c, self.n_states), dtype=torch.float64)
+            self.x0 = torch.zeros(
+                (self.n_c, self.n_states),
+                dtype=self._A_base.dtype,
+                device=self._A_base.device,
+            )
 
         # Current state (n_s, n_c, n_states) is held in ``self._x_state`` and
         # exposed via the ``x`` property; it is populated in initialize().
@@ -651,23 +657,31 @@ class DiscreteStatespaceSystem(core.System):
             self._E = self._expand_to_batch(
                 E, (self.n_c, self.n_inputs, self.n_states, self.n_states), self.n_c
             )
-            self.non_zero_E = torch.zeros(self.n_inputs, dtype=torch.bool)
+            self.non_zero_E = torch.zeros(
+                self.n_inputs, dtype=torch.bool, device=self._E.device
+            )
             for i in range(self.n_inputs):
                 self.non_zero_E[i] = torch.any(self._E[:, i, :, :])
         else:
             self._E = None
-            self.non_zero_E = torch.zeros(0, dtype=torch.bool)
+            self.non_zero_E = torch.zeros(
+                0, dtype=torch.bool, device=self._A_base.device
+            )
 
         if F is not None:
             self._F = self._expand_to_batch(
                 F, (self.n_c, self.n_inputs, self.n_states, self.n_inputs), self.n_c
             )
-            self.non_zero_F = torch.zeros(self.n_inputs, dtype=torch.bool)
+            self.non_zero_F = torch.zeros(
+                self.n_inputs, dtype=torch.bool, device=self._F.device
+            )
             for i in range(self.n_inputs):
                 self.non_zero_F[i] = torch.any(self._F[:, i, :, :])
         else:
             self._F = None
-            self.non_zero_F = torch.zeros(0, dtype=torch.bool)
+            self.non_zero_F = torch.zeros(
+                0, dtype=torch.bool, device=self._A_base.device
+            )
 
         # For input change detection - shape (n_s, n_c, n_inputs)
         self._prev_u = None

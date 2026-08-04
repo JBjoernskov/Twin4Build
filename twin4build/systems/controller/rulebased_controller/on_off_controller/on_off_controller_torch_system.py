@@ -82,17 +82,17 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
 
         # Make offValue and onValue learnable parameters
         self.offValue = tps.Parameter(
-            torch.tensor(float(offValue), dtype=torch.float64),
+            torch.tensor(float(offValue), dtype=tps.float_dtype()),
             requires_grad=False,
         )
         self.onValue = tps.Parameter(
-            torch.tensor(float(onValue), dtype=torch.float64),
+            torch.tensor(float(onValue), dtype=tps.float_dtype()),
             requires_grad=False,
         )
         # Steepness controls transition sharpness
         # Higher = sharper (more like true on-off), Lower = smoother
         self.steepness = tps.Parameter(
-            torch.tensor(float(steepness), dtype=torch.float64),
+            torch.tensor(float(steepness), dtype=tps.float_dtype()),
             requires_grad=False,
         )
 

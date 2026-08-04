@@ -415,6 +415,13 @@ class Estimator:
         self.simulator = simulator
         self.tol = 1e-10
 
+    @property
+    def _device(self) -> torch.device:
+        """The model's device.  Solver-facing numpy boundaries convert inbound
+        theta vectors to this device and outbound values via .cpu().numpy();
+        scipy/IPOPT itself always runs on the CPU."""
+        return self.simulator.model.device
+
     def estimate(
         self,
         start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
@@ -1779,7 +1786,7 @@ class Estimator:
                 x0_vals = (
                     np.array(x0).flatten()
                     if not isinstance(x0, torch.Tensor)
-                    else x0.detach().numpy().flatten()
+                    else x0.detach().cpu().numpy().flatten()
                 )
             else:
                 x0_vals = np.full(n_c, x0)
@@ -1790,7 +1797,7 @@ class Estimator:
                 lb_vals = (
                     np.array(lb_val).flatten()
                     if not isinstance(lb_val, torch.Tensor)
-                    else lb_val.detach().numpy().flatten()
+                    else lb_val.detach().cpu().numpy().flatten()
                 )
             else:
                 lb_vals = np.full(n_c, lb_val)
@@ -1798,7 +1805,7 @@ class Estimator:
                 ub_vals = (
                     np.array(ub_val).flatten()
                     if not isinstance(ub_val, torch.Tensor)
-                    else ub_val.detach().numpy().flatten()
+                    else ub_val.detach().cpu().numpy().flatten()
                 )
             else:
                 ub_vals = np.full(n_c, ub_val)
@@ -1841,7 +1848,7 @@ class Estimator:
                 x0_vals = (
                     np.array(x0).flatten()
                     if not isinstance(x0, torch.Tensor)
-                    else x0.detach().numpy().flatten()
+                    else x0.detach().cpu().numpy().flatten()
                 )
             else:
                 x0_vals = np.full(n_c, x0)
@@ -1852,7 +1859,7 @@ class Estimator:
                 lb_vals = (
                     np.array(lb_val).flatten()
                     if not isinstance(lb_val, torch.Tensor)
-                    else lb_val.detach().numpy().flatten()
+                    else lb_val.detach().cpu().numpy().flatten()
                 )
             else:
                 lb_vals = np.full(n_c, lb_val)
@@ -1860,7 +1867,7 @@ class Estimator:
                 ub_vals = (
                     np.array(ub_val).flatten()
                     if not isinstance(ub_val, torch.Tensor)
-                    else ub_val.detach().numpy().flatten()
+                    else ub_val.detach().cpu().numpy().flatten()
                 )
             else:
                 ub_vals = np.full(n_c, ub_val)
@@ -2405,8 +2412,8 @@ class Estimator:
             Objective function value or penalty value if evaluation fails.
         """
         try:
-            theta_tensor = torch.tensor(theta, dtype=torch.float64)
-            res = self._obj(theta_tensor, output).detach().numpy()
+            theta_tensor = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
+            res = self._obj(theta_tensor, output).detach().cpu().numpy()
         except FMICallException:
             res = self.res_fail
         except Exception as e:
@@ -2496,19 +2503,19 @@ class Estimator:
             if param_idx not in seen_unique:
                 # Normalize the values for this unique parameter
                 lb_norm = param.normalize(
-                    torch.tensor(lb_values[i], dtype=torch.float64)
+                    torch.tensor(lb_values[i], dtype=tps.float_dtype(), device=self._device)
                 )
                 ub_norm = param.normalize(
-                    torch.tensor(ub_values[i], dtype=torch.float64)
+                    torch.tensor(ub_values[i], dtype=tps.float_dtype(), device=self._device)
                 )
                 x0_norm = param.normalize(
-                    torch.tensor(x0_values[i], dtype=torch.float64)
+                    torch.tensor(x0_values[i], dtype=tps.float_dtype(), device=self._device)
                 )
 
                 # Convert to numpy and flatten
-                lb_norm_list.extend(lb_norm.detach().numpy().flatten())
-                ub_norm_list.extend(ub_norm.detach().numpy().flatten())
-                x0_norm_list.extend(x0_norm.detach().numpy().flatten())
+                lb_norm_list.extend(lb_norm.detach().cpu().numpy().flatten())
+                ub_norm_list.extend(ub_norm.detach().cpu().numpy().flatten())
+                x0_norm_list.extend(x0_norm.detach().cpu().numpy().flatten())
                 seen_unique.add(param_idx)
 
         self._lb_norm = np.array(lb_norm_list)
@@ -2607,13 +2614,13 @@ class Estimator:
 
         # Initialize caching variables for AD
         self._theta_obj = torch.nan * torch.ones_like(
-            torch.tensor(self._x0_norm, dtype=torch.float64)
+            torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=self._device)
         )
         self._theta_jac = torch.nan * torch.ones_like(
-            torch.tensor(self._x0_norm, dtype=torch.float64)
+            torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=self._device)
         )
         self._theta_hes = torch.nan * torch.ones_like(
-            torch.tensor(self._x0_norm, dtype=torch.float64)
+            torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=self._device)
         )
 
         # Setup for FD method
@@ -2920,7 +2927,9 @@ class Estimator:
             # is a restored best iterate the model never saw), so without this
             # a subsequent ``simulator.simulate()`` runs with junk parameters.
             theta_opt = torch.tensor(
-                np.asarray(result.x, dtype=np.float64), dtype=torch.float64
+                np.asarray(result.x, dtype=np.float64),
+                dtype=tps.float_dtype(),
+                device=self._device,
             )
             self.simulator.model.set_parameters(
                 self._theta_to_param_values(theta_opt),
@@ -2943,9 +2952,9 @@ class Estimator:
         ):
             if param_idx not in seen_unique:
                 start, end = self._theta_slices[param_idx]
-                x_norm = torch.tensor(result.x[start:end], dtype=torch.float64)
+                x_norm = torch.tensor(result.x[start:end], dtype=tps.float_dtype(), device=self._device)
                 x_denorm = param.denormalize(x_norm)
-                result_x_list.extend(x_denorm.detach().numpy().flatten())
+                result_x_list.extend(x_denorm.detach().cpu().numpy().flatten())
                 seen_unique.add(param_idx)
         result_x = np.array(result_x_list)
 
@@ -3039,7 +3048,7 @@ class Estimator:
             x1 = np.clip(x0 + 0.05 * (rng.random(x0.shape) - 0.5), lbn, ubn)
             worst_val = 0.0
             for xi in (x0, x1):
-                zt = torch.tensor(xi, dtype=torch.float64)
+                zt = torch.tensor(xi, dtype=tps.float_dtype(), device=self._device)
                 self._mse_scaled = None
                 self._obj(zt, "scalar")
                 rmse_slow = float(self._last_rmse)
@@ -3051,16 +3060,26 @@ class Estimator:
                 )
             # Gradient agreement at x0 (this is what steers the solver).
             self._mse_scaled = None
-            z = torch.tensor(x0, dtype=torch.float64, requires_grad=True)
+            z = torch.tensor(
+                x0, dtype=tps.float_dtype(), device=self._device, requires_grad=True
+            )
             (g_slow,) = torch.autograd.grad(self._obj(z, "scalar"), z)
             self._mse_scaled = None
-            z = torch.tensor(x0, dtype=torch.float64, requires_grad=True)
+            z = torch.tensor(
+                x0, dtype=tps.float_dtype(), device=self._device, requires_grad=True
+            )
             (g_fast,) = torch.autograd.grad(fast.loglike(z, "scalar"), z)
-            g_slow, g_fast = g_slow.numpy(), g_fast.numpy()
+            g_slow, g_fast = g_slow.cpu().numpy(), g_fast.cpu().numpy()
             gscale = max(1e-12, float(np.abs(g_slow).max()))
             worst_grad = float(np.abs(g_fast - g_slow).max()) / gscale
             self._mse_scaled = None
-            if worst_val > 1e-4 or worst_grad > 1e-3:
+            # fp32 accumulates roundoff over the rollout; loosen the parity
+            # thresholds accordingly (they only gate the fast-path opt-in).
+            if tps.float_dtype() == torch.float64:
+                tol_val, tol_grad = 1e-4, 1e-3
+            else:
+                tol_val, tol_grad = 1e-2, 5e-2
+            if worst_val > tol_val or worst_grad > tol_grad:
                 LOGGER.warning(
                     "Fast single-shooting objective DISAGREES with the "
                     "object-graph objective (rel value err %.2e, rel grad err "
@@ -3125,11 +3144,11 @@ class Estimator:
         #
 
         simulation_readings = {
-            com.id: torch.zeros((self._n_timesteps), dtype=torch.float64)
+            com.id: torch.zeros((self._n_timesteps), dtype=tps.float_dtype(), device=self._device)
             for com, sd in self._measurements
         }
         actual_readings = {
-            com.id: torch.zeros((self._n_timesteps), dtype=torch.float64)
+            com.id: torch.zeros((self._n_timesteps), dtype=tps.float_dtype(), device=self._device)
             for com, sd in self._measurements
         }
 
@@ -3166,7 +3185,7 @@ class Estimator:
                 y_actual_period = self.actual_readings[measuring_device.id][batch_idx]
                 y_actual_period = y_actual_period.to_numpy()
                 y_actual_period = y_actual_period[self._n_warmup :]
-                y_actual_period = torch.tensor(y_actual_period, dtype=torch.float64)
+                y_actual_period = torch.tensor(y_actual_period, dtype=tps.float_dtype(), device=self._device)
 
                 # Store in concatenated arrays
                 end_idx = n_time_prev + len(y_model_period)
@@ -3183,7 +3202,9 @@ class Estimator:
         # range stay zero (the historical normalization contract -- see
         # _loglike_from_residuals).
         res_raw = torch.zeros(
-            (self._n_timesteps, len(self._measurements)), dtype=torch.float64
+            (self._n_timesteps, len(self._measurements)),
+            dtype=tps.float_dtype(),
+            device=self._device,
         )
         for j, (measuring_device, sd) in enumerate(self._measurements):
             res_raw[:, j] = (
@@ -3217,7 +3238,9 @@ class Estimator:
         n_meas = res_raw.shape[1]
         denom = float(self._n_timesteps) * n_meas
         sd = torch.tensor(
-            [float(sd_) for _, sd_ in self._measurements], dtype=torch.float64
+            [float(sd_) for _, sd_ in self._measurements],
+            dtype=tps.float_dtype(),
+            device=self._device,
         )
         res = res_raw / sd
 
@@ -3273,7 +3296,7 @@ class Estimator:
         torch.Tensor
             Total binarization penalty summed across all regularization components.
         """
-        penalty = torch.tensor(0.0, dtype=torch.float64)
+        penalty = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
 
         # If no specific components provided, auto-detect from parameter components
         if self._regularization_components is None:
@@ -3418,7 +3441,7 @@ class Estimator:
                 continue
             seen_unique.add(int(param_idx))
             start, end = self._theta_slices[int(param_idx)]
-            x_norm = torch.tensor(theta_np[start:end], dtype=torch.float64)
+            x_norm = torch.tensor(theta_np[start:end], dtype=tps.float_dtype(), device=self._device)
             try:
                 x_user = param.denormalize(x_norm).detach().cpu().numpy().flatten()
             except Exception:
@@ -3461,9 +3484,9 @@ class Estimator:
             Objective value as numpy array.
         """
 
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
         if torch.equal(theta, self._theta_obj):
-            return np.asarray(self._loglike.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._loglike.detach().cpu().numpy(), dtype=np.float64)
         else:
             self._theta_obj = theta
             self._eval_count += 1
@@ -3482,7 +3505,7 @@ class Estimator:
             # combination is unstable instead of guessing.
             try:
                 self._loglike = self._obj(theta, output)
-                obj_val = self._loglike.detach().numpy()
+                obj_val = self._loglike.detach().cpu().numpy()
                 eval_failed = False
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
@@ -3490,7 +3513,7 @@ class Estimator:
                     self._eval_count, type(exc).__name__, exc,
                 )
                 try:
-                    dump_lines = self._format_theta_dump(theta.detach().numpy())
+                    dump_lines = self._format_theta_dump(theta.detach().cpu().numpy())
                     LOGGER.warning(
                         "theta[%d] at failure  (%d components, denormalized)",
                         self._eval_count, len(dump_lines),
@@ -3516,7 +3539,7 @@ class Estimator:
                 # the solver so the next ``torch.equal`` short-circuit
                 # returns the same penalty until the solver moves
                 # ``theta``.
-                self._loglike = torch.tensor(obj_val, dtype=torch.float64)
+                self._loglike = torch.tensor(obj_val, dtype=tps.float_dtype(), device=self._device)
                 self._last_rmse = float("nan")
                 self._last_rmse_per_sensor = {}
                 self._last_penalty = 0.0
@@ -3560,7 +3583,7 @@ class Estimator:
                     elapsed,
                 )
             if getattr(self, "_log_parameters", False):
-                dump_lines = self._format_theta_dump(theta.detach().numpy())
+                dump_lines = self._format_theta_dump(theta.detach().cpu().numpy())
                 LOGGER.iter("theta[%d]  (%d components)", self._eval_count, len(dump_lines))
                 LOGGER.add_level()
                 for line in dump_lines:
@@ -3655,10 +3678,10 @@ class Estimator:
         torch.Tensor
             Jacobian matrix as numpy array.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
 
         if torch.equal(theta, self._theta_jac):
-            return np.asarray(self._jac.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._jac.detach().cpu().numpy(), dtype=np.float64)
         elif getattr(self, "_fast_obj", None) is not None and output == "scalar":
             # Fast path: plain reverse-mode autograd through the composed-map
             # rollout.  jacrev would work too but activates functorch, which
@@ -3683,8 +3706,8 @@ class Estimator:
                     "fast jacobian eval failed (%s: %s) -- returning zero "
                     "gradient", type(exc).__name__, exc,
                 )
-                self._jac = torch.zeros(theta.numel(), dtype=torch.float64)
-            jac_np = np.asarray(self._jac.numpy(), dtype=np.float64)
+                self._jac = torch.zeros(theta.numel(), dtype=tps.float_dtype(), device=self._device)
+            jac_np = np.asarray(self._jac.cpu().numpy(), dtype=np.float64)
             LOGGER.debug("grad_norm=%.4f", float(np.linalg.norm(jac_np.ravel())))
             return jac_np
         else:
@@ -3702,7 +3725,7 @@ class Estimator:
             # accepted iterate steps away from this bad region.
             try:
                 self._jac = self.__jac_ad(theta, output)
-                jac_np = np.asarray(self._jac.detach().numpy(), dtype=np.float64)
+                jac_np = np.asarray(self._jac.detach().cpu().numpy(), dtype=np.float64)
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
                     "jacobian eval failed (%s: %s) -- returning zero gradient",
@@ -3716,7 +3739,7 @@ class Estimator:
                          theta.numel()),
                         dtype=np.float64,
                     )
-                self._jac = torch.tensor(jac_np, dtype=torch.float64)
+                self._jac = torch.tensor(jac_np, dtype=tps.float_dtype(), device=self._device)
             LOGGER.debug(
                 "grad_norm=%.4f",
                 float(np.linalg.norm(jac_np.ravel())),
@@ -3762,14 +3785,14 @@ class Estimator:
         torch.Tensor
             Hessian matrix as numpy array.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
 
         if torch.equal(theta, self._theta_hes):
-            return np.asarray(self._hes.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._hes.detach().cpu().numpy(), dtype=np.float64)
         else:
             self._theta_hes = theta
             self._hes = self.__hes_ad(theta, output)
-            return np.asarray(self._hes.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._hes.detach().cpu().numpy(), dtype=np.float64)
 
 
 class EstimationResult(dict):

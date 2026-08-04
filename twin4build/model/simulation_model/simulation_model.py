@@ -307,6 +307,7 @@ class SimulationModel:
         "_fused_components",
         "_fusion_member_to_fused",
         "enable_fusion",
+        "_device",
         "_is_loaded",
         "_is_validated",
         "_result",
@@ -377,6 +378,7 @@ class SimulationModel:
         self._fusion_member_to_fused = {}
         self._saved_parameters = {}
         self._custom_initial_dict = None
+        self._device = torch.device("cpu")
         self._is_loaded = False
         self._is_validated = False
         self._rewire_reports = {}
@@ -397,6 +399,45 @@ class SimulationModel:
     @property
     def components(self) -> dict:
         return self._components
+
+    @property
+    def device(self) -> torch.device:
+        """Device on which simulation tensors are allocated (default cpu)."""
+        # getattr: models unpickled from before the attribute existed
+        return getattr(self, "_device", None) or torch.device("cpu")
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """Floating-point dtype used for simulation tensors."""
+        return tps.float_dtype()
+
+    def to(self, device=None, dtype: torch.dtype = None) -> "SimulationModel":
+        """Move the model to a device and/or floating-point dtype.
+
+        Torch-style: ``model.to("cuda")``, ``model.to("cuda", torch.float32)``.
+        Moves every tensor the components currently own (parameters, bounds,
+        port tensors, cached matrices) and records the target so that all
+        tensors allocated later -- ``initialize()`` runs under
+        ``torch.device(self.device)`` -- land on the same device.  The
+        simulator, estimator and optimizer follow the model's device
+        automatically.  ``dtype`` is process-wide (see
+        :func:`twin4build.utils.types.set_float_dtype`).
+
+        Returns:
+            The model itself, for chaining.
+        """
+        from twin4build.utils.device import move_object_tensors
+
+        if device is not None:
+            self._device = torch.device(device)
+        if dtype is not None:
+            tps.set_float_dtype(dtype)
+        move_dtype = tps.float_dtype() if dtype is not None else None
+        for component in self._components.values():
+            move_object_tensors(component, self.device, move_dtype)
+        for component in (self._fused_components or {}).values():
+            move_object_tensors(component, self.device, move_dtype)
+        return self
 
     @property
     def is_loaded(self) -> bool:
@@ -548,7 +589,10 @@ class SimulationModel:
                 )
             elif isinstance(tensor, torch.Tensor):
                 tensor = (
-                    tensor.detach().clone().requires_grad_(False).type(torch.float64)
+                    tensor.detach()
+                    .clone()
+                    .requires_grad_(False)
+                    .type(tps.float_dtype() if tensor.is_floating_point() else tensor.dtype)
                 )
 
             return tensor
@@ -1278,13 +1322,13 @@ class SimulationModel:
                     output_obj.tensor = (
                         v
                         if isinstance(v, torch.Tensor)
-                        else torch.tensor([v], dtype=torch.float64)
+                        else torch.tensor([v], dtype=tps.float_dtype())
                     )
                 elif isinstance(output_obj, tps.Vector):
                     output_obj.tensor = (
                         v
                         if isinstance(v, torch.Tensor)
-                        else torch.tensor(v, dtype=torch.float64)
+                        else torch.tensor(v, dtype=tps.float_dtype())
                     )
                 else:
                     raise TypeError(
@@ -1385,7 +1429,7 @@ class SimulationModel:
                         # ``(comp, attr, [x0]*n_c, [lb]*n_c, [ub]*n_c)``.
                         target_n_c = getattr(obj_, "n_c", 1) or 1
                         if target_n_c > 1:
-                            v_t = torch.as_tensor(v, dtype=torch.float64).reshape(-1)
+                            v_t = torch.as_tensor(v, dtype=tps.float_dtype()).reshape(-1)
                             if v_t.numel() == 1:
                                 v_t = v_t.expand(target_n_c).clone()
                             elif v_t.numel() != target_n_c:
@@ -1845,6 +1889,20 @@ class SimulationModel:
         assert (
             self._is_loaded
         ), "The model is not loaded and cannot be simulated. Please call the load method first."
+
+        # Route every device-less tensor factory call inside component
+        # initialize() (ports, states, state-space matrices, schedule/leaf
+        # history tables) to the model's device.  The per-op overhead of the
+        # ambient context is only paid here, never in the step loop.
+        with torch.device(self.device):
+            self._initialize_components(start_time, end_time, step_size)
+
+    def _initialize_components(
+        self,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
+    ) -> None:
 
         # assert isinstance(
         #     simulator, core.Simulator

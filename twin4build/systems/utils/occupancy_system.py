@@ -21,13 +21,13 @@ class _MassParams:
 
     def __init__(self, V: float, G_occ: float, m_inf: float):
         self.V = tps.Parameter(
-            torch.tensor(V, dtype=torch.float64), requires_grad=False
+            torch.tensor(V, dtype=tps.float_dtype()), requires_grad=False
         )
         self.G_occ = tps.Parameter(
-            torch.tensor(G_occ, dtype=torch.float64), requires_grad=False
+            torch.tensor(G_occ, dtype=tps.float_dtype()), requires_grad=False
         )
         self.m_inf = tps.Parameter(
-            torch.tensor(m_inf, dtype=torch.float64), requires_grad=False
+            torch.tensor(m_inf, dtype=tps.float_dtype()), requires_grad=False
         )
 
 
@@ -49,10 +49,10 @@ class _DamperParams(core.System, nn.Module):
         # mismatch silently gives the two members different physical values
         # for the same normalized theta (and different gradients).
         self.a = tps.Parameter(
-            torch.tensor(a, dtype=torch.float64), requires_grad=False, scaling="log"
+            torch.tensor(a, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.nominalAirFlowRate = tps.Parameter(
-            torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False
+            torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()), requires_grad=False
         )
 
     def expand_to_n_c(self, n_c: int):
