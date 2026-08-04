@@ -28,7 +28,7 @@ Twin4Build provides several top-level classes for building, simulating, translat
   Performs parameter estimation (calibration) for your Model using measured data. Supports gradient-based optimization with automatic differentiation (SciPy and CasADi/IPOPT backends, single-shooting or collocation).
 
 - **Optimizer**:  
-  Optimizes building operation by adjusting setpoints or control variables to minimize objectives or satisfy constraints, using gradient-based methods.
+  Optimizes building operation by adjusting setpoints or control variables to minimize objectives or satisfy constraints, using gradient-based methods. For bi-objective problems (e.g. energy cost vs. comfort), `Optimizer.pareto_front` traces the full Pareto front with the augmented ε-constraint method (AUGMECON) - each front point is an exact gradient-based NLP solve, with an optional GPU-batched torch prepass that solves all ε-subproblems as one batched loss.
 
 
 
@@ -71,6 +71,9 @@ More examples are coming soon.
 
 <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints.
+
+<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/pareto_front.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Energy-vs-comfort Pareto front generation via the augmented ε-constraint method.
 
 ## Documentation
 The documentation can be found [online](https://twin4build.readthedocs.io/en/latest/index.html).

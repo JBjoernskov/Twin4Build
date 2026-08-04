@@ -3,6 +3,7 @@
 import datetime
 import os
 import time as time_module
+from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple, Union
 
 # Third party imports
@@ -859,6 +860,169 @@ class Optimizer:
         LOGGER.ok("Running optimization", change_status=True)
         return result
 
+    def pareto_front(
+        self,
+        start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        step_size: Union[float, List[float]] = None,
+        variables: List[Tuple[Any, str, float, float]] = None,
+        objective1: Tuple[Any, str, str] = None,
+        objective2: Tuple[Any, str, str] = None,
+        eq_cons: List[Tuple[Any, str, Any]] = None,
+        ineq_cons: List[Tuple[Any, str, str, Any]] = None,
+        n_points: int = 11,
+        delta: float = 1e-3,
+        method: Tuple[str, str, str] = ("scipy", "SLSQP", "ad"),
+        batched_prepass: bool = True,
+        prepass_options: Dict = None,
+        options: Dict = None,
+    ):
+        """Trace the bi-objective Pareto front with the augmented
+        epsilon-constraint method (AUGMECON).
+
+        The front between ``objective1`` (kept as the scalar objective) and
+        ``objective2`` (demoted to a hard constraint ``f2 <= eps``) is traced
+        by sweeping ``eps`` between the two single-objective anchor solutions.
+        Each subproblem is the regular optimization NLP plus ONE scalar
+        inequality, solved exactly with gradients (SLSQP + AD) -- no
+        evolutionary algorithm involved.  A small ``delta * f2`` objective
+        term guarantees *properly* Pareto-optimal points, and, unlike a
+        weighted sum, the sweep recovers non-convex front regions.
+
+        With ``batched_prepass=True`` (default) and a composable model, all
+        epsilon-subproblems are first solved approximately as ONE batched
+        torch loss (independent copies, one backward per iteration --
+        the batched workload shape where a GPU pays off), and the exact
+        sequential solves merely polish the batched solutions.
+
+        Args:
+            start_time / end_time / step_size: Simulation period(s), exactly
+                as in :meth:`optimize`.
+            variables: Decision variables (component, output, lb, ub), as in
+                :meth:`optimize`.
+            objective1: ``(component, output_name, "min"|"max")`` -- the
+                retained scalar objective (e.g. energy, "min").
+            objective2: ``(component, output_name, "min"|"max")`` -- the
+                objective swept via the epsilon constraint (e.g. comfort).
+            eq_cons / ineq_cons: Additional constraints, handled as soft
+                penalties exactly as in :meth:`optimize` (present in every
+                subproblem including the anchors).
+            n_points: Total number of front points INCLUDING the two anchor
+                solutions.
+            delta: AUGMECON augmentation coefficient on the normalized second
+                objective (default 1e-3).
+            method: ``("scipy", "SLSQP", "ad")`` (default) or
+                ``("scipy", "trust-constr", "ad")`` -- the epsilon constraint
+                requires a constraint-capable optimizer with AD gradients.
+            batched_prepass: Solve all epsilon-subproblems approximately as
+                one batched torch loss before the exact sweep (requires the
+                fast composed objective; silently skipped otherwise).
+            prepass_options: Prepass tuning: ``mu`` (penalty weight, default
+                ``constraint_penalty``), ``lr``, ``max_iter``, ``patience``,
+                ``rel_tol``.
+            options: Solver options as in :meth:`optimize` (``maxiter``,
+                ``ftol``, ``constraint_penalty``, ``fast``, ...), applied to
+                every subproblem.
+
+        Returns:
+            :class:`~twin4build.optimizer._pareto.ParetoResult` with the
+            physical objective values, decision trajectories, dominance mask,
+            and finite-difference front slope (``-d f1 / d eps``, the marginal
+            price of the second objective) per point.  ``result.apply(i)``
+            writes point ``i`` back into the model; ``result.plot()`` draws
+            the front.
+        """
+        from twin4build.optimizer._pareto import pareto_front as _pareto_front
+
+        assert method[0] == "scipy" and method[2] == "ad" and method[1] in (
+            "SLSQP",
+            "trust-constr",
+        ), (
+            "pareto_front requires a constraint-capable scipy optimizer with "
+            'AD gradients: ("scipy", "SLSQP", "ad") or '
+            f'("scipy", "trust-constr", "ad") - {method} was provided.'
+        )
+        for name, obj in (("objective1", objective1), ("objective2", objective2)):
+            assert (
+                obj is not None and len(obj) == 3
+            ), f"{name} must be a (component, output_name, 'min'|'max') tuple"
+            component, output_name, objective_type = obj
+            assert hasattr(
+                component, "output"
+            ), f"{name}: component {component} does not have an 'output' attribute"
+            assert (
+                output_name in component.output
+            ), f"{name}: output '{output_name}' not found in component {component.id}"
+            assert objective_type in ("min", "max"), (
+                f"{name}: objective type must be 'min' or 'max', got "
+                f"'{objective_type}'"
+            )
+        assert n_points >= 2, "n_points must be at least 2 (the two anchors)"
+
+        # Same task setup as optimize(): attributes, periods, timestep mask.
+        self._variables = variables or []
+        self._objectives = [tuple(objective1), tuple(objective2)]
+        self._eq_cons = eq_cons or []
+        self._ineq_cons = ineq_cons or []
+        assert (
+            len(self._variables) > 0
+        ), "No decision variables specified for optimization"
+
+        start_time, end_time, step_size = validate_period(
+            start_time, end_time, step_size
+        )
+        self._start_time = start_time
+        self._end_time = end_time
+        self._stepSize = step_size
+        self._max_values = {}
+
+        (
+            self._second_time_steps,
+            self._date_time_steps,
+            self._max_timesteps,
+            self._n_timesteps,
+        ) = core.Simulator.get_simulation_timesteps(
+            self._start_time, self._end_time, self._stepSize
+        )
+        timestep_mask = torch.ones(
+            self._max_timesteps, len(self._start_time), dtype=torch.bool
+        )
+        for i_s, n_timesteps in enumerate(self._n_timesteps):
+            timestep_mask[n_timesteps:, i_s] = False
+        self._timestep_mask = timestep_mask
+
+        options = dict(options or {})
+        prepass_options = dict(prepass_options or {})
+        # Notebook/CI fast path (same convention as optimize()): cap the work
+        # so example notebooks exercise the full API without long solves.
+        if os.environ.get("TWIN4BUILD_TESTING", "").lower() in ("1", "true", "yes"):
+            options["maxiter"] = 1
+            n_points = min(n_points, 3)
+            prepass_options.setdefault("max_iter", 3)
+
+        LOGGER.task("Generating Pareto front")
+        LOGGER.add_level()
+        LOGGER.config("Objective 1 (kept): %s.%s (%s)", objective1[0].id, objective1[1], objective1[2])
+        LOGGER.config("Objective 2 (eps-constrained): %s.%s (%s)", objective2[0].id, objective2[1], objective2[2])
+        LOGGER.config("Front points: %d | delta=%g | prepass=%s", n_points, delta, batched_prepass)
+        try:
+            result = _pareto_front(
+                self,
+                n_points=n_points,
+                delta=delta,
+                method=method,
+                use_prepass=batched_prepass,
+                prepass_options=prepass_options,
+                options=options,
+            )
+        except Exception:
+            LOGGER.remove_level()
+            LOGGER.error("Generating Pareto front", change_status=True)
+            raise
+        LOGGER.remove_level()
+        LOGGER.ok("Generating Pareto front", change_status=True)
+        return result
+
     # def _torch_solver(
     #     self,
     #     lr: float = 1.0,
@@ -1062,7 +1226,13 @@ class Optimizer:
     #         print(f"Current learning rate: {current_lr}")
     #         print(f"Loss at step {i}: {self.loss.detach().item()}")
 
-    def _scipy_solver(self, method: tuple = None, tol: float = None, **options):
+    def _scipy_solver(
+        self,
+        method: tuple = None,
+        tol: float = None,
+        scipy_constraints: list = None,
+        **options,
+    ):
         """
         Perform optimization using SciPy's optimization algorithms.
 
@@ -1097,6 +1267,14 @@ class Optimizer:
                 - "initial_tr_radius": Initial trust region radius
                 - "initial_constr_penalty": Initial constraint penalty
                 - Additional method-specific options as supported by SciPy optimizers
+            scipy_constraints: Optional list of SciPy constraint dicts (or
+                ``LinearConstraint``/``NonlinearConstraint`` objects) passed
+                through to ``scipy.optimize.minimize`` as HARD constraints.
+                Only meaningful for constraint-capable optimizers (SLSQP,
+                trust-constr); used by the Pareto epsilon-constraint sweep.
+
+        Returns:
+            The SciPy optimization result object.
 
         Note:
             This method automatically handles the conversion between PyTorch tensors and
@@ -1104,15 +1282,139 @@ class Optimizer:
             when the same parameters are evaluated multiple times. The method supports
             both equality and inequality constraints through the loss function formulation.
         """
-        self._eval_count = 0
-        self._solver_start_time = time_module.time()
-
         if method is None:
             method = ("scipy", "SLSQP", "ad")
 
         LOGGER.task("Starting scipy solver: %s (%s mode)", method[1], method[2])
         LOGGER.add_level()
 
+        x0, bounds_obj = self._prepare_scipy_problem(method, options)
+
+        # Run optimization based on method
+        optimizer_name = method[1]
+        mode = method[2]
+
+        LOGGER.config("Decision vector size: %d", len(x0))
+        LOGGER.task("Starting optimization")
+
+        if mode == "ad":
+            # Use automatic differentiation
+            if optimizer_name in ["trf", "dogbox"]:
+                # These are least-squares optimizers
+                result = least_squares(
+                    self._obj_ad,
+                    x0,
+                    jac=self._jac_ad,
+                    bounds=bounds_obj,
+                    method=optimizer_name,
+                    **options,
+                )
+            else:
+                # These are general optimization algorithms
+                result = minimize(
+                    self._obj_ad,
+                    x0,
+                    method=optimizer_name,
+                    jac=self._jac_ad,
+                    bounds=bounds_obj,
+                    tol=tol,
+                    constraints=scipy_constraints if scipy_constraints else (),
+                    options=options,
+                )
+        else:
+            LOGGER.remove_level()
+            LOGGER.error(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
+            raise NotImplementedError(
+                "Finite difference mode is not yet implemented for the optimizer. Use automatic differentiation mode."
+            )
+
+        # Apply the solution to the model: one object-graph evaluation at
+        # result.x writes the optimal trajectories into the decision-variable
+        # ports and re-runs the simulation, so component histories hold the
+        # optimized signals (guaranteed -- SciPy's last internal evaluation is
+        # not necessarily at the solution, and with the fast objective no
+        # simulation ran during the solve at all).
+        self.apply_solution(result.x)
+
+        elapsed = time_module.time() - self._solver_start_time
+        LOGGER.info("Optimization finished in %.1fs (%d function evaluations)", elapsed, self._eval_count)
+        opt_success = getattr(result, "success", None)
+        opt_message = getattr(result, "message", None)
+        opt_nit = getattr(result, "nit", None)
+        opt_fun = getattr(result, "fun", None)
+        if opt_success is not None:
+            if opt_success:
+                LOGGER.ok(
+                    "Solver result: success %s, iterations %s, final loss %s",
+                    opt_success,
+                    opt_nit,
+                    opt_fun,
+                )
+            else:
+                LOGGER.warning(
+                    "Solver result: success %s, iterations %s, final loss %s.",
+                    opt_success,
+                    opt_nit,
+                    opt_fun,
+                )
+        if opt_message:
+            LOGGER.info("Solver message: %s", opt_message)
+
+        LOGGER.remove_level()
+        if opt_success is False:
+            LOGGER.warning(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
+        else:
+            LOGGER.ok(
+                "Starting scipy solver: %s (%s mode)",
+                method[1],
+                method[2],
+                change_status=True,
+                ignore_no_match=True,
+            )
+        return result
+
+    def apply_solution(self, theta) -> None:
+        """Write a solver decision vector into the model and re-simulate.
+
+        One object-graph evaluation at ``theta`` writes the trajectories into
+        the decision-variable ports and re-runs the simulation, so component
+        histories hold the corresponding signals afterwards.
+        """
+        self.__obj_ad(
+            torch.tensor(
+                np.asarray(theta), dtype=tps.float_dtype(), device=self._device
+            )
+        )
+
+    def _prepare_scipy_problem(self, method: tuple, options: dict):
+        """Shared NLP setup for :meth:`_scipy_solver` and the Pareto sweep
+        (:mod:`twin4build.optimizer._pareto`).
+
+        Initializes the model at the current port trajectories, extracts the
+        flattened/interleaved/normalized decision vector ``x0`` and its
+        bounds, precomputes constraint target tensors, resets the evaluation
+        caches and builds the fast composed objective (``options["fast"]``,
+        default on).  Consumes the objective-related keys of ``options``
+        in place (the remaining keys go to the SciPy solver).
+
+        Returns:
+            ``(x0, bounds_obj)``: the initial decision vector (float64 numpy)
+            and the SciPy ``Bounds`` object (or ``None``).
+        """
+        self._eval_count = 0
+        self._solver_start_time = time_module.time()
         self._constraint_penalty = options.pop("constraint_penalty", 100)
 
         for component in self.simulator.model.components.values():
@@ -1311,98 +1613,7 @@ class Optimizer:
         if fast_requested and method[2] == "ad":
             self._setup_fast_objective(x0, validate=fast_validate)
 
-        # Run optimization based on method
-        optimizer_name = method[1]
-        mode = method[2]
-
-        LOGGER.config("Decision vector size: %d", len(x0))
-        LOGGER.task("Starting optimization")
-
-        if mode == "ad":
-            # Use automatic differentiation
-            if optimizer_name in ["trf", "dogbox"]:
-                # These are least-squares optimizers
-                result = least_squares(
-                    self._obj_ad,
-                    x0,
-                    jac=self._jac_ad,
-                    bounds=bounds_obj,
-                    method=optimizer_name,
-                    **options,
-                )
-            else:
-                # These are general optimization algorithms
-                result = minimize(
-                    self._obj_ad,
-                    x0,
-                    method=optimizer_name,
-                    jac=self._jac_ad,
-                    bounds=bounds_obj,
-                    tol=tol,
-                    options=options,
-                )
-        else:
-            LOGGER.remove_level()
-            LOGGER.error(
-                "Starting scipy solver: %s (%s mode)",
-                method[1],
-                method[2],
-                change_status=True,
-                ignore_no_match=True,
-            )
-            raise NotImplementedError(
-                "Finite difference mode is not yet implemented for the optimizer. Use automatic differentiation mode."
-            )
-
-        # Apply the solution to the model: one object-graph evaluation at
-        # result.x writes the optimal trajectories into the decision-variable
-        # ports and re-runs the simulation, so component histories hold the
-        # optimized signals (guaranteed -- SciPy's last internal evaluation is
-        # not necessarily at the solution, and with the fast objective no
-        # simulation ran during the solve at all).
-        self.__obj_ad(torch.tensor(result.x, dtype=tps.float_dtype(), device=self._device))
-
-        elapsed = time_module.time() - self._solver_start_time
-        LOGGER.info("Optimization finished in %.1fs (%d function evaluations)", elapsed, self._eval_count)
-        opt_success = getattr(result, "success", None)
-        opt_message = getattr(result, "message", None)
-        opt_nit = getattr(result, "nit", None)
-        opt_fun = getattr(result, "fun", None)
-        if opt_success is not None:
-            if opt_success:
-                LOGGER.ok(
-                    "Solver result: success %s, iterations %s, final loss %s",
-                    opt_success,
-                    opt_nit,
-                    opt_fun,
-                )
-            else:
-                LOGGER.warning(
-                    "Solver result: success %s, iterations %s, final loss %s.",
-                    opt_success,
-                    opt_nit,
-                    opt_fun,
-                )
-        if opt_message:
-            LOGGER.info("Solver message: %s", opt_message)
-
-        LOGGER.remove_level()
-        if opt_success is False:
-            LOGGER.warning(
-                "Starting scipy solver: %s (%s mode)",
-                method[1],
-                method[2],
-                change_status=True,
-                ignore_no_match=True,
-            )
-        else:
-            LOGGER.ok(
-                "Starting scipy solver: %s (%s mode)",
-                method[1],
-                method[2],
-                change_status=True,
-                ignore_no_match=True,
-            )
+        return x0, bounds_obj
 
     def _setup_fast_objective(self, x0, validate: bool = False) -> None:
         """Build the composed-map objective (see ``_fast_objective.py``).
@@ -1462,17 +1673,9 @@ class Optimizer:
             "Fast objective enabled (built in %.1fs)", time_module.time() - t0
         )
 
-    def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
-        """
-        Objective function for automatic differentiation.
-
-        Args:
-            theta (torch.Tensor): Flattened parameter vector containing values for all periods,
-                                 timesteps, and actuators.
-
-        Returns:
-            torch.Tensor: Objective value.
-        """
+    def _write_variables(self, theta: torch.Tensor) -> None:
+        """Write a (normalized, interleaved) decision vector into the
+        decision-variable ports, ready for a simulation."""
         # Reshape theta using vectorized operations
         n_actuators = len(self._variables)
         n_periods = len(self._start_time)
@@ -1522,6 +1725,14 @@ class Optimizer:
                 force=True,
             )
 
+    def _graph_parts(self, theta: torch.Tensor) -> SimpleNamespace:
+        """Object-graph counterpart of ``FastControlObjective.parts``: write
+        ``theta`` into the model, simulate, and return the loss decomposed
+        into per-term components (same namespace layout -- ``eq`` list,
+        ``ineq`` scalar or ``None``, min-oriented normalized ``objs``,
+        physical ``phys`` means)."""
+        self._write_variables(theta)
+
         # Run simulation
         self.simulator.simulate(
             start_time=self._start_time,
@@ -1530,14 +1741,12 @@ class Optimizer:
             show_progress_bar=False,
         )
 
-        # Compute loss - initialize as tensor to avoid NaN propagation issues
-        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
         k = self._constraint_penalty
 
-        # Handle equality constraints
         # Use boolean mask (n_t, n_s) to index 3D tensors (n_t, n_s, n_c) -> (num_valid, n_c)
         mask = self._timestep_mask
 
+        eq = []
         if self._eq_cons is not None:
             for constraint in self._eq_cons:
                 component, output_name, desired_value = constraint
@@ -1550,9 +1759,9 @@ class Optimizer:
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
                 )
-                loss += k * torch.mean(torch.abs(y_norm - desired_tensor_norm))
+                eq.append(k * torch.mean(torch.abs(y_norm - desired_tensor_norm)))
 
-        # Handle inequality constraints
+        ineq = None
         if self._ineq_cons is not None:
             ineq_upper_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
             ineq_lower_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
@@ -1577,18 +1786,43 @@ class Optimizer:
                     constraint_violations = torch.relu(desired_tensor_norm - y_norm)
                     ineq_lower_term += torch.mean(constraint_violations)
 
-            loss += k * (ineq_upper_term + ineq_lower_term)
+            ineq = k * (ineq_upper_term + ineq_lower_term)
 
-        # Handle minimization objectives
+        objs = []
+        phys = []
         if self._objectives is not None:
             for component, output_name, objective_type in self._objectives:
                 # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
                 y = component.output[output_name].history()[mask]
                 y_norm = component.output[output_name].normalize(y)
-                if objective_type == "min":
-                    loss += torch.mean(y_norm)
-                elif objective_type == "max":
-                    loss += -torch.mean(y_norm)
+                m = torch.mean(y_norm)
+                objs.append(m if objective_type == "min" else -m)
+                phys.append(torch.mean(y))
+
+        return SimpleNamespace(eq=eq, ineq=ineq, objs=objs, phys=phys)
+
+    def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Objective function for automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Flattened parameter vector containing values for all periods,
+                                 timesteps, and actuators.
+
+        Returns:
+            torch.Tensor: Objective value.
+        """
+        p = self._graph_parts(theta)
+
+        # Compute loss - initialize as tensor to avoid NaN propagation issues
+        # (same accumulation order as the original fused implementation).
+        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
+        for e in p.eq:
+            loss += e
+        if p.ineq is not None:
+            loss += p.ineq
+        for o in p.objs:
+            loss += o
 
         self.obj = loss
         return self.obj

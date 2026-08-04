@@ -47,6 +47,13 @@ class TestExamples(unittest.TestCase):
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
 
+    def test_pareto_front_example(self):
+        notebook_path = os.path.join(
+            uppath(os.path.abspath(__file__), 3), "examples", "pareto_front.ipynb"
+        )
+        result = test_notebook(notebook_path)
+        self.assertTrue(result, f"Test failed for {notebook_path}")
+
     # @unittest.skip("Temporarily disabled - notebook test failing")
     def test_translator_example(self):
         notebook_path = os.path.join(
