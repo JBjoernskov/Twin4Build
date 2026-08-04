@@ -16,6 +16,8 @@ import unittest
 
 # Third party imports
 import numpy as np
+import torch
+from dateutil import tz
 
 # Local application imports
 import twin4build as tb
@@ -142,6 +144,122 @@ class TestParetoFront(unittest.TestCase):
             .detach().cpu().numpy()
         )
         self.assertGreater(applied.mean(), 2000.0)
+
+
+class TestParetoWithFunctionSystem(unittest.TestCase):
+    """Energy-vs-discomfort front where f2 is a FunctionSystem residual
+    ``relu(setpoint - T_zone)`` -- the realistic comfort formulation (and a
+    regression check that FunctionSystem composes into the fast objective
+    and the batched prepass)."""
+
+    @classmethod
+    def setUpClass(cls):
+        model = tb.Model(id="test_pareto_fnsys_model")
+        space = tb.BuildingSpaceThermalTorchSystem(
+            C_air=2e6, C_wall=1e7, R_out=0.005, R_in=0.005,
+            f_wall=0, f_air=0, Q_occ_gain=100.0, CO2_occ_gain=0.004,
+            CO2_start=400.0, infiltrationRate=0.0, airVolume=100.0,
+            id="BuildingSpace",
+        )
+        heater = tb.SpaceHeaterTorchSystem(
+            Q_flow_nominal_sh=2000.0, T_a_nominal_sh=60.0,
+            T_b_nominal_sh=30.0, TAir_nominal_sh=21.0,
+            thermalMassHeatCapacity=500000.0, nelements=3,
+            id="SpaceHeater",
+        )
+        zero = tb.ScheduleSystem(
+            weekDayRulesetDict={"ruleset_default_value": 0.0}, id="Zero"
+        )
+        outdoor = tb.ScheduleSystem(
+            weekDayRulesetDict={"ruleset_default_value": 5.0}, id="Outdoor"
+        )
+        supply_air = tb.ScheduleSystem(
+            weekDayRulesetDict={"ruleset_default_value": 20.0}, id="SupplyAir"
+        )
+        supply_water = tb.ScheduleSystem(
+            weekDayRulesetDict={"ruleset_default_value": 60.0}, id="SupplyWater"
+        )
+        cls.mf = heater.Q_flow_nominal_sh / 4180 / (
+            heater.T_a_nominal_sh - heater.T_b_nominal_sh
+        )
+        # NOTE: the baseline trajectory must VARY -- decision-variable ports
+        # normalize with their cached history min/max, and a constant
+        # baseline makes that degenerate (denormalize collapses theta to the
+        # constant, gradients vanish and the solver stalls at x0).
+        waterflow = tb.ScheduleSystem(
+            weekDayRulesetDict={
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [0], "ruleset_end_minute": [0],
+                "ruleset_start_hour": [8], "ruleset_end_hour": [16],
+                "ruleset_value": [cls.mf],
+            },
+            id="Waterflow",
+        )
+        setpoint = tb.ScheduleSystem(
+            weekDayRulesetDict={"ruleset_default_value": 21.0}, id="Setpoint"
+        )
+        discomfort = tb.FunctionSystem(
+            inputs=["setpoint", "measured"],
+            fn=lambda d: torch.relu(d["setpoint"] - d["measured"]),
+            id="Discomfort",
+        )
+
+        model.add_connection(zero, space, "scheduleValue", "numberOfPeople")
+        model.add_connection(outdoor, space, "scheduleValue", "outdoorTemperature")
+        model.add_connection(zero, space, "scheduleValue", "globalIrradiation")
+        model.add_connection(zero, space, "scheduleValue", "supplyAirFlowRate")
+        model.add_connection(zero, space, "scheduleValue", "exhaustAirFlowRate")
+        model.add_connection(supply_air, space, "scheduleValue", "supplyAirTemperature")
+        model.add_connection(supply_water, heater, "scheduleValue", "supplyWaterTemperature")
+        model.add_connection(waterflow, heater, "scheduleValue", "waterFlowRate")
+        model.add_connection(space, heater, "indoorTemperature", "indoorTemperature")
+        model.add_connection(heater, space, "Power", "heatGain")
+        model.add_connection(setpoint, discomfort, "scheduleValue", "setpoint")
+        model.add_connection(space, discomfort, "indoorTemperature", "measured")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+
+        cls.model = model
+        cls.heater = heater
+        cls.waterflow = waterflow
+        cls.discomfort = discomfort
+        cls.start = datetime.datetime(
+            2024, 1, 4, tzinfo=tz.gettz("Europe/Copenhagen")
+        )
+        cls.end = cls.start + datetime.timedelta(hours=24)
+
+    @classmethod
+    def tearDownClass(cls):
+        path = "generated_files/models/test_pareto_fnsys_model"
+        if os.path.exists(path):
+            shutil.rmtree(path)
+
+    def test_energy_vs_discomfort_front(self):
+        optimizer = tb.Optimizer(tb.Simulator(self.model))
+        res = optimizer.pareto_front(
+            start_time=self.start,
+            end_time=self.end,
+            step_size=2400,
+            variables=[(self.waterflow, "scheduleValue", 0.0, self.mf)],
+            objective1=(self.heater, "Power", "min"),
+            objective2=(self.discomfort, "output", "min"),
+            n_points=4,
+            options={"maxiter": 20},
+        )
+
+        # The FunctionSystem output composed into the fast objective.
+        self.assertIsNotNone(optimizer._fast_obj)
+
+        # Physical sanity: discomfort is nonnegative, best at the f2 anchor,
+        # and buying comfort costs heater power.
+        self.assertTrue(np.all(res.f2 >= -1e-9))
+        self.assertLessEqual(res.f2[-1], res.f2.min() + 1e-9)
+        self.assertGreater(res.f1[-1], res.f1[0])
+        self.assertLess(res.f2[-1], res.f2[0])
+
+        # Epsilon feasibility on the swept points.
+        ideal2, nadir2 = res.ideal[1], res.nadir[1]
+        f2n = (res.f2_min - ideal2) / (nadir2 - ideal2)
+        np.testing.assert_array_less(f2n, res.eps + 1e-3)
 
 
 class TestOptimizeReturnsResult(unittest.TestCase):
