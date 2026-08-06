@@ -36,7 +36,7 @@ class CascadeControllerSystem(core.System, nn.Module):
     ``actualValue_b`` as feedback, and produces the final output.
 
     The sub-controller types are passed as class + kwargs, similar to how
-    ``ControllerIdentificationTorchSystem`` accepts candidate controllers.
+    ``ControllerIdentificationSystem`` accepts candidate controllers.
 
     Signal Routing
     --------------
@@ -75,13 +75,13 @@ class CascadeControllerSystem(core.System, nn.Module):
         >>>
         >>> # SAT-compensated + PID cascade
         >>> from twin4build.systems.controller.rulebased_controller \
-        ...     .sat_compensated_controller.sat_compensated_controller_torch_system \
-        ...     import SATCompensatedControllerTorchSystem
+        ...     .sat_compensated_controller.sat_compensated_controller_system \
+        ...     import SATCompensatedControllerSystem
         >>> cascade = CascadeControllerSystem(
-        ...     controller_a=SATCompensatedControllerTorchSystem,
+        ...     controller_a=SATCompensatedControllerSystem,
         ...     controller_a_kwargs={"base_position": 0.3, "sat_design": 13.0, "gain": 0.05},
         ...     controller_b=PIDControllerSystem,
-        ...     controller_b_kwargs={"kp": 0.5, "Ti": 5.0, "isReverse": True},
+        ...     controller_b_kwargs={"kp": 0.5, "Ti": 5.0, "is_reverse": True},
         ...     id="sat_cascade"
         ... )
     """
@@ -127,7 +127,7 @@ class CascadeControllerSystem(core.System, nn.Module):
                 Td=Td_a,
                 output_min=output_min_a,
                 output_max=output_max_a,
-                isReverse=isReverse_a,
+                is_reverse=isReverse_a,
                 id=f"{base_id}_ctrl_a",
             )
 
@@ -145,7 +145,7 @@ class CascadeControllerSystem(core.System, nn.Module):
                 Td=Td_b,
                 output_min=output_min_b,
                 output_max=output_max_b,
-                isReverse=isReverse_b,
+                is_reverse=isReverse_b,
                 id=f"{base_id}_ctrl_b",
             )
 
@@ -258,7 +258,7 @@ class CascadeControllerSystem(core.System, nn.Module):
             if hasattr(ctrl, "reset_state"):
                 ctrl.reset_state()
 
-    # -- composed-map support (mirrors BuildingSpaceTorchSystem) -------------
+    # -- composed-map support (mirrors BuildingSpaceSystem) -------------
 
     @staticmethod
     def _resolve_sub_params(sub, prefix, params):
@@ -324,7 +324,3 @@ class CascadeControllerSystem(core.System, nn.Module):
         return torch.cat([x_a_n, x_b_n], dim=-1), {
             "inputSignal": out_b["inputSignal"]
         }
-
-
-# Backward-compatible alias
-CascadePIDControllerSystem = CascadeControllerSystem

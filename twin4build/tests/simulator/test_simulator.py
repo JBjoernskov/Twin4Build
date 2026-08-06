@@ -14,7 +14,7 @@ import twin4build as tb
 import twin4build.examples.utils as utils
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+from twin4build.systems.damper.damper_system import DamperSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 
 # Set test flag
@@ -26,7 +26,7 @@ class TestSimulator(unittest.TestCase):
         self.model = Model(id="test_sim_model")
 
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -36,7 +36,7 @@ class TestSimulator(unittest.TestCase):
             },
             id="schedule",
         )
-        damper = DamperTorchSystem(id="damper")
+        damper = DamperSystem(id="damper")
 
         self.model.add_component(schedule)
         self.model.add_component(damper)
@@ -319,7 +319,7 @@ class TestSimulator(unittest.TestCase):
         # Configure file paths and column indices for sensors.
         # The example CSVs in twin4build/examples/estimator_example/ are exported
         # from the database with columns: [<index>, TagName, DateTime, Value, vValue]
-        # so datecolumn=2, valuecolumn=3.
+        # so date_column=2, value_column=3.
         for sensor_id, csv_name in [
             ("office_temperature_sensor", "temperature_sensor.csv"),
             ("office_co2_sensor", "co2_sensor.csv"),

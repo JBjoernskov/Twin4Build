@@ -15,7 +15,7 @@ from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSys
 
 
 class _MassParams:
-    """Lightweight container mirroring BuildingSpaceMassTorchSystem parameter
+    """Lightweight container mirroring BuildingSpaceMassSystem parameter
     paths (``V``, ``G_occ``, ``m_inf``) so that the estimator can share them
     via ``rgetattr(component, "mass.V")`` etc."""
 
@@ -34,7 +34,7 @@ class _MassParams:
 class _DamperParams(core.System, nn.Module):
     """Internal damper model for converting position to airflow.
 
-    Mirrors ``DamperTorchSystem`` attribute names (``a``, ``nominalAirFlowRate``)
+    Mirrors ``DamperSystem`` attribute names (``a``, ``nominalAirFlowRate``)
     so that the estimator can share parameters directly::
 
         ([model_supply_damper, occ.supply_damper], "a", 1, 1, 10, "shared")
@@ -43,7 +43,7 @@ class _DamperParams(core.System, nn.Module):
     def __init__(self, id: str, a: float = 1.0, nominalAirFlowRate: float = 0.001):
         core.System.__init__(self, id=id)
         nn.Module.__init__(self)
-        # Scalings MUST match ``DamperTorchSystem`` (``a`` is log-scaled
+        # Scalings MUST match ``DamperSystem`` (``a`` is log-scaled
         # there): the object-graph estimation path denormalizes each member
         # of a "shared" group with its OWN parameter scaling, so a scaling
         # mismatch silently gives the two members different physical values
@@ -62,7 +62,7 @@ class _DamperParams(core.System, nn.Module):
     def compute_airflow(self, position: torch.Tensor) -> torch.Tensor:
         """Convert damper position (0-1) to airflow [kg/s].
 
-        Uses the same exponential characteristic as ``DamperTorchSystem``:
+        Uses the same exponential characteristic as ``DamperSystem``:
         ``m = a * exp(b * u) + c``  where  ``c = -a``,
         ``b = ln((nominalAirFlowRate + a) / a)``.
 
@@ -103,12 +103,14 @@ class OccupancySystem(core.System, nn.Module):
         exhaust_damper_a: Shape parameter for exhaust damper.
         exhaust_damper_nominalAirFlowRate: Nominal air flow [kg/s] for exhaust damper.
         co2_filename: Path to CSV with indoor CO2 measurements.
-        co2_datecolumn: Date column index in the CO2 CSV.
-        co2_valuecolumn: Value column index in the CO2 CSV.
+        co2_date_column: Date column index in the CO2 CSV.
+        co2_value_column: Value column index in the CO2 CSV.
         damper_filename: Path to CSV with damper position measurements.
-        damper_datecolumn: Date column index in the damper CSV.
-        damper_valuecolumn: Value column index in the damper CSV.
+        damper_date_column: Date column index in the damper CSV.
+        damper_value_column: Value column index in the damper CSV.
         **kwargs: Forwarded to ``core.System`` (must include ``id``).
+            Also accepts deprecated ``co2_datecolumn`` / ``co2_valuecolumn`` /
+            ``damper_datecolumn`` / ``damper_valuecolumn`` until 2.1.
     """
 
     def __init__(
@@ -121,13 +123,36 @@ class OccupancySystem(core.System, nn.Module):
         exhaust_damper_a: float = 1.0,
         exhaust_damper_nominalAirFlowRate: float = 0.001,
         co2_filename: Optional[str] = None,
-        co2_datecolumn: int = 0,
-        co2_valuecolumn: int = 1,
+        co2_date_column: int = 0,
+        co2_value_column: int = 1,
         damper_filename: Optional[str] = None,
-        damper_datecolumn: int = 0,
-        damper_valuecolumn: int = 1,
+        damper_date_column: int = 0,
+        damper_value_column: int = 1,
         **kwargs,
     ):
+        from twin4build.utils.deprecation import deprecate_args
+
+        legacy = deprecate_args(
+            [
+                "co2_datecolumn",
+                "co2_valuecolumn",
+                "damper_datecolumn",
+                "damper_valuecolumn",
+            ],
+            [
+                "co2_date_column",
+                "co2_value_column",
+                "damper_date_column",
+                "damper_value_column",
+            ],
+            [None, None, None, None],
+            kwargs,
+        )
+        co2_date_column = legacy.get("co2_date_column", co2_date_column)
+        co2_value_column = legacy.get("co2_value_column", co2_value_column)
+        damper_date_column = legacy.get("damper_date_column", damper_date_column)
+        damper_value_column = legacy.get("damper_value_column", damper_value_column)
+
         _id = kwargs.get("id", "occupancy")
         super().__init__(**kwargs)
         nn.Module.__init__(self)
@@ -145,11 +170,16 @@ class OccupancySystem(core.System, nn.Module):
         )
 
         self.co2_filename = co2_filename
-        self.co2_datecolumn = co2_datecolumn
-        self.co2_valuecolumn = co2_valuecolumn
+        self.co2_date_column = co2_date_column
+        self.co2_value_column = co2_value_column
         self.damper_filename = damper_filename
-        self.damper_datecolumn = damper_datecolumn
-        self.damper_valuecolumn = damper_valuecolumn
+        self.damper_date_column = damper_date_column
+        self.damper_value_column = damper_value_column
+        # Deprecated attribute aliases (removed in 2.1)
+        self.co2_datecolumn = co2_date_column
+        self.co2_valuecolumn = co2_value_column
+        self.damper_datecolumn = damper_date_column
+        self.damper_valuecolumn = damper_value_column
 
         self._input = {
             "outdoorCo2Concentration": tps.Scalar(),
@@ -173,11 +203,11 @@ class OccupancySystem(core.System, nn.Module):
                 "exhaust_damper.a",
                 "exhaust_damper.nominalAirFlowRate",
                 "co2_filename",
-                "co2_datecolumn",
-                "co2_valuecolumn",
+                "co2_date_column",
+                "co2_value_column",
                 "damper_filename",
-                "damper_datecolumn",
-                "damper_valuecolumn",
+                "damper_date_column",
+                "damper_value_column",
             ]
         }
         self.INITIALIZED = False
@@ -212,8 +242,8 @@ class OccupancySystem(core.System, nn.Module):
         self._co2_ts = TimeSeriesInputSystem(
             id=f"co2_ts_{self.id}",
             filename=self.co2_filename,
-            datecolumn=self.co2_datecolumn,
-            valuecolumn=self.co2_valuecolumn,
+            date_column=self.co2_date_column,
+            value_column=self.co2_value_column,
             use_spreadsheet=True,
         )
         self._co2_ts.initialize(start_time, end_time, step_size)
@@ -221,8 +251,8 @@ class OccupancySystem(core.System, nn.Module):
         self._damper_ts = TimeSeriesInputSystem(
             id=f"damper_ts_{self.id}",
             filename=self.damper_filename,
-            datecolumn=self.damper_datecolumn,
-            valuecolumn=self.damper_valuecolumn,
+            date_column=self.damper_date_column,
+            value_column=self.damper_value_column,
             use_spreadsheet=True,
         )
         self._damper_ts.initialize(start_time, end_time, step_size)
@@ -250,7 +280,7 @@ class OccupancySystem(core.System, nn.Module):
         a: torch.Tensor, nominal: torch.Tensor, position: torch.Tensor
     ) -> torch.Tensor:
         """Damper position (0-1) -> airflow [kg/s]; same exponential
-        characteristic as ``DamperTorchSystem`` (``_DamperParams.compute_airflow``
+        characteristic as ``DamperSystem`` (``_DamperParams.compute_airflow``
         expressed on explicit parameter tensors so ``forward`` stays pure)."""
         c = -a
         b = torch.log((nominal - c) / a)

@@ -19,7 +19,7 @@ N_HOURS = 24
 
 
 def build_two_zone_model():
-    """Two thermal zones coupled by ONE WallTorchSystem.
+    """Two thermal zones coupled by ONE WallSystem.
 
     Zone A is heated (schedule-driven heat gain); zone B is passive and only
     receives heat through the shared partition wall.  Both zone<->wall loops
@@ -29,7 +29,7 @@ def build_two_zone_model():
     model = tb.Model(id="test_two_zone_wall")
 
     def make_zone(zone_id):
-        return tb.BuildingSpaceThermalTorchSystem(
+        return tb.BuildingSpaceThermalSystem(
             C_air=1e6,
             C_wall=5e6,
             R_out=0.01,
@@ -42,10 +42,10 @@ def build_two_zone_model():
 
     zone_a = make_zone("ZoneA")
     zone_b = make_zone("ZoneB")
-    wall = tb.WallTorchSystem(C=2e5, R_a=0.02, R_b=0.02, id="PartitionWall")
+    wall = tb.WallSystem(C=2e5, R_a=0.02, R_b=0.02, id="PartitionWall")
 
     outdoor = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 5.0,
             "ruleset_start_minute": [0],
             "ruleset_end_minute": [0],
@@ -56,13 +56,13 @@ def build_two_zone_model():
         id="Outdoor",
     )
     zero = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 0.0}, id="Zero"
+        weekday_ruleset={"ruleset_default_value": 0.0}, id="Zero"
     )
     supply_air_temp = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 20.0}, id="SupplyAirTemp"
+        weekday_ruleset={"ruleset_default_value": 20.0}, id="SupplyAirTemp"
     )
     heater_a = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0.0,
             "ruleset_start_minute": [0],
             "ruleset_end_minute": [0],

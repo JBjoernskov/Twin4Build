@@ -19,7 +19,7 @@ twin4build._IS_TESTING = True
 class TestOnOffControllerSystem(unittest.TestCase):
     def setUp(self):
         self.controller = OnOffControllerSystem(
-            id="test_controller", offValue=0, onValue=1, isReverse=False
+            id="test_controller", off_value=0, on_value=1, is_reverse=False
         )
 
     def test_initialization(self):
@@ -53,7 +53,7 @@ class TestOnOffControllerSystem(unittest.TestCase):
     def test_do_step_batch(self):
         """Test on/off controller do_step method with batch size > 1."""
         controller_batch = OnOffControllerSystem(
-            id="test_controller_batch", offValue=0, onValue=1, isReverse=False
+            id="test_controller_batch", off_value=0, on_value=1, is_reverse=False
         )
 
         batch_size = 2

@@ -256,15 +256,32 @@ def save_after_calibration_plot(res, outdir):
     model, sim = res["model"], res["simulator"]
     heating_controller = model.components["office_temperature_heating_controller"]
     temp_sensor = model.components["office_temperature_sensor"]
-    fig, _ = tb.plot.plot_component(
-        sim,
-        components_1axis=[
-            ("office", "indoorTemperature", "output"),
-            (heating_controller.id, "setpointValue", "input"),
-            (temp_sensor.time_series_input.values, "Actual temperature"),
+    fig, _ = tb.plot.plot(
+        sim.date_time_steps,
+        [
+            tb.plot.Entry(
+                data=model.components["office"].output["indoorTemperature"].history(),
+                label="indoorTemperature",
+            ),
+            tb.plot.Entry(
+                data=heating_controller.input["setpointValue"].history(),
+                label="setpointValue",
+            ),
+            tb.plot.Entry(
+                data=temp_sensor.time_series_input.values,
+                label="Actual temperature",
+            ),
+            tb.plot.Entry(
+                data=model.components["office_space_heater"].output["Power"].history(),
+                label="Power",
+                axis=2,
+            ),
+            tb.plot.Entry(
+                data=model.components["office_space_heater_valve"].output["valvePosition"].history(),
+                label="valvePosition",
+                axis=3,
+            ),
         ],
-        components_2axis=[("office_space_heater", "Power", "output")],
-        components_3axis=[("office_space_heater_valve", "valvePosition", "output")],
         ylabel_1axis=r"Temperature [$^\circ$C]",
         ylabel_2axis="Power [W]",
         ylabel_3axis="Valve position [0-1]",

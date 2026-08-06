@@ -10,9 +10,10 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.smooth_saturation import clamp
+from twin4build.utils.deprecation import deprecate_args
 
 
-class OnOffControllerTorchSystem(core.System, nn.Module):
+class SmoothOnOffControllerSystem(core.System, nn.Module):
     r"""
     Differentiable On-Off Controller System using smooth sigmoid approximation.
 
@@ -58,7 +59,7 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
 
     Example:
         >>> # Heating controller: ON when temp < setpoint
-        >>> controller = OnOffControllerTorchSystem(
+        >>> controller = SmoothOnOffControllerSystem(
         ...     offValue=0.0,
         ...     onValue=1.0,
         ...     steepness=10.0,
@@ -69,28 +70,35 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
 
     def __init__(
         self,
-        offValue: float = 0.0,
-        onValue: float = 1.0,
+        off_value: float = 0.0,
+        on_value: float = 1.0,
         steepness: float = 10.0,
-        isReverse: bool = False,
+        is_reverse: bool = False,
         **kwargs,
     ):
+        legacy = deprecate_args(
+            ["offValue", "onValue", "isReverse"],
+            ["off_value", "on_value", "is_reverse"],
+            [None, None, None],
+            kwargs,
+        )
+        off_value = legacy.get("off_value", off_value)
+        on_value = legacy.get("on_value", on_value)
+        is_reverse = legacy.get("is_reverse", is_reverse)
+
         super().__init__(**kwargs)
         nn.Module.__init__(self)
 
-        self.isReverse = isReverse
+        self.is_reverse = is_reverse
 
-        # Make offValue and onValue learnable parameters
-        self.offValue = tps.Parameter(
-            torch.tensor(float(offValue), dtype=torch.float64),
+        self.off_value = tps.Parameter(
+            torch.tensor(float(off_value), dtype=torch.float64),
             requires_grad=False,
         )
-        self.onValue = tps.Parameter(
-            torch.tensor(float(onValue), dtype=torch.float64),
+        self.on_value = tps.Parameter(
+            torch.tensor(float(on_value), dtype=torch.float64),
             requires_grad=False,
         )
-        # Steepness controls transition sharpness
-        # Higher = sharper (more like true on-off), Lower = smoother
         self.steepness = tps.Parameter(
             torch.tensor(float(steepness), dtype=torch.float64),
             requires_grad=False,
@@ -99,8 +107,12 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar()}
         self._config = {
-            "parameters": ["offValue", "onValue", "steepness", "isReverse"],
+            "parameters": ["off_value", "on_value", "steepness", "is_reverse"],
         }
+        # Deprecated attribute aliases until 2.1 (same Parameter objects)
+        self.offValue = self.off_value
+        self.onValue = self.on_value
+        self.isReverse = self.is_reverse
 
     @property
     def config(self):
@@ -118,21 +130,21 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
         self.input["actualValue"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
+            n_t=max_timesteps,
+            n_s=batch_size,
         )
         self.input["setpointValue"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
+            n_t=max_timesteps,
+            n_s=batch_size,
         )
         self.output["inputSignal"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
+            n_t=max_timesteps,
+            n_s=batch_size,
         )
 
         # Expand parameters to n_c dimension for vectorization
-        self.offValue = self.offValue.expand_to_n_c(self.n_c)
-        self.onValue = self.onValue.expand_to_n_c(self.n_c)
+        self.off_value = self.off_value.expand_to_n_c(self.n_c)
+        self.on_value = self.on_value.expand_to_n_c(self.n_c)
         self.steepness = self.steepness.expand_to_n_c(self.n_c)
 
     @staticmethod
@@ -179,7 +191,7 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         """
         # Reverse: want to turn ON when actual < setpoint (error > 0)
         # Normal: want to turn ON when actual > setpoint (error > 0)
-        if self.isReverse:
+        if self.is_reverse:
             error = inputs["setpointValue"] - inputs["actualValue"]
         else:
             error = inputs["actualValue"] - inputs["setpointValue"]
@@ -233,7 +245,7 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
         """
         k = self.steepness.get()
 
-        if self.isReverse:
+        if self.is_reverse:
             error = setpoint_value - actual_value
         else:
             error = actual_value - setpoint_value
@@ -243,3 +255,6 @@ class OnOffControllerTorchSystem(core.System, nn.Module):
     def reset_state(self) -> None:
         """Reset controller state (no-op for on-off controller)."""
         pass
+
+# Deprecated aliases (removed in twin4build 2.1)
+OnOffControllerTorchSystem = SmoothOnOffControllerSystem

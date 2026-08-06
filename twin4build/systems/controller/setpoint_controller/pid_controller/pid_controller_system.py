@@ -59,12 +59,14 @@ class PIDControllerSystem(core.System, nn.Module):
         Td=0.0,
         output_min=0.0,
         output_max=1.0,
-        isReverse=False,
+        is_reverse=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
         nn.Module.__init__(self)
-        self.isReverse = isReverse
+        self.is_reverse = is_reverse
+        # Deprecated alias until 2.1
+        self.isReverse = is_reverse
 
         kp = abs(kp)
         Ti = abs(Ti)
@@ -110,7 +112,7 @@ class PIDControllerSystem(core.System, nn.Module):
             names=[f"{self.id}.u_prev", f"{self.id}.err_prev", f"{self.id}.err_prev_m1"],
         )
         self._config = {
-            "parameters": ["kp", "Ti", "Td", "output_min", "output_max", "isReverse"]
+            "parameters": ["kp", "Ti", "Td", "output_min", "output_max", "is_reverse"]
         }
 
     @property
@@ -286,7 +288,7 @@ class PIDControllerSystem(core.System, nn.Module):
             self._fwd_coef_cache = cache
         c0, c1, c2 = cache[2]
         err = inputs["setpointValue"] - inputs["actualValue"]
-        if self.isReverse is False:
+        if self.is_reverse is False:
             err = -err
         u_prev, err_prev, err_prev_m1 = x[..., 0], x[..., 1], x[..., 2]
         u = u_prev + (c0 * err + c1 * err_prev + c2 * err_prev_m1)
@@ -316,7 +318,7 @@ def saref_signature_pattern():
 
     sp.add_input("actualValue", node1, "measuredValue")
     sp.add_input("setpointValue", node3, "scheduleValue")
-    sp.add_parameter("isReverse", node4)
+    sp.add_parameter("is_reverse", node4)
     sp.add_modeled_node(node0)
     return sp
 

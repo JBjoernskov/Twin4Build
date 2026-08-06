@@ -2,7 +2,7 @@
 
 This module implements the operation that turns a freshly-translated
 :class:`~twin4build.model.simulation_model.SimulationModel` containing
-multi-candidate :class:`ControllerIdentificationPITorchSystem` instances
+multi-candidate :class:`ControllerIdentificationPISystem` instances
 into a single-candidate, parameter-seeded model ready for estimation.
 
 For each PI-CITS the operation:
@@ -27,7 +27,7 @@ For each PI-CITS the operation:
         - Sets ``candidate_0_0.isReverse`` from ``slope >= 0`` so the
           simulator's internal ``err`` polarity matches the regression
           (twin4build's PI flips ``err = sp - fb`` to ``fb - sp`` when
-          ``isReverse=False``; see ``pid_controller_system.do_step``).
+          ``is_reverse=False``; see ``pid_controller_system.do_step``).
 
 The function is idempotent: calling it twice on the same model produces
 the same final state.  On the second call every PI-CITS already has a
@@ -49,8 +49,8 @@ import torch
 
 # Local application imports
 import twin4build.core as core
-from twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system import (
-    ControllerIdentificationPITorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
+    ControllerIdentificationPISystem,
 )
 from twin4build.systems.controller.controller_identification.loop_classifier import (
     ActuatorSeeds,
@@ -63,7 +63,7 @@ from twin4build.systems.controller.controller_identification.loop_classifier imp
     score_pair,
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +177,7 @@ def _rewire_pi_loops(
         physics simulation.  ``alpha_gate_{a}`` is pinned to ``0.0``
         so the gate is bypassed (``gate_input = 1 - 0 + 0 * gate =
         1``) and the PI passes through.  See
-        :file:`controller_identification_torch_system.py:787-791` for
+        :file:`controller_identification_system.py:787-791` for
         the gate-mixing formula.
 
     In both modes the function also pins the frozen selection weights
@@ -318,7 +318,7 @@ def _rewire_pi_loops(
     pi_cits_list = [
         c
         for c in model.components.values()
-        if isinstance(c, ControllerIdentificationPITorchSystem)
+        if isinstance(c, ControllerIdentificationPISystem)
     ]
 
     LOGGER.info(
@@ -347,7 +347,7 @@ def _rewire_pi_loops(
     # identical pre-built ones.
     #
     # ``_initialize`` does this same n_* derivation at load time
-    # (controller_identification_torch_system.py:757-783); we run it
+    # (controller_identification_system.py:757-783); we run it
     # earlier here so the rewire's scoring sees a consistent CITS state.
     # ``_rewire_one`` later calls ``_build_components`` again post-
     # pruning to collapse ``n_sensors = n_setpoints = 1``, so this
@@ -535,7 +535,7 @@ rewire_pi_loops = _rewire_pi_loops
 
 
 def _collect_sensors(
-    pi_cits_list: List[ControllerIdentificationPITorchSystem],
+    pi_cits_list: List[ControllerIdentificationPISystem],
 ) -> List[SensorSystem]:
     """Return the deduplicated list of every sensor connected (in or out)
     to any PI-CITS in ``pi_cits_list``.
@@ -692,7 +692,7 @@ def _score_continuity(ts: np.ndarray) -> ContinuityStats:
 
 
 def _collect_on_off_slot_signals(
-    cits: ControllerIdentificationPITorchSystem,
+    cits: ControllerIdentificationPISystem,
     *,
     pad_constant: float = 0.01,
 ) -> Tuple[List[Optional[np.ndarray]], np.ndarray, np.ndarray, int]:
@@ -772,7 +772,7 @@ def _collect_on_off_slot_signals(
 
 
 def _populate_on_off_signal_norm_bounds(
-    pi_cits_list: List[ControllerIdentificationPITorchSystem],
+    pi_cits_list: List[ControllerIdentificationPISystem],
     *,
     pad_constant: float = 0.5,
 ) -> None:
@@ -873,7 +873,7 @@ def _populate_on_off_signal_norm_bounds(
 
 
 def _populate_gate_seeds_from_on_mask(
-    pi_cits_list: List[ControllerIdentificationPITorchSystem],
+    pi_cits_list: List[ControllerIdentificationPISystem],
     *,
     sharpness_beta: float = 8.0,
 ) -> Dict[str, Tuple[Optional[str], Optional[float], Optional[float], Optional[GateSeeds]]]:
@@ -1062,7 +1062,7 @@ def _maybe_rescale_percent(arr: np.ndarray) -> Tuple[np.ndarray, bool]:
 
 
 def _resolve_actuator_measurement(
-    cits: ControllerIdentificationPITorchSystem,
+    cits: ControllerIdentificationPISystem,
 ) -> Optional[SensorSystem]:
     """Return the first actuator-measurement :class:`SensorSystem` downstream
     of ``cits.inputSignal``.  Returns ``None`` if none are wired.
@@ -1078,7 +1078,7 @@ def _resolve_actuator_measurement(
 
 
 def _collect_input_signals(
-    cits: ControllerIdentificationPITorchSystem,
+    cits: ControllerIdentificationPISystem,
 ) -> Tuple[Dict[str, Tuple[SensorSystem, Any]], Dict[str, Tuple[SensorSystem, Any]]]:
     """Collect the wired sensors and setpoints for one CITS.
 
@@ -1105,7 +1105,7 @@ def _collect_input_signals(
 
 def _disconnect_sender_from_cits(
     sender: SensorSystem,
-    cits: ControllerIdentificationPITorchSystem,
+    cits: ControllerIdentificationPISystem,
     model: core.SimulationModel,
     *,
     ports: Tuple[str, ...] = ("sensorValue", "setpointValue", "onOffSignal"),
@@ -1151,7 +1151,7 @@ def _disconnect_sender_from_cits(
 
 def _maybe_swap_broken_sensor(
     *,
-    cits: ControllerIdentificationPITorchSystem,
+    cits: ControllerIdentificationPISystem,
     model: core.SimulationModel,
     sensors_dict: Dict[str, Tuple[SensorSystem, Any]],
     setpoints_dict: Dict[str, Tuple[SensorSystem, Any]],
@@ -1468,7 +1468,7 @@ def _reindex_connection_point(cp: Any) -> None:
 
 
 def _apply_seeds(
-    cits: ControllerIdentificationPITorchSystem,
+    cits: ControllerIdentificationPISystem,
     *,
     score: LoopScore,
     actuator_seeds: ActuatorSeeds,
@@ -1487,19 +1487,19 @@ def _apply_seeds(
     """
     cand = cits.candidate_0_0
     # twin4build's PI law internally flips the error sign for
-    # ``isReverse=False`` (see pid_controller_system.py: ``err = sp - fb;
+    # ``is_reverse=False`` (see pid_controller_system.py: ``err = sp - fb;
     # if not isReverse: err = -err``).  Concretely:
-    #   * ``isReverse=True``  -> simulator uses ``err = sp - fb``
+    #   * ``is_reverse=True``  -> simulator uses ``err = sp - fb``
     #     (heating-style: u rises when fb < sp).
-    #   * ``isReverse=False`` -> simulator uses ``err = fb - sp``
+    #   * ``is_reverse=False`` -> simulator uses ``err = fb - sp``
     #     (cooling-style: u rises when fb > sp).
     # Our regression fits ``Δu = slope * Δe`` with ``e = sp - fb``
     # (loop_classifier.score_pair).  For the simulator's
     # ``du_sim = kp * Δerr`` to match the regression's ``slope * Δe``
     # we need ``kp * sign(internal_err) = slope``.  Since ``kp`` is set
     # to ``|slope| >= 0``, the sign convention works out as:
-    #   slope >= 0  -> isReverse=True   (sim sees +Δe, du = +|slope|·Δe)
-    #   slope <  0  -> isReverse=False  (sim sees -Δe, du = -|slope|·Δe)
+    #   slope >= 0  -> is_reverse=True   (sim sees +Δe, du = +|slope|·Δe)
+    #   slope <  0  -> is_reverse=False  (sim sees -Δe, du = -|slope|·Δe)
     # i.e. the boolean is the sign-of-slope, NOT its negation.  An
     # earlier version had this inverted, which silently flipped every
     # heating loop into cooling mode at simulation time.
@@ -1561,7 +1561,7 @@ def _apply_seeds(
         )
 
     # --- isReverse ---------------------------------------------------------
-    if hasattr(cand, "isReverse"):
+    if hasattr(cand, "is_reverse"):
         cand.isReverse = is_reverse
 
     return kp_x0, kp_lb, kp_ub, Ti_x0, Ti_lb, Ti_ub, is_reverse
@@ -1596,7 +1596,7 @@ def _set_param(component: Any, attr: str, x0: float, lb: float, ub: float) -> No
 
 def _rewire_one(
     *,
-    cits: ControllerIdentificationPITorchSystem,
+    cits: ControllerIdentificationPISystem,
     model: core.SimulationModel,
     h: float,
     confidence_high: float,
@@ -2213,7 +2213,7 @@ def _rewire_one(
     # ``n_on_off_signals`` is NOT pruned by the rewire (the gate input bus
     # is structurally distinct from the PI-error setpoint bus), so we
     # derive it from the wired connections here.  This mirrors what
-    # :meth:`ControllerIdentificationTorchSystem.initialize` does the
+    # :meth:`ControllerIdentificationSystem.initialize` does the
     # first time a real simulation runs -- but the rewire path is the
     # earliest user of ``_build_components`` after translation, before
     # any ``initialize()`` has happened, so the attribute would
@@ -2305,7 +2305,7 @@ def _untouched_report(
 
 
 def _pin_frozen_cits_state(
-    cits_list: List["ControllerIdentificationPITorchSystem"],
+    cits_list: List["ControllerIdentificationPISystem"],
     *,
     mode: str,
 ) -> None:

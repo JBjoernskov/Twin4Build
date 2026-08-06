@@ -15,7 +15,7 @@ from prettytable import PrettyTable
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import LOGGER, autoreset_print
+from twin4build.utils.logger import LOGGER, autoreset_print
 
 
 @autoreset_print
@@ -89,8 +89,8 @@ class Model:
     >>> model = tb.Model(id="building_model")
     >>>
     >>> # Add components (delegates to simulation_model)
-    >>> space = tb.BuildingSpaceTorchSystem(id="office_space")
-    >>> heater = tb.SpaceHeaterTorchSystem(id="radiator")
+    >>> space = tb.BuildingSpaceSystem(id="office_space")
+    >>> heater = tb.SpaceHeaterSystem(id="radiator")
     >>> model.add_component(space)
     >>> model.add_component(heater)
     >>>
@@ -429,20 +429,27 @@ class Model:
             input_port=input_port,
         )
 
-    def get_component_by_class(
-        self, dict_: Dict, class_: Type, filter: Optional[Callable] = None
+    def get_components_by_class(
+        self, class_: Type, filter: Optional[Callable] = None
     ) -> List:
-        """
-        Get components of a specific class from a dictionary.
+        """Return components on this model that are instances of ``class_``."""
+        return self.simulation_model.get_component_by_class(
+            dict_=self.simulation_model.components, class_=class_, filter=filter
+        )
 
-        Args:
-            dict_ (Dict): The dictionary to search.
-            class_ (Type): The class to filter by.
-            filter (Optional[Callable]): Additional filter function.
+    def get_component_by_class(
+        self, dict_: Dict = None, class_: Type = None, filter: Optional[Callable] = None
+    ) -> List:
+        """Deprecated: use :meth:`get_components_by_class` (removed in 2.1)."""
+        from twin4build.utils.deprecation import deprecate_name
 
-        Returns:
-            List: List of components matching the class and filter.
-        """
+        deprecate_name("get_component_by_class", "get_components_by_class")
+        if class_ is None and dict_ is not None and not isinstance(dict_, dict):
+            # Called as get_component_by_class(SomeSystem)
+            class_ = dict_
+            dict_ = self.simulation_model.components
+        if dict_ is None:
+            dict_ = self.simulation_model.components
         return self.simulation_model.get_component_by_class(
             dict_=dict_, class_=class_, filter=filter
         )
@@ -781,56 +788,89 @@ class Model:
 
     def load(
         self,
-        semantic_model_filename: Optional[str] = None,
-        simulation_model_filename: Optional[str] = None,
+        filename: Optional[str] = None,
         fcn: Optional[Callable] = None,
         draw_semantic_model: bool = True,
         draw_simulation_model: bool = True,
-        # verbose: Union[int, None] = None,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
         logfile: Optional[str] = None,
+        enable_fusion: bool = True,
+        semantic_model_filename: Optional[str] = None,
+        simulation_model_filename: Optional[str] = None,
+        **kwargs,
     ) -> None:
         """
-        Load and set up the model for simulation.
+        Load and set up the simulation half of the model.
+
+        Preferred usage::
+
+            sm = tb.SemanticModel(rdf_file="building.ttl", id="building")
+            model = tb.Translator().translate(sm)
+            model.load()
+
+        Or restore a serialized simulation model::
+
+            model.load(filename="path/to/serialized_sim...")
 
         Args:
-            semantic_model_filename: Path to the semantic model configuration file.
-            simulation_model_filename: Path to a serialized simulation model file.
-                Cannot be provided together with semantic_model_filename.
-            fcn: Custom function to be applied during model loading.
-            draw_semantic_model: Whether to create and save the semantic model graph.
-            draw_simulation_model: Whether to create and save the simulation model graph.
+            filename: Path to a serialized simulation model (preferred).
+            fcn: Custom function applied during model loading.
+            draw_semantic_model: Whether to draw the semantic model graph.
+            draw_simulation_model: Whether to draw the simulation model graph.
             validate_model: Whether to perform model validation.
-            force_config_overwrite: If True, all parameters are read from the config file.
-                If False, only the parameters that are None are read from the config file.
-            logfile: Path to the log file.
+            force_config_overwrite: If True, all parameters are read from config.
+            logfile: Path to the plain LOGGER file.
+            enable_fusion: Whether to fuse connected state-space clusters at load.
+            semantic_model_filename: Deprecated (removed in 2.1). Use
+                ``SemanticModel`` + ``Translator.translate`` instead.
+            simulation_model_filename: Deprecated alias for ``filename`` (removed in 2.1).
         """
+        from twin4build.utils.deprecation import deprecate_name
+
+        if "verbose" in kwargs:
+            deprecate_name("verbose=", "LOGGER.verbose")
+            LOGGER.verbose = kwargs.pop("verbose")
+        if kwargs:
+            raise TypeError(
+                f"Model.load() got unexpected keyword arguments: {sorted(kwargs)}"
+            )
+
+        if semantic_model_filename is not None:
+            deprecate_name(
+                "semantic_model_filename=",
+                "SemanticModel(rdf_file=...) + Translator.translate(...)",
+            )
+        if simulation_model_filename is not None:
+            deprecate_name("simulation_model_filename=", "filename=")
+            if filename is None:
+                filename = simulation_model_filename
+
         if LOGGER.verbose:
             self._load(
                 semantic_model_filename=semantic_model_filename,
-                simulation_model_filename=simulation_model_filename,
+                simulation_model_filename=filename,
                 fcn=fcn,
                 draw_semantic_model=draw_semantic_model,
                 draw_simulation_model=draw_simulation_model,
-                # verbose=verbose,
                 validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
                 logfile=logfile,
+                enable_fusion=enable_fusion,
             )
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 self._load(
                     semantic_model_filename=semantic_model_filename,
-                    simulation_model_filename=simulation_model_filename,
+                    simulation_model_filename=filename,
                     fcn=fcn,
                     draw_semantic_model=draw_semantic_model,
                     draw_simulation_model=draw_simulation_model,
-                    # verbose=verbose,
                     validate_model=validate_model,
                     force_config_overwrite=force_config_overwrite,
                     logfile=logfile,
+                    enable_fusion=enable_fusion,
                 )
 
     def _load(
@@ -840,10 +880,10 @@ class Model:
         fcn: Optional[Callable],
         draw_semantic_model: bool,
         draw_simulation_model: bool,
-        # verbose: int,
         validate_model: bool,
         force_config_overwrite: bool,
         logfile: Optional[str],
+        enable_fusion: bool = True,
     ) -> None:
         """
         Internal method to load and set up the model for simulation.
@@ -911,10 +951,10 @@ class Model:
             self._simulation_model = translated_model.simulation_model
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
 
+        self._simulation_model.enable_fusion = enable_fusion
         self._simulation_model.load(
             rdf_file=simulation_model_filename,
             fcn=fcn,
-            # verbose=verbose,
             validate_model=validate_model,
             force_config_overwrite=force_config_overwrite,
             logfile=logfile,
@@ -1213,14 +1253,14 @@ class Model:
         # boolean flags
         "use_spreadsheet", "use_database", "use_df", "use_dict",
         # ScheduleSystem / SensorSystem
-        "filename", "df", "datecolumn", "valuecolumn",
+        "filename", "df", "date_column", "value_column",
         "uuid", "name", "dbconfig",
         # ScheduleSystem rulesets
-        "weekDayRulesetDict", "weekendRulesetDict",
-        "mondayRulesetDict", "tuesdayRulesetDict",
-        "wednesdayRulesetDict", "thursdayRulesetDict",
-        "fridayRulesetDict", "saturdayRulesetDict",
-        "sundayRulesetDict",
+        "weekday_ruleset", "weekend_ruleset",
+        "monday_ruleset", "tuesday_ruleset",
+        "wednesday_ruleset", "thursday_ruleset",
+        "friday_ruleset", "saturday_ruleset",
+        "sunday_ruleset",
         # OutdoorEnvironmentSystem
         "filename_outdoorTemperature", "filename_globalIrradiation",
         "filename_outdoorCo2Concentration",
@@ -1351,17 +1391,17 @@ class Model:
     # Keyed by fully-qualified class name.  Supports dotted paths for
     # composite components (e.g. ``"thermal.some_attr"``).
     _INIT_ATTRS_TO_COPY: Dict[str, Tuple[str, ...]] = {
-        "twin4build.systems.space_heater.space_heater_torch_system.SpaceHeaterTorchSystem": (
+        "twin4build.systems.space_heater.space_heater_system.SpaceHeaterSystem": (
             "nelements",
             "Q_flow_nominal_sh",
             "T_a_nominal_sh",
             "T_b_nominal_sh",
             "TAir_nominal_sh",
         ),
-        "twin4build.systems.building_space.building_space_torch_system.BuildingSpaceTorchSystem": (),
+        "twin4build.systems.building_space.building_space_system.BuildingSpaceSystem": (),
         "twin4build.systems.controller.setpoint_controller.pid_controller"
         ".pid_controller_system.PIDControllerSystem": (
-            "isReverse",
+            "is_reverse",
         ),
     }
 
@@ -1388,14 +1428,14 @@ class Model:
             if val is not None:
                 self._set_dotted_attr(meta, attr, val)
 
-        # For BuildingSpaceTorchSystem: derive topology from the source
+        # For BuildingSpaceSystem: derive topology from the source
         # component's connects_at (populated by model.load()) and push
         # it through the thermal sub-model's setter so the manual flag
         # is set and initialize() skips its own connects_at discovery.
-        from twin4build.systems.building_space.building_space_torch_system import (
-            BuildingSpaceTorchSystem,
+        from twin4build.systems.building_space.building_space_system import (
+            BuildingSpaceSystem,
         )
-        if isinstance(source, BuildingSpaceTorchSystem):
+        if isinstance(source, BuildingSpaceSystem):
             cp_boundary = [
                 cp for cp in source.connects_at
                 if cp.input_port == "boundaryTemperature"

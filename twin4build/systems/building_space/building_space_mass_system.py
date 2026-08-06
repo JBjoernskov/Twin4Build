@@ -17,7 +17,7 @@ from twin4build.systems.utils.discrete_statespace_system import (
 )
 
 
-class BuildingSpaceMassTorchSystem(core.System, nn.Module):
+class BuildingSpaceMassSystem(core.System, nn.Module):
     r"""
     Building Space CO2 Concentration Model using Mass Balance Dynamics.
 
@@ -147,7 +147,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     >>> import twin4build as tb
     >>>
     >>> # Create CO2 model with default parameters
-    >>> co2_model = tb.BuildingSpaceMassTorchSystem(
+    >>> co2_model = tb.BuildingSpaceMassSystem(
     ...     V=150,          # Room volume [m³]
     ...     G_occ=6e-6,     # Higher CO2 generation per person
     ...     m_inf=0.002,    # Higher infiltration rate
@@ -157,7 +157,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     Large space CO2 model:
 
     >>> # Model for large space with higher occupancy
-    >>> co2_model = tb.BuildingSpaceMassTorchSystem(
+    >>> co2_model = tb.BuildingSpaceMassSystem(
     ...     V=500,          # Large space volume
     ...     G_occ=4e-6,     # Lower per-person generation
     ...     m_inf=0.005,    # Higher infiltration for large space
@@ -437,3 +437,6 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         )
         self.ss_model.set_state(x_next)
         self.output["indoorCO2"]._set(outs["indoorCO2"], i_t=step_index)
+
+# Deprecated aliases (removed in twin4build 2.1)
+BuildingSpaceMassTorchSystem = BuildingSpaceMassSystem

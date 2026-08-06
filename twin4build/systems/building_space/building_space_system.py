@@ -9,11 +9,11 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.systems.building_space.building_space_mass_torch_system import (
-    BuildingSpaceMassTorchSystem,
+from twin4build.systems.building_space.building_space_mass_system import (
+    BuildingSpaceMassSystem,
 )
-from twin4build.systems.building_space.building_space_thermal_torch_system import (
-    BuildingSpaceThermalTorchSystem,
+from twin4build.systems.building_space.building_space_thermal_system import (
+    BuildingSpaceThermalSystem,
 )
 from twin4build.translator.translator import (
     StepRule,
@@ -27,25 +27,25 @@ from twin4build.translator.translator import (
 )
 
 
-class BuildingSpaceTorchSystem(core.System, nn.Module):
+class BuildingSpaceSystem(core.System, nn.Module):
     r"""
     Combined building space model for both thermal (RC) and CO2 (mass balance) dynamics.
 
-    This class composes BuildingSpaceThermalTorchSystem and BuildingSpaceMassTorchSystem
+    This class composes BuildingSpaceThermalSystem and BuildingSpaceMassSystem
     to provide a unified building space model that captures both thermal and air quality
     dynamics in a building zone.
 
     Args:
-       thermal_kwargs: Keyword arguments for BuildingSpaceThermalTorchSystem
-       mass_kwargs: Keyword arguments for BuildingSpaceMassTorchSystem
+       thermal_kwargs: Keyword arguments for BuildingSpaceThermalSystem
+       mass_kwargs: Keyword arguments for BuildingSpaceMassSystem
        kwargs: Additional keyword arguments (must include 'id')
 
     Mathematical Formulation
     ------------------------
 
        See individual component documentation:
-          - BuildingSpaceThermalTorchSystem: RC network thermal dynamics
-          - BuildingSpaceMassTorchSystem: CO2 mass balance dynamics
+          - BuildingSpaceThermalSystem: RC network thermal dynamics
+          - BuildingSpaceMassSystem: CO2 mass balance dynamics
 
        Both models use DiscreteStatespaceSystem for efficient computation and
        automatic differentiation support.
@@ -54,12 +54,12 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
        The combined model consists of two parallel subsystems:
 
-       **Thermal Subsystem (BuildingSpaceThermalTorchSystem):**
+       **Thermal Subsystem (BuildingSpaceThermalSystem):**
           - Models temperature dynamics using RC network
           - Handles heat transfer between indoor air, walls, and adjacent zones
           - Includes HVAC thermal effects, solar gains, and occupant heat gains
 
-       **Mass Balance Subsystem (BuildingSpaceMassTorchSystem):**
+       **Mass Balance Subsystem (BuildingSpaceMassSystem):**
           - Models CO2 concentration dynamics using mass balance equations
           - Handles ventilation, infiltration, and occupant CO2 generation
           - Tracks indoor air quality changes
@@ -83,8 +83,8 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
        **Thermal-Only Inputs:**
           - supplyAirTemperature, globalIrradiation, heatGain
-          - wallHeatGain (heat flows from connected WallTorchSystem components)
-          - boundaryTemperature (deprecated -- use WallTorchSystem)
+          - wallHeatGain (heat flows from connected WallSystem components)
+          - boundaryTemperature (deprecated -- use WallSystem)
 
        **Combined Outputs:**
           - indoorTemperature: From thermal subsystem
@@ -109,8 +109,8 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
             mass_kwargs["id"] = kwargs["id"] + "_mass"
 
         assert "id" in kwargs, "id is required for thermal model"
-        self.thermal = BuildingSpaceThermalTorchSystem(**thermal_kwargs)
-        self.mass = BuildingSpaceMassTorchSystem(**mass_kwargs)
+        self.thermal = BuildingSpaceThermalSystem(**thermal_kwargs)
+        self.mass = BuildingSpaceMassSystem(**mass_kwargs)
 
         # Merge input and output dictionaries as private variables.
         #
@@ -373,7 +373,7 @@ def saref_signature_pattern_sensor():
     sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
     sp.add_input("supplyAirTemperature", node7, "measuredValue")
-    # Interzonal/boundary coupling is modeled by a separate WallTorchSystem
+    # Interzonal/boundary coupling is modeled by a separate WallSystem
     # (wired manually, or via a future wall/adjacency signature pattern).
 
     sp.add_modeled_node(node2)
@@ -443,7 +443,7 @@ def saref_signature_pattern():
         node7,
         ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"),
     )
-    # Interzonal/boundary coupling is modeled by a separate WallTorchSystem
+    # Interzonal/boundary coupling is modeled by a separate WallSystem
     # (wired manually, or via a future wall/adjacency signature pattern).
 
     sp.add_modeled_node(node2)
@@ -509,7 +509,7 @@ def brick_signature_pattern():  # Fits to site A
     )
     sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
 
-    # Interzonal/boundary coupling is modeled by a separate WallTorchSystem
+    # Interzonal/boundary coupling is modeled by a separate WallSystem
     # (wired manually, or via a future wall/adjacency signature pattern).
     sp.add_modeled_node(space)
 
@@ -597,7 +597,10 @@ def brick_signature_pattern_vav():
     return sp
 
 
-BuildingSpaceTorchSystem.add_signature_pattern(brick_signature_pattern_vav())
-BuildingSpaceTorchSystem.add_signature_pattern(brick_signature_pattern())
-BuildingSpaceTorchSystem.add_signature_pattern(saref_signature_pattern())
-BuildingSpaceTorchSystem.add_signature_pattern(saref_signature_pattern_sensor())
+BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern_vav())
+BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern())
+BuildingSpaceSystem.add_signature_pattern(saref_signature_pattern())
+BuildingSpaceSystem.add_signature_pattern(saref_signature_pattern_sensor())
+
+# Deprecated aliases (removed in twin4build 2.1)
+BuildingSpaceTorchSystem = BuildingSpaceSystem

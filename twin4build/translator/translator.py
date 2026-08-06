@@ -60,9 +60,9 @@ from sympy import I
 
 # Local application imports
 import twin4build.core as core
-import twin4build.systems as systems
+import twin4build.systems as systems_module
 import twin4build.utils.types as tps
-from twin4build.utils.print_progress import LOGGER, autoreset_print
+from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
 
@@ -286,10 +286,11 @@ class Translator:
     def translate(
         self,
         semantic_model: core.SemanticModel,
+        systems: List[core.System] = None,
         systems_: List[core.System] = None,
-        verbose=4,
         *,
         id: Optional[str] = None,
+        verbose=None,
     ) -> "core.Model":
         """
         Translate a semantic model into a :class:`~twin4build.model.model.Model`.
@@ -323,7 +324,15 @@ class Translator:
             input semantic model, and the translator (which carries the
             ``sim2sem`` / ``sem2sim`` maps).
         """
-        LOGGER.verbose = verbose
+        from twin4build.utils.deprecation import deprecate_name
+
+        if verbose is not None:
+            deprecate_name("verbose=", "LOGGER.verbose")
+            LOGGER.verbose = verbose
+        if systems_ is not None:
+            deprecate_name("systems_=", "systems=")
+            if systems is None:
+                systems = systems_
         LOGGER.task("Applying translator")
         LOGGER.add_level()
         if semantic_model.count_triples() == 0:
@@ -331,12 +340,14 @@ class Translator:
                 "Semantic model provided to translator appears to be empty."
             )
 
-        if systems_ is None:
+        if systems is None:
             systems_ = [
                 cls[1]
-                for cls in inspect.getmembers(systems, inspect.isclass)
+                for cls in inspect.getmembers(systems_module, inspect.isclass)
                 if (issubclass(cls[1], (core.System,)) and hasattr(cls[1], "sp"))
             ]
+        else:
+            systems_ = list(systems)
 
         # Match patterns
         complete_groups, incomplete_groups = self._match_patterns(
@@ -4974,7 +4985,7 @@ class SignaturePattern:
     ...     # Configure controller inputs and parameters
     ...     sp.add_input("actualValue", sensor_node, "measuredValue")
     ...     sp.add_input("setpointValue", schedule_node, "scheduleValue")
-    ...     sp.add_parameter("isReverse", reverse_node)
+    ...     sp.add_parameter("is_reverse", reverse_node)
     ...     sp.add_modeled_node(controller_node)
     ...
     ...     return sp
@@ -5071,7 +5082,7 @@ class SignaturePattern:
 
     Using signature patterns in component classes (from actual system implementation):
 
-    >>> class DamperTorchSystem(core.System, nn.Module):
+    >>> class DamperSystem(core.System, nn.Module):
     ...     # Multiple signature patterns with different priorities
     ...     sp = [get_signature_pattern(), get_signature_pattern_brick()]
     ...
@@ -7635,7 +7646,7 @@ class SetAnyPathRule(SetStepRule):
     flagged by :class:`SetStepRule`'s docstring ("composition with
     :class:`AnyPathRule` traversals is out of scope for the initial
     implementation") and by the AHU pattern comment block in
-    ``air_handling_unit_torch_system.py``.
+    ``air_handling_unit_system.py``.
 
     Asserts
     -------

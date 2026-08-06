@@ -9,8 +9,8 @@ from dateutil import tz
 # Local application imports
 # Set test flag
 import twin4build
-from twin4build.systems.air_handling_unit.air_handling_unit_torch_system import (
-    AirHandlingUnitTorchSystem,
+from twin4build.systems.air_handling_unit.air_handling_unit_system import (
+    AirHandlingUnitSystem,
 )
 
 twin4build._IS_TESTING = True
@@ -36,7 +36,7 @@ class TestAirHandlingUnitTorchSystem(unittest.TestCase):
             "c4": 0,
             "f_total": 1.0,
         }
-        self.ahu = AirHandlingUnitTorchSystem(
+        self.ahu = AirHandlingUnitSystem(
             id="test_ahu",
             damper_kwargs=damper_kwargs,
             heat_recovery_kwargs=heat_recovery_kwargs,

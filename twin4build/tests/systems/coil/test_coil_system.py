@@ -9,14 +9,14 @@ from dateutil import tz
 # Local application imports
 # Set test flag
 import twin4build
-from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
+from twin4build.systems.coil.coil_system import CoilSystem
 
 twin4build._IS_TESTING = True
 
 
 class TestCoilTorchSystem(unittest.TestCase):
     def setUp(self):
-        self.coil = CoilTorchSystem(id="test_coil")
+        self.coil = CoilSystem(id="test_coil")
 
     def test_initialization(self):
         """Test coil system initialization."""
@@ -55,7 +55,7 @@ class TestCoilTorchSystem(unittest.TestCase):
 
     def test_do_step_batch(self):
         """Test coil system do_step method with batch size > 1."""
-        coil_batch = CoilTorchSystem(id="test_coil_batch")
+        coil_batch = CoilSystem(id="test_coil_batch")
 
         batch_size = 2
 

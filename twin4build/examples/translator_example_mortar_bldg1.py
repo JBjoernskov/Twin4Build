@@ -35,7 +35,7 @@ import twin4build as tb
 import twin4build.core as core
 from twin4build.systems.utils.smooth_saturation import saturation_mode
 from twin4build.utils.plot.plot import Colors
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ def _build_measured_sat_overrides(
     overrides: Dict[Any, Any] = {}
     LOGGER.task("Stage 2 -- AHU SAT setpoint wiring from BMS measurement")
     for ahu in model.components.values():
-        if not isinstance(ahu, tb.AirHandlingUnitTorchSystem):
+        if not isinstance(ahu, tb.AirHandlingUnitSystem):
             continue
         if _has_incoming(ahu, "supplyAirTemperatureSetpoint"):
             LOGGER.info("%s already had SAT setpoint wired, untouched", ahu.id)
@@ -186,8 +186,8 @@ def _build_measured_sat_overrides(
             df=meas.df,
             uuid=meas.uuid,
             dbconfig=meas.dbconfig,
-            datecolumn=meas.datecolumn,
-            valuecolumn=meas.valuecolumn,
+            date_column=meas.datecolumn,
+            value_column=meas.valuecolumn,
             use_spreadsheet=meas.use_spreadsheet,
             use_database=meas.use_database,
             use_df=meas.use_df,
@@ -203,9 +203,9 @@ def _build_measured_sat_overrides(
 
 
 _STAGE3_PHYSICS_TYPES: Tuple[type, ...] = (
-    tb.BuildingSpaceTorchSystem,
-    tb.FanCoilUnitTorchSystem,
-    tb.AirHandlingUnitTorchSystem,
+    tb.BuildingSpaceSystem,
+    tb.FanCoilUnitSystem,
+    tb.AirHandlingUnitSystem,
 )
 
 
@@ -452,7 +452,7 @@ if __name__ == "__main__":
         ctrl_model = tb.Translator().translate(
             sm,
             systems_=[
-                tb.ControllerIdentificationPITorchSystem,
+                tb.ControllerIdentificationPISystem,
                 tb.SensorSystem,
             ],
             id="bldg1_controls",
@@ -532,12 +532,12 @@ if __name__ == "__main__":
     full_model = tb.Translator().translate(
         sm,
         systems_=[
-            tb.BuildingSpaceTorchSystem,
-            tb.AirHandlingUnitTorchSystem,
+            tb.BuildingSpaceSystem,
+            tb.AirHandlingUnitSystem,
             tb.OutdoorEnvironmentSystem,
-            tb.FanCoilUnitTorchSystem,
+            tb.FanCoilUnitSystem,
             tb.SensorSystem,
-            tb.ControllerIdentificationPITorchSystem,
+            tb.ControllerIdentificationPISystem,
         ],
         id="bldg1_physics",
     )

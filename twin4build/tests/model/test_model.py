@@ -5,7 +5,7 @@ import unittest
 # Set test flag
 import twin4build
 from twin4build.model.model import Model
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+from twin4build.systems.damper.damper_system import DamperSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.uppath import uppath
 
@@ -27,7 +27,7 @@ class TestModel(unittest.TestCase):
 
     def test_add_component(self):
         component = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -43,7 +43,7 @@ class TestModel(unittest.TestCase):
 
     def test_add_connection(self):
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -53,7 +53,7 @@ class TestModel(unittest.TestCase):
             },
             id="schedule",
         )
-        damper = DamperTorchSystem(id="damper")
+        damper = DamperSystem(id="damper")
 
         self.model.add_component(schedule)
         self.model.add_component(damper)
@@ -67,7 +67,7 @@ class TestModel(unittest.TestCase):
 
     def test_load(self):
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -77,7 +77,7 @@ class TestModel(unittest.TestCase):
             },
             id="schedule",
         )
-        damper = DamperTorchSystem(id="damper")
+        damper = DamperSystem(id="damper")
 
         self.model.add_component(schedule)
         self.model.add_component(damper)
@@ -91,7 +91,7 @@ class TestModel(unittest.TestCase):
     def test_model_str(self):
         """Test model string representation."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -112,7 +112,7 @@ class TestModel(unittest.TestCase):
         self.assertFalse(self.model.is_loaded)
 
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -122,7 +122,7 @@ class TestModel(unittest.TestCase):
             },
             id="schedule",
         )
-        damper = DamperTorchSystem(id="damper")
+        damper = DamperSystem(id="damper")
 
         self.model.add_component(schedule)
         self.model.add_component(damper)
@@ -131,7 +131,7 @@ class TestModel(unittest.TestCase):
         self.model.load()
         self.assertTrue(self.model.is_loaded)
 
-        new_component = DamperTorchSystem(id="damper2")
+        new_component = DamperSystem(id="damper2")
 
         self.model.add_connection(
             schedule, new_component, "scheduleValue", "damperPosition"
@@ -144,7 +144,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(len(self.model.components), 0)
 
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -162,7 +162,7 @@ class TestModel(unittest.TestCase):
     def test_execution_order_property(self):
         """Test execution_order property after loading."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -172,7 +172,7 @@ class TestModel(unittest.TestCase):
             },
             id="schedule",
         )
-        damper = DamperTorchSystem(id="damper")
+        damper = DamperSystem(id="damper")
 
         self.model.add_component(schedule)
         self.model.add_component(damper)
@@ -235,7 +235,7 @@ class TestModelProperties(unittest.TestCase):
     def test_flat_execution_order_property(self):
         """Test flat_execution_order property after loading."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -245,7 +245,7 @@ class TestModelProperties(unittest.TestCase):
             },
             id="schedule",
         )
-        damper = DamperTorchSystem(id="damper")
+        damper = DamperSystem(id="damper")
 
         self.model.add_component(schedule)
         self.model.add_component(damper)
@@ -267,7 +267,7 @@ class TestModelMethods(unittest.TestCase):
     def test_make_pickable(self):
         """Test make_pickable method."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -286,7 +286,7 @@ class TestModelMethods(unittest.TestCase):
     def test_remove_component(self):
         """Test remove_component method."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -305,7 +305,7 @@ class TestModelMethods(unittest.TestCase):
     def test_remove_connection(self):
         """Test remove_connection method."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -315,7 +315,7 @@ class TestModelMethods(unittest.TestCase):
             },
             id="schedule",
         )
-        damper = DamperTorchSystem(id="damper")
+        damper = DamperSystem(id="damper")
 
         self.model.add_component(schedule)
         self.model.add_component(damper)
@@ -330,7 +330,7 @@ class TestModelMethods(unittest.TestCase):
     def test_set_initial_values(self):
         """Test set_initial_values method."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -353,7 +353,7 @@ class TestModelMethods(unittest.TestCase):
     def test_validate(self):
         """Test validate method."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -363,7 +363,7 @@ class TestModelMethods(unittest.TestCase):
             },
             id="schedule",
         )
-        damper = DamperTorchSystem(id="damper")
+        damper = DamperSystem(id="damper")
 
         self.model.add_component(schedule)
         self.model.add_component(damper)
@@ -375,7 +375,7 @@ class TestModelMethods(unittest.TestCase):
     def test_set_save_simulation_result(self):
         """Test set_save_simulation_result method."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -395,7 +395,7 @@ class TestModelMethods(unittest.TestCase):
     def test_check_for_missing_initial_values(self):
         """Test check_for_for_missing_initial_values method."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -420,7 +420,7 @@ class TestModelMethods(unittest.TestCase):
         from dateutil import tz
 
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -446,7 +446,7 @@ class TestModelMethods(unittest.TestCase):
     def test_load_estimation_result(self):
         """Test load_estimation_result method with dict result."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -481,9 +481,9 @@ class TestModelAdvanced(unittest.TestCase):
     def test_set_parameters_from_array(self):
         """Test set_parameters_from_array method."""
         # Local application imports
-        from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+        from twin4build.systems.damper.damper_system import DamperSystem
 
-        damper = DamperTorchSystem(id="damper", nominalAirFlowRate=1.0)
+        damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
         self.model.add_component(damper)
         self.model.load()
 
@@ -502,9 +502,9 @@ class TestModelAdvanced(unittest.TestCase):
     def test_restore_parameters(self):
         """Test restore_parameters method."""
         # Local application imports
-        from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+        from twin4build.systems.damper.damper_system import DamperSystem
 
-        damper = DamperTorchSystem(id="damper", nominalAirFlowRate=1.0)
+        damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
         self.model.add_component(damper)
         self.model.load()
 

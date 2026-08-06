@@ -25,7 +25,7 @@ from twin4build.translator.translator import (
 )
 
 
-class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
+class BuildingSpaceThermalSystem(core.System, nn.Module):
     r"""
     Building Space Thermal Model using RC Network Dynamics.
 
@@ -34,16 +34,16 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     indoor air, exterior walls and (optionally) a boundary wall using bilinear 
     state-space dynamics. Heat exchange with neighbouring zones or other boundary
     temperatures is modeled by connecting one or more
-    :class:`~twin4build.systems.wall.wall_torch_system.WallTorchSystem` components
+    :class:`~twin4build.systems.wall.wall_system.WallSystem` components
     to the ``wallHeatGain`` vector input port.
 
     Args:
         C_air: Thermal capacitance of indoor air [J/K]
         C_wall: Thermal capacitance of exterior wall [J/K]
-        C_boundary: Thermal capacitance of boundary wall [J/K] (deprecated, use WallTorchSystem)
+        C_boundary: Thermal capacitance of boundary wall [J/K] (deprecated, use WallSystem)
         R_out: Thermal resistance between wall and outdoor [K/W]
         R_in: Thermal resistance between wall and indoor [K/W]
-        R_boundary: Thermal resistance of boundary [K/W] (deprecated, use WallTorchSystem)
+        R_boundary: Thermal resistance of boundary [K/W] (deprecated, use WallSystem)
         f_wall: Radiation factor for exterior wall
         f_air: Radiation factor for air
         Q_occ_gain: Heat gain per occupant [W]
@@ -82,7 +82,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
        - :math:`T_{sup}`: Supply air temperature [°C] (input)
        - :math:`T_{bound}`: Boundary temperature [°C] (input, optional, deprecated)
        - :math:`\dot{Q}_{wall,j}`: Heat flow from connected wall j [W] (input,
-         optional; produced by a ``WallTorchSystem``, which owns the wall state
+         optional; produced by a ``WallSystem``, which owns the wall state
          so the interzonal energy balance holds by construction)
        - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
        - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
@@ -165,7 +165,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     **Interzonal Heat Transfer:**
        - Partition walls between zones are modeled by a separate
-         ``WallTorchSystem``: the zone sends its ``indoorTemperature`` to the
+         ``WallSystem``: the zone sends its ``indoorTemperature`` to the
          wall and receives the wall's heat flow on ``wallHeatGain``
        - Because a single wall component owns the wall state, the heat leaving
          one zone equals the heat stored in the wall plus the heat entering the
@@ -191,7 +191,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     >>> import twin4build as tb
     >>>
     >>> # Create thermal model with default RC parameters
-    >>> thermal_model = tb.BuildingSpaceThermalTorchSystem(
+    >>> thermal_model = tb.BuildingSpaceThermalSystem(
     ...     C_air=2e6,      # Higher air thermal mass
     ...     C_wall=5e6,     # Wall thermal mass
     ...     R_out=0.1,      # Outdoor thermal resistance
@@ -202,7 +202,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     Zone coupled to a neighbour zone through a wall component:
 
-    >>> wall = tb.WallTorchSystem(C=2e5, R_a=0.05, R_b=0.05, id="wall_AB")
+    >>> wall = tb.WallSystem(C=2e5, R_a=0.05, R_b=0.05, id="wall_AB")
     >>> # zone_a.indoorTemperature -> wall.temperatureA
     >>> # wall.heatFlowRateA -> zone_a.wallHeatGain (and mirrored for zone_b)
     """
@@ -229,11 +229,11 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             C_air: Thermal capacitance of indoor air [J/K]
             C_wall: Thermal capacitance of exterior walls [J/K]
             C_boundary: Thermal capacitance of boundary wall [J/K]
-                (deprecated -- connect a ``WallTorchSystem`` instead)
+                (deprecated -- connect a ``WallSystem`` instead)
             R_out: Thermal resistance between exterior wall and outdoor [K/W]
             R_in: Thermal resistance between exterior wall and indoor [K/W]
             R_boundary: Thermal resistance of boundary [K/W]
-                (deprecated -- connect a ``WallTorchSystem`` instead)
+                (deprecated -- connect a ``WallSystem`` instead)
             f_wall: Radiation factor for exterior wall
             f_air: Radiation factor for air/internal mass
             Q_occ_gain: Heat gain per occupant [W]
@@ -290,10 +290,10 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             "heatGain": tps.Scalar(),  # Space heater heat input [W]
             "boundaryTemperature": tps.Scalar(
                 21, optional=True
-            ),  # Boundary temperature [°C], optional (deprecated: use WallTorchSystem)
+            ),  # Boundary temperature [°C], optional (deprecated: use WallSystem)
             "wallHeatGain": tps.Vector(
                 optional=True
-            ),  # Heat flow from connected WallTorchSystem components [W], optional
+            ),  # Heat flow from connected WallSystem components [W], optional
         }
 
         # Define outputs
@@ -451,7 +451,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         if self.n_boundary_temperature == 1:
             warnings.warn(
                 "The in-zone boundary-wall path (boundaryTemperature / R_boundary / "
-                "C_boundary) is deprecated. Connect a WallTorchSystem to the "
+                "C_boundary) is deprecated. Connect a WallSystem to the "
                 "wallHeatGain port instead.",
                 DeprecationWarning,
                 stacklevel=2,
@@ -498,7 +498,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     )
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): connected
-    #: WallTorchSystem heat flows enter the linear B matrix, and
+    #: WallSystem heat flows enter the linear B matrix, and
     #: ``indoorTemperature`` is a pure state observation.
     FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain"})
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
@@ -607,7 +607,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             B[:, 2, 7] = 1 / (R_boundary * C_boundary)  # T_bound coefficient
 
         # Wall heat gains (at the end of the input vector): heat flow [W]
-        # produced by connected WallTorchSystem components enters the air node.
+        # produced by connected WallSystem components enters the air node.
         for i in range(self.n_walls):
             wall_input_idx = (n_inputs - self.n_walls) + i
             B[:, 0, wall_input_idx] = 1 / C_air  # Q_wall coefficient
@@ -825,4 +825,7 @@ def brick_signature_pattern():
     return sp
 
 
-BuildingSpaceThermalTorchSystem.add_signature_pattern(brick_signature_pattern())
+BuildingSpaceThermalSystem.add_signature_pattern(brick_signature_pattern())
+
+# Deprecated aliases (removed in twin4build 2.1)
+BuildingSpaceThermalTorchSystem = BuildingSpaceThermalSystem

@@ -51,7 +51,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
 

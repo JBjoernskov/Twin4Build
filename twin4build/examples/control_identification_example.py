@@ -1,14 +1,14 @@
 """
 Controller Identification Example using Continuous Relaxation
 
-This example demonstrates how to use ControllerIdentificationTorchSystem
+This example demonstrates how to use ControllerIdentificationSystem
 with the twin4build Estimator to identify control logic from observed data.
 
 Phase 1: Generate realistic data using actual twin4build components:
-    - BuildingSpaceThermalTorchSystem for thermal dynamics
+    - BuildingSpaceThermalSystem for thermal dynamics
     - PIDControllerSystem as the "unknown" controller
 
-Phase 2: Use ControllerIdentificationTorchSystem to recover the controller
+Phase 2: Use ControllerIdentificationSystem to recover the controller
 structure and parameters from the observed data.
 """
 
@@ -141,7 +141,7 @@ def generate_data_with_twin4build(
     # =========================================================================
 
     # Building space with moderate thermal mass
-    building_space = tb.BuildingSpaceThermalTorchSystem(
+    building_space = tb.BuildingSpaceThermalSystem(
         C_air=5e5,  # Thermal capacitance of air [J/K]
         C_wall=2e6,  # Wall thermal capacitance [J/K]
         R_out=0.01,  # Outdoor resistance [K/W]
@@ -154,14 +154,14 @@ def generate_data_with_twin4build(
 
     # Valve: converts controller signal (0-1) to water flow rate
     # Sized for ~2000W heating capacity at design conditions
-    valve = tb.ValveTorchSystem(
+    valve = tb.ValveSystem(
         waterFlowRateMax=0.05,  # Max flow rate [kg/s]
         valveAuthority=0.5,  # Moderate valve authority for good control
         id="heating_valve",
     )
 
     # Space heater (radiator): converts water flow to heat output
-    space_heater = tb.SpaceHeaterTorchSystem(
+    space_heater = tb.SpaceHeaterSystem(
         Q_flow_nominal_sh=2000.0,  # Nominal heat output [W]
         T_a_nominal_sh=55.0,  # Nominal supply water temp [°C]
         T_b_nominal_sh=45.0,  # Nominal return water temp [°C]
@@ -174,7 +174,7 @@ def generate_data_with_twin4build(
         kp=kp,
         Ti=Ti,
         Td=0.0,  # No derivative action
-        isReverse=True,  # Heating mode
+        is_reverse=True,  # Heating mode
         id="true_controller",
     )
 
@@ -514,12 +514,12 @@ def run_controller_identification_example():
 
     # Create the controller to identify
     # Uses composed candidate controllers (default: P, PI, PID variants)
-    controller = tb.ControllerIdentificationTorchSystem(
+    controller = tb.ControllerIdentificationSystem(
         n_sensors=1,
         n_setpoints=1,
         n_actuators=1,
         # candidate_controllers=None uses default PIDControllerSystem variants
-        isReverse=True,  # Match the true controller
+        is_reverse=True,  # Match the true controller
         id="identified_controller",
     )
 

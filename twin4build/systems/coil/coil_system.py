@@ -13,7 +13,7 @@ import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 
 
-class CoilTorchSystem(core.System, nn.Module):
+class CoilSystem(core.System, nn.Module):
     r"""
     A coil system model implemented with PyTorch for gradient-based optimization.
 
@@ -255,3 +255,6 @@ class CoilTorchSystem(core.System, nn.Module):
         self.output["outletAirTemperature"]._set(
             outs["outletAirTemperature"], i_t=step_index
         )
+
+# Deprecated aliases (removed in twin4build 2.1)
+CoilTorchSystem = CoilSystem

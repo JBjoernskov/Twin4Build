@@ -15,7 +15,7 @@ Applied changes so far (apply one per iteration):
     ``sim2sem_map``).  *Result: no material change to the RMSE table.*
   * **#2 -- dropped the manual BandGate swap.**  ``BandGate`` is the
     default ``_gate_class`` on
-    ``ControllerIdentificationTorchSystem``, so the CITS constructor
+    ``ControllerIdentificationSystem``, so the CITS constructor
     already created one.  v1 explicitly replaced it with a fresh
     ``BandGate(threshold=0.5, band=2.0, steepness=5.0)``; v2 leaves the
     constructor's ``BandGate`` (defaults: ``threshold=0.0``, ``band=1.0``,
@@ -48,12 +48,12 @@ Applied changes so far (apply one per iteration):
     signals, the GMM produces high-confidence gate seeds, and the
     ``gate-mode mask`` intersection filters the kp/Ti regression to
     "PI is in active control mode" samples -> cleaner slope estimates
-    -> all 16 CITS come out ``isReverse=True``.  Without the pre-build
+    -> all 16 CITS come out ``is_reverse=True``.  Without the pre-build
     (canonical setup), ``cits.n_on_off_signals is None`` ->
     ``_collect_on_off_slot_signals`` reads ``n_oo = 0`` -> the slot
     walk is skipped, no gate seeds, no gate-mode mask -> the regression
     operates on the unfiltered ``on_mask_u`` -> some slopes come out
-    negative -> some ``isReverse=False``.  Confirms that the canonical
+    negative -> some ``is_reverse=False``.  Confirms that the canonical
     script's "some False" outcome is an artifact of the rewire
     silently bypassing its gate-seed pipeline on un-built CITS, NOT a
     physical signal in the data.
@@ -102,14 +102,14 @@ import numpy as np
 # Local application imports
 import twin4build as tb
 import twin4build.core as core
-from twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system import (
-    ControllerIdentificationPITorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
+    ControllerIdentificationPISystem,
 )
 from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
     rewire_pi_loops,
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 
 # ---------------------------------------------------------------------------
 # Config -- kept in lock-step with translator_example_mortar_bldg1.py
@@ -189,7 +189,7 @@ def _prepare_stage1_model(sim_model):
     regression.  Without pre-build, ``n_on_off_signals is None`` ->
     ``int(None or 0) = 0`` -> the slot walk is skipped, no gate seeds,
     no gate-mode mask, regression runs on noisy ``on_mask_u`` -> some
-    slopes come out negative -> some ``isReverse=False``.  Matches the
+    slopes come out negative -> some ``is_reverse=False``.  Matches the
     canonical ``translator_example_mortar_bldg1.py`` setup, which never
     pre-builds CITS between translate and rewire.
     """
@@ -211,7 +211,7 @@ def _build_stage1_model():
     sim_model = translator.translate(
         sm,
         systems_=[
-            tb.ControllerIdentificationPITorchSystem,
+            tb.ControllerIdentificationPISystem,
             tb.SensorSystem,
         ],
         id=STAGE1_MODEL_ID,
@@ -698,7 +698,7 @@ def main():
     cits_components = {
         cid: c
         for cid, c in sim_model.components.items()
-        if isinstance(c, ControllerIdentificationPITorchSystem)
+        if isinstance(c, ControllerIdentificationPISystem)
     }
 
     # v2 change #4: dropped the explicit ``_apply_frozen_weights`` call.

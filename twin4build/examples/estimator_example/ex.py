@@ -5,8 +5,8 @@ import twin4build as tb
 MODEL CREATION
 """
 model = tb.Model(id="example")  # Create a model
-c1 = tb.SpaceHeaterTorchSystem(...)  # Create a space heater
-c2 = tb.BuildingSpaceTorchSystem(...)  # Create a building space
+c1 = tb.SpaceHeaterSystem(...)  # Create a space heater
+c2 = tb.BuildingSpaceSystem(...)  # Create a building space
 model.add_connection(
     c1, c2, "Power", "heatGain"
 )  # Add a connection between the space heater and the building space

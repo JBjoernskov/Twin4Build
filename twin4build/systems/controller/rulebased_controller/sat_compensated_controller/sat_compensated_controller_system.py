@@ -201,7 +201,7 @@ class SATLinearRuleSystem(core.System, nn.Module):
         pass
 
 
-class SATCompensatedControllerTorchSystem(CascadeControllerSystem):
+class SATCompensatedControllerSystem(CascadeControllerSystem):
     r"""
     SAT-Compensated Cascade Damper Controller.
 
@@ -250,7 +250,7 @@ class SATCompensatedControllerTorchSystem(CascadeControllerSystem):
         **kwargs: Additional keyword arguments (must include ``id``)
 
     Example:
-        >>> controller = SATCompensatedControllerTorchSystem(
+        >>> controller = SATCompensatedControllerSystem(
         ...     base_position=0.3, sat_design=13.0, gain=0.05,
         ...     kp_b=0.5, Ti_b=5.0, isReverse_b=True,
         ...     id="sat_cascade_ctrl"
@@ -290,7 +290,10 @@ class SATCompensatedControllerTorchSystem(CascadeControllerSystem):
                 "Td": Td_b,
                 "output_min": output_min_b,
                 "output_max": output_max_b,
-                "isReverse": isReverse_b,
+                "is_reverse": isReverse_b,
             },
             **kwargs,
         )
+
+# Deprecated aliases (removed in twin4build 2.1)
+SATCompensatedControllerTorchSystem = SATCompensatedControllerSystem

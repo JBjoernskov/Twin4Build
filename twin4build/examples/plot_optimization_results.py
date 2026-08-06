@@ -87,8 +87,8 @@ def main():
     # ── 5. Rewire: replace controller with saved valve schedule ───────────
     valve_position_schedule = tb.ScheduleSystem(
         filename=valve_csv_path,
-        datecolumn=0,
-        valuecolumn=1,
+        date_column=0,
+        value_column=1,
         id="valve_position_schedule",
     )
 

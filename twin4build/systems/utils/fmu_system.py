@@ -15,7 +15,7 @@ from fmpy.fmi2 import FMU2Slave
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 
 
@@ -44,7 +44,7 @@ def _do_nothing(*args, **kwargs):
     pass
 
 
-class fmuSystem(core.System):
+class FmuSystem(core.System):
     r"""
     FMU System.
 
@@ -210,3 +210,6 @@ class fmuSystem(core.System):
             self.fmu.freeInstance()
             self.INITIALIZED = False
             raise (inst)
+
+# Deprecated alias (removed in twin4build 2.1)
+fmuSystem = FmuSystem

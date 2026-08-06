@@ -16,7 +16,7 @@ import twin4build.examples.utils as utils
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+from twin4build.systems.damper.damper_system import DamperSystem
 
 # Set test flag
 tb._IS_TESTING = True
@@ -30,7 +30,7 @@ class TestEstimator(unittest.TestCase):
         self.model = Model(id="test_est_model")
 
         self.schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -40,7 +40,7 @@ class TestEstimator(unittest.TestCase):
             },
             id="schedule",
         )
-        self.damper = DamperTorchSystem(id="damper", a=1.0, nominalAirFlowRate=0.5)
+        self.damper = DamperSystem(id="damper", a=1.0, nominalAirFlowRate=0.5)
 
         self.model.add_component(self.schedule)
         self.model.add_component(self.damper)
@@ -98,7 +98,7 @@ class TestEstimator(unittest.TestCase):
         # Create new model for estimation with different initial parameter
         model_est = Model(id="test_est_model_2")
         schedule_est = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -108,7 +108,7 @@ class TestEstimator(unittest.TestCase):
             },
             id="schedule",
         )
-        damper_est = DamperTorchSystem(
+        damper_est = DamperSystem(
             id="damper", a=0.5, nominalAirFlowRate=0.5
         )  # Wrong initial value
         model_est.add_connection(

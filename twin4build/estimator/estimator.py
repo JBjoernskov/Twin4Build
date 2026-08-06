@@ -27,8 +27,7 @@ import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.utils.types as tps
 from twin4build.systems.utils.smooth_saturation import saturation_mode
-from twin4build.utils.deprecation import deprecate_args
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 
 # Per-sensor lower bound on the standard deviation used inside
@@ -420,7 +419,7 @@ class Estimator:
         start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
         end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
         step_size: Union[float, List[float]] = None,
-        parameters: Union[Dict[str, Dict], List[Tuple]] = None,
+        parameters: List[Tuple] = None,
         measurements: List[core.System] = None,
         n_warmup: int = 60,
         method: Union[str, Tuple[str, str, str]] = "scipy",
@@ -452,9 +451,8 @@ class Estimator:
                 component on the model and collects parameter tuples from those
                 that implement ``get_estimable_parameters()``.
 
-                **New format (recommended)**: List of tuples
-                ``(component, attr, x0, lb, ub[, parameter_type])`` where
-                ``component`` is a component object or list of component
+                List of tuples ``(component, attr, x0, lb, ub[, parameter_type])``
+                where ``component`` is a component object or list of component
                 objects, ``attr`` is the parameter attribute name, ``x0`` is
                 the initial value, ``lb``/``ub`` are the bounds, and the
                 optional ``parameter_type`` is ``"private"`` (each listed
@@ -476,11 +474,6 @@ class Estimator:
                         ([space1, space2], "thermal.C_air", 2e+6, 1e+6, 1e+7, "shared"),
                         ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),
                     ]
-
-                **Legacy format (deprecated)**: Dictionary with ``"private"``
-                and ``"shared"`` keys, where each parameter entry contains
-                ``"components"``, ``"x0"``, ``"lb"``, and ``"ub"`` lists (or
-                single values).
 
             measurements: Measurement specification. Either the string ``"auto"``
                 or a list of ``(sensor, sd)`` tuples, where ``sensor`` is a
@@ -704,21 +697,32 @@ class Estimator:
             ...     options={"maxiter": 500}
             ... )
         """
-        deprecated_args = ["startTime", "endTime", "stepSize", "n_initialization_steps"]
-        new_args = ["start_time", "end_time", "step_size", "n_warmup"]
-        position = [1, 2, 3, None]
-        value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
-        start_time = value_map.get("start_time", start_time)
-        end_time = value_map.get("end_time", end_time)
-        step_size = value_map.get("step_size", step_size)
-        n_warmup = value_map.get("n_warmup", n_warmup)
-
-        # Reject the removed top-level estimation-config kwargs with a
-        # clear migration message.  These were all promoted into
-        # per-phase entries of ``schedule`` so config lives in exactly
-        # one place.
-        for legacy_key in ("regularization_lambda", "regularization_components"):
+        # Reject removed kwargs with clear migration messages.
+        for legacy_key in (
+            "startTime",
+            "endTime",
+            "stepSize",
+            "n_initialization_steps",
+            "regularization_lambda",
+            "regularization_components",
+        ):
             if legacy_key in kwargs:
+                if legacy_key in (
+                    "startTime",
+                    "endTime",
+                    "stepSize",
+                    "n_initialization_steps",
+                ):
+                    rename = {
+                        "startTime": "start_time",
+                        "endTime": "end_time",
+                        "stepSize": "step_size",
+                        "n_initialization_steps": "n_warmup",
+                    }
+                    raise TypeError(
+                        f"`{legacy_key}` has been removed. Use "
+                        f"`{rename[legacy_key]}` instead."
+                    )
                 raise TypeError(
                     f"`{legacy_key}` is no longer a top-level argument of "
                     f"Estimator.estimate().  Move it into a per-phase entry "
@@ -799,7 +803,7 @@ class Estimator:
         #   * ``parameters="auto"`` -> call ``c.get_estimable_parameters()``
         #     on every component that implements it.  The contract returns
         #     a list of ``(comp, attr, x0, lb, ub)`` tuples (see
-        #     :meth:`ControllerIdentificationTorchSystem.get_estimable_parameters`
+        #     :meth:`ControllerIdentificationSystem.get_estimable_parameters`
         #     for the canonical implementation).
         #
         #   * ``measurements="auto"`` -> walk every :class:`SensorSystem`
@@ -818,25 +822,20 @@ class Estimator:
         if isinstance(measurements, str) and measurements == "auto":
             measurements = self._auto_measurements()
 
-        # Convert old dict format to new list format if needed
         if isinstance(parameters, dict):
-            # Issue deprecation warning for dict format
-            warnings.warn(
-                "The dictionary format for the 'parameters' argument is deprecated and will be "
-                "removed in a future version. Please use the new list format: "
-                "parameters = [(component, attr, x0, lb, ub), ...]. "
-                "See the documentation for examples of the new format.",
-                DeprecationWarning,
-                stacklevel=2,
+            raise TypeError(
+                "The dictionary format for the 'parameters' argument has been removed. "
+                "Use the list-of-tuples format: "
+                "parameters = [(component, attr, x0, lb, ub), ...] "
+                "or [(components, attr, x0, lb, ub, 'private'|'shared'), ...]."
             )
-            parameters = self._convert_dict_to_list_format(parameters)
         elif isinstance(parameters, list):
-            # Validate the new list format
             parameters = self._validate_list_format(parameters)
         else:
             raise ValueError(
-                "The 'parameters' argument must be either a list of tuples "
-                "[(component, attr, x0, lb, ub), ...] or a dictionary (deprecated format)."
+                "The 'parameters' argument must be a list of tuples "
+                "[(component, attr, x0, lb, ub), ...] "
+                "or [(components, attr, x0, lb, ub, 'private'|'shared'), ...]."
             )
 
         # Process parameters in new list format
@@ -880,92 +879,18 @@ class Estimator:
 
         # Transcription mode (4th, optional tuple element).  Governs *how* the
         # dynamics enter the NLP, orthogonally to the (library, optimizer, mode)
-        # optimizer choice:
-        #   - "single_shooting" (default): parameters -> full forward simulation
-        #     -> residuals.  The classic sequential approach.
-        #   - "collocation": every timestep-boundary state becomes a decision
-        #     variable tied by hard continuity constraints (full simultaneous
-        #     transcription; requires the CasADi/IPOPT backend -- see
-        #     twin4build.estimator._transcription).
-        # A soft-penalty "multiple_shooting" mode was removed: it wandered
-        # without converging on exactly the problems collocation handles.
-        allowed_transcriptions = (
-            "single_shooting",
-            "collocation",
+        # optimizer choice. See twin4build.utils.method_spec.parse_method.
+        from twin4build.utils.method_spec import parse_method
+
+        method, transcription = parse_method(
+            method,
+            allowed_methods=allowed_methods,
+            default_methods=default_methods,
+            default_mode=default_mode,
+            default_none_method=default_none_method,
+            allow_transcription=True,
         )
-        self._transcription = "single_shooting"
-        if isinstance(method, tuple) and len(method) == 4:
-            transcription = method[3]
-            assert transcription in allowed_transcriptions, (
-                "The 4th (transcription) element of the method tuple must be one "
-                f"of {allowed_transcriptions} - \"{transcription}\" was provided."
-            )
-            self._transcription = transcription
-            method = tuple(method[:3])
-
-        # Process method specification
-        if isinstance(method, str):
-            valid_methods = list(
-                set([l[0] for l in allowed_methods] + [l[1] for l in allowed_methods])
-            )
-            assert (
-                method in valid_methods
-            ), f"If a string is provided, the \"method\" argument must be one of the following: {', '.join(valid_methods)} - \"{method}\" was provided."
-
-            # Try to match with default methods first
-            matched = False
-            for t in default_methods:
-                if t[0] == method:
-                    method = t
-                    matched = True
-                    break
-
-            # If no match found, look for candidates
-            if not matched:
-                candidates = []
-                for m in allowed_methods:
-                    if m[1] == method:
-                        candidates.append(m)
-
-                if len(candidates) == 1:
-                    method = candidates[0]
-                elif len(candidates) > 1:
-                    # Choose the one with default mode
-                    for c in candidates:
-                        if c[2] == default_mode:
-                            method = c
-                            break
-
-        elif isinstance(method, tuple):
-            assert (
-                len(method) == 3
-            ), f'If a tuple is provided, it must contain three elements, corresponding to the library, method, and mode (e.g. ("scipy", "SLSQP", "ad")) - "{method}" was provided.'
-            assert method[0] in [
-                l[0] for l in allowed_methods
-            ], f"If a tuple is provided, the first element must be one of the following: {', '.join(list(set([l[0] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[1] in [
-                l[1] for l in allowed_methods
-            ], f"If a tuple is provided, the second element must be one of the following: {', '.join(list(set([l[1] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[2] in [
-                l[2] for l in allowed_methods
-            ], f"If a tuple is provided, the third element must be one of the following: {', '.join(list(set([l[2] for l in allowed_methods])))} - \"{method}\" was provided."
-
-            # Validate the method tuple
-            method_ = None
-            for t in allowed_methods:
-                if t[0] == method[0] and t[1] == method[1] and t[2] == method[2]:
-                    method_ = t
-                    break
-            assert (
-                method_ is not None
-            ), f"The method {method} is not valid. Only the following methods are supported: {', '.join([str(t) for t in allowed_methods])}"
-            method = method_
-        elif method is None:
-            method = default_none_method
-        else:
-            raise ValueError(
-                f'The "method" argument must be a string or a tuple - "{method}" was provided.'
-            )
+        self._transcription = transcription or "single_shooting"
 
         LOGGER.config("Method: %s", method)
 
@@ -1323,7 +1248,7 @@ class Estimator:
         Walks every component on the underlying simulation model and
         collects parameter tuples from those that implement the
         ``get_estimable_parameters()`` contract -- the canonical example
-        being :class:`ControllerIdentificationTorchSystem`, which returns
+        being :class:`ControllerIdentificationSystem`, which returns
         ``(comp, attr, x0, lb, ub)`` tuples seeded from its post-rewire
         state.
 
@@ -1558,126 +1483,6 @@ class Estimator:
             validated_params.append((components, attr, x0, lb, ub, parameter_type))
 
         return validated_params
-
-    def _convert_dict_to_list_format(
-        self, parameters_dict: Dict[str, Dict]
-    ) -> List[Tuple]:
-        """
-        Convert old dict format to new list format.
-
-        Args:
-            parameters_dict: Dictionary in legacy format with "private" and "shared" keys
-
-        Returns:
-            List of tuples in format (components, attr, x0, lb, ub, parameter_type)
-
-        Raises:
-            ValueError: If dict format is invalid
-        """
-        if not isinstance(parameters_dict, dict):
-            raise ValueError("Parameters dict must be a dictionary")
-
-        # Ensure required dictionary structure
-        if "private" not in parameters_dict:
-            parameters_dict["private"] = {}
-        if "shared" not in parameters_dict:
-            parameters_dict["shared"] = {}
-
-        parameters_list = []
-
-        # Process private parameters
-        for attr, par_dict in parameters_dict["private"].items():
-            # Ensure components is a list
-            components = par_dict["components"]
-            if not isinstance(components, list):
-                components = [components]
-
-            # Ensure x0, lb, ub are lists with correct length
-            x0_list = par_dict["x0"]
-            if not isinstance(x0_list, list):
-                x0_list = [x0_list] * len(components)
-            elif len(x0_list) != len(components):
-                raise ValueError(
-                    f'The number of elements in the "x0" list must be equal to the number '
-                    f"of components in the private dictionary for attribute {attr}."
-                )
-
-            lb_list = par_dict["lb"]
-            if not isinstance(lb_list, list):
-                lb_list = [lb_list] * len(components)
-            elif len(lb_list) != len(components):
-                raise ValueError(
-                    f'The number of elements in the "lb" list must be equal to the number '
-                    f"of components in the private dictionary for attribute {attr}."
-                )
-
-            ub_list = par_dict["ub"]
-            if not isinstance(ub_list, list):
-                ub_list = [ub_list] * len(components)
-            elif len(ub_list) != len(components):
-                raise ValueError(
-                    f'The number of elements in the "ub" list must be equal to the number '
-                    f"of components in the private dictionary for attribute {attr}."
-                )
-
-            # Add each component as a separate private parameter
-            for component, x0, lb, ub in zip(components, x0_list, lb_list, ub_list):
-                parameters_list.append(([component], attr, x0, lb, ub, "private"))
-
-        # Process shared parameters
-        for attr, par_dict in parameters_dict["shared"].items():
-            components_lists = par_dict["components"]
-            if not isinstance(components_lists, list):
-                raise ValueError(
-                    f'The "components" key in the shared dictionary must be a list for attribute {attr}.'
-                )
-
-            # Ensure components is a list of lists
-            if components_lists and not isinstance(components_lists[0], list):
-                components_lists = [components_lists]
-
-            x0_lists = par_dict["x0"]
-            if not isinstance(x0_lists, list):
-                x0_lists = [
-                    [x0_lists for _ in components_list]
-                    for components_list in components_lists
-                ]
-            elif x0_lists and not isinstance(x0_lists[0], list):
-                x0_lists = [x0_lists]
-
-            lb_lists = par_dict["lb"]
-            if not isinstance(lb_lists, list):
-                lb_lists = [
-                    [lb_lists for _ in components_list]
-                    for components_list in components_lists
-                ]
-            elif lb_lists and not isinstance(lb_lists[0], list):
-                lb_lists = [lb_lists]
-
-            ub_lists = par_dict["ub"]
-            if not isinstance(ub_lists, list):
-                ub_lists = [
-                    [ub_lists for _ in components_list]
-                    for components_list in components_lists
-                ]
-            elif ub_lists and not isinstance(ub_lists[0], list):
-                ub_lists = [ub_lists]
-
-            # Each group of components shares the same parameter values
-            for components_list, x0_list, lb_list, ub_list in zip(
-                components_lists, x0_lists, lb_lists, ub_lists
-            ):
-                # All components in this group get the same parameter values
-                shared_x0 = x0_list[0] if isinstance(x0_list, list) else x0_list
-                shared_lb = lb_list[0] if isinstance(lb_list, list) else lb_list
-                shared_ub = ub_list[0] if isinstance(ub_list, list) else ub_list
-
-                # Create one shared parameter entry for this group
-                parameters_list.append(
-                    (components_list, attr, shared_x0, shared_lb, shared_ub, "shared")
-                )
-
-        return parameters_list
 
     def _process_parameters_list(self, parameters_list: List[Tuple]) -> None:
         """

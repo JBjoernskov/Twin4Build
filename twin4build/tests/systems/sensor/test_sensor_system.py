@@ -1,7 +1,6 @@
 # Standard library imports
 import datetime
 import unittest
-import warnings
 
 # Third party imports
 import pandas as pd
@@ -83,37 +82,24 @@ class TestSensorSystem(unittest.TestCase):
         self.assertFalse(self.sensor.use_spreadsheet)
         self.assertFalse(self.sensor.use_database)
 
-    def test_deprecated_usedf_constructor_warning(self):
-        """Test that usedf in constructor shows deprecation warning."""
+    def test_removed_usedf_constructor_raises(self):
+        """Old camelCase constructor kwargs are hard-removed."""
         dates = pd.date_range(
             start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
             periods=10,
             freq="10min",
         )
         df = pd.DataFrame({"value": [20.0] * 10}, index=dates)
-        with self.assertWarns(DeprecationWarning):
-            sensor = SensorSystem(id="test_deprecated_usedf", df=df, usedf=True)
-        self.assertTrue(sensor.use_df)
+        with self.assertRaises(TypeError):
+            SensorSystem(id="test_removed_usedf", df=df, usedf=True)
 
-    def test_deprecated_usedf_property_warning(self):
-        """Test that accessing usedf property shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
+    def test_removed_usedf_property_raises(self):
+        """Old camelCase properties are hard-removed."""
+        with self.assertRaises(AttributeError):
             _ = self.sensor.usedf
-
-    def test_deprecated_usedf_setter_warning(self):
-        """Test that setting usedf property shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
-            self.sensor.usedf = False
-        self.assertFalse(self.sensor.use_df)
-
-    def test_deprecated_useSpreadsheet_property_warning(self):
-        """Test that accessing useSpreadsheet property shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
+        with self.assertRaises(AttributeError):
             _ = self.sensor.useSpreadsheet
-
-    def test_deprecated_useDatabase_property_warning(self):
-        """Test that accessing useDatabase property shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
+        with self.assertRaises(AttributeError):
             _ = self.sensor.useDatabase
 
     def test_only_one_flag_allowed(self):
@@ -145,22 +131,6 @@ class TestSensorSystem(unittest.TestCase):
         self.assertTrue(sensor.use_df)
         self.assertFalse(sensor.use_spreadsheet)
         self.assertFalse(sensor.use_database)
-
-    def test_backward_compat_camelcase(self):
-        """Test that old camelCase code still works."""
-        dates = pd.date_range(
-            start=datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC),
-            periods=10,
-            freq="10min",
-        )
-        df = pd.DataFrame({"value": [20.0] * 10}, index=dates)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            sensor = SensorSystem(id="test_backward_compat", df=df, usedf=True)
-            self.assertTrue(sensor.usedf)
-            sensor.useSpreadsheet = False
-            self.assertFalse(sensor.useSpreadsheet)
-
 
 if __name__ == "__main__":
     unittest.main()

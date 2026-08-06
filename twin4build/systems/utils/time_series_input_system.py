@@ -1,7 +1,6 @@
 # Standard library imports
 import datetime
 import os
-import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -17,7 +16,6 @@ from twin4build.utils.data_loaders.load import (
     load_from_spreadsheet,
     sample_from_df,
 )
-from twin4build.utils.deprecation import deprecate_args
 from twin4build.utils.get_main_dir import get_main_dir
 
 
@@ -48,8 +46,9 @@ class TimeSeriesInputSystem(core.System):
         self,
         df: Optional[pd.DataFrame] = None,
         filename: Optional[str] = None,
-        datecolumn: int = 0,
-        valuecolumn: int = 1,
+        date_column: int = 0,
+        value_column: int = 1,
+        source: Optional[str] = None,
         use_spreadsheet: bool = False,
         use_database: bool = False,
         uuid: Optional[str] = None,
@@ -63,10 +62,12 @@ class TimeSeriesInputSystem(core.System):
         Args:
             df: Input dataframe containing time series data. Must have date_time index and value column.
             filename: Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
-            datecolumn: Index of the date column (0-based). Defaults to 0.
-            valuecolumn: Index of the value column (0-based). Defaults to 1.
-            use_spreadsheet: Whether to use a spreadsheet for input. Defaults to False.
-            use_database: Whether to use a database for input. Defaults to False.
+            date_column: Index of the date column (0-based). Defaults to 0.
+            value_column: Index of the value column (0-based). Defaults to 1.
+            source: Preferred data-source selector: ``"spreadsheet"``, ``"database"``,
+                ``"df"``, or ``None`` for auto-detect.
+            use_spreadsheet / use_database: Legacy boolean source flags (deprecated;
+                use ``source=``; removed in 2.1).
             uuid: UUID for database operations.
             dbconfig: Database configuration parameters.
             cache: Whether to cache loaded/resampled data on disk for faster
@@ -79,13 +80,40 @@ class TimeSeriesInputSystem(core.System):
             AssertionError: If neither df nor filename is provided.
             ValueError: If the specified file cannot be found in any of the search paths.
         """
-        # Handle deprecated camelCase arguments
-        deprecated_args = ["useSpreadsheet", "useDatabase"]
-        new_args = ["use_spreadsheet", "use_database"]
-        positions = [None, None]
-        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
-        use_spreadsheet = value_map.get("use_spreadsheet", use_spreadsheet)
-        use_database = value_map.get("use_database", use_database)
+        from twin4build.utils.deprecation import deprecate_args, deprecate_name
+
+        for legacy_key, new_key in (
+            ("useSpreadsheet", "use_spreadsheet"),
+            ("useDatabase", "use_database"),
+        ):
+            if legacy_key in kwargs:
+                raise TypeError(
+                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
+                )
+
+        legacy = deprecate_args(
+            ["datecolumn", "valuecolumn"],
+            ["date_column", "value_column"],
+            [None, None],
+            kwargs,
+        )
+        date_column = legacy.get("date_column", date_column)
+        value_column = legacy.get("value_column", value_column)
+
+        if source is not None:
+            source = str(source).lower()
+            assert source in {
+                "spreadsheet",
+                "database",
+                "df",
+            }, f"source must be 'spreadsheet', 'database', or 'df', got {source!r}"
+            use_spreadsheet = source == "spreadsheet"
+            use_database = source == "database"
+        elif use_spreadsheet or use_database:
+            deprecate_name(
+                "use_spreadsheet/use_database",
+                "source='spreadsheet'|'database'|'df'",
+            )
 
         assert (
             use_spreadsheet == False or use_database == False
@@ -95,20 +123,13 @@ class TimeSeriesInputSystem(core.System):
             df is not None or filename is not None or uuid is not None
         ), f'Either "df" or "filename" or "uuid" must be provided as argument.'
 
-        # # Store attributes as private variables
-        # if isinstance(df, pd.DataFrame):
-        #     df = [df]
-        # else:
-        #     assert isinstance(df, [list, type(None)]), "df must be a pandas DataFrame or a list of pandas DataFrames"
-        #     if df is None:
-        #         df = []
         self._df_init = df
         self.df = []
         self._use_spreadsheet = use_spreadsheet
         self._use_database = use_database
         self._filename = filename
-        self._datecolumn = datecolumn
-        self._valuecolumn = valuecolumn
+        self._date_column = date_column
+        self._value_column = value_column
         self._uuid = uuid
         self._dbconfig = dbconfig
         self._cached_initialize_arguments = []
@@ -136,7 +157,7 @@ class TimeSeriesInputSystem(core.System):
 
         self._config = {
             "parameters": [],
-            "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
+            "spreadsheet": ["filename", "date_column", "value_column"],
             "database": ["uuid", "dbconfig"],
         }
 
@@ -200,32 +221,32 @@ class TimeSeriesInputSystem(core.System):
         self._filename = value
 
     @property
-    def datecolumn(self) -> int:
+    def date_column(self) -> int:
         """
         Get the index of the date/time column (0-based).
         """
-        return self._datecolumn
+        return self._date_column
 
-    @datecolumn.setter
-    def datecolumn(self, value: int) -> None:
+    @date_column.setter
+    def date_column(self, value: int) -> None:
         """
         Set the index of the date/time column (0-based).
         """
-        self._datecolumn = value
+        self._date_column = value
 
     @property
-    def valuecolumn(self) -> int:
+    def value_column(self) -> int:
         """
         Get the index of the value column (0-based).
         """
-        return self._valuecolumn
+        return self._value_column
 
-    @valuecolumn.setter
-    def valuecolumn(self, value: int) -> None:
+    @value_column.setter
+    def value_column(self, value: int) -> None:
         """
         Set the index of the value column (0-based).
         """
-        self._valuecolumn = value
+        self._value_column = value
 
     @property
     def use_spreadsheet(self) -> bool:
@@ -253,46 +274,6 @@ class TimeSeriesInputSystem(core.System):
         """
         Set whether to use a database for input.
         """
-        self._use_database = value
-
-    # ==================== Deprecated Properties (camelCase) ====================
-
-    @property
-    def useSpreadsheet(self) -> bool:
-        """Deprecated: Use use_spreadsheet instead."""
-        warnings.warn(
-            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_spreadsheet
-
-    @useSpreadsheet.setter
-    def useSpreadsheet(self, value: bool) -> None:
-        warnings.warn(
-            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._use_spreadsheet = value
-
-    @property
-    def useDatabase(self) -> bool:
-        """Deprecated: Use use_database instead."""
-        warnings.warn(
-            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_database
-
-    @useDatabase.setter
-    def useDatabase(self, value: bool) -> None:
-        warnings.warn(
-            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         self._use_database = value
 
     @property
@@ -389,8 +370,8 @@ class TimeSeriesInputSystem(core.System):
                     if self.use_spreadsheet:
                         df = load_from_spreadsheet(
                             self.filename,
-                            self._datecolumn,
-                            self._valuecolumn,
+                            self._date_column,
+                            self._value_column,
                             step_size=step_size_,
                             start_time=start_time_,
                             end_time=end_time_,
@@ -412,8 +393,8 @@ class TimeSeriesInputSystem(core.System):
                     df_.reset_index(inplace=True)
                     df = sample_from_df(
                         df_,
-                        datecolumn=0,
-                        valuecolumn=1,
+                        date_column=0,
+                        value_column=1,
                         step_size=step_size_,
                         start_time=start_time_,
                         end_time=end_time_,

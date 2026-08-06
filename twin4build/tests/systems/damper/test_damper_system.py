@@ -9,14 +9,14 @@ from dateutil import tz
 # Local application imports
 # Set test flag
 import twin4build
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+from twin4build.systems.damper.damper_system import DamperSystem
 
 twin4build._IS_TESTING = True
 
 
 class TestDamperTorchSystem(unittest.TestCase):
     def setUp(self):
-        self.damper = DamperTorchSystem(id="test_damper", a=1.0, nominalAirFlowRate=0.5)
+        self.damper = DamperSystem(id="test_damper", a=1.0, nominalAirFlowRate=0.5)
 
     def test_initialization(self):
         """Test damper system initialization."""
@@ -70,7 +70,7 @@ class TestDamperTorchSystem(unittest.TestCase):
 
     def test_do_step_batch(self):
         """Test damper system do_step method with batch size > 1."""
-        damper_batch = DamperTorchSystem(
+        damper_batch = DamperSystem(
             id="test_damper_batch", a=1.0, nominalAirFlowRate=0.5
         )
 
@@ -82,9 +82,9 @@ class TestDamperTorchSystem(unittest.TestCase):
         damper_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-        damper_batch.input["damperPosition"].initialize(n_t=1, n_s=batch_size, n_v=1)
-        damper_batch.output["damperPosition"].initialize(n_t=1, n_s=batch_size, n_v=1)
-        damper_batch.output["airFlowRate"].initialize(n_t=1, n_s=batch_size, n_v=1)
+        damper_batch.input["damperPosition"].initialize(n_t=1, n_s=batch_size)
+        damper_batch.output["damperPosition"].initialize(n_t=1, n_s=batch_size)
+        damper_batch.output["airFlowRate"].initialize(n_t=1, n_s=batch_size)
 
         # Set input with batch size 3
         damper_batch.input["damperPosition"].set(torch.tensor([0.5, 0.7, 0.3]), i_t=0)

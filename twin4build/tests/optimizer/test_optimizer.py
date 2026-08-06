@@ -15,7 +15,7 @@ import twin4build
 from twin4build.model.model import Model
 from twin4build.optimizer.optimizer import Optimizer
 from twin4build.simulator.simulator import Simulator
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+from twin4build.systems.damper.damper_system import DamperSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 
@@ -42,7 +42,7 @@ class TestOptimizer(unittest.TestCase):
             df=df,
         )
 
-        self.damper = DamperTorchSystem(id="damper", nominalAirFlowRate=1.0)
+        self.damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
 
         self.model.add_component(self.setpoint)
         self.model.add_component(self.damper)

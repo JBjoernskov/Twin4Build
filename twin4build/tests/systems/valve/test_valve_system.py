@@ -9,14 +9,14 @@ from dateutil import tz
 # Local application imports
 # Set test flag
 import twin4build
-from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
+from twin4build.systems.valve.valve_system import ValveSystem
 
 twin4build._IS_TESTING = True
 
 
 class TestValveTorchSystem(unittest.TestCase):
     def setUp(self):
-        self.valve = ValveTorchSystem(
+        self.valve = ValveSystem(
             id="test_valve", valveAuthority=0.5, waterFlowRateMax=1.0
         )
 
@@ -49,7 +49,7 @@ class TestValveTorchSystem(unittest.TestCase):
 
     def test_do_step_batch(self):
         """Test valve system do_step method with batch size > 1."""
-        valve_batch = ValveTorchSystem(
+        valve_batch = ValveSystem(
             id="test_valve_batch", valveAuthority=0.5, waterFlowRateMax=1.0
         )
 
@@ -61,9 +61,9 @@ class TestValveTorchSystem(unittest.TestCase):
         valve_batch.initialize(
             start_time=start_time, end_time=end_time, step_size=step_size
         )
-        valve_batch.input["valvePosition"].initialize(n_t=1, n_s=batch_size, n_v=1)
-        valve_batch.output["waterFlowRate"].initialize(n_t=1, n_s=batch_size, n_v=1)
-        valve_batch.output["valvePosition"].initialize(n_t=1, n_s=batch_size, n_v=1)
+        valve_batch.input["valvePosition"].initialize(n_t=1, n_s=batch_size)
+        valve_batch.output["waterFlowRate"].initialize(n_t=1, n_s=batch_size)
+        valve_batch.output["valvePosition"].initialize(n_t=1, n_s=batch_size)
 
         # Set inputs with batch size 3
         valve_batch.input["valvePosition"].set(torch.tensor([0.5, 0.7, 0.3]), i_t=0)

@@ -22,7 +22,6 @@ from twin4build.translator.translator import (
     PathRule,
 )
 from twin4build.utils.data_loaders.load import load_from_database, load_from_spreadsheet
-from twin4build.utils.deprecation import deprecate_args
 from twin4build.utils.get_main_dir import get_main_dir
 
 
@@ -65,10 +64,6 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         b: Correction offset for linear correction of temperature data.
         apply_correction: Whether to apply linear correction to temperature data.
 
-    Note:
-        The camelCase arguments ``useSpreadsheet`` and ``useDatabase`` (and
-        ``usedf``) are deprecated aliases for ``use_spreadsheet``,
-        ``use_database``, and ``use_df``.
     """
 
     def __init__(
@@ -97,14 +92,15 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         apply_correction: Optional[bool] = False,
         **kwargs,
     ):
-        # Handle deprecated camelCase arguments
-        deprecated_args = ["useSpreadsheet", "useDatabase", "usedf"]
-        new_args = ["use_spreadsheet", "use_database", "use_df"]
-        positions = [None, None, None]
-        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
-        use_spreadsheet = value_map.get("use_spreadsheet", use_spreadsheet)
-        use_database = value_map.get("use_database", use_database)
-        use_df = value_map.get("use_df", use_df)
+        for legacy_key, new_key in (
+            ("useSpreadsheet", "use_spreadsheet"),
+            ("useDatabase", "use_database"),
+            ("usedf", "use_df"),
+        ):
+            if legacy_key in kwargs:
+                raise TypeError(
+                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
+                )
 
         # Count how many data sources are provided
         has_df = df is not None
@@ -285,65 +281,6 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
     @use_df.setter
     def use_df(self, value):
-        self._use_df = value
-
-    # ==================== Deprecated Properties (camelCase) ====================
-
-    @property
-    def useSpreadsheet(self):
-        """Deprecated: Use use_spreadsheet instead."""
-        warnings.warn(
-            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_spreadsheet
-
-    @useSpreadsheet.setter
-    def useSpreadsheet(self, value):
-        warnings.warn(
-            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._use_spreadsheet = value
-
-    @property
-    def useDatabase(self):
-        """Deprecated: Use use_database instead."""
-        warnings.warn(
-            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_database
-
-    @useDatabase.setter
-    def useDatabase(self, value):
-        warnings.warn(
-            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._use_database = value
-
-    @property
-    def usedf(self):
-        """Deprecated: Use use_df instead."""
-        warnings.warn(
-            "Property 'usedf' is deprecated. Use 'use_df' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_df
-
-    @usedf.setter
-    def usedf(self, value):
-        warnings.warn(
-            "Property 'usedf' is deprecated. Use 'use_df' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         self._use_df = value
 
     # ==================== DataFrame Property ====================
@@ -627,8 +564,8 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 id=f"time series input - outdoorTemperature - {self.id}",
                 df=df_temp,
                 filename=self.filename_outdoorTemperature,
-                datecolumn=self.datecolumn_outdoorTemperature,
-                valuecolumn=(
+                date_column=self.datecolumn_outdoorTemperature,
+                value_column=(
                     "outdoorTemperature"
                     if self.use_df
                     else self.valuecolumn_outdoorTemperature
@@ -647,8 +584,8 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 id=f"time series input - globalIrradiation - {self.id}",
                 df=df_irrad,
                 filename=self.filename_globalIrradiation,
-                datecolumn=self.datecolumn_globalIrradiation,
-                valuecolumn=(
+                date_column=self.datecolumn_globalIrradiation,
+                value_column=(
                     "globalIrradiation"
                     if self.use_df
                     else self.valuecolumn_globalIrradiation
@@ -689,8 +626,8 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                     id=f"time series input - outdoorCo2Concentration - {self.id}",
                     df=df_co2,
                     filename=self.filename_outdoorCo2Concentration,
-                    datecolumn=self.datecolumn_outdoorCo2Concentration,
-                    valuecolumn=(
+                    date_column=self.datecolumn_outdoorCo2Concentration,
+                    value_column=(
                         "outdoorCo2Concentration"
                         if self.use_df
                         else self.valuecolumn_outdoorCo2Concentration

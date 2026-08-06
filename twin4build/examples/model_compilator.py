@@ -6,7 +6,7 @@ of the estimator example model, compares wall-clock times and verifies that
 key outputs (indoor temperature, damper positions, heater power) match
 between the two.
 
-The estimator example has two DamperTorchSystem components (supply + exhaust)
+The estimator example has two DamperSystem components (supply + exhaust)
 that share the same class and parameter structure, so the compiler merges them
 into a single batched meta-component with n_c=2.
 """

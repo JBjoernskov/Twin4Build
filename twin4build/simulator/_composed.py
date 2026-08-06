@@ -96,7 +96,7 @@ def _single_source(comp, port) -> Optional[Tuple[object, str]]:
 def collect_stateful(model) -> List:
     """Stateful components in execution order (composites only, not their subs).
 
-    A composite like ``BuildingSpaceTorchSystem`` owns state (thermal|mass) and
+    A composite like ``BuildingSpaceSystem`` owns state (thermal|mass) and
     its submodels are not separate nodes in the execution order, so iterating
     ``_flat_execution_order`` and taking ``System.is_stateful()`` (which walks the
     owned ``tps.State``) yields each state exactly once.

@@ -9,8 +9,8 @@ from dateutil import tz
 # Local application imports
 # Set test flag
 import twin4build
-from twin4build.systems.space_heater.space_heater_torch_system import (
-    SpaceHeaterTorchSystem,
+from twin4build.systems.space_heater.space_heater_system import (
+    SpaceHeaterSystem,
 )
 
 twin4build._IS_TESTING = True
@@ -18,7 +18,7 @@ twin4build._IS_TESTING = True
 
 class TestSpaceHeaterTorchSystem(unittest.TestCase):
     def setUp(self):
-        self.heater = SpaceHeaterTorchSystem(
+        self.heater = SpaceHeaterSystem(
             id="test_heater",
             Q_flow_nominal_sh=1000.0,
             T_a_nominal_sh=60.0,
@@ -63,7 +63,7 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
 
     def test_do_step_batch(self):
         """Test space heater system do_step method with batch size > 1."""
-        heater_batch = SpaceHeaterTorchSystem(
+        heater_batch = SpaceHeaterSystem(
             id="test_heater_batch",
             Q_flow_nominal_sh=1000.0,
             T_a_nominal_sh=60.0,

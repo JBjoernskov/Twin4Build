@@ -15,7 +15,7 @@ include-package-data = true
 
 [project]
 name = "twin4build"
-version = "1.1.2"
+version = "2.0.0"
 authors = [
     { name = "Jakob Bjørnskov", email = "jakob.bjornskov@gmail.com" },
 ]
@@ -68,7 +68,6 @@ dependencies = [
     # CasADi ships IPOPT + MUMPS in a single pip wheel; used by the Estimator's
     # IPOPT backend and collocation transcription.
     "casadi",
-    "windows-curses ; platform_system == 'Windows'"
 ]
 
 [project.optional-dependencies]
