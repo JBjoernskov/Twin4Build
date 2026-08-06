@@ -10,11 +10,8 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_torch_system import (
-    SATCompensatedControllerTorchSystem,
-)
-from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
-    CascadePIDControllerSystem,  # backward-compatible alias
+from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system import (
+    SATCompensatedControllerSystem,
 )
 from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
     CascadeControllerSystem,
@@ -22,8 +19,8 @@ from twin4build.systems.controller.setpoint_controller.cascade_controller.cascad
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
-from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_torch_system import (
-    OnOffControllerTorchSystem,
+from twin4build.systems.controller.rulebased_controller.on_off_controller.smooth_on_off_controller_system import (
+    SmoothOnOffControllerSystem,
 )
 from twin4build.systems.utils.sigmoid_gate import BandGate, SigmoidGate
 from twin4build.translator.translator import (
@@ -37,7 +34,7 @@ from twin4build.translator.translator import (
 )  # noqa: F401 (StepRule/SetStepRule/AnyPathRule used in patterns below)
 
 
-class ControllerIdentificationTorchSystem(core.System, nn.Module):
+class ControllerIdentificationSystem(core.System, nn.Module):
     r"""
     Controller Identification System using Continuous Relaxation.
 
@@ -88,7 +85,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
 
     Example:
         >>> # Default usage with built-in candidates
-        >>> controller = ControllerIdentificationTorchSystem(
+        >>> controller = ControllerIdentificationSystem(
         ...     n_sensors=1,
         ...     n_setpoints=1,
         ...     n_actuators=1,
@@ -96,7 +93,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         ... )
         >>>
         >>> # Custom candidates
-        >>> controller = ControllerIdentificationTorchSystem(
+        >>> controller = ControllerIdentificationSystem(
         ...     candidate_controllers=[PIDControllerSystem, PIDControllerSystem],
         ...     candidate_controller_kwargs=[
         ...         {"kp": 0.1, "Ti": 100, "Td": 0},  # PI
@@ -192,8 +189,8 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         if not any_type_given:
             setpoint_controllers = [PIDControllerSystem, PIDControllerSystem]
             setpoint_controller_kwargs = [
-                {"kp": 0.3, "Ti": 5.0, "Td": 0.0, "isReverse": True},
-                {"kp": 0.3, "Ti": 5.0, "Td": 0.0, "isReverse": False},
+                {"kp": 0.3, "Ti": 5.0, "Td": 0.0, "is_reverse": True},
+                {"kp": 0.3, "Ti": 5.0, "Td": 0.0, "is_reverse": False},
             ]
             cascade_controllers = [CascadeControllerSystem]
             cascade_controller_kwargs = [
@@ -699,9 +696,9 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
             params.append((self, f"{target_prefix}.Td", 0.0, 0.0, 0.0001, "private"))
         if hasattr(target, "output_min"):
             params.append((self, f"{target_prefix}.output_min", 0.5, 0.0, 1.0, "private"))
-        if hasattr(target, "offValue"):
+        if hasattr(target, "off_value"):
             params.append((self, f"{target_prefix}.offValue", 0.0, 0, 1.0, "private"))
-        if hasattr(target, "onValue"):
+        if hasattr(target, "on_value"):
             params.append((self, f"{target_prefix}.onValue", 1.0, 0.0, 1.0, "private"))
         # ``steepness`` is intentionally NOT estimated.  It is a numerical
         # hyperparameter that controls the smoothness of the soft on/off
@@ -717,9 +714,9 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         for attr in ("kp", "Ti", "Td", "output_min", "output_max"):
             if hasattr(ctrl, attr):
                 lines.append(f"{pad}{attr}: {getattr(ctrl, attr).get().item():.6f}")
-        if hasattr(ctrl, "isReverse"):
+        if hasattr(ctrl, "is_reverse"):
             lines.append(f"{pad}isReverse: {ctrl.isReverse}")
-        for attr in ("offValue", "onValue", "steepness"):
+        for attr in ("off_value", "on_value", "steepness"):
             if hasattr(ctrl, attr):
                 lines.append(f"{pad}{attr}: {getattr(ctrl, attr).get().item():.6f}")
 
@@ -729,7 +726,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
         target = ctrl.pid if hasattr(ctrl, "pid") else ctrl
         # Keep this list in sync with ``_append_pid_params`` above.
         # ``steepness`` is intentionally excluded (hyperparameter, not estimated).
-        for attr in ("kp", "Ti", "Td", "output_min", "offValue", "onValue"):
+        for attr in ("kp", "Ti", "Td", "output_min", "off_value", "on_value"):
             if hasattr(target, attr):
                 scales.append(1.0)
 
@@ -766,7 +763,7 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
                 and self.n_setpoints is not None
                 and self.n_on_off_signals is not None
             ), (
-                f"ControllerIdentificationTorchSystem '{self.id}': "
+                f"ControllerIdentificationSystem '{self.id}': "
                 "n_sensors, n_setpoints, and n_on_off_signals must be "
                 "provided at construction or inferred from translator "
                 "connections (signature patterns must wire ``sensorValue``, "
@@ -781,20 +778,20 @@ class ControllerIdentificationTorchSystem(core.System, nn.Module):
 
         # Initialize Vector inputs with their sizes
         self.input["sensorValue"].initialize(
-            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_sensors
+            n_t=max_timesteps, n_s=batch_size, n_v=self.n_sensors
         )
         self.input["setpointValue"].initialize(
-            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_setpoints
+            n_t=max_timesteps, n_s=batch_size, n_v=self.n_setpoints
         )
         self.input["onOffSignal"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
+            n_t=max_timesteps,
+            n_s=batch_size,
             size=self.n_on_off_signals,
         )
 
         # Initialize output
         self.output["inputSignal"].initialize(
-            n_timesteps=max_timesteps, batch_size=batch_size, size=self.n_actuators
+            n_t=max_timesteps, n_s=batch_size, n_v=self.n_actuators
         )
 
         # Initialize all candidate controllers
@@ -1487,7 +1484,7 @@ def brick_signature_pattern_vav():
     sp.add_connection(sensors, "measuredValue", "sensorValue", input_port_index=sensors)
     sp.add_connection(setpoints, "measuredValue", "setpointValue", input_port_index=setpoints)
     # Auto-mirror every setpoint into the gate-input bus.  See the
-    # corresponding pattern on ``ControllerIdentificationPITorchSystem``
+    # corresponding pattern on ``ControllerIdentificationPISystem``
     # for the full rationale -- in short, the ``onOffSignal`` port is
     # never pruned by the rewire and gives the gate access to the
     # schedule even when the rewire winner picks a different setpoint
@@ -1506,12 +1503,12 @@ def brick_signature_pattern_vav():
 
 # NOTE: BRICK pattern registration disabled for the generic CITS class.  The
 # matching patterns are now registered on
-# :class:`ControllerIdentificationPITorchSystem` so the translator builds
+# :class:`ControllerIdentificationPISystem` so the translator builds
 # PI-only CITS instances (with the joint regression loop classifier as a
 # pre-step).  The generic class still works programmatically; it just no
 # longer matches BRICK topologies during translation.  Re-enable this line
 # (and the damper variant below) if you want both classes to compete.
-# ControllerIdentificationTorchSystem.add_signature_pattern(brick_signature_pattern_vav())
+# ControllerIdentificationSystem.add_signature_pattern(brick_signature_pattern_vav())
 
 
 def brick_signature_pattern_vav_damper():
@@ -1570,4 +1567,7 @@ def brick_signature_pattern_vav_damper():
 
 # NOTE: see comment above the previous registration; re-enable this if both
 # CITS variants should compete during translation.
-# ControllerIdentificationTorchSystem.add_signature_pattern(brick_signature_pattern_vav_damper())
+# ControllerIdentificationSystem.add_signature_pattern(brick_signature_pattern_vav_damper())
+
+# Deprecated aliases (removed in twin4build 2.1)
+ControllerIdentificationTorchSystem = ControllerIdentificationSystem

@@ -29,7 +29,7 @@ from rdflib.tools.rdf2dot import rdf2dot
 import twin4build.core as core
 from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import LOGGER, autoreset_print
+from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.uppath import uppath
 
 DYNAMIC_PARSING = True
@@ -1475,6 +1475,9 @@ class SemanticModel:
             dir_conf: Directory configuration for file storage
         """
         if verbose is not None:
+            from twin4build.utils.deprecation import deprecate_name
+
+            deprecate_name("verbose=", "LOGGER.verbose")
             LOGGER.verbose = verbose
 
         self.id = id
@@ -2606,7 +2609,7 @@ class SemanticModel:
             core.namespace.S4BLDG.Pump: [red, red, None, None],
             core.namespace.S4SYST.Connection: [grey, grey, None, None],
             core.namespace.S4SYST.ConnectionPoint: [grey, grey, None, None],
-            core.namespace.T4B.BuildingSpaceTorchSystem: [
+            core.namespace.T4B.BuildingSpaceSystem: [
                 light_black,
                 light_black,
                 None,
@@ -2614,11 +2617,11 @@ class SemanticModel:
             ],
             core.namespace.T4B.PIDControllerSystem: [orange, orange, None, None],
             core.namespace.T4B.AirToAirHeatRecovery: [dark_blue, dark_blue, None, None],
-            core.namespace.T4B.CoilTorchSystem: [red, red, None, None],
-            core.namespace.T4B.DamperTorchSystem: [dark_blue, dark_blue, None, None],
-            core.namespace.T4B.ValveTorchSystem: [red, red, None, None],
-            core.namespace.T4B.FanTorchSystem: [dark_blue, dark_blue, None, None],
-            core.namespace.T4B.SpaceHeaterTorchSystem: [red, red, None, None],
+            core.namespace.T4B.CoilSystem: [red, red, None, None],
+            core.namespace.T4B.DamperSystem: [dark_blue, dark_blue, None, None],
+            core.namespace.T4B.ValveSystem: [red, red, None, None],
+            core.namespace.T4B.FanSystem: [dark_blue, dark_blue, None, None],
+            core.namespace.T4B.SpaceHeaterSystem: [red, red, None, None],
             core.namespace.T4B.SensorSystem: [green, green, None, None],
             core.namespace.T4B.ScheduleSystem: [brown, brown, None, None],
             core.namespace.T4B.PumpTorchSystem: [red, red, None, None],

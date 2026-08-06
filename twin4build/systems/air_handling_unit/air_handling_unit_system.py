@@ -2,7 +2,7 @@
 Air handling unit composed of damper, heat recovery, and coil submodels.
 
 This module provides a vectorized AHU implementation that uses vectorized
-DamperTorchSystem objects (one for supply, one for exhaust) rather than
+DamperSystem objects (one for supply, one for exhaust) rather than
 separate damper components for each branch.
 """
 
@@ -21,9 +21,9 @@ import twin4build.utils.types as tps
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
     AirToAirHeatRecoverySystem,
 )
-from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
-from twin4build.systems.fan.fan_torch_system import FanTorchSystem
+from twin4build.systems.coil.coil_system import CoilSystem
+from twin4build.systems.damper.damper_system import DamperSystem
+from twin4build.systems.fan.fan_system import FanSystem
 from twin4build.systems.junction.return_flow_junction_system import (
     ReturnFlowJunctionSystem,
 )
@@ -43,27 +43,27 @@ from twin4build.translator.translator import (
 )
 
 
-class AirHandlingUnitTorchSystem(core.System, nn.Module):
+class AirHandlingUnitSystem(core.System, nn.Module):
     r"""
     Air handling unit (AHU) with vectorized damper components.
 
     The AHU orchestrates subcomponents using vectorized operations:
-      - Dampers: Two DamperTorchSystem objects (supply and exhaust), each vectorized
+      - Dampers: Two DamperSystem objects (supply and exhaust), each vectorized
         across n_branches with parameters (a, nominalAirFlowRate) per branch
       - Air-to-air heat recovery: preheats/precools outdoor air using return air
       - Coil: trims the supply air temperature to the setpoint and reports power
       - Fans: add temperature rise and electrical power on supply/return streams
 
     Args:
-        supply_damper_kwargs: Keyword arguments for the supply DamperTorchSystem.
+        supply_damper_kwargs: Keyword arguments for the supply DamperSystem.
             Can include 'a' and 'nominalAirFlowRate' as scalars (broadcast to
             all branches) or lists/tensors per branch.
-        exhaust_damper_kwargs: Keyword arguments for the exhaust DamperTorchSystem.
-        coil_kwargs: Keyword arguments for CoilTorchSystem.
+        exhaust_damper_kwargs: Keyword arguments for the exhaust DamperSystem.
+        coil_kwargs: Keyword arguments for CoilSystem.
         heat_recovery_kwargs: Keyword arguments for AirToAirHeatRecoverySystem.
         junction_kwargs: Keyword arguments for ReturnFlowJunctionSystem.
-        supply_fan_kwargs: Keyword arguments for FanTorchSystem (supply).
-        exhaust_fan_kwargs: Keyword arguments for FanTorchSystem (exhaust).
+        supply_fan_kwargs: Keyword arguments for FanSystem (supply).
+        exhaust_fan_kwargs: Keyword arguments for FanSystem (exhaust).
         n_branches: Number of branches/zones served by the AHU. Defaults to 1.
         **kwargs: Additional arguments passed to the System base class
             (must include 'id').
@@ -89,7 +89,7 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
 
     Notes
     -----
-    - Uses vectorized DamperTorchSystem objects: each damper has n_branches parallel
+    - Uses vectorized DamperSystem objects: each damper has n_branches parallel
       elements with individual parameters
     - The return flow defaults to the supply flow when zero/absent so that the
       heat recovery can still operate in simple configurations.
@@ -111,15 +111,15 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         Initialize the vectorized AHU.
 
         Args:
-            supply_damper_kwargs: Keyword arguments for supply DamperTorchSystem.
+            supply_damper_kwargs: Keyword arguments for supply DamperSystem.
                 Can include 'a' and 'nominalAirFlowRate' as scalars (broadcast to
                 all branches) or lists/tensors per branch.
-            exhaust_damper_kwargs: Keyword arguments for exhaust DamperTorchSystem.
-            coil_kwargs: Keyword arguments for CoilTorchSystem.
+            exhaust_damper_kwargs: Keyword arguments for exhaust DamperSystem.
+            coil_kwargs: Keyword arguments for CoilSystem.
             heat_recovery_kwargs: Keyword arguments for AirToAirHeatRecoverySystem.
             junction_kwargs: Keyword arguments for ReturnFlowJunctionSystem.
-            supply_fan_kwargs: Keyword arguments for FanTorchSystem (supply).
-            exhaust_fan_kwargs: Keyword arguments for FanTorchSystem (exhaust).
+            supply_fan_kwargs: Keyword arguments for FanSystem (supply).
+            exhaust_fan_kwargs: Keyword arguments for FanSystem (exhaust).
             n_branches: Number of branches/zones served by the AHU.
             **kwargs: Additional arguments passed to System base class.
         """
@@ -138,7 +138,7 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         if exhaust_fan_kwargs is None:
             exhaust_fan_kwargs = {}
 
-        assert "id" in kwargs, "id is required for AirHandlingUnitTorchSystem"
+        assert "id" in kwargs, "id is required for AirHandlingUnitSystem"
         ahu_id = kwargs["id"]
 
         # Make sure each subcomponent has a unique id
@@ -169,8 +169,8 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
 
         # Vectorized damper components (one supply, one exhaust)
         # n_branches is passed to initialize() at runtime
-        self.supply_damper = DamperTorchSystem(**supply_damper_kwargs)
-        self.exhaust_damper = DamperTorchSystem(**exhaust_damper_kwargs)
+        self.supply_damper = DamperSystem(**supply_damper_kwargs)
+        self.exhaust_damper = DamperSystem(**exhaust_damper_kwargs)
 
         # Junction components for combining flows
         self.supply_junction = SupplyFlowJunctionSystem(**supply_junction_kwargs)
@@ -180,10 +180,10 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         self.return_junction.n_input_ports = self.n_branches
 
         # Other subcomponents
-        self.coil = CoilTorchSystem(**coil_kwargs)
+        self.coil = CoilSystem(**coil_kwargs)
         self.heat_recovery = AirToAirHeatRecoverySystem(**heat_recovery_kwargs)
-        self.supply_fan = FanTorchSystem(**supply_fan_kwargs)
-        self.exhaust_fan = FanTorchSystem(**exhaust_fan_kwargs)
+        self.supply_fan = FanSystem(**supply_fan_kwargs)
+        self.exhaust_fan = FanSystem(**exhaust_fan_kwargs)
 
         self._input = {
             "supplyDamperPosition": tps.Vector(),
@@ -317,7 +317,7 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         Perform one simulation step for the AHU using vectorized damper objects.
 
         All damper calculations are performed in parallel across branches via
-        the vectorized DamperTorchSystem objects.
+        the vectorized DamperSystem objects.
         """
         # 1) Supply damper: vectorized position -> flow calculation
         # Vector input shape: (n_s, n_c, n_v) -> reshape to (n_s, n_c*n_v) for damper n_c
@@ -417,7 +417,7 @@ class AirHandlingUnitTorchSystem(core.System, nn.Module):
         self.output["supplyFanPower"]._set(supply_fan_power, i_t=step_index)
         self.output["exhaustFanPower"]._set(exhaust_fan_power, i_t=step_index)
 
-    # -- composed-map support (mirrors BuildingSpaceTorchSystem) -------------
+    # -- composed-map support (mirrors BuildingSpaceSystem) -------------
 
     PARAM_NAMES = ()  # all parameters live on the owned submodels (prefixed)
 
@@ -678,7 +678,7 @@ def brick_signature_pattern_vav_dampers():
       the AHU's per-branch ``supplyDamperPosition`` / ``exhaustDamperPosition``
       ``Vector`` inputs (the AHU torch model owns supply/exhaust damper
       sub-systems internally and reshapes the per-branch positions
-      across the vectorised :class:`DamperTorchSystem`).
+      across the vectorised :class:`DamperSystem`).
     - The AHU's ``hasPoint`` ``Outside_Air_Temperature_Sensor`` matches
       :class:`OutdoorEnvironmentSystem` (modelled at the same URI), which
       provides the ``outdoorTemperature`` source.
@@ -869,7 +869,7 @@ def brick_signature_pattern_vav_dampers():
 # member (including the AHU itself), so the simple pattern's
 # singleton-modeled AHU match is allowed to bind the same AHU URI
 # alongside the dampers pattern.  That yields TWO
-# AirHandlingUnitTorchSystem components per real AHU, and the
+# AirHandlingUnitSystem components per real AHU, and the
 # BuildingSpace pattern's ``ahu.supplyAirFlowRate[output_port_index=vav]``
 # connection ends up resolved against the simple AHU (which never declared
 # Vector-output indexing), tripping the "input port Scalar / output port
@@ -880,4 +880,7 @@ def brick_signature_pattern_vav_dampers():
 # ``add_modeled_node(ahu)`` and is mutually exclusive with the VAV
 # variant via the matcher's existing exclusion machinery (rather than
 # relying on the broken mixed-mutex semantics today).
-AirHandlingUnitTorchSystem.add_signature_pattern(brick_signature_pattern_vav_dampers())
+AirHandlingUnitSystem.add_signature_pattern(brick_signature_pattern_vav_dampers())
+
+# Deprecated aliases (removed in twin4build 2.1)
+AirHandlingUnitTorchSystem = AirHandlingUnitSystem

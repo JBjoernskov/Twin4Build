@@ -55,7 +55,7 @@ from torch.func import jacrev, vmap
 import twin4build.utils.types as tps
 from twin4build.simulator._composed import StateLayout as _StateLayout
 from twin4build.simulator._composed import collect_stateful as _collect_stateful
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
 

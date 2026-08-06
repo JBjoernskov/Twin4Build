@@ -103,36 +103,24 @@ class TestEntry(unittest.TestCase):
         with self.assertRaises(AssertionError):
             Entry(data=data)
 
-    def test_entry_deprecated_attribute_parameter(self):
-        """Test Entry with deprecated 'attribute' parameter."""
+    def test_entry_removed_attribute_parameter_requires_label(self):
+        """Old 'attribute' alias is removed; label is required."""
         # Local application imports
         from twin4build.utils.plot import Entry
 
         data = np.array([1.0, 2.0, 3.0])
-        with self.assertWarns(DeprecationWarning):
-            entry = Entry(data=data, attribute="Old Style Label")
+        with self.assertRaises(AssertionError):
+            Entry(data=data, attribute="Old Style Label")
 
-        self.assertEqual(entry.label, "Old Style Label")
-
-    def test_entry_deprecated_linestyle_parameter(self):
-        """Test Entry with deprecated 'linestyle' parameter."""
+    def test_entry_linestyle_kwarg_does_not_set_fmt(self):
+        """linestyle is no longer mapped to fmt; use fmt= instead."""
         # Local application imports
         from twin4build.utils.plot import Entry
 
         data = np.array([1.0, 2.0, 3.0])
-        with self.assertWarns(DeprecationWarning):
-            entry = Entry(data=data, label="Test", linestyle="--")
-
-        self.assertEqual(entry.fmt, "--")
-
-    def test_entry_deprecated_component_parameters(self):
-        """Test Entry with deprecated component-based parameters."""
-        # Local application imports
-        from twin4build.utils.plot import Entry
-
-        data = np.array([1.0, 2.0, 3.0])
-        with self.assertWarns(DeprecationWarning):
-            entry = Entry(data=data, label="Test", component="some_component")
+        entry = Entry(data=data, label="Test", linestyle="--")
+        self.assertIsNone(entry.fmt)
+        self.assertEqual(entry.linestyle, "--")
 
 
 class TestColors(unittest.TestCase):
@@ -633,21 +621,14 @@ class TestGetData(unittest.TestCase):
         self.assertEqual(axis, 2)
         self.assertEqual(kwargs.get("label"), "Test")
 
-    def test_get_data_with_tuple_deprecated(self):
-        """Test get_data with deprecated tuple format."""
+    def test_get_data_with_tuple_raises(self):
+        """Legacy tuple format is hard-removed; Entry is required."""
         # Local application imports
         from twin4build.utils.plot.plot import get_data
 
         data = np.array([1.0, 2.0, 3.0])
-        t = (data, "Test Label")
-
-        with self.assertWarns(DeprecationWarning):
-            parsed_data, fmt, axis, kwargs = get_data(t)
-
-        self.assertIsNotNone(parsed_data)
-        self.assertIsNone(fmt)
-        self.assertIsNone(axis)
-        self.assertEqual(kwargs.get("label"), "Test Label")
+        with self.assertRaises(ValueError):
+            get_data((data, "Test Label"))
 
     def test_get_data_with_invalid_type(self):
         """Test get_data with invalid type raises error."""
@@ -656,19 +637,6 @@ class TestGetData(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             get_data("invalid")
-
-    def test_get_data_with_tuple_wrong_length(self):
-        """Test get_data with tuple of wrong length returns None."""
-        # Local application imports
-        from twin4build.utils.plot.plot import get_data
-
-        # Tuple with more than 2 elements returns None for legacy component processing
-        t = (np.array([1.0]), "label", "extra")
-
-        with self.assertWarns(DeprecationWarning):
-            data, fmt, axis, kwargs = get_data(t)
-
-        self.assertIsNone(data)
 
     def test_get_data_converts_list_to_numpy(self):
         """Test get_data converts list to numpy array."""
@@ -1126,157 +1094,6 @@ class TestGetFigAxes(unittest.TestCase):
         fig, axes = get_fig_axes("My Test Title", n_plots=1)
 
         self.assertEqual(fig._suptitle.get_text(), "My Test Title")
-
-        plt.close(fig)
-
-
-class TestPlotComponentDeprecated(unittest.TestCase):
-    """Tests for deprecated plot_component function."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.time = pd.date_range(start="2023-01-01", periods=24, freq="h")
-        self.data1 = np.sin(np.linspace(0, 2 * np.pi, 24))
-        self.data2 = np.cos(np.linspace(0, 2 * np.pi, 24))
-
-    def tearDown(self):
-        """Clean up after tests."""
-        plt.close("all")
-
-    def test_plot_component_with_entry_objects(self):
-        """Test plot_component with Entry objects."""
-        # Standard library imports
-        from unittest.mock import Mock
-
-        # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot_component
-
-        # Create mock simulator
-        mock_simulator = Mock()
-        mock_simulator.date_time_steps = self.time
-
-        entry1 = Entry(data=self.data1, label="Test Data")
-
-        with self.assertWarns(DeprecationWarning):
-            fig, axes = plot_component(
-                simulator=mock_simulator,
-                components_1axis=[entry1],
-                show=False,
-            )
-
-        self.assertIsInstance(fig, Figure)
-
-        plt.close(fig)
-
-    def test_plot_component_with_direct_data_tuples(self):
-        """Test plot_component with direct data tuples (deprecated format)."""
-        # Standard library imports
-        from unittest.mock import Mock
-
-        # Local application imports
-        from twin4build.utils.plot.plot import plot_component
-
-        mock_simulator = Mock()
-        mock_simulator.date_time_steps = self.time
-
-        # Direct data tuple format: (data, label)
-        with self.assertWarns(DeprecationWarning):
-            fig, axes = plot_component(
-                simulator=mock_simulator,
-                components_1axis=[(self.data1, "Direct Data")],
-                show=False,
-            )
-
-        self.assertIsInstance(fig, Figure)
-
-        plt.close(fig)
-
-    def test_plot_component_multiple_axes_with_entries(self):
-        """Test plot_component with entries on multiple axes."""
-        # Standard library imports
-        from unittest.mock import Mock
-
-        # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot_component
-
-        mock_simulator = Mock()
-        mock_simulator.date_time_steps = self.time
-
-        entry1 = Entry(data=self.data1, label="Axis 1")
-        entry2 = Entry(data=self.data2, label="Axis 2")
-
-        with self.assertWarns(DeprecationWarning):
-            fig, axes = plot_component(
-                simulator=mock_simulator,
-                components_1axis=[entry1],
-                components_2axis=[entry2],
-                ylabel_1axis="Amp 1",
-                ylabel_2axis="Amp 2",
-                show=False,
-            )
-
-        self.assertIsInstance(fig, Figure)
-        self.assertEqual(len(axes), 2)
-
-        plt.close(fig)
-
-    def test_plot_component_three_axes_with_entries(self):
-        """Test plot_component with entries on three axes."""
-        # Standard library imports
-        from unittest.mock import Mock
-
-        # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot_component
-
-        mock_simulator = Mock()
-        mock_simulator.date_time_steps = self.time
-
-        data3 = np.linspace(0, 100, 24)
-
-        entry1 = Entry(data=self.data1, label="Axis 1")
-        entry2 = Entry(data=self.data2, label="Axis 2")
-        entry3 = Entry(data=data3, label="Axis 3")
-
-        with self.assertWarns(DeprecationWarning):
-            fig, axes = plot_component(
-                simulator=mock_simulator,
-                components_1axis=[entry1],
-                components_2axis=[entry2],
-                components_3axis=[entry3],
-                ylabel_1axis="Amp 1",
-                ylabel_2axis="Amp 2",
-                ylabel_3axis="Value",
-                show=False,
-            )
-
-        self.assertIsInstance(fig, Figure)
-        self.assertEqual(len(axes), 3)
-
-        plt.close(fig)
-
-    def test_plot_component_direct_tuples_multiple_axes(self):
-        """Test plot_component with direct data tuples on multiple axes."""
-        # Standard library imports
-        from unittest.mock import Mock
-
-        # Local application imports
-        from twin4build.utils.plot.plot import plot_component
-
-        mock_simulator = Mock()
-        mock_simulator.date_time_steps = self.time
-
-        with self.assertWarns(DeprecationWarning):
-            fig, axes = plot_component(
-                simulator=mock_simulator,
-                components_1axis=[(self.data1, "Axis 1")],
-                components_2axis=[(self.data2, "Axis 2")],
-                ylabel_1axis="Amp 1",
-                ylabel_2axis="Amp 2",
-                show=False,
-            )
-
-        self.assertIsInstance(fig, Figure)
-        self.assertEqual(len(axes), 2)
 
         plt.close(fig)
 

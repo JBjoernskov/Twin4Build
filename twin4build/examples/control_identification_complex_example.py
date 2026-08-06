@@ -15,7 +15,7 @@ The optimizer must learn:
 
 True controllers:
 - Actuator 0: PI with Kp=0.15, Ti=8.0 → PID candidate learns Td=0
-- Actuator 1: On-Off with offValue=0, onValue=1, steepness=10
+- Actuator 1: On-Off with off_value=0, on_value=1, steepness=10
 """
 
 # Standard library imports
@@ -36,8 +36,8 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
-from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_torch_system import (
-    OnOffControllerTorchSystem,
+from twin4build.systems.controller.rulebased_controller.on_off_controller.smooth_on_off_controller_system import (
+    SmoothOnOffControllerSystem,
 )
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
@@ -126,7 +126,7 @@ def generate_single_controller_data(
     model = tb.Model(id=f"{controller_type}_model")
 
     # Building space with thermal dynamics
-    building_space = tb.BuildingSpaceThermalTorchSystem(
+    building_space = tb.BuildingSpaceThermalSystem(
         C_air=3e6,
         C_wall=2e6,
         R_out=0.01,
@@ -137,8 +137,8 @@ def generate_single_controller_data(
         id="room",
     )
 
-    valve = tb.ValveTorchSystem(waterFlowRateMax=0.05, valveAuthority=0.5, id="valve")
-    heater = tb.SpaceHeaterTorchSystem(
+    valve = tb.ValveSystem(waterFlowRateMax=0.05, valveAuthority=0.5, id="valve")
+    heater = tb.SpaceHeaterSystem(
         Q_flow_nominal_sh=2000.0,
         T_a_nominal_sh=55.0,
         T_b_nominal_sh=45.0,
@@ -149,14 +149,14 @@ def generate_single_controller_data(
     # Create controller based on type
     if controller_type == "pi":
         controller = tb.PIDControllerSystem(
-            kp=pi_kp, Ti=pi_Ti, Td=0.0, isReverse=True, id="controller"
+            kp=pi_kp, Ti=pi_Ti, Td=0.0, is_reverse=True, id="controller"
         )
     else:  # onoff
-        controller = OnOffControllerTorchSystem(
-            offValue=0.0,
-            onValue=1.0,
+        controller = SmoothOnOffControllerSystem(
+            off_value=0.0,
+            on_value=1.0,
             steepness=onoff_steepness,
-            isReverse=True,
+            is_reverse=True,
             id="controller",
         )
 
@@ -339,7 +339,7 @@ def generate_dual_actuator_data(
 
     true_params = {
         "pi": {"kp": pi_kp, "Ti": pi_Ti},
-        "onoff": {"offValue": 0.0, "onValue": 1.0, "steepness": onoff_steepness},
+        "onoff": {"off_value": 0.0, "on_value": 1.0, "steepness": onoff_steepness},
     }
 
     return (
@@ -518,14 +518,14 @@ def create_controller_candidates():
     """
     controller_classes = [
         PIDControllerSystem,  # Candidate 0: PID (true for actuator 0, will learn Td=0)
-        OnOffControllerTorchSystem,  # Candidate 1: On-Off (true for actuator 1)
+        SmoothOnOffControllerSystem,  # Candidate 1: On-Off (true for actuator 1)
     ]
 
     controller_kwargs = [
         # Candidate 0: PID - will learn Kp, Ti, Td (Td should go to 0 for PI behavior)
-        {"kp": 1e-3, "Ti": 10.0, "Td": 0.0, "isReverse": True},
+        {"kp": 1e-3, "Ti": 10.0, "Td": 0.0, "is_reverse": True},
         # Candidate 1: On-Off controller (differentiable version)
-        {"offValue": 0.0, "onValue": 1.0, "steepness": 10.0, "isReverse": True},
+        {"off_value": 0.0, "on_value": 1.0, "steepness": 10.0, "is_reverse": True},
     ]
 
     return controller_classes, controller_kwargs
@@ -796,7 +796,7 @@ def run_complex_identification_example():
         model.add_component(sched)
 
     # Create controller with 2 actuators and multiple candidates
-    controller = tb.ControllerIdentificationTorchSystem(
+    controller = tb.ControllerIdentificationSystem(
         n_sensors=len(sensors),
         n_setpoints=len(setpoints),
         n_actuators=2,  # TWO ACTUATORS
@@ -863,7 +863,7 @@ def run_complex_identification_example():
     #   - beta_1: [0, 1.0, 0, 0, 0, 0, 0] (sensor 1 = ONOFF_TRUE for actuator 1)
     #   - gamma_1: [1.0, 0, 0, 0, 0, 0] (TRUE setpoint)
     #   - PI params: kp=0.001, Ti=8.0, Td=0.0  (kp is at lower bound!)
-    #   - On-Off params: offValue=0.0, onValue=1.0, steepness=100
+    #   - On-Off params: off_value=0.0, on_value=1.0, steepness=100
 
     parameters_exact_optimal = []
     for comp, attr, x0, lb, ub, *_ in parameters:
@@ -885,9 +885,9 @@ def run_complex_identification_example():
             x0 = true_pi_Ti / 2  # EXACT: 8.0
         elif "Td" in attr:
             x0 = 0.0  # EXACT: 0
-        elif "offValue" in attr:
+        elif "off_value" in attr:
             x0 = 0.0  # EXACT: 0
-        elif "onValue" in attr:
+        elif "on_value" in attr:
             x0 = 1.0  # EXACT: 1
         elif "steepness" in attr:
             x0 = true_onoff_steepness / 2  # EXACT: 100

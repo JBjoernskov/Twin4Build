@@ -13,7 +13,7 @@ from psycopg2.extras import RealDictCursor
 
 # Local application imports
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 
 
 def parseDateStr(s):
@@ -28,8 +28,8 @@ def parseDateStr(s):
 
 def sample_from_df(
     df,
-    datecolumn=0,
-    valuecolumn=None,
+    date_column=0,
+    value_column=None,
     step_size=None,
     start_time=None,
     end_time=None,
@@ -105,8 +105,8 @@ def sample_from_df(
     Returns:
         pandas.DataFrame: Processed DataFrame with resampled time series data
     """
-    assert datecolumn != valuecolumn, "datecolumn and valuecolumn cannot be the same"
-    df = df.rename(columns={df.columns.to_list()[datecolumn]: "date_time"})
+    assert date_column != value_column, "date_column and value_column cannot be the same"
+    df = df.rename(columns={df.columns.to_list()[date_column]: "date_time"})
 
     LOGGER.task("Starting dataframe sampling")
     LOGGER.add_level()
@@ -116,11 +116,11 @@ def sample_from_df(
         LOGGER.config("Step size: %s", step_size)
 
         for i, column in enumerate(df.columns.to_list()):
-            if column != "date_time" and valuecolumn is None:
+            if column != "date_time" and value_column is None:
                 df[column] = pd.to_numeric(
                     df[column], errors="coerce"
                 )  # Remove string entries
-            elif i == valuecolumn:
+            elif i == value_column:
                 df[column] = pd.to_numeric(
                     df[column], errors="coerce"
                 )  # Remove string entries
@@ -220,8 +220,8 @@ def sample_from_df(
 
 def load_from_spreadsheet(
     filename,
-    datecolumn=0,
-    valuecolumn=None,
+    date_column=0,
+    value_column=None,
     step_size=None,
     start_time=None,
     end_time=None,
@@ -250,7 +250,7 @@ def load_from_spreadsheet(
         # Check if file is cached
         startTime_str = start_time.strftime("%d-%m-%Y %H-%M-%S")
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S")
-        col_suffix = f"_col({valuecolumn})" if valuecolumn is not None else ""
+        col_suffix = f"_col({value_column})" if value_column is not None else ""
         cached_filename = f"name({os.path.basename(name)})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str}){col_suffix}_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
@@ -268,13 +268,13 @@ def load_from_spreadsheet(
             else:
                 raise Exception(f"Invalid file extension: {file_extension}")
 
-        if valuecolumn is not None:
-            valuename = df.columns[valuecolumn]
+        if value_column is not None:
+            valuename = df.columns[value_column]
 
         df = sample_from_df(
             df,
-            datecolumn,
-            valuecolumn=valuecolumn,
+            date_column=date_column,
+            value_column=value_column,
             step_size=step_size,
             start_time=start_time,
             end_time=end_time,
@@ -284,7 +284,7 @@ def load_from_spreadsheet(
             preserve_order=preserve_order,
         )
 
-        if valuecolumn is not None:
+        if value_column is not None:
             df = df[valuename]
 
         if cache:
@@ -682,8 +682,8 @@ def load_from_database(
     # Pass valuecolumn to match the behavior of load_from_spreadsheet
     df = sample_from_df(
         df,
-        datecolumn=0,  # date_time column
-        valuecolumn=1,  # value column (consistent with load_from_spreadsheet)
+        date_column=0,  # date_time column
+        value_column=1,  # value column (consistent with load_from_spreadsheet)
         step_size=step_size,
         start_time=start_time,
         end_time=end_time,

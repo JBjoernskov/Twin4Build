@@ -74,12 +74,8 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.ticker import ScalarFormatter
 
 # Local application imports
-import twin4build.core as core
-import twin4build.utils.types as tps
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.plot.align_y_axes import alignYaxes
-
-# Named tuple for plot component specifications
 
 
 class Entry:
@@ -95,14 +91,6 @@ class Entry:
             label for the plot line) is required; common optional keys include
             ``color`` (None for automatic color selection) and ``linewidth``
             (None for automatic width selection).
-
-        Deprecated parameters (backward compatibility):
-            component: Deprecated, use direct data instead.
-            port: Deprecated, use direct data instead.
-            io_type: Deprecated, use direct data instead.
-            input_idx: Deprecated, use direct data instead.
-            attribute: Deprecated, use ``label`` instead.
-            linestyle: Deprecated, use ``fmt`` instead.
 
     Examples:
         Basic usage::
@@ -124,54 +112,8 @@ class Entry:
         data=None,
         fmt=None,
         axis=1,
-        # Deprecated parameters for backward compatibility
-        component=None,
-        port=None,
-        io_type=None,
-        input_idx=None,
-        attribute=None,
-        linestyle=None,
         **kwargs,
     ):
-
-        # Handle deprecated parameters
-        if (
-            component is not None
-            or port is not None
-            or io_type is not None
-            or input_idx is not None
-        ):
-            # Standard library imports
-            import warnings
-
-            warnings.warn(
-                "Component-based plotting is deprecated. Use direct data arrays instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
-        if attribute is not None and kwargs.get("label") is None:
-            # Standard library imports
-            import warnings
-
-            warnings.warn(
-                "The 'attribute' parameter is deprecated. Use 'label' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            kwargs["label"] = attribute
-
-        if linestyle is not None and fmt is None:
-            # Standard library imports
-            import warnings
-
-            warnings.warn(
-                "The 'linestyle' parameter is deprecated. Use 'fmt' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            fmt = linestyle
-
         # Check for common mistake: passing a method instead of calling it
         if callable(data):
             raise TypeError(
@@ -341,46 +283,21 @@ def bar_plot_line_format(label, evaluation_metric):
 
 def get_data(t):
     """
-    Extract data, label, color, and format from an Entry or legacy tuple.
+    Extract data, label, color, and format from an Entry.
 
     Args:
-        t: Entry object or legacy tuple
+        t: Entry object
 
     Returns:
         tuple: (data, fmt, axis, kwargs)
     """
-    # Handle Entry class (and Option for backward compatibility)
-    if isinstance(t, Entry):
-        data = t.data
-        fmt = t.fmt
-        axis = t.axis
-        kwargs = t.kwargs
+    if not isinstance(t, Entry):
+        raise ValueError(f"Wrong input type. Got {type(t)}, expected Entry object")
 
-    # Handle legacy tuple formats for backward compatibility
-    elif isinstance(t, tuple):
-        # Standard library imports
-        import warnings
-
-        warnings.warn(
-            "Using tuples for plot data is deprecated. Use tb.plot.Entry() instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-
-        if len(t) == 2:
-            # Direct data case
-            data, label = t
-            kwargs = {"label": label}
-            fmt = None
-            axis = None
-        else:
-            # For backward compatibility, we should not raise an error here
-            # Instead, return None to indicate this needs component-based processing
-            return None, None, None, None
-    else:
-        raise ValueError(
-            f"Wrong input type. Got {type(t)}, expected Entry object or tuple"
-        )
+    data = t.data
+    fmt = t.fmt
+    axis = t.axis
+    kwargs = t.kwargs
 
     if isinstance(data, (list, pd.Series)):
         data = np.array(data)
@@ -396,126 +313,6 @@ def get_data(t):
         data = data.reshape(1, -1)
 
     return data, fmt, axis, kwargs
-
-
-def get_data_legacy(simulator, t):
-    """
-    Legacy function to extract data from component-based tuples.
-    This maintains full backward compatibility.
-
-    Args:
-        simulator: The simulator object containing the model and time steps
-        t: Legacy tuple with component information
-
-    Returns:
-        tuple: (data, label)
-    """
-
-    # Handle legacy tuple formats for backward compatibility
-    if isinstance(t, tuple):
-        # Standard library imports
-        import warnings
-
-        warnings.warn(
-            "Using component-based tuples is deprecated. Use direct data arrays instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-
-        if len(t) >= 3:
-            if len(t) == 4:
-                component, attribute, io_type, input_idx = t
-            elif len(t) == 3:
-                component, attribute, io_type = t
-                input_idx = None
-        elif len(t) == 2:
-            data, attribute = t
-            assert isinstance(
-                data, (torch.Tensor, np.ndarray, pd.Series, list)
-            ), f"If 2-tuple, first element must be a torch.Tensor or np.ndarray or pd.Series, got {type(data)}"
-            assert isinstance(
-                attribute, str
-            ), f"If 2-tuple, second element must be a string, got {type(attribute)}"
-        else:
-            m = f"Wrong input output type specification. Got {t}, expected (component, attribute) or (component, attribute, 'input' or 'output')"
-            raise (Exception(m))
-    else:
-        raise ValueError(
-            f"Expected tuple for legacy component processing, got {type(t)}"
-        )
-
-    # Handle component processing
-    if isinstance(component, core.System):
-        component = component
-    elif isinstance(component, str):
-        component = simulator.model.components[component]
-    else:
-        m = f"Wrong component type. Got {type(component)}, expected {core.System} or str"
-        raise (Exception(m))
-
-    assert isinstance(
-        attribute, str
-    ), f"Attribute must be a string, got {type(attribute)}"
-
-    # Default io_type to "output" if not specified
-    if io_type is None:
-        io_type = "output"
-
-    # Validate vector/scalar types based on input_idx
-    if input_idx is not None:
-        if io_type == "input":
-            assert isinstance(
-                component.input[attribute], tps.Vector
-            ), "Attribute must be a vector when input_idx is provided"
-        else:
-            assert isinstance(
-                component.output[attribute], tps.Vector
-            ), "Attribute must be a vector when input_idx is provided"
-    else:
-        if io_type == "input":
-            assert isinstance(
-                component.input[attribute], tps.Scalar
-            ), "Attribute must be a scalar when input_idx is not provided"
-        else:
-            assert isinstance(
-                component.output[attribute], tps.Scalar
-            ), "Attribute must be a scalar when input_idx is not provided"
-
-    # Extract data
-    # History uses time-first layout (n_t, n_s, n_c) for Scalar and (n_t, n_s, n_c, n_v) for Vector
-    # For plotting, we select the first component (n_c=0) and permute to get (n_s, n_t) or (n_s, n_t, n_v)
-    if io_type == "input":
-        # Get history with first component selected: (n_t, n_s) for Scalar, (n_t, n_s, n_v) for Vector
-        data = component.input[attribute].history(i_c=0).detach()
-        # Permute to (n_s, n_t, ...) for plotting
-        if input_idx is not None:
-            # For Vector: (n_t, n_s, n_v) -> select n_v then permute
-            data = data[:, :, input_idx].permute(1, 0)  # (n_t, n_s) -> (n_s, n_t)
-            display_label = f"{attribute}[{input_idx}]"
-        else:
-            # For Scalar: (n_t, n_s) -> (n_s, n_t)
-            data = data.permute(1, 0)
-            display_label = attribute
-    elif io_type == "output":
-        # Get history with first component selected: (n_t, n_s) for Scalar, (n_t, n_s, n_v) for Vector
-        data = component.output[attribute].history(i_c=0).detach()
-        # Permute to (n_s, n_t, ...) for plotting
-        if input_idx is not None:
-            # For Vector: (n_t, n_s, n_v) -> select n_v then permute
-            data = data[:, :, input_idx].permute(1, 0)  # (n_t, n_s) -> (n_s, n_t)
-            display_label = f"{attribute}[{input_idx}]"
-        else:
-            # For Scalar: (n_t, n_s) -> (n_s, n_t)
-            data = data.permute(1, 0)
-            display_label = attribute
-    else:
-        m = f"Wrong input output type specification. Got {io_type}, expected 'input' or 'output'"
-        raise (Exception(m))
-
-    # Use attribute name as label for legacy tuples
-    final_label = display_label
-
-    return data, final_label
 
 
 def filter_nans(time, data):
@@ -674,11 +471,6 @@ def plot(
     legend_labels = []
     for entry in entries:
         data, fmt, axis, kwargs = get_data(entry)
-        if data is None:
-            raise ValueError(
-                "Component-based tuples are not supported in the new plot() function. "
-                "Use plot_component() for backward compatibility or convert to direct data arrays."
-            )
         fmt = fmt if fmt is not None else "-"
         target_ax = axis_map[axis]
         assert data.shape[0] == len(
@@ -823,121 +615,3 @@ def get_fig_axes(
     fig.suptitle(title_name, fontsize=20)
     return fig, axes
 
-
-def plot_component(
-    simulator,
-    components_1axis,
-    components_2axis=None,
-    components_3axis=None,
-    ylabel_1axis=None,
-    ylabel_2axis=None,
-    ylabel_3axis=None,
-    ylim_1axis=None,
-    ylim_2axis=None,
-    ylim_3axis=None,
-    title=None,
-    nticks=11,
-    roundto_1axis=None,
-    roundto_2axis=None,
-    roundto_3axis=None,
-    yoffset_1axis=None,
-    yoffset_2axis=None,
-    yoffset_3axis=None,
-    align_zero=True,
-    show=False,
-):
-    """
-    Deprecated: Use :func:`plot` with a ``time`` parameter and :class:`Entry` objects instead.
-
-    Plots component outputs directly from a simulator by converting legacy
-    ``(component, port)``-style tuples into :class:`Entry` objects and
-    delegating to :func:`plot`. The ``components_*axis`` lists select what is
-    drawn on each of the up-to-three y-axes; all remaining parameters have the
-    same meaning as in :func:`plot`.
-
-    This function is maintained for backward compatibility but will be removed in a future version.
-    """
-    # Standard library imports
-    import warnings
-
-    warnings.warn(
-        "plot_component() is deprecated. Use plot(time, entries) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    # Extract time from simulator
-    time = simulator.date_time_steps
-
-    # Convert old-style components to Entry objects
-    entries = []
-
-    # Add axis 1 components
-    for comp in components_1axis:
-        if isinstance(comp, Entry):
-            # Override axis to ensure it's set correctly
-            comp.axis = 1
-            entries.append(comp)
-        else:
-            # Handle legacy tuples with full backward compatibility
-            if len(comp) == 2:
-                # Direct data tuple
-                entries.append(Entry(data=comp[0], label=comp[1], axis=1))
-            else:
-                # Component-based tuple - extract data using legacy function
-                data, label = get_data_legacy(simulator, comp)
-                entries.append(Entry(data=data, label=label, axis=1))
-
-    # Add axis 2 components
-    if components_2axis:
-        for comp in components_2axis:
-            if isinstance(comp, Entry):
-                # Override axis to ensure it's set correctly
-                comp.axis = 2
-                entries.append(comp)
-            else:
-                if len(comp) == 2:
-                    # Direct data tuple
-                    entries.append(Entry(data=comp[0], label=comp[1], axis=2))
-                else:
-                    # Component-based tuple - extract data using legacy function
-                    data, label = get_data_legacy(simulator, comp)
-                    entries.append(Entry(data=data, label=label, axis=2))
-
-    # Add axis 3 components
-    if components_3axis:
-        for comp in components_3axis:
-            if isinstance(comp, Entry):
-                # Override axis to ensure it's set correctly
-                comp.axis = 3
-                entries.append(comp)
-            else:
-                if len(comp) == 2:
-                    # Direct data tuple
-                    entries.append(Entry(data=comp[0], label=comp[1], axis=3))
-                else:
-                    # Component-based tuple - extract data using legacy function
-                    data, label = get_data_legacy(simulator, comp)
-                    entries.append(Entry(data=data, label=label, axis=3))
-
-    # Call the new plot function
-    return plot(
-        time=time,
-        entries=entries,
-        ylabel_1axis=ylabel_1axis,
-        ylabel_2axis=ylabel_2axis,
-        ylabel_3axis=ylabel_3axis,
-        ylim_1axis=ylim_1axis,
-        ylim_2axis=ylim_2axis,
-        ylim_3axis=ylim_3axis,
-        title=title,
-        nticks=nticks,
-        roundto_1axis=roundto_1axis,
-        roundto_2axis=roundto_2axis,
-        roundto_3axis=roundto_3axis,
-        yoffset_1axis=yoffset_1axis,
-        yoffset_2axis=yoffset_2axis,
-        yoffset_3axis=yoffset_3axis,
-        align_zero=align_zero,
-        show=show,
-    )

@@ -12,7 +12,7 @@ import twin4build
 
 twin4build._IS_TESTING = True
 
-from twin4build.systems.wall.wall_torch_system import WallTorchSystem
+from twin4build.systems.wall.wall_system import WallSystem
 
 
 class TestWallTorchSystem(unittest.TestCase):
@@ -26,7 +26,7 @@ class TestWallTorchSystem(unittest.TestCase):
     DT = 600
 
     def _make_wall(self, R_a, R_b, T_init=T_INIT, n_steps=6, batch_size=1):
-        wall = WallTorchSystem(
+        wall = WallSystem(
             C=self.C, R_a=R_a, R_b=R_b, T_init=T_init, id="test_wall"
         )
         start = [
@@ -81,7 +81,7 @@ class TestWallTorchSystem(unittest.TestCase):
         sampling error (small steps -> small error)."""
         t_a, t_b = 30.0, 10.0
         dt = 60  # small vs the wall time constant (~2860 s)
-        wall = WallTorchSystem(
+        wall = WallSystem(
             C=self.C, R_a=self.R_A, R_b=self.R_B, T_init=self.T_INIT, id="wall_eb"
         )
         n_steps = 60

@@ -390,7 +390,7 @@ setpoints = [zone_temp_setpoint_sensor]
 
 # Create controller with 2 actuators (damper + reheat valve)
 # Default candidates: PID (reverse), PID (non-reverse), Cascade PID, SAT-Compensated cascade
-controller = tb.ControllerIdentificationTorchSystem(
+controller = tb.ControllerIdentificationSystem(
     n_sensors=len(sensors),
     n_setpoints=len(setpoints),
     n_actuators=len(actuator_sensors),  # 2 actuators
@@ -708,17 +708,17 @@ for i in range(len(actuator_sensors)):
         tb.plot.Entry(actual_values[i], label=f"Actual {actuator_names[i]}"),
         tb.plot.Entry(initial_predictions[i], label=f"Prediction (x0 start guess)"),
         tb.plot.Entry(
-            percent_air_flow_data, label=f"Percent Air Flow (0-1)", linestyle="-."
+            percent_air_flow_data, label=f"Percent Air Flow (0-1)", fmt="-."
         ),
         tb.plot.Entry(zone_temp_data, label=f"Zone Temperature", axis=2),
         tb.plot.Entry(
-            zone_setpoint_data, label=f"Zone Setpoint", axis=2, linestyle="--"
+            zone_setpoint_data, label=f"Zone Setpoint", axis=2, fmt="--"
         ),
         tb.plot.Entry(
-            temp_error_data, label=f"Temp Error (SP - actual)", axis=2, linestyle=":"
+            temp_error_data, label=f"Temp Error (SP - actual)", axis=2, fmt=":"
         ),
         tb.plot.Entry(
-            ahu_sat_plot_data, label=f"AHU Supply Air Temp", axis=2, linestyle="-."
+            ahu_sat_plot_data, label=f"AHU Supply Air Temp", axis=2, fmt="-."
         ),
     ]
     tb.plot.plot(
@@ -782,7 +782,7 @@ entry_a = [
     tb.plot.Entry(cascade_a_setpoint, label="A-loop Setpoint (weighted zone temp SP)"),
     tb.plot.Entry(cascade_a_feedback, label="A-loop Feedback (weighted zone temp)"),
     tb.plot.Entry(
-        cascade_a_error, label="A-loop Error (SP - feedback)", linestyle="-."
+        cascade_a_error, label="A-loop Error (SP - feedback)", fmt="-."
     ),
     tb.plot.Entry(
         cascade_a_output, label="A-loop Output (intermediate flow SP)", axis=2
@@ -802,7 +802,7 @@ entry_b = [
     tb.plot.Entry(cascade_b_feedback, label="B-loop Feedback (weighted % air flow)"),
     tb.plot.Entry(cascade_b_output, label="B-loop Output (damper position)", axis=2),
     tb.plot.Entry(
-        actual_values[0], label="Actual Damper Position", axis=2, linestyle="--"
+        actual_values[0], label="Actual Damper Position", axis=2, fmt="--"
     ),
 ]
 tb.plot.plot(
@@ -819,10 +819,10 @@ entry_cascade = [
     tb.plot.Entry(cascade_a_feedback, label="Zone Temp (A-feedback)"),
     tb.plot.Entry(cascade_a_output, label="A→B Flow SP (intermediate)", axis=2),
     tb.plot.Entry(
-        cascade_b_feedback, label="% Air Flow (B-feedback)", axis=2, linestyle="-."
+        cascade_b_feedback, label="% Air Flow (B-feedback)", axis=2, fmt="-."
     ),
     tb.plot.Entry(
-        cascade_b_output, label="Damper Cmd (B-output)", axis=2, linestyle="--"
+        cascade_b_output, label="Damper Cmd (B-output)", axis=2, fmt="--"
     ),
 ]
 tb.plot.plot(
@@ -1992,7 +1992,7 @@ for a in range(len(actuator_sensors)):
                         f"          kp={sub.kp.get().item():.6f}, Ti={sub.Ti.get().item():.6f}, Td={sub.Td.get().item():.6f}"
                     )
                     print(
-                        f"          output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}, isReverse={sub.isReverse}"
+                        f"          output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}, is_reverse={sub.isReverse}"
                     )
                 if hasattr(sub, "base_position"):
                     print(
@@ -2006,7 +2006,7 @@ for a in range(len(actuator_sensors)):
                 f"        kp={ctrl.kp.get().item():.6f}, Ti={ctrl.Ti.get().item():.6f}, Td={ctrl.Td.get().item():.6f}"
             )
             print(
-                f"        output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}, isReverse={ctrl.isReverse}"
+                f"        output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}, is_reverse={ctrl.isReverse}"
             )
 
 # ==========================================================================
@@ -2264,7 +2264,7 @@ for a in range(len(actuator_sensors)):
                         f"        kp={sub.kp.get().item():.6f}, Ti={sub.Ti.get().item():.6f}, Td={sub.Td.get().item():.6f}"
                     )
                     print(
-                        f"        output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}, isReverse={sub.isReverse}"
+                        f"        output_min={sub.output_min.get().item():.4f}, output_max={sub.output_max.get().item():.4f}, is_reverse={sub.isReverse}"
                     )
                 if hasattr(sub, "base_position"):
                     print(
@@ -2278,7 +2278,7 @@ for a in range(len(actuator_sensors)):
                 f"      kp={ctrl.kp.get().item():.6f}, Ti={ctrl.Ti.get().item():.6f}, Td={ctrl.Td.get().item():.6f}"
             )
             print(
-                f"      output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}, isReverse={ctrl.isReverse}"
+                f"      output_min={ctrl.output_min.get().item():.4f}, output_max={ctrl.output_max.get().item():.4f}, is_reverse={ctrl.isReverse}"
             )
 
 # ==========================================================================
@@ -2315,14 +2315,14 @@ for i in range(len(actuator_sensors)):
         tb.plot.Entry(initial_predictions[i], label=f"Initial Prediction"),
         tb.plot.Entry(final_predictions[i], label=f"Identified Prediction"),
         tb.plot.Entry(
-            percent_air_flow_data, label=f"Percent Air Flow (0-1)", linestyle="-."
+            percent_air_flow_data, label=f"Percent Air Flow (0-1)", fmt="-."
         ),
         tb.plot.Entry(zone_temp_data, label=f"Zone Temperature", axis=2),
         tb.plot.Entry(
-            zone_setpoint_data, label=f"Zone Setpoint", axis=2, linestyle="--"
+            zone_setpoint_data, label=f"Zone Setpoint", axis=2, fmt="--"
         ),
         tb.plot.Entry(
-            ahu_sat_plot_data, label=f"AHU Supply Air Temp", axis=2, linestyle="-."
+            ahu_sat_plot_data, label=f"AHU Supply Air Temp", axis=2, fmt="-."
         ),
     ]
 

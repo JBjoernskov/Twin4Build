@@ -93,8 +93,8 @@ def main():
 
     valve_position_schedule = tb.ScheduleSystem(
         filename=valve_csv,
-        datecolumn=0,
-        valuecolumn=1,
+        date_column=0,
+        value_column=1,
         id="valve_position_schedule",
     )
 

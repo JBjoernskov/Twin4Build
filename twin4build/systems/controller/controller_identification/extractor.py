@@ -1,7 +1,7 @@
 """Extract learned controllers from a trained CITS model and wire them into
 a Stage-2 full-physics :class:`~twin4build.model.simulation_model.SimulationModel`.
 
-The :class:`ControllerIdentificationTorchSystem` (CITS) is a *soft*
+The :class:`ControllerIdentificationSystem` (CITS) is a *soft*
 selector: during training it blends several candidate controllers via
 ``alpha``/``beta``/``gamma`` weights and an optional
 :class:`~twin4build.systems.utils.sigmoid_gate.SigmoidGate`.  After
@@ -40,8 +40,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 
 import twin4build.core as core
-from twin4build.systems.controller.controller_identification.controller_identification_torch_system import (
-    ControllerIdentificationTorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_system import (
+    ControllerIdentificationSystem,
 )
 from twin4build.translator.translator import Translator as _Translator
 from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
@@ -75,7 +75,7 @@ def _uri_str(node: Any) -> str:
 
 
 def _topology_at_actuator(
-    cits: ControllerIdentificationTorchSystem, actuator: int
+    cits: ControllerIdentificationSystem, actuator: int
 ) -> Tuple[
     List[Tuple[int, core.System]],
     List[Tuple[int, core.System]],
@@ -116,7 +116,7 @@ def _topology_at_actuator(
 
 
 def _actuator_brick_nodes(
-    cits: ControllerIdentificationTorchSystem,
+    cits: ControllerIdentificationSystem,
     translator: Any,
     actuator: int,
 ) -> List[Any]:
@@ -139,7 +139,7 @@ def _actuator_brick_nodes(
     SP-side ``Node`` has a ``cls`` tuple, and the actuator member has
     ``cls = (BRICK.Command,)`` or ``cls = (BRICK.Damper_Position_Setpoint,)``
     (per the patterns in
-    :mod:`twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system`).
+    :mod:`twin4build.systems.controller.controller_identification.controller_identification_pi_system`).
     The matched SM node for that SP-side member is the actuator
     BRICK URI we need for cross-stage lookup -- which is also a key in
     Stage-2's ``_sem2sim_map`` (the historized-command SensorSystem in
@@ -348,7 +348,7 @@ def _clone_pid(pid: PIDControllerSystem, new_id: str) -> PIDControllerSystem:
         Td=_to_float(pid.Td),
         output_min=_to_float(pid.output_min),
         output_max=_to_float(pid.output_max),
-        isReverse=bool(pid.isReverse),
+        is_reverse=bool(pid.isReverse),
         id=new_id,
     )
 
@@ -362,10 +362,10 @@ def _clone_candidate(
     ``isReverse`` is carried verbatim since it is a Python bool (not
     a ``tps.Parameter``).
     """
-    if candidate_type == ControllerIdentificationTorchSystem.CTRL_SETPOINT:
+    if candidate_type == ControllerIdentificationSystem.CTRL_SETPOINT:
         return _clone_pid(src_ctrl, new_id)
 
-    if candidate_type == ControllerIdentificationTorchSystem.CTRL_CASCADE:
+    if candidate_type == ControllerIdentificationSystem.CTRL_CASCADE:
         a, b = src_ctrl.ctrl_a, src_ctrl.ctrl_b
         # Assume PID-like inner controllers for the cascade clone; this
         # matches the default CITS cascade candidate
@@ -440,7 +440,7 @@ def _selected_indices(
 # ---------------------------------------------------------------------------
 
 def extract_controller(
-    cits: ControllerIdentificationTorchSystem,
+    cits: ControllerIdentificationSystem,
     translator_stage1: Any,
     actuator: int = 0,
     threshold: float = 0.5,
@@ -511,7 +511,7 @@ def extract_controller(
 
     # --- Inner-loop sensors (cascade, beta_b) ---
     sensor_b_uris: Optional[List[str]] = None
-    if candidate_type == ControllerIdentificationTorchSystem.CTRL_CASCADE:
+    if candidate_type == ControllerIdentificationSystem.CTRL_CASCADE:
         sensor_b_uris = []
         beta_b_vec = weights[f"beta_b_{actuator}"]
         for i in _selected_indices(beta_b_vec, threshold):
@@ -954,7 +954,7 @@ def extract_all_controllers(
     extracted: List[ExtractedController] = []
     cits_list = [
         c for c in sim_model_stage1.components.values()
-        if isinstance(c, ControllerIdentificationTorchSystem)
+        if isinstance(c, ControllerIdentificationSystem)
     ]
     # Deterministic order -> deterministic new component ids.
     cits_list.sort(key=lambda c: c.id)

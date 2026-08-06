@@ -6,34 +6,34 @@ simulation and optimization.
 
 Key Components:
     Building Spaces:
-        - BuildingSpaceTorchSystem: Combined thermal + CO2 (mass balance) building space model
-        - BuildingSpaceMassTorchSystem: Building space CO2 mass balance model
-        - BuildingSpaceThermalTorchSystem: Building space thermal (RC) model
+        - BuildingSpaceSystem: Combined thermal + CO2 (mass balance) building space model
+        - BuildingSpaceMassSystem: Building space CO2 mass balance model
+        - BuildingSpaceThermalSystem: Building space thermal (RC) model
 
     Building Envelope:
-        - WallTorchSystem: 2R1C wall between two zones (or zone and boundary)
+        - WallSystem: 2R1C wall between two zones (or zone and boundary)
 
     HVAC Components:
-        - SpaceHeaterTorchSystem: Space heating system
-        - FanCoilUnitTorchSystem: Fan coil unit (heating/cooling terminal unit)
-        - ValveTorchSystem: Control valve system
-        - CoilTorchSystem: Heating/cooling coil system
-        - DamperTorchSystem: Air flow control damper
-        - FanTorchSystem: Air handling fan system
+        - SpaceHeaterSystem: Space heating system
+        - FanCoilUnitSystem: Fan coil unit (heating/cooling terminal unit)
+        - ValveSystem: Control valve system
+        - CoilSystem: Heating/cooling coil system
+        - DamperSystem: Air flow control damper
+        - FanSystem: Air handling fan system
         - AirToAirHeatRecoverySystem: Heat recovery system
-        - AirHandlingUnitTorchSystem: Air handling unit system
+        - AirHandlingUnitSystem: Air handling unit system
 
     Control Systems:
         - PIDControllerSystem: Proportional-Integral-Derivative controller
         - CascadeControllerSystem: Cascade (outer/inner loop) controller
         - OnOffControllerSystem: Threshold-based on/off controller
-        - OnOffControllerTorchSystem: Torch-based on/off controller
-        - ScheduleSwitchControllerTorchSystem: Schedule-based switching controller
-        - SATLinearRuleSystem / SATCompensatedControllerTorchSystem: Supply air
+        - SmoothOnOffControllerSystem: Torch-based on/off controller
+        - ScheduleSwitchControllerSystem: Schedule-based switching controller
+        - SATLinearRuleSystem / SATCompensatedControllerSystem: Supply air
           temperature compensation rules
         - ClassificationAnnControllerSystem: ANN-based classification control
         - NeuralPolicyControllerSystem: Neural network policy control
-        - ControllerIdentificationTorchSystem / ControllerIdentificationPITorchSystem:
+        - ControllerIdentificationSystem / ControllerIdentificationPISystem:
           Controller identification models
 
     Monitoring & Measurement:
@@ -46,7 +46,7 @@ Key Components:
         - ShadingDeviceSystem: Solar shading control
 
     Utility Systems:
-        - fmuSystem: FMU-based system
+        - FmuSystem: FMU-based system
         - SupplyFlowJunctionSystem: Supply flow distribution
         - ReturnFlowJunctionSystem: Return flow collection
         - PiecewiseLinearSystem: Piecewise linear interpolation
@@ -60,38 +60,37 @@ Key Components:
 
 Note:
     Most systems are implemented using PyTorch for efficient computation and
-    optimization. FMUs can still be wrapped via fmuSystem.
+    optimization. FMUs can still be wrapped via FmuSystem.
 """
 
 # Define what gets exported with wildcard imports
 __all__ = [
     # Building Spaces
-    "BuildingSpaceTorchSystem",
-    "BuildingSpaceMassTorchSystem",
-    "BuildingSpaceThermalTorchSystem",
+    "BuildingSpaceSystem",
+    "BuildingSpaceMassSystem",
+    "BuildingSpaceThermalSystem",
     # Wall
-    "WallTorchSystem",
+    "WallSystem",
     # Space Heater
-    "SpaceHeaterTorchSystem",
+    "SpaceHeaterSystem",
     # Valves
-    "ValveTorchSystem",
+    "ValveSystem",
     # Coils
-    "CoilTorchSystem",
+    "CoilSystem",
     # Fan Coil Unit
-    "FanCoilUnitTorchSystem",
-    # Controllers # TODO: Convert to Torch
+    "FanCoilUnitSystem",
+    # Controllers
     "PIDControllerSystem",
     "CascadeControllerSystem",
-    "CascadePIDControllerSystem",  # backward-compatible alias
     "OnOffControllerSystem",
-    "OnOffControllerTorchSystem",
-    "ScheduleSwitchControllerTorchSystem",
+    "SmoothOnOffControllerSystem",
+    "ScheduleSwitchControllerSystem",
     "SATLinearRuleSystem",
-    "SATCompensatedControllerTorchSystem",
+    "SATCompensatedControllerSystem",
     "ClassificationAnnControllerSystem",
     "NeuralPolicyControllerSystem",
-    "ControllerIdentificationTorchSystem",
-    "ControllerIdentificationPITorchSystem",
+    "ControllerIdentificationSystem",
+    "ControllerIdentificationPISystem",
     "RewireReport",
     "LoopScore",
     "ActuatorSeeds",
@@ -111,15 +110,16 @@ __all__ = [
     # Air to Air Heat Recovery
     "AirToAirHeatRecoverySystem",
     # Air Handling Unit
-    "AirHandlingUnitTorchSystem",
+    "AirHandlingUnitSystem",
     # Damper
-    "DamperTorchSystem",
+    "DamperSystem",
     # Fan
-    "FanTorchSystem",
+    "FanSystem",
     # Shading
     "ShadingDeviceSystem",
-    # Uncomment these if you want to include utility classes # TODO: Convert to Torch
-    "fmuSystem",
+    # Utils
+    "FmuSystem",
+    "fmuSystem",  # deprecated alias until 2.1
     "PiecewiseLinearSystem",
     "TimeSeriesInputSystem",
     "MaxSystem",
@@ -132,41 +132,41 @@ __all__ = [
 ]
 
 # Local application imports
-from twin4build.systems.air_handling_unit.air_handling_unit_torch_system import (
-    AirHandlingUnitTorchSystem,
+from twin4build.systems.air_handling_unit.air_handling_unit_system import (
+    AirHandlingUnitSystem,
 )
 
 # Air to Air Heat Recovery
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
     AirToAirHeatRecoverySystem,
 )
-from twin4build.systems.building_space.building_space_mass_torch_system import (
-    BuildingSpaceMassTorchSystem,
+from twin4build.systems.building_space.building_space_mass_system import (
+    BuildingSpaceMassSystem,
 )
-from twin4build.systems.building_space.building_space_thermal_torch_system import (
-    BuildingSpaceThermalTorchSystem,
+from twin4build.systems.building_space.building_space_thermal_system import (
+    BuildingSpaceThermalSystem,
 )
 
 # Building Spaces
-from twin4build.systems.building_space.building_space_torch_system import (
-    BuildingSpaceTorchSystem,
+from twin4build.systems.building_space.building_space_system import (
+    BuildingSpaceSystem,
 )
 
 # Coils
-from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
+from twin4build.systems.coil.coil_system import CoilSystem
 
 # Fan Coil Unit
-from twin4build.systems.fan_coil_unit.fan_coil_unit_torch_system import (
-    FanCoilUnitTorchSystem,
+from twin4build.systems.fan_coil_unit.fan_coil_unit_system import (
+    FanCoilUnitSystem,
 )
 from twin4build.systems.controller.classification_ann_controller.classification_ann_controller_system import (
     ClassificationAnnControllerSystem,
 )
-from twin4build.systems.controller.controller_identification.controller_identification_torch_system import (
-    ControllerIdentificationTorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_system import (
+    ControllerIdentificationSystem,
 )
-from twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system import (
-    ControllerIdentificationPITorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
+    ControllerIdentificationPISystem,
 )
 from twin4build.systems.controller.controller_identification.loop_classifier import (
     ActuatorSeeds,
@@ -184,18 +184,15 @@ from twin4build.systems.controller.neural_policy_controller.neural_policy_contro
 from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_system import (
     OnOffControllerSystem,
 )
-from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_torch_system import (
-    OnOffControllerTorchSystem,
+from twin4build.systems.controller.rulebased_controller.on_off_controller.smooth_on_off_controller_system import (
+    SmoothOnOffControllerSystem,
 )
-from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_torch_system import (
-    SATCompensatedControllerTorchSystem,
+from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system import (
+    SATCompensatedControllerSystem,
     SATLinearRuleSystem,
 )
-from twin4build.systems.controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_torch_system import (
-    ScheduleSwitchControllerTorchSystem,
-)
-from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
-    CascadePIDControllerSystem,  # backward-compatible alias
+from twin4build.systems.controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_system import (
+    ScheduleSwitchControllerSystem,
 )
 from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
     CascadeControllerSystem,
@@ -207,10 +204,10 @@ from twin4build.systems.controller.setpoint_controller.pid_controller.pid_contro
 )
 
 # Damper
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+from twin4build.systems.damper.damper_system import DamperSystem
 
 # Fan
-from twin4build.systems.fan.fan_torch_system import FanTorchSystem
+from twin4build.systems.fan.fan_system import FanSystem
 from twin4build.systems.junction.return_flow_junction_system import (
     ReturnFlowJunctionSystem,
 )
@@ -238,13 +235,13 @@ from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.shading_device.shading_device_system import ShadingDeviceSystem
 
 # Space Heater
-from twin4build.systems.space_heater.space_heater_torch_system import (
-    SpaceHeaterTorchSystem,
+from twin4build.systems.space_heater.space_heater_system import (
+    SpaceHeaterSystem,
 )
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 
 # Utils
-from twin4build.systems.utils.fmu_system import fmuSystem
+from twin4build.systems.utils.fmu_system import FmuSystem
 from twin4build.systems.utils.max_system import MaxSystem
 from twin4build.systems.utils.occupancy_detector_system import OccupancyDetectorSystem
 from twin4build.systems.utils.sigmoid_gate import SigmoidGate
@@ -255,9 +252,28 @@ from twin4build.systems.utils.scalar_product_system import ScalarProductSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 
 # Valves
-from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
+from twin4build.systems.valve.valve_system import ValveSystem
 
 # Wall
-from twin4build.systems.wall.wall_torch_system import WallTorchSystem
+from twin4build.systems.wall.wall_system import WallSystem
 
 # Time series input
+
+# Deprecated class-name aliases (removed in twin4build 2.1)
+BuildingSpaceTorchSystem = BuildingSpaceSystem
+BuildingSpaceMassTorchSystem = BuildingSpaceMassSystem
+BuildingSpaceThermalTorchSystem = BuildingSpaceThermalSystem
+WallTorchSystem = WallSystem
+DamperTorchSystem = DamperSystem
+ValveTorchSystem = ValveSystem
+CoilTorchSystem = CoilSystem
+FanTorchSystem = FanSystem
+SpaceHeaterTorchSystem = SpaceHeaterSystem
+FanCoilUnitTorchSystem = FanCoilUnitSystem
+AirHandlingUnitTorchSystem = AirHandlingUnitSystem
+OnOffControllerTorchSystem = SmoothOnOffControllerSystem
+ScheduleSwitchControllerTorchSystem = ScheduleSwitchControllerSystem
+SATCompensatedControllerTorchSystem = SATCompensatedControllerSystem
+ControllerIdentificationTorchSystem = ControllerIdentificationSystem
+ControllerIdentificationPITorchSystem = ControllerIdentificationPISystem
+fmuSystem = FmuSystem

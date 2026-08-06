@@ -21,7 +21,7 @@ def build_model():
     theta-driven captured slots."""
     model = tb.Model(id="test_fast_opt_model")
 
-    building_space = tb.BuildingSpaceThermalTorchSystem(
+    building_space = tb.BuildingSpaceThermalSystem(
         C_air=2000000.0,
         C_wall=10000000.0,
         C_boundary=800000.0,
@@ -37,7 +37,7 @@ def build_model():
         airVolume=100.0,
         id="BuildingSpace",
     )
-    space_heater = tb.SpaceHeaterTorchSystem(
+    space_heater = tb.SpaceHeaterSystem(
         Q_flow_nominal_sh=2000.0,
         T_a_nominal_sh=60.0,
         T_b_nominal_sh=30.0,
@@ -48,10 +48,10 @@ def build_model():
     )
 
     occupancy = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 0}, id="Occupancy"
+        weekday_ruleset={"ruleset_default_value": 0}, id="Occupancy"
     )
     outdoor_temp = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 10.0,
             "ruleset_start_minute": [0, 0],
             "ruleset_end_minute": [0, 0],
@@ -62,24 +62,24 @@ def build_model():
         id="OutdoorTemperature",
     )
     solar = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 0.0}, id="Solar"
+        weekday_ruleset={"ruleset_default_value": 0.0}, id="Solar"
     )
     supply_flow = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 0.0}, id="SupplyFlow"
+        weekday_ruleset={"ruleset_default_value": 0.0}, id="SupplyFlow"
     )
     exhaust_flow = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 0.0}, id="ExhaustFlow"
+        weekday_ruleset={"ruleset_default_value": 0.0}, id="ExhaustFlow"
     )
     supply_air_temp = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 20.0}, id="SupplyAirTemp"
+        weekday_ruleset={"ruleset_default_value": 20.0}, id="SupplyAirTemp"
     )
     supply_water_temp = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 60.0}, id="SupplyWaterTemp"
+        weekday_ruleset={"ruleset_default_value": 60.0}, id="SupplyWaterTemp"
     )
 
     mf = 2000.0 / 4180 / (60.0 - 30.0)
     waterflow = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0,
             "ruleset_start_minute": [0],
             "ruleset_end_minute": [0],
@@ -91,7 +91,7 @@ def build_model():
     )
 
     price = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0.5,
             "ruleset_start_minute": [0, 0],
             "ruleset_end_minute": [0, 0],
@@ -130,7 +130,7 @@ def build_model():
     model.load()
 
     heating_setpoint = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 18.0,
             "ruleset_start_minute": [0],
             "ruleset_end_minute": [0],
@@ -141,7 +141,7 @@ def build_model():
         id="HeatingSetpoint",
     )
     cooling_setpoint = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 26.0}, id="CoolingSetpoint"
+        weekday_ruleset={"ruleset_default_value": 26.0}, id="CoolingSetpoint"
     )
 
     return model, waterflow, space_heater, building_space, costs, (

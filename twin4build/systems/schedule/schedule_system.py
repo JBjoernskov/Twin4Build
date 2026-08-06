@@ -1,7 +1,6 @@
 # Standard library imports
 import datetime
 import random
-import warnings
 from typing import Optional
 
 # Third party imports
@@ -13,7 +12,7 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import StepRule, Node, SignaturePattern, PathRule
-from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.deprecation import deprecate_args, deprecate_name
 
 
 class ScheduleSystem(core.System):
@@ -24,15 +23,9 @@ class ScheduleSystem(core.System):
     It supports both spreadsheet-based and database-based input methods.
 
     Args:
-        weekDayRulesetDict: A dictionary of rulesets for weekdays.
-        weekendRulesetDict: A dictionary of rulesets for weekends.
-        mondayRulesetDict: A dictionary of rulesets for Mondays.
-        tuesdayRulesetDict: A dictionary of rulesets for Tuesdays.
-        wednesdayRulesetDict: A dictionary of rulesets for Wednesdays.
-        thursdayRulesetDict: A dictionary of rulesets for Thursdays.
-        fridayRulesetDict: A dictionary of rulesets for Fridays.
-        saturdayRulesetDict: A dictionary of rulesets for Saturdays.
-        sundayRulesetDict: A dictionary of rulesets for Sundays.
+        weekday_ruleset: A dictionary of rulesets for weekdays.
+        weekend_ruleset: A dictionary of rulesets for weekends.
+        monday_ruleset ... sunday_ruleset: Per-day ruleset dictionaries.
         add_noise: A boolean to add random noise to the ruleset-based schedule value.
         noise_hour_range: Half-width of the uniform noise component redrawn each
             hour (sampled from [-noise_hour_range, +noise_hour_range]) when
@@ -40,68 +33,124 @@ class ScheduleSystem(core.System):
         noise_day_range: Half-width of the uniform noise component redrawn each
             day (sampled from [-noise_day_range, +noise_day_range]) when
             ``add_noise`` is True.
-        use_spreadsheet: A boolean to read the schedule value from a spreadsheet file.
-        use_database: A boolean to read the schedule value from a database.
-        use_dict: A boolean to generate the schedule value from the ruleset dictionaries.
-            If none of the three flags is set, the source is auto-detected from the
-            provided arguments; at most one flag may be True.
+        source: Preferred data-source selector: ``"dict"``, ``"spreadsheet"``,
+            ``"database"``, or ``None`` for auto-detect.
+        use_spreadsheet / use_database / use_dict: Legacy boolean source flags
+            (deprecated; use ``source=``; removed in 2.1).
         filename: The filename of the spreadsheet to read the schedule value from.
-        datecolumn: The column index of the date in the spreadsheet.
-        valuecolumn: The column index of the value in the spreadsheet.
+        date_column: The column index of the date in the spreadsheet.
+        value_column: The column index of the value in the spreadsheet.
         uuid: The uuid identifying the time series in the database.
         name: The name identifying the time series in the database.
         dbconfig: The configuration of the database to read the schedule value from.
 
-    Note:
-        The camelCase arguments ``useSpreadsheet`` and ``useDatabase`` are
-        deprecated aliases for ``use_spreadsheet`` and ``use_database``.
     """
 
     def __init__(
         self,
-        weekDayRulesetDict: dict = None,
-        weekendRulesetDict: dict = None,
-        mondayRulesetDict: dict = None,
-        tuesdayRulesetDict: dict = None,
-        wednesdayRulesetDict: dict = None,
-        thursdayRulesetDict: dict = None,
-        fridayRulesetDict: dict = None,
-        saturdayRulesetDict: dict = None,
-        sundayRulesetDict: dict = None,
+        weekday_ruleset: dict = None,
+        weekend_ruleset: dict = None,
+        monday_ruleset: dict = None,
+        tuesday_ruleset: dict = None,
+        wednesday_ruleset: dict = None,
+        thursday_ruleset: dict = None,
+        friday_ruleset: dict = None,
+        saturday_ruleset: dict = None,
+        sunday_ruleset: dict = None,
         add_noise: bool = False,
         noise_hour_range: float = 4.0,
         noise_day_range: float = 10.0,
+        source: Optional[str] = None,
         use_spreadsheet: bool = False,
         use_database: bool = False,
         use_dict: bool = False,
         filename: str = None,
-        datecolumn: int = 0,
-        valuecolumn: int = 1,
+        date_column: int = 0,
+        value_column: int = 1,
         uuid: str = None,
         name: str = None,
         dbconfig: dict = None,
         **kwargs,
     ):
-        # Handle deprecated camelCase arguments
-        deprecated_args = ["useSpreadsheet", "useDatabase", "usedict"]
-        new_args = ["use_spreadsheet", "use_database", "use_dict"]
-        positions = [None, None, None]
-        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
-        use_spreadsheet = value_map.get("use_spreadsheet", use_spreadsheet)
-        use_database = value_map.get("use_database", use_database)
-        use_dict = value_map.get("use_dict", use_dict)
+        for legacy_key, new_key in (
+            ("useSpreadsheet", "use_spreadsheet"),
+            ("useDatabase", "use_database"),
+            ("usedict", "use_dict"),
+        ):
+            if legacy_key in kwargs:
+                raise TypeError(
+                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
+                )
+
+        legacy_map = deprecate_args(
+            [
+                "weekDayRulesetDict",
+                "weekendRulesetDict",
+                "mondayRulesetDict",
+                "tuesdayRulesetDict",
+                "wednesdayRulesetDict",
+                "thursdayRulesetDict",
+                "fridayRulesetDict",
+                "saturdayRulesetDict",
+                "sundayRulesetDict",
+                "datecolumn",
+                "valuecolumn",
+            ],
+            [
+                "weekday_ruleset",
+                "weekend_ruleset",
+                "monday_ruleset",
+                "tuesday_ruleset",
+                "wednesday_ruleset",
+                "thursday_ruleset",
+                "friday_ruleset",
+                "saturday_ruleset",
+                "sunday_ruleset",
+                "date_column",
+                "value_column",
+            ],
+            [None] * 11,
+            kwargs,
+        )
+        weekday_ruleset = legacy_map.get("weekday_ruleset", weekday_ruleset)
+        weekend_ruleset = legacy_map.get("weekend_ruleset", weekend_ruleset)
+        monday_ruleset = legacy_map.get("monday_ruleset", monday_ruleset)
+        tuesday_ruleset = legacy_map.get("tuesday_ruleset", tuesday_ruleset)
+        wednesday_ruleset = legacy_map.get("wednesday_ruleset", wednesday_ruleset)
+        thursday_ruleset = legacy_map.get("thursday_ruleset", thursday_ruleset)
+        friday_ruleset = legacy_map.get("friday_ruleset", friday_ruleset)
+        saturday_ruleset = legacy_map.get("saturday_ruleset", saturday_ruleset)
+        sunday_ruleset = legacy_map.get("sunday_ruleset", sunday_ruleset)
+        date_column = legacy_map.get("date_column", date_column)
+        value_column = legacy_map.get("value_column", value_column)
+
+        if source is not None:
+            source = str(source).lower()
+            assert source in {
+                "dict",
+                "spreadsheet",
+                "database",
+            }, f"|CLASS: ScheduleSystem|: source must be 'dict', 'spreadsheet', or 'database', got {source!r}"
+            use_dict = source == "dict"
+            use_spreadsheet = source == "spreadsheet"
+            use_database = source == "database"
+        elif use_spreadsheet or use_database or use_dict:
+            deprecate_name(
+                "use_spreadsheet/use_database/use_dict",
+                "source='dict'|'spreadsheet'|'database'",
+            )
 
         # Count how many data sources are provided
         has_dict = (
-            weekDayRulesetDict is not None
-            or weekendRulesetDict is not None
-            or mondayRulesetDict is not None
-            or tuesdayRulesetDict is not None
-            or wednesdayRulesetDict is not None
-            or thursdayRulesetDict is not None
-            or fridayRulesetDict is not None
-            or saturdayRulesetDict is not None
-            or sundayRulesetDict is not None
+            weekday_ruleset is not None
+            or weekend_ruleset is not None
+            or monday_ruleset is not None
+            or tuesday_ruleset is not None
+            or wednesday_ruleset is not None
+            or thursday_ruleset is not None
+            or friday_ruleset is not None
+            or saturday_ruleset is not None
+            or sunday_ruleset is not None
         )
         has_filename = filename is not None
         has_database = dbconfig is not None or uuid is not None or name is not None
@@ -110,8 +159,8 @@ class ScheduleSystem(core.System):
 
         # If multiple sources provided, user must explicitly set a flag
         assert not (n_sources > 1 and n_flags == 0), (
-            f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Multiple data sources provided (weekDayRulesetDict, filename, database). "
-            "You must explicitly set one of use_dict=True, use_spreadsheet=True, or use_database=True "
+            f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Multiple data sources provided (weekday_ruleset, filename, database). "
+            "You must explicitly set source='dict'|'spreadsheet'|'database' "
             "to specify which source to use."
         )
 
@@ -130,15 +179,15 @@ class ScheduleSystem(core.System):
         ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Only one of use_spreadsheet, use_database, or use_dict can be True."
 
         # Store as private variables for property access
-        self._weekDayRulesetDict = weekDayRulesetDict
-        self._weekendRulesetDict = weekendRulesetDict
-        self._mondayRulesetDict = mondayRulesetDict
-        self._tuesdayRulesetDict = tuesdayRulesetDict
-        self._wednesdayRulesetDict = wednesdayRulesetDict
-        self._thursdayRulesetDict = thursdayRulesetDict
-        self._fridayRulesetDict = fridayRulesetDict
-        self._saturdayRulesetDict = saturdayRulesetDict
-        self._sundayRulesetDict = sundayRulesetDict
+        self._weekday_ruleset = weekday_ruleset
+        self._weekend_ruleset = weekend_ruleset
+        self._monday_ruleset = monday_ruleset
+        self._tuesday_ruleset = tuesday_ruleset
+        self._wednesday_ruleset = wednesday_ruleset
+        self._thursday_ruleset = thursday_ruleset
+        self._friday_ruleset = friday_ruleset
+        self._saturday_ruleset = saturday_ruleset
+        self._sunday_ruleset = sunday_ruleset
         self.add_noise = add_noise
         self.noise_cache = {}
         self.noise_hour_range = float(noise_hour_range)
@@ -147,8 +196,8 @@ class ScheduleSystem(core.System):
         self._use_database = use_database
         self._use_dict = use_dict
         self._filename = filename
-        self.datecolumn = datecolumn
-        self.valuecolumn = valuecolumn
+        self.date_column = date_column
+        self.value_column = value_column
         self._uuid = uuid
         self._name = name
         self._dbconfig = dbconfig
@@ -157,15 +206,15 @@ class ScheduleSystem(core.System):
         self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
         self._config = {
             "parameters": [
-                "weekDayRulesetDict",
-                "weekendRulesetDict",
-                "mondayRulesetDict",
-                "tuesdayRulesetDict",
-                "wednesdayRulesetDict",
-                "thursdayRulesetDict",
-                "fridayRulesetDict",
-                "saturdayRulesetDict",
-                "sundayRulesetDict",
+                "weekday_ruleset",
+                "weekend_ruleset",
+                "monday_ruleset",
+                "tuesday_ruleset",
+                "wednesday_ruleset",
+                "thursday_ruleset",
+                "friday_ruleset",
+                "saturday_ruleset",
+                "sunday_ruleset",
                 "add_noise",
                 "noise_hour_range",
                 "noise_day_range",
@@ -173,7 +222,7 @@ class ScheduleSystem(core.System):
                 "use_database",
                 "use_dict",
             ],
-            "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
+            "spreadsheet": ["filename", "date_column", "value_column"],
             "database": ["uuid", "name", "dbconfig"],
         }
 
@@ -184,112 +233,153 @@ class ScheduleSystem(core.System):
     # ==================== Ruleset Dict Properties ====================
 
     @property
+    def weekday_ruleset(self):
+        return self._weekday_ruleset
+
+    @weekday_ruleset.setter
+    def weekday_ruleset(self, value):
+        self._weekday_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def weekend_ruleset(self):
+        return self._weekend_ruleset
+
+    @weekend_ruleset.setter
+    def weekend_ruleset(self, value):
+        self._weekend_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def monday_ruleset(self):
+        return self._monday_ruleset
+
+    @monday_ruleset.setter
+    def monday_ruleset(self, value):
+        self._monday_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def tuesday_ruleset(self):
+        return self._tuesday_ruleset
+
+    @tuesday_ruleset.setter
+    def tuesday_ruleset(self, value):
+        self._tuesday_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def wednesday_ruleset(self):
+        return self._wednesday_ruleset
+
+    @wednesday_ruleset.setter
+    def wednesday_ruleset(self, value):
+        self._wednesday_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def thursday_ruleset(self):
+        return self._thursday_ruleset
+
+    @thursday_ruleset.setter
+    def thursday_ruleset(self, value):
+        self._thursday_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def friday_ruleset(self):
+        return self._friday_ruleset
+
+    @friday_ruleset.setter
+    def friday_ruleset(self, value):
+        self._friday_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def saturday_ruleset(self):
+        return self._saturday_ruleset
+
+    @saturday_ruleset.setter
+    def saturday_ruleset(self, value):
+        self._saturday_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    @property
+    def sunday_ruleset(self):
+        return self._sunday_ruleset
+
+    @sunday_ruleset.setter
+    def sunday_ruleset(self, value):
+        self._sunday_ruleset = value
+        if value is not None:
+            self._use_dict = True
+            self._use_spreadsheet = False
+            self._use_database = False
+
+    # Deprecated camelCase property aliases (removed in 2.1)
+    @property
     def weekDayRulesetDict(self):
-        return self._weekDayRulesetDict
+        deprecate_name("weekDayRulesetDict", "weekday_ruleset")
+        return self.weekday_ruleset
 
     @weekDayRulesetDict.setter
     def weekDayRulesetDict(self, value):
-        self._weekDayRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
+        deprecate_name("weekDayRulesetDict", "weekday_ruleset")
+        self.weekday_ruleset = value
 
     @property
     def weekendRulesetDict(self):
-        return self._weekendRulesetDict
+        deprecate_name("weekendRulesetDict", "weekend_ruleset")
+        return self.weekend_ruleset
 
     @weekendRulesetDict.setter
     def weekendRulesetDict(self, value):
-        self._weekendRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
+        deprecate_name("weekendRulesetDict", "weekend_ruleset")
+        self.weekend_ruleset = value
 
     @property
-    def mondayRulesetDict(self):
-        return self._mondayRulesetDict
+    def datecolumn(self):
+        deprecate_name("datecolumn", "date_column")
+        return self.date_column
 
-    @mondayRulesetDict.setter
-    def mondayRulesetDict(self, value):
-        self._mondayRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
+    @datecolumn.setter
+    def datecolumn(self, value):
+        deprecate_name("datecolumn", "date_column")
+        self.date_column = value
 
     @property
-    def tuesdayRulesetDict(self):
-        return self._tuesdayRulesetDict
+    def valuecolumn(self):
+        deprecate_name("valuecolumn", "value_column")
+        return self.value_column
 
-    @tuesdayRulesetDict.setter
-    def tuesdayRulesetDict(self, value):
-        self._tuesdayRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
-
-    @property
-    def wednesdayRulesetDict(self):
-        return self._wednesdayRulesetDict
-
-    @wednesdayRulesetDict.setter
-    def wednesdayRulesetDict(self, value):
-        self._wednesdayRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
-
-    @property
-    def thursdayRulesetDict(self):
-        return self._thursdayRulesetDict
-
-    @thursdayRulesetDict.setter
-    def thursdayRulesetDict(self, value):
-        self._thursdayRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
-
-    @property
-    def fridayRulesetDict(self):
-        return self._fridayRulesetDict
-
-    @fridayRulesetDict.setter
-    def fridayRulesetDict(self, value):
-        self._fridayRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
-
-    @property
-    def saturdayRulesetDict(self):
-        return self._saturdayRulesetDict
-
-    @saturdayRulesetDict.setter
-    def saturdayRulesetDict(self, value):
-        self._saturdayRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
-
-    @property
-    def sundayRulesetDict(self):
-        return self._sundayRulesetDict
-
-    @sundayRulesetDict.setter
-    def sundayRulesetDict(self, value):
-        self._sundayRulesetDict = value
-        if value is not None:
-            self._use_dict = True
-            self._use_spreadsheet = False
-            self._use_database = False
+    @valuecolumn.setter
+    def valuecolumn(self, value):
+        deprecate_name("valuecolumn", "value_column")
+        self.value_column = value
 
     # ==================== Data Source Flags ====================
 
@@ -315,65 +405,6 @@ class ScheduleSystem(core.System):
 
     @use_dict.setter
     def use_dict(self, value):
-        self._use_dict = value
-
-    # ==================== Deprecated Properties (camelCase) ====================
-
-    @property
-    def useSpreadsheet(self):
-        """Deprecated: Use use_spreadsheet instead."""
-        warnings.warn(
-            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_spreadsheet
-
-    @useSpreadsheet.setter
-    def useSpreadsheet(self, value):
-        warnings.warn(
-            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._use_spreadsheet = value
-
-    @property
-    def useDatabase(self):
-        """Deprecated: Use use_database instead."""
-        warnings.warn(
-            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_database
-
-    @useDatabase.setter
-    def useDatabase(self, value):
-        warnings.warn(
-            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._use_database = value
-
-    @property
-    def usedict(self):
-        """Deprecated: Use use_dict instead."""
-        warnings.warn(
-            "Property 'usedict' is deprecated. Use 'use_dict' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_dict
-
-    @usedict.setter
-    def usedict(self, value):
-        warnings.warn(
-            "Property 'usedict' is deprecated. Use 'use_dict' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         self._use_dict = value
 
     # ==================== Spreadsheet Properties ====================
@@ -450,37 +481,37 @@ class ScheduleSystem(core.System):
         elif self.use_dict:
             # Check that all days can be covered (either directly or via fallback dicts)
             missing_days = []
-            if self.mondayRulesetDict is None and self.weekDayRulesetDict is None:
-                missing_days.append("mondayRulesetDict")
-            if self.tuesdayRulesetDict is None and self.weekDayRulesetDict is None:
-                missing_days.append("tuesdayRulesetDict")
-            if self.wednesdayRulesetDict is None and self.weekDayRulesetDict is None:
-                missing_days.append("wednesdayRulesetDict")
-            if self.thursdayRulesetDict is None and self.weekDayRulesetDict is None:
-                missing_days.append("thursdayRulesetDict")
-            if self.fridayRulesetDict is None and self.weekDayRulesetDict is None:
-                missing_days.append("fridayRulesetDict")
+            if self.monday_ruleset is None and self.weekday_ruleset is None:
+                missing_days.append("monday_ruleset")
+            if self.tuesday_ruleset is None and self.weekday_ruleset is None:
+                missing_days.append("tuesday_ruleset")
+            if self.wednesday_ruleset is None and self.weekday_ruleset is None:
+                missing_days.append("wednesday_ruleset")
+            if self.thursday_ruleset is None and self.weekday_ruleset is None:
+                missing_days.append("thursday_ruleset")
+            if self.friday_ruleset is None and self.weekday_ruleset is None:
+                missing_days.append("friday_ruleset")
             if (
-                self.saturdayRulesetDict is None
-                and self.weekendRulesetDict is None
-                and self.weekDayRulesetDict is None
+                self.saturday_ruleset is None
+                and self.weekend_ruleset is None
+                and self.weekday_ruleset is None
             ):
-                missing_days.append("saturdayRulesetDict")
+                missing_days.append("saturday_ruleset")
             if (
-                self.sundayRulesetDict is None
-                and self.weekendRulesetDict is None
-                and self.weekDayRulesetDict is None
+                self.sunday_ruleset is None
+                and self.weekend_ruleset is None
+                and self.weekday_ruleset is None
             ):
-                missing_days.append("sundayRulesetDict")
+                missing_days.append("sunday_ruleset")
             if missing_days:
-                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: The following ruleset dicts are missing (provide directly or via weekDayRulesetDict/weekendRulesetDict): {', '.join(missing_days)}"
+                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: The following ruleset dicts are missing (provide directly or via weekday_ruleset/weekend_ruleset): {', '.join(missing_days)}"
                 p(message, status="WARNING")
                 validated_for_simulator = False
                 validated_for_estimator = False
                 validated_for_optimizer = False
 
         if not self.use_spreadsheet and not self.use_database and not self.use_dict:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either weekDayRulesetDict with use_dict=True, use_spreadsheet=True, or use_database=True must be provided to enable use of Simulator, Estimator, and Optimizer."
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either weekday_ruleset with use_dict=True, use_spreadsheet=True, or use_database=True must be provided to enable use of Simulator, Estimator, and Optimizer."
             p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
@@ -511,55 +542,55 @@ class ScheduleSystem(core.System):
             self.use_spreadsheet or self.use_database or self.use_dict
         ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: One of use_spreadsheet, use_database, or use_dict must be True."
 
-        if self._mondayRulesetDict is None:
-            self._mondayRulesetDict = self._weekDayRulesetDict
-        if self._tuesdayRulesetDict is None:
-            self._tuesdayRulesetDict = self._weekDayRulesetDict
-        if self._wednesdayRulesetDict is None:
-            self._wednesdayRulesetDict = self._weekDayRulesetDict
-        if self._thursdayRulesetDict is None:
-            self._thursdayRulesetDict = self._weekDayRulesetDict
-        if self._fridayRulesetDict is None:
-            self._fridayRulesetDict = self._weekDayRulesetDict
-        if self._saturdayRulesetDict is None:
-            if self._weekendRulesetDict is None:
-                self._saturdayRulesetDict = self._weekDayRulesetDict
+        if self._monday_ruleset is None:
+            self._monday_ruleset = self._weekday_ruleset
+        if self._tuesday_ruleset is None:
+            self._tuesday_ruleset = self._weekday_ruleset
+        if self._wednesday_ruleset is None:
+            self._wednesday_ruleset = self._weekday_ruleset
+        if self._thursday_ruleset is None:
+            self._thursday_ruleset = self._weekday_ruleset
+        if self._friday_ruleset is None:
+            self._friday_ruleset = self._weekday_ruleset
+        if self._saturday_ruleset is None:
+            if self._weekend_ruleset is None:
+                self._saturday_ruleset = self._weekday_ruleset
             else:
-                self._saturdayRulesetDict = self._weekendRulesetDict
-        if self._sundayRulesetDict is None:
-            if self._weekendRulesetDict is None:
-                self._sundayRulesetDict = self._weekDayRulesetDict
+                self._saturday_ruleset = self._weekend_ruleset
+        if self._sunday_ruleset is None:
+            if self._weekend_ruleset is None:
+                self._sunday_ruleset = self._weekday_ruleset
             else:
-                self._sundayRulesetDict = self._weekendRulesetDict
+                self._sunday_ruleset = self._weekend_ruleset
         if self.use_dict:
             assert (
-                self.mondayRulesetDict is not None
-            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: mondayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+                self.monday_ruleset is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: monday_ruleset must be provided (directly or via weekday_ruleset) when use_dict is True."
             assert (
-                self.tuesdayRulesetDict is not None
-            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: tuesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+                self.tuesday_ruleset is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: tuesday_ruleset must be provided (directly or via weekday_ruleset) when use_dict is True."
             assert (
-                self.wednesdayRulesetDict is not None
-            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: wednesdayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+                self.wednesday_ruleset is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: wednesday_ruleset must be provided (directly or via weekday_ruleset) when use_dict is True."
             assert (
-                self.thursdayRulesetDict is not None
-            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: thursdayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+                self.thursday_ruleset is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: thursday_ruleset must be provided (directly or via weekday_ruleset) when use_dict is True."
             assert (
-                self.fridayRulesetDict is not None
-            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: fridayRulesetDict must be provided (directly or via weekDayRulesetDict) when use_dict is True."
+                self.friday_ruleset is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: friday_ruleset must be provided (directly or via weekday_ruleset) when use_dict is True."
             assert (
-                self.saturdayRulesetDict is not None
-            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: saturdayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when use_dict is True."
+                self.saturday_ruleset is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: saturday_ruleset must be provided (directly or via weekday_ruleset/weekend_ruleset) when use_dict is True."
             assert (
-                self.sundayRulesetDict is not None
-            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: sundayRulesetDict must be provided (directly or via weekDayRulesetDict/weekendRulesetDict) when use_dict is True."
+                self.sunday_ruleset is not None
+            ), f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: sunday_ruleset must be provided (directly or via weekday_ruleset/weekend_ruleset) when use_dict is True."
 
         if self.use_spreadsheet or self.use_database:
             time_series_input = TimeSeriesInputSystem(
                 id=f"time series input - {self.id}",
                 filename=self.filename,
-                datecolumn=self.datecolumn,
-                valuecolumn=self.valuecolumn,
+                date_column=self.date_column,
+                value_column=self.value_column,
                 use_spreadsheet=self.use_spreadsheet,
                 use_database=self.use_database,
                 uuid=self.uuid,
@@ -578,13 +609,13 @@ class ScheduleSystem(core.System):
             )
         else:
             required_dicts = [
-                self.mondayRulesetDict,
-                self.tuesdayRulesetDict,
-                self.wednesdayRulesetDict,
-                self.thursdayRulesetDict,
-                self.fridayRulesetDict,
-                self.saturdayRulesetDict,
-                self.sundayRulesetDict,
+                self.monday_ruleset,
+                self.tuesday_ruleset,
+                self.wednesday_ruleset,
+                self.thursday_ruleset,
+                self.friday_ruleset,
+                self.saturday_ruleset,
+                self.sunday_ruleset,
             ]
             required_keys = [
                 "ruleset_start_minute",
@@ -708,19 +739,19 @@ class ScheduleSystem(core.System):
         #         )
 
         if date_time.weekday() == 0:
-            rulesetDict = self.mondayRulesetDict
+            rulesetDict = self.monday_ruleset
         elif date_time.weekday() == 1:
-            rulesetDict = self.tuesdayRulesetDict
+            rulesetDict = self.tuesday_ruleset
         elif date_time.weekday() == 2:
-            rulesetDict = self.wednesdayRulesetDict
+            rulesetDict = self.wednesday_ruleset
         elif date_time.weekday() == 3:
-            rulesetDict = self.thursdayRulesetDict
+            rulesetDict = self.thursday_ruleset
         elif date_time.weekday() == 4:
-            rulesetDict = self.fridayRulesetDict
+            rulesetDict = self.friday_ruleset
         elif date_time.weekday() == 5:
-            rulesetDict = self.saturdayRulesetDict
+            rulesetDict = self.saturday_ruleset
         elif date_time.weekday() == 6:
-            rulesetDict = self.sundayRulesetDict
+            rulesetDict = self.sunday_ruleset
 
         n = len(rulesetDict["ruleset_start_hour"])
         found_match = False

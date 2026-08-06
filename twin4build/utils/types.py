@@ -5,7 +5,6 @@ import datetime
 import functools
 import os
 import sys
-import warnings
 from collections import OrderedDict
 from typing import List, Optional, Union
 
@@ -17,7 +16,6 @@ from dateutil import tz
 
 # Local application imports
 import twin4build.core as core
-from twin4build.utils.deprecation import deprecate_args
 
 # ---------------------------------------------------------------------------
 # Framework-wide floating-point dtype.
@@ -78,7 +76,6 @@ class Vector:
         is_leaf: bool = False,
         do_normalization: bool = False,
         optional: bool = False,
-        **kwargs,
     ) -> None:
         """
         Initialize a Vector instance.
@@ -91,13 +88,6 @@ class Vector:
             do_normalization (bool): Whether to normalize history. Defaults to False.
             optional (bool): Whether this vector is optional. Defaults to False.
         """
-        # Handle deprecated arguments
-        deprecated_args = ["size", "n_timesteps", "n_s", "n_c", "n_t"]
-        new_args = ["n_v", None, None, None, None]
-        positions = [None, None, None, None, None]
-        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
-        n_v = value_map.get("n_v", n_v)
-
         # Only accept float/int/None for tensor arg
         assert isinstance(
             tensor, (float, int, type(None))
@@ -301,7 +291,6 @@ class Vector:
         n_v: Optional[int] = None,
         values: Optional[List[float]] = None,
         force: bool = False,
-        **kwargs,
     ) -> None:
         """Initialize the vector tensor and history.
 
@@ -316,15 +305,6 @@ class Vector:
             values (Optional[List[float]]): Initial values for leaf vectors.
             force (bool): Force reinitialization.
         """
-        # Handle deprecated arguments
-        deprecated_args = ["n_timesteps", "size", "batch_size"]
-        new_args = ["n_t", "n_v", "n_s"]
-        positions = [None, None, None]
-        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
-        n_t = value_map.get("n_t", n_t)
-        n_v = value_map.get("n_v", n_v)
-        n_s = value_map.get("n_s", n_s)
-
         assert isinstance(n_t, int), "n_t must be an integer"
 
         self._n_t = n_t
@@ -608,7 +588,6 @@ class Scalar:
         is_leaf: bool = False,
         do_normalization: bool = False,
         optional: bool = False,
-        **kwargs,
     ) -> None:
         """
         Initialize a Scalar instance.
@@ -620,13 +599,6 @@ class Scalar:
             do_normalization (bool): Whether to normalize history. Defaults to False.
             optional (bool): Whether this scalar is optional. Defaults to False.
         """
-        # Handle deprecated arguments
-        deprecated_args = ["scalar", "n_timesteps", "n_s", "n_c", "n_t"]
-        new_args = ["tensor", None, None, None, None]
-        positions = [None, None, None, None, None]
-        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
-        tensor = value_map.get("tensor", tensor)
-
         # Only accept float/int/None for tensor arg
         assert isinstance(
             tensor, (float, int, type(None))
@@ -657,16 +629,6 @@ class Scalar:
     @tensor.setter
     def tensor(self, value):
         self._tensor = value
-
-    @property
-    def scalar(self):
-        """Deprecated. Use 'tensor' instead."""
-        warnings.warn(
-            "Property 'scalar' is deprecated. Use 'tensor' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._tensor
 
     @property
     def init_value(self):
@@ -793,7 +755,6 @@ class Scalar:
         n_c: Optional[int] = 1,
         values: Optional[List[float]] = None,
         force: bool = False,
-        **kwargs,
     ) -> None:
         """Initialize the scalar tensor and history.
 
@@ -807,14 +768,6 @@ class Scalar:
             values (Optional[List[float]]): Initial values for leaf scalars.
             force (bool): Force reinitialization.
         """
-        # Handle deprecated arguments
-        deprecated_args = ["n_timesteps", "batch_size"]
-        new_args = ["n_t", "n_s"]
-        positions = [None, None]
-        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
-        n_t = value_map.get("n_t", n_t)
-        n_s = value_map.get("n_s", n_s)
-
         assert isinstance(n_t, int), "n_t must be an integer"
 
         self._n_s = n_s

@@ -103,7 +103,7 @@ def build_multi_room_model(n_rooms: int, model_id: str = "multi_room") -> Model:
     model.add_component(outdoor)
 
     damper_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0.0,
             "ruleset_start_minute": [0, 0],
             "ruleset_end_minute":   [0, 0],
@@ -114,7 +114,7 @@ def build_multi_room_model(n_rooms: int, model_id: str = "multi_room") -> Model:
         id="damper_schedule",
     )
     valve_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0.0,
             "ruleset_start_minute": [0, 0],
             "ruleset_end_minute":   [0, 0],
@@ -125,7 +125,7 @@ def build_multi_room_model(n_rooms: int, model_id: str = "multi_room") -> Model:
         id="valve_schedule",
     )
     supply_air_temp_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 18.0,
             "ruleset_start_minute": [0],
             "ruleset_end_minute":   [0],
@@ -136,7 +136,7 @@ def build_multi_room_model(n_rooms: int, model_id: str = "multi_room") -> Model:
         id="supply_air_temp_schedule",
     )
     supply_water_temp_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 40.0,
             "ruleset_start_minute": [0],
             "ruleset_end_minute":   [0],
@@ -147,7 +147,7 @@ def build_multi_room_model(n_rooms: int, model_id: str = "multi_room") -> Model:
         id="supply_water_temp_schedule",
     )
     occupancy_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0.0,
             "ruleset_start_minute": [0, 0],
             "ruleset_end_minute":   [0, 0],
@@ -167,23 +167,23 @@ def build_multi_room_model(n_rooms: int, model_id: str = "multi_room") -> Model:
     for i in range(n_rooms):
         tag = f"room_{i}"
 
-        supply_damper = tb.DamperTorchSystem(
+        supply_damper = tb.DamperSystem(
             a=1.0,
             nominalAirFlowRate=0.1,
             id=f"{tag}_supply_damper",
         )
-        return_damper = tb.DamperTorchSystem(
+        return_damper = tb.DamperSystem(
             a=1.0,
             nominalAirFlowRate=0.1,
             id=f"{tag}_return_damper",
         )
-        coil = tb.CoilTorchSystem(id=f"{tag}_coil")
-        valve = tb.ValveTorchSystem(
+        coil = tb.CoilSystem(id=f"{tag}_coil")
+        valve = tb.ValveSystem(
             waterFlowRateMax=0.05,
             valveAuthority=0.5,
             id=f"{tag}_valve",
         )
-        heater = tb.SpaceHeaterTorchSystem(
+        heater = tb.SpaceHeaterSystem(
             Q_flow_nominal_sh=2000.0,
             T_a_nominal_sh=60.0,
             T_b_nominal_sh=45.0,
@@ -192,7 +192,7 @@ def build_multi_room_model(n_rooms: int, model_id: str = "multi_room") -> Model:
             nelements=3,
             id=f"{tag}_space_heater",
         )
-        room = tb.BuildingSpaceTorchSystem(
+        room = tb.BuildingSpaceSystem(
             thermal_kwargs={
                 "C_air": 100000.0,
                 "C_wall": 500000.0,

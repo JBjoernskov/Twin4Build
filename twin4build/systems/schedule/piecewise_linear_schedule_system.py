@@ -38,7 +38,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
             id="supply_water_schedule",
         )
 
-    A ``weekDayRulesetDict`` is built automatically.  Time-varying curves are
+    A ``weekday_ruleset`` is built automatically.  Time-varying curves are
     still possible by providing the standard ruleset dicts with
     ``{"X": [...], "Y": [...]}`` values.
 
@@ -46,7 +46,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         defaultX: Default X breakpoints (list of floats).
         defaultY: Default Y breakpoints (list of floats).
         **kwargs: Keyword arguments passed to parent classes including
-            weekDayRulesetDict, weekendRulesetDict, per-day rulesets,
+            weekday_ruleset, weekend_ruleset, per-day rulesets,
             and add_noise.
     """
 
@@ -64,38 +64,48 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
     def __init__(
         self,
-        defaultX: Optional[List[float]] = None,
-        defaultY: Optional[List[float]] = None,
+        default_x: Optional[List[float]] = None,
+        default_y: Optional[List[float]] = None,
         **kwargs,
     ) -> None:
-        # Auto-create a scalar weekDayRulesetDict when only defaultX/Y given.
-        if defaultX is not None and defaultY is not None:
-            if (
-                "weekDayRulesetDict" not in kwargs
-                or kwargs["weekDayRulesetDict"] is None
-            ):
-                kwargs["weekDayRulesetDict"] = copy.deepcopy(_EMPTY_RULESET)
+        from twin4build.utils.deprecation import deprecate_args
+
+        legacy = deprecate_args(
+            ["defaultX", "defaultY"],
+            ["default_x", "default_y"],
+            [None, None],
+            kwargs,
+        )
+        default_x = legacy.get("default_x", default_x)
+        default_y = legacy.get("default_y", default_y)
+
+        # Auto-create a scalar weekday_ruleset when only default_x/y given.
+        if default_x is not None and default_y is not None:
+            if kwargs.get("weekday_ruleset") is None and kwargs.get(
+                "weekday_ruleset"
+            ) is None:
+                kwargs["weekday_ruleset"] = copy.deepcopy(_EMPTY_RULESET)
 
         super().__init__(**kwargs)
 
-        self.defaultX = defaultX
-        self.defaultY = defaultY
+        self.default_x = default_x
+        self.default_y = default_y
 
         self._input = {"x": tps.Scalar()}
         self._output = {"scheduleValue": tps.Scalar()}
         self._config = {
             "parameters": [
-                "defaultX",
-                "defaultY",
-                "weekDayRulesetDict",
-                "weekendRulesetDict",
-                "mondayRulesetDict",
-                "tuesdayRulesetDict",
-                "wednesdayRulesetDict",
-                "thursdayRulesetDict",
-                "fridayRulesetDict",
-                "saturdayRulesetDict",
-                "sundayRulesetDict",
+                "default_x",
+                "default_y",
+                "weekday_ruleset",
+                "weekend_ruleset",
+                "monday_ruleset",
+                "tuesday_ruleset",
+                "wednesday_ruleset",
+                "thursday_ruleset",
+                "friday_ruleset",
+                "saturday_ruleset",
+                "sunday_ruleset",
                 "add_noise",
             ]
         }
@@ -107,36 +117,36 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         step_size: List[int],
     ) -> None:
         assert (
-            (self.defaultX is not None and self.defaultY is not None)
-            or self.weekDayRulesetDict is not None
-            or self.weekendRulesetDict is not None
+            (self.default_x is not None and self.default_y is not None)
+            or self.weekday_ruleset is not None
+            or self.weekend_ruleset is not None
         ), (
             f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: "
-            "Provide defaultX/defaultY or a weekDayRulesetDict/weekendRulesetDict."
+            "Provide defaultX/defaultY or a weekday_ruleset/weekend_ruleset."
         )
 
         # Inherit missing day rulesets from weekday / weekend defaults
-        if self.mondayRulesetDict is None:
-            self.mondayRulesetDict = self.weekDayRulesetDict
-        if self.tuesdayRulesetDict is None:
-            self.tuesdayRulesetDict = self.weekDayRulesetDict
-        if self.wednesdayRulesetDict is None:
-            self.wednesdayRulesetDict = self.weekDayRulesetDict
-        if self.thursdayRulesetDict is None:
-            self.thursdayRulesetDict = self.weekDayRulesetDict
-        if self.fridayRulesetDict is None:
-            self.fridayRulesetDict = self.weekDayRulesetDict
-        if self.saturdayRulesetDict is None:
-            self.saturdayRulesetDict = (
-                self.weekendRulesetDict
-                if self.weekendRulesetDict is not None
-                else self.weekDayRulesetDict
+        if self.monday_ruleset is None:
+            self.monday_ruleset = self.weekday_ruleset
+        if self.tuesday_ruleset is None:
+            self.tuesday_ruleset = self.weekday_ruleset
+        if self.wednesday_ruleset is None:
+            self.wednesday_ruleset = self.weekday_ruleset
+        if self.thursday_ruleset is None:
+            self.thursday_ruleset = self.weekday_ruleset
+        if self.friday_ruleset is None:
+            self.friday_ruleset = self.weekday_ruleset
+        if self.saturday_ruleset is None:
+            self.saturday_ruleset = (
+                self.weekend_ruleset
+                if self.weekend_ruleset is not None
+                else self.weekday_ruleset
             )
-        if self.sundayRulesetDict is None:
-            self.sundayRulesetDict = (
-                self.weekendRulesetDict
-                if self.weekendRulesetDict is not None
-                else self.weekDayRulesetDict
+        if self.sunday_ruleset is None:
+            self.sunday_ruleset = (
+                self.weekend_ruleset
+                if self.weekend_ruleset is not None
+                else self.weekday_ruleset
             )
 
         # Ensure standard ruleset keys exist so get_schedule_value works
@@ -148,13 +158,13 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
             "ruleset_value",
         ]
         for ruleset_dict in [
-            self.mondayRulesetDict,
-            self.tuesdayRulesetDict,
-            self.wednesdayRulesetDict,
-            self.thursdayRulesetDict,
-            self.fridayRulesetDict,
-            self.saturdayRulesetDict,
-            self.sundayRulesetDict,
+            self.monday_ruleset,
+            self.tuesday_ruleset,
+            self.wednesday_ruleset,
+            self.thursday_ruleset,
+            self.friday_ruleset,
+            self.saturday_ruleset,
+            self.sunday_ruleset,
         ]:
             if ruleset_dict is not None:
                 for key in required_keys:
@@ -178,7 +188,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         Resolution order:
         1. ``get_schedule_value`` dict with ``"X"`` / ``"Y"`` keys
            (time-varying piecewise-linear curves via the ruleset mechanism).
-        2. ``self.defaultX`` / ``self.defaultY`` (constant curve stored as
+        2. ``self.default_x`` / ``self.default_y`` (constant curve stored as
            plain lists — always survives JSON config round-trips).
 
         ``device`` places the per-step table where the input port lives (this
@@ -200,13 +210,13 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
                 ),
             )
 
-        if self.defaultX is not None and self.defaultY is not None:
+        if self.default_x is not None and self.default_y is not None:
             return (
                 torch.tensor(
-                    self.defaultX, dtype=tps.float_dtype(), device=device
+                    self.default_x, dtype=tps.float_dtype(), device=device
                 ),
                 torch.tensor(
-                    self.defaultY, dtype=tps.float_dtype(), device=device
+                    self.default_y, dtype=tps.float_dtype(), device=device
                 ),
             )
 

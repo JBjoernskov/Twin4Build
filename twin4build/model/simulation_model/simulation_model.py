@@ -29,7 +29,7 @@ from twin4build.utils.dict_utils import (
 )
 from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import LOGGER, autoreset_print
+from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
@@ -283,7 +283,7 @@ class SimulationModel:
         >>> model = tb.SimulationModel(id="building_model")
         >>> # Create components
         >>> schedule = tb.ScheduleSystem(id="schedule")
-        >>> damper = tb.DamperTorchSystem(id="damper")
+        >>> damper = tb.DamperSystem(id="damper")
         >>> # Add components to model
         >>> model.add_component(schedule)
         >>> model.add_component(damper)
@@ -1605,7 +1605,7 @@ class SimulationModel:
             # ``flat schedule'' shape in twin4build (see ScheduleSystem
             # docstring for the ruleset semantics).
             return systems.ScheduleSystem(
-                weekDayRulesetDict={
+                weekday_ruleset={
                     "ruleset_default_value": value,
                     "ruleset_start_minute": [],
                     "ruleset_end_minute": [],
@@ -1775,7 +1775,7 @@ class SimulationModel:
           * scores every wired ``(sensor, setpoint)`` pair against
             the downstream actuator measurement,
           * prunes losing connections (so the surviving
-            :class:`ControllerIdentificationPITorchSystem` has
+            :class:`ControllerIdentificationPISystem` has
             ``n_sensors = n_setpoints = 1`` and a single PI candidate),
           * writes data-driven seeds (``kp``, ``Ti``, ``output_min``,
             ``output_max``, ``default_output_0``, ``isReverse``,
@@ -2547,7 +2547,7 @@ class SimulationModel:
 
         A connection is fusable iff its output port is in the sender's
         ``FUSABLE_OUTPUT_PORTS`` and its input port is in the receiver's
-        ``FUSABLE_INPUT_PORTS`` (e.g. a zone <-> ``WallTorchSystem`` pair).
+        ``FUSABLE_INPUT_PORTS`` (e.g. a zone <-> ``WallSystem`` pair).
         The fused block replaces its members in the execution order -- the
         internal arcs are eliminated exactly into one monolithic state-space
         model, so the coupling has no co-simulation lag and is unconditionally

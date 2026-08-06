@@ -8,7 +8,8 @@ import torch
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.translator.translator import StepRule, AnyPathRule, Node, SignaturePattern
+from twin4build.translator.translator import StepRule, Node, SignaturePattern
+from twin4build.utils.deprecation import deprecate_args
 
 
 class OnOffControllerSystem(core.System):
@@ -20,16 +21,16 @@ class OnOffControllerSystem(core.System):
     the output switches as soon as the comparison changes.
 
     Behavior:
-        - Normal mode (``isReverse=False``): output is ``onValue`` when
-          ``actualValue > setpointValue``, otherwise ``offValue``.
-        - Reverse mode (``isReverse=True``): output is ``onValue`` when
-          ``actualValue < setpointValue``, otherwise ``offValue``
+        - Normal mode (``is_reverse=False``): output is ``on_value`` when
+          ``actualValue > setpointValue``, otherwise ``off_value``.
+        - Reverse mode (``is_reverse=True``): output is ``on_value`` when
+          ``actualValue < setpointValue``, otherwise ``off_value``
           (e.g. turn heating on when the temperature is below setpoint).
 
     Args:
-        offValue: Output value when the trigger condition is not met. Defaults to 0.
-        onValue: Output value when the trigger condition is met. Defaults to 1.
-        isReverse: If True, trigger when the measured value is below the
+        off_value: Output value when the trigger condition is not met. Defaults to 0.
+        on_value: Output value when the trigger condition is met. Defaults to 1.
+        is_reverse: If True, trigger when the measured value is below the
             setpoint instead of above it. Defaults to False.
 
     Inputs:
@@ -37,20 +38,79 @@ class OnOffControllerSystem(core.System):
         - "setpointValue": Setpoint to compare against.
 
     Outputs:
-        - "inputSignal": Control signal, either ``onValue`` or ``offValue``.
+        - "inputSignal": Control signal, either ``on_value`` or ``off_value``.
     """
 
-    def __init__(self, offValue=0, onValue=1, isReverse=False, **kwargs):
+    def __init__(
+        self,
+        off_value=0,
+        on_value=1,
+        is_reverse=False,
+        **kwargs,
+    ):
+        legacy = deprecate_args(
+            ["offValue", "onValue", "isReverse"],
+            ["off_value", "on_value", "is_reverse"],
+            [None, None, None],
+            kwargs,
+        )
+        off_value = legacy.get("off_value", off_value)
+        on_value = legacy.get("on_value", on_value)
+        is_reverse = legacy.get("is_reverse", is_reverse)
+
         super().__init__(**kwargs)
-        self.offValue = offValue
-        self.onValue = onValue
-        self.isReverse = isReverse
+        self.off_value = off_value
+        self.on_value = on_value
+        self.is_reverse = is_reverse
 
         self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar()}
         self._config = {
-            "parameters": ["offValue", "onValue", "isReverse"],
+            "parameters": ["off_value", "on_value", "is_reverse"],
         }
+
+    # Deprecated camelCase aliases (removed in 2.1)
+    @property
+    def offValue(self):
+        from twin4build.utils.deprecation import deprecate_name
+
+        deprecate_name("offValue", "off_value")
+        return self.off_value
+
+    @offValue.setter
+    def offValue(self, value):
+        from twin4build.utils.deprecation import deprecate_name
+
+        deprecate_name("offValue", "off_value")
+        self.off_value = value
+
+    @property
+    def onValue(self):
+        from twin4build.utils.deprecation import deprecate_name
+
+        deprecate_name("onValue", "on_value")
+        return self.on_value
+
+    @onValue.setter
+    def onValue(self, value):
+        from twin4build.utils.deprecation import deprecate_name
+
+        deprecate_name("onValue", "on_value")
+        self.on_value = value
+
+    @property
+    def isReverse(self):
+        from twin4build.utils.deprecation import deprecate_name
+
+        deprecate_name("isReverse", "is_reverse")
+        return self.is_reverse
+
+    @isReverse.setter
+    def isReverse(self, value):
+        from twin4build.utils.deprecation import deprecate_name
+
+        deprecate_name("isReverse", "is_reverse")
+        self.is_reverse = value
 
     @property
     def config(self):
@@ -62,13 +122,7 @@ class OnOffControllerSystem(core.System):
         end_time: datetime.datetime,
         step_size: int,
     ) -> None:
-        """Initialize the controller's input and output ports for simulation.
-
-        Args:
-            start_time: Start time(s) of the simulation period.
-            end_time: End time(s) of the simulation period.
-            step_size: Time step size in seconds.
-        """
+        """Initialize the controller's input and output ports for simulation."""
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
         )
@@ -93,35 +147,21 @@ class OnOffControllerSystem(core.System):
         step_size: int,
         step_index: int,
     ) -> None:
-        """Perform one control step.
-
-        Compares the measured value against the setpoint and sets the output
-        signal to ``onValue`` or ``offValue`` accordingly (comparison direction
-        depends on ``isReverse``).
-        """
+        """Perform one control step."""
         actual_value = self.input["actualValue"].get()
         setpoint_value = self.input["setpointValue"].get()
 
-        # Determine trigger condition based on reverse mode
-        # Reverse: trigger ON when actual < setpoint
-        # Normal: trigger ON when actual > setpoint
-        if self.isReverse:
+        if self.is_reverse:
             trigger_on = actual_value < setpoint_value
         else:
             trigger_on = actual_value > setpoint_value
 
-        # Select output signal based on trigger condition
-        output_signal = torch.where(trigger_on, self.onValue, self.offValue)
+        output_signal = torch.where(trigger_on, self.on_value, self.off_value)
         self.output["inputSignal"]._set(output_signal, i_t=step_index)
 
 
 def saref_signature_pattern():
-    """
-    Get the SAREF signature pattern of the on-off controller component.
-
-    Returns:
-        SignaturePattern: The SAREF signature pattern of the on-off controller component.
-    """
+    """Get the SAREF signature pattern of the on-off controller component."""
     node0 = Node(cls=(core.namespace.S4BLDG.RulebasedController))
     node1 = Node(cls=(core.namespace.SAREF.Sensor))
     node2 = Node(cls=(core.namespace.SAREF.Property))
@@ -143,12 +183,7 @@ def saref_signature_pattern():
 
 
 def brick_signature_pattern():
-    """
-    Get the BRICK signature pattern of the on-off controller component.
-
-    Returns:
-        SignaturePattern: The BRICK signature pattern of the on-off controller component.
-    """
+    """Get the BRICK signature pattern of the on-off controller component."""
     node0 = Node(cls=core.namespace.BRICK.On_Off_Controller)
     node1 = Node(cls=core.namespace.BRICK.Sensor)
     node2 = Node(cls=core.namespace.BRICK.Setpoint)

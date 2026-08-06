@@ -30,11 +30,11 @@ START = datetime.datetime(2024, 1, 4, tzinfo=tz.gettz("Europe/Copenhagen"))
 
 
 def build_model(r_a=0.02, r_b=0.02, fuse=True, model_id="test_fusion"):
-    """Two thermal zones coupled by one WallTorchSystem; zone A heated."""
+    """Two thermal zones coupled by one WallSystem; zone A heated."""
     model = tb.Model(id=model_id)
 
     def make_zone(zone_id):
-        return tb.BuildingSpaceThermalTorchSystem(
+        return tb.BuildingSpaceThermalSystem(
             C_air=1e6,
             C_wall=5e6,
             R_out=0.01,
@@ -47,19 +47,19 @@ def build_model(r_a=0.02, r_b=0.02, fuse=True, model_id="test_fusion"):
 
     zone_a = make_zone("ZoneA")
     zone_b = make_zone("ZoneB")
-    wall = tb.WallTorchSystem(C=2e5, R_a=r_a, R_b=r_b, id="PartitionWall")
+    wall = tb.WallSystem(C=2e5, R_a=r_a, R_b=r_b, id="PartitionWall")
 
     outdoor = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 5.0}, id="Outdoor"
+        weekday_ruleset={"ruleset_default_value": 5.0}, id="Outdoor"
     )
     zero = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 0.0}, id="Zero"
+        weekday_ruleset={"ruleset_default_value": 0.0}, id="Zero"
     )
     supply_air_temp = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 20.0}, id="SupplyAirTemp"
+        weekday_ruleset={"ruleset_default_value": 20.0}, id="SupplyAirTemp"
     )
     heater_a = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0.0,
             "ruleset_start_minute": [0],
             "ruleset_end_minute": [0],
@@ -91,8 +91,11 @@ def build_model(r_a=0.02, r_b=0.02, fuse=True, model_id="test_fusion"):
         wall, zone_b, "heatFlowRateB", "wallHeatGain", input_port_index=0
     )
 
-    model.simulation_model.enable_fusion = fuse
-    model.load(draw_semantic_model=False, draw_simulation_model=False)
+    model.load(
+        draw_semantic_model=False,
+        draw_simulation_model=False,
+        enable_fusion=fuse,
+    )
     return model, zone_a, zone_b, wall
 
 

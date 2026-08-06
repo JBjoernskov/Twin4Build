@@ -77,7 +77,7 @@ def main():
 
     # ── 3. Create optimization components ─────────────────────────────────
     valve_position_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0,
             "ruleset_start_minute": [0, 0],
             "ruleset_end_minute": [0, 0],
@@ -89,7 +89,7 @@ def main():
     )
 
     cooling_setpoint = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0,
             "ruleset_start_minute": [0, 0, 0],
             "ruleset_end_minute": [0, 0, 0],

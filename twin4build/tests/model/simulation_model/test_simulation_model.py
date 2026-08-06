@@ -5,8 +5,8 @@ import unittest
 # Set test flag
 import twin4build
 from twin4build.model.simulation_model.simulation_model import SimulationModel
-from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
-from twin4build.systems.fan.fan_torch_system import FanTorchSystem
+from twin4build.systems.damper.damper_system import DamperSystem
+from twin4build.systems.fan.fan_system import FanSystem
 from twin4build.systems.junction.supply_flow_junction_system import (
     SupplyFlowJunctionSystem,
 )
@@ -22,7 +22,7 @@ class TestSimulationModel(unittest.TestCase):
 
         # Set up common components for tests that need them
         self.schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -32,7 +32,7 @@ class TestSimulationModel(unittest.TestCase):
             },
             id="schedule",
         )
-        self.damper = DamperTorchSystem(id="damper")
+        self.damper = DamperSystem(id="damper")
 
     def test_initialization(self):
         """Test simulation model initialization."""
@@ -43,7 +43,7 @@ class TestSimulationModel(unittest.TestCase):
     def test_add_component(self):
         """Test adding components to simulation model."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -78,7 +78,7 @@ class TestSimulationModel(unittest.TestCase):
         """Test execution order for a chain of components."""
         # Create a chain: schedule -> damper1 -> damper2
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -88,10 +88,10 @@ class TestSimulationModel(unittest.TestCase):
             },
             id="schedule_chain",
         )
-        damper1 = DamperTorchSystem(id="damper1")
-        damper2 = DamperTorchSystem(id="damper2")
+        damper1 = DamperSystem(id="damper1")
+        damper2 = DamperSystem(id="damper2")
         supply_flow_junction = SupplyFlowJunctionSystem(id="supply_flow_junction")
-        fan = FanTorchSystem(
+        fan = FanSystem(
             id="fan",
             nominalPowerRate=1000,
             nominalAirFlowRate=1.0,
@@ -182,7 +182,7 @@ class TestSimulationModel(unittest.TestCase):
     def test_disconnected_components(self):
         """Test model with disconnected components."""
         schedule1 = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -193,7 +193,7 @@ class TestSimulationModel(unittest.TestCase):
             id="schedule1",
         )
         schedule2 = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -236,7 +236,7 @@ class TestSimulationModel(unittest.TestCase):
         )
 
         # Add another damper
-        damper2 = DamperTorchSystem(id="damper2")
+        damper2 = DamperSystem(id="damper2")
         self.sim_model.add_component(damper2)
 
         initial_count = self.sim_model.count_components()
@@ -427,7 +427,7 @@ class TestSimulationModel(unittest.TestCase):
     def test_add_connection_with_port_indices(self):
         """Test add_connection with port indices."""
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],

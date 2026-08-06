@@ -28,8 +28,8 @@ import torch
 import matplotlib.pyplot as plt
 
 import twin4build as tb
-from twin4build.systems.controller.controller_identification.controller_identification_torch_system import (
-    ControllerIdentificationTorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_system import (
+    ControllerIdentificationSystem,
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.utils.sigmoid_gate import BandGate
@@ -169,7 +169,7 @@ transformation_pct = lambda x: x / 100.0
 cits_components = {
     cid: c
     for cid, c in sim_model.components.items()
-    if isinstance(c, ControllerIdentificationTorchSystem)
+    if isinstance(c, ControllerIdentificationSystem)
 }
 print(f"\nFound {len(cits_components)} CITS components.")
 
@@ -439,7 +439,7 @@ if OVERRIDE_OUTPUT_MIN is not None:
     )
     n_overridden = 0
     for cid, comp in sim_model.components.items():
-        if not isinstance(comp, ControllerIdentificationTorchSystem):
+        if not isinstance(comp, ControllerIdentificationSystem):
             continue
         # Each CITS has actuator-indexed candidates ``candidate_{a}_0`` etc.;
         # mortar_bldg1 sets ``n_actuators = 1``, so only ``candidate_0_0``

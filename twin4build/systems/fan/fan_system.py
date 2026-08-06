@@ -13,7 +13,7 @@ import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 
 
-class FanTorchSystem(core.System, nn.Module):
+class FanSystem(core.System, nn.Module):
     r"""
     A fan system model implemented with PyTorch for gradient-based optimization.
 
@@ -288,3 +288,6 @@ class FanTorchSystem(core.System, nn.Module):
             outs["outletAirTemperature"], i_t=step_index
         )
         self.output["Power"]._set(outs["Power"], i_t=step_index)
+
+# Deprecated aliases (removed in twin4build 2.1)
+FanTorchSystem = FanSystem

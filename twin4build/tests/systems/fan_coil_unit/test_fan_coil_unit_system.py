@@ -11,14 +11,14 @@ import twin4build
 
 twin4build._IS_TESTING = True
 
-from twin4build.systems.fan_coil_unit.fan_coil_unit_torch_system import (
-    FanCoilUnitTorchSystem,
+from twin4build.systems.fan_coil_unit.fan_coil_unit_system import (
+    FanCoilUnitSystem,
 )
 
 
 class TestFanCoilUnitTorchSystem(unittest.TestCase):
     def setUp(self):
-        self.fcu = FanCoilUnitTorchSystem(
+        self.fcu = FanCoilUnitSystem(
             id="test_fcu",
             Q_flow_nominal=2000.0,
             T_w_supply_nominal=60.0,
@@ -80,7 +80,7 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
 
     def test_do_step_cooling(self):
         """Test FCU in cooling mode (chilled water, warm air)."""
-        fcu_cool = FanCoilUnitTorchSystem(
+        fcu_cool = FanCoilUnitSystem(
             id="test_fcu_cooling",
             Q_flow_nominal=-3000.0,
             T_w_supply_nominal=7.0,
@@ -117,7 +117,7 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
 
     def test_do_step_batch(self):
         """Test FCU with batch size > 1."""
-        fcu_batch = FanCoilUnitTorchSystem(
+        fcu_batch = FanCoilUnitSystem(
             id="test_fcu_batch",
             Q_flow_nominal=2000.0,
             T_w_supply_nominal=60.0,
@@ -217,7 +217,7 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
 
     def test_no_ua_initialization(self):
         """Test that UA is preserved when initialize_UA is False."""
-        fcu_no_init = FanCoilUnitTorchSystem(
+        fcu_no_init = FanCoilUnitSystem(
             id="test_fcu_no_ua_init",
             Q_flow_nominal=2000.0,
             T_w_supply_nominal=60.0,

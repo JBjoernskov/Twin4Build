@@ -15,8 +15,7 @@ from tqdm import tqdm
 # Local application imports
 import twin4build.core as core
 import twin4build.systems as systems
-from twin4build.utils.deprecation import deprecate_args
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.validate_period import validate_period
 
 # import george
@@ -420,13 +419,15 @@ class Simulator:
             AssertionError: If input parameters are invalid or missing timezone info.
             FMICallException: If the FMU simulation fails.
         """
-        deprecated_args = ["startTime", "endTime", "stepSize"]
-        new_args = ["start_time", "end_time", "step_size"]
-        position = [1, 2, 3]
-        value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
-        start_time = value_map.get("start_time", start_time)
-        end_time = value_map.get("end_time", end_time)
-        step_size = value_map.get("step_size", step_size)
+        for legacy_key, new_key in (
+            ("startTime", "start_time"),
+            ("endTime", "end_time"),
+            ("stepSize", "step_size"),
+        ):
+            if legacy_key in kwargs:
+                raise TypeError(
+                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
+                )
 
         start_time, end_time, step_size = validate_period(
             start_time, end_time, step_size

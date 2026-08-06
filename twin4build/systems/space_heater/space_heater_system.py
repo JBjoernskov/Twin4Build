@@ -25,7 +25,7 @@ from twin4build.translator.translator import (
 )
 
 
-class SpaceHeaterTorchSystem(core.System, nn.Module):
+class SpaceHeaterSystem(core.System, nn.Module):
     r"""
     Space Heater (Radiator) Model with Finite Element Discretization.
 
@@ -203,7 +203,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
     >>> import twin4build as tb
     >>>
     >>> # Create single-element radiator
-    >>> heater = tb.SpaceHeaterTorchSystem(
+    >>> heater = tb.SpaceHeaterSystem(
     ...     Q_flow_nominal_sh=2000,        # 2 kW nominal output
     ...     T_a_nominal_sh=70,             # 70°C supply temperature
     ...     T_b_nominal_sh=50,             # 50°C return temperature
@@ -216,7 +216,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
     Multi-element radiator for detailed modeling:
 
     >>> # Create multi-element radiator for better temperature distribution
-    >>> heater = tb.SpaceHeaterTorchSystem(
+    >>> heater = tb.SpaceHeaterSystem(
     ...     Q_flow_nominal_sh=3500,        # 3.5 kW nominal output
     ...     T_a_nominal_sh=75,             # Higher supply temperature
     ...     T_b_nominal_sh=55,             # Higher return temperature
@@ -687,5 +687,8 @@ def brick_signature_pattern():
     return sp
 
 
-SpaceHeaterTorchSystem.add_signature_pattern(brick_signature_pattern())
-SpaceHeaterTorchSystem.add_signature_pattern(saref_signature_pattern())
+SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern())
+SpaceHeaterSystem.add_signature_pattern(saref_signature_pattern())
+
+# Deprecated aliases (removed in twin4build 2.1)
+SpaceHeaterTorchSystem = SpaceHeaterSystem

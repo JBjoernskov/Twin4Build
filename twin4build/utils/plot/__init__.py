@@ -1,7 +1,7 @@
-# Local folder imports
-from .plot import Colors, Entry, plot, plot_component
+# Local application imports
+from .plot import Colors, Entry, plot
 
-__all__ = ["Entry", "plot", "plot_component", "Colors"]
+__all__ = ["Entry", "plot", "Colors"]
 
-# Make Entry, Option, and Colors available directly in the plot namespace
-# This allows tb.plot.Entry, tb.plot.Option, and tb.plot.Colors usage
+# Make Entry and Colors available directly in the plot namespace
+# This allows tb.plot.Entry and tb.plot.Colors usage

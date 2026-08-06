@@ -17,7 +17,7 @@ from twin4build.translator.translator import (
 )
 
 
-class DamperTorchSystem(core.System, nn.Module):
+class DamperSystem(core.System, nn.Module):
     r"""
     A damper system model implemented with PyTorch for gradient-based optimization.
 
@@ -183,7 +183,7 @@ class DamperTorchSystem(core.System, nn.Module):
         # Determine n_c.  Order of preference:
         #   1. ``_n_c_compiled`` set by the translator (overrides everything).
         #   2. An ``n_c`` already assigned by an outer wrapper (e.g. the
-        #      vectorized :class:`AirHandlingUnitTorchSystem` flattens
+        #      vectorized :class:`AirHandlingUnitSystem` flattens
         #      its (n_s, n_c, n_v) Vector inputs into a per-branch damper
         #      ``n_c = n_c_ahu * n_v`` *before* calling ``initialize``).
         #   3. Default to 1 when neither caller set anything > 1.
@@ -360,5 +360,8 @@ def brick_signature_pattern():
     return sp
 
 
-DamperTorchSystem.add_signature_pattern(brick_signature_pattern())
-DamperTorchSystem.add_signature_pattern(saref_signature_pattern())
+DamperSystem.add_signature_pattern(brick_signature_pattern())
+DamperSystem.add_signature_pattern(saref_signature_pattern())
+
+# Deprecated aliases (removed in twin4build 2.1)
+DamperTorchSystem = DamperSystem

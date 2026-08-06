@@ -15,7 +15,7 @@ from twin4build.systems.utils.discrete_statespace_system import (
     DiscreteStatespaceSystem,
     bilinear_onestep,
 )
-from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
+from twin4build.systems.valve.valve_system import ValveSystem
 from twin4build.translator.translator import (
     StepRule,
     Node,
@@ -24,7 +24,7 @@ from twin4build.translator.translator import (
 )
 
 
-class FanCoilUnitTorchSystem(core.System, nn.Module):
+class FanCoilUnitSystem(core.System, nn.Module):
     r"""
     Fan Coil Unit (FCU) Model with Finite Element Discretization.
 
@@ -34,7 +34,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
     along its length, while the air side is treated as quasi-steady-state (valid when
     simulation timesteps are much larger than air transit time through the coil).
 
-    The model reuses the same bilinear state-space framework as ``SpaceHeaterTorchSystem``,
+    The model reuses the same bilinear state-space framework as ``SpaceHeaterSystem``,
     with the key difference that heat is exchanged with a forced air stream rather than
     quasi-static room air, and an air outlet temperature is computed from an energy balance.
 
@@ -136,7 +136,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
 
     **State-Space Representation:**
 
-    The state-space matrices are identical in structure to ``SpaceHeaterTorchSystem``:
+    The state-space matrices are identical in structure to ``SpaceHeaterSystem``:
 
     *State vector:* :math:`\mathbf{x} = \begin{bmatrix}T_1 \\ T_2 \\ \vdots \\ T_n\end{bmatrix}`
 
@@ -174,7 +174,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
 
     >>> import twin4build as tb
     >>>
-    >>> fcu = tb.FanCoilUnitTorchSystem(
+    >>> fcu = tb.FanCoilUnitSystem(
     ...     Q_flow_nominal=2000,            # 2 kW nominal output
     ...     T_w_supply_nominal=60,          # 60°C hot water supply
     ...     T_w_return_nominal=45,          # 45°C water return
@@ -186,7 +186,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
 
     Fan coil unit for cooling:
 
-    >>> fcu_cool = tb.FanCoilUnitTorchSystem(
+    >>> fcu_cool = tb.FanCoilUnitSystem(
     ...     Q_flow_nominal=-3000,           # 3 kW cooling (negative = cooling)
     ...     T_w_supply_nominal=7,           # 7°C chilled water supply
     ...     T_w_return_nominal=12,          # 12°C water return
@@ -208,7 +208,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
          temperatures
 
     Implementation Details:
-       - The bilinear state-space matrices are structurally identical to SpaceHeaterTorchSystem
+       - The bilinear state-space matrices are structurally identical to SpaceHeaterSystem
        - All calculations use PyTorch tensors for gradient tracking
        - The UA value is optimized using numerical methods during initialization
        - Air outlet temperature is computed post-state-update via energy balance
@@ -250,7 +250,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
             requires_grad=False,
             scaling="log",
         )
-        self._valve = ValveTorchSystem(
+        self._valve = ValveSystem(
             waterFlowRateMax=waterFlowRateMax,
             valveAuthority=valveAuthority,
             id=f"_valve_{self.id}",
@@ -462,7 +462,7 @@ class FanCoilUnitTorchSystem(core.System, nn.Module):
         physical parameters -- a pure function of ``p`` (a dict of physical
         values for :attr:`PARAM_NAMES`; defaults to the component's own
         values).  Passing ``p`` is the functorch fast path; the structure is
-        identical to ``SpaceHeaterTorchSystem`` with the air inlet
+        identical to ``SpaceHeaterSystem`` with the air inlet
         temperature in the zone-temperature role.
         """
         if p is None:
@@ -744,10 +744,10 @@ def brick_signature_pattern_vav_ahu():
 
 
 # NOTE: A SAREF signature pattern was deliberately *not* registered for
-# ``FanCoilUnitTorchSystem``.  SAREF4BLDG has no ``FanCoilUnit`` class --
+# ``FanCoilUnitSystem``.  SAREF4BLDG has no ``FanCoilUnit`` class --
 # the closest concept is ``S4BLDG.SpaceHeater`` -- and any pattern keyed
 # on ``SpaceHeater`` + ``Valve`` + ``BuildingSpace`` would be
-# structurally identical to ``SpaceHeaterTorchSystem.saref_signature_pattern``.
+# structurally identical to ``SpaceHeaterSystem.saref_signature_pattern``.
 # Both classes would then claim the same entity in every SAREF model, the
 # MILP would have no way to tell them apart, and the alphabetical
 # tie-breaker would silently route plain radiator/space-heater models
@@ -758,5 +758,8 @@ def brick_signature_pattern_vav_ahu():
 # BRICK has a dedicated ``Fan_Coil_Unit`` class and the VAV/AHU
 # topology, both of which carry the air-side wiring that genuinely
 # distinguishes an FCU from a radiator.
-FanCoilUnitTorchSystem.add_signature_pattern(brick_signature_pattern())
-FanCoilUnitTorchSystem.add_signature_pattern(brick_signature_pattern_vav_ahu())
+FanCoilUnitSystem.add_signature_pattern(brick_signature_pattern())
+FanCoilUnitSystem.add_signature_pattern(brick_signature_pattern_vav_ahu())
+
+# Deprecated aliases (removed in twin4build 2.1)
+FanCoilUnitTorchSystem = FanCoilUnitSystem

@@ -5,7 +5,7 @@ Why fusion exists
 
 Components are co-simulated Gauss-Seidel style: each steps once per timestep
 against the other's held (one-step-lagged) outputs.  For a cycle like
-``BuildingSpace <-> WallTorchSystem`` the lag is unavoidable by ordering, and
+``BuildingSpace <-> WallSystem`` the lag is unavoidable by ordering, and
 when the exchanged signal is a stiff algebraic function of a neighbour's state
 (a heat flow with gain :math:`1/R`) the loop gain :math:`\Delta t/(R\,C)` can
 exceed 1 and the pair diverges -- for ANY execution order, because the loop
@@ -24,7 +24,7 @@ The elimination
 
 Each member decomposes into state-space *units* (leaf systems exposing
 ``_build_matrices`` and ``_ss_layout``; a composite like
-``BuildingSpaceTorchSystem`` contributes its ``thermal`` and ``mass``
+``BuildingSpaceSystem`` contributes its ``thermal`` and ``mass``
 submodels).  For unit :math:`i` with continuous matrices
 :math:`(A_i, B_i, C_i, D_i, E_i, F_i)` and input vector :math:`u_i`, every
 *internal* input (fed by another member through a fusable connection) is

@@ -39,15 +39,15 @@ import numpy as np
 
 # Local application imports
 import twin4build as tb
-from twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system import (
-    ControllerIdentificationPITorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
+    ControllerIdentificationPISystem,
 )
 from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
     rewire_pi_loops,
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.utils.sigmoid_gate import BandGate
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 
 # ---------------------------------------------------------------------------
 # Config -- kept in lock-step with translator_example_mortar_bldg1.py
@@ -96,7 +96,7 @@ transformation_pct = lambda x: x / 100.0          # pct -> fraction  # noqa: E73
 def _prepare_stage1_model(sim_model):
     """Force CITS build, swap SigmoidGate for BandGate, configure sensors."""
     for c in sim_model.components.values():
-        if isinstance(c, ControllerIdentificationPITorchSystem) and not c._built:
+        if isinstance(c, ControllerIdentificationPISystem) and not c._built:
             c.n_sensors = c.get_n_v_from_connections("sensorValue")
             c.n_setpoints = c.get_n_v_from_connections("setpointValue")
             c.n_on_off_signals = c.get_n_v_from_connections("onOffSignal")
@@ -104,7 +104,7 @@ def _prepare_stage1_model(sim_model):
             c._build_components()
 
     for c in sim_model.components.values():
-        if isinstance(c, ControllerIdentificationPITorchSystem):
+        if isinstance(c, ControllerIdentificationPISystem):
             c.gate_0 = BandGate(
                 threshold=BAND_INIT[0],
                 band=BAND_INIT[1],
@@ -138,7 +138,7 @@ def _build_stage1_model():
     sim_model = translator.translate(
         sm,
         systems_=[
-            tb.ControllerIdentificationPITorchSystem,
+            tb.ControllerIdentificationPISystem,
             tb.SensorSystem,
         ],
         verbose=1000,
@@ -619,7 +619,7 @@ def main():
     cits_components = {
         cid: c
         for cid, c in sim_model.components.items()
-        if isinstance(c, ControllerIdentificationPITorchSystem)
+        if isinstance(c, ControllerIdentificationPISystem)
     }
 
     # 2) Set frozen one-hot weights + polarity + data-driven gate seeds

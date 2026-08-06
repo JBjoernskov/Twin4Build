@@ -9,7 +9,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

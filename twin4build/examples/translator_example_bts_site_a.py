@@ -24,7 +24,7 @@ from rdflib import URIRef
 import twin4build as tb
 import twin4build.core as core
 from twin4build.utils.data_loaders.load import load_from_database
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 
 if __name__ == "__main__":
     # Load the semantic model
@@ -81,13 +81,13 @@ if __name__ == "__main__":
     sim_model = translator.translate(
         sm,
         systems_=[
-            tb.BuildingSpaceTorchSystem,
-            tb.AirHandlingUnitTorchSystem,
+            tb.BuildingSpaceSystem,
+            tb.AirHandlingUnitSystem,
             tb.OutdoorEnvironmentSystem,
         ],
         verbose=1000,
     )
-    # sim_model = translator.translate(sm, systems_=[tb.BuildingSpaceTorchSystem, tb.AirHandlingUnitTorchSystem], verbose=9)
+    # sim_model = translator.translate(sm, systems_=[tb.BuildingSpaceSystem, tb.AirHandlingUnitSystem], verbose=9)
 
     sim_model.serialize()
     sim_model.visualize(forward_only=True)

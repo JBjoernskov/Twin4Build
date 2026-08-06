@@ -449,7 +449,7 @@ class System:
         ``self.thermal.parameter["C_air"]`` for bounds; an unprefixed
         path looks up ``self.parameter[leaf]``.  Subclasses with a
         bespoke parameter space (e.g.
-        :class:`ControllerIdentificationTorchSystem`) override this with
+        :class:`ControllerIdentificationSystem`) override this with
         their own discovery logic.
 
         Returns:

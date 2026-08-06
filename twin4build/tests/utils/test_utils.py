@@ -286,8 +286,8 @@ class TestDataLoaders(unittest.TestCase):
 
         result = sample_from_df(
             df,
-            datecolumn=0,
-            valuecolumn=1,
+            date_column=0,
+            value_column=1,
             step_size=3600,
             start_time=start_time,
             end_time=end_time,
@@ -319,8 +319,8 @@ class TestDataLoaders(unittest.TestCase):
 
         result = sample_from_df(
             df,
-            datecolumn=0,
-            valuecolumn=1,
+            date_column=0,
+            value_column=1,
             step_size=3600,
             start_time=start_time,
             end_time=end_time,
@@ -355,8 +355,8 @@ class TestDataLoaders(unittest.TestCase):
 
         result = sample_from_df(
             df,
-            datecolumn=0,
-            valuecolumn=1,
+            date_column=0,
+            value_column=1,
             step_size=3600,
             start_time=start_time,
             end_time=end_time,
@@ -388,8 +388,8 @@ class TestDataLoaders(unittest.TestCase):
 
         result = sample_from_df(
             df,
-            datecolumn=0,
-            valuecolumn=1,
+            date_column=0,
+            value_column=1,
             step_size=3600,
             start_time=start_time,
             end_time=end_time,
@@ -427,8 +427,8 @@ class TestDataLoaders(unittest.TestCase):
         # When valuecolumn is None, all columns should be converted to numeric
         result = sample_from_df(
             df,
-            datecolumn=0,
-            valuecolumn=None,
+            date_column=0,
+            value_column=None,
             step_size=3600,
             start_time=start_time,
             end_time=end_time,
@@ -466,8 +466,8 @@ class TestDataLoaders(unittest.TestCase):
 
         result = sample_from_df(
             df,
-            datecolumn=0,
-            valuecolumn=1,
+            date_column=0,
+            value_column=1,
             step_size=3600,
             start_time=start_time,
             end_time=end_time,
@@ -620,8 +620,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
 
             result = load_from_spreadsheet(
                 filename=temp_file,
-                datecolumn=0,
-                valuecolumn=1,
+                date_column=0,
+                value_column=1,
                 step_size=3600,
                 start_time=start_time,
                 end_time=end_time,
@@ -671,8 +671,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             # First load - creates cache
             result1 = load_from_spreadsheet(
                 filename=temp_file,
-                datecolumn=0,
-                valuecolumn=1,
+                date_column=0,
+                value_column=1,
                 step_size=3600,
                 start_time=start_time,
                 end_time=end_time,
@@ -684,8 +684,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             # Second load - should use cache
             result2 = load_from_spreadsheet(
                 filename=temp_file,
-                datecolumn=0,
-                valuecolumn=1,
+                date_column=0,
+                value_column=1,
                 step_size=3600,
                 start_time=start_time,
                 end_time=end_time,
@@ -736,8 +736,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
 
             result = load_from_spreadsheet(
                 filename=temp_file,
-                datecolumn=0,
-                valuecolumn=1,
+                date_column=0,
+                value_column=1,
                 step_size=3600,
                 start_time=start_time,
                 end_time=end_time,
@@ -772,8 +772,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
             with self.assertRaises(Exception):
                 load_from_spreadsheet(
                     filename=temp_file,
-                    datecolumn=0,
-                    valuecolumn=1,
+                    date_column=0,
+                    value_column=1,
                     step_size=3600,
                     start_time=start_time,
                     end_time=end_time,
@@ -787,12 +787,13 @@ class TestPlotUtilities(unittest.TestCase):
     def test_plot_imports(self):
         """Test that plot utilities can be imported."""
         # Local application imports
-        from twin4build.utils.plot import Colors, Entry, plot, plot_component
+        from twin4build.utils.plot import Colors, Entry, plot
 
         self.assertIsNotNone(plot)
-        self.assertIsNotNone(plot_component)
         self.assertIsNotNone(Entry)
         self.assertIsNotNone(Colors)
+        with self.assertRaises(ImportError):
+            from twin4build.utils.plot import plot_component  # noqa: F401
 
 
 class TestUnitConverters(unittest.TestCase):
@@ -1273,7 +1274,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_initialization(self):
         """Test PrintProgress initialization."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertIsNotNone(p)
@@ -1285,7 +1286,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_enable_disable(self):
         """Test PrintProgress enable/disable functionality."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         # Auto-disabled in test environments
@@ -1303,7 +1304,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_verbose_setting(self):
         """Test PrintProgress verbose setting."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertEqual(p.verbose, 3)
@@ -1317,7 +1318,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_add_line(self):
         """Test PrintProgress add_line method."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         p.add_line(indent="  ", message="Test message", status="OK")
@@ -1330,7 +1331,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_get_char_level(self):
         """Test PrintProgress get_char_level method."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
 
@@ -1344,7 +1345,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_current_level(self):
         """Test PrintProgress current_level property."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertEqual(p.current_level, 0)
@@ -1355,7 +1356,7 @@ class TestPrintProgress(unittest.TestCase):
         from unittest.mock import patch
 
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         p._allow_in_tests = True
@@ -1378,7 +1379,7 @@ class TestPrintProgress(unittest.TestCase):
         from unittest.mock import patch
 
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         p._allow_in_tests = True
@@ -1397,7 +1398,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_call_disabled(self):
         """Test PrintProgress __call__ when disabled."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         # Instance is auto-disabled in test environments
@@ -1412,7 +1413,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_context_manager(self):
         """Test PrintProgress as context manager."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         # Instance is auto-disabled in test environments
         with PrintProgress() as p:
@@ -1422,7 +1423,7 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_is_interactive(self):
         """Test PrintProgress is_interactive method."""
         # Local application imports
-        from twin4build.utils.print_progress import Logger as PrintProgress
+        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         # This should return True or False depending on environment

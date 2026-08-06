@@ -1,7 +1,6 @@
 # Standard library imports
 import datetime
 import unittest
-import warnings
 
 # Third party imports
 from dateutil import tz
@@ -17,7 +16,7 @@ twin4build._IS_TESTING = True
 class TestScheduleSystem(unittest.TestCase):
     def setUp(self):
         self.schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -55,7 +54,7 @@ class TestScheduleSystem(unittest.TestCase):
     def test_do_step_batch(self):
         """Test schedule system do_step method with batch size > 1."""
         schedule_batch = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -87,7 +86,7 @@ class TestScheduleSystem(unittest.TestCase):
         """Test that use_dict is auto-detected when weekDayRulesetDict is provided."""
         schedule = ScheduleSystem(
             id="test_auto_dict",
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],
@@ -100,12 +99,12 @@ class TestScheduleSystem(unittest.TestCase):
         self.assertFalse(schedule.use_spreadsheet)
         self.assertFalse(schedule.use_database)
 
-    def test_deprecated_usedict_constructor_warning(self):
-        """Test that usedict in constructor shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
-            schedule = ScheduleSystem(
-                id="test_deprecated_usedict",
-                weekDayRulesetDict={
+    def test_removed_usedict_constructor_raises(self):
+        """Old camelCase constructor kwargs are hard-removed."""
+        with self.assertRaises(TypeError):
+            ScheduleSystem(
+                id="test_removed_usedict",
+                weekday_ruleset={
                     "ruleset_start_minute": [0],
                     "ruleset_end_minute": [0],
                     "ruleset_start_hour": [0],
@@ -115,27 +114,14 @@ class TestScheduleSystem(unittest.TestCase):
                 },
                 usedict=True,
             )
-        self.assertTrue(schedule.use_dict)
 
-    def test_deprecated_usedict_property_warning(self):
-        """Test that accessing usedict property shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
+    def test_removed_usedict_property_raises(self):
+        """Old camelCase properties are hard-removed."""
+        with self.assertRaises(AttributeError):
             _ = self.schedule.usedict
-
-    def test_deprecated_usedict_setter_warning(self):
-        """Test that setting usedict property shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
-            self.schedule.usedict = False
-        self.assertFalse(self.schedule.use_dict)
-
-    def test_deprecated_useSpreadsheet_property_warning(self):
-        """Test that accessing useSpreadsheet property shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
+        with self.assertRaises(AttributeError):
             _ = self.schedule.useSpreadsheet
-
-    def test_deprecated_useDatabase_property_warning(self):
-        """Test that accessing useDatabase property shows deprecation warning."""
-        with self.assertWarns(DeprecationWarning):
+        with self.assertRaises(AttributeError):
             _ = self.schedule.useDatabase
 
     def test_only_one_flag_allowed(self):
@@ -146,26 +132,6 @@ class TestScheduleSystem(unittest.TestCase):
                 use_dict=True,
                 use_spreadsheet=True,
             )
-
-    def test_backward_compat_camelcase(self):
-        """Test that old camelCase code still works."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            schedule = ScheduleSystem(
-                id="test_backward_compat",
-                weekDayRulesetDict={
-                    "ruleset_start_minute": [0],
-                    "ruleset_end_minute": [0],
-                    "ruleset_start_hour": [0],
-                    "ruleset_end_hour": [1],
-                    "ruleset_value": [20],
-                    "ruleset_default_value": 0,
-                },
-                usedict=True,
-            )
-            self.assertTrue(schedule.usedict)
-            schedule.useSpreadsheet = False
-            self.assertFalse(schedule.useSpreadsheet)
 
     def test_caching_with_different_datetime_instances(self):
         """Test that caching works reliably with different datetime instances having same values."""
@@ -186,7 +152,7 @@ class TestScheduleSystem(unittest.TestCase):
         # Create model with schedule system that has noise
         model = Model(id="test_cache_model")
         schedule = ScheduleSystem(
-            weekDayRulesetDict={
+            weekday_ruleset={
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [0],

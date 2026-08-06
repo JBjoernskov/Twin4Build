@@ -25,7 +25,7 @@ class SigmoidGate(core.System, nn.Module):
 
     1. As a standalone System in the model graph (via ``do_step`` with I/O ports).
     2. As an embedded sub-System (via :meth:`compute_gate` called directly by a
-       parent System such as ``ControllerIdentificationTorchSystem``).
+       parent System such as ``ControllerIdentificationSystem``).
 
     .. math::
 
@@ -131,7 +131,7 @@ class SigmoidGate(core.System, nn.Module):
         self.default_output = self.default_output.expand_to_n_c(self.n_c)
 
         # Detect whether the optional controllerSignal input is wired.
-        # Mirrors the check in BuildingSpaceThermalTorchSystem.setup_variable_inputs:
+        # Mirrors the check in BuildingSpaceThermalSystem.setup_variable_inputs:
         # look for a ConnectionPoint on the controllerSignal port with at
         # least one incoming connection.
         self._controller_wired = False
@@ -232,7 +232,7 @@ class BandGate(SigmoidGate):
     band: direction is implicit in ``w > 0``.
 
     Designed as a drop-in replacement for :class:`SigmoidGate` inside
-    ``ControllerIdentificationTorchSystem``: inherits ``threshold``
+    ``ControllerIdentificationSystem``: inherits ``threshold``
     (= low) and ``polarity`` (unused, kept for interface compatibility)
     so that CITS parameter discovery continues to work without
     modification.  A read-only :attr:`threshold_high` property is

@@ -121,7 +121,7 @@ def generate_data_with_twin4build(
     model = tb.Model(id="data_generation_model")
 
     # Building space
-    building_space = tb.BuildingSpaceThermalTorchSystem(
+    building_space = tb.BuildingSpaceThermalSystem(
         C_air=5e5,
         C_wall=2e6,
         R_out=0.01,
@@ -132,11 +132,11 @@ def generate_data_with_twin4build(
         id="room",
     )
 
-    valve = tb.ValveTorchSystem(
+    valve = tb.ValveSystem(
         waterFlowRateMax=0.05, valveAuthority=0.5, id="heating_valve"
     )
 
-    space_heater = tb.SpaceHeaterTorchSystem(
+    space_heater = tb.SpaceHeaterSystem(
         Q_flow_nominal_sh=2000.0,
         T_a_nominal_sh=55.0,
         T_b_nominal_sh=45.0,
@@ -145,7 +145,7 @@ def generate_data_with_twin4build(
     )
 
     pi_controller = tb.PIDControllerSystem(
-        kp=kp, Ti=Ti, Td=0.0, isReverse=True, id="true_controller"
+        kp=kp, Ti=Ti, Td=0.0, is_reverse=True, id="true_controller"
     )
 
     # Schedules
@@ -521,11 +521,11 @@ def run_multi_signal_identification_example():
         model.add_component(sched)
 
     # Create controller with multiple sensors and setpoints
-    controller = tb.ControllerIdentificationTorchSystem(
+    controller = tb.ControllerIdentificationSystem(
         n_sensors=len(sensors),
         n_setpoints=len(setpoints),
         n_actuators=1,
-        isReverse=True,
+        is_reverse=True,
         id="identified_controller",
     )
     model.add_component(controller)

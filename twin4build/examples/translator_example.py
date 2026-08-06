@@ -17,7 +17,7 @@ def fcn(self):
     """
     # Add supply water temperature schedule
     supply_water_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 60,
             "ruleset_start_minute": [],
             "ruleset_end_minute": [],
@@ -30,7 +30,7 @@ def fcn(self):
 
     # Add boundary temperature schedule
     boundary_temp_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 21,
             "ruleset_start_minute": [],
             "ruleset_end_minute": [],
@@ -42,8 +42,8 @@ def fcn(self):
     )
 
     # Add missing connections.  The office couples to the boundary-temperature
-    # schedule through a 2R1C WallTorchSystem (energy-consistent wall model).
-    boundary_wall = tb.WallTorchSystem(
+    # schedule through a 2R1C WallSystem (energy-consistent wall model).
+    boundary_wall = tb.WallSystem(
         C=1e6,
         R_a=0.02,
         R_b=0.02,
@@ -76,27 +76,27 @@ def fcn(self):
     )
 
     # Configure sensor data sources
-    self.components["office_temperature_sensor"].useSpreadsheet = True
+    self.components["office_temperature_sensor"].use_spreadsheet = True
     self.components["office_temperature_sensor"].filename = utils.get_path(
         ["estimator_example", "temperature_sensor.csv"]
     )
 
-    self.components["office_co2_sensor"].useSpreadsheet = True
+    self.components["office_co2_sensor"].use_spreadsheet = True
     self.components["office_co2_sensor"].filename = utils.get_path(
         ["estimator_example", "co2_sensor.csv"]
     )
 
-    self.components["office_valve_position_sensor"].useSpreadsheet = True
+    self.components["office_valve_position_sensor"].use_spreadsheet = True
     self.components["office_valve_position_sensor"].filename = utils.get_path(
         ["estimator_example", "valve_position_sensor.csv"]
     )
 
-    self.components["office_damper_position_sensor"].useSpreadsheet = True
+    self.components["office_damper_position_sensor"].use_spreadsheet = True
     self.components["office_damper_position_sensor"].filename = utils.get_path(
         ["estimator_example", "damper_position_sensor.csv"]
     )
 
-    self.components["supply_air_temperature_sensor"].useSpreadsheet = True
+    self.components["supply_air_temperature_sensor"].use_spreadsheet = True
     self.components["supply_air_temperature_sensor"].filename = utils.get_path(
         ["estimator_example", "supply_air_temperature.csv"]
     )
@@ -120,13 +120,13 @@ def fcn(self):
         "ruleset_value": [],
     }
 
-    self.components["office_temperature_heating_setpoint"].useSpreadsheet = True
+    self.components["office_temperature_heating_setpoint"].use_spreadsheet = True
     self.components["office_temperature_heating_setpoint"].filename = utils.get_path(
         ["estimator_example", "temperature_heating_setpoint.csv"]
     )
 
     # Configure outdoor environment data
-    self.components["outdoor_environment"].useSpreadsheet = True
+    self.components["outdoor_environment"].use_spreadsheet = True
     self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(
         ["estimator_example", "outdoor_environment.csv"]
     )
@@ -150,9 +150,9 @@ def fcn(self):
 model = tb.Model(id="translator_example")
 
 # Local application imports
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 
-# from twin4build.systems.building_space.building_space_torch_system import saref_signature_pattern_sensor
+# from twin4build.systems.building_space.building_space_system import saref_signature_pattern_sensor
 LOGGER.hide_status("debug")
 # Load the model from semantic file
 
@@ -161,8 +161,8 @@ sm = tb.SemanticModel(rdf_file=filename, id="translator_example")
 
 # translator = tb.Translator()
 
-# tb.BuildingSpaceTorchSystem.sp = [saref_signature_pattern_sensor()]
-# translator.translate(semantic_model=sm, systems_=[tb.BuildingSpaceTorchSystem], verbose=999999)
+# tb.BuildingSpaceSystem.sp = [saref_signature_pattern_sensor()]
+# translator.translate(semantic_model=sm, systems_=[tb.BuildingSpaceSystem], verbose=999999)
 
 model.load(semantic_model_filename=filename, fcn=fcn)
 

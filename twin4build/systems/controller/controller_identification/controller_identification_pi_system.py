@@ -1,6 +1,6 @@
 """PI-only CITS variant for data-driven loop classification and parameter seeding.
 
-This subclass of :class:`ControllerIdentificationTorchSystem` constrains the
+This subclass of :class:`ControllerIdentificationSystem` constrains the
 candidate controller pool to a single
 :class:`~twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system.PIDControllerSystem`
 with ``Td`` frozen at zero.  It exists to make the identification problem clean
@@ -15,7 +15,7 @@ VAV with damper-equipment-modeled actuator command) that previously lived on
 the generic CITS class are re-registered on this PI subclass so the translator
 builds PI-CITS instances directly during translation.  The matching patterns
 on the generic CITS class are disabled while this subclass is the default
-(see ``controller_identification_torch_system.py``).
+(see ``controller_identification_system.py``).
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ import torch
 
 # Local application imports
 import twin4build.core as core
-from twin4build.systems.controller.controller_identification.controller_identification_torch_system import (
-    ControllerIdentificationTorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_system import (
+    ControllerIdentificationSystem,
 )
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
@@ -43,7 +43,7 @@ from twin4build.translator.translator import (
 )
 
 
-class ControllerIdentificationPITorchSystem(ControllerIdentificationTorchSystem):
+class ControllerIdentificationPISystem(ControllerIdentificationSystem):
     """PI-only CITS.  Single PI candidate with ``Td`` frozen at zero.
 
     All other CITS infrastructure -- BandGate, multi-candidate gating via
@@ -58,10 +58,10 @@ class ControllerIdentificationPITorchSystem(ControllerIdentificationTorchSystem)
             to be inferred from connections during translation.
         n_setpoints: Number of candidate setpoint signals.  May be ``None``.
         n_actuators: Number of actuator outputs (default 1).
-        **kwargs: Forwarded to :class:`ControllerIdentificationTorchSystem`.
+        **kwargs: Forwarded to :class:`ControllerIdentificationSystem`.
 
     Example:
-        >>> cits = ControllerIdentificationPITorchSystem(id="pi_cits")
+        >>> cits = ControllerIdentificationPISystem(id="pi_cits")
         >>> # The classifier-driven rewire writes kp/Ti/output_min/etc.
         >>> # onto cits.candidate_0_0 once data is available.
     """
@@ -81,7 +81,7 @@ class ControllerIdentificationPITorchSystem(ControllerIdentificationTorchSystem)
         kwargs.setdefault("setpoint_controllers", [PIDControllerSystem])
         kwargs.setdefault(
             "setpoint_controller_kwargs",
-            [{"kp": 1.0, "Ti": 1800.0, "Td": 0.0, "isReverse": False}],
+            [{"kp": 1.0, "Ti": 1800.0, "Td": 0.0, "is_reverse": False}],
         )
 
         super().__init__(
@@ -117,7 +117,7 @@ class ControllerIdentificationPITorchSystem(ControllerIdentificationTorchSystem)
 #
 # These are verbatim copies of ``brick_signature_pattern_vav`` and
 # ``brick_signature_pattern_vav_damper`` from
-# ``controller_identification_torch_system.py``.  They are registered on the
+# ``controller_identification_system.py``.  They are registered on the
 # PI subclass so the translator produces ``ControllerIdentificationPITorch
 # System`` instances when matching BRICK VAV topologies.  See the original
 # functions for the topology rationale; the only change here is the class on
@@ -128,7 +128,7 @@ def brick_signature_pattern_vav():
     """BRICK VAV pattern: hasPoint sensors/setpoints/actuator-commands directly.
 
     See :func:`brick_signature_pattern_vav` in
-    ``controller_identification_torch_system.py`` for the topology rationale.
+    ``controller_identification_system.py`` for the topology rationale.
     """
     vav = Node(cls=core.namespace.BRICK.VAV)
     sensors = Node(
@@ -164,14 +164,14 @@ def brick_signature_pattern_vav():
     return sp
 
 
-ControllerIdentificationPITorchSystem.add_signature_pattern(brick_signature_pattern_vav())
+ControllerIdentificationPISystem.add_signature_pattern(brick_signature_pattern_vav())
 
 
 def brick_signature_pattern_vav_damper():
     """BRICK VAV pattern with damper-equipment-modeled actuator command.
 
     See :func:`brick_signature_pattern_vav_damper` in
-    ``controller_identification_torch_system.py`` for the topology rationale.
+    ``controller_identification_system.py`` for the topology rationale.
     """
     vav = Node(cls=core.namespace.BRICK.VAV)
     sensors = Node(
@@ -205,6 +205,9 @@ def brick_signature_pattern_vav_damper():
     return sp
 
 
-ControllerIdentificationPITorchSystem.add_signature_pattern(
+ControllerIdentificationPISystem.add_signature_pattern(
     brick_signature_pattern_vav_damper()
 )
+
+# Deprecated aliases (removed in twin4build 2.1)
+ControllerIdentificationPITorchSystem = ControllerIdentificationPISystem

@@ -9,8 +9,8 @@ from dateutil import tz
 # Local application imports
 # Set test flag
 import twin4build
-from twin4build.systems.building_space.building_space_torch_system import (
-    BuildingSpaceTorchSystem,
+from twin4build.systems.building_space.building_space_system import (
+    BuildingSpaceSystem,
 )
 
 twin4build._IS_TESTING = True
@@ -18,7 +18,7 @@ twin4build._IS_TESTING = True
 
 class TestBuildingSpaceTorchSystem(unittest.TestCase):
     def setUp(self):
-        self.space = BuildingSpaceTorchSystem(
+        self.space = BuildingSpaceSystem(
             id="test_space",
             C_wall=1000000.0,
             C_air=10000.0,
@@ -77,7 +77,7 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
 
     def test_do_step_batch(self):
         """Test building space system do_step method with batch size > 1."""
-        space_batch = BuildingSpaceTorchSystem(
+        space_batch = BuildingSpaceSystem(
             id="test_space_batch",
             C_wall=1000000.0,
             C_air=10000.0,

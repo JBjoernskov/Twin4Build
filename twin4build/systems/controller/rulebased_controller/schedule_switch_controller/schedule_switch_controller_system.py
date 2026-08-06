@@ -13,7 +13,7 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 
 
-class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
+class ScheduleSwitchControllerSystem(core.System, nn.Module):
     r"""
     Differentiable Schedule Switch Controller that blends between an upstream
     input signal and a learnable override value based on a weekly schedule.
@@ -68,7 +68,7 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
         **kwargs: Additional keyword arguments passed to parent classes.
 
     Example:
-        >>> gate = ScheduleSwitchControllerTorchSystem(
+        >>> gate = ScheduleSwitchControllerSystem(
         ...     hour_weights=[0.0]*7 + [1.0]*10 + [0.0]*7,
         ...     day_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
         ...     override_value=1.0,
@@ -263,12 +263,12 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
 
         for inp in self.input.values():
             inp.initialize(
-                n_timesteps=max_timesteps,
-                batch_size=batch_size,
+                n_t=max_timesteps,
+                n_s=batch_size,
             )
         self.output["inputSignal"].initialize(
-            n_timesteps=max_timesteps,
-            batch_size=batch_size,
+            n_t=max_timesteps,
+            n_s=batch_size,
         )
 
         if self._factored:
@@ -500,3 +500,6 @@ class ScheduleSwitchControllerTorchSystem(core.System, nn.Module):
     def reset_state(self) -> None:
         """Reset controller state (no-op for schedule switch controller)."""
         pass
+
+# Deprecated aliases (removed in twin4build 2.1)
+ScheduleSwitchControllerTorchSystem = ScheduleSwitchControllerSystem

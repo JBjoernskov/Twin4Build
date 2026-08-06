@@ -15,8 +15,7 @@ from scipy.optimize import Bounds, least_squares, minimize
 import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.utils.types as tps
-from twin4build.utils.deprecation import deprecate_args
-from twin4build.utils.print_progress import LOGGER
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.validate_period import validate_period
 
 
@@ -523,17 +522,15 @@ class Optimizer:
             ``simulator.simulate(...)`` runs with the optimal inputs.
         """
 
-        deprecated_args = [
-            "startTime",
-            "endTime",
-            "stepSize",
-        ]
-        new_args = ["start_time", "end_time", "step_size"]
-        position = [1, 2, 3, 4, 5]
-        value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
-        start_time = value_map.get("start_time", start_time)
-        end_time = value_map.get("end_time", end_time)
-        step_size = value_map.get("step_size", step_size)
+        for legacy_key, new_key in (
+            ("startTime", "start_time"),
+            ("endTime", "end_time"),
+            ("stepSize", "step_size"),
+        ):
+            if legacy_key in kwargs:
+                raise TypeError(
+                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
+                )
 
         self._variables = variables or []
         self._objectives = objectives or []
@@ -613,67 +610,16 @@ class Optimizer:
             "ad"  # Always choose automatic differentiation mode when ambiguous
         )
 
-        # Process method specification
-        if isinstance(method, str):
-            valid_methods = list(
-                set([l[0] for l in allowed_methods] + [l[1] for l in allowed_methods])
-            )
-            assert (
-                method in valid_methods
-            ), f"If a string is provided, the \"method\" argument must be one of the following: {', '.join(valid_methods)} - \"{method}\" was provided."
+        from twin4build.utils.method_spec import parse_method
 
-            # Try to match with default methods first
-            matched = False
-            for t in default_methods:
-                if t[0] == method:
-                    method = t
-                    matched = True
-                    break
-
-            # If no match found, look for candidates
-            if not matched:
-                candidates = []
-                for m in allowed_methods:
-                    if m[1] == method:
-                        candidates.append(m)
-
-                if len(candidates) == 1:
-                    method = candidates[0]
-                elif len(candidates) > 1:
-                    # Choose the one with default mode
-                    for c in candidates:
-                        if c[2] == default_mode:
-                            method = c
-                            break
-
-        elif isinstance(method, tuple):
-            assert (
-                len(method) == 3
-            ), f'If a tuple is provided, it must contain three elements, corresponding to the library, method, and mode (e.g. ("scipy", "SLSQP", "ad")) - "{method}" was provided.'
-            assert method[0] in [
-                l[0] for l in allowed_methods
-            ], f"If a tuple is provided, the first element must be one of the following: {', '.join(list(set([l[0] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[1] in [
-                l[1] for l in allowed_methods
-            ], f"If a tuple is provided, the second element must be one of the following: {', '.join(list(set([l[1] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[2] in [
-                l[2] for l in allowed_methods
-            ], f"If a tuple is provided, the third element must be one of the following: {', '.join(list(set([l[2] for l in allowed_methods])))} - \"{method}\" was provided."
-
-            # Validate the method tuple
-            method_ = None
-            for t in allowed_methods:
-                if t[0] == method[0] and t[1] == method[1] and t[2] == method[2]:
-                    method_ = t
-                    break
-            assert (
-                method_ is not None
-            ), f"The method {method} is not valid. Only the following methods are supported: {', '.join([str(t) for t in allowed_methods])}"
-            method = method_
-        else:
-            raise ValueError(
-                f'The "method" argument must be a string or a tuple - "{method}" was provided.'
-            )
+        method, _transcription = parse_method(
+            method,
+            allowed_methods=allowed_methods,
+            default_methods=default_methods,
+            default_mode=default_mode,
+            default_none_method=default_methods[0],
+            allow_transcription=False,
+        )
 
         # Validate format of decision variables
         for i, decision_var in enumerate(self._variables):
@@ -857,7 +803,7 @@ class Optimizer:
 
         LOGGER.remove_level()
         LOGGER.ok("Running optimization", change_status=True)
-        return result
+        return OptimizationResult.from_scipy(result)
 
     # def _torch_solver(
     #     self,
@@ -1516,8 +1462,8 @@ class Optimizer:
 
             # Initialize with the new values (time-first format)
             component.output[output_name].initialize(
-                n_timesteps=self._max_timesteps,
-                batch_size=len(self._start_time),
+                n_t=self._max_timesteps,
+                n_s=len(self._start_time),
                 values=values,
                 force=True,
             )
@@ -1704,3 +1650,49 @@ class Optimizer:
             self._theta_hes = theta
             self.hes = self.__hes_ad(theta)
             return self.hes.detach().cpu().numpy().astype(np.float64)
+
+
+class OptimizationResult(dict):
+    """Dict-like result of :meth:`Optimizer.optimize`, parallel to EstimationResult.
+
+    Wraps the SciPy ``OptimizeResult`` fields and keeps attribute access
+    (``result.x``, ``result.success``, …) for compatibility with SciPy-style code.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    @classmethod
+    def from_scipy(cls, result) -> "OptimizationResult":
+        """Build an OptimizationResult from a SciPy OptimizeResult-like object."""
+        data = {}
+        # OptimizeResult supports dict-like access
+        try:
+            data.update(dict(result))
+        except Exception:
+            for key in (
+                "x",
+                "success",
+                "status",
+                "message",
+                "fun",
+                "jac",
+                "hess",
+                "hess_inv",
+                "nfev",
+                "njev",
+                "nhev",
+                "nit",
+                "maxcv",
+            ):
+                if hasattr(result, key):
+                    data[key] = getattr(result, key)
+        return cls(**data)
+
+    def __copy__(self):
+        return OptimizationResult(**self)
+
+    def copy(self):
+        return self.__copy__()

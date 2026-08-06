@@ -2,10 +2,10 @@
 
 Public symbols:
 
-- :class:`ControllerIdentificationTorchSystem`: the generic, multi-candidate
+- :class:`ControllerIdentificationSystem`: the generic, multi-candidate
   controller-identification system (kept for programmatic use; its BRICK
   signature patterns are currently disabled in favour of the PI variant).
-- :class:`ControllerIdentificationPITorchSystem`: the PI-only variant used
+- :class:`ControllerIdentificationPISystem`: the PI-only variant used
   by the data-driven rewire pipeline.
 - :func:`rewire_pi_loops`: idempotent model-graph operation that prunes
   candidates and seeds PI parameters from observed signals.
@@ -14,11 +14,11 @@ Public symbols:
   exposed for diagnostics, testing, and custom pipelines.
 """
 
-from twin4build.systems.controller.controller_identification.controller_identification_torch_system import (
-    ControllerIdentificationTorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_system import (
+    ControllerIdentificationSystem,
 )
-from twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system import (
-    ControllerIdentificationPITorchSystem,
+from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
+    ControllerIdentificationPISystem,
 )
 from twin4build.systems.controller.controller_identification.loop_classifier import (
     ActuatorSeeds,
@@ -33,8 +33,8 @@ from twin4build.systems.controller.controller_identification.pi_loop_rewire impo
 )
 
 __all__ = [
-    "ControllerIdentificationTorchSystem",
-    "ControllerIdentificationPITorchSystem",
+    "ControllerIdentificationSystem",
+    "ControllerIdentificationPISystem",
     "rewire_pi_loops",
     "RewireReport",
     "score_pair",

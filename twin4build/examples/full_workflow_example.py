@@ -48,13 +48,13 @@ def fcn(self):
     - Outdoor environment data
     """
     supply_water_schedule = tb.PiecewiseLinearScheduleSystem(
-        defaultX=[-12, 5, 20],
-        defaultY=[60, 50, 20],
+        default_x=[-12, 5, 20],
+        default_y=[60, 50, 20],
         id="supply_water_schedule",
     )
 
     boundary_temp_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 21,
             "ruleset_start_minute": [],
             "ruleset_end_minute": [],
@@ -62,7 +62,7 @@ def fcn(self):
             "ruleset_end_hour": [],
             "ruleset_value": [],
         },
-        weekendRulesetDict={
+        weekend_ruleset={
             "ruleset_default_value": 21,
             "ruleset_start_minute": [],
             "ruleset_end_minute": [],
@@ -74,10 +74,10 @@ def fcn(self):
     )
 
     # The wall toward the neighbouring (unmodeled) space: the office couples
-    # to the boundary-temperature schedule through a 2R1C WallTorchSystem.
+    # to the boundary-temperature schedule through a 2R1C WallSystem.
     # The wall owns the wall state, so the heat exchange is energy-consistent
-    # by construction (see the WallTorchSystem docstring).
-    boundary_wall = tb.WallTorchSystem(
+    # by construction (see the WallSystem docstring).
+    boundary_wall = tb.WallSystem(
         C=1e6,
         R_a=0.02,
         R_b=0.02,
@@ -188,12 +188,12 @@ def fcn(self):
         m_inf=0.001,
         co2_filename=DATA_ROOT
         + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_BQA001_S2.plc_SENSOR_VALUE.csv",
-        co2_datecolumn=2,
-        co2_valuecolumn=4,
+        co2_date_column=2,
+        co2_value_column=4,
         damper_filename=DATA_ROOT
         + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_QNB001_C1.plc_ACTUATOR_VALUE.csv",
-        damper_datecolumn=2,
-        damper_valuecolumn=4,
+        damper_date_column=2,
+        damper_value_column=4,
         id="office_occupancy",
     )
     self.add_connection(
@@ -239,10 +239,10 @@ def fcn(self):
     )
 
     # On/off controller: binary occupancy → minimum damper position (0.3 when occupied)
-    occupancy_controller = tb.OnOffControllerTorchSystem(
-        onValue=0.3,
-        offValue=0.0,
-        isReverse=False,
+    occupancy_controller = tb.SmoothOnOffControllerSystem(
+        on_value=0.3,
+        off_value=0.0,
+        is_reverse=False,
         # steepness=10.0,
         id="office_occupancy_controller",
     )
@@ -252,7 +252,7 @@ def fcn(self):
 
     # Constant setpoint at 0.5 (midpoint of the 0-1 detector signal)
     occupancy_controller_setpoint = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0.5,
             "ruleset_start_minute": [],
             "ruleset_end_minute": [],
@@ -312,7 +312,7 @@ def fcn(self):
     # Room 020B setpoint (commented out):
     # self.components["office_temperature_heating_setpoint"].filename = DATA_ROOT + r"\Time series\Rooms\OD095_01_020B\OD095_01_020B_L95_LC02_KFD004.plc_PID_SP.csv"
 
-    self.components["outdoor_environment"].useSpreadsheet = True
+    self.components["outdoor_environment"].use_spreadsheet = True
     self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(
         ["estimator_example", "outdoor_environment.csv"]
     )
@@ -422,7 +422,7 @@ def main():
         (space, "thermal.C_wall", 1e6, 1e5, 3e6),
         (space, "thermal.R_out", 0.5, 0.01, 1),
         (space, "thermal.R_in", 0.1, 0.01, 1),
-        # Boundary wall (WallTorchSystem toward the boundary-temperature schedule)
+        # Boundary wall (WallSystem toward the boundary-temperature schedule)
         (boundary_wall, "C", 1e6, 1e4, 1e7),
         (boundary_wall, "R_a", 0.04, 0.0001, 1),
         (boundary_wall, "R_b", 0.04, 0.0001, 1),
@@ -807,7 +807,7 @@ def main():
     valve_position_schedule = tb.SensorSystem(df=df_valve, id="ValvePositionSchedule")
 
     valve_position_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0,
             "ruleset_start_minute": [0, 0],
             "ruleset_end_minute": [0, 0],
@@ -844,7 +844,7 @@ def main():
     print(elspot_subset.head())
 
     price_schedule = tb.ScheduleSystem(
-        filename=elspot_clean_path, datecolumn=0, valuecolumn=1, id="price_schedule"
+        filename=elspot_clean_path, date_column=0, value_column=1, id="price_schedule"
     )
 
     # Multiplies Power (W) by price (DKK/kWh), with scale_factor converting W*s to kWh
@@ -855,7 +855,7 @@ def main():
     heating_setpoint = model.components["office_temperature_heating_setpoint"]
 
     cooling_setpoint = tb.ScheduleSystem(
-        weekDayRulesetDict={
+        weekday_ruleset={
             "ruleset_default_value": 0,
             "ruleset_start_minute": [0, 0, 0],
             "ruleset_end_minute": [0, 0, 0],

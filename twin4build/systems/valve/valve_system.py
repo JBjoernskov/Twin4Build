@@ -20,7 +20,7 @@ from twin4build.translator.translator import (
 )
 
 
-class ValveTorchSystem(core.System, nn.Module):
+class ValveSystem(core.System, nn.Module):
     r"""
     A valve system model implemented with PyTorch for gradient-based optimization.
 
@@ -306,5 +306,8 @@ def brick_signature_pattern():
     return sp
 
 
-ValveTorchSystem.add_signature_pattern(brick_signature_pattern())
-ValveTorchSystem.add_signature_pattern(saref_signature_pattern())
+ValveSystem.add_signature_pattern(brick_signature_pattern())
+ValveSystem.add_signature_pattern(saref_signature_pattern())
+
+# Deprecated aliases (removed in twin4build 2.1)
+ValveTorchSystem = ValveSystem

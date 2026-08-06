@@ -1,6 +1,5 @@
 # Standard library imports
 import datetime
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 # Third party imports
@@ -19,8 +18,7 @@ from twin4build.translator.translator import (
     SignaturePattern,
     StepRule,
 )
-from twin4build.utils.deprecation import deprecate_args
-from twin4build.utils.print_progress import LOGGER, autoreset_print
+from twin4build.utils.logger import LOGGER, autoreset_print
 
 
 def get_signature_pattern_input():
@@ -944,9 +942,7 @@ class SensorSystem(core.System):
     Note:
         A sensor must either have connections to other systems (virtual sensor) or
         have data input through filename/df/database (physical sensor). Flags are
-        auto-detected if only one data source is provided. The camelCase arguments
-        ``useSpreadsheet`` and ``useDatabase`` are deprecated aliases for
-        ``use_spreadsheet`` and ``use_database``.
+        auto-detected if only one data source is provided.
     """
 
     sp = [
@@ -1020,14 +1016,15 @@ class SensorSystem(core.System):
             the sensor must have connections defined for virtual sensors.
             Flags are auto-detected if only one data source is provided.
         """
-        # Handle deprecated camelCase arguments
-        deprecated_args = ["useSpreadsheet", "useDatabase", "usedf"]
-        new_args = ["use_spreadsheet", "use_database", "use_df"]
-        positions = [None, None, None]
-        value_map = deprecate_args(deprecated_args, new_args, positions, kwargs)
-        use_spreadsheet = value_map.get("use_spreadsheet", use_spreadsheet)
-        use_database = value_map.get("use_database", use_database)
-        use_df = value_map.get("use_df", use_df)
+        for legacy_key, new_key in (
+            ("useSpreadsheet", "use_spreadsheet"),
+            ("useDatabase", "use_database"),
+            ("usedf", "use_df"),
+        ):
+            if legacy_key in kwargs:
+                raise TypeError(
+                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
+                )
 
         # Count how many data sources are provided
         has_df = df is not None
@@ -1245,65 +1242,6 @@ class SensorSystem(core.System):
         """
         self._use_df = value
 
-    # ==================== Deprecated Properties (camelCase) ====================
-
-    @property
-    def useSpreadsheet(self) -> bool:
-        """Deprecated: Use use_spreadsheet instead."""
-        warnings.warn(
-            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_spreadsheet
-
-    @useSpreadsheet.setter
-    def useSpreadsheet(self, value: bool) -> None:
-        warnings.warn(
-            "Property 'useSpreadsheet' is deprecated. Use 'use_spreadsheet' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._use_spreadsheet = value
-
-    @property
-    def useDatabase(self) -> bool:
-        """Deprecated: Use use_database instead."""
-        warnings.warn(
-            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_database
-
-    @useDatabase.setter
-    def useDatabase(self, value: bool) -> None:
-        warnings.warn(
-            "Property 'useDatabase' is deprecated. Use 'use_database' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._use_database = value
-
-    @property
-    def usedf(self) -> bool:
-        """Deprecated: Use use_df instead."""
-        warnings.warn(
-            "Property 'usedf' is deprecated. Use 'use_df' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._use_df
-
-    @usedf.setter
-    def usedf(self, value: bool) -> None:
-        warnings.warn(
-            "Property 'usedf' is deprecated. Use 'use_df' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._use_df = value
-
     @property
     def uuid(self) -> Optional[str]:
         """
@@ -1466,8 +1404,8 @@ class SensorSystem(core.System):
                 id=f"time series input - {self.id}",
                 df=self.df,
                 filename=self.filename,
-                datecolumn=self.datecolumn,
-                valuecolumn=self.valuecolumn,
+                date_column=self.datecolumn,
+                value_column=self.valuecolumn,
                 use_spreadsheet=self.use_spreadsheet,
                 use_database=self.use_database,
                 uuid=self.uuid,

@@ -15,7 +15,7 @@ from twin4build.systems.utils.discrete_statespace_system import (
 )
 
 
-class WallTorchSystem(core.System, nn.Module):
+class WallSystem(core.System, nn.Module):
     r"""
     Wall Model (2R1C) for Energy-Consistent Heat Transfer Between Two Zones.
 
@@ -135,7 +135,7 @@ class WallTorchSystem(core.System, nn.Module):
 
     >>> import twin4build as tb
     >>>
-    >>> wall = tb.WallTorchSystem(C=2e5, R_a=0.05, R_b=0.05, id="wall_AB")
+    >>> wall = tb.WallSystem(C=2e5, R_a=0.05, R_b=0.05, id="wall_AB")
     >>> # zone_a.indoorTemperature -> wall.temperatureA
     >>> # zone_b.indoorTemperature -> wall.temperatureB
     >>> # wall.heatFlowRateA -> zone_a.wallHeatGain (slot 0)
@@ -143,7 +143,7 @@ class WallTorchSystem(core.System, nn.Module):
 
     Wall toward a known boundary temperature (e.g. corridor schedule):
 
-    >>> wall = tb.WallTorchSystem(C=5e5, R_a=0.03, R_b=0.03, id="wall_corridor")
+    >>> wall = tb.WallSystem(C=5e5, R_a=0.03, R_b=0.03, id="wall_corridor")
     >>> # corridor_schedule.scheduleValue -> wall.temperatureB
     """
 
@@ -422,3 +422,6 @@ class WallTorchSystem(core.System, nn.Module):
         self.output["heatFlowRateA"]._set(outs["heatFlowRateA"], i_t=step_index)
         self.output["heatFlowRateB"]._set(outs["heatFlowRateB"], i_t=step_index)
         self.output["wallTemperature"]._set(outs["wallTemperature"], i_t=step_index)
+
+# Deprecated aliases (removed in twin4build 2.1)
+WallTorchSystem = WallSystem

@@ -84,8 +84,8 @@ import twin4build as tb
 model = tb.Model(id="example_model")
 
 # Define components
-damper = tb.DamperTorchSystem(id="damper")
-space = tb.BuildingSpaceTorchSystem(id="space")
+damper = tb.DamperSystem(id="damper")
+space = tb.BuildingSpaceSystem(id="space")
 
 # Add connections to the model
 model.add_connection(damper, space,
