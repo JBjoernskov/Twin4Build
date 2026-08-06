@@ -159,13 +159,13 @@ class WallSystem(core.System, nn.Module):
         nn.Module.__init__(self)
 
         self.C = tps.Parameter(
-            torch.tensor(C, dtype=torch.float64), requires_grad=False, scaling="log"
+            torch.tensor(C, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.R_a = tps.Parameter(
-            torch.tensor(R_a, dtype=torch.float64), requires_grad=False, scaling="log"
+            torch.tensor(R_a, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.R_b = tps.Parameter(
-            torch.tensor(R_b, dtype=torch.float64), requires_grad=False, scaling="log"
+            torch.tensor(R_b, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.T_init = T_init
 
@@ -274,7 +274,9 @@ class WallSystem(core.System, nn.Module):
         # Scalar.get() returns shape (n_s, n_c)
         t_wall = self.output["wallTemperature"].get()
         n_s, n_c = t_wall.shape
-        x0 = torch.zeros((n_s, n_c, 1), dtype=torch.float64)
+        x0 = torch.zeros(
+            (n_s, n_c, 1), dtype=t_wall.dtype, device=t_wall.device
+        )
         x0[:, :, 0] = t_wall
         return x0
 
@@ -313,27 +315,30 @@ class WallSystem(core.System, nn.Module):
         R_a = p["R_a"]
         R_b = p["R_b"]
         n_c = C.shape[0]
+        # Parameters' device/dtype: _build_matrices re-runs on cache miss
+        # during stepping, outside initialize()'s device context.
+        dev, dt = C.device, C.dtype
 
-        A = torch.zeros((n_c, 1, 1), dtype=torch.float64)
+        A = torch.zeros((n_c, 1, 1), dtype=dt, device=dev)
         A[:, 0, 0] = -1 / (R_a * C) - 1 / (R_b * C)
 
-        B = torch.zeros((n_c, 1, 2), dtype=torch.float64)
+        B = torch.zeros((n_c, 1, 2), dtype=dt, device=dev)
         B[:, 0, 0] = 1 / (R_a * C)
         B[:, 0, 1] = 1 / (R_b * C)
 
         # Outputs: [heatFlowRateA, heatFlowRateB, wallTemperature]
-        C_out = torch.zeros((n_c, 3, 1), dtype=torch.float64)
+        C_out = torch.zeros((n_c, 3, 1), dtype=dt, device=dev)
         C_out[:, 0, 0] = 1 / R_a
         C_out[:, 1, 0] = 1 / R_b
         C_out[:, 2, 0] = 1.0
 
-        D = torch.zeros((n_c, 3, 2), dtype=torch.float64)
+        D = torch.zeros((n_c, 3, 2), dtype=dt, device=dev)
         D[:, 0, 0] = -1 / R_a
         D[:, 1, 1] = -1 / R_b
 
         # No bilinear terms.
-        E = torch.zeros((n_c, 2, 1, 1), dtype=torch.float64)
-        F = torch.zeros((n_c, 2, 1, 2), dtype=torch.float64)
+        E = torch.zeros((n_c, 2, 1, 1), dtype=dt, device=dev)
+        F = torch.zeros((n_c, 2, 1, 2), dtype=dt, device=dev)
 
         return A, B, C_out, D, E, F
 

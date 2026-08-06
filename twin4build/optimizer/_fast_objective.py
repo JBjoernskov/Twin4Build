@@ -146,7 +146,11 @@ class FastControlObjective:
         # freezes every exogenous consumer-input as a captured slot.  Find the
         # slots whose traced source is a decision variable: those columns of
         # the captured matrix are overridden with theta at every step.
-        comps = model.components
+        # Fused state-space clusters consume their members' exogenous inputs
+        # under the fused component's id (namespaced ports), so include them.
+        comps = dict(model.components)
+        sim_model = getattr(model, "_simulation_model", None) or model
+        comps.update(getattr(sim_model, "_fused_components", None) or {})
         self.var_slots = [[] for _ in self.vars]
         for j, key in enumerate(composer._captured_keys):
             consumer_id, port = key[0], key[1]
@@ -190,7 +194,7 @@ class FastControlObjective:
 
         self.layout = layout
         self.composer = composer
-        self._theta_empty = torch.zeros(0, dtype=torch.float64)
+        self._theta_empty = torch.zeros(0, dtype=tps.float_dtype(), device=model.device)
 
         # -- reference rollout (captures exogenous inputs, initial state) ------
         self._capture()
@@ -329,7 +333,7 @@ class FastControlObjective:
                 [(OUT[p][:, j] - mn) / (mx - mn) for p in range(self.n_periods)]
             )
 
-        loss = torch.tensor(0.0, dtype=torch.float64)
+        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=opt._device)
         k = opt._constraint_penalty
 
         for j, desired in self._eq_terms:
@@ -338,8 +342,8 @@ class FastControlObjective:
             loss = loss + k * torch.mean(torch.abs(y_norm - d_norm))
 
         if self._ineq_terms:
-            upper = torch.tensor(0.0, dtype=torch.float64)
-            lower = torch.tensor(0.0, dtype=torch.float64)
+            upper = torch.tensor(0.0, dtype=tps.float_dtype(), device=opt._device)
+            lower = torch.tensor(0.0, dtype=tps.float_dtype(), device=opt._device)
             for j, ctype, desired in self._ineq_terms:
                 y_norm = _norm_col(j)
                 d_norm = torch.cat(desired)

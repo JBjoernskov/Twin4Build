@@ -73,31 +73,31 @@ class PIDControllerSystem(core.System, nn.Module):
         Td = abs(Td)
 
         self.kp = tps.Parameter(
-            torch.tensor(kp, dtype=torch.float64),
+            torch.tensor(kp, dtype=tps.float_dtype()),
             min_value=0.001,
             max_value=10.0,
             requires_grad=False,
             scaling="log",
         )
         self.Ti = tps.Parameter(
-            torch.tensor(Ti, dtype=torch.float64),
+            torch.tensor(Ti, dtype=tps.float_dtype()),
             min_value=0.1,
             max_value=10000.0,
             requires_grad=False,
             scaling="log",
         )
         self.Td = tps.Parameter(
-            torch.tensor(Td, dtype=torch.float64), requires_grad=False
+            torch.tensor(Td, dtype=tps.float_dtype()), requires_grad=False
         )
 
         self.output_min = tps.Parameter(
-            torch.tensor(output_min, dtype=torch.float64),
+            torch.tensor(output_min, dtype=tps.float_dtype()),
             min_value=0.0,
             max_value=1.0,
             requires_grad=False,
         )
         self.output_max = tps.Parameter(
-            torch.tensor(output_max, dtype=torch.float64),
+            torch.tensor(output_max, dtype=tps.float_dtype()),
             min_value=0.0,
             max_value=1.0,
             requires_grad=False,
@@ -155,7 +155,7 @@ class PIDControllerSystem(core.System, nn.Module):
         # Cache step_size as tensor to avoid creating it every step
         # step_size may be a list with one value per batch element, so unsqueeze(1) gives shape (batch, 1)
         self._step_size_tensor = torch.tensor(
-            step_size, dtype=torch.float64, requires_grad=False
+            step_size, dtype=tps.float_dtype(), requires_grad=False
         ).unsqueeze(1)
 
         # Drop per-params forward caches: a fresh simulation must not reuse

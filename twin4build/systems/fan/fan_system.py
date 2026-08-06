@@ -98,25 +98,25 @@ class FanSystem(core.System, nn.Module):
 
         # Store parameters as tps.Parameters for gradient tracking
         self.nominalPowerRate = tps.Parameter(
-            torch.tensor(nominalPowerRate, dtype=torch.float64), requires_grad=False
+            torch.tensor(nominalPowerRate, dtype=tps.float_dtype()), requires_grad=False
         )
         self.nominalAirFlowRate = tps.Parameter(
-            torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False
+            torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()), requires_grad=False
         )
         self.c1 = tps.Parameter(
-            torch.tensor(c1, dtype=torch.float64), requires_grad=False
+            torch.tensor(c1, dtype=tps.float_dtype()), requires_grad=False
         )
         self.c2 = tps.Parameter(
-            torch.tensor(c2, dtype=torch.float64), requires_grad=False
+            torch.tensor(c2, dtype=tps.float_dtype()), requires_grad=False
         )
         self.c3 = tps.Parameter(
-            torch.tensor(c3, dtype=torch.float64), requires_grad=False
+            torch.tensor(c3, dtype=tps.float_dtype()), requires_grad=False
         )
         self.c4 = tps.Parameter(
-            torch.tensor(c4, dtype=torch.float64), requires_grad=False
+            torch.tensor(c4, dtype=tps.float_dtype()), requires_grad=False
         )
         self.f_total = tps.Parameter(
-            torch.tensor(f_total, dtype=torch.float64), requires_grad=False
+            torch.tensor(f_total, dtype=tps.float_dtype()), requires_grad=False
         )
 
         # Define inputs and outputs as private variables

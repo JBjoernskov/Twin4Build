@@ -173,13 +173,13 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
         # Store parameters as tps.Parameters
         self.V = tps.Parameter(
-            torch.tensor(V, dtype=torch.float64), requires_grad=False
+            torch.tensor(V, dtype=tps.float_dtype()), requires_grad=False
         )
         self.G_occ = tps.Parameter(
-            torch.tensor(G_occ, dtype=torch.float64), requires_grad=False
+            torch.tensor(G_occ, dtype=tps.float_dtype()), requires_grad=False
         )
         self.m_inf = tps.Parameter(
-            torch.tensor(m_inf, dtype=torch.float64), requires_grad=False
+            torch.tensor(m_inf, dtype=tps.float_dtype()), requires_grad=False
         )
 
         # Define inputs and outputs
@@ -273,7 +273,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         n_c = co2_indoor.shape[1]
 
         # x0 shape: (n_s, n_c, n_states) where n_states = 1
-        x0 = torch.zeros((n_s, n_c, 1), dtype=torch.float64)
+        x0 = torch.zeros(
+            (n_s, n_c, 1), dtype=co2_indoor.dtype, device=co2_indoor.device
+        )
 
         x0[:, :, 0] = co2_indoor
 
@@ -313,14 +315,17 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         G_occ = p["G_occ"]
         m_inf = p["m_inf"]
         n_c = self.n_c
+        # Parameters' device/dtype: _build_matrices re-runs on cache miss
+        # during stepping, outside initialize()'s device context.
+        dev, dt = V.device, V.dtype
 
         # Calculate air mass from volume and density
         density_air = constants.RHO_AIR
         air_mass = V * density_air  # (n_c,)
 
         # Initialize A and B matrices with zeros - shape (n_c, n_states, n_states/n_inputs)
-        A = torch.zeros((n_c, n_states, n_states), dtype=torch.float64)
-        B = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
+        A = torch.zeros((n_c, n_states, n_states), dtype=dt, device=dev)
+        B = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
         # State matrix A: -sum of all flow rates / air_mass
         A[:, 0, 0] = -(m_inf / air_mass)  # Base coefficient from infiltration
@@ -337,22 +342,22 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         # Output matrix C - Identity matrix for direct observation
         # Shape: (n_c, n_states, n_states)
         C = (
-            torch.eye(n_states, dtype=torch.float64)
+            torch.eye(n_states, dtype=dt, device=dev)
             .unsqueeze(0)
             .expand(n_c, -1, -1)
             .clone()
         )
 
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
-        D = torch.zeros((n_c, n_states, n_inputs), dtype=torch.float64)
+        D = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
-        E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=torch.float64)
+        E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=dt, device=dev)
         # -m_ex*C (input 1, state 0)
         E[:, 1, 0, 0] = -1 / air_mass  # exhaustAirFlowRate * C
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
-        F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=torch.float64)
+        F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=dt, device=dev)
         # m_sup*C_sup (inputs 0 and 2)
         F[:, 0, 0, 2] = 1 / air_mass  # supplyAirFlowRate * supplyAirCO2
 

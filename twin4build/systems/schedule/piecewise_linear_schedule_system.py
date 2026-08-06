@@ -182,7 +182,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         for out in self.output.values():
             out.initialize(n_t=max_timesteps, n_s=batch_size)
 
-    def _resolve_xy(self, date_time: datetime.datetime):
+    def _resolve_xy(self, date_time: datetime.datetime, device=None):
         """Return (X_points, Y_points) tensors for the given datetime.
 
         Resolution order:
@@ -190,6 +190,9 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
            (time-varying piecewise-linear curves via the ruleset mechanism).
         2. ``self.default_x`` / ``self.default_y`` (constant curve stored as
            plain lists — always survives JSON config round-trips).
+
+        ``device`` places the per-step table where the input port lives (this
+        runs in the step loop, outside initialize()'s device context).
         """
         schedule_value = self.get_schedule_value(date_time)
 
@@ -199,14 +202,22 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
             and "Y" in schedule_value
         ):
             return (
-                torch.tensor(schedule_value["X"], dtype=torch.float64),
-                torch.tensor(schedule_value["Y"], dtype=torch.float64),
+                torch.tensor(
+                    schedule_value["X"], dtype=tps.float_dtype(), device=device
+                ),
+                torch.tensor(
+                    schedule_value["Y"], dtype=tps.float_dtype(), device=device
+                ),
             )
 
         if self.default_x is not None and self.default_y is not None:
             return (
-                torch.tensor(self.default_x, dtype=torch.float64),
-                torch.tensor(self.default_y, dtype=torch.float64),
+                torch.tensor(
+                    self.default_x, dtype=tps.float_dtype(), device=device
+                ),
+                torch.tensor(
+                    self.default_y, dtype=tps.float_dtype(), device=device
+                ),
             )
 
         raise TypeError(
@@ -224,7 +235,8 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         step_index: int,
     ) -> None:
         dt = date_time[0] if hasattr(date_time, "__len__") else date_time
-        X_points, Y_points = self._resolve_xy(dt)
+        x_port = self.input["x"].get()
+        X_points, Y_points = self._resolve_xy(dt, device=x_port.device)
 
         self._XY = torch.stack([X_points, Y_points]).T
         sorted_indices = torch.argsort(self._XY[:, 0])

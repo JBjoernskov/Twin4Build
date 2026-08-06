@@ -51,6 +51,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
+import twin4build.utils.types as tps
 from twin4build.utils.logger import LOGGER
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
@@ -97,7 +98,7 @@ class FastSingleShooting:
         # Plain (functorch-safe) denormalization from the physical bounds --
         # one representative parameter per unique theta entry.
         self._lb_t, self._ub_t, self._log_mask = theta_bound_tensors(
-            unique_parameters
+            unique_parameters, device=estimator._device
         )
 
         # Sensor lag: a pass-through sensor that executes BEFORE its producer
@@ -139,13 +140,14 @@ class FastSingleShooting:
         self.CAP, self.Y0, self.n_t = R.CAP, R.Y0, R.n_t
         self.M0 = [M[0] for M in R.MEAS]
         self.ACT = []
+        dev = est._device
         for p, n_t in enumerate(self.n_t):
-            act = torch.zeros((n_t, len(md_list)), dtype=torch.float64)
+            act = torch.zeros((n_t, len(md_list)), dtype=tps.float_dtype(), device=dev)
             for m, md in enumerate(md_list):
                 vals = np.asarray(
                     est.actual_readings[md.id][p].to_numpy(), dtype=np.float64
                 ).flatten()
-                act[:, m] = torch.tensor(vals[:n_t], dtype=torch.float64)
+                act[:, m] = torch.tensor(vals[:n_t], dtype=tps.float_dtype(), device=dev)
             self.ACT.append(act)
 
         LOGGER.config(
@@ -207,7 +209,7 @@ class FastSingleShooting:
                 "fast objective non-finite at this theta -- returning penalty"
             )
             try:
-                for line in est._format_theta_dump(theta.detach().numpy()):
+                for line in est._format_theta_dump(theta.detach().cpu().numpy()):
                     LOGGER.warning("%s", line)
             except Exception:  # noqa: BLE001
                 pass

@@ -2249,7 +2249,7 @@ class Translator:
                                             key,
                                             tps.Parameter(
                                                 torch.tensor(
-                                                    value, dtype=torch.float64
+                                                    value, dtype=tps.float_dtype()
                                                 ),
                                                 requires_grad=False,
                                             ),
@@ -2311,7 +2311,7 @@ class Translator:
                                                 key,
                                                 tps.Parameter(
                                                     torch.tensor(
-                                                        value, dtype=torch.float64
+                                                        value, dtype=tps.float_dtype()
                                                     ),
                                                     requires_grad=False,
                                                 ),

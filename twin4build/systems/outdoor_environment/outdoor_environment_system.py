@@ -195,10 +195,10 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
         self._df = df
         self.a = tps.Parameter(
-            torch.tensor(a, dtype=torch.float64), requires_grad=False
+            torch.tensor(a, dtype=tps.float_dtype()), requires_grad=False
         )
         self.b = tps.Parameter(
-            torch.tensor(b, dtype=torch.float64), requires_grad=False
+            torch.tensor(b, dtype=tps.float_dtype()), requires_grad=False
         )
         self.apply_correction = apply_correction
         # Per-feed unit transformation populated by :meth:`set_transformation`

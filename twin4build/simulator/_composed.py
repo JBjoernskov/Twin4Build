@@ -141,7 +141,7 @@ class StateLayout:
         for comp, (n_c, ss) in zip(self.components, self.shapes):
             s = comp.get_state()[n_s_index]  # (n_c, state_size)
             parts.append(s.reshape(-1))
-        return torch.cat(parts) if parts else torch.zeros(0, dtype=torch.float64)
+        return torch.cat(parts) if parts else torch.zeros(0, dtype=tps.float_dtype())
 
     def scatter(self, seg_states: torch.Tensor) -> None:
         """Write per-segment states into every component via ``set_state``.
@@ -163,7 +163,11 @@ class StateLayout:
         for comp, (n_c, ss) in zip(self.components, self.shapes):
             s = comp.get_state()  # (K, n_c, state_size)
             parts.append(s.reshape(K, -1))
-        return torch.cat(parts, dim=1) if parts else torch.zeros((K, 0), dtype=torch.float64)
+        return (
+            torch.cat(parts, dim=1)
+            if parts
+            else torch.zeros((K, 0), dtype=tps.float_dtype())
+        )
 
 
 class OneStepComposer:
@@ -288,10 +292,14 @@ class OneStepComposer:
 
         # Requested outputs are appended to the same measurement vector: fresh
         # when the producer is composed, ("external", ...) otherwise (F returns
-        # zero there; the caller supplies or rejects).
+        # zero there; the caller supplies or rejects).  ``_follow`` translates
+        # fused-cluster members to the executing FusedStateSpaceSystem, which
+        # publishes their outputs under namespaced port names -- without it,
+        # every output on a fused zone would be wrongly classified external.
         for comp, out_port in (outputs or []):
-            if comp.id in self.cone_ids:
-                self.meas_sources.append(("fresh", comp.id, out_port))
+            resolved = self._follow(comp, out_port)
+            if resolved is not None and resolved[0].id in self.cone_ids:
+                self.meas_sources.append(("fresh", resolved[0].id, resolved[1]))
             else:
                 self.meas_sources.append(("external", comp.id, out_port))
 
@@ -568,7 +576,11 @@ class OneStepComposer:
             that the feedback variables must match (for the feedback defects).
         """
         if feedback is None:
-            feedback = torch.zeros(len(self._feedback_keys), dtype=states_flat.dtype)
+            feedback = torch.zeros(
+                len(self._feedback_keys),
+                dtype=states_flat.dtype,
+                device=states_flat.device,
+            )
         # Unpack per-component states.
         states = {}
         for i, c in enumerate(self.stateful):
@@ -609,7 +621,7 @@ class OneStepComposer:
                 produced[pid][port].reshape(-1)[0] for (pid, port) in self._fb_producer
             ])
         else:
-            fb_out = torch.zeros(0, dtype=x_next.dtype)
+            fb_out = torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
         meas = []
         for spec in self.meas_sources:
             if spec[0] == "fresh":
@@ -617,10 +629,16 @@ class OneStepComposer:
             elif spec[0] == "external":
                 # Not producible by the composed map; the caller supplies the
                 # signal (e.g. a decision-variable trajectory) or rejects.
-                meas.append(torch.zeros((), dtype=x_next.dtype))
+                meas.append(
+                    torch.zeros((), dtype=x_next.dtype, device=x_next.device)
+                )
             else:
                 meas.append(captured[spec[1]].reshape(-1)[0])
-        meas = torch.stack(meas) if meas else torch.zeros(0, dtype=x_next.dtype)
+        meas = (
+            torch.stack(meas)
+            if meas
+            else torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
+        )
         return x_next, meas, fb_out
 
     @property
@@ -739,9 +757,16 @@ def capture_reference_rollout(
         if layout is not None
         else None
     )
-    CAP = torch.zeros((int(max_t), n_s, len(cap_keys)), dtype=torch.float64)
-    FB = torch.zeros((int(max_t), n_s, len(fb_keys)), dtype=torch.float64)
-    MEAS = torch.zeros((int(max_t), n_s, len(meas_keys)), dtype=torch.float64)
+    device = getattr(sim_model, "device", None) or torch.device("cpu")
+    CAP = torch.zeros(
+        (int(max_t), n_s, len(cap_keys)), dtype=tps.float_dtype(), device=device
+    )
+    FB = torch.zeros(
+        (int(max_t), n_s, len(fb_keys)), dtype=tps.float_dtype(), device=device
+    )
+    MEAS = torch.zeros(
+        (int(max_t), n_s, len(meas_keys)), dtype=tps.float_dtype(), device=device
+    )
 
     def _sample(dst, keys):
         for k, key in enumerate(keys):
@@ -799,5 +824,9 @@ def sequential_rollout(composer, y0, theta, cap):
         y, meas = composer.F_aug(y, theta, cap[t])
         rows.append(meas)
     if not rows:
-        return torch.zeros((0, len(composer.meas_sources)), dtype=torch.float64)
+        return torch.zeros(
+            (0, len(composer.meas_sources)),
+            dtype=cap.dtype,
+            device=cap.device,
+        )
     return torch.stack(rows)

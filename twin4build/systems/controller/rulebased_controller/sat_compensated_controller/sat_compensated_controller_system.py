@@ -83,31 +83,31 @@ class SATLinearRuleSystem(core.System, nn.Module):
         nn.Module.__init__(self)
 
         self.base_position = tps.Parameter(
-            torch.tensor(float(base_position), dtype=torch.float64),
+            torch.tensor(float(base_position), dtype=tps.float_dtype()),
             min_value=0.0,
             max_value=1.0,
             requires_grad=False,
         )
         self.sat_design = tps.Parameter(
-            torch.tensor(float(sat_design), dtype=torch.float64),
+            torch.tensor(float(sat_design), dtype=tps.float_dtype()),
             min_value=0.0,
             max_value=30.0,
             requires_grad=False,
         )
         self.gain = tps.Parameter(
-            torch.tensor(float(gain), dtype=torch.float64),
+            torch.tensor(float(gain), dtype=tps.float_dtype()),
             min_value=-0.5,
             max_value=0.5,
             requires_grad=False,
         )
         self.output_min = tps.Parameter(
-            torch.tensor(float(output_min), dtype=torch.float64),
+            torch.tensor(float(output_min), dtype=tps.float_dtype()),
             min_value=0.0,
             max_value=1.0,
             requires_grad=False,
         )
         self.output_max = tps.Parameter(
-            torch.tensor(float(output_max), dtype=torch.float64),
+            torch.tensor(float(output_max), dtype=tps.float_dtype()),
             min_value=0.0,
             max_value=1.0,
             requires_grad=False,

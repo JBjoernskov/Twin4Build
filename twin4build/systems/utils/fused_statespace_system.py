@@ -348,7 +348,8 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         n_c = max(m[0].shape[0] for m in mats)
         N = self._n_joint_states
         M = len(self._ext_names)
-        dtype = torch.float64
+        dtype = mats[0][0].dtype
+        device = mats[0][0].device
 
         def _expand(t):
             return t if t.shape[0] == n_c else t.expand(n_c, *t.shape[1:])
@@ -368,16 +369,16 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             )
             kind = units[i]["cols"][k]
             if kind[0] == "ext":
-                sx = torch.zeros((n_c, 1, N), dtype=dtype)
-                su = torch.zeros((n_c, 1, M), dtype=dtype)
+                sx = torch.zeros((n_c, 1, N), dtype=dtype, device=device)
+                su = torch.zeros((n_c, 1, M), dtype=dtype, device=device)
                 su[:, 0, kind[1]] = 1.0
             else:
                 j, row = self._sender_rows[(kind[1], kind[2])]
                 Aj, Bj, Cj, Dj, Ej, Fj = mats[j]
                 oj, nj = units[j]["x_offset"], units[j]["n_states"]
-                sx = torch.zeros((n_c, 1, N), dtype=dtype)
+                sx = torch.zeros((n_c, 1, N), dtype=dtype, device=device)
                 sx[:, 0, oj:oj + nj] = _expand(Cj)[:, row, :]
-                su = torch.zeros((n_c, 1, M), dtype=dtype)
+                su = torch.zeros((n_c, 1, M), dtype=dtype, device=device)
                 Dj_row = _expand(Dj)[:, row, :]  # (n_c, m_j)
                 if bool((Dj_row.detach() != 0).any()):
                     for kk in range(Dj_row.shape[-1]):
@@ -390,10 +391,10 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             row_cache[(i, k)] = (sx, su)
             return sx, su
 
-        A = torch.zeros((n_c, N, N), dtype=dtype)
-        B = torch.zeros((n_c, N, M), dtype=dtype)
-        E = torch.zeros((n_c, M, N, N), dtype=dtype)
-        F = torch.zeros((n_c, M, N, M), dtype=dtype)
+        A = torch.zeros((n_c, N, N), dtype=dtype, device=device)
+        B = torch.zeros((n_c, N, M), dtype=dtype, device=device)
+        E = torch.zeros((n_c, M, N, N), dtype=dtype, device=device)
+        F = torch.zeros((n_c, M, N, M), dtype=dtype, device=device)
 
         S = []  # per unit: (S_x (n_c, m_i, N), S_u (n_c, m_i, M))
         for i, entry in enumerate(units):
@@ -403,8 +404,8 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                 sx = torch.cat([r[0] for r in rows], dim=1)
                 su = torch.cat([r[1] for r in rows], dim=1)
             else:
-                sx = torch.zeros((n_c, 0, N), dtype=dtype)
-                su = torch.zeros((n_c, 0, M), dtype=dtype)
+                sx = torch.zeros((n_c, 0, N), dtype=dtype, device=device)
+                su = torch.zeros((n_c, 0, M), dtype=dtype, device=device)
             S.append((sx, su))
 
         for i, entry in enumerate(units):
@@ -445,8 +446,8 @@ class FusedStateSpaceSystem(core.System, nn.Module):
 
         # Published outputs: y = (C_i + D_i S_x) x + (D_i S_u) u_ext rows.
         P = len(self._out_names)
-        C = torch.zeros((n_c, P, N), dtype=dtype)
-        D = torch.zeros((n_c, P, M), dtype=dtype)
+        C = torch.zeros((n_c, P, N), dtype=dtype, device=device)
+        D = torch.zeros((n_c, P, M), dtype=dtype, device=device)
         for p, (i, row) in enumerate(self._out_rows):
             _, _, Ci, Di, _, _ = mats[i]
             o, n = self._units[i]["x_offset"], self._units[i]["n_states"]

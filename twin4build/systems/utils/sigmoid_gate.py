@@ -80,16 +80,16 @@ class SigmoidGate(core.System, nn.Module):
         nn.Module.__init__(self)
 
         self.threshold = tps.Parameter(
-            torch.tensor(threshold, dtype=torch.float64), requires_grad=False
+            torch.tensor(threshold, dtype=tps.float_dtype()), requires_grad=False
         )
         self.steepness = tps.Parameter(
-            torch.tensor(steepness, dtype=torch.float64), requires_grad=False
+            torch.tensor(steepness, dtype=tps.float_dtype()), requires_grad=False
         )
         self.polarity = tps.Parameter(
-            torch.tensor(polarity, dtype=torch.float64), requires_grad=False
+            torch.tensor(polarity, dtype=tps.float_dtype()), requires_grad=False
         )
         self.default_output = tps.Parameter(
-            torch.tensor(default_output, dtype=torch.float64),
+            torch.tensor(default_output, dtype=tps.float_dtype()),
             min_value=0.0,
             max_value=1.0,
             requires_grad=False,
@@ -287,7 +287,7 @@ class BandGate(SigmoidGate):
         # ``band`` is the *width* of the band; constrained non-negative
         # so the upper edge ``threshold + band`` is always ``>= threshold``.
         self.band = tps.Parameter(
-            torch.tensor(band, dtype=torch.float64),
+            torch.tensor(band, dtype=tps.float_dtype()),
             min_value=0.0,
             requires_grad=False,
         )

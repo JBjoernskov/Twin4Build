@@ -116,7 +116,7 @@ class ScheduleSwitchControllerSystem(core.System, nn.Module):
                     self,
                     f"hour_weight_{h}",
                     tps.Parameter(
-                        torch.tensor(float(hour_weights[h]), dtype=torch.float64),
+                        torch.tensor(float(hour_weights[h]), dtype=tps.float_dtype()),
                         min_value=0.0,
                         max_value=1.0,
                         requires_grad=False,
@@ -127,7 +127,7 @@ class ScheduleSwitchControllerSystem(core.System, nn.Module):
                     self,
                     f"day_weight_{d}",
                     tps.Parameter(
-                        torch.tensor(float(day_weights[d]), dtype=torch.float64),
+                        torch.tensor(float(day_weights[d]), dtype=tps.float_dtype()),
                         min_value=0.0,
                         max_value=1.0,
                         requires_grad=False,
@@ -167,7 +167,7 @@ class ScheduleSwitchControllerSystem(core.System, nn.Module):
                         self,
                         f"schedule_h{h}_d{d}",
                         tps.Parameter(
-                            torch.tensor(float(sw[h][d]), dtype=torch.float64),
+                            torch.tensor(float(sw[h][d]), dtype=tps.float_dtype()),
                             min_value=0.0,
                             max_value=1.0,
                             requires_grad=False,
@@ -187,7 +187,7 @@ class ScheduleSwitchControllerSystem(core.System, nn.Module):
 
         # --- Override value: output when schedule is inactive ---
         self.override_value = tps.Parameter(
-            torch.tensor(float(override_value), dtype=torch.float64),
+            torch.tensor(float(override_value), dtype=tps.float_dtype()),
             min_value=0.0,
             max_value=1.0,
             requires_grad=False,
@@ -365,8 +365,8 @@ class ScheduleSwitchControllerSystem(core.System, nn.Module):
                 hours.append(dt.hour)
                 weekdays.append(dt.weekday())
 
-        hour_t = torch.tensor(hours, dtype=torch.float64).unsqueeze(-1)  # (n_s, 1)
-        day_t = torch.tensor(weekdays, dtype=torch.float64).unsqueeze(-1)
+        hour_t = torch.tensor(hours, dtype=tps.float_dtype()).unsqueeze(-1)  # (n_s, 1)
+        day_t = torch.tensor(weekdays, dtype=tps.float_dtype()).unsqueeze(-1)
 
         # Publish the time features on the (unconnected) data input ports so
         # the composed fast paths can capture them per step.
@@ -425,7 +425,7 @@ class ScheduleSwitchControllerSystem(core.System, nn.Module):
         Returns:
             torch.Tensor: Total binarization penalty summed over all schedule weights.
         """
-        penalty = torch.tensor(0.0, dtype=torch.float64)
+        penalty = torch.tensor(0.0, dtype=tps.float_dtype())
         for p in self._schedule_weight_params():
             w = p.get()
             penalty = penalty + torch.sum(w * (1 - w))

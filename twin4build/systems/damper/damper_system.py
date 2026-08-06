@@ -102,10 +102,10 @@ class DamperSystem(core.System, nn.Module):
 
         # Create parameters as scalars - expanded to n_c in initialize()
         self.a = tps.Parameter(
-            torch.tensor(a, dtype=torch.float64), requires_grad=False, scaling="log"
+            torch.tensor(a, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.nominalAirFlowRate = tps.Parameter(
-            torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False
+            torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()), requires_grad=False
         )
 
         # Define inputs and outputs using Scalar (n_c handles vectorization)

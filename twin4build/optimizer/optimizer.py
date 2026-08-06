@@ -319,6 +319,13 @@ class Optimizer:
         self.simulator = simulator
         self._fast_obj = None
 
+    @property
+    def _device(self) -> torch.device:
+        """The model's device.  Solver-facing numpy boundaries convert inbound
+        theta vectors to this device and outbound values via .cpu().numpy();
+        scipy/IPOPT itself always runs on the CPU."""
+        return self.simulator.model.device
+
     # def _closure(self):
     #     self.optimizer.zero_grad()
     #
@@ -377,8 +384,8 @@ class Optimizer:
     #
     #     # Handle inequality constraints
     #     if self._ineq_cons is not None:
-    #         ineq_upper_term = torch.tensor(0.0, dtype=torch.float64)
-    #         ineq_lower_term = torch.tensor(0.0, dtype=torch.float64)
+    #         ineq_upper_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
+    #         ineq_lower_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
     #         for constraint in self._ineq_cons:
     #             component, output_name, constraint_type, desired_value = constraint
     #             y = component.output[
@@ -1130,8 +1137,9 @@ class Optimizer:
             stacked = torch.stack(
                 x0_tensors, dim=1
             )  # Shape: (total_actual_timesteps, n_variables)
+            # scipy requires float64 regardless of the model dtype.
             x0 = (
-                stacked.flatten().detach().numpy()
+                stacked.flatten().detach().cpu().numpy().astype(np.float64)
             )  # Flatten to get interleaved structure
         else:
             x0 = np.array([])
@@ -1169,17 +1177,28 @@ class Optimizer:
 
             if isinstance(component_or_value, (int, float)):
                 return torch.full(
-                    desired_shape, component_or_value, dtype=torch.float64
+                    desired_shape,
+                    component_or_value,
+                    dtype=tps.float_dtype(),
+                    device=self._device,
                 )
             elif isinstance(component_or_value, systems.ScheduleSystem):
+                # The schedule may be standalone (not part of the model), in
+                # which case Model.to() never moved it -- align explicitly.
                 component_or_value.initialize(
                     start_time=self._start_time,
                     end_time=self._end_time,
                     step_size=self._stepSize,
                 )
-                return component_or_value.output["scheduleValue"].history()
+                return (
+                    component_or_value.output["scheduleValue"]
+                    .history()
+                    .to(device=self._device, dtype=tps.float_dtype())
+                )
             elif isinstance(component_or_value, torch.Tensor):
-                return component_or_value
+                return component_or_value.to(
+                    device=self._device, dtype=tps.float_dtype()
+                )
             else:
                 raise ValueError(
                     f"Invalid constraint value type: {type(component_or_value)}"
@@ -1209,13 +1228,13 @@ class Optimizer:
 
         # Initialize caching variables for AD
         self._theta_jac = 1000000 * torch.ones_like(
-            torch.tensor(x0, dtype=torch.float64)  # torch.nan
+            torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)  # torch.nan
         )
         self._theta_hes = torch.nan * torch.ones_like(
-            torch.tensor(x0, dtype=torch.float64)
+            torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)
         )
         self._theta_obj = 1000000 * torch.ones_like(
-            torch.tensor(x0, dtype=torch.float64)
+            torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)
         )
 
         # -- Fast composed objective (default ON) ------------------------------
@@ -1287,7 +1306,7 @@ class Optimizer:
         # optimized signals (guaranteed -- SciPy's last internal evaluation is
         # not necessarily at the solution, and with the fast objective no
         # simulation ran during the solve at all).
-        self.__obj_ad(torch.tensor(result.x, dtype=torch.float64))
+        self.__obj_ad(torch.tensor(result.x, dtype=tps.float_dtype(), device=self._device))
 
         elapsed = time_module.time() - self._solver_start_time
         LOGGER.info("Optimization finished in %.1fs (%d function evaluations)", elapsed, self._eval_count)
@@ -1355,7 +1374,7 @@ class Optimizer:
             return
 
         if validate:
-            theta0 = torch.tensor(x0, dtype=torch.float64)
+            theta0 = torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)
             f_fast, g_fast = fast.value_and_grad(theta0)
             f_slow = self.__obj_ad(theta0.clone())
             g_slow = torch.func.jacrev(self.__obj_ad, argnums=0)(theta0.clone())
@@ -1364,7 +1383,13 @@ class Optimizer:
             )
             gscale = max(1e-12, float(g_slow.abs().max()))
             rel_g = float((g_fast - g_slow).abs().max()) / gscale
-            if rel_f > 1e-6 or rel_g > 1e-4:
+            # fp32 accumulates roundoff over the rollout; loosen the parity
+            # thresholds accordingly (they only gate the fast-path opt-in).
+            if tps.float_dtype() == torch.float64:
+                tol_f, tol_g = 1e-6, 1e-4
+            else:
+                tol_f, tol_g = 1e-3, 1e-2
+            if rel_f > tol_f or rel_g > tol_g:
                 LOGGER.warning(
                     "Fast objective validation FAILED (value rel=%.3e, "
                     "gradient rel=%.3e); using object-graph objective",
@@ -1412,7 +1437,10 @@ class Optimizer:
             # where n_t = max_timesteps, n_s = n_periods, n_c = 1
             n_c = component.output[output_name].n_c
             reconstructed_tensor = torch.full(
-                (self._max_timesteps, n_periods, n_c), 0, dtype=torch.float64
+                (self._max_timesteps, n_periods, n_c),
+                0,
+                dtype=tps.float_dtype(),
+                device=self._device,
             )  # FIX OF NAN JACOBIAN: 0 instead float('nan')
 
             # Fill in the actual values period by period
@@ -1449,7 +1477,7 @@ class Optimizer:
         )
 
         # Compute loss - initialize as tensor to avoid NaN propagation issues
-        loss = torch.tensor(0.0, dtype=torch.float64)
+        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
         k = self._constraint_penalty
 
         # Handle equality constraints
@@ -1472,8 +1500,8 @@ class Optimizer:
 
         # Handle inequality constraints
         if self._ineq_cons is not None:
-            ineq_upper_term = torch.tensor(0.0, dtype=torch.float64)
-            ineq_lower_term = torch.tensor(0.0, dtype=torch.float64)
+            ineq_upper_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
+            ineq_lower_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
             for constraint in self._ineq_cons:
                 component, output_name, constraint_type, desired_value = constraint
                 # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
@@ -1521,9 +1549,11 @@ class Optimizer:
         Returns:
             torch.Tensor: Objective value as numpy array.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
         if torch.equal(theta, self._theta_obj):
-            return self.obj.detach().numpy()
+            # scipy (SLSQP in particular) requires float64 regardless of the
+            # model dtype, so every solver-facing exit casts explicitly.
+            return self.obj.detach().cpu().numpy().astype(np.float64)
         else:
             self._theta_obj = theta
             if self._fast_obj is not None:
@@ -1538,7 +1568,7 @@ class Optimizer:
                 self.obj.detach().item(),
                 elapsed,
             )
-            return self.obj.detach().numpy()
+            return self.obj.detach().cpu().numpy().astype(np.float64)
 
     def __jac_ad(self, theta: torch.Tensor) -> torch.Tensor:
         """
@@ -1563,10 +1593,10 @@ class Optimizer:
         Returns:
             torch.Tensor: Jacobian matrix.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
 
         if torch.equal(theta, self._theta_jac):
-            return self.jac.detach().numpy()
+            return self.jac.detach().cpu().numpy().astype(np.float64)
         else:
             self._theta_jac = theta
             if self._fast_obj is not None:
@@ -1578,7 +1608,7 @@ class Optimizer:
                 self.jac = g
             else:
                 self.jac = self.__jac_ad(theta)
-            jac_numpy = self.jac.detach().numpy()
+            jac_numpy = self.jac.detach().cpu().numpy().astype(np.float64)
 
             # Check for NaN values in Jacobian and warn
             if np.isnan(jac_numpy).any():
@@ -1612,14 +1642,14 @@ class Optimizer:
         Returns:
             torch.Tensor: Hessian matrix.
         """
-        theta = torch.tensor(theta, dtype=torch.float64)
+        theta = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
 
         if torch.equal(theta, self._theta_hes):
-            return self.hes.detach().numpy()
+            return self.hes.detach().cpu().numpy().astype(np.float64)
         else:
             self._theta_hes = theta
             self.hes = self.__hes_ad(theta)
-            return self.hes.detach().numpy()
+            return self.hes.detach().cpu().numpy().astype(np.float64)
 
 
 class OptimizationResult(dict):

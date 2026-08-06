@@ -92,15 +92,15 @@ class SmoothOnOffControllerSystem(core.System, nn.Module):
         self.is_reverse = is_reverse
 
         self.off_value = tps.Parameter(
-            torch.tensor(float(off_value), dtype=torch.float64),
+            torch.tensor(float(off_value), dtype=tps.float_dtype()),
             requires_grad=False,
         )
         self.on_value = tps.Parameter(
-            torch.tensor(float(on_value), dtype=torch.float64),
+            torch.tensor(float(on_value), dtype=tps.float_dtype()),
             requires_grad=False,
         )
         self.steepness = tps.Parameter(
-            torch.tensor(float(steepness), dtype=torch.float64),
+            torch.tensor(float(steepness), dtype=tps.float_dtype()),
             requires_grad=False,
         )
 
