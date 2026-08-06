@@ -14,48 +14,10 @@ import numpy as np
 from dateutil import tz
 
 # Curses TUI removed in twin4build 2.0 in favor of dual ANSI stdout + plain logfile.
+# Keep the name defined so leftover guarded TUI branches (never entered when
+# ``_use_curses`` is False) do not trip flake8 F821 on CI.
 CURSES_AVAILABLE = False
-
-
-def _print_color_palette(stdscr):
-    # Clear the screen first to ensure we start fresh
-    stdscr.clear()
-
-    curses.start_color()
-    curses.use_default_colors()
-
-    # Determine the maximum number of color pairs we can safely use
-    # COLOR_PAIRS includes pair 0, so we can use pairs 1 to COLOR_PAIRS-1
-    max_pairs = min(curses.COLOR_PAIRS - 1, curses.COLORS)
-
-    # Initialize color pairs with default background (-1)
-    for i in range(0, max_pairs):
-        curses.init_pair(i + 1, i, -1)
-
-    # Add a header
-    stdscr.addstr(0, 0, f"Available colors (showing {max_pairs} colors):\n\n")
-
-    # Display colors with their numbers
-    row = 2
-    col = 0
-    for i in range(0, max_pairs + 1):
-        color_text = f"{i:3d} "
-
-        # Move to next row if we reach the right edge
-        if col + len(color_text) >= curses.COLS:
-            row += 1
-            col = 0
-            if row >= curses.LINES - 1:  # Leave room for instructions
-                break
-
-        stdscr.addstr(row, col, color_text, curses.color_pair(i))
-        col += len(color_text)
-
-    # Add instructions at the bottom
-    stdscr.addstr(curses.LINES - 1, 0, "Press any key to exit...")
-
-    stdscr.refresh()
-    stdscr.getch()
+curses = None
 
 
 def print_color_palette():
