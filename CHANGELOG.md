@@ -10,6 +10,7 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 - `plot_component` and legacy `Entry` / tuple plot formats
 - `CascadePIDControllerSystem` alias
 - Estimator legacy `parameters` dict (`private` / `shared`)
+- `set_parameters_from_array` → use `set_parameters`
 - `windows-curses` dependency (curses LOGGER TUI removed)
 
 ### Deprecated (removed in 2.1)

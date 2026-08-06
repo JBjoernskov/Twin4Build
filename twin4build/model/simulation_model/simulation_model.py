@@ -1458,17 +1458,6 @@ class SimulationModel:
                 else:
                     rsetattr(obj, attr, v)
 
-    def set_parameters_from_array(self, *args, **kwargs) -> None:
-        """
-        Deprecated: Use set_parameters instead.
-        """
-        warnings.warn(
-            "Method 'set_parameters_from_array' is deprecated. Use 'set_parameters' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.set_parameters(*args, **kwargs)
-
     def restore_parameters(self, keep_values: bool = True) -> None:
         """
         Restore parameter objects previously saved by set_parameters
@@ -1835,7 +1824,7 @@ class SimulationModel:
             if cond:
                 self.set_parameters_from_config(entry, component)
             else:
-                self.set_parameters_from_array([entry], [component], [key])
+                self.set_parameters([entry], [component], [key])
         return
 
     def cache(

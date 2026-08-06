@@ -595,17 +595,6 @@ class Model:
             save_original=save_original,
         )
 
-    def set_parameters_from_array(self, *args, **kwargs) -> None:
-        """
-        Deprecated: Use set_parameters instead.
-        """
-        warnings.warn(
-            "Method 'set_parameters_from_array' is deprecated. Use 'set_parameters' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.set_parameters(*args, **kwargs)
-
     def restore_parameters(self, keep_values: bool = True) -> None:
         """
         Restore the parameters of the model.
