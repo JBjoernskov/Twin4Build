@@ -13,7 +13,9 @@ in particular :class:`~twin4build.simulator.simulator.Simulator`,
 Every notebook can be opened directly in Google Colab (badge links below) or
 run locally in Jupyter. Colab badges are rewritten at docs build time to the
 git branch/tag for this documentation version (e.g. ``dev`` docs open
-``blob/dev/...``, ``latest`` opens ``blob/main/...``).
+``blob/dev/...``, ``latest`` opens ``blob/main/...``). On Colab, the notebook
+setup cell installs Twin4Build from that same git ref (not from PyPI); override
+with the ``T4B_REF`` environment variable if needed.
 
 Basics of Twin4Build
 --------------------
