@@ -478,8 +478,8 @@ class TestModelAdvanced(unittest.TestCase):
     def setUp(self):
         self.model = Model(id="test_advanced_model")
 
-    def test_set_parameters_from_array(self):
-        """Test set_parameters_from_array method."""
+    def test_set_parameters(self):
+        """Test set_parameters method."""
         # Local application imports
         from twin4build.systems.damper.damper_system import DamperSystem
 
@@ -487,8 +487,7 @@ class TestModelAdvanced(unittest.TestCase):
         self.model.add_component(damper)
         self.model.load()
 
-        # Set parameter from array
-        self.model.set_parameters_from_array(
+        self.model.set_parameters(
             values=[0.8],
             components=[damper],
             parameter_names=["nominalAirFlowRate"],
@@ -496,7 +495,6 @@ class TestModelAdvanced(unittest.TestCase):
             save_original=True,
         )
 
-        # Check parameter was set
         self.assertAlmostEqual(damper.nominalAirFlowRate.get().item(), 0.8, places=2)
 
     def test_restore_parameters(self):
@@ -508,8 +506,7 @@ class TestModelAdvanced(unittest.TestCase):
         self.model.add_component(damper)
         self.model.load()
 
-        # Save original and set new value
-        self.model.set_parameters_from_array(
+        self.model.set_parameters(
             values=[0.5],
             components=[damper],
             parameter_names=["nominalAirFlowRate"],
@@ -517,7 +514,6 @@ class TestModelAdvanced(unittest.TestCase):
             save_original=True,
         )
 
-        # Restore
         self.model.restore_parameters(keep_values=False)
 
 
