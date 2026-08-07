@@ -526,10 +526,9 @@ To make ``dev`` visible (project admins):
 Colab badges in :doc:`examples_and_tutorials` use the placeholder
 ``GITHUB_NOTEBOOK_BRANCH``, which ``docs/source/conf.py`` replaces with the
 **docs build commit SHA** on Read the Docs (URL-encoded). Example notebooks
-install Twin4Build with a plain ``T4B_REF`` string and
-``!pip install ...@{T4B_REF}`` in the setup cell (edit that string for the
-branch/tag/SHA you want; URL-encode ``/`` in branch names as ``%2F``, e.g.
-``fix%2Fmy-branch``).
+install Twin4Build via a GitHub archive zip and a plain ``T4B_REF`` string in
+the setup cell, e.g. ``refs/heads/<branch>``, ``refs/tags/<tag>``, or a
+commit SHA (archive URLs accept ``/`` in branch names; ``git+`` pip URLs do not).
 
 Writing Documentation
 ~~~~~~~~~~~~~~~~~~~~~
