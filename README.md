@@ -4,6 +4,7 @@
 </p>
 
 [![docs](https://app.readthedocs.org/projects/twin4build/badge/?version=latest)](https://twin4build.readthedocs.io/en/latest/)
+[![docs-dev](https://app.readthedocs.org/projects/twin4build/badge/?version=dev)](https://twin4build.readthedocs.io/en/dev/)
 
 
 # twin4build: A python package for Data-driven and Ontology-based modeling and simulation of buildings
@@ -44,36 +45,36 @@ A typical workflow would look like this:
 
 
 ## Examples and Tutorials
-Below are some examples of how to use the package.
-More examples are coming soon.
+Notebooks live in [`twin4build/examples/`](twin4build/examples/) on **this branch** (relative links always open the files from the branch you are viewing on GitHub).
+
+GitHub READMEs cannot parameterize Colab URLs by viewing branch — absolute Colab links are fixed in the file. Prefer the version-matched Colab badges on the docs site:
+
+- [Examples (latest / `main`)](https://twin4build.readthedocs.io/en/latest/manual/examples_and_tutorials.html)
+- [Examples (`dev`)](https://twin4build.readthedocs.io/en/dev/manual/examples_and_tutorials.html)
 
 ### Basics of Twin4Build
-<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Connecting components, simulating a model, and visualization<br>
+[minimal_example.ipynb](twin4build/examples/minimal_example.ipynb) — Part 1: Connecting components, simulating a model, and visualization
 
-<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration<br>
+[space_co2_controller_example.ipynb](twin4build/examples/space_co2_controller_example.ipynb) — Part 2: Modeling and control of indoor CO2 concentration
 
-<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/bems_example_lecture.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Adding a custom System component - RC modeling from scratch of 2 rooms with parameter estimation and heat optimization
+[bems_example_lecture.ipynb](twin4build/examples/bems_example_lecture.ipynb) — Part 3: Adding a custom System component - RC modeling from scratch of 2 rooms with parameter estimation and heat optimization
 
 ### Translator
 
-<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/translator_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: How to use the translator to generate simulation models from semantic models.
+[translator_example.ipynb](twin4build/examples/translator_example.ipynb) — Part 1: How to use the translator to generate simulation models from semantic models.
 
 ### Estimator
 
-<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/estimator_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Basic parameter estimation and calibration
+[estimator_example.ipynb](twin4build/examples/estimator_example.ipynb) — Part 1: Basic parameter estimation and calibration
 
 ### Optimizer
 
-<a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints.
+[optimizer_example.ipynb](twin4build/examples/optimizer_example.ipynb) — Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints.
 
 ## Documentation
-The documentation can be found [online](https://twin4build.readthedocs.io/en/latest/index.html).
+- **Latest (`main`)**: https://twin4build.readthedocs.io/en/latest/
+- **Dev**: https://twin4build.readthedocs.io/en/dev/
+
 Below is a code snippet showing the basic functionality of the package.
 ```python
 import datetime

@@ -8,6 +8,7 @@
 
 # Standard library imports
 import os
+import subprocess
 import sys
 
 # Add the project root to the Python path
@@ -155,3 +156,53 @@ source_path = "../source/auto"
 # Remove parents from titles in all .rst files
 if not show_title_parents:
     crawl_source_shorten_titles(source_path)
+
+
+def _github_notebook_branch() -> str:
+    """Branch/tag Colab links should open for this doc build.
+
+    On Read the Docs, prefer the git ref being built (branch or tag name).
+    Locally, fall back to the current git branch, then ``dev``.
+    """
+    rtd_type = os.environ.get("READTHEDOCS_VERSION_TYPE")
+    rtd_ident = os.environ.get("READTHEDOCS_GIT_IDENTIFIER")
+    if rtd_type in {"branch", "tag"} and rtd_ident:
+        return rtd_ident
+
+    # ``latest`` is configured to track ``main`` on this project.
+    rtd_version = os.environ.get("READTHEDOCS_VERSION")
+    if rtd_version == "latest":
+        return "main"
+    if rtd_version == "stable":
+        return rtd_ident or "main"
+    if rtd_version:
+        # Branch versions use the version slug (e.g. ``dev``).
+        return rtd_version
+
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if branch and branch != "HEAD":
+            return branch
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "dev"
+
+
+github_notebook_branch = _github_notebook_branch()
+
+
+def _substitute_github_notebook_branch(app, docname, source):
+    """Expand ``GITHUB_NOTEBOOK_BRANCH`` placeholders in Sphinx sources."""
+    source[0] = source[0].replace(
+        "GITHUB_NOTEBOOK_BRANCH", app.config.github_notebook_branch
+    )
+
+
+def setup(app):
+    app.add_config_value("github_notebook_branch", github_notebook_branch, "env")
+    app.connect("source-read", _substitute_github_notebook_branch)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}
