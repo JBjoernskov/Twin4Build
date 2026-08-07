@@ -19,6 +19,7 @@ include-package-data = true
 # previous ``"*" = ["*.ttl", ...]`` did not reliably include nested example
 # data, so Colab installs were missing estimator_example CSVs/TTLs.
 "twin4build.examples.estimator_example" = ["*.csv", "*.ttl", "*.xlsm"]
+"twin4build.examples.full_workflow_example" = ["*.csv"]
 "twin4build.core" = ["ontologies/*.ttl"]
 "twin4build.model.semantic_model.mappings" = ["*.yml"]
 

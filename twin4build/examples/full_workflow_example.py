@@ -115,35 +115,35 @@ def fcn(self):
         "supplyWaterTemperature",
     )
 
-    # Packaged example CSVs (same schema as the case-study PLC exports:
-    # datecolumn=2 / valuecolumn=4). Resolved via utils.get_path so the
-    # workflow is machine-independent (Colab, CI, any checkout).
+    # Original DP37 PLC exports (room OD095_01_011A / HF04), packaged under
+    # full_workflow_example/ and resolved via utils.get_path (same pattern as
+    # estimator_example — not the estimator CSVs themselves).
     self.components["office_temperature_sensor"].filename = utils.get_path(
-        ["estimator_example", "temperature_sensor.csv"]
+        ["full_workflow_example", "temperature_sensor.csv"]
     )
     self.components["office_temperature_sensor"].datecolumn = 2
     self.components["office_temperature_sensor"].valuecolumn = 4
 
     self.components["office_co2_sensor"].filename = utils.get_path(
-        ["estimator_example", "co2_sensor.csv"]
+        ["full_workflow_example", "co2_sensor.csv"]
     )
     self.components["office_co2_sensor"].datecolumn = 2
     self.components["office_co2_sensor"].valuecolumn = 4
 
     self.components["office_valve_position_sensor"].filename = utils.get_path(
-        ["estimator_example", "valve_position_sensor.csv"]
+        ["full_workflow_example", "valve_position_sensor.csv"]
     )
     self.components["office_valve_position_sensor"].datecolumn = 2
     self.components["office_valve_position_sensor"].valuecolumn = 4
 
     self.components["office_damper_position_sensor"].filename = utils.get_path(
-        ["estimator_example", "damper_position_sensor.csv"]
+        ["full_workflow_example", "damper_position_sensor.csv"]
     )
     self.components["office_damper_position_sensor"].datecolumn = 2
     self.components["office_damper_position_sensor"].valuecolumn = 4
 
     self.components["supply_air_temperature_sensor"].filename = utils.get_path(
-        ["estimator_example", "supply_air_temperature.csv"]
+        ["full_workflow_example", "supply_air_temperature.csv"]
     )
     self.components["supply_air_temperature_sensor"].datecolumn = 2
     self.components["supply_air_temperature_sensor"].valuecolumn = 4
@@ -165,11 +165,11 @@ def fcn(self):
         V=100,
         G_occ=5e-6,
         m_inf=0.001,
-        co2_filename=utils.get_path(["estimator_example", "co2_sensor.csv"]),
+        co2_filename=utils.get_path(["full_workflow_example", "co2_sensor.csv"]),
         co2_date_column=2,
         co2_value_column=4,
         damper_filename=utils.get_path(
-            ["estimator_example", "damper_position_sensor.csv"]
+            ["full_workflow_example", "damper_position_sensor.csv"]
         ),
         damper_date_column=2,
         damper_value_column=4,
@@ -282,7 +282,7 @@ def fcn(self):
     )
 
     self.components["office_temperature_heating_setpoint"].filename = utils.get_path(
-        ["estimator_example", "temperature_heating_setpoint.csv"]
+        ["full_workflow_example", "temperature_heating_setpoint.csv"]
     )
     self.components["office_temperature_heating_setpoint"].datecolumn = 2
     self.components["office_temperature_heating_setpoint"].valuecolumn = 4
