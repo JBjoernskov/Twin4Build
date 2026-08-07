@@ -525,13 +525,11 @@ To make ``dev`` visible (project admins):
 
 Colab badges in :doc:`examples_and_tutorials` use the placeholder
 ``GITHUB_NOTEBOOK_BRANCH``, which ``docs/source/conf.py`` replaces with the
-**docs build commit SHA** on Read the Docs (URL-encoded).
-
-Colab cannot expose the notebook's ``/github/.../blob/<ref>/...`` URL to Python
-(cell JS runs in an output iframe; ``document.referrer`` is only the origin).
-Example notebooks therefore **bake in** ``_T4B_EMBEDDED_REF`` via
-``scripts/patch_colab_notebooks.py`` and install that ref (slashy branches use
-``refs/heads/...`` in the pip URL). Override with ``T4B_REF`` if needed.
+**docs build commit SHA** on Read the Docs (URL-encoded). Example notebooks
+install Twin4Build with a plain ``T4B_REF`` string and
+``!pip install ...@{T4B_REF}`` in the setup cell (edit that string for the
+branch/tag/SHA you want; use ``refs/heads/...`` when the branch name contains
+``/``).
 
 Writing Documentation
 ~~~~~~~~~~~~~~~~~~~~~

@@ -12,11 +12,9 @@ in particular :class:`~twin4build.simulator.simulator.Simulator`,
 
 Every notebook can be opened directly in Google Colab (badge links below) or
 run locally in Jupyter. Colab badges open the notebook at this docs build's
-git commit. On Colab, the setup cell installs Twin4Build from a git ref
-**baked into the notebook** (not from PyPI; Colab cannot read the browser
-blob URL from Python). Override with ``T4B_REF`` if needed. After the first
-install the kernel restarts once so numpy/scipy reload cleanly -- then use
-Runtime > Run all.
+git commit. On Colab, change the one string ``T4B_REF`` in the setup cell and
+run ``!pip install ...@{T4B_REF}`` (not PyPI). If imports fail right after
+install, use Runtime > Restart session, then Run all.
 
 Basics of Twin4Build
 --------------------

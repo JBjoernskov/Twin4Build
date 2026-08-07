@@ -224,8 +224,7 @@ def _substitute_github_notebook_branch(app, docname, source):
     """Expand ``GITHUB_NOTEBOOK_BRANCH`` placeholders in Sphinx sources.
 
     The value is URL-encoded so slashy branch names work inside Colab/GitHub
-    blob paths. Docs badges also append ``#t4b_ref=...`` so the notebook
-    installer can recover the ref even when ``window.location`` is quirky.
+    blob paths.
     """
     # Standard library imports
     import urllib.parse
