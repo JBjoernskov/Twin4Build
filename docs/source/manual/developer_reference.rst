@@ -528,8 +528,8 @@ Colab badges in :doc:`examples_and_tutorials` use the placeholder
 **docs build commit SHA** on Read the Docs (URL-encoded). Example notebooks
 install Twin4Build with a plain ``T4B_REF`` string and
 ``!pip install ...@{T4B_REF}`` in the setup cell (edit that string for the
-branch/tag/SHA you want; use ``refs/heads/...`` when the branch name contains
-``/``).
+branch/tag/SHA you want; URL-encode ``/`` in branch names as ``%2F``, e.g.
+``fix%2Fmy-branch``).
 
 Writing Documentation
 ~~~~~~~~~~~~~~~~~~~~~
