@@ -133,9 +133,11 @@ def remove_module_contents_section(content):
         # Keep only the package docstring here. With a curated ``__all__``,
         # ``:members:`` dumps the entire public API onto this landing page
         # (stable docs never did that because the package had no ``__all__``).
+        # Must use ``:no-members:`` — ``autodoc_default_options`` sets
+        # ``members: True`` globally, so a bare ``automodule`` still expands.
         content = re.sub(
             r"(\.\. automodule:: twin4build\n)(?:[ ]+:[^\n]*\n)*",
-            r"\1",
+            r"\1   :no-members:\n",
             content,
             count=1,
         )
