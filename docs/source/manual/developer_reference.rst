@@ -509,6 +509,26 @@ This step compiles all documentation (manual + API) into HTML:
 
 For viewing and browsing the documentation, open the `Twin4Build/build/html/index.html` file in your browser.
 
+**Read the Docs versions**
+
+Published docs:
+
+- ``latest`` → ``main`` → https://twin4build.readthedocs.io/en/latest/
+- ``dev`` → ``dev`` → https://twin4build.readthedocs.io/en/dev/ (activate once in the RTD project)
+
+To make ``dev`` visible (project admins):
+
+1. Open https://app.readthedocs.org/projects/twin4build/versions/
+2. Find the ``dev`` version → **Activate** (and leave it public / not hidden)
+3. Trigger a build for ``dev`` if one does not start automatically
+4. Optional: add an Automation Rule so ``dev`` stays active on future syncs
+
+Colab badges in :doc:`examples_and_tutorials` use the placeholder
+``GITHUB_NOTEBOOK_BRANCH``, which ``docs/source/conf.py`` replaces with a
+git ref GitHub/Colab can resolve: branch/tag name for normal versions
+(``/en/dev/`` → ``blob/dev/...``), and the **commit SHA** for pull-request
+previews (RTD's version slug ``118`` is not a git ref).
+
 Writing Documentation
 ~~~~~~~~~~~~~~~~~~~~~
 
