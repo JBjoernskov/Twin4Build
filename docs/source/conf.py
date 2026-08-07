@@ -159,24 +159,45 @@ if not show_title_parents:
 
 
 def _github_notebook_branch() -> str:
-    """Branch/tag Colab links should open for this doc build.
+    """Git ref Colab links should open for this doc build.
 
-    On Read the Docs, prefer the git ref being built (branch or tag name).
+    On Read the Docs, prefer a ref GitHub/Colab can resolve (branch, tag, or
+    commit SHA). PR preview builds use version slug ``118`` etc., which is
+    *not* a git ref — those must use the commit hash instead.
     Locally, fall back to the current git branch, then ``dev``.
     """
     rtd_type = os.environ.get("READTHEDOCS_VERSION_TYPE")
     rtd_ident = os.environ.get("READTHEDOCS_GIT_IDENTIFIER")
-    if rtd_type in {"branch", "tag"} and rtd_ident:
+    rtd_version = os.environ.get("READTHEDOCS_VERSION")
+    rtd_commit = os.environ.get("READTHEDOCS_GIT_COMMIT_HASH")
+
+    def _git_head():
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    # Pull-request / external builds: VERSION is the PR number, not a branch.
+    if rtd_type == "external":
+        return rtd_commit or _git_head() or "dev"
+
+    if rtd_type in {"branch", "tag"} and rtd_ident and not str(rtd_ident).isdigit():
         return rtd_ident
 
-    # ``latest`` is configured to track ``main`` on this project.
-    rtd_version = os.environ.get("READTHEDOCS_VERSION")
+    # ``latest`` tracks ``main`` on this project.
     if rtd_version == "latest":
         return "main"
     if rtd_version == "stable":
-        return rtd_ident or "main"
-    if rtd_version:
-        # Branch versions use the version slug (e.g. ``dev``).
+        if rtd_ident and not str(rtd_ident).isdigit():
+            return rtd_ident
+        return rtd_commit or "main"
+
+    # Named branch versions (e.g. ``dev``), never numeric PR slugs.
+    if rtd_type == "branch" and rtd_version and not str(rtd_version).isdigit():
         return rtd_version
 
     try:
