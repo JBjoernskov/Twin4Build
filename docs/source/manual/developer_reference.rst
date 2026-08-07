@@ -524,10 +524,11 @@ To make ``dev`` visible (project admins):
 4. Optional: add an Automation Rule so ``dev`` stays active on future syncs
 
 Colab badges in :doc:`examples_and_tutorials` use the placeholder
-``GITHUB_NOTEBOOK_BRANCH``, which ``docs/source/conf.py`` replaces with a
-git ref GitHub/Colab can resolve: branch/tag name for normal versions
-(``/en/dev/`` → ``blob/dev/...``), and the **commit SHA** for pull-request
-previews (RTD's version slug ``118`` is not a git ref).
+``GITHUB_NOTEBOOK_BRANCH``, which ``docs/source/conf.py`` replaces with the
+**docs build commit SHA** on Read the Docs (URL-encoded), falling back to a
+branch/tag name only for local builds. Badges also set ``#t4b_ref=...`` so the
+notebook installer can recover the ref when Colab's ``window.location`` is
+unhelpful. RTD pull-request version slugs (``119``, etc.) are not git refs.
 
 Writing Documentation
 ~~~~~~~~~~~~~~~~~~~~~

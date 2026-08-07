@@ -161,9 +161,9 @@ if not show_title_parents:
 def _github_notebook_branch() -> str:
     """Git ref Colab links should open for this doc build.
 
-    On Read the Docs, prefer a ref GitHub/Colab can resolve (branch, tag, or
-    commit SHA). PR preview builds use version slug ``118`` etc., which is
-    *not* a git ref — those must use the commit hash instead.
+    On Read the Docs, prefer the build commit SHA whenever available. That is
+    unambiguous for GitHub/Colab (unlike PR slugs ``119`` or slashy branch
+    names) and matches the notebook content the docs were built from.
     Locally, fall back to the current git branch, then ``dev``.
     """
     rtd_type = os.environ.get("READTHEDOCS_VERSION_TYPE")
@@ -181,9 +181,13 @@ def _github_notebook_branch() -> str:
         except (OSError, subprocess.SubprocessError):
             return None
 
-    # Pull-request / external builds: VERSION is the PR number, not a branch.
+    # Any RTD build: pin Colab to the exact commit that produced these docs.
+    if rtd_commit:
+        return rtd_commit
+
+    # Pull-request / external builds without a commit env (shouldn't happen).
     if rtd_type == "external":
-        return rtd_commit or _git_head() or "dev"
+        return _git_head() or "dev"
 
     if rtd_type in {"branch", "tag"} and rtd_ident and not str(rtd_ident).isdigit():
         return rtd_ident
@@ -194,7 +198,7 @@ def _github_notebook_branch() -> str:
     if rtd_version == "stable":
         if rtd_ident and not str(rtd_ident).isdigit():
             return rtd_ident
-        return rtd_commit or "main"
+        return "main"
 
     # Named branch versions (e.g. ``dev``), never numeric PR slugs.
     if rtd_type == "branch" and rtd_version and not str(rtd_version).isdigit():
@@ -217,10 +221,18 @@ github_notebook_branch = _github_notebook_branch()
 
 
 def _substitute_github_notebook_branch(app, docname, source):
-    """Expand ``GITHUB_NOTEBOOK_BRANCH`` placeholders in Sphinx sources."""
-    source[0] = source[0].replace(
-        "GITHUB_NOTEBOOK_BRANCH", app.config.github_notebook_branch
-    )
+    """Expand ``GITHUB_NOTEBOOK_BRANCH`` placeholders in Sphinx sources.
+
+    The value is URL-encoded so slashy branch names work inside Colab/GitHub
+    blob paths. Docs badges also append ``#t4b_ref=...`` so the notebook
+    installer can recover the ref even when ``window.location`` is quirky.
+    """
+    # Standard library imports
+    import urllib.parse
+
+    ref = app.config.github_notebook_branch
+    encoded = urllib.parse.quote(str(ref), safe="")
+    source[0] = source[0].replace("GITHUB_NOTEBOOK_BRANCH", encoded)
 
 
 def setup(app):

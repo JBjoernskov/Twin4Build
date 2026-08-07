@@ -12,61 +12,63 @@ in particular :class:`~twin4build.simulator.simulator.Simulator`,
 
 Every notebook can be opened directly in Google Colab (badge links below) or
 run locally in Jupyter. Colab badges are rewritten at docs build time to the
-git branch/tag for this documentation version (e.g. ``dev`` docs open
-``blob/dev/...``, ``latest`` opens ``blob/main/...``). On Colab, the notebook
-setup cell installs Twin4Build from that same git ref (not from PyPI); override
-with the ``T4B_REF`` environment variable if needed.
+git commit (or branch) for this documentation version, and include a
+``#t4b_ref=...`` fragment the setup cell reads so install matches the docs
+even when Colab's page URL is awkward. On Colab, that cell installs Twin4Build
+from the matching git ref (not from PyPI); override with the ``T4B_REF``
+environment variable if needed. After the first install the kernel restarts
+once so numpy/scipy reload cleanly -- then use Runtime > Run all.
 
 Basics of Twin4Build
 --------------------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/minimal_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Minimal example</b>: Connecting components, simulating a model, and visualizing results &mdash; the core mechanics every other example builds on</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/minimal_example.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Minimal example</b>: Connecting components, simulating a model, and visualizing results &mdash; the core mechanics every other example builds on</p>
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/building_space_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Building space</b>: The combined thermal + CO2 building space model driven by weather data, occupancy schedules, and ventilation, plus two zones coupled by an energy-conserving partition wall component</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/building_space_example.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Building space</b>: The combined thermal + CO2 building space model driven by weather data, occupancy schedules, and ventilation, plus two zones coupled by an energy-conserving partition wall component</p>
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/space_heater_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Space heater</b>: A discretized space heater (radiator) model coupled to a building space and a PID temperature controller</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/space_heater_example.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Space heater</b>: A discretized space heater (radiator) model coupled to a building space and a PID temperature controller</p>
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/space_co2_controller_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>CO2 control</b>: Modeling and closed-loop control of indoor CO2 concentration with dampers and a PID controller</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/space_co2_controller_example.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>CO2 control</b>: Modeling and closed-loop control of indoor CO2 concentration with dampers and a PID controller</p>
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/bems_example_lecture.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Custom components (lecture)</b>: Adding a custom System component &mdash; RC modeling from scratch of 2 rooms with parameter estimation and heat optimization</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/bems_example_lecture.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Custom components (lecture)</b>: Adding a custom System component &mdash; RC modeling from scratch of 2 rooms with parameter estimation and heat optimization</p>
 
 Translator
 ----------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/translator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Translator</b>: Generating simulation models automatically from semantic (ontology-based) building descriptions via signature pattern matching</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/translator_example.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Translator</b>: Generating simulation models automatically from semantic (ontology-based) building descriptions via signature pattern matching</p>
 
 Estimator
 ---------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/estimator_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Estimator</b>: Parameter estimation and calibration against measured data &mdash; single-shooting and collocation transcriptions, SciPy and CasADi/IPOPT backends, and result interpretation</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/estimator_example.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Estimator</b>: Parameter estimation and calibration against measured data &mdash; single-shooting and collocation transcriptions, SciPy and CasADi/IPOPT backends, and result interpretation</p>
 
 Optimizer
 ---------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/optimizer_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Optimizer</b>: Optimization of space heater power consumption, constrained by heating and cooling setpoints</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/optimizer_example.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Optimizer</b>: Optimization of space heater power consumption, constrained by heating and cooling setpoints</p>
 
 Full Workflow
 -------------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/full_workflow_example.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Full workflow</b>: End-to-end pipeline &mdash; translate a semantic model, calibrate parameters with the Estimator, and optimize a control schedule with the Optimizer</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/full_workflow_example.ipynb#t4b_ref=GITHUB_NOTEBOOK_BRANCH"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Full workflow</b>: End-to-end pipeline &mdash; translate a semantic model, calibrate parameters with the Estimator, and optimize a control schedule with the Optimizer</p>
 
 Running Examples
 ----------------
