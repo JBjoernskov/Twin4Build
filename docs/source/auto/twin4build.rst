@@ -22,6 +22,3 @@ Note
 ----
 
 .. automodule:: twin4build
-   :members:
-   :show-inheritance:
-   :undoc-members:

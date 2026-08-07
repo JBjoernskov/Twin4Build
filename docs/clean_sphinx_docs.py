@@ -126,10 +126,19 @@ def remove_module_contents_section(content):
     # First check if this is the main twin4build package file
     if (
         ".. automodule:: twin4build\n" in content
-        and not ".. automodule:: twin4build." in content
+        and ".. automodule:: twin4build." not in content
     ):
         # This is the main twin4build package, change "Module contents" to "Note"
         content = content.replace("Module contents\n---------------", "Note\n----")
+        # Keep only the package docstring here. With a curated ``__all__``,
+        # ``:members:`` dumps the entire public API onto this landing page
+        # (stable docs never did that because the package had no ``__all__``).
+        content = re.sub(
+            r"(\.\. automodule:: twin4build\n)(?:[ ]+:[^\n]*\n)*",
+            r"\1",
+            content,
+            count=1,
+        )
         return content
 
     # For all other modules, remove the Module contents section

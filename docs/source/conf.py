@@ -8,6 +8,7 @@
 
 # Standard library imports
 import os
+import subprocess
 import sys
 
 # Add the project root to the Python path
@@ -155,3 +156,74 @@ source_path = "../source/auto"
 # Remove parents from titles in all .rst files
 if not show_title_parents:
     crawl_source_shorten_titles(source_path)
+
+
+def _github_notebook_branch() -> str:
+    """Git ref Colab links should open for this doc build.
+
+    On Read the Docs, prefer a ref GitHub/Colab can resolve (branch, tag, or
+    commit SHA). PR preview builds use version slug ``118`` etc., which is
+    *not* a git ref — those must use the commit hash instead.
+    Locally, fall back to the current git branch, then ``dev``.
+    """
+    rtd_type = os.environ.get("READTHEDOCS_VERSION_TYPE")
+    rtd_ident = os.environ.get("READTHEDOCS_GIT_IDENTIFIER")
+    rtd_version = os.environ.get("READTHEDOCS_VERSION")
+    rtd_commit = os.environ.get("READTHEDOCS_GIT_COMMIT_HASH")
+
+    def _git_head():
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    # Pull-request / external builds: VERSION is the PR number, not a branch.
+    if rtd_type == "external":
+        return rtd_commit or _git_head() or "dev"
+
+    if rtd_type in {"branch", "tag"} and rtd_ident and not str(rtd_ident).isdigit():
+        return rtd_ident
+
+    # ``latest`` tracks ``main`` on this project.
+    if rtd_version == "latest":
+        return "main"
+    if rtd_version == "stable":
+        if rtd_ident and not str(rtd_ident).isdigit():
+            return rtd_ident
+        return rtd_commit or "main"
+
+    # Named branch versions (e.g. ``dev``), never numeric PR slugs.
+    if rtd_type == "branch" and rtd_version and not str(rtd_version).isdigit():
+        return rtd_version
+
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if branch and branch != "HEAD":
+            return branch
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "dev"
+
+
+github_notebook_branch = _github_notebook_branch()
+
+
+def _substitute_github_notebook_branch(app, docname, source):
+    """Expand ``GITHUB_NOTEBOOK_BRANCH`` placeholders in Sphinx sources."""
+    source[0] = source[0].replace(
+        "GITHUB_NOTEBOOK_BRANCH", app.config.github_notebook_branch
+    )
+
+
+def setup(app):
+    app.add_config_value("github_notebook_branch", github_notebook_branch, "env")
+    app.connect("source-read", _substitute_github_notebook_branch)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}
