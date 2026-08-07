@@ -525,15 +525,13 @@ To make ``dev`` visible (project admins):
 
 Colab badges in :doc:`examples_and_tutorials` use the placeholder
 ``GITHUB_NOTEBOOK_BRANCH``, which ``docs/source/conf.py`` replaces with the
-**docs build commit SHA** on Read the Docs (URL-encoded), falling back to a
-branch/tag name only for local builds. Badges also set ``#t4b_ref=...``.
+**docs build commit SHA** on Read the Docs (URL-encoded).
 
-Colab runs cell JavaScript inside a ``googleusercontent.com`` output iframe, so
-``window.location`` is *not* the ``/github/.../blob/<ref>/...`` notebook URL.
-The installer therefore ignores output-frame URLs and falls back to
-``_T4B_EMBEDDED_REF`` in ``twin4build/examples/colab_bootstrap.py`` (kept in
-sync with the current git branch by ``scripts/patch_colab_notebooks.py`` when
-example notebooks are refreshed). Override anytime with ``T4B_REF``.
+Colab cannot expose the notebook's ``/github/.../blob/<ref>/...`` URL to Python
+(cell JS runs in an output iframe; ``document.referrer`` is only the origin).
+Example notebooks therefore **bake in** ``_T4B_EMBEDDED_REF`` via
+``scripts/patch_colab_notebooks.py`` and install that ref (slashy branches use
+``refs/heads/...`` in the pip URL). Override with ``T4B_REF`` if needed.
 
 Writing Documentation
 ~~~~~~~~~~~~~~~~~~~~~

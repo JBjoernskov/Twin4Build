@@ -1,4 +1,8 @@
-"""Rewrite example notebook setup cells to inline colab_bootstrap (no HTTP fetch)."""
+"""Bake current git branch/SHA into colab_bootstrap and example notebooks.
+
+Colab cannot read the real /github/.../blob/<ref>/ notebook URL from cell JS
+(output iframe). Notebooks therefore ship an explicit ref and install that.
+"""
 # Standard library imports
 import json
 import re
@@ -10,7 +14,7 @@ BOOTSTRAP_PATH = ROOT / "twin4build" / "examples" / "colab_bootstrap.py"
 
 
 def _current_ref() -> str:
-    """Prefer current branch name; fall back to HEAD SHA."""
+    """Prefer branch name (tracks PR tip); fall back to HEAD SHA."""
     try:
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -22,15 +26,12 @@ def _current_ref() -> str:
             return branch
     except (OSError, subprocess.SubprocessError):
         pass
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            cwd=ROOT,
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-    except (OSError, subprocess.SubprocessError):
-        return "dev"
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        text=True,
+        stderr=subprocess.DEVNULL,
+    ).strip()
 
 
 def main() -> None:
@@ -49,26 +50,23 @@ def main() -> None:
     print(f"embedded ref: {ref}")
 
     bootstrap = BOOTSTRAP_PATH.read_text(encoding="utf-8")
-    prefix = f"""# Colab: install Twin4Build from the same git ref as this notebook's URL
-# (docs/dev/PR badges). Local checkouts skip install and use the existing package.
-# Override with env var T4B_REF=branch|tag|sha if needed.
+    prefix = f"""# Colab: install Twin4Build from the git ref baked into this notebook
+# (docs/PR badges). Local checkouts skip install. Override with T4B_REF.
 from pathlib import Path
 
 _bootstrap = Path("twin4build/examples/colab_bootstrap.py")
 if not _bootstrap.is_file():
-    _bootstrap = Path("colab_bootstrap.py")  # cwd already inside examples/
+    _bootstrap = Path("colab_bootstrap.py")
 
 if _bootstrap.is_file():
     exec(_bootstrap.read_text(encoding="utf-8"))
 else:
-    # Colab only downloads the .ipynb - do not HTTP-fetch this helper (slashy
-    # branch names and refs not yet on dev both 404 on raw.githubusercontent).
     exec({bootstrap!r})
 
 ensure_twin4build()
 """
     block_re = re.compile(
-        r"(?:# Colab: install Twin4Build[\s\S]*?)?ensure_twin4build\(\)\s*\n",
+        r"(?:# Colab:[\s\S]*?)?ensure_twin4build\(\)\s*\n",
     )
 
     updated = []
