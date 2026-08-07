@@ -115,56 +115,35 @@ def fcn(self):
         "supplyWaterTemperature",
     )
 
-    DATA_ROOT = (
-        r"C:\Users\jabj\Documents\python\Twin4build-Case-Studies\DP37\model\data"
-    )
-
-    # --- Room 11A sensors ---
-    self.components["office_temperature_sensor"].filename = (
-        DATA_ROOT
-        + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_BQA001_S1.plc_SENSOR_VALUE.csv"
+    # Packaged example CSVs (same schema as the case-study PLC exports:
+    # datecolumn=2 / valuecolumn=4). Resolved via utils.get_path so the
+    # workflow is machine-independent (Colab, CI, any checkout).
+    self.components["office_temperature_sensor"].filename = utils.get_path(
+        ["estimator_example", "temperature_sensor.csv"]
     )
     self.components["office_temperature_sensor"].datecolumn = 2
     self.components["office_temperature_sensor"].valuecolumn = 4
 
-    self.components["office_co2_sensor"].filename = (
-        DATA_ROOT
-        + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_BQA001_S2.plc_SENSOR_VALUE.csv"
+    self.components["office_co2_sensor"].filename = utils.get_path(
+        ["estimator_example", "co2_sensor.csv"]
     )
     self.components["office_co2_sensor"].datecolumn = 2
     self.components["office_co2_sensor"].valuecolumn = 4
 
-    self.components["office_valve_position_sensor"].filename = (
-        DATA_ROOT
-        + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_QNA001_C1.plc_ACTUATOR_VALUE.csv"
+    self.components["office_valve_position_sensor"].filename = utils.get_path(
+        ["estimator_example", "valve_position_sensor.csv"]
     )
     self.components["office_valve_position_sensor"].datecolumn = 2
     self.components["office_valve_position_sensor"].valuecolumn = 4
 
-    self.components["office_damper_position_sensor"].filename = (
-        DATA_ROOT
-        + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_QNB001_C1.plc_ACTUATOR_VALUE.csv"
+    self.components["office_damper_position_sensor"].filename = utils.get_path(
+        ["estimator_example", "damper_position_sensor.csv"]
     )
     self.components["office_damper_position_sensor"].datecolumn = 2
     self.components["office_damper_position_sensor"].valuecolumn = 4
 
-    # --- Room 020B sensors (commented out) ---
-    # self.components["office_temperature_sensor"].filename = DATA_ROOT + r"\Time series\Rooms\OD095_01_020B\OD095_01_020B_L95_LC02_BTA012_S1.plc_SENSOR_VALUE.csv"
-    # self.components["office_temperature_sensor"].datecolumn = 2
-    # self.components["office_temperature_sensor"].valuecolumn = 4
-    # self.components["office_co2_sensor"].filename = DATA_ROOT + r"\Time series\Rooms\OD095_01_020B\OD095_01_020B_L95_LC02_BQA010_S2.plc_SENSOR_VALUE.csv"
-    # self.components["office_co2_sensor"].datecolumn = 2
-    # self.components["office_co2_sensor"].valuecolumn = 4
-    # self.components["office_valve_position_sensor"].filename = DATA_ROOT + r"\Time series\Rooms\OD095_01_020B\OD095_01_020B_L95_LC02_QNA020_C1.plc_ACTUATOR_VALUE.csv"
-    # self.components["office_valve_position_sensor"].datecolumn = 2
-    # self.components["office_valve_position_sensor"].valuecolumn = 4
-    # self.components["office_damper_position_sensor"].filename = DATA_ROOT + r"\Time series\Rooms\OD095_01_020B\OD095_01_020B_L95_LC02_QNB021_C1.plc_ACTUATOR_VALUE.csv"
-    # self.components["office_damper_position_sensor"].datecolumn = 2
-    # self.components["office_damper_position_sensor"].valuecolumn = 4
-
-    self.components["supply_air_temperature_sensor"].filename = (
-        DATA_ROOT
-        + r"\Time series\HF04\OD095_01_032A_J95_HF04_BTA004_S1.plc_SENSOR_VALUE.csv"
+    self.components["supply_air_temperature_sensor"].filename = utils.get_path(
+        ["estimator_example", "supply_air_temperature.csv"]
     )
     self.components["supply_air_temperature_sensor"].datecolumn = 2
     self.components["supply_air_temperature_sensor"].valuecolumn = 4
@@ -186,12 +165,12 @@ def fcn(self):
         V=100,
         G_occ=5e-6,
         m_inf=0.001,
-        co2_filename=DATA_ROOT
-        + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_BQA001_S2.plc_SENSOR_VALUE.csv",
+        co2_filename=utils.get_path(["estimator_example", "co2_sensor.csv"]),
         co2_date_column=2,
         co2_value_column=4,
-        damper_filename=DATA_ROOT
-        + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_QNB001_C1.plc_ACTUATOR_VALUE.csv",
+        damper_filename=utils.get_path(
+            ["estimator_example", "damper_position_sensor.csv"]
+        ),
         damper_date_column=2,
         damper_value_column=4,
         id="office_occupancy",
@@ -302,15 +281,11 @@ def fcn(self):
         "measuredValue",
     )
 
-    # Heating setpoint for room 11A
-    self.components["office_temperature_heating_setpoint"].filename = (
-        DATA_ROOT
-        + r"\Time series\Rooms\OD095_01_011A\OD095_01_011A_L95_LC02_KFD001.plc_PID_SP.csv"
+    self.components["office_temperature_heating_setpoint"].filename = utils.get_path(
+        ["estimator_example", "temperature_heating_setpoint.csv"]
     )
     self.components["office_temperature_heating_setpoint"].datecolumn = 2
     self.components["office_temperature_heating_setpoint"].valuecolumn = 4
-    # Room 020B setpoint (commented out):
-    # self.components["office_temperature_heating_setpoint"].filename = DATA_ROOT + r"\Time series\Rooms\OD095_01_020B\OD095_01_020B_L95_LC02_KFD004.plc_PID_SP.csv"
 
     self.components["outdoor_environment"].use_spreadsheet = True
     self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(
