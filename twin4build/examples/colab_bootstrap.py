@@ -1,38 +1,14 @@
-"""Colab-aware Twin4Build installer (stdlib only — safe before the package exists).
+"""Colab-aware Twin4Build installer (stdlib only - safe before the package exists).
 
 Notebooks opened from GitHub/Colab only fetch the ``.ipynb`` file; they do not
 install that git ref. ``pip install twin4build`` hits PyPI (currently 1.x) and
 is the wrong default for docs/dev/PR badges.
 
-Usage in a notebook setup cell::
-
-    from pathlib import Path
-    import urllib.request
-
-    _bootstrap = Path("twin4build/examples/colab_bootstrap.py")
-    if _bootstrap.is_file():
-        exec(_bootstrap.read_text(encoding="utf-8"))
-    else:
-        # Notebook opened alone in Colab: load this helper from the same git ref
-        # as the Colab URL when possible, else from ``dev``.
-        import re, urllib.parse
-        _ref = "dev"
-        try:
-            from google.colab import output as _out
-            _href = _out.eval_js("window.location.href") or ""
-            _m = re.search(r"/github/[^/]+/[^/]+/blob/([^/]+)/", _href)
-            if _m:
-                _ref = urllib.parse.unquote(_m.group(1))
-        except Exception:
-            pass
-        _url = (
-            "https://raw.githubusercontent.com/JBjoernskov/Twin4Build/"
-            f"{_ref}/twin4build/examples/colab_bootstrap.py"
-        )
-        exec(urllib.request.urlopen(_url, timeout=30).read().decode("utf-8"))
-
-    ensure_twin4build()
-    import twin4build as tb
+Notebook setup cells should call :func:`ensure_twin4build` after loading this
+module (from a local checkout) or after exec'ing the inlined copy of this
+file that the notebooks ship. Do not rely on fetching this path from
+``raw.githubusercontent.com`` (branch names with ``/`` and refs not yet on
+``dev`` both 404 easily).
 """
 
 # Standard library imports
@@ -48,6 +24,17 @@ import urllib.parse
 REPO_URL = "https://github.com/JBjoernskov/Twin4Build.git"
 DEFAULT_REF = "dev"
 
+# Colab / GitHub URLs look like:
+#   .../github/<org>/<repo>/blob/<ref>/twin4build/examples/....ipynb
+# ``<ref>`` may be a SHA, a simple branch (``dev``), or a slashy branch that is
+# either URL-encoded (``fix%2Ffoo``) or left as ``fix/foo``. Capture through
+# the ``/twin4build/`` path prefix so slashy refs are not truncated at the
+# first ``/``.
+_COLAB_BLOB_REF_RE = re.compile(
+    r"/github/[^/]+/[^/]+/blob/(.+?)/twin4build/",
+    re.IGNORECASE,
+)
+
 
 def in_colab() -> bool:
     return "google.colab" in sys.modules
@@ -58,7 +45,7 @@ def detect_git_ref(default: str = DEFAULT_REF) -> str:
 
     Priority:
     1. ``T4B_REF`` environment variable
-    2. Colab page URL (``.../github/<org>/<repo>/blob/<ref>/...``)
+    2. Colab page URL (``.../github/<org>/<repo>/blob/<ref>/twin4build/...``)
     3. ``default`` (usually ``dev``)
     """
     env_ref = os.environ.get("T4B_REF")
@@ -71,7 +58,7 @@ def detect_git_ref(default: str = DEFAULT_REF) -> str:
             from google.colab import output
 
             href = output.eval_js("window.location.href") or ""
-            match = re.search(r"/github/[^/]+/[^/]+/blob/([^/]+)/", href)
+            match = _COLAB_BLOB_REF_RE.search(href)
             if match:
                 return urllib.parse.unquote(match.group(1))
         except Exception:
