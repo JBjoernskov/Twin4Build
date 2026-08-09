@@ -793,26 +793,10 @@ def main():
         id="valve_position_schedule",
     )
 
-    # Load real Elspot prices from Dec 11-13, 2024 and remap dates to Dec 1-3, 2023
-    elspot_raw = pd.read_csv(
-        utils.get_path(["Elspotprices2023-2025.csv"]), sep=";", decimal=","
-    )
-    elspot_raw["HourDK"] = pd.to_datetime(elspot_raw["HourDK"], dayfirst=True)
-
-    src_start = pd.Timestamp("2024-12-11")
-    src_end = pd.Timestamp("2024-12-14")  # exclusive
-    mask = (elspot_raw["HourDK"] >= src_start) & (elspot_raw["HourDK"] < src_end)
-    elspot_subset = elspot_raw.loc[mask, ["HourDK", "SpotPriceDKK"]].copy()
-
-    date_offset = pd.DateOffset(years=1, days=10)  # 2024-12-11 - 1y10d = 2023-12-01
-    elspot_subset["HourDK"] = elspot_subset["HourDK"] - date_offset
-    elspot_subset.columns = ["time", "value"]
-    elspot_subset["value"] = elspot_subset["value"] / 1000  # DKK/MWh -> DKK/kWh
-    elspot_subset = elspot_subset.sort_values("time").reset_index(drop=True)
-
+    # Packaged Elspot subset (Dec 11-13 2024 remapped to Dec 1-3 2023), DKK/kWh
     elspot_clean_path = utils.get_path(["estimator_example", "electricity_price.csv"])
-    elspot_subset.to_csv(elspot_clean_path, index=False)
-    print(f"Using real Elspot prices from Dec 11-13, 2024 (remapped to Dec 1-3, 2023)")
+    elspot_subset = pd.read_csv(elspot_clean_path)
+    print("Using packaged Elspot prices (Dec 11-13 2024 remapped to Dec 1-3 2023)")
     print(
         f"Price range: {elspot_subset['value'].min():.4f} - {elspot_subset['value'].max():.4f} DKK/kWh"
     )
