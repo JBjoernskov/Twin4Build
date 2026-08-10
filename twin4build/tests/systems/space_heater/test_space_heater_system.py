@@ -34,6 +34,21 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
         self.assertEqual(self.heater.id, "test_heater")
         self.assertEqual(self.heater.nelements, 2)
 
+    def test_initialize_UA_sets_physical_value(self):
+        """initialize_UA must store a physical UA readable via Parameter.get()."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
+        step_size = [600]
+        self.heater.initialize(
+            start_time=start_time, end_time=end_time, step_size=step_size
+        )
+        ua = float(self.heater.UA.get().reshape(-1)[0])
+        # Rough LMTD-style scale: Q / (T_b - T_air) ≈ 50; fsolve is nearby.
+        self.assertGreater(ua, 10.0)
+        self.assertLess(ua, 200.0)
+        # Must not be the placeholder (10) accidentally denormalized as 10*(UA).
+        self.assertNotAlmostEqual(ua, 10.0, places=3)
+
     def test_do_step(self):
         """Test space heater system do_step method."""
         start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]

@@ -29,8 +29,8 @@ class OccupancyDetectorSystem(SigmoidGate):
 
     def __init__(
         self,
-        threshold: float = 0.5,
-        steepness: float = 100.0,
+        threshold: float = 1,
+        steepness: float = 10.0,
         **kwargs,
     ):
         super().__init__(threshold=threshold, steepness=steepness, **kwargs)

@@ -387,8 +387,12 @@ class SpaceHeaterSystem(core.System, nn.Module):
                 self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
             )
             root = fsolve(self._ua_residual, UA0, full_output=True)
-            UA_val = root[0][0]
-            self.UA.data.fill_(UA_val)  # Preserves shape (n_c,)
+            UA_val = float(root[0][0])
+            # Write the physical UA through ``set`` so normalization is applied.
+            # ``data.fill_(UA_val)`` would store the physical value in the
+            # normalized slot and make ``get()`` return min+(UA_val)*(max-min)
+            # (e.g. 350 when the placeholder max is 10).
+            self.UA.set(UA_val, normalized=False)
 
         self._create_state_space_model()
         self.ss_model.initialize(start_time, end_time, step_size)

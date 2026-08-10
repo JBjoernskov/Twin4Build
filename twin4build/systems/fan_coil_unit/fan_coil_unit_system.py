@@ -382,8 +382,11 @@ class FanCoilUnitSystem(core.System, nn.Module):
                 / abs(self.T_w_return_nominal - self.T_air_in_nominal)
             )
             root = fsolve(self._ua_residual, UA0, full_output=True)
-            UA_val = root[0][0]
-            self.UA.data.fill_(UA_val)
+            UA_val = float(root[0][0])
+            # Write the physical UA through ``set`` so normalization is applied.
+            # ``data.fill_(UA_val)`` would store the physical value in the
+            # normalized slot and make ``get()`` return a scaled-up value.
+            self.UA.set(UA_val, normalized=False)
 
         self._create_state_space_model()
         self.ss_model.initialize(start_time, end_time, step_size)

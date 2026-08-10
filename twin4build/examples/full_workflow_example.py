@@ -8,13 +8,11 @@ Demonstrates the complete Twin4Build workflow on a single model:
 2. Simulation Model -> Calibrated Model (Estimator): Calibrate the simulation
    model parameters against real sensor data
 3. Calibrated Model -> Optimized Control (Optimizer): Optimize the valve position
-   schedule to minimize energy use while maintaining thermal comfort
+   schedule to minimize electricity cost (Danish Elspot prices) while maintaining
+   thermal comfort — matching ``full_workflow_example.ipynb``.
 
-The example uses a single-room office model with:
-- A building space with thermal and mass balance
-- A space heater with valve control
-- Temperature and CO2 controllers with dampers
-- Sensors for temperature, CO2, valve position, and damper position
+Calibration uses a two-stage estimator warm-start (fast SciPy SLSQP, then
+CasADi/IPOPT collocation), as in the notebook.
 """
 
 # Standard library imports
@@ -31,6 +29,7 @@ from dateutil import tz
 # Local application imports
 import twin4build as tb
 import twin4build.examples.utils as utils
+from twin4build.utils.rgetattr import rgetattr
 
 # ---------------------------------------------------------------------------
 # Part 1: Semantic Model -> Simulation Model (Translator)
@@ -230,8 +229,8 @@ def fcn(self):
     # and no solver can recover it).  A moderate steepness keeps the sigmoid
     # differentiable near the threshold instead of a hard step.
     occupancy_detector = tb.OccupancyDetectorSystem(
-        threshold=0.15,
-        steepness=30.0,
+        threshold=1,
+        steepness=50,
         id="office_occupancy_detector",
     )
     self.add_connection(
@@ -331,10 +330,9 @@ def fcn(self):
     self.components["outdoor_environment"].datecolumn_outdoorCo2Concentration = 0
     self.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 3
 
-    # UA will be estimated — disable the automatic re-computation from nominal
-    # values so initialize() preserves the calibrated/set value.
-    # This is serialized via the config so loading from RDF also gets False.
-    self.components["office_space_heater"].initialize_UA = False
+    # Space heater UA is computed from nominal conditions during initialize()
+    # (initialize_UA=True). Omit x0 so estimation starts from that solved value.
+    self.components["office_space_heater"].initialize_UA = True
 
 
 def main():
@@ -420,27 +418,26 @@ def main():
         # Thermal parameters
         (space, "thermal.C_air", 5e5, 1e4, 5e5),
         (space, "thermal.C_wall", 1e6, 1e5, 3e6),
+        (boundary_wall, "C", 1e6, 1e4, 1e7),
         (space, "thermal.R_out", 0.5, 0.01, 1),
         (space, "thermal.R_in", 0.1, 0.01, 1),
-        # Boundary wall (WallSystem toward the boundary-temperature schedule)
-        (boundary_wall, "C", 1e6, 1e4, 1e7),
-        (boundary_wall, "R_a", 0.04, 0.0001, 1),
-        (boundary_wall, "R_b", 0.04, 0.0001, 1),
+        (boundary_wall, "R_a", 0.04, 1e-4, 1),
+        (boundary_wall, "R_b", 0.04, 1e-4, 1),
         (space, "thermal.f_wall", 0.1, 0, 10),
         (space, "thermal.f_air", 0.1, 0, 10),
         (space, "thermal.Q_occ_gain", 100.0, 10, 200),
         # Space heater parameters
-        (space_heater, "thermalMassHeatCapacity", 1e4, 1000, 2e5),
-        (space_heater, "UA", 30, 1, 100),
+        (space_heater, "thermalMassHeatCapacity", 1e4, 1e3, 2e5),
+        (space_heater, "UA", None, 1, 100),  # x0 from initialize_UA
         # Controller PID parameters (private = each controller gets its own values)
         (heating_controller, "kp", 0.005, 1e-5, 1, "private"),
         (co2_controller, "kp", 0.0001, 1e-5, 1, "private"),
         ([heating_controller, co2_controller], "Ti", 30, 1, 300, "private"),
         ([heating_controller, co2_controller], "Td", 0, 0, 1, "private"),
         # Valve parameters
-        (space_heater_valve, "waterFlowRateMax", 0.001, 1e-6, 0.1),  # 0.003
+        (space_heater_valve, "waterFlowRateMax", 0.001, 1e-6, 0.1),
         (space_heater_valve, "valveAuthority", 1, 0.4, 1),
-        # Damper parameters — shared between model dampers and occupancy's internal dampers
+        # Damper parameters -- shared between model dampers and occupancy's internal dampers
         ([supply_damper, occupancy_system.supply_damper], "a", 1, 1, 10, "shared"),
         (
             [supply_damper, occupancy_system.supply_damper],
@@ -468,10 +465,8 @@ def main():
         # the ventilation branch never fires (its sigmoid gradient dies), and
         # the simulated damper/CO2 collapse even though temperature fits.
         ([space, occupancy_system], "mass.V", 65, 50, 80, "shared"),
-        ([space, occupancy_system], "mass.G_occ", 5e-6, 4e-6, 7e-6, "shared"),
-        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 2e-3, "shared"),
-        # Occupancy detector threshold
-        # (occupancy_detector, "threshold", 0.5, 0.001, 5.0),
+        ([space, occupancy_system], "mass.G_occ", 1e-6, 1e-6, 1e-5, "shared"),
+        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 0.01, "shared"),
         # NOTE: the occupancy controller's onValue (minimum damper position
         # when occupied) is NOT estimated: it is a known BMS constant (0.3 in
         # the measured damper data), and leaving it free lets the solver
@@ -501,6 +496,9 @@ def main():
     x0_max = []
     for entry in parameters:
         comp, name, val, lo, hi = entry[0], entry[1], entry[2], entry[3], entry[4]
+        if val is None:
+            # Omitted x0: leave the component's current / initialize()-computed value.
+            continue
         if isinstance(comp, list):
             for c in comp:
                 x0_values.append(val)
@@ -633,23 +631,49 @@ def main():
         ylabel_1axis=r"CO$_2$ concentration [ppmv]",
         ylabel_2axis="Damper position [0-1]",
         title="Before calibration",
-        show=True,
+        show=False,
         nticks=11,
     )
 
-    # --- 2.7 Run Parameter Estimation ---
+    # --- 2.7 Run Parameter Estimation (matches notebook: fast SLSQP warm-start,
+    # then CasADi/IPOPT collocation) ---
     estimator = tb.Estimator(simulator)
-    options = {"maxiter": 300, "ftol": 1e-15}
 
-    result = estimator.estimate(
+    stage1 = estimator.estimate(
         start_time,
         end_time,
         step_size,
         parameters,
         measurements,
-        n_warmup=72,
+        n_warmup=20,
         method=("scipy", "SLSQP", "ad"),
-        options=options,
+        options={"maxiter": 5, "fast": True},
+    )
+
+    # Continue from stage 1's optimum.  estimate() leaves the model's parameters
+    # at the fitted values, so read each group's current value straight off the
+    # model.  (Do NOT zip the input list with stage1["result_x"]: the estimator
+    # reorders parameters -- private first, then shared -- expands private
+    # component lists and collapses shared groups, so result_x is not aligned
+    # with `parameters`.)
+    def _from_model(entry):
+        comps, attr, _x0, lo, hi = entry[:5]
+        comp = comps[0] if isinstance(comps, list) else comps
+        v = float(rgetattr(comp, attr).get().reshape(-1)[0])
+        eps = 1e-9 * (hi - lo)  # nudge off the bounds for the x0 checks
+        return (comps, attr, min(max(v, lo + eps), hi - eps), lo, hi, *entry[5:])
+
+    parameters_stage2 = [_from_model(entry) for entry in parameters]
+
+    result = estimator.estimate(
+        start_time,
+        end_time,
+        step_size,
+        parameters_stage2,
+        measurements,
+        n_warmup=20,
+        method=("casadi", "ipopt", "ad", "collocation"),
+        options={"maxiter": 600, "early_stopping": False},
     )
     print(result)
 
@@ -665,24 +689,25 @@ def main():
     # --- 2.8 Plot Calibrated Results ---
     model.set_save_simulation_result(flag=True)
 
-    # Collocation estimates the boundary states along with theta; its RMSEs
-    # are for a simulation starting from the ESTIMATED initial state.  Seed it,
-    # otherwise the default initial conditions (e.g. wall temperature 20 degC,
-    # with day-scale wall time constants) bias the whole horizon.
-    # Single-shooting results carry no estimated state, so skip seeding there.
-    _init_state = result.get("estimated_initial_state")
+    # Collocation estimates the trajectory's boundary states along with theta, so
+    # the reported RMSEs are for a simulation STARTING FROM the estimated initial
+    # state.  A plain simulate() would instead start from the component defaults
+    # (e.g. wall temperature 20 degC) -- with day-scale wall time constants that
+    # initial-condition error biases the whole horizon.  Seed the estimated
+    # initial state to reproduce the fitted trajectory.
+    _init_state = result["estimated_initial_state"]
 
     def _seed_estimated_initial_state():
-        # get_component: the office+wall pair executes as one fused
-        # state-space block, so the state keys are executing-component ids.
+        # get_component: the office+wall pair executes as one fused state-space
+        # block, so the state keys are executing-component ids.
         for comp_id, x0 in _init_state.items():
-            model.get_component(comp_id).set_state(x0)
+            model.get_component(comp_id).set_state(x0)  # (n_periods, n_c, state_size)
 
     simulator.simulate(
         step_size=step_size,
         start_time=start_time,
         end_time=end_time,
-        after_initialize=_seed_estimated_initial_state if _init_state else None,
+        after_initialize=_seed_estimated_initial_state,
     )
     print("Calibration complete.")
 
@@ -782,6 +807,22 @@ def main():
                 .history(),
                 label=r"Damper position simulated",
                 color=tb.plot.Colors.blue,
+                linewidth=1.5,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                model.components["office"].input["numberOfPeople"].history(),
+                label=r"Number of people",
+                color=tb.plot.Colors.red,
+                linewidth=1.5,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                model.components["office_occupancy_detector"]
+                .output["occupancySignal"]
+                .history(),
+                label=r"Occupancy signal",
+                color=tb.plot.Colors.purple,
                 linewidth=1.5,
                 axis=2,
             ),
@@ -955,7 +996,7 @@ def main():
 
     optimizer = tb.Optimizer(simulator_opt)
 
-    opt_options = {"maxiter": 300, "tol": 1e-15, "disp": True}
+    opt_options = {"maxiter": 300, "tol": 1e-15, "disp": True, "fast": True}
 
     optimizer.optimize(
         start_time=opt_start_time,
