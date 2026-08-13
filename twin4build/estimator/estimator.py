@@ -610,6 +610,23 @@ class Estimator:
                   period's initial boundary state at its warm-start value so
                   the feasible set is exactly the single-shooting trajectory
                   manifold (mainly for equivalence testing).
+                - "data_warmstart" (bool, default True): Seed the
+                  directly-observed boundary states from the MEASUREMENTS
+                  instead of from the warm-start rollout.  This is a
+                  cold-start device -- it keeps the solve out of bad local
+                  minima when ``theta`` starts far off -- and it works by
+                  planting data into the states, which necessarily violates
+                  the continuity defects.
+
+                  Set ``False`` when refining an already-converged
+                  solution (e.g. a collocation stage warm-started from
+                  SLSQP): the boundary states are then the warm-start
+                  trajectory itself, so the solve begins ON the trajectory
+                  manifold at that solution's own fit.  Because the
+                  best-feasible-iterate checkpoint can only adopt a
+                  *feasible* ``x0`` as its incumbent, an unseeded warm start
+                  is also what lets ``early_stopping`` guarantee the solve
+                  never returns a point worse than the one it was given.
 
             schedule: Multi-phase continuation schedule -- the single,
                 self-contained way to drive parameter estimation.

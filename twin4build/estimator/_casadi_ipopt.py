@@ -35,6 +35,8 @@ from typing import Callable, Dict, Optional
 
 import numpy as np
 
+from twin4build.utils.logger import LOGGER
+
 
 def _require_casadi():
     """Import CasADi, raising an actionable error if it is missing."""
@@ -265,7 +267,9 @@ def solve_ipopt_constrained(
     options : dict, optional
         twin4build/SciPy-style options; see :func:`_map_options`.
     hess_vals : callable, optional
-        ``hess_vals(x, sigma) -> (nnz_h,)`` -- the nonzeros of an (approximate)
+        ``hess_vals(x, sigma) -> (nnz_h,)`` or, to build the EXACT Hessian,
+        ``hess_vals(x, sigma, lam_g) -> (nnz_h,)`` (the arity is probed) --
+        the nonzeros of the
         Hessian of the Lagrangian ``sigma * d2f + sum(lam_g * d2g)``, aligned
         with ``(hess_rows, hess_cols)``.  When given, IPOPT runs with this
         second-order information (e.g. a Gauss-Newton ``J^T W J``) instead of
@@ -444,6 +448,29 @@ def solve_ipopt_constrained(
     # full-Newton path instead of limited-memory BFGS.
     hess_cb = None
     if hess_vals is not None:
+        # Probe the provider's arity once: (x, sigma) = Gauss-Newton (objective
+        # curvature only), (x, sigma, lam_g) = exact Hessian of the Lagrangian.
+        # NOTE the probe follows ``__wrapped__``, so a provider wrapped with
+        # ``functools.wraps`` is detected correctly -- but a bare decorator
+        # (``def w(*a, **kw)``) reports 2 parameters and would be called
+        # WITHOUT lam_g, whereupon an exact provider raises inside the CasADi
+        # callback and IPOPT bails after a couple of iterations without an
+        # obvious error.  Log what was detected so that stays diagnosable.
+        try:
+            import inspect
+
+            _hess_takes_lam = (
+                len(inspect.signature(hess_vals).parameters) >= 3
+            )
+        except (TypeError, ValueError):  # builtins / C callables
+            _hess_takes_lam = False
+        LOGGER.config(
+            "Hessian provider: %s (arity probe saw %s). Wrap providers with "
+            "functools.wraps if you decorate them.",
+            "EXACT (receives lam_g)" if _hess_takes_lam
+            else "Gauss-Newton (no lam_g)",
+            "3+ args" if _hess_takes_lam else "<3 args",
+        )
         hess_rows = np.asarray(hess_rows, dtype=np.int64).flatten()
         hess_cols = np.asarray(hess_cols, dtype=np.int64).flatten()
         hess_sp = ca.Sparsity.triplet(n, n, hess_rows.tolist(), hess_cols.tolist())
@@ -486,7 +513,18 @@ def solve_ipopt_constrained(
             def eval(self, arg):
                 x = np.asarray(arg[0]).flatten()
                 sigma = float(arg[2])
-                vals = np.asarray(hess_vals(x, sigma), dtype=np.float64).flatten()
+                # ``lam_g`` carries the constraint multipliers.  A provider that
+                # returns the EXACT Hessian of the Lagrangian needs them for the
+                # ``sum(lam_g * d2g)`` term; a Gauss-Newton provider does not.
+                # Both are supported -- the arity is probed once, so existing
+                # two-argument providers keep working.
+                if _hess_takes_lam:
+                    lam_g = np.asarray(arg[3]).flatten()
+                    vals = np.asarray(
+                        hess_vals(x, sigma, lam_g), dtype=np.float64
+                    ).flatten()
+                else:
+                    vals = np.asarray(hess_vals(x, sigma), dtype=np.float64).flatten()
                 reordered = np.empty_like(vals)
                 reordered[h_perm] = vals
                 return [ca.DM(hess_sp, reordered)]
@@ -511,6 +549,35 @@ def solve_ipopt_constrained(
             "f_best": np.inf, "z_best": None,
             "stall_f": 0, "stall_theta": 0, "stop_reason": None,
         }
+
+        # Seed the checkpoint with the WARM START itself, before IPOPT runs.
+        # The iteration callback only ever sees post-``bound_push`` iterates --
+        # IPOPT moves every variable strictly inside its bounds before the
+        # first callback -- so a warm start sitting ON its bounds (which a
+        # converged SLSQP optimum typically does) is never a candidate for
+        # "best feasible iterate", and the solve can return something worse
+        # than what it was handed.  Recording x0 here makes the warm start a
+        # floor: with the restore below, a collocation refinement can improve
+        # on its input or leave it alone, but never degrade it.
+        if n_g:
+            _g0 = np.asarray(g_fun(np.asarray(x0, dtype=np.float64))).flatten()
+            _viol0 = float(np.abs(_g0).max()) if _g0.size else 0.0
+        else:
+            _viol0 = 0.0
+        if _viol0 <= es["feas_tol"]:
+            es["z_best"] = np.asarray(x0, dtype=np.float64).copy()
+            es["f_best"] = float(fun(np.asarray(x0, dtype=np.float64)))
+            LOGGER.config(
+                "Early stopping: warm start checkpointed as the incumbent "
+                "(f=%.6g, max|g|=%.3e) -- the solve cannot return worse.",
+                es["f_best"], _viol0,
+            )
+        else:
+            LOGGER.config(
+                "Early stopping: warm start is infeasible (max|g|=%.3e > "
+                "feas_tol=%.3e); no incumbent until the first feasible iterate.",
+                _viol0, es["feas_tol"],
+            )
 
         class _IterCB(ca.Callback):
             def __init__(self, name):
