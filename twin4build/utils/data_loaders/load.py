@@ -1,6 +1,7 @@
 # Standard library imports
 import configparser
 import datetime
+import hashlib
 import os
 
 # Third party imports
@@ -251,7 +252,30 @@ def load_from_spreadsheet(
         startTime_str = start_time.strftime("%d-%m-%Y %H-%M-%S")
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S")
         col_suffix = f"_col({value_column})" if value_column is not None else ""
-        cached_filename = f"name({os.path.basename(name)})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str}){col_suffix}_cached.pickle"
+        # The key MUST distinguish files that share a basename.  Two different
+        # CSVs with the same name -- e.g. examples/estimator_example/ and
+        # examples/full_workflow_example/ both ship a
+        # "damper_position_sensor.csv" -- otherwise collide, and the second
+        # one silently reads the first one's cached values.  That failure is
+        # invisible: no error, no warning, just wrong data (it cost a
+        # calibration debugging session -- the damper measurements loaded as
+        # all-zeros and the estimator dutifully switched the ventilation
+        # branch off to fit them).
+        #
+        # Include the resolved directory (hashed, to keep the name short and
+        # filesystem-safe) and the source file's size + mtime, so that editing
+        # or replacing a CSV in place also invalidates the entry.
+        try:
+            _stat = os.stat(filename)
+            _stamp = f"{_stat.st_size}-{int(_stat.st_mtime)}"
+        except OSError:  # unreadable/missing -- fall back to path only
+            _stamp = "nostat"
+        _dir_key = hashlib.sha1(
+            os.path.normcase(os.path.abspath(os.path.dirname(filename))).encode(
+                "utf-8", "replace"
+            )
+        ).hexdigest()[:12]
+        cached_filename = f"name({os.path.basename(name)})_dir({_dir_key})_src({_stamp})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str}){col_suffix}_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
