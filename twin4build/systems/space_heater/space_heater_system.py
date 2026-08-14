@@ -420,18 +420,28 @@ class SpaceHeaterSystem(core.System, nn.Module):
         Returns:
             float: Difference between calculated and nominal heat output.
         """
+        # This runs on the CPU in plain floats, ON PURPOSE.  SciPy's ``fsolve``
+        # converts whatever the residual returns with ``numpy.asanyarray``, and
+        # under ``Model.to("cuda")`` ``SimulationModel.initialize`` wraps
+        # component initialization in ``with torch.device(self.device)`` -- so
+        # every tensor built here would be allocated on the GPU and the solve
+        # would die with "can't convert cuda:0 device type tensor to numpy".
+        # It is a one-off (nelements x nelements) solve at initialize time, so
+        # there is nothing to gain from running it on the device anyway.
         n = self.nelements
+        cpu = torch.device("cpu")
         tmc = self.thermalMassHeatCapacity.get()
         C_elem = float(tmc.flatten()[0].item()) / n
         UA_elem = float(UA_candidate.item()) / n
-        m_dot = float(
-            self.Q_flow_nominal_sh
-            / (constants.CP_WATER * (self.T_a_nominal_sh - self.T_b_nominal_sh))
-        )
+        q_nom = float(self.Q_flow_nominal_sh)
+        t_a = float(self.T_a_nominal_sh)
+        t_b = float(self.T_b_nominal_sh)
+        t_air = float(self.TAir_nominal_sh)
+        m_dot = q_nom / (float(constants.CP_WATER) * (t_a - t_b))
         c_p = float(constants.CP_WATER)
         # Build A, B
-        A = torch.zeros((n, n), dtype=tps.float_dtype())
-        B = torch.zeros((n, 3), dtype=tps.float_dtype())
+        A = torch.zeros((n, n), dtype=tps.float_dtype(), device=cpu)
+        B = torch.zeros((n, 3), dtype=tps.float_dtype(), device=cpu)
         for i in range(n):
             A[i, i] = -(m_dot * c_p + UA_elem) / C_elem
             if i > 0:
@@ -439,19 +449,18 @@ class SpaceHeaterSystem(core.System, nn.Module):
         B[0, 0] = (m_dot * c_p) / C_elem
         for i in range(n):
             B[i, 2] = UA_elem / C_elem
-        u = torch.tensor(
-            [self.T_a_nominal_sh, m_dot, self.TAir_nominal_sh], dtype=tps.float_dtype()
-        )
+        u = torch.tensor([t_a, m_dot, t_air], dtype=tps.float_dtype(), device=cpu)
         try:
             x_ss = -torch.linalg.solve(
                 A, B @ u
             )  # Find states in steady-state given nominal conditions and UA guess
         except Exception:
             return 1e6
-        Power = UA_elem * torch.sum(
-            x_ss - self.TAir_nominal_sh
-        )  # Calculate power given states and UA guess
-        return Power - self.Q_flow_nominal_sh
+        # Calculate power given states and UA guess.  Return a plain float so
+        # the residual is device- and dtype-agnostic from fsolve's point of
+        # view.
+        power = UA_elem * float(torch.sum(x_ss - t_air).item())
+        return power - q_nom
 
     def _get_initial_state_tensor(self):
         # Get dimensions from outletWaterTemperature
