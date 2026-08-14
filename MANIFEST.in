@@ -5,3 +5,9 @@ recursive-include twin4build *.ttl
 recursive-include twin4build *.xlsm
 recursive-include twin4build *.yml
 recursive-include twin4build *.json
+# Local simulation outputs (gitignored) must not enter sdists/wheels.
+prune generated_files
+prune build
+prune twin4build/examples/generated_files
+prune twin4build/tests/generated_files
+global-exclude **/generated_files/**
