@@ -33,6 +33,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Callable, Dict, Optional
 
+import warnings as _warnings
 import numpy as np
 
 from twin4build.utils.logger import LOGGER
@@ -86,7 +87,29 @@ def _map_options(options: Optional[Dict]) -> Dict:
             ipopt_opts[key] = options.pop(key)
 
     # ``options`` may still hold SciPy-only keys (xtol, gtol, ...) that IPOPT
-    # does not understand -- silently drop them rather than crash the solve.
+    # does not understand.  Drop them rather than crash the solve -- callers
+    # legitimately pass one options dict to several backends -- but say so.
+    #
+    # Dropping them SILENTLY is how a misspelled or not-yet-supported option
+    # becomes an invisible change of experiment: the caller sets it, nothing
+    # rejects it, the default applies instead, and the run looks successful.
+    # That is exactly how a stale install ignores ``boundary_state_init`` and
+    # silently seeds boundary states from data instead of the warm start.
+    # Deliberately ``warnings.warn`` and not ``LOGGER.warning``: LOGGER output
+    # is suppressed by default (verified -- a LOGGER.config line in the
+    # collocation setup produces no output in a normal run), so logging this
+    # would leave the failure exactly as invisible as it is today.  A
+    # UserWarning surfaces in notebooks and in pytest.
+    if options:
+        _warnings.warn(
+            f"IPOPT backend ignoring {len(options)} unrecognized option(s): "
+            f"{', '.join(sorted(map(str, options)))}. These have NO effect -- "
+            "the corresponding defaults apply instead. Check the spelling, and "
+            "that the installed twin4build supports the option "
+            f"({__file__}).",
+            UserWarning,
+            stacklevel=3,
+        )
     return ipopt_opts
 
 

@@ -610,23 +610,38 @@ class Estimator:
                   period's initial boundary state at its warm-start value so
                   the feasible set is exactly the single-shooting trajectory
                   manifold (mainly for equivalence testing).
-                - "data_warmstart" (bool, default True): Seed the
-                  directly-observed boundary states from the MEASUREMENTS
-                  instead of from the warm-start rollout.  This is a
-                  cold-start device -- it keeps the solve out of bad local
-                  minima when ``theta`` starts far off -- and it works by
-                  planting data into the states, which necessarily violates
-                  the continuity defects.
+                - "boundary_state_init" ({"auto", "data", "rollout"},
+                  default "auto"): Where the collocation boundary states
+                  start.  **You normally do not set this** -- "auto"
+                  measures the warm start and decides.
 
-                  Set ``False`` when refining an already-converged
-                  solution (e.g. a collocation stage warm-started from
-                  SLSQP): the boundary states are then the warm-start
-                  trajectory itself, so the solve begins ON the trajectory
-                  manifold at that solution's own fit.  Because the
-                  best-feasible-iterate checkpoint can only adopt a
-                  *feasible* ``x0`` as its incumbent, an unseeded warm start
-                  is also what lets ``early_stopping`` guarantee the solve
-                  never returns a point worse than the one it was given.
+                  * ``"auto"`` -- evaluate the warm-start rollout against
+                    the measurements and pick.  The score is the mean
+                    weighted squared residual, so it reads in units of
+                    measurement standard deviations; a rollout already
+                    within ~5 sd is treated as a refinement and preserved,
+                    anything worse is seeded from data.  The decision and
+                    its score are logged.
+                  * ``"data"`` -- cold start: seed the directly-observed
+                    boundary states from the MEASUREMENTS.  Keeps the solve
+                    out of bad local minima when ``theta`` starts far off,
+                    at the cost of violating the continuity defects (it
+                    plants data into the states).
+                  * ``"rollout"`` -- refinement: the boundary states are the
+                    warm-start trajectory itself, so the solve begins ON the
+                    trajectory manifold at that solution's own fit.  Because
+                    the best-feasible-iterate checkpoint can only adopt a
+                    *feasible* ``x0`` as its incumbent, this is also what
+                    lets ``early_stopping`` guarantee the solve never
+                    returns a point worse than the one it was given.
+
+                  Only force a value to pin behaviour for a reproducible
+                  experiment.  Forcing ``"rollout"`` on a solve that was NOT
+                  warm-started from a converged fit is the classic misuse:
+                  the solve starts feasible-but-bad, stagnates, and the
+                  best-feasible checkpoint hands ``x0`` straight back.  The
+                  older ``"data_warmstart"`` boolean is still accepted and
+                  maps to ``"data"``/``"rollout"``.
 
             schedule: Multi-phase continuation schedule -- the single,
                 self-contained way to drive parameter estimation.

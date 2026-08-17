@@ -90,7 +90,7 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     options : dict
         Solver options, forwarded to :func:`_solve_sparse_collocation`
         (``gauss_newton``, ``early_stopping``, ``pin_initial_state``,
-        ``data_warmstart``, plus raw
+        ``boundary_state_init``, plus raw
         IPOPT options such as ``maxiter``).
 
     Returns
@@ -329,25 +329,42 @@ def _solve_sparse_collocation(
     # checkpoint (see solve_ipopt_constrained).  False disables; a dict
     # overrides the patience/tolerance defaults.  Default: on whenever the GN
     # Hessian is on (that is the configuration whose dual criteria plateau).
-    # ``data_warmstart``: seed the directly-observed boundary states from the
-    # MEASUREMENTS rather than from the warm-start rollout (see the seeding
-    # block below).  That is a cold-start device -- it keeps a simultaneous
-    # method out of bad local minima when theta is far off -- and it works by
-    # planting data into the boundary states, which necessarily violates the
-    # continuity defects (measured on the full-workflow example, warm started
-    # from a converged SLSQP fit: max|defect| 4.9 seeded vs 3.4e-5 unseeded).
+    # ``boundary_state_init``: WHERE the collocation boundary states start.
+    # This used to be a ``data_warmstart`` boolean, which was a bad interface:
+    # the correct value depended on whether the CALLER had already produced a
+    # converged fit, nothing checked it, and getting it wrong failed silently
+    # (a cold start with the "refinement" setting simply returns its own input).
     #
-    # For a REFINEMENT of an already-converged single-shooting solution that is
-    # exactly wrong: the whole point is to start ON the trajectory manifold at
-    # the warm start's own fit.  Pass ``data_warmstart=False`` there.  It also
-    # re-arms the best-feasible-iterate checkpoint (see
-    # ``solve_ipopt_constrained``), which can only take a FEASIBLE x0 as its
-    # incumbent -- so an unseeded warm start additionally guarantees the solve
-    # cannot return a worse point than the one it was given.
-    data_warmstart = bool(options.pop("data_warmstart", True))
+    #   "rollout" -- start on the warm-start trajectory itself.  Right when
+    #                REFINING an already-converged fit: it begins ON the
+    #                trajectory manifold at that fit, and because only a
+    #                FEASIBLE x0 can become the best-iterate incumbent, it is
+    #                also what lets early stopping guarantee the solve never
+    #                returns worse than what it was handed.
+    #   "data"     -- seed the directly-observed states from the MEASUREMENTS.
+    #                A COLD-START device: it keeps a simultaneous method out of
+    #                bad local minima when theta is far off, at the cost of
+    #                violating the continuity defects (measured on the
+    #                full-workflow example from a converged fit: max|defect|
+    #                4.9 seeded vs 3.4e-5 unseeded).
+    #   "auto"     -- (default) decide by MEASURING the warm start instead of
+    #                asking the caller to remember.  See _AUTO_REFINE_TOL.
+    _AUTO_REFINE_TOL = 25.0  # mean weighted squared residual, i.e. ~5 sd
+    boundary_state_init = str(
+        options.pop("boundary_state_init", "auto")
+    ).lower()
+    if "data_warmstart" in options:  # older boolean spelling
+        boundary_state_init = "data" if bool(options.pop("data_warmstart")) else "rollout"
     if _os.environ.get("TWIN4BUILD_NO_DATA_WARMSTART") is not None:
-        # Legacy escape hatch, retained: the env var forces the option off.
-        data_warmstart = False
+        boundary_state_init = "rollout"  # legacy escape hatch, retained
+    _ws_fit = None  # set when "auto" measures the warm start; reported in the audit
+    if boundary_state_init not in ("auto", "data", "rollout"):
+        raise ValueError(
+            "boundary_state_init must be 'auto', 'data' or 'rollout' (got "
+            f"{boundary_state_init!r}).  'rollout' refines a converged fit; "
+            "'data' cold-starts from the measurements; 'auto' measures the "
+            "warm start and picks."
+        )
     early_stopping = options.pop("early_stopping", None)
     if early_stopping is None:
         early_stopping = gauss_newton
@@ -621,13 +638,40 @@ def _solve_sparse_collocation(
         # near-unit-gain readout, e.g. temp->T_air, co2->CO2, valve/damper->PID
         # memory), then overwrite that dim with the data across all segments.
         y0_phys = torch.cat([s0_phys, fb0], dim=1) if n_fb else s0_phys  # (n_seg, Da)
-        if not data_warmstart:
-            LOGGER.config(
-                "Data-informed warm start: DISABLED (data_warmstart=False) -- "
-                "boundary states are the warm-start rollout itself, so the "
-                "initial point lies on the trajectory manifold."
+        # "auto": decide by measuring the warm start rather than trusting the
+        # caller to remember whether they warm started.  The objective is the
+        # MEAN WEIGHTED SQUARED RESIDUAL, so it reads in units of measurement
+        # standard deviations: ~1 means the rollout already sits in the noise,
+        # >> 1 means theta is far off.  A converged fit on the full-workflow
+        # example scores ~8; its uncalibrated x0 scores ~1140.  Anything under
+        # _AUTO_REFINE_TOL (~5 sd) is treated as a refinement worth preserving.
+        if boundary_state_init == "auto":
+            with torch.no_grad():
+                _, _M_ws = vmap(
+                    lambda yi, ci: composer.F_aug(yi, theta0_phys, ci)
+                )(y0_phys, CAP)
+                _ws_fit = float(
+                    (((ACT - _apply_meas_lag(_M_ws)) / SD_meas) ** 2)[_incl].mean()
+                )
+            boundary_state_init = (
+                "rollout" if _ws_fit <= _AUTO_REFINE_TOL else "data"
             )
-        if data_warmstart:
+            LOGGER.config(
+                "Boundary-state init: auto -> '%s'.  The warm start scores "
+                "%.4g (mean weighted squared residual; <= %.4g means it is "
+                "already within ~%.0f sd of the data and worth preserving, "
+                "otherwise the observed states are seeded from measurements).",
+                boundary_state_init, _ws_fit, _AUTO_REFINE_TOL,
+                _AUTO_REFINE_TOL ** 0.5,
+            )
+        if boundary_state_init == "rollout":
+            LOGGER.config(
+                "Boundary-state init: 'rollout' -- the boundary states ARE the "
+                "warm-start trajectory, so the initial point lies on the "
+                "continuity manifold and early stopping can adopt it as the "
+                "best-feasible incumbent (the solve cannot return worse)."
+            )
+        if boundary_state_init == "data":
             Jm = jacrev(lambda y: composer.F_aug(y, theta0_phys, CAP[0])[1])(y0_phys[0].clone())
             # Measurement predicted AT the warm start, needed for the correction
             # below (one cheap vmap over the segments).
@@ -1012,6 +1056,13 @@ def _solve_sparse_collocation(
         audit = {
             "return_status": str(getattr(result, "status", "")),
             "max_defect": max_defect,
+            # What the boundary states were actually initialised from, AFTER
+            # "auto" resolved.  Reported rather than left in a log line so the
+            # choice is inspectable from the result -- a "rollout" init paired
+            # with a large warm_start_fit is the signature of the misuse where
+            # a cold start is told to refine and gets its own x0 handed back.
+            "boundary_state_init": boundary_state_init,
+            "warm_start_fit": _ws_fit,
             "per_sensor": {},
         }
         for m, md in enumerate(md_list):
@@ -1139,7 +1190,19 @@ def _solve_sparse_collocation(
             # segment, ~3x the constraint Jacobian's Da cotangents.  Reuse the
             # Jacobian's segment chunking -- second-order buffers are larger, so
             # halve the chunk.
-            _hchunk = max(1, _deriv_chunk // 2)
+            #
+            # NOTE this divisor bites even when memory is not the constraint.
+            # ``_deriv_chunk`` is capped at ``n_seg``, so on any problem that
+            # fits the budget the Jacobian runs as ONE vmap while the Hessian
+            # is still split into TWO sequential passes -- and no value of
+            # TWIN4BUILD_DERIV_BYTES can lift it, because the cap is the
+            # segment count, not the budget.  (full_workflow_example: the whole
+            # Hessian needs 0.30 GB against a 2 GB budget, yet still runs in 2
+            # passes.)  On a GPU that is parallelism given away for nothing.
+            # Exposed so the cost can be MEASURED before changing the default:
+            # set TWIN4BUILD_HESS_CHUNK_DIV=1 to disable the halving.
+            _hdiv = float(_os.environ.get("TWIN4BUILD_HESS_CHUNK_DIV", 2))
+            _hchunk = max(1, int(_deriv_chunk / max(1e-9, _hdiv)))
 
             def _curvature(theta_norm, y_norm, lam_mat):
                 """Per-link d2(lam.end_norm)/d(y_i,theta)^2, vmapped."""
@@ -1245,9 +1308,31 @@ def _solve_sparse_collocation(
             # the iterate is feasible (defects ~1e-9 here) and the objective
             # has stagnated (<1e-5 relative change) for 10 consecutive
             # iterations, ignoring the (unreachable) dual/complementarity
-            # criteria.  Callers can still override any of these via options.
+            # criteria.
+            #
+            # WHICH OF THESE ARE MEANINGFUL.  ``acceptable_tol`` (1e3) and
+            # ``acceptable_dual_inf_tol`` (1e10) are deliberately vacuous and
+            # MUST stay that way under GN -- they are the criteria the missing
+            # curvature makes unreachable, and tightening either one stops this
+            # exit from firing at all, which is the restoration-failure mode
+            # described above.  What actually decides when the solve stops is
+            # the stagnation pair below: ``acceptable_iter`` (how many
+            # consecutive stagnant iterations) and ``acceptable_obj_change_tol``
+            # (how small a relative objective change counts as stagnant).
+            # Those are the two to tighten if "Solved_To_Acceptable_Level" is
+            # firing too early -- raise the first, shrink the second, and give
+            # ``maxiter`` room to absorb the extra iterations.
+            #
+            # Note this makes the status weak by construction: under GN,
+            # "Solved_To_Acceptable_Level" means feasible-and-stagnant, NOT
+            # converged.  With ``exact_hessian=True`` the curvature is exact,
+            # dual infeasibility IS reachable, none of this block applies, and
+            # IPOPT's ordinary tol=1e-8 convergence test governs.
             options = dict(options or {})
             options.setdefault("acceptable_tol", 1e3)
+            # 5 iterations at a 1e-4 relative objective change.  (An earlier
+            # version of this comment claimed 1e-5 over 10 iterations; the code
+            # never did that -- the values below are what runs.)
             options.setdefault("acceptable_iter", 5)
             # Loosened to 1e-2 (normalized defects): the full-horizon problem
             # plateaus with max|defect| ~ 1e-3 that the audit shows is benign
@@ -1354,9 +1439,24 @@ def _solve_sparse_collocation(
         if early_stopping:
             es_cfg = dict(early_stopping) if isinstance(early_stopping, dict) else {}
             es_cfg.setdefault("n_theta", n_theta)
+            # The stagnation rule's right aggressiveness is the SAME question
+            # the boundary states just answered, so let one detected regime
+            # drive both instead of making the caller keep two knobs in sync.
+            #
+            # Refining ("rollout"): the incumbent IS the converged fit we were
+            # handed, so bailing early is free -- we cannot do worse than it.
+            # Cold start ("data"): there is no good incumbent to protect, and
+            # an interior-point method's objective legitimately plateaus for
+            # long stretches while mu decreases, so patience-10 strangles the
+            # solve mid-descent.  Only defaults move; anything the caller set
+            # explicitly is left alone.
+            if boundary_state_init == "data":
+                es_cfg.setdefault("patience", 50)
+                es_cfg.setdefault("min_delta_rel", 1e-4)
             LOGGER.config(
-                "Early stopping enabled: feas_tol=%s patience=%s "
+                "Early stopping enabled (%s regime): feas_tol=%s patience=%s "
                 "min_delta_rel=%s theta_tol=%s",
+                boundary_state_init,
                 es_cfg.get("feas_tol", 1e-2), es_cfg.get("patience", 10),
                 es_cfg.get("min_delta_rel", 1e-3), es_cfg.get("theta_tol", 1e-4),
             )

@@ -716,14 +716,16 @@ def main():
             method=("casadi", "ipopt", "ad", "collocation"),
             options={
                 "maxiter": 600,
-                # This is a REFINEMENT of a converged single-shooting solution,
-                # so start ON that solution's trajectory instead of on data
-                # planted into the boundary states.  Measured here at the
-                # handoff: data_warmstart=True (the cold-start default) begins
-                # at max|defect| 4.9 with the fit it is meant to refine already
-                # lost, against 3.4e-5 unseeded -- i.e. stage 1's own
-                # trajectory, which is the point of a warm start.
-                "data_warmstart": False,
+                # Note what is NOT set here: where the collocation boundary
+                # states start.  That default ("boundary_state_init": "auto")
+                # measures the warm start rather than making you declare it.
+                # Because this stage is handed a CONVERGED stage-1 solution,
+                # auto scores it as already-fitting and keeps stage 1's own
+                # trajectory -- max|defect| 3.4e-5, against 4.9 if the states
+                # were instead seeded from data, which would throw away the
+                # very fit this stage exists to refine.  Delete stage 1 above
+                # and auto flips to seeding, with no edit needed here.
+                #
                 # With that feasible warm start, early stopping's
                 # best-feasible-iterate checkpoint adopts stage 1's solution as
                 # its incumbent -- so this stage can improve on stage 1 or
