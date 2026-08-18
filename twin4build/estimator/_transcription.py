@@ -1187,23 +1187,40 @@ def _solve_sparse_collocation(
                 _, meas = composer.F_aug(y_from_norm(y_i), _denorm(th), cap_i)
                 return (w_i * (meas / SD_meas)).sum()
 
-            # jacfwd(jacrev(scalar)) over (y_i, theta): Da + n_theta tangents per
-            # segment, ~3x the constraint Jacobian's Da cotangents.  Reuse the
-            # Jacobian's segment chunking -- second-order buffers are larger, so
-            # halve the chunk.
+            # jacfwd(jacrev(scalar)) over (y_i, theta): (Da + n_theta) tangents
+            # per segment, against the constraint Jacobian's (Da + n_meas)
+            # cotangents.  Size the Hessian's chunk from ITS OWN budget rather
+            # than reusing the Jacobian's with a fudge factor.
             #
-            # NOTE this divisor bites even when memory is not the constraint.
-            # ``_deriv_chunk`` is capped at ``n_seg``, so on any problem that
-            # fits the budget the Jacobian runs as ONE vmap while the Hessian
-            # is still split into TWO sequential passes -- and no value of
-            # TWIN4BUILD_DERIV_BYTES can lift it, because the cap is the
-            # segment count, not the budget.  (full_workflow_example: the whole
-            # Hessian needs 0.30 GB against a 2 GB budget, yet still runs in 2
-            # passes.)  On a GPU that is parallelism given away for nothing.
-            # Exposed so the cost can be MEASURED before changing the default:
-            # set TWIN4BUILD_HESS_CHUNK_DIV=1 to disable the halving.
-            _hdiv = float(_os.environ.get("TWIN4BUILD_HESS_CHUNK_DIV", 2))
-            _hchunk = max(1, int(_deriv_chunk / max(1e-9, _hdiv)))
+            # This replaces `_hchunk = _deriv_chunk // 2`, an unconditional 2x
+            # margin that bit even when memory was not the constraint: on the
+            # full-workflow example the whole Hessian needs 0.30 GB against a
+            # 2 GB budget, so the Jacobian ran as ONE vmap while the Hessian
+            # still ran as TWO -- and no TWIN4BUILD_DERIV_BYTES could lift it,
+            # because _deriv_chunk is capped by segment count, not by budget.
+            # Measured cost of that split: 1.95x on the Hessian call and 1.64x
+            # on the GPU solve; on CPU end to end 1307 s -> 1098 s, with the fit
+            # slightly BETTER (pooled 30.78 -> 30.22).
+            #
+            # The scaling below is deliberately conservative -- it predicts
+            # 0.67 GB where 0.30 GB is actually used -- so it errs toward
+            # chunking rather than toward an OOM.  TWIN4BUILD_HESS_CHUNK_DIV
+            # divides further if a model still does not fit (default 1: no
+            # extra margin beyond the budget itself).
+            _h_tangents = Da + n_theta
+            _hseg_bytes = _seg_bytes * (_h_tangents / max(1.0, _n_cot))
+            _hchunk_budget = max(1, min(n_seg, int(_budget / max(1.0, _hseg_bytes))))
+            _hdiv = float(_os.environ.get("TWIN4BUILD_HESS_CHUNK_DIV", 1))
+            _hchunk = max(1, int(_hchunk_budget / max(1e-9, _hdiv)))
+            if _hchunk < n_seg:
+                LOGGER.config(
+                    "Hessian evaluation chunked: %d segments per chunk of %d "
+                    "(%.2f GB estimated for all segments, budget %.2f GB). Each "
+                    "chunk is a separate sequential vmap pass -- on a GPU that "
+                    "is parallelism given away, so raise TWIN4BUILD_DERIV_BYTES "
+                    "if the device has the memory.",
+                    _hchunk, n_seg, _hseg_bytes * n_seg / 1e9, _budget / 1e9,
+                )
 
             def _curvature(theta_norm, y_norm, lam_mat):
                 """Per-link d2(lam.end_norm)/d(y_i,theta)^2, vmapped."""
