@@ -15,6 +15,9 @@ run locally in Jupyter. Colab badges are rewritten at docs build time to the
 git branch/tag for this documentation version (e.g. ``dev`` docs open
 ``blob/dev/...``, ``latest`` opens ``blob/main/...``).
 
+For performance studies -- CPU vs GPU, and single-shooting vs collocation --
+see :doc:`benchmarks`.
+
 Basics of Twin4Build
 --------------------
 

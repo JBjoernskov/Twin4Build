@@ -153,6 +153,50 @@ class TestEstimator(unittest.TestCase):
         if os.path.exists("generated_files/models/test_est_model_2"):
             shutil.rmtree("generated_files/models/test_est_model_2")
 
+    def test_omit_x0_uses_current_parameter_value(self):
+        """``x0=None`` resolves to the parameter's current value."""
+        start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        end_time = datetime.datetime(2023, 1, 1, 0, 30, 0, tzinfo=tz.UTC)
+        step_size = 600
+
+        dates = pd.date_range(start=start_time, end=end_time, freq=f"{step_size}s")
+        df = pd.DataFrame({"value": np.ones(len(dates)) * 0.5}, index=dates)
+        sensor = SensorSystem(id="sensor", df=df)
+
+        model = Model(id="test_omit_x0")
+        schedule = ScheduleSystem(
+            weekday_ruleset={
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [0],
+                "ruleset_end_hour": [24],
+                "ruleset_value": [0.5],
+                "ruleset_default_value": 0,
+            },
+            id="schedule",
+        )
+        current_a = 0.73
+        damper = DamperSystem(id="damper", a=current_a, nominalAirFlowRate=0.5)
+        model.add_connection(schedule, damper, "scheduleValue", "damperPosition")
+        model.add_connection(damper, sensor, "airFlowRate", "measuredValue")
+        model.load()
+
+        simulator = Simulator(model)
+        estimator = Estimator(simulator)
+
+        # Eager initialize mirrors estimate(); then resolve omitted x0.
+        model.initialize([start_time], [end_time], [step_size])
+        validated = estimator._validate_list_format(
+            [(damper, "a", None, 0.1, 2.0, "private")]
+        )
+        self.assertIsNone(validated[0][2])
+        estimator._process_parameters_list(validated)
+        self.assertEqual(len(estimator._x0), 1)
+        self.assertAlmostEqual(float(estimator._x0[0]), current_a, places=6)
+
+        if os.path.exists("generated_files/models/test_omit_x0"):
+            shutil.rmtree("generated_files/models/test_omit_x0")
+
     def test_estimate_with_invalid_bounds(self):
         """Test that estimation raises error when lower bound > upper bound."""
         start_time = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)

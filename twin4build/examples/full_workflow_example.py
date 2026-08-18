@@ -8,13 +8,11 @@ Demonstrates the complete Twin4Build workflow on a single model:
 2. Simulation Model -> Calibrated Model (Estimator): Calibrate the simulation
    model parameters against real sensor data
 3. Calibrated Model -> Optimized Control (Optimizer): Optimize the valve position
-   schedule to minimize energy use while maintaining thermal comfort
+   schedule to minimize electricity cost (Danish Elspot prices) while maintaining
+   thermal comfort — matching ``full_workflow_example.ipynb``.
 
-The example uses a single-room office model with:
-- A building space with thermal and mass balance
-- A space heater with valve control
-- Temperature and CO2 controllers with dampers
-- Sensors for temperature, CO2, valve position, and damper position
+Calibration uses a two-stage estimator warm-start (fast SciPy SLSQP, then
+CasADi/IPOPT collocation), as in the notebook.
 """
 
 # Standard library imports
@@ -31,6 +29,7 @@ from dateutil import tz
 # Local application imports
 import twin4build as tb
 import twin4build.examples.utils as utils
+from twin4build.utils.rgetattr import rgetattr
 
 # ---------------------------------------------------------------------------
 # Part 1: Semantic Model -> Simulation Model (Translator)
@@ -201,16 +200,27 @@ def fcn(self):
     )
 
     # Occupancy detector: continuous N_occ → smooth binary (0/1).
-    # The threshold must sit between the unoccupied noise floor (~0) and the
-    # occupied-hours signal: this room's CO2 elevation is weak (~50 ppm at
-    # damper 0.3), which back-solves to only ~0.25 inferred occupants, so a
-    # threshold of 1 person would never trigger and the ventilation branch
-    # would stay off (with a saturated sigmoid the calibration gradient dies
-    # and no solver can recover it).  A moderate steepness keeps the sigmoid
-    # differentiable near the threshold instead of a hard step.
+    #
+    # The threshold must sit between the unoccupied noise floor and the
+    # occupied-hours signal -- but where that is depends on ``mass.G_occ``,
+    # which is ESTIMATED: the occupancy inverse-model divides the CO2 balance
+    # by G_occ, so N_occ scales as 1/G_occ.  A hard-coded threshold is
+    # therefore only valid for one particular G_occ, and the CO2/temperature
+    # data pull G_occ to the physical ~5e-6 kg/s/person no matter where it
+    # starts.  Threshold and G_occ are identifiable only as a *pair*, so the
+    # threshold is estimated alongside it (see the parameter list in main()).
+    # This value is just the starting point.
+    #
+    # ``steepness`` is not merely cosmetic.  ``SigmoidGate`` is a clamped
+    # linear ramp of width 1/steepness with a power-law tail, so the window in
+    # which the gate has usable gradient is +-1/steepness occupants wide.  At
+    # steepness=30 the threshold itself becomes hard to move (measured: it
+    # crawls 0.15 -> 0.085 and the collocation NLP hits its iteration limit);
+    # at steepness=10 it travels 1.0 -> 0.38 and converges.  Keep it low
+    # enough that the threshold stays estimable.
     occupancy_detector = tb.OccupancyDetectorSystem(
-        threshold=0.15,
-        steepness=30.0,
+        threshold=1,
+        steepness=10,
         id="office_occupancy_detector",
     )
     self.add_connection(
@@ -306,10 +316,9 @@ def fcn(self):
     self.components["outdoor_environment"].datecolumn_outdoorCo2Concentration = 0
     self.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 3
 
-    # UA will be estimated — disable the automatic re-computation from nominal
-    # values so initialize() preserves the calibrated/set value.
-    # This is serialized via the config so loading from RDF also gets False.
-    self.components["office_space_heater"].initialize_UA = False
+    # Space heater UA is computed from nominal conditions during initialize()
+    # (initialize_UA=True). Omit x0 so estimation starts from that solved value.
+    self.components["office_space_heater"].initialize_UA = True
 
 
 def main():
@@ -395,27 +404,26 @@ def main():
         # Thermal parameters
         (space, "thermal.C_air", 5e5, 1e4, 5e5),
         (space, "thermal.C_wall", 1e6, 1e5, 3e6),
+        (boundary_wall, "C", 1e6, 1e4, 1e7),
         (space, "thermal.R_out", 0.5, 0.01, 1),
         (space, "thermal.R_in", 0.1, 0.01, 1),
-        # Boundary wall (WallSystem toward the boundary-temperature schedule)
-        (boundary_wall, "C", 1e6, 1e4, 1e7),
-        (boundary_wall, "R_a", 0.04, 0.0001, 1),
-        (boundary_wall, "R_b", 0.04, 0.0001, 1),
+        (boundary_wall, "R_a", 0.04, 1e-4, 1),
+        (boundary_wall, "R_b", 0.04, 1e-4, 1),
         (space, "thermal.f_wall", 0.1, 0, 10),
         (space, "thermal.f_air", 0.1, 0, 10),
         (space, "thermal.Q_occ_gain", 100.0, 10, 200),
         # Space heater parameters
-        (space_heater, "thermalMassHeatCapacity", 1e4, 1000, 2e5),
-        (space_heater, "UA", 30, 1, 100),
+        (space_heater, "thermalMassHeatCapacity", 1e4, 1e3, 2e5),
+        (space_heater, "UA", None, 1, 100),  # x0 from initialize_UA
         # Controller PID parameters (private = each controller gets its own values)
         (heating_controller, "kp", 0.005, 1e-5, 1, "private"),
         (co2_controller, "kp", 0.0001, 1e-5, 1, "private"),
         ([heating_controller, co2_controller], "Ti", 30, 1, 300, "private"),
         ([heating_controller, co2_controller], "Td", 0, 0, 1, "private"),
         # Valve parameters
-        (space_heater_valve, "waterFlowRateMax", 0.001, 1e-6, 0.1),  # 0.003
+        (space_heater_valve, "waterFlowRateMax", 0.001, 1e-6, 0.1),
         (space_heater_valve, "valveAuthority", 1, 0.4, 1),
-        # Damper parameters — shared between model dampers and occupancy's internal dampers
+        # Damper parameters -- shared between model dampers and occupancy's internal dampers
         ([supply_damper, occupancy_system.supply_damper], "a", 1, 1, 10, "shared"),
         (
             [supply_damper, occupancy_system.supply_damper],
@@ -434,19 +442,29 @@ def main():
             1,
             "shared",
         ),
-        # Mass-balance / occupancy parameters (shared between space and occupancy
-        # estimator).  G_occ and m_inf must stay in physically justified ranges:
-        # per-person CO2 generation is well-known physics (~5e-6 kg/s per
-        # person), and if infiltration can grow freely the estimator explains
-        # the indoor-outdoor CO2 elevation with air exchange instead of
-        # occupants -- inferred occupancy drops below the detection threshold,
-        # the ventilation branch never fires (its sigmoid gradient dies), and
-        # the simulated damper/CO2 collapse even though temperature fits.
+        # Mass-balance / occupancy parameters (shared between space and
+        # occupancy estimator).
         ([space, occupancy_system], "mass.V", 65, 50, 80, "shared"),
-        ([space, occupancy_system], "mass.G_occ", 5e-6, 4e-6, 7e-6, "shared"),
-        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 2e-3, "shared"),
-        # Occupancy detector threshold
-        # (occupancy_detector, "threshold", 0.5, 0.001, 5.0),
+        ([space, occupancy_system], "mass.G_occ", 1e-6, 1e-6, 1e-5, "shared"),
+        ([space, occupancy_system], "mass.m_inf", 0.001, 1e-4, 0.01, "shared"),
+        # Occupancy-detector threshold -- MUST be estimated together with
+        # G_occ, which sets the scale of the inferred occupancy it is compared
+        # against (N_occ ~ 1/G_occ).  Leaving it fixed makes the ventilation
+        # branch a degenerate direction of the objective: the solver moves
+        # G_occ to fit CO2/temperature, N_occ slides out from under the fixed
+        # threshold, the gate saturates, and the damper prediction collapses
+        # to "always off" -- at almost no cost in the pooled objective, so
+        # nothing pushes back.  Once saturated the gate's gradient is ~4
+        # orders of magnitude down (power-law tail), so no solver recovers it.
+        #
+        # Measured over the two-stage estimation on Dec 2-7 (damper RMSE):
+        #   threshold fixed at 1.0    -> 0.164   (gate never fires)
+        #   threshold fixed at 0.15   -> 0.108   (gate chatters: FP 11%)
+        #   threshold estimated       -> 0.076   (fits 0.384; FP 0.9%, FN 6.5%)
+        # Estimating it also lowers the POOLED objective 69.7 -> 41.2 and
+        # recovers G_occ = 5.0e-6, i.e. the textbook per-person CO2 generation
+        # rate, without needing hand-tightened bounds to force it there.
+        (occupancy_detector, "threshold", 1.0, 0.02, 5.0),
         # NOTE: the occupancy controller's onValue (minimum damper position
         # when occupied) is NOT estimated: it is a known BMS constant (0.3 in
         # the measured damper data), and leaving it free lets the solver
@@ -476,6 +494,9 @@ def main():
     x0_max = []
     for entry in parameters:
         comp, name, val, lo, hi = entry[0], entry[1], entry[2], entry[3], entry[4]
+        if val is None:
+            # Omitted x0: leave the component's current / initialize()-computed value.
+            continue
         if isinstance(comp, list):
             for c in comp:
                 x0_values.append(val)
@@ -608,13 +629,52 @@ def main():
         ylabel_1axis=r"CO$_2$ concentration [ppmv]",
         ylabel_2axis="Damper position [0-1]",
         title="Before calibration",
-        show=True,
+        show=False,
         nticks=11,
     )
 
     # --- 2.7 Run Parameter Estimation ---
+    #
+    # SciPy SLSQP single-shooting, run to convergence.  This is the path that
+    # produced the published results.
+    #
+    # ``USE_COLLOCATION_REFINEMENT`` additionally runs the CasADi/IPOPT
+    # collocation stage as a stage-2 refinement.  It is OFF by default because
+    # on this model it makes every sensor's fit worse, not better.  Measured on
+    # Dec 2-7 with an already-converged (100-iteration) SLSQP warm start:
+    #
+    #                       temp    valve   damper   CO2    pooled*
+    #   after SLSQP        0.190    0.104    0.022   14.3    33.3
+    #   + collocation      0.167    0.100    0.167   15.2    72.9
+    #
+    #   *pooled = sum over sensors of (RMSE/sd)^2, i.e. the quantity BOTH
+    #    stages minimize -- so stage 2 returns a point twice as bad as the one
+    #    it was handed, and reports ``Solved_To_Acceptable_Level``.
+    #
+    # The damper is what collapses (the occupancy gate switches fully off:
+    # true-positive rate 0.344 -> 0.003).  Two independent causes, both in the
+    # estimator rather than in this example:
+    #
+    #   1. The collocation warm start is corrupted before IPOPT ever runs.
+    #      ``_transcription.py`` seeds boundary states as ``ACT / coeff`` with
+    #      ``coeff = d(meas_t)/d(y_t)`` -- a one-step transition factor (0.79
+    #      here), not a readout gain -- so every segment's air-temperature
+    #      state starts ~5.6 K too hot.  Measured at the handoff: objective
+    #      1875.8 and max|defect| 7.7, against 8.2 / 7e-5 for the same warm
+    #      start with the seeding disabled (TWIN4BUILD_NO_DATA_WARMSTART=1).
+    #   2. Termination is effectively optimality-free: with the Gauss-Newton
+    #      Hessian on (the default) the module sets acceptable_tol=1e3,
+    #      acceptable_iter=5, acceptable_compl_inf_tol=1e3, leaving "feasible
+    #      and objective stagnant for 5 iterations" as the only exit -- which
+    #      a flat ridge satisfies while still sliding sideways.
+    #
+    # Neither knob rescues it: tightening the tolerances alone gets pooled 59
+    # instead of 73; disabling the seeding alone stalls infeasible; doing both
+    # diverges outright (max|defect| 13.9 after 1500 iterations).  Turn this on
+    # only to exercise the collocation code path, not to improve a fit.
+    USE_COLLOCATION_REFINEMENT = True
+
     estimator = tb.Estimator(simulator)
-    options = {"maxiter": 300, "ftol": 1e-15}
 
     result = estimator.estimate(
         start_time,
@@ -622,10 +682,57 @@ def main():
         step_size,
         parameters,
         measurements,
-        n_warmup=72,
+        n_warmup=20,
         method=("scipy", "SLSQP", "ad"),
-        options=options,
+        # maxiter=5 is NOT converged: it leaves the pooled objective at ~70
+        # where ~29 is reachable, and the extra iterations are cheap on the
+        # ``fast`` composed-rollout path.
+        options={"maxiter": 5, "fast": True},
     )
+
+    if USE_COLLOCATION_REFINEMENT:
+        # Continue from stage 1's optimum.  estimate() leaves the model's
+        # parameters at the fitted values, so read each group's current value
+        # straight off the model.  (Do NOT zip the input list with
+        # stage1["result_x"]: the estimator reorders parameters -- private
+        # first, then shared -- expands private component lists and collapses
+        # shared groups, so result_x is not aligned with `parameters`.)
+        def _from_model(entry):
+            comps, attr, _x0, lo, hi = entry[:5]
+            comp = comps[0] if isinstance(comps, list) else comps
+            v = float(rgetattr(comp, attr).get().reshape(-1)[0])
+            eps = 1e-9 * (hi - lo)  # nudge off the bounds for the x0 checks
+            return (comps, attr, min(max(v, lo + eps), hi - eps), lo, hi, *entry[5:])
+
+        parameters_stage2 = [_from_model(entry) for entry in parameters]
+
+        result = estimator.estimate(
+            start_time,
+            end_time,
+            step_size,
+            parameters_stage2,
+            measurements,
+            n_warmup=20,
+            method=("casadi", "ipopt", "ad", "collocation"),
+            options={
+                "maxiter": 600,
+                # Note what is NOT set here: where the collocation boundary
+                # states start.  That default ("boundary_state_init": "auto")
+                # measures the warm start rather than making you declare it.
+                # Because this stage is handed a CONVERGED stage-1 solution,
+                # auto scores it as already-fitting and keeps stage 1's own
+                # trajectory -- max|defect| 3.4e-5, against 4.9 if the states
+                # were instead seeded from data, which would throw away the
+                # very fit this stage exists to refine.  Delete stage 1 above
+                # and auto flips to seeding, with no edit needed here.
+                #
+                # With that feasible warm start, early stopping's
+                # best-feasible-iterate checkpoint adopts stage 1's solution as
+                # its incumbent -- so this stage can improve on stage 1 or
+                # leave it alone, but not return something worse.
+                "early_stopping": True,
+            },
+        )
     print(result)
 
     theta_mask = result["theta_mask"]
@@ -640,24 +747,29 @@ def main():
     # --- 2.8 Plot Calibrated Results ---
     model.set_save_simulation_result(flag=True)
 
-    # Collocation estimates the boundary states along with theta; its RMSEs
-    # are for a simulation starting from the ESTIMATED initial state.  Seed it,
-    # otherwise the default initial conditions (e.g. wall temperature 20 degC,
-    # with day-scale wall time constants) bias the whole horizon.
-    # Single-shooting results carry no estimated state, so skip seeding there.
-    _init_state = result.get("estimated_initial_state")
+    # Collocation estimates the trajectory's boundary states along with theta, so
+    # the reported RMSEs are for a simulation STARTING FROM the estimated initial
+    # state.  A plain simulate() would instead start from the component defaults
+    # (e.g. wall temperature 20 degC) -- with day-scale wall time constants that
+    # initial-condition error biases the whole horizon.  Seed the estimated
+    # initial state to reproduce the fitted trajectory.
+    #
+    # Single-shooting carries no estimated state (it rolls out from the defaults,
+    # which is exactly what its own objective scored), so seeding is a no-op
+    # there -- hence .get() rather than [...].
+    _init_state = result.get("estimated_initial_state") or {}
 
     def _seed_estimated_initial_state():
-        # get_component: the office+wall pair executes as one fused
-        # state-space block, so the state keys are executing-component ids.
+        # get_component: the office+wall pair executes as one fused state-space
+        # block, so the state keys are executing-component ids.
         for comp_id, x0 in _init_state.items():
-            model.get_component(comp_id).set_state(x0)
+            model.get_component(comp_id).set_state(x0)  # (n_periods, n_c, state_size)
 
     simulator.simulate(
         step_size=step_size,
         start_time=start_time,
         end_time=end_time,
-        after_initialize=_seed_estimated_initial_state if _init_state else None,
+        after_initialize=_seed_estimated_initial_state,
     )
     print("Calibration complete.")
 
@@ -757,6 +869,22 @@ def main():
                 .history(),
                 label=r"Damper position simulated",
                 color=tb.plot.Colors.blue,
+                linewidth=1.5,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                model.components["office"].input["numberOfPeople"].history(),
+                label=r"Number of people",
+                color=tb.plot.Colors.red,
+                linewidth=1.5,
+                axis=2,
+            ),
+            tb.plot.Entry(
+                model.components["office_occupancy_detector"]
+                .output["occupancySignal"]
+                .history(),
+                label=r"Occupancy signal",
+                color=tb.plot.Colors.purple,
                 linewidth=1.5,
                 axis=2,
             ),
@@ -914,7 +1042,7 @@ def main():
 
     optimizer = tb.Optimizer(simulator_opt)
 
-    opt_options = {"maxiter": 300, "tol": 1e-15, "disp": True}
+    opt_options = {"maxiter": 300, "tol": 1e-15, "disp": True, "fast": True}
 
     optimizer.optimize(
         start_time=opt_start_time,

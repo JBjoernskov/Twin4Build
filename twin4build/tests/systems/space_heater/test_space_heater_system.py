@@ -3,6 +3,7 @@ import datetime
 import unittest
 
 # Third party imports
+import numpy as np
 import torch
 from dateutil import tz
 
@@ -33,6 +34,62 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
         self.assertIsNotNone(self.heater)
         self.assertEqual(self.heater.id, "test_heater")
         self.assertEqual(self.heater.nelements, 2)
+
+    def test_initialize_UA_sets_physical_value(self):
+        """initialize_UA must store a physical UA readable via Parameter.get()."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
+        step_size = [600]
+        self.heater.initialize(
+            start_time=start_time, end_time=end_time, step_size=step_size
+        )
+        ua = float(self.heater.UA.get().reshape(-1)[0])
+        # Rough LMTD-style scale: Q / (T_b - T_air) ≈ 50; fsolve is nearby.
+        self.assertGreater(ua, 10.0)
+        self.assertLess(ua, 200.0)
+        # Must not be the placeholder (10) accidentally denormalized as 10*(UA).
+        self.assertNotAlmostEqual(ua, 10.0, places=3)
+
+    def test_ua_residual_is_a_plain_float(self):
+        """The UA residual must not hand SciPy a torch tensor.
+
+        ``initialize_UA`` solves for UA with ``scipy.optimize.fsolve``, which
+        pushes the residual through ``numpy.asanyarray``.  Component
+        initialization runs inside ``with torch.device(self.device)``
+        (SimulationModel.initialize), so under ``Model.to("cuda")`` any tensor
+        built in the residual is allocated on the GPU and the solve dies with
+        "can't convert cuda:0 device type tensor to numpy" -- which made
+        ``initialize_UA=True`` unusable on GPU.
+
+        Returning a plain float keeps the residual device- and
+        dtype-agnostic.  Asserted here rather than in a GPU-only test so it is
+        covered on CPU-only CI.
+        """
+        residual = self.heater._ua_residual(np.array([50.0]))
+        self.assertIsInstance(
+            residual,
+            float,
+            "UA residual must return a plain float; a torch tensor breaks "
+            "fsolve on non-CPU devices",
+        )
+        self.assertTrue(np.isfinite(residual))
+
+    def test_ua_solve_survives_an_ambient_device_context(self):
+        """initialize() must work while a torch device context is active.
+
+        This is the shape of the GPU failure: SimulationModel.initialize wraps
+        component initialization in ``with torch.device(...)``.  On a CPU-only
+        runner the ambient device is "cpu", so this cannot reproduce the CUDA
+        conversion error itself -- but it does pin the code path that has to
+        stay free of ambient-device tensor construction.
+        """
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
+        with torch.device("cpu"):
+            self.heater.initialize(
+                start_time=start_time, end_time=end_time, step_size=[600]
+            )
+        self.assertGreater(float(self.heater.UA.get().reshape(-1)[0]), 0.0)
 
     def test_do_step(self):
         """Test space heater system do_step method."""

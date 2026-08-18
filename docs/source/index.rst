@@ -17,8 +17,9 @@ This documentation is organized into three main sections:
 **Getting Started**
    Contains tutorials and installation instructions to help you begin using Twin4Build:
     
-   * Installation - Instructions for installing Twin4Build and its dependencies    
+   * Installation - Instructions for installing Twin4Build and its dependencies
    * Examples and Tutorials - Step-by-step guides showing basic usage
+   * Benchmarks - Reproducible performance studies (CPU vs GPU, solver comparisons)
 
 **API Reference**
    Detailed documentation of all Twin4Build modules and their components.
@@ -34,6 +35,7 @@ This documentation is organized into three main sections:
 
    manual/installation
    manual/examples_and_tutorials
+   manual/benchmarks
 
 .. toctree::
    :maxdepth: 2

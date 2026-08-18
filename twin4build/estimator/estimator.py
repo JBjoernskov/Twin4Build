@@ -461,11 +461,24 @@ class Estimator:
                 List of tuples ``(component, attr, x0, lb, ub[, parameter_type])``
                 where ``component`` is a component object or list of component
                 objects, ``attr`` is the parameter attribute name, ``x0`` is
-                the initial value, ``lb``/``ub`` are the bounds, and the
+                the initial value (or ``None`` to use the parameter's current
+                value after the eager ``model.initialize`` that runs at the
+                start of ``estimate``), ``lb``/``ub`` are the bounds, and the
                 optional ``parameter_type`` is ``"private"`` (each listed
                 component gets its own independent parameter; default) or
                 ``"shared"`` (all listed components share one parameter
                 value).
+
+                Omitting ``x0`` (``None``) is useful when a component already
+                computes a sensible starting value during ``initialize`` —
+                for example a space heater with ``initialize_UA=True`` solves
+                for ``UA`` from the nominal heat-flow / temperature setpoints,
+                and that solved value can be used as the estimation start
+                without hard-coding it::
+
+                    parameters = [
+                        (space_heater, "UA", None, 1, 100),  # use initialized UA
+                    ]
 
                 Example::
 
@@ -597,6 +610,38 @@ class Estimator:
                   period's initial boundary state at its warm-start value so
                   the feasible set is exactly the single-shooting trajectory
                   manifold (mainly for equivalence testing).
+                - "boundary_state_init" ({"auto", "data", "rollout"},
+                  default "auto"): Where the collocation boundary states
+                  start.  **You normally do not set this** -- "auto"
+                  measures the warm start and decides.
+
+                  * ``"auto"`` -- evaluate the warm-start rollout against
+                    the measurements and pick.  The score is the mean
+                    weighted squared residual, so it reads in units of
+                    measurement standard deviations; a rollout already
+                    within ~5 sd is treated as a refinement and preserved,
+                    anything worse is seeded from data.  The decision and
+                    its score are logged.
+                  * ``"data"`` -- cold start: seed the directly-observed
+                    boundary states from the MEASUREMENTS.  Keeps the solve
+                    out of bad local minima when ``theta`` starts far off,
+                    at the cost of violating the continuity defects (it
+                    plants data into the states).
+                  * ``"rollout"`` -- refinement: the boundary states are the
+                    warm-start trajectory itself, so the solve begins ON the
+                    trajectory manifold at that solution's own fit.  Because
+                    the best-feasible-iterate checkpoint can only adopt a
+                    *feasible* ``x0`` as its incumbent, this is also what
+                    lets ``early_stopping`` guarantee the solve never
+                    returns a point worse than the one it was given.
+
+                  Only force a value to pin behaviour for a reproducible
+                  experiment.  Forcing ``"rollout"`` on a solve that was NOT
+                  warm-started from a converged fit is the classic misuse:
+                  the solve starts feasible-but-bad, stagnates, and the
+                  best-feasible checkpoint hands ``x0`` straight back.  The
+                  older ``"data_warmstart"`` boolean is still accepted and
+                  maps to ``"data"``/``"rollout"``.
 
             schedule: Multi-phase continuation schedule -- the single,
                 self-contained way to drive parameter estimation.
@@ -1038,13 +1083,31 @@ class Estimator:
             )
         LOGGER.remove_level()
 
-        # Validate bounds
-        assert np.all(
-            self._x0 >= self._lb
-        ), f"The provided x0 must be larger than the provided lower bound lb for parameter {np.array(self._parameter_names)[self._x0 < self._lb][0]}"
-        assert np.all(
-            self._x0 <= self._ub
-        ), f"The provided x0 must be smaller than the provided upper bound ub for parameter {np.array(self._parameter_names)[self._x0 > self._ub][0]}"
+        # Validate bounds.  ``_x0`` / ``_lb`` / ``_ub`` are unique-theta length
+        # (shared groups collapsed); ``_parameter_names`` is flat (one entry per
+        # component member).  Build labels aligned with theta for error messages.
+        unique_labels = self._unique_theta_labels()
+        below = self._x0 < self._lb
+        if np.any(below):
+            i = int(np.flatnonzero(below)[0])
+            raise ValueError(
+                f"The provided x0 must be >= lower bound lb for parameter "
+                f"{unique_labels[i]} (x0={self._x0[i]}, lb={self._lb[i]})"
+            )
+        above = self._x0 > self._ub
+        if np.any(above):
+            i = int(np.flatnonzero(above)[0])
+            raise ValueError(
+                f"The provided x0 must be <= upper bound ub for parameter "
+                f"{unique_labels[i]} (x0={self._x0[i]}, ub={self._ub[i]})"
+            )
+        nonfinite = ~np.isfinite(self._x0)
+        if np.any(nonfinite):
+            i = int(np.flatnonzero(nonfinite)[0])
+            raise ValueError(
+                f"The provided x0 must be finite for parameter "
+                f"{unique_labels[i]} (x0={self._x0[i]})"
+            )
 
         # Set up parameter bounds and normalization
         self._set_bounds(normalize=True)
@@ -1402,6 +1465,35 @@ class Estimator:
         self._auto_measurement_ids = {c.id for c, _ in out}
         return out
 
+    @staticmethod
+    def _parameter_value_as_array(param) -> np.ndarray:
+        """Return a flat float numpy array from a ``Parameter.get()`` value."""
+        val = param.get()
+        if isinstance(val, torch.Tensor):
+            return val.detach().cpu().numpy().astype(float).flatten()
+        return np.asarray(val, dtype=float).flatten()
+
+    def _resolve_x0(self, component, attr, x0):
+        """
+        Resolve an initial value, substituting the current parameter value when
+        ``x0`` is ``None``.
+
+        This is intended for parameters that already have a meaningful value
+        after ``model.initialize`` (for example space-heater ``UA`` computed
+        from nominal conditions when ``initialize_UA=True``).
+        """
+        if x0 is not None:
+            return x0
+        param = rgetattr(component, attr)
+        resolved = self._parameter_value_as_array(param)
+        LOGGER.debug(
+            "Resolved omitted x0 for %s.%s from current value: %s",
+            getattr(component, "id", component),
+            attr,
+            resolved,
+        )
+        return resolved
+
     def _validate_list_format(self, parameters_list: List[Tuple]) -> List[Tuple]:
         """
         Validate and clean the new list format parameters.
@@ -1412,7 +1504,9 @@ class Estimator:
                 (component(s), attr, x0, lb, ub, parameter_type)
 
         Returns:
-            Validated list of parameter tuples with explicit parameter_type
+            Validated list of parameter tuples with explicit parameter_type.
+            ``x0`` may be ``None``, meaning the current parameter value
+            (after ``model.initialize``) should be used as the start.
 
         Raises:
             ValueError: If tuple format is invalid
@@ -1468,9 +1562,9 @@ class Estimator:
                     f"Attribute must be a non-empty string at index {i}. Got: {attr}"
                 )
 
-            # Validate numeric values
-            if x0 is None:
-                raise ValueError(f"Initial value (x0) cannot be None at index {i}")
+            # ``x0=None`` means "use the parameter's current value" and is
+            # resolved in ``_process_parameters_list`` after the eager
+            # ``model.initialize`` at the start of ``estimate``.
 
             # Convert None bounds to infinity
             if lb is None:
@@ -1494,6 +1588,10 @@ class Estimator:
     def _process_parameters_list(self, parameters_list: List[Tuple]) -> None:
         """
         Process the parameter list and extract component and parameter information.
+
+        ``x0=None`` entries are resolved to the component's current parameter
+        value (via ``Parameter.get()``), which is typically the value left by
+        the eager ``model.initialize`` at the start of ``estimate``.
 
         Args:
             parameters_list: List of tuples in format (components, attr, x0, lb, ub, parameter_type)
@@ -1586,6 +1684,8 @@ class Estimator:
             self._theta_slices.append((theta_offset, theta_offset + n_c))
             theta_offset += n_c
 
+            x0 = self._resolve_x0(component, attr, x0)
+
             # Flatten x0, lb, ub for this parameter
             if isinstance(x0, (list, np.ndarray, torch.Tensor)):
                 x0_vals = (
@@ -1647,6 +1747,23 @@ class Estimator:
             self._unique_param_n_c.append(n_c)
             self._theta_slices.append((theta_offset, theta_offset + n_c))
             theta_offset += n_c
+
+            if x0 is None:
+                # Shared groups share one theta; use the first member's current
+                # value and warn if others disagree.
+                x0 = self._resolve_x0(components[0], attr, None)
+                for other in components[1:]:
+                    other_val = self._parameter_value_as_array(rgetattr(other, attr))
+                    if not np.allclose(other_val, np.asarray(x0, dtype=float), equal_nan=True):
+                        warnings.warn(
+                            f"Shared parameter '{attr}' has omitted x0 but current "
+                            f"values differ across components "
+                            f"({components[0].id}={np.asarray(x0)}, "
+                            f"{other.id}={other_val}); using {components[0].id}.",
+                            UserWarning,
+                            stacklevel=3,
+                        )
+                        break
 
             # Flatten x0, lb, ub for this shared parameter
             if isinstance(x0, (list, np.ndarray, torch.Tensor)):
@@ -1711,6 +1828,30 @@ class Estimator:
             unique_idx += 1
 
         self._theta_mask = np.array(private_mask + shared_mask, dtype=int)
+
+    def _unique_theta_labels(self) -> List[str]:
+        """Human-readable labels aligned with unique-theta / ``_x0`` entries.
+
+        Shared groups are labeled once using the first member's component id.
+        Multi-branch (``n_c > 1``) parameters get a ``[k]`` suffix per slice.
+        """
+        labels: List[str] = []
+        # First flat index for each unique theta index
+        first_flat: Dict[int, int] = {}
+        for flat_i, uniq_i in enumerate(self._theta_mask):
+            first_flat.setdefault(int(uniq_i), flat_i)
+        for uniq_i in range(len(self._theta_slices)):
+            flat_i = first_flat[uniq_i]
+            comp = self._flat_components[flat_i]
+            attr = self._parameter_names[flat_i]
+            start, end = self._theta_slices[uniq_i]
+            n = end - start
+            if n == 1:
+                labels.append(f"{comp.id}.{attr}")
+            else:
+                for k in range(n):
+                    labels.append(f"{comp.id}.{attr}[{k}]")
+        return labels
 
     def _theta_to_param_values(self, theta: np.ndarray) -> List[np.ndarray]:
         """

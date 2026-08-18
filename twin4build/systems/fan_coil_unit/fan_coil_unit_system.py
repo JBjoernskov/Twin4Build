@@ -382,8 +382,11 @@ class FanCoilUnitSystem(core.System, nn.Module):
                 / abs(self.T_w_return_nominal - self.T_air_in_nominal)
             )
             root = fsolve(self._ua_residual, UA0, full_output=True)
-            UA_val = root[0][0]
-            self.UA.data.fill_(UA_val)
+            UA_val = float(root[0][0])
+            # Write the physical UA through ``set`` so normalization is applied.
+            # ``data.fill_(UA_val)`` would store the physical value in the
+            # normalized slot and make ``get()`` return a scaled-up value.
+            self.UA.set(UA_val, normalized=False)
 
         self._create_state_space_model()
         self.ss_model.initialize(start_time, end_time, step_size)
@@ -405,19 +408,27 @@ class FanCoilUnitSystem(core.System, nn.Module):
         Returns:
             Difference between calculated and nominal heat output.
         """
+        # CPU + plain floats ON PURPOSE -- see the note in
+        # ``SpaceHeaterSystem._ua_residual``: SciPy's ``fsolve`` runs this
+        # through ``numpy.asanyarray``, and under ``Model.to("cuda")``
+        # component initialization happens inside ``with
+        # torch.device(self.device)``, so tensors built here would land on the
+        # GPU and fail to convert.
         n = self.nelements
+        cpu = torch.device("cpu")
         C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
         UA_elem = float(UA_candidate.item()) / n
-        m_dot_w = float(
-            abs(self.Q_flow_nominal)
-            / (constants.CP_WATER * abs(self.T_w_supply_nominal - self.T_w_return_nominal))
-        )
+        q_nom = float(self.Q_flow_nominal)
+        t_w_sup = float(self.T_w_supply_nominal)
+        t_w_ret = float(self.T_w_return_nominal)
+        t_air_in = float(self.T_air_in_nominal)
         c_p_w = float(constants.CP_WATER)
+        m_dot_w = abs(q_nom) / (c_p_w * abs(t_w_sup - t_w_ret))
 
         # Build steady-state A, B (bilinear terms collapsed at nominal flow)
         # Input vector: [T_w_supply, m_dot_w, T_air_in]
-        A = torch.zeros((n, n), dtype=tps.float_dtype())
-        B = torch.zeros((n, 3), dtype=tps.float_dtype())
+        A = torch.zeros((n, n), dtype=tps.float_dtype(), device=cpu)
+        B = torch.zeros((n, 3), dtype=tps.float_dtype(), device=cpu)
         for i in range(n):
             A[i, i] = -(m_dot_w * c_p_w + UA_elem) / C_elem
             if i > 0:
@@ -427,15 +438,15 @@ class FanCoilUnitSystem(core.System, nn.Module):
             B[i, 2] = UA_elem / C_elem
 
         u = torch.tensor(
-            [self.T_w_supply_nominal, m_dot_w, self.T_air_in_nominal],
-            dtype=tps.float_dtype(),
+            [t_w_sup, m_dot_w, t_air_in], dtype=tps.float_dtype(), device=cpu
         )
         try:
             x_ss = -torch.linalg.solve(A, B @ u)
         except Exception:
             return 1e6
-        Power = UA_elem * torch.sum(x_ss - self.T_air_in_nominal)
-        return Power - self.Q_flow_nominal
+        # Return a plain float so the residual is device-agnostic to fsolve.
+        power = UA_elem * float(torch.sum(x_ss - t_air_in).item())
+        return power - q_nom
 
     def _get_initial_state_tensor(self):
         t_outlet = self.output["outletWaterTemperature"].get()
