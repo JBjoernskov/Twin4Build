@@ -55,6 +55,7 @@ from torch.func import jacrev, vmap
 import twin4build.utils.types as tps
 from twin4build.simulator._composed import StateLayout as _StateLayout
 from twin4build.simulator._composed import collect_stateful as _collect_stateful
+from twin4build.estimator._cuda_graph import CudaGraphRunner as _CudaGraphRunner
 from twin4build.utils.logger import LOGGER
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
@@ -1221,17 +1222,27 @@ def _solve_sparse_collocation(
                     chunk_size=None if _hchunk >= n_seg else _hchunk,
                 )(y_norm, CAP, w_mat)
 
-            def hess_vals_fn(z, sigma, lam_g):
-                zt = torch.tensor(
-                    np.asarray(z, dtype=np.float64), dtype=tps.float_dtype(), device=dev
-                )
-                theta_norm = zt[:n_theta]
-                y_norm = zt[n_theta:].reshape(n_seg, Da)
-                lam_mat = torch.tensor(
-                    np.asarray(lam_g, dtype=np.float64).reshape(n_links, Da),
-                    dtype=tps.float_dtype(), device=dev,
-                )
-                # Accumulators over the arrowhead blocks.
+            # Device-side copies of the emission pattern, so the packing that
+            # used to be a 360-iteration numpy loop happens in the graph.
+            _iu_t0 = torch.as_tensor(iu_t[0], dtype=torch.long, device=dev)
+            _iu_t1 = torch.as_tensor(iu_t[1], dtype=torch.long, device=dev)
+            _iu_y0 = torch.as_tensor(iu_y[0], dtype=torch.long, device=dev)
+            _iu_y1 = torch.as_tensor(iu_y[1], dtype=torch.long, device=dev)
+
+            def _hess_core(theta_norm, y_norm, lam_mat, s_gn, Jt_, Jy):
+                """The Hessian's whole tensor region: inputs and output are
+                tensors, there are no host branches, and shapes are static --
+                the three things CUDA-graph capture requires.
+
+                ``s_gn`` is a 0-dim TENSOR, not a float, deliberately: the
+                original code branched on ``s_gn != 0.0``, and a host branch on
+                a changing value cannot be captured (a graph records one path).
+                Multiplying unconditionally is the same arithmetic, because
+                every objective term below is linear in ``s_gn`` -- when it is
+                zero the terms vanish exactly rather than approximately.  The
+                caller keeps the branch for whether to *compute* Jt_/Jy, which
+                is host-side work outside the captured region.
+                """
                 Btt = torch.zeros((n_theta, n_theta), dtype=tps.float_dtype(), device=dev)
                 Bty = torch.zeros((n_seg, n_theta, Da), dtype=tps.float_dtype(), device=dev)
                 Byy = torch.zeros((n_seg, Da, Da), dtype=tps.float_dtype(), device=dev)
@@ -1240,55 +1251,94 @@ def _solve_sparse_collocation(
                 #     d2f = (2/N) sum [ grad r grad r^T  +  r d2 r ]
                 #                       ^ Gauss-Newton ^   ^ dropped by GN ^
                 # indexed by the PRODUCING segment (see _g_of above).
-                s_gn = float(sigma) * gn_scale
-                if s_gn != 0.0:
-                    d = _derivs(np.asarray(z, dtype=np.float64))
-                    Jt_ = d["Jt"][:, Da:, :]  # (n_seg, n_meas, n_theta)
-                    Jy = d["Jx"][:, Da:, :]   # (n_seg, n_meas, Da)
-                    # mask^2 == mask, so masking one factor masks the product.
-                    Jt_m = Jt_ * _obj_mask.unsqueeze(-1)
-                    Jy_m = Jy * _obj_mask.unsqueeze(-1)
-                    Btt += torch.einsum("gmi,gmj->gij", Jt_m, Jt_).sum(0) * s_gn
-                    Bty += torch.einsum("gmi,gmj->gij", Jt_m, Jy) * s_gn
-                    Byy += torch.einsum("gmi,gmj->gij", Jy_m, Jy) * s_gn
+                # mask^2 == mask, so masking one factor masks the product.
+                Jt_m = Jt_ * _obj_mask.unsqueeze(-1)
+                Jy_m = Jy * _obj_mask.unsqueeze(-1)
+                Btt = Btt + torch.einsum("gmi,gmj->gij", Jt_m, Jt_).sum(0) * s_gn
+                Bty = Bty + torch.einsum("gmi,gmj->gij", Jt_m, Jy) * s_gn
+                Byy = Byy + torch.einsum("gmi,gmj->gij", Jy_m, Jy) * s_gn
 
-                    # Residual curvature.  Contract the weighted residual with
-                    # the measurement map first, so this is a scalar Hessian.
-                    # NOTE the raw (UNLAGGED) measurement is the right one here:
-                    # the lag lives in which ACT it is compared against, which
-                    # _ACT_eff already encodes.
-                    with torch.no_grad():
-                        _, Meas_raw = vmap(
-                            lambda yi, ci: composer.F_aug(
-                                y_from_norm(yi), _denorm(theta_norm), ci
-                            )
-                        )(y_norm, CAP)
-                        w_mat = (
-                            _obj_mask * (Meas_raw - _ACT_eff) / SD_meas * s_gn
+                # Residual curvature.  Contract the weighted residual with the
+                # measurement map first, so this is a scalar Hessian.  NOTE the
+                # raw (UNLAGGED) measurement is the right one here: the lag
+                # lives in which ACT it is compared against, which _ACT_eff
+                # already encodes.
+                with torch.no_grad():
+                    _, Meas_raw = vmap(
+                        lambda yi, ci: composer.F_aug(
+                            y_from_norm(yi), _denorm(theta_norm), ci
                         )
-                        (Oyy, _Oyt), (Oty, Ott) = _obj_curvature(
-                            theta_norm, y_norm, w_mat
-                        )
-                    Btt += Ott.sum(0)
-                    Bty += Oty
-                    Byy += Oyy
+                    )(y_norm, CAP)
+                    w_mat = _obj_mask * (Meas_raw - _ACT_eff) / SD_meas * s_gn
+                    (Oyy, _Oyt), (Oty, Ott) = _obj_curvature(
+                        theta_norm, y_norm, w_mat
+                    )
+                Btt = Btt + Ott.sum(0)
+                Bty = Bty + Oty
+                Byy = Byy + Oyy
 
                 # (2) constraint curvature: sum_l lam_l . d2 g_l.
                 with torch.no_grad():
                     (Hyy, Hyt), (Hty, Htt) = _curvature(theta_norm, y_norm, lam_mat)
-                Btt += Htt.sum(0)
-                Bty.index_add_(0, cp_i, Hty)
-                Byy.index_add_(0, cp_i, Hyy)
+                Btt = Btt + Htt.sum(0)
+                Bty = Bty.index_add(0, cp_i, Hty)
+                Byy = Byy.index_add(0, cp_i, Hyy)
 
-                # Emit in pattern order (upper triangle of the diagonal blocks).
-                Btt_np = Btt.cpu().numpy()
-                Bty_np = Bty.cpu().numpy()
-                Byy_np = Byy.cpu().numpy()
-                vals = [Btt_np[iu_t]]
-                for g in range(n_seg):
-                    vals.append(Bty_np[g].ravel())
-                    vals.append(Byy_np[g][iu_y])
-                return np.concatenate(vals)
+                # Emit in pattern order (upper triangle of the diagonal blocks),
+                # matching the hess_rows/hess_cols loop above exactly:
+                #   Btt[iu_t], then per segment Bty[g].ravel() and Byy[g][iu_y].
+                return torch.cat([
+                    Btt[_iu_t0, _iu_t1],
+                    torch.cat([
+                        Bty.reshape(n_seg, n_theta * Da),
+                        Byy[:, _iu_y0, _iu_y1],
+                    ], dim=1).reshape(-1),
+                ])
+
+            _hess_graph = _CudaGraphRunner(
+                _hess_core, name="collocation exact Hessian"
+            )
+            _zero_Jt = torch.zeros(
+                (n_seg, len(md_list), n_theta), dtype=tps.float_dtype(), device=dev
+            )
+            _zero_Jy = torch.zeros(
+                (n_seg, len(md_list), Da), dtype=tps.float_dtype(), device=dev
+            )
+
+            def hess_vals_fn(z, sigma, lam_g):
+                z_np = np.asarray(z, dtype=np.float64)
+                zt = torch.tensor(z_np, dtype=tps.float_dtype(), device=dev)
+                theta_norm = zt[:n_theta]
+                y_norm = zt[n_theta:].reshape(n_seg, Da)
+                lam_mat = torch.tensor(
+                    np.asarray(lam_g, dtype=np.float64).reshape(n_links, Da),
+                    dtype=tps.float_dtype(), device=dev,
+                )
+                s_gn = float(sigma) * gn_scale
+                # The branch stays HOST-side and only decides whether to pay for
+                # _derivs (which is cached and normally already computed by the
+                # Jacobian callback at this z).  sigma == 0 happens in IPOPT's
+                # restoration phase; feeding zeros keeps the captured region's
+                # arithmetic identical instead of needing a second graph.
+                if s_gn != 0.0:
+                    d = _derivs(z_np)
+                    Jt_ = d["Jt"][:, Da:, :]  # (n_seg, n_meas, n_theta)
+                    Jy = d["Jx"][:, Da:, :]   # (n_seg, n_meas, Da)
+                else:
+                    Jt_, Jy = _zero_Jt, _zero_Jy
+                vals = _hess_graph(
+                    theta_norm=theta_norm,
+                    y_norm=y_norm,
+                    lam_mat=lam_mat,
+                    s_gn=torch.as_tensor(
+                        s_gn, dtype=tps.float_dtype(), device=dev
+                    ),
+                    Jt_=Jt_,
+                    Jy=Jy,
+                )
+                # Consume the runner's static output buffer immediately -- the
+                # next replay overwrites it.
+                return vals.detach().cpu().numpy()
 
             LOGGER.config(
                 "EXACT Hessian of the Lagrangian enabled: %d nonzeros (upper "
