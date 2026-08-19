@@ -1358,6 +1358,23 @@ def _solve_sparse_collocation(
                     Jy = d["Jx"][:, Da:, :]   # (n_seg, n_meas, Da)
                 else:
                     Jt_, Jy = _zero_Jt, _zero_Jy
+                if _os.environ.get("TWIN4BUILD_GRAPH_DEBUG"):
+                    # Stash here rather than in the runner: when the graph is
+                    # disabled the runner returns before it binds anything, and
+                    # a clean capture diagnostic needs the graph OFF during the
+                    # solve so the first capture attempt in the process is its
+                    # own.
+                    from twin4build.estimator import _cuda_graph as _cg_dbg
+
+                    _cg_dbg.DEBUG_PARTS.setdefault("inputs", {
+                        "theta_norm": theta_norm.detach().clone(),
+                        "y_norm": y_norm.detach().clone(),
+                        "lam_mat": lam_mat.detach().clone(),
+                        "s_gn": torch.as_tensor(
+                            s_gn, dtype=tps.float_dtype(), device=dev),
+                        "Jt_": Jt_.detach().clone(),
+                        "Jy": Jy.detach().clone(),
+                    })
                 vals = _hess_graph(
                     theta_norm=theta_norm,
                     y_norm=y_norm,
