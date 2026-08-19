@@ -41,11 +41,24 @@ REQUIREMENTS on the wrapped function
 from __future__ import annotations
 
 import os
-from typing import Callable, Dict, Optional
+import warnings as _warnings
+from typing import Callable, Dict, List, Optional
 
 import torch
 
 from twin4build.utils.logger import LOGGER
+
+
+#: Every runner appends its outcome here, so a caller can ask what actually
+#: happened instead of inferring it from timings.  Capture silently falling
+#: back to eager is indistinguishable from "the graph did not help", which is
+#: precisely the ambiguity that made the first A/B unreadable.
+CAPTURE_LOG: List[str] = []
+
+
+def capture_status() -> List[str]:
+    """What each runner did this process: 'captured' or why it fell back."""
+    return list(CAPTURE_LOG)
 
 
 def cuda_graphs_enabled() -> bool:
@@ -112,11 +125,17 @@ class CudaGraphRunner:
     def _fallback(self, reason: str, **tensors) -> torch.Tensor:
         if not self._disabled:
             self._disabled = True
-            LOGGER.warning(
-                "CUDA graph capture unavailable for %s (%s) -- running eager. "
-                "This costs speed, not correctness.",
-                self._name, reason,
+            msg = (
+                f"CUDA graph capture unavailable for {self._name} ({reason}) "
+                "-- running eager. This costs speed, not correctness."
             )
+            CAPTURE_LOG.append(f"{self._name}: FELL BACK -- {reason}")
+            # warnings.warn, NOT LOGGER: LOGGER output is suppressed by default,
+            # so logging this would make a silent fallback indistinguishable
+            # from a graph that captured but did not help -- the exact
+            # ambiguity that wasted a benchmark run.
+            _warnings.warn(msg, RuntimeWarning, stacklevel=3)
+            LOGGER.warning(msg)
         return self._fn(**tensors)
 
     def _bind(self, tensors: Dict[str, torch.Tensor]) -> None:
@@ -143,6 +162,7 @@ class CudaGraphRunner:
             # Not an error: CPU runs have nothing to capture.  Silent, because
             # this is the common case and a warning would be noise.
             self._disabled = True
+            CAPTURE_LOG.append(f"{self._name}: skipped (device is {dev.type})")
             return self._fn(**tensors)
 
         if self._static_in is None:
@@ -190,6 +210,14 @@ class CudaGraphRunner:
                     )
                 self._graph = graph
                 self._static_out = static_out
+                CAPTURE_LOG.append(f"{self._name}: captured")
+                _warnings.warn(
+                    f"CUDA graph CAPTURED for {self._name} "
+                    f"({static_out.numel()} outputs) -- replay is one launch. "
+                    "Reported so a no-op speedup can be told apart from a "
+                    "silent fallback.",
+                    UserWarning, stacklevel=3,
+                )
                 LOGGER.config(
                     "CUDA graph captured for %s: %d-element output, replay is "
                     "one launch instead of the eager dispatch stream.",
