@@ -1315,6 +1315,21 @@ def _solve_sparse_collocation(
             _hess_graph = _CudaGraphRunner(
                 _hess_core, name="collocation exact Hessian"
             )
+            if _os.environ.get("TWIN4BUILD_GRAPH_DEBUG"):
+                # Capture failure reports cudaErrorStreamCaptureInvalidated,
+                # which names the symptom rather than the offending operation.
+                # Expose the pieces so a diagnostic can capture each in
+                # isolation and bisect to the one that breaks the stream.
+                from twin4build.estimator import _cuda_graph as _cg_dbg
+
+                _cg_dbg.DEBUG_PARTS.update({
+                    "runner": _hess_graph,
+                    "core": _hess_core,
+                    "curvature": _curvature,
+                    "obj_curvature": _obj_curvature,
+                    "shapes": {"n_seg": n_seg, "Da": Da, "n_theta": n_theta,
+                               "n_links": n_links},
+                })
             _zero_Jt = torch.zeros(
                 (n_seg, len(md_list), n_theta), dtype=tps.float_dtype(), device=dev
             )

@@ -56,6 +56,13 @@ from twin4build.utils.logger import LOGGER
 CAPTURE_LOG: List[str] = []
 
 
+#: Populated only when TWIN4BUILD_GRAPH_DEBUG is set: the individual pieces of
+#: the Hessian region, so a diagnostic can try capturing them SEPARATELY.
+#: cudaErrorStreamCaptureInvalidated names the symptom, never the offending op,
+#: so bisection is the only way to localise it.
+DEBUG_PARTS: Dict[str, object] = {}
+
+
 def capture_status() -> List[str]:
     """What each runner did this process: 'captured' or why it fell back."""
     return list(CAPTURE_LOG)
@@ -97,11 +104,13 @@ class CudaGraphRunner:
         name: str = "fn",
         warmup: int = 3,
         enabled: bool = True,
+        capture_error_mode: str = "global",
     ):
         self._fn = fn
         self._name = name
         self._warmup_target = max(1, int(warmup))
         self._enabled = bool(enabled) and cuda_graphs_enabled()
+        self._capture_error_mode = capture_error_mode
         self._graph: Optional[torch.cuda.CUDAGraph] = None
         self._static_in: Optional[Dict[str, torch.Tensor]] = None
         self._static_out: Optional[torch.Tensor] = None
@@ -121,6 +130,11 @@ class CudaGraphRunner:
     @property
     def replays(self) -> int:
         return self._replays
+
+    @property
+    def static_inputs(self) -> Optional[Dict[str, torch.Tensor]]:
+        """The real inputs from the last call -- what a diagnostic replays."""
+        return self._static_in
 
     def _fallback(self, reason: str, **tensors) -> torch.Tensor:
         if not self._disabled:
@@ -192,7 +206,9 @@ class CudaGraphRunner:
                 torch.cuda.synchronize()
 
                 graph = torch.cuda.CUDAGraph()
-                with torch.cuda.graph(graph):
+                with torch.cuda.graph(
+                    graph, capture_error_mode=self._capture_error_mode
+                ):
                     static_out = self._fn(**self._static_in)
                 graph.replay()
                 torch.cuda.synchronize()
