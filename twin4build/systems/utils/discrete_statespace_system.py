@@ -1,5 +1,6 @@
 # Standard library imports
 import datetime
+import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -63,6 +64,32 @@ def _functorch_active() -> bool:
         return True
 
 
+def _matrix_exp_dispatch(M):
+    """Evaluate the block-matrix exponential for one-step discretization.
+
+    Plain eager/autograd keeps using PyTorch's native implementation.  Under
+    ``torch.func`` transforms, ``TWIN4BUILD_MATRIX_EXP`` selects the current
+    vmap-safe scaling-and-squaring expression (``"ss"``, the default) or the
+    experimental native batched implementation (``"native"``).
+
+    Selection is environment-only and therefore constant for an entire
+    derivative callback.  In particular, there is no tensor-dependent
+    finite-value branch inside ``vmap``/``jacfwd``/``jacrev``.
+    """
+    if not _functorch_active():
+        return torch.linalg.matrix_exp(M)
+
+    mode = os.environ.get("TWIN4BUILD_MATRIX_EXP", "ss").lower()
+    if mode == "ss":
+        return _expm_ss(M)
+    if mode == "native":
+        return torch.linalg.matrix_exp(M)
+    raise ValueError(
+        "TWIN4BUILD_MATRIX_EXP must be 'ss' or 'native', "
+        f"got {mode!r}"
+    )
+
+
 def _discretize_onestep(A, B, E, F, u, sample_time):
     """Effective-matrix ZOH discretization: ``(Ad, Bd)`` for the current ``u``."""
     # Broadcast-friendly bilinear terms (einsum would require the batch dims of
@@ -81,11 +108,7 @@ def _discretize_onestep(A, B, E, F, u, sample_time):
     # dim that the freshly-allocated M does not.
     top = torch.cat([A_eff * T, B_eff * T], dim=-1)  # (..., n, n+m)
     M = torch.nn.functional.pad(top, (0, 0, 0, m))  # add m zero rows -> (..., n+m, n+m)
-    # Under functorch transforms matrix_exp has no batching rule, so use the
-    # pure-matmul scaling-and-squaring helper; in plain eager/autograd (the
-    # fast single-shooting rollout) the fused native op is much cheaper per
-    # step and has a native backward.
-    expM = _expm_ss(M) if _functorch_active() else torch.matrix_exp(M)
+    expM = _matrix_exp_dispatch(M)
     return expM[..., :n, :n], expM[..., :n, n:]
 
 
