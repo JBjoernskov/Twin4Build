@@ -31,6 +31,7 @@ import twin4build
 twin4build._IS_TESTING = True
 
 from twin4build.estimator._cuda_graph import CudaGraphRunner, cuda_graphs_enabled
+from twin4build.estimator._transcription import _aggregate_objective_targets
 
 
 def _pack_reference(Btt, Bty, Byy, iu_t, iu_y, n_seg):
@@ -98,6 +99,50 @@ class TestHessianPackingOrder(unittest.TestCase):
         Byy = torch.zeros(n_seg, Da, Da, dtype=torch.float64)
         got = _pack_vectorised(Btt, Bty, Byy, iu_t, iu_y, n_seg, n_theta, Da)
         self.assertEqual(got.numel(), expected)
+
+
+class TestObjectiveCurvatureAttribution(unittest.TestCase):
+    """Lagged objective terms must be assigned to their true producer."""
+
+    def test_lagged_period_boundaries(self):
+        actual = torch.tensor(
+            [[10.0, 100.0], [20.0, 200.0], [30.0, 300.0], [40.0, 400.0]],
+            dtype=torch.float64,
+        )
+        included = torch.tensor([True, True, True, True])
+        previous = torch.tensor([0, 0, 1, 2])
+        lagged = torch.tensor([True, False])
+
+        count, target = _aggregate_objective_targets(
+            actual, included, previous, lagged
+        )
+
+        # Lagged sensor: targets 0 and 1 both read producer 0; the final
+        # producer is never read.  Unlagged sensor stays on its own segment.
+        torch.testing.assert_close(
+            count[:, 0], actual.new_tensor([2.0, 1.0, 1.0, 0.0])
+        )
+        torch.testing.assert_close(
+            target[:, 0], actual.new_tensor([15.0, 30.0, 40.0, 0.0])
+        )
+        torch.testing.assert_close(count[:, 1], actual.new_ones(4))
+        torch.testing.assert_close(target[:, 1], actual[:, 1])
+
+    def test_warmup_exclusion_removes_first_duplicate(self):
+        actual = torch.tensor([[10.0], [20.0], [30.0], [40.0]])
+        included = torch.tensor([False, True, True, True])
+        previous = torch.tensor([0, 0, 1, 2])
+
+        count, target = _aggregate_objective_targets(
+            actual, included, previous, torch.tensor([True])
+        )
+
+        torch.testing.assert_close(
+            count[:, 0], torch.tensor([1.0, 1.0, 1.0, 0.0])
+        )
+        torch.testing.assert_close(
+            target[:, 0], torch.tensor([20.0, 30.0, 40.0, 0.0])
+        )
 
 
 class TestCudaGraphRunner(unittest.TestCase):
