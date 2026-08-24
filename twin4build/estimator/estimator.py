@@ -605,28 +605,6 @@ class Estimator:
                   nonlinear-constraint curvature in the supplied Lagrangian
                   Hessian. This enables IPOPT's strict KKT convergence test but
                   makes each Hessian evaluation more expensive.
-                - "structured_gauss_newton" (bool, default False): Use
-                  Gauss-Newton objective curvature together with exact
-                  multiplier-weighted nonlinear-constraint curvature. Only the
-                  residual-weighted objective curvature is omitted.
-                - "hessian_hybrid" (bool or dict, default False): Begin with
-                  structured Gauss-Newton and switch irreversibly to the exact
-                  Hessian inside one IPOPT solve. This preserves IPOPT's filter,
-                  barrier, scaling, and multipliers. A dict may set
-                  ``min_iterations`` (5), ``hard_max_iterations`` (12),
-                  ``feas_tol`` (1e-3), ``contraction_window`` (4), and
-                  ``contraction_threshold`` (0.8).
-                - "hessian_stages" (bool or dict, default False): Run an
-                  opt-in Gauss-Newton approach stage followed by an exact-
-                  Hessian polish, preserving the full collocation state and
-                  matching IPOPT multipliers between stages. A dict may set
-                  ``stage1_maxiter`` (40), ``min_iterations`` (10),
-                  ``switch_rule`` (``"feasible_stall"`` or
-                  ``"cost_aware"``), ``feas_tol`` (1e-3), ``patience`` (5),
-                  ``min_delta_rel`` (1e-3), ``theta_tol`` (1e-4),
-                  ``probe_interval`` (5), ``cost_ratio`` (3), and
-                  ``warm_start_duals`` (True). The ordinary ``maxiter`` remains
-                  the exact Stage-2 budget.
                 - "early_stopping" (bool or dict, default: enabled when
                   ``gauss_newton`` is on): Patience-based stagnation stop
                   with a best-feasible-iterate checkpoint. A dict overrides
@@ -863,7 +841,9 @@ class Estimator:
         # readable error.
         for s, e, ss in zip(start_time, end_time, step_size):
             if not isinstance(ss, int) or ss <= 0:
-                raise ValueError(f"step_size must be a positive integer, got {ss!r}")
+                raise ValueError(
+                    f"step_size must be a positive integer, got {ss!r}"
+                )
             if s >= e:
                 raise ValueError(
                     f"start_time ({s}) must be strictly less than end_time ({e})"
@@ -1000,7 +980,9 @@ class Estimator:
         LOGGER.config("Time periods: %d", n_periods)
         LOGGER.add_level()
         for i, (s, e, ss) in enumerate(zip(start_time, end_time, step_size)):
-            LOGGER.config("Period %d: start=%s | end=%s | step=%ss", i + 1, s, e, ss)
+            LOGGER.config(
+                "Period %d: start=%s | end=%s | step=%ss", i + 1, s, e, ss
+            )
         LOGGER.remove_level()
 
         # Store configuration
@@ -1061,11 +1043,7 @@ class Estimator:
         for df_ in df:
             self._n_timesteps += len(df_.index)
 
-        LOGGER.config(
-            "Measurements: %d devices, %d total timesteps",
-            len(self._measurements),
-            self._n_timesteps,
-        )
+        LOGGER.config("Measurements: %d devices, %d total timesteps", len(self._measurements), self._n_timesteps)
 
         # -- Per-measurement summary ------------------------------------------
         # Cheap diagnostic that tells "no data" vs "saturated" vs "well-excited"
@@ -1105,13 +1083,7 @@ class Estimator:
                 sat_str = "  CONSTANT"
             LOGGER.iter(
                 "%s  sd=%.4g  min=%.3g max=%.3g mean=%.3g std=%.3g%s",
-                md.id,
-                sd,
-                vmin,
-                vmax,
-                vmean,
-                vstd,
-                sat_str,
+                md.id, sd, vmin, vmax, vmean, vstd, sat_str,
             )
         LOGGER.remove_level()
 
@@ -1315,7 +1287,9 @@ class Estimator:
 
         return result
 
-    def _normalize_schedule_entry(self, entry: Any, phase_idx: int) -> Dict[str, Any]:
+    def _normalize_schedule_entry(
+        self, entry: Any, phase_idx: int
+    ) -> Dict[str, Any]:
         """Validate one schedule entry.  Unknown keys raise so typos
         surface early instead of silently being ignored.
         """
@@ -1657,19 +1631,13 @@ class Estimator:
                 # For shared parameters, all components share one parameter
                 shared_params.append((components, attr, x0, lb, ub))
 
-        LOGGER.config(
-            "Parameters: %d private, %d shared", len(private_params), len(shared_params)
-        )
+        LOGGER.config("Parameters: %d private, %d shared", len(private_params), len(shared_params))
         LOGGER.add_level()
         for comp, attr, x0, lb, ub in private_params:
-            LOGGER.debug(
-                "Private: %s.%s (x0=%s, lb=%s, ub=%s)", comp.id, attr, x0, lb, ub
-            )
+            LOGGER.debug("Private: %s.%s (x0=%s, lb=%s, ub=%s)", comp.id, attr, x0, lb, ub)
         for comps, attr, x0, lb, ub in shared_params:
             comp_ids = [c.id for c in comps]
-            LOGGER.debug(
-                "Shared: %s.%s (x0=%s, lb=%s, ub=%s)", comp_ids, attr, x0, lb, ub
-            )
+            LOGGER.debug("Shared: %s.%s (x0=%s, lb=%s, ub=%s)", comp_ids, attr, x0, lb, ub)
         LOGGER.remove_level()
 
         # Build flat lists for private parameters
@@ -1790,9 +1758,7 @@ class Estimator:
                 x0 = self._resolve_x0(components[0], attr, None)
                 for other in components[1:]:
                     other_val = self._parameter_value_as_array(rgetattr(other, attr))
-                    if not np.allclose(
-                        other_val, np.asarray(x0, dtype=float), equal_nan=True
-                    ):
+                    if not np.allclose(other_val, np.asarray(x0, dtype=float), equal_nan=True):
                         warnings.warn(
                             f"Shared parameter '{attr}' has omitted x0 but current "
                             f"values differ across components "
@@ -1963,7 +1929,9 @@ class Estimator:
             # execute; its theta is routed through the owning
             # FusedStateSpaceSystem under the member's module key (see
             # FusedStateSpaceSystem._unit_params).
-            fusion_map = getattr(sim_model, "_fusion_member_to_fused", None) or {}
+            fusion_map = (
+                getattr(sim_model, "_fusion_member_to_fused", None) or {}
+            )
             fused = fusion_map.get(getattr(base, "id", None))
             if fused is not None:
                 return fused, f"{fused._member_keys[base.id]}.{base_attr}"
@@ -2394,9 +2362,7 @@ class Estimator:
             Objective function value or penalty value if evaluation fails.
         """
         try:
-            theta_tensor = torch.tensor(
-                theta, dtype=tps.float_dtype(), device=self._device
-            )
+            theta_tensor = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
             res = self._obj(theta_tensor, output).detach().cpu().numpy()
         except FMICallException:
             res = self.res_fail
@@ -2487,19 +2453,13 @@ class Estimator:
             if param_idx not in seen_unique:
                 # Normalize the values for this unique parameter
                 lb_norm = param.normalize(
-                    torch.tensor(
-                        lb_values[i], dtype=tps.float_dtype(), device=self._device
-                    )
+                    torch.tensor(lb_values[i], dtype=tps.float_dtype(), device=self._device)
                 )
                 ub_norm = param.normalize(
-                    torch.tensor(
-                        ub_values[i], dtype=tps.float_dtype(), device=self._device
-                    )
+                    torch.tensor(ub_values[i], dtype=tps.float_dtype(), device=self._device)
                 )
                 x0_norm = param.normalize(
-                    torch.tensor(
-                        x0_values[i], dtype=tps.float_dtype(), device=self._device
-                    )
+                    torch.tensor(x0_values[i], dtype=tps.float_dtype(), device=self._device)
                 )
 
                 # Convert to numpy and flatten
@@ -2568,11 +2528,7 @@ class Estimator:
 
         assert len(self._flat_parameters) > 0, "No parameters to optimize"
 
-        LOGGER.config(
-            "Parameters to optimize: %d (theta size: %d)",
-            len(self._flat_parameters),
-            len(self._x0_norm),
-        )
+        LOGGER.config("Parameters to optimize: %d (theta size: %d)", len(self._flat_parameters), len(self._x0_norm))
 
         # Initialize simulator
         LOGGER.task("Initializing model")
@@ -2946,9 +2902,7 @@ class Estimator:
         ):
             if param_idx not in seen_unique:
                 start, end = self._theta_slices[param_idx]
-                x_norm = torch.tensor(
-                    result.x[start:end], dtype=tps.float_dtype(), device=self._device
-                )
+                x_norm = torch.tensor(result.x[start:end], dtype=tps.float_dtype(), device=self._device)
                 x_denorm = param.denormalize(x_norm)
                 result_x_list.extend(x_denorm.detach().cpu().numpy().flatten())
                 seen_unique.add(param_idx)
@@ -3026,8 +2980,7 @@ class Estimator:
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning(
                 "Fast single-shooting unavailable (%s) -- using the "
-                "object-graph objective.",
-                exc,
+                "object-graph objective.", exc,
             )
             return
         if not validate:
@@ -3081,24 +3034,20 @@ class Estimator:
                     "Fast single-shooting objective DISAGREES with the "
                     "object-graph objective (rel value err %.2e, rel grad err "
                     "%.2e) -- using the object-graph objective.",
-                    worst_val,
-                    worst_grad,
+                    worst_val, worst_grad,
                 )
                 return
             LOGGER.ok(
                 "Fast single-shooting objective enabled (validated: rel value "
                 "err %.2e, rel grad err %.2e; setup %.1fs).",
-                worst_val,
-                worst_grad,
-                time_module.time() - t0,
+                worst_val, worst_grad, time_module.time() - t0,
             )
             self._fast_obj = fast
         except Exception as exc:  # noqa: BLE001
             self._mse_scaled = None
             LOGGER.warning(
                 "Fast single-shooting validation failed (%s) -- using the "
-                "object-graph objective.",
-                exc,
+                "object-graph objective.", exc,
             )
 
     def _obj(self, theta: torch.Tensor, output: str) -> torch.Tensor:
@@ -3145,15 +3094,11 @@ class Estimator:
         #
 
         simulation_readings = {
-            com.id: torch.zeros(
-                (self._n_timesteps), dtype=tps.float_dtype(), device=self._device
-            )
+            com.id: torch.zeros((self._n_timesteps), dtype=tps.float_dtype(), device=self._device)
             for com, sd in self._measurements
         }
         actual_readings = {
-            com.id: torch.zeros(
-                (self._n_timesteps), dtype=tps.float_dtype(), device=self._device
-            )
+            com.id: torch.zeros((self._n_timesteps), dtype=tps.float_dtype(), device=self._device)
             for com, sd in self._measurements
         }
 
@@ -3190,9 +3135,7 @@ class Estimator:
                 y_actual_period = self.actual_readings[measuring_device.id][batch_idx]
                 y_actual_period = y_actual_period.to_numpy()
                 y_actual_period = y_actual_period[self._n_warmup :]
-                y_actual_period = torch.tensor(
-                    y_actual_period, dtype=tps.float_dtype(), device=self._device
-                )
+                y_actual_period = torch.tensor(y_actual_period, dtype=tps.float_dtype(), device=self._device)
 
                 # Store in concatenated arrays
                 end_idx = n_time_prev + len(y_model_period)
@@ -3379,11 +3322,7 @@ class Estimator:
             LOGGER.iter(
                 "n_theta=%d | n_residuals=%d | max ||J[:,i]||=%.4g | "
                 "zero-gradient params=%d | elapsed=%.1fs",
-                jac.shape[1],
-                jac.shape[0],
-                max_norm,
-                n_dead,
-                elapsed,
+                jac.shape[1], jac.shape[0], max_norm, n_dead, elapsed,
             )
             # Per-parameter breakdown, grouped by component, matching the
             # format of the theta-dump so the user can correlate with
@@ -3415,9 +3354,7 @@ class Estimator:
                 label = self._short_component_label(cid)
                 LOGGER.iter("%s: %s", label, "  ".join(comp_parts[cid]))
             LOGGER.remove_level()
-        except (
-            Exception
-        ) as exc:  # pragma: no cover -- diagnostic must never break the run
+        except Exception as exc:  # pragma: no cover -- diagnostic must never break the run
             LOGGER.warning("Initial Jacobian diagnostic failed: %s", exc)
             try:
                 LOGGER.remove_level()
@@ -3454,9 +3391,7 @@ class Estimator:
                 continue
             seen_unique.add(int(param_idx))
             start, end = self._theta_slices[int(param_idx)]
-            x_norm = torch.tensor(
-                theta_np[start:end], dtype=tps.float_dtype(), device=self._device
-            )
+            x_norm = torch.tensor(theta_np[start:end], dtype=tps.float_dtype(), device=self._device)
             try:
                 x_user = param.denormalize(x_norm).detach().cpu().numpy().flatten()
             except Exception:
@@ -3525,16 +3460,13 @@ class Estimator:
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
                     "eval=%d objective failed (%s: %s) -- returning penalty",
-                    self._eval_count,
-                    type(exc).__name__,
-                    exc,
+                    self._eval_count, type(exc).__name__, exc,
                 )
                 try:
                     dump_lines = self._format_theta_dump(theta.detach().cpu().numpy())
                     LOGGER.warning(
                         "theta[%d] at failure  (%d components, denormalized)",
-                        self._eval_count,
-                        len(dump_lines),
+                        self._eval_count, len(dump_lines),
                     )
                     LOGGER.add_level()
                     for line in dump_lines:
@@ -3542,8 +3474,7 @@ class Estimator:
                     LOGGER.remove_level()
                 except Exception as dump_exc:  # noqa: BLE001
                     LOGGER.warning(
-                        "could not dump failing theta: %s",
-                        dump_exc,
+                        "could not dump failing theta: %s", dump_exc,
                     )
                 penalty = 1e10
                 if output == "scalar":
@@ -3558,9 +3489,7 @@ class Estimator:
                 # the solver so the next ``torch.equal`` short-circuit
                 # returns the same penalty until the solver moves
                 # ``theta``.
-                self._loglike = torch.tensor(
-                    obj_val, dtype=tps.float_dtype(), device=self._device
-                )
+                self._loglike = torch.tensor(obj_val, dtype=tps.float_dtype(), device=self._device)
                 self._last_rmse = float("nan")
                 self._last_rmse_per_sensor = {}
                 self._last_penalty = 0.0
@@ -3569,9 +3498,7 @@ class Estimator:
             obj_f = float(np.sum(obj_val))
             if output == "scalar":
                 rmse_f = (
-                    float(self._last_rmse)
-                    if hasattr(self, "_last_rmse")
-                    else float("nan")
+                    float(self._last_rmse) if hasattr(self, "_last_rmse") else float("nan")
                 )
                 if hasattr(self, "_last_penalty") and self._last_penalty > 0:
                     LOGGER.iter(
@@ -3596,9 +3523,7 @@ class Estimator:
                 # directly comparable to the scalar-mode log line.
                 ls_obj = 0.5 * float(np.dot(obj_val, obj_val))
                 rmse_f = (
-                    float(self._last_rmse)
-                    if hasattr(self, "_last_rmse")
-                    else float("nan")
+                    float(self._last_rmse) if hasattr(self, "_last_rmse") else float("nan")
                 )
                 LOGGER.iter(
                     "eval=%d | obj=%.6f | rmse=%.4f | elapsed=%.1fs",
@@ -3609,9 +3534,7 @@ class Estimator:
                 )
             if getattr(self, "_log_parameters", False):
                 dump_lines = self._format_theta_dump(theta.detach().cpu().numpy())
-                LOGGER.iter(
-                    "theta[%d]  (%d components)", self._eval_count, len(dump_lines)
-                )
+                LOGGER.iter("theta[%d]  (%d components)", self._eval_count, len(dump_lines))
                 LOGGER.add_level()
                 for line in dump_lines:
                     LOGGER.iter("%s", line)
@@ -3637,8 +3560,7 @@ class Estimator:
                 )
                 LOGGER.iter(
                     "rmse_per_sensor[%d]  (%d sensors, worst first, new best)",
-                    self._eval_count,
-                    len(sorted_items),
+                    self._eval_count, len(sorted_items),
                 )
                 LOGGER.add_level()
                 for sid, v in sorted_items:
@@ -3731,13 +3653,10 @@ class Estimator:
                 self._jac = g.detach()
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
-                    "fast jacobian eval failed (%s: %s) -- returning zero " "gradient",
-                    type(exc).__name__,
-                    exc,
+                    "fast jacobian eval failed (%s: %s) -- returning zero "
+                    "gradient", type(exc).__name__, exc,
                 )
-                self._jac = torch.zeros(
-                    theta.numel(), dtype=tps.float_dtype(), device=self._device
-                )
+                self._jac = torch.zeros(theta.numel(), dtype=tps.float_dtype(), device=self._device)
             jac_np = np.asarray(self._jac.cpu().numpy(), dtype=np.float64)
             LOGGER.debug("grad_norm=%.4f", float(np.linalg.norm(jac_np.ravel())))
             return jac_np
@@ -3760,19 +3679,17 @@ class Estimator:
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
                     "jacobian eval failed (%s: %s) -- returning zero gradient",
-                    type(exc).__name__,
-                    exc,
+                    type(exc).__name__, exc,
                 )
                 if output == "scalar":
                     jac_np = np.zeros(theta.numel(), dtype=np.float64)
                 else:
                     jac_np = np.zeros(
-                        (self._n_timesteps * len(self._measurements), theta.numel()),
+                        (self._n_timesteps * len(self._measurements),
+                         theta.numel()),
                         dtype=np.float64,
                     )
-                self._jac = torch.tensor(
-                    jac_np, dtype=tps.float_dtype(), device=self._device
-                )
+                self._jac = torch.tensor(jac_np, dtype=tps.float_dtype(), device=self._device)
             LOGGER.debug(
                 "grad_norm=%.4f",
                 float(np.linalg.norm(jac_np.ravel())),

@@ -1,6 +1,5 @@
 # Standard library imports
 import datetime
-import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -39,7 +38,7 @@ def _expm_ss(M, order=8, squarings=18):
     """
     N = M.shape[-1]
     I = torch.eye(N, dtype=M.dtype, device=M.device)
-    Ms = M / (2.0**squarings)
+    Ms = M / (2.0 ** squarings)
     term = I
     acc = I
     for k in range(1, order + 1):
@@ -64,98 +63,6 @@ def _functorch_active() -> bool:
         return True
 
 
-class _VmapNativeMatrixExp(torch.autograd.Function):
-    """Native matrix exponential with explicit ``torch.func`` transform rules.
-
-    PyTorch's native operation accepts physical leading batch dimensions, but
-    currently has no batching rule for the logical dimensions introduced by
-    ``vmap``.  The explicit rule below materializes each logical dimension as a
-    physical leading dimension before entering ``torch.linalg.matrix_exp``.
-
-    JVPs and VJPs use the block-matrix Fréchet derivative
-
-    ``L_exp(A, E) = exp([[A, E], [0, A]])[:n, n:]``.
-
-    Calling this same transform-aware operation for the block exponential is
-    intentional: batches introduced by nested ``jacfwd``/``jacrev`` transforms
-    are physicalized too, including while differentiating the backward.
-    """
-
-    @staticmethod
-    def forward(A):
-        return torch.linalg.matrix_exp(A)
-
-    @staticmethod
-    def setup_context(ctx, inputs, output):
-        (A,) = inputs
-        ctx.save_for_backward(A)
-        ctx.save_for_forward(A)
-
-    @staticmethod
-    def _frechet(A, E):
-        n = A.shape[-1]
-        zeros = torch.zeros_like(A)
-        block = torch.cat(
-            [
-                torch.cat([A, E], dim=-1),
-                torch.cat([zeros, A], dim=-1),
-            ],
-            dim=-2,
-        )
-        return _VmapNativeMatrixExp.apply(block)[..., :n, n:]
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        (A,) = ctx.saved_tensors
-        return _VmapNativeMatrixExp._frechet(A.mH, grad_output)
-
-    @staticmethod
-    def jvp(ctx, dA):
-        (A,) = ctx.saved_tensors
-        return _VmapNativeMatrixExp._frechet(A, dA)
-
-    @staticmethod
-    def vmap(info, in_dims, A):
-        (batch_dim,) = in_dims
-        if batch_dim is None:
-            return _VmapNativeMatrixExp.apply(A), None
-        return _VmapNativeMatrixExp.apply(A.movedim(batch_dim, 0)), 0
-
-
-def _matrix_exp_native_vmap(M):
-    """Apply native matrix exponential with explicit nested-vmap support."""
-    return _VmapNativeMatrixExp.apply(M)
-
-
-def _matrix_exp_dispatch(M):
-    """Evaluate the block-matrix exponential for one-step discretization.
-
-    Plain eager/autograd keeps using PyTorch's native implementation.  Under
-    ``torch.func`` transforms, ``TWIN4BUILD_MATRIX_EXP`` selects the current
-    vmap-safe scaling-and-squaring expression (``"ss"``, the default) or the
-    unsupported-native control (``"native"``) or the transform-aware native
-    implementation (``"native_vmap"``).
-
-    Selection is environment-only and therefore constant for an entire
-    derivative callback.  In particular, there is no tensor-dependent
-    finite-value branch inside ``vmap``/``jacfwd``/``jacrev``.
-    """
-    if not _functorch_active():
-        return torch.linalg.matrix_exp(M)
-
-    mode = os.environ.get("TWIN4BUILD_MATRIX_EXP", "ss").lower()
-    if mode == "ss":
-        return _expm_ss(M)
-    if mode == "native":
-        return torch.linalg.matrix_exp(M)
-    if mode == "native_vmap":
-        return _matrix_exp_native_vmap(M)
-    raise ValueError(
-        "TWIN4BUILD_MATRIX_EXP must be 'ss', 'native', or 'native_vmap', "
-        f"got {mode!r}"
-    )
-
-
 def _discretize_onestep(A, B, E, F, u, sample_time):
     """Effective-matrix ZOH discretization: ``(Ad, Bd)`` for the current ``u``."""
     # Broadcast-friendly bilinear terms (einsum would require the batch dims of
@@ -174,7 +81,11 @@ def _discretize_onestep(A, B, E, F, u, sample_time):
     # dim that the freshly-allocated M does not.
     top = torch.cat([A_eff * T, B_eff * T], dim=-1)  # (..., n, n+m)
     M = torch.nn.functional.pad(top, (0, 0, 0, m))  # add m zero rows -> (..., n+m, n+m)
-    expM = _matrix_exp_dispatch(M)
+    # Under functorch transforms matrix_exp has no batching rule, so use the
+    # pure-matmul scaling-and-squaring helper; in plain eager/autograd (the
+    # fast single-shooting rollout) the fused native op is much cheaper per
+    # step and has a native backward.
+    expM = _expm_ss(M) if _functorch_active() else torch.matrix_exp(M)
     return expM[..., :n, :n], expM[..., :n, n:]
 
 
@@ -218,13 +129,9 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
             m_dim = B.shape[-1]
             mask = torch.zeros(m_dim, dtype=torch.bool, device=u.device)
             if E is not None:
-                mask |= (
-                    (E.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
-                )
+                mask |= (E.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
             if F is not None:
-                mask |= (
-                    (F.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
-                )
+                mask |= (F.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
             disc_cache["mask"] = mask
         u_rel_live = u[..., mask]
         if u_rel_live.requires_grad:
