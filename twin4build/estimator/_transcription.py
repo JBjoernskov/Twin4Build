@@ -93,6 +93,29 @@ def _normalize_hessian_stages(value):
     return cfg
 
 
+def _normalize_hessian_hybrid(value):
+    """Validate the in-place structured-GN to exact-Hessian policy."""
+    if value in (None, False):
+        return None
+    cfg = dict(value) if isinstance(value, dict) else {}
+    if value is not True and not isinstance(value, dict):
+        raise TypeError("hessian_hybrid must be False, True, or a dict")
+    cfg.setdefault("min_iterations", 5)
+    cfg.setdefault("hard_max_iterations", 12)
+    cfg.setdefault("feas_tol", 1e-3)
+    cfg.setdefault("contraction_window", 4)
+    cfg.setdefault("contraction_threshold", 0.8)
+    if int(cfg["min_iterations"]) < 0:
+        raise ValueError("hessian_hybrid.min_iterations cannot be negative")
+    if int(cfg["hard_max_iterations"]) < max(1, int(cfg["min_iterations"])):
+        raise ValueError(
+            "hessian_hybrid.hard_max_iterations must be at least min_iterations"
+        )
+    if not 0.0 < float(cfg["contraction_threshold"]):
+        raise ValueError("hessian_hybrid.contraction_threshold must be positive")
+    return cfg
+
+
 def _segment_boundaries(n_t: int, n_segments: int) -> List[int]:
     """Partition ``n_t`` timesteps into ``n_segments`` contiguous blocks.
 
@@ -438,6 +461,9 @@ def _solve_sparse_collocation(
     # trajectory manifold (equivalence/stationarity testing).
     pin_initial_state = bool(options.pop("pin_initial_state", False))
     hessian_stages = _normalize_hessian_stages(options.pop("hessian_stages", False))
+    hessian_hybrid = _normalize_hessian_hybrid(options.pop("hessian_hybrid", False))
+    if hessian_stages is not None and hessian_hybrid is not None:
+        raise ValueError("hessian_stages and hessian_hybrid are mutually exclusive")
     # ``gauss_newton``: supply IPOPT with a Gauss-Newton Hessian of the
     # least-squares objective (J^T W J from the measurement Jacobians) instead
     # of the default limited-memory BFGS approximation.  Second-order
@@ -454,7 +480,11 @@ def _solve_sparse_collocation(
     # tangents over one reverse pass, vs Da cotangents) in exchange for a
     # reachable KKT test and Newton-rate convergence.
     exact_hessian = bool(options.pop("exact_hessian", False))
+    structured_gauss_newton = bool(options.pop("structured_gauss_newton", False))
     if hessian_stages is not None:
+        gauss_newton = True
+        exact_hessian = True
+    if hessian_hybrid is not None or structured_gauss_newton:
         gauss_newton = True
         exact_hessian = True
     # ``early_stopping``: patience-based stagnation stop + best-feasible-iterate
@@ -1372,8 +1402,10 @@ def _solve_sparse_collocation(
         hess_rows = hess_cols = hess_vals_fn = None
         exact_hessian_provider = None
         gn_hessian_provider = None
+        structured_gn_hessian_provider = None
         hessian_stats = {
             "gauss_newton": {"calls": 0, "seconds": 0.0},
+            "structured_gauss_newton": {"calls": 0, "seconds": 0.0},
             "exact": {"calls": 0, "seconds": 0.0},
         }
         if gauss_newton and exact_hessian:
@@ -1731,6 +1763,66 @@ def _solve_sparse_collocation(
                 hess_cols.copy(),
             )
 
+            def _structured_gn_hess_vals(z, sigma, lam_g):
+                """GN objective plus exact nonlinear-constraint curvature."""
+                started = time.perf_counter()
+                z_np = np.asarray(z, dtype=np.float64)
+                d = _derivs(z_np)
+                Jt_ = d["Jt"][incl_t, Da:, :]
+                Jy = d["Jx"][incl_t, Da:, :]
+                Js = torch.cat([Jt_, Jy], dim=2)
+                with torch.no_grad():
+                    B = torch.einsum("gmi,gmj->gij", Js, Js) * (float(sigma) * gn_scale)
+                    Btt = B[:, :n_theta, :n_theta].sum(0)
+                    Bty = torch.zeros(
+                        (n_seg, n_theta, Da),
+                        dtype=tps.float_dtype(),
+                        device=dev,
+                    ).index_add(0, incl_t, B[:, :n_theta, n_theta:])
+                    Byy = torch.zeros(
+                        (n_seg, Da, Da),
+                        dtype=tps.float_dtype(),
+                        device=dev,
+                    ).index_add(0, incl_t, B[:, n_theta:, n_theta:])
+
+                    zt = torch.tensor(z_np, dtype=tps.float_dtype(), device=dev)
+                    lam_mat = torch.tensor(
+                        np.asarray(lam_g, dtype=np.float64).reshape(n_links, Da),
+                        dtype=tps.float_dtype(),
+                        device=dev,
+                    )
+                    (Hyy, _Hyt), (Hty, Htt) = _curvature(
+                        zt[:n_theta],
+                        zt[n_theta:].reshape(n_seg, Da),
+                        lam_mat,
+                    )
+                    Btt = Btt + Htt.sum(0)
+                    Bty = Bty.index_add(0, cp_i, Hty)
+                    Byy = Byy.index_add(0, cp_i, Hyy)
+                    packed = torch.cat(
+                        [
+                            Btt[_iu_t0, _iu_t1],
+                            torch.cat(
+                                [
+                                    Bty.reshape(n_seg, n_theta * Da),
+                                    Byy[:, _iu_y0, _iu_y1],
+                                ],
+                                dim=1,
+                            ).reshape(-1),
+                        ]
+                    )
+                hessian_stats["structured_gauss_newton"]["calls"] += 1
+                hessian_stats["structured_gauss_newton"]["seconds"] += (
+                    time.perf_counter() - started
+                )
+                return packed.detach().cpu().numpy()
+
+            structured_gn_hessian_provider = (
+                _structured_gn_hess_vals,
+                hess_rows.copy(),
+                hess_cols.copy(),
+            )
+
             LOGGER.config(
                 "EXACT Hessian of the Lagrangian enabled: %d nonzeros (upper "
                 "triangle), %d segments, %d links, %d scored. Objective term = "
@@ -1743,7 +1835,10 @@ def _solve_sparse_collocation(
                 n_links,
                 n_i,
             )
-        if gauss_newton and (not exact_hessian or hessian_stages is not None):
+        gn_options = dict(options or {})
+        if gauss_newton and (
+            not exact_hessian or hessian_stages is not None or structured_gauss_newton
+        ):
             # Termination: GN drops the constraint curvature (lam_g * d2g), so
             # the dual infeasibility plateaus (oscillating ~1e-3..1e-1) and
             # IPOPT's default tol=1e-8 is unreachable -- it then burns hundreds
@@ -1772,7 +1867,6 @@ def _solve_sparse_collocation(
             # converged.  With ``exact_hessian=True`` the curvature is exact,
             # dual infeasibility IS reachable, none of this block applies, and
             # IPOPT's ordinary tol=1e-8 convergence test governs.
-            gn_options = dict(options or {})
             gn_options.setdefault("acceptable_tol", 1e3)
             # 5 iterations at a 1e-4 relative objective change.  (An earlier
             # version of this comment claimed 1e-5 over 10 iterations; the code
@@ -1908,7 +2002,17 @@ def _solve_sparse_collocation(
             z0_a, jac_rows_a, jac_cols_a, n_g_a, g_fun_fast, g_jac_vals_fast, Da
         )
         es_cfg = None
-        if hessian_stages is not None:
+        hybrid_switch_state = None
+        if hessian_hybrid is not None:
+            hybrid_switch_state = {"use_exact": False}
+            es_cfg = {
+                "switch_rule": "guarded",
+                "switch_in_place": True,
+                "switch_state": hybrid_switch_state,
+                "n_theta": n_theta,
+                **hessian_hybrid,
+            }
+        elif hessian_stages is not None:
             es_cfg = {
                 key: hessian_stages[key]
                 for key in (
@@ -1973,9 +2077,60 @@ def _solve_sparse_collocation(
                 "warm_start_duals": stage_result.warm_start_duals,
                 "restored_best": stage_result.restored_best,
                 "kkt_probes": stage_result.kkt_probes,
+                "iteration_history": history,
+                "callback_stats": stage_result.callback_stats,
+                "solver_counters": stage_result.solver_counters,
+                "switch_reason": stage_result.switch_reason,
+                "switch_iteration": stage_result.switch_iteration,
             }
 
-        if hessian_stages is not None:
+        hybrid_records = None
+        if hessian_hybrid is not None:
+            if structured_gn_hessian_provider is None or exact_hessian_provider is None:
+                raise RuntimeError(
+                    "hessian_hybrid requires structured-GN and exact Hessian providers"
+                )
+            structured_fn, hybrid_rows, hybrid_cols = structured_gn_hessian_provider
+            exact_fn, exact_rows, exact_cols = exact_hessian_provider
+            if not (
+                np.array_equal(hybrid_rows, exact_rows)
+                and np.array_equal(hybrid_cols, exact_cols)
+            ):
+                raise RuntimeError(
+                    "in-place Hessian switching requires one fixed union sparsity pattern"
+                )
+
+            def _hybrid_hess_vals(z, sigma, lam_g):
+                if hybrid_switch_state["use_exact"]:
+                    return exact_fn(z, sigma, lam_g)
+                return structured_fn(z, sigma, lam_g)
+
+            hybrid_options = dict(options)
+            hybrid_options["acceptable_iter"] = 0
+            result = solve_ipopt_constrained(
+                z0_a,
+                lb_a,
+                ub_a,
+                obj_fun,
+                obj_grad,
+                n_g_a,
+                g_fun_fast,
+                g_jac_vals_fast,
+                jac_rows_a,
+                jac_cols_a,
+                options=hybrid_options,
+                hess_vals=_hybrid_hess_vals,
+                hess_rows=hybrid_rows,
+                hess_cols=hybrid_cols,
+                early_stopping=es_cfg,
+            )
+            hybrid_records = {
+                "switched": bool(hybrid_switch_state["use_exact"]),
+                "switch_reason": result.switch_reason,
+                "switch_iteration": result.switch_iteration,
+                "hessian_callbacks": hessian_stats,
+            }
+        elif hessian_stages is not None:
             if gn_hessian_provider is None or exact_hessian_provider is None:
                 raise RuntimeError(
                     "hessian_stages requires both composable Gauss-Newton and "
@@ -2054,9 +2209,7 @@ def _solve_sparse_collocation(
                     early_stopping=None,
                     lam_x0=stage1.lam_x if use_duals else None,
                     lam_g0=stage1.lam_g if use_duals else None,
-                    mu_init=(
-                        None if stage1.restored_best else stage1.mu_final
-                    ),
+                    mu_init=(None if stage1.restored_best else stage1.mu_final),
                 )
                 stage_records["stage2"] = _stage_summary(stage2)
                 result = stage2
@@ -2080,12 +2233,18 @@ def _solve_sparse_collocation(
                 hessian_stats["exact"]["seconds"] / exact_calls if exact_calls else None
             )
             stage_records["hessian_callbacks"] = hessian_stats
-            stage_records["rho_exact_over_gn"] = (
+            # Gross callback ratio retained only as a diagnostic.  It is not a
+            # marginal iteration-cost ratio: the GN callback can reuse/cache
+            # Jacobian work and the two stages visit different iterates.
+            stage_records["gross_hessian_callback_ratio"] = (
                 exact_avg / gn_avg if gn_avg and exact_avg else None
             )
             stage_records["exact_hessian_evaluations_avoided"] = gn_calls
         else:
-            if exact_hessian_provider is not None:
+            if structured_gauss_newton and structured_gn_hessian_provider is not None:
+                hess_vals_fn, hess_rows, hess_cols = structured_gn_hessian_provider
+                solve_options = gn_options
+            elif exact_hessian_provider is not None:
                 hess_vals_fn, hess_rows, hess_cols = exact_hessian_provider
                 solve_options = options
             elif gn_hessian_provider is not None:
@@ -2116,14 +2275,20 @@ def _solve_sparse_collocation(
         audit["hessian_callbacks"] = hessian_stats
         if hessian_stages is not None:
             audit["hessian_stages"] = stage_records
+        if hessian_hybrid is not None:
+            audit["hessian_hybrid"] = hybrid_records
         result.x = np.asarray(result.x, dtype=np.float64)[:n_theta]
         result.nfev = self._eval_count
         return result
 
-    if hessian_stages is not None:
+    if (
+        hessian_stages is not None
+        or hessian_hybrid is not None
+        or structured_gauss_newton
+    ):
         raise RuntimeError(
-            "hessian_stages requires the composable torch.func collocation "
-            "path; this model fell back to object-graph derivatives"
+            "structured/staged Hessians require the composable torch.func "
+            "collocation path; this model fell back to object-graph derivatives"
         )
     if pin_initial_state and (composer is None or CAP is None):
         for s0 in period_starts:

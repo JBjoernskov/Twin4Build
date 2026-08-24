@@ -605,6 +605,17 @@ class Estimator:
                   nonlinear-constraint curvature in the supplied Lagrangian
                   Hessian. This enables IPOPT's strict KKT convergence test but
                   makes each Hessian evaluation more expensive.
+                - "structured_gauss_newton" (bool, default False): Use
+                  Gauss-Newton objective curvature together with exact
+                  multiplier-weighted nonlinear-constraint curvature. Only the
+                  residual-weighted objective curvature is omitted.
+                - "hessian_hybrid" (bool or dict, default False): Begin with
+                  structured Gauss-Newton and switch irreversibly to the exact
+                  Hessian inside one IPOPT solve. This preserves IPOPT's filter,
+                  barrier, scaling, and multipliers. A dict may set
+                  ``min_iterations`` (5), ``hard_max_iterations`` (12),
+                  ``feas_tol`` (1e-3), ``contraction_window`` (4), and
+                  ``contraction_threshold`` (0.8).
                 - "hessian_stages" (bool or dict, default False): Run an
                   opt-in Gauss-Newton approach stage followed by an exact-
                   Hessian polish, preserving the full collocation state and

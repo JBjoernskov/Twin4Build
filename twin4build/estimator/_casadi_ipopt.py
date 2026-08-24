@@ -360,6 +360,15 @@ def solve_ipopt_constrained(
     lb = np.asarray(lb, dtype=np.float64).flatten()
     ub = np.asarray(ub, dtype=np.float64).flatten()
     n = x0.size
+    callback_stats = {
+        name: {"calls": 0, "seconds": 0.0}
+        for name in ("objective", "gradient", "constraints", "jacobian", "hessian")
+    }
+
+    def _record_callback(name, started):
+        callback_stats[name]["calls"] += 1
+        callback_stats[name]["seconds"] += time.perf_counter() - started
+
     jac_rows = np.asarray(jac_rows, dtype=np.int64).flatten()
     jac_cols = np.asarray(jac_cols, dtype=np.int64).flatten()
     warm_start_duals = False
@@ -409,8 +418,11 @@ def solve_ipopt_constrained(
             return ca.Sparsity.dense(1, n)
 
         def eval(self, arg):
+            started = time.perf_counter()
             x = np.asarray(arg[0]).flatten()
-            return [ca.DM(np.asarray(grad(x), dtype=np.float64).reshape(1, n))]
+            result = ca.DM(np.asarray(grad(x), dtype=np.float64).reshape(1, n))
+            _record_callback("gradient", started)
+            return [result]
 
     class _ObjCB(ca.Callback):
         def __init__(self, name, opts={}):
@@ -438,7 +450,10 @@ def solve_ipopt_constrained(
             return self._g
 
         def eval(self, arg):
-            return [float(fun(np.asarray(arg[0]).flatten()))]
+            started = time.perf_counter()
+            result = float(fun(np.asarray(arg[0]).flatten()))
+            _record_callback("objective", started)
+            return [result]
 
     class _GJacCB(ca.Callback):
         def __init__(self, name, opts={}):
@@ -458,11 +473,14 @@ def solve_ipopt_constrained(
             return jac_sp  # <-- the block-bidiagonal pattern IPOPT exploits
 
         def eval(self, arg):
+            started = time.perf_counter()
             x = np.asarray(arg[0]).flatten()
             vals = np.asarray(g_jac_vals(x), dtype=np.float64).flatten()
             reordered = np.empty_like(vals)
             reordered[perm] = vals
-            return [ca.DM(jac_sp, reordered)]
+            result = ca.DM(jac_sp, reordered)
+            _record_callback("jacobian", started)
+            return [result]
 
     class _GCB(ca.Callback):
         def __init__(self, name, opts={}):
@@ -502,8 +520,11 @@ def solve_ipopt_constrained(
             return jac_sp
 
         def eval(self, arg):
+            started = time.perf_counter()
             x = np.asarray(arg[0]).flatten()
-            return [ca.DM(np.asarray(g_fun(x), dtype=np.float64).reshape(n_g, 1))]
+            result = ca.DM(np.asarray(g_fun(x), dtype=np.float64).reshape(n_g, 1))
+            _record_callback("constraints", started)
+            return [result]
 
     # Optional user-supplied Hessian of the Lagrangian (e.g. Gauss-Newton).
     # CasADi's nlpsol accepts a custom ``hess_lag`` Function with signature
@@ -572,6 +593,7 @@ def solve_ipopt_constrained(
                 return hess_sp
 
             def eval(self, arg):
+                started = time.perf_counter()
                 x = np.asarray(arg[0]).flatten()
                 sigma = float(arg[2])
                 # ``lam_g`` carries the constraint multipliers.  A provider that
@@ -588,7 +610,9 @@ def solve_ipopt_constrained(
                     vals = np.asarray(hess_vals(x, sigma), dtype=np.float64).flatten()
                 reordered = np.empty_like(vals)
                 reordered[h_perm] = vals
-                return [ca.DM(hess_sp, reordered)]
+                result = ca.DM(hess_sp, reordered)
+                _record_callback("hessian", started)
+                return [result]
 
         hess_cb = _HessLagCB("nlp_hess_l")
 
@@ -627,12 +651,39 @@ def solve_ipopt_constrained(
             "iterations": 0,
             "best_viol": np.inf,
             "kkt_probes": [],
+            "switch_in_place": bool(early_stopping.get("switch_in_place", False)),
+            "switch_state": early_stopping.get("switch_state"),
+            "hard_max_iterations": int(early_stopping.get("hard_max_iterations", 0)),
+            "contraction_window": max(
+                2, int(early_stopping.get("contraction_window", 4))
+            ),
+            "contraction_threshold": float(
+                early_stopping.get("contraction_threshold", 0.8)
+            ),
+            "residual_history": [],
+            "switch_reason": None,
+            "switch_iteration": None,
         }
-        if es["switch_rule"] not in ("feasible_stall", "cost_aware"):
+        if es["switch_rule"] not in ("feasible_stall", "cost_aware", "guarded"):
             raise ValueError(
-                "early_stopping switch_rule must be 'feasible_stall' or "
-                f"'cost_aware', got {es['switch_rule']!r}"
+                "early_stopping switch_rule must be 'feasible_stall', "
+                f"'cost_aware', or 'guarded', got {es['switch_rule']!r}"
             )
+        if es["switch_in_place"] and not isinstance(es["switch_state"], dict):
+            raise TypeError("switch_in_place requires a mutable switch_state dict")
+
+        def _request_transition(reason):
+            if es["switch_in_place"]:
+                es["switch_reason"] = reason
+                es["switch_iteration"] = es["iterations"]
+                es["switch_state"].update(
+                    use_exact=True,
+                    reason=reason,
+                    iteration=es["iterations"],
+                )
+                return [0.0]
+            es["stop_reason"] = reason
+            return [1.0]
 
         # Seed the checkpoint with the WARM START itself, before IPOPT runs.
         # The iteration callback only ever sees post-``bound_push`` iterates --
@@ -705,6 +756,17 @@ def solve_ipopt_constrained(
                 lam_x = np.asarray(arg[3]).flatten()
                 lam_g = np.asarray(arg[4]).flatten()
                 feasible = viol <= es["feas_tol"]
+                if es["switch_in_place"] and es["switch_state"]["use_exact"]:
+                    return [0.0]
+                if (
+                    es["switch_rule"] == "guarded"
+                    and es["iterations"] >= es["min_iterations"]
+                    and es["hard_max_iterations"] > 0
+                    and es["iterations"] >= es["hard_max_iterations"]
+                ):
+                    return _request_transition(
+                        "guarded fast-phase iteration budget exhausted"
+                    )
                 # Counting starts at the first feasible incumbent: before that
                 # (initial infeasibility reduction) the objective is evaluated
                 # off the trajectory manifold and is meaningless.
@@ -734,6 +796,31 @@ def solve_ipopt_constrained(
                 es["stall_f"] = 0 if improved_f else es["stall_f"] + 1
                 es["stall_theta"] = 0 if moved_theta else es["stall_theta"] + 1
                 if es["iterations"] < es["min_iterations"]:
+                    return [0.0]
+                if es["switch_rule"] == "guarded":
+                    grad_now = np.asarray(grad(x), dtype=np.float64).flatten()
+                    jac_now = np.asarray(g_jac_vals(x), dtype=np.float64).flatten()
+                    dual = grad_now + lam_x
+                    if n_g:
+                        dual += np.bincount(
+                            jac_cols,
+                            weights=jac_now * lam_g[jac_rows],
+                            minlength=n,
+                        )
+                    residual = max(viol, float(np.abs(dual).max()))
+                    es["residual_history"].append(residual)
+                    window = es["contraction_window"]
+                    if feasible and len(es["residual_history"]) > window:
+                        recent = np.asarray(es["residual_history"][-(window + 1) :])
+                        positive = recent > 0.0
+                        if positive.all():
+                            contractions = recent[1:] / recent[:-1]
+                            contraction = float(np.exp(np.median(np.log(contractions))))
+                            if contraction >= es["contraction_threshold"]:
+                                return _request_transition(
+                                    "guarded KKT contraction stalled "
+                                    f"(q={contraction:.3g})"
+                                )
                     return [0.0]
                 if (
                     es["switch_rule"] == "cost_aware"
@@ -767,24 +854,21 @@ def solve_ipopt_constrained(
                             if remaining > (
                                 es["cost_ratio"] * es["exact_phase_iterations"]
                             ):
-                                es["stop_reason"] = (
+                                return _request_transition(
                                     "estimated remaining GN cost exceeds "
                                     "exact-Hessian phase cost"
                                 )
-                                return [1.0]
                     return [0.0]
                 if es["switch_rule"] == "cost_aware":
                     return [0.0]
                 if es["stall_f"] >= es["patience"]:
-                    es["stop_reason"] = (
+                    return _request_transition(
                         f"objective stagnant for {es['stall_f']} iterations"
                     )
-                    return [1.0]
                 if es["stall_theta"] >= es["patience"]:
-                    es["stop_reason"] = (
+                    return _request_transition(
                         f"theta stagnant for {es['stall_theta']} iterations"
                     )
-                    return [1.0]
                 return [0.0]
 
         iter_cb = _IterCB("t4b_early_stop")
@@ -817,7 +901,7 @@ def solve_ipopt_constrained(
         ipopt_opts.setdefault("warm_start_slack_bound_push", 1e-9)
     if mu_init is not None and np.isfinite(mu_init) and float(mu_init) > 0.0:
         ipopt_opts.setdefault("mu_init", float(mu_init))
-    solver_opts = {"ipopt": ipopt_opts}
+    solver_opts = {"ipopt": ipopt_opts, "record_time": True}
     if hess_cb is not None:
         solver_opts["hess_lag"] = hess_cb
     if iter_cb is not None:
@@ -852,6 +936,12 @@ def solve_ipopt_constrained(
         else {}
     )
     mu_history = iteration_history.get("mu", [])
+    solver_counters = {
+        str(key): value
+        for key, value in stats.items()
+        if str(key).startswith(("n_call_", "t_wall_", "t_proc_"))
+        and isinstance(value, (int, float, np.integer, np.floating))
+    }
     return_status = str(stats.get("return_status", ""))
     message = return_status
     x_opt = np.asarray(sol["x"]).flatten()
@@ -867,7 +957,7 @@ def solve_ipopt_constrained(
         # Restore the best feasible iterate when IPOPT's last iterate is worse
         # or infeasible (max-iter, user-stop and restoration exits all return
         # whatever the final iterate happened to be).
-        if es["z_best"] is not None:
+        if es["z_best"] is not None and not es["switch_in_place"]:
             sol_viol = float(np.abs(np.asarray(sol["g"])).max()) if n_g else 0.0
             if sol_viol > es["feas_tol"] or es["f_best"] < f_opt:
                 x_opt = es["z_best"]
@@ -889,8 +979,12 @@ def solve_ipopt_constrained(
         restored_best=restored_best,
         elapsed=elapsed,
         stop_reason=es["stop_reason"] if es is not None else None,
+        switch_reason=es["switch_reason"] if es is not None else None,
+        switch_iteration=es["switch_iteration"] if es is not None else None,
         best_violation=es["best_viol"] if es is not None else None,
         iteration_history=iteration_history,
+        callback_stats=callback_stats,
+        solver_counters=solver_counters,
         mu_final=float(mu_history[-1]) if mu_history else None,
         kkt_probes=list(es["kkt_probes"]) if es is not None else [],
     )
