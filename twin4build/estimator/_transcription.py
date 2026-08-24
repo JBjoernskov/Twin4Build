@@ -105,6 +105,63 @@ def _aggregate_objective_targets(
     return count, target_mean
 
 
+class _IterateCache:
+    """One-iterate cache shared by all composable IPOPT callbacks."""
+
+    def __init__(self):
+        self._key = None
+        self._values = {}
+        self.stats = {
+            "forward_evaluations": 0,
+            "forward_cache_hits": 0,
+            "derivative_evaluations": 0,
+            "derivative_cache_hits": 0,
+        }
+
+    @staticmethod
+    def _normalize(z):
+        array = np.ascontiguousarray(np.asarray(z, dtype=np.float64))
+        return array, (array.shape, array.tobytes())
+
+    def _get(self, name, z, compute):
+        array, key = self._normalize(z)
+        if key != self._key:
+            self._key = key
+            self._values.clear()
+        if name in self._values:
+            self.stats[f"{name}_cache_hits"] += 1
+            return self._values[name]
+        value = compute(array)
+        self._values[name] = value
+        self.stats[f"{name}_evaluations"] += 1
+        return value
+
+    def forward(self, z, compute):
+        return self._get("forward", z, compute)
+
+    def derivatives(self, z, compute):
+        return self._get("derivative", z, compute)
+
+
+def _assemble_objective_gradient(
+    Jt_meas,
+    Jx_meas,
+    measurements,
+    target_count,
+    target_mean,
+    measurement_sd,
+    n_objective_terms,
+):
+    """Assemble the exact least-squares gradient from shared measurement rows."""
+    weighted_residual = (
+        target_count * (measurements - target_mean) / measurement_sd
+    )
+    scale = 2.0 / float(n_objective_terms)
+    grad_theta = scale * torch.einsum("gmt,gm->t", Jt_meas, weighted_residual)
+    grad_states = scale * torch.einsum("gmd,gm->gd", Jx_meas, weighted_residual)
+    return torch.cat([grad_theta, grad_states.reshape(-1)])
+
+
 def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamespace:
     """Run a collocation (simultaneous transcription) estimation solve.
 
@@ -635,6 +692,13 @@ def _solve_sparse_collocation(
             _next_of[_i] = _j
         _lag_mask = torch.tensor(meas_lag, dtype=torch.bool, device=dev).reshape(1, -1)
         _any_lag = any(meas_lag)
+        _obj_mask, _ACT_eff = _aggregate_objective_targets(
+            ACT,
+            _incl,
+            _prev_of,
+            torch.tensor(meas_lag, dtype=torch.bool, device=dev),
+        )
+        _n_objective_terms = int(_incl.sum()) * len(md_list)
         if _any_lag:
             LOGGER.config(
                 "Collocation objective: one-step sensor lag on %s",
@@ -778,42 +842,93 @@ def _solve_sparse_collocation(
         jac_rows_a = np.asarray(jr, dtype=np.int64)
         jac_cols_a = np.asarray(jcc, dtype=np.int64)
 
-    def _fwd_all(theta_norm, y_norm):
-        """vmap ``F_aug`` over all segments -> (Y_next (n_seg,Da), Meas (n_seg,n_meas))."""
+    def _fwd_all_raw(theta_norm, y_norm):
+        """Evaluate all segments once, before applying measurement lag."""
         theta_phys = _denorm(theta_norm)
         y_phys = y_from_norm(y_norm)
         Yn, Meas = vmap(lambda yi, ci: composer.F_aug(yi, theta_phys, ci))(y_phys, CAP)
-        # Lag applies to the MEASUREMENTS only -- never to Yn, which carries the
-        # continuity defects.
-        return y_to_norm(Yn), _apply_meas_lag(Meas)
+        return y_to_norm(Yn), Meas
 
-    def _mse_of_z(zt):
-        _, Meas = _fwd_all(zt[:n_theta], zt[n_theta:].reshape(n_seg, Da))
-        return (((ACT - Meas) / SD_meas) ** 2)[_incl].mean()
+    def _fwd_all(theta_norm, y_norm):
+        """Evaluate all segments and apply lag to measurements only."""
+        Y_next, Meas_raw = _fwd_all_raw(theta_norm, y_norm)
+        return Y_next, _apply_meas_lag(Meas_raw)
 
-    def _obj_compute_fast(z):
-        key = z.tobytes()
-        if _c["key"] == key:
-            return _c["f"], _c["gf"]
-        self._eval_count += 1
+    _callback_cache = _IterateCache()
+    _callback_counts = {
+        "objective_values": 0,
+        "objective_gradients": 0,
+        "constraints": 0,
+        "constraint_jacobians": 0,
+    }
+
+    def _compute_shared_forward(z):
         zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev)
-        with torch.no_grad():
-            _, Meas = _fwd_all(zt[:n_theta], zt[n_theta:].reshape(n_seg, Da))
-            mse = float((((ACT - Meas) / SD_meas) ** 2)[_incl].mean())
-            self._last_rmse = float(((ACT - Meas) ** 2)[_incl].mean()) ** 0.5
-        gf = torch.func.grad(_mse_of_z)(zt).cpu().numpy()
-        _c.update(key=key, f=mse, gf=gf)
-        if self._eval_count % 10 == 1:
-            LOGGER.iter("eval=%d | obj=%.6f | rmse=%.4f", self._eval_count, mse, self._last_rmse)
-        return mse, gf
-
-    def g_fun_fast(z):
-        zt = torch.tensor(np.asarray(z, dtype=np.float64), dtype=tps.float_dtype(), device=dev)
         y_norm = zt[n_theta:].reshape(n_seg, Da)
         with torch.no_grad():
-            Y_next, _ = _fwd_all(zt[:n_theta], y_norm)
+            Y_next, Meas_raw = _fwd_all_raw(zt[:n_theta], y_norm)
+            Meas = _apply_meas_lag(Meas_raw)
+            mse = float((((ACT - Meas) / SD_meas) ** 2)[_incl].mean())
+            rmse = float(((ACT - Meas) ** 2)[_incl].mean()) ** 0.5
             defect = Y_next[cp_i] - y_norm[cp_j]
-        return defect.reshape(-1).cpu().numpy()
+        return {
+            "mse": mse,
+            "rmse": rmse,
+            "measurements_raw": Meas_raw.detach(),
+            "measurements": Meas.detach(),
+            "defects": defect.detach(),
+            "objective_recorded": False,
+        }
+
+    def _shared_forward(z):
+        return _callback_cache.forward(z, _compute_shared_forward)
+
+    def _record_objective_evaluation(data):
+        if data["objective_recorded"]:
+            return
+        data["objective_recorded"] = True
+        self._eval_count += 1
+        self._last_rmse = data["rmse"]
+        if self._eval_count % 10 == 1:
+            LOGGER.iter(
+                "eval=%d | obj=%.6f | rmse=%.4f",
+                self._eval_count,
+                data["mse"],
+                data["rmse"],
+            )
+
+    def _obj_value_fast(z):
+        _callback_counts["objective_values"] += 1
+        data = _shared_forward(z)
+        _record_objective_evaluation(data)
+        return data["mse"]
+
+    def _obj_grad_fast(z):
+        _callback_counts["objective_gradients"] += 1
+        z = np.asarray(z, dtype=np.float64)
+        data = _shared_forward(z)
+        _record_objective_evaluation(data)
+        d = _derivs(z)
+        gradient = _assemble_objective_gradient(
+            d["Jt"][:, Da:, :],
+            d["Jx"][:, Da:, :],
+            data["measurements_raw"],
+            _obj_mask,
+            _ACT_eff,
+            SD_meas,
+            _n_objective_terms,
+        )
+        return gradient.cpu().numpy().astype(np.float64)
+
+    def g_fun_fast(z):
+        _callback_counts["constraints"] += 1
+        return (
+            _shared_forward(z)["defects"]
+            .reshape(-1)
+            .cpu()
+            .numpy()
+            .astype(np.float64)
+        )
 
     def _end_norm_fn(y_norm_i, theta_norm, captured_i):
         Yn, _ = composer.F_aug(y_from_norm(y_norm_i), _denorm(theta_norm), captured_i)
@@ -822,9 +937,8 @@ def _solve_sparse_collocation(
     # One vmap(jacrev) evaluates d(end_norm, meas/SD)/d(y, theta) for EVERY
     # segment; the constraint Jacobian (rows :Da at the linked segments) and the
     # Gauss-Newton Hessian (rows Da: at the scored segments) are slices of it.
-    # IPOPT asks for jac_g and hess_lag at the same iterate, so the cache makes
-    # the Hessian nearly free on top of the Jacobian we already pay for.
-    _dcache = {"key": None}
+    # IPOPT asks for jac_g, grad_f and hess_lag at the same iterate, so one
+    # derivative cache serves all three callbacks.
 
     # The batched reverse pass materializes gradient buffers of roughly
     # (segments x cotangents x Da^2) per matrix_exp intermediate -- growth is
@@ -844,10 +958,7 @@ def _solve_sparse_collocation(
             _deriv_chunk, n_seg, _n_cot, Da,
         )
 
-    def _derivs(z):
-        key = z.tobytes()
-        if _dcache["key"] == key:
-            return _dcache
+    def _compute_shared_derivatives(z):
         zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev)
         theta_norm = zt[:n_theta]
         y_norm = zt[n_theta:].reshape(n_seg, Da)
@@ -862,11 +973,14 @@ def _solve_sparse_collocation(
             lambda yi, ci: jacrev(_both, argnums=(0, 1))(yi, theta_norm, ci),
             chunk_size=None if _deriv_chunk >= n_seg else _deriv_chunk,
         )(y_norm, CAP)
-        _dcache.update(key=key, Jx=Jx.detach(), Jt=Jt.detach())
-        return _dcache
+        return {"Jx": Jx.detach(), "Jt": Jt.detach()}
+
+    def _derivs(z):
+        return _callback_cache.derivatives(z, _compute_shared_derivatives)
 
     def g_jac_vals_fast(z):
         """Sparse constraint Jacobian from the shared per-segment derivatives."""
+        _callback_counts["constraint_jacobians"] += 1
         d = _derivs(np.asarray(z, dtype=np.float64))
         Jt = d["Jt"][cp_i, :Da, :]  # (n_links, Da, n_theta)
         Jx = d["Jx"][cp_i, :Da, :]  # (n_links, Da, Da)
@@ -1127,6 +1241,10 @@ def _solve_sparse_collocation(
                 "RMSE=%.4f | do_step rollout RMSE=%.4f (raw units)",
                 mid, e["nlp_rmse"], e["rollout_rmse"], e["do_step_rmse"],
             )
+        audit["callback_cache"] = {
+            **_callback_counts,
+            **_callback_cache.stats,
+        }
         result.transcription_audit = audit
         return audit
 
@@ -1134,8 +1252,8 @@ def _solve_sparse_collocation(
     # decision variables (extra state) tied to their producer outputs by ordinary
     # continuity, so there is no frozen carry and no outer re-capture -- one solve.
     if composer is not None and CAP is not None:
-        obj_fun = lambda z: _obj_compute_fast(np.asarray(z, dtype=np.float64))[0]
-        obj_grad = lambda z: _obj_compute_fast(np.asarray(z, dtype=np.float64))[1]
+        obj_fun = _obj_value_fast
+        obj_grad = _obj_grad_fast
 
         # -- Gauss-Newton Hessian of the Lagrangian ---------------------------
         # The objective is a plain least-squares MSE, so its GN Hessian is
@@ -1179,20 +1297,13 @@ def _solve_sparse_collocation(
                 cols_h.append(base + iu_y[1])
             hess_rows = np.concatenate(rows_h).astype(np.int64)
             hess_cols = np.concatenate(cols_h).astype(np.int64)
-            incl_np = np.nonzero(_incl.cpu().numpy())[0]
-            n_i = len(incl_np)
-            incl_t = torch.tensor(incl_np, dtype=torch.long, device=dev)
+            n_i = int(_incl.sum())
             gn_scale = 2.0 / float(n_i * len(md_list))
 
             # Objective curvature is indexed by the segment that PRODUCES each
             # scored measurement. For a lagged sensor, scored segment g reads
             # the output of _prev_of[g]. Count/sum aggregation handles the case
             # where multiple targets map to the first producer of a period.
-            _lag_t = torch.tensor(meas_lag, dtype=torch.bool, device=dev)
-            _obj_mask, _ACT_eff = _aggregate_objective_targets(
-                ACT, _incl, _prev_of, _lag_t
-            )
-
             def _exact_lagrangian_segment(
                 y_i, th, cap_i, lam_i, obj_mask_i, act_i, s_gn
             ):
@@ -1327,15 +1438,15 @@ def _solve_sparse_collocation(
             options.setdefault("acceptable_dual_inf_tol", 1e10)
             options.setdefault("acceptable_compl_inf_tol", 1e3)
             options.setdefault("acceptable_obj_change_tol", 1e-4)
-            incl_np = np.nonzero(_incl.cpu().numpy())[0]
-            n_i = len(incl_np)
+            obj_np = np.nonzero(_obj_mask.any(dim=1).cpu().numpy())[0]
+            n_i = int(_incl.sum())
             iu_t = np.triu_indices(n_theta)
             iu_y = np.triu_indices(Da)
             cross_r, cross_c = np.meshgrid(
                 np.arange(n_theta), np.arange(Da), indexing="ij"
             )
             rows_h, cols_h = [iu_t[0]], [iu_t[1]]
-            for g in incl_np:
+            for g in obj_np:
                 base = n_theta + int(g) * Da
                 rows_h.append(cross_r.ravel())
                 cols_h.append(base + cross_c.ravel())
@@ -1343,55 +1454,50 @@ def _solve_sparse_collocation(
                 cols_h.append(base + iu_y[1])
             hess_rows = np.concatenate(rows_h).astype(np.int64)
             hess_cols = np.concatenate(cols_h).astype(np.int64)
-            incl_t = torch.tensor(incl_np, dtype=torch.long, device=dev)
+            obj_t = torch.tensor(obj_np, dtype=torch.long, device=dev)
             gn_scale = 2.0 / float(n_i * len(md_list))
 
             def hess_vals_fn(z, sigma):
                 d = _derivs(np.asarray(z, dtype=np.float64))
-                Jt_ = d["Jt"][incl_t, Da:, :]  # (n_i, n_meas, n_theta)
-                Jy = d["Jx"][incl_t, Da:, :]   # (n_i, n_meas, Da)
-                Js = torch.cat([Jt_, Jy], dim=2)  # (n_i, n_meas, nt+Da)
+                Jt_ = d["Jt"][obj_t, Da:, :]
+                Jy = d["Jx"][obj_t, Da:, :]
+                weight = _obj_mask[obj_t].sqrt().unsqueeze(-1)
+                Jt_ = Jt_ * weight
+                Jy = Jy * weight
+                Js = torch.cat([Jt_, Jy], dim=2)
                 B = (
                     torch.einsum("gmi,gmj->gij", Js, Js) * (float(sigma) * gn_scale)
                 ).cpu().numpy()
                 vals = [B[:, :n_theta, :n_theta].sum(axis=0)[iu_t]]
                 Bty = B[:, :n_theta, n_theta:]
                 Byy = B[:, n_theta:, n_theta:]
-                for k in range(n_i):
+                for k in range(len(obj_np)):
                     vals.append(Bty[k].ravel())
                     vals.append(Byy[k][iu_y])
                 return np.concatenate(vals)
 
             LOGGER.config(
                 "Gauss-Newton Hessian enabled: %d nonzeros (upper triangle), "
-                "%d scored segments.", len(hess_rows), n_i,
+                "%d producing segments.", len(hess_rows), len(obj_np),
             )
             if _os.environ.get("TWIN4BUILD_HESS_CHECK"):
                 # The gradient identity grad f = (2/N) J^T r is EXACT (GN only
                 # truncates the Hessian), so matching the autograd gradient
                 # validates the measurement Jacobians, scaling and assembly.
                 zt0 = torch.tensor(np.asarray(z0_a, dtype=np.float64), dtype=tps.float_dtype(), device=dev)
-                th0_ = zt0[:n_theta]
-                with torch.no_grad():
-                    _, Meas0_raw = _fwd_all(th0_, zt0[n_theta:].reshape(n_seg, Da))
-                r0 = (Meas0_raw[incl_t] - ACT[incl_t]) / SD_meas
-                d0 = _derivs(np.asarray(z0_a, dtype=np.float64))
-                Jt0 = d0["Jt"][incl_t, Da:, :]
-                Jy0 = d0["Jx"][incl_t, Da:, :]
-                g_gn = np.zeros(len(z0_a))
-                g_gn[:n_theta] = (
-                    gn_scale * torch.einsum("gmt,gm->t", Jt0, r0)
-                ).cpu().numpy()
-                gy = (gn_scale * torch.einsum("gmd,gm->gd", Jy0, r0)).cpu().numpy()
-                for k, g in enumerate(incl_np):
-                    a = n_theta + int(g) * Da
-                    g_gn[a:a + Da] = gy[k]
-                g_auto = np.asarray(obj_grad(z0_a), dtype=np.float64)
+                def _objective_for_check(zt):
+                    _, measurements = _fwd_all(
+                        zt[:n_theta], zt[n_theta:].reshape(n_seg, Da)
+                    )
+                    return (((ACT - measurements) / SD_meas) ** 2)[_incl].mean()
+
+                g_shared = np.asarray(obj_grad(z0_a), dtype=np.float64)
+                g_auto = torch.func.grad(_objective_for_check)(zt0).cpu().numpy()
                 denom = max(1.0, float(np.abs(g_auto).max()))
                 LOGGER.config(
-                    "HESS-CHECK: max|grad_GN - grad_autograd| / scale = %.3e "
+                    "HESS-CHECK: max|grad_shared - grad_autograd| / scale = %.3e "
                     "(|grad|max=%.3e)",
-                    float(np.abs(g_gn - g_auto).max()) / denom,
+                    float(np.abs(g_shared - g_auto).max()) / denom,
                     float(np.abs(g_auto).max()),
                 )
         # Warm-start feasibility: if the initial defects are far from zero the
