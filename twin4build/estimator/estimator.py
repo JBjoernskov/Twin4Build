@@ -601,6 +601,10 @@ class Estimator:
                   Gauss-Newton Hessian of the least-squares objective instead
                   of the default limited-memory BFGS approximation. Turns a
                   >1000-iteration L-BFGS crawl into a Newton-type solve.
+                - "exact_hessian" (bool, default False): Include residual and
+                  nonlinear-constraint curvature in the supplied Lagrangian
+                  Hessian. This enables IPOPT's strict KKT convergence test but
+                  makes each Hessian evaluation more expensive.
                 - "early_stopping" (bool or dict, default: enabled when
                   ``gauss_newton`` is on): Patience-based stagnation stop
                   with a best-feasible-iterate checkpoint. A dict overrides
