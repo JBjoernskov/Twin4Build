@@ -224,6 +224,11 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             + junction_params
             + fan_params
         }
+        self.PARAM_NAMES = tuple(
+            f"{sub_name}.{param_name}"
+            for sub_name in self._SUB_NAMES
+            for param_name in getattr(getattr(self, sub_name), "PARAM_NAMES", ())
+        )
 
         self.INITIALIZED = False
 
@@ -419,6 +424,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
 
     # -- composed-map support (mirrors BuildingSpaceSystem) -------------
 
+    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ()  # all parameters live on the owned submodels (prefixed)
 
     _SUB_NAMES = (
@@ -443,7 +449,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             out[name] = params[key] if key in params else getattr(sub, name).get()
         return out
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step of the composite AHU (functorch-safe, stateless).
 
         Chains the submodels' pure ``forward``s in exactly the order
@@ -454,17 +460,23 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         """
         # Identity-keyed cache: a sequential rollout re-calls forward with the
         # SAME params dict every step (see OneStepComposer._params_for).
-        cache = getattr(self, "_fwd_param_cache", None)
-        if cache is None or cache[0] is not params:
-            cache = (
-                params,
-                {
-                    n: self._resolve_sub_params(getattr(self, n), n, params)
-                    for n in self._SUB_NAMES
-                },
-            )
-            self._fwd_param_cache = cache
-        P = cache[1]
+        if transform_mode:
+            P = {
+                n: self._resolve_sub_params(getattr(self, n), n, params)
+                for n in self._SUB_NAMES
+            }
+        else:
+            cache = getattr(self, "_fwd_param_cache", None)
+            if cache is None or cache[0] is not params:
+                cache = (
+                    params,
+                    {
+                        n: self._resolve_sub_params(getattr(self, n), n, params)
+                        for n in self._SUB_NAMES
+                    },
+                )
+                self._fwd_param_cache = cache
+            P = cache[1]
 
         # 1) Supply damper: vectorized position -> flow calculation
         supply_pos_vec = inputs["supplyDamperPosition"]

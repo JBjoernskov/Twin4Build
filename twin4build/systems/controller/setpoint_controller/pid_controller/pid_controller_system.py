@@ -261,9 +261,10 @@ class PIDControllerSystem(core.System, nn.Module):
     # base class generically.
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("kp", "Ti", "Td", "output_min", "output_max")
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step velocity-form PID ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``x`` is the memory
@@ -276,17 +277,23 @@ class PIDControllerSystem(core.System, nn.Module):
         # sample-time check is by identity too: ``do_step`` passes the stable
         # ``_step_size_tensor`` (a ``!=`` on a batched tensor would be
         # ambiguous), the composer a stable float.
-        cache = getattr(self, "_fwd_coef_cache", None)
-        if cache is None or cache[0] is not params or cache[1] is not sample_time:
-            cache = (
-                params,
-                sample_time,
-                self._compute_pid_coefficients(
-                    params["kp"], params["Ti"], params["Td"], sample_time
-                ),
+        if transform_mode:
+            coefficients = self._compute_pid_coefficients(
+                params["kp"], params["Ti"], params["Td"], sample_time
             )
-            self._fwd_coef_cache = cache
-        c0, c1, c2 = cache[2]
+        else:
+            cache = getattr(self, "_fwd_coef_cache", None)
+            if cache is None or cache[0] is not params or cache[1] is not sample_time:
+                cache = (
+                    params,
+                    sample_time,
+                    self._compute_pid_coefficients(
+                        params["kp"], params["Ti"], params["Td"], sample_time
+                    ),
+                )
+                self._fwd_coef_cache = cache
+            coefficients = cache[2]
+        c0, c1, c2 = coefficients
         err = inputs["setpointValue"] - inputs["actualValue"]
         if self.is_reverse is False:
             err = -err
