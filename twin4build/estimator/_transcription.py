@@ -61,12 +61,6 @@ from twin4build.utils.logger import LOGGER
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
 
-# Populated only when TWIN4BUILD_GRAPH_DEBUG is set. The standalone CUDA-graph
-# diagnostic consumes these real production closures and inputs in isolated
-# subprocesses; normal estimation never retains them.
-_CUDA_GRAPH_DEBUG: Dict[str, object] = {}
-
-
 class _PhaseProfiler:
     """Opt-in synchronized wall-clock timings for collocation phases."""
 
@@ -1435,35 +1429,6 @@ def _solve_sparse_collocation(
             _iu_y0 = torch.as_tensor(iu_y[0], dtype=torch.long, device=dev)
             _iu_y1 = torch.as_tensor(iu_y[1], dtype=torch.long, device=dev)
 
-            def _hess_device_body(theta_norm, y_norm, lam_mat, s_gn):
-                """Pure device-tensor exact-Hessian body used by the callback."""
-                lam_by_seg = torch.zeros(
-                    (n_seg, Da), dtype=tps.float_dtype(), device=dev
-                ).index_add(0, cp_i, lam_mat)
-                (Cyy, _Cyt), (Cty, Ctt) = _combined_curvature(
-                    theta_norm, y_norm, lam_by_seg, s_gn
-                )
-                return torch.cat(
-                    [
-                        Ctt.sum(0)[_iu_t0, _iu_t1],
-                        torch.cat(
-                            [
-                                Cty.reshape(n_seg, n_theta * Da),
-                                Cyy[:, _iu_y0, _iu_y1],
-                            ],
-                            dim=1,
-                        ).reshape(-1),
-                    ]
-                )
-
-            _graph_debug = bool(_os.environ.get("TWIN4BUILD_GRAPH_DEBUG"))
-            if _graph_debug:
-                _CUDA_GRAPH_DEBUG.clear()
-                _CUDA_GRAPH_DEBUG.update(
-                    combined_curvature=_combined_curvature,
-                    hess_device_body=_hess_device_body,
-                )
-
             def hess_vals_fn(z, sigma, lam_g):
                 zt = torch.tensor(
                     np.asarray(z, dtype=np.float64), dtype=tps.float_dtype(), device=dev
@@ -1476,22 +1441,28 @@ def _solve_sparse_collocation(
                 )
                 s_gn = float(sigma) * gn_scale
                 with torch.no_grad():
-                    s_gn_t = torch.as_tensor(
-                        s_gn, dtype=tps.float_dtype(), device=dev
+                    lam_by_seg = torch.zeros(
+                        (n_seg, Da), dtype=tps.float_dtype(), device=dev
+                    ).index_add(0, cp_i, lam_mat)
+                    (Cyy, _Cyt), (Cty, Ctt) = _combined_curvature(
+                        theta_norm,
+                        y_norm,
+                        lam_by_seg,
+                        torch.as_tensor(
+                            s_gn, dtype=tps.float_dtype(), device=dev
+                        ),
                     )
-                    if _graph_debug and "inputs" not in _CUDA_GRAPH_DEBUG:
-                        lam_by_seg = torch.zeros(
-                            (n_seg, Da), dtype=tps.float_dtype(), device=dev
-                        ).index_add(0, cp_i, lam_mat)
-                        _CUDA_GRAPH_DEBUG["inputs"] = {
-                            "theta_norm": theta_norm.detach().clone(),
-                            "y_norm": y_norm.detach().clone(),
-                            "lam_mat": lam_mat.detach().clone(),
-                            "lam_by_seg": lam_by_seg.detach().clone(),
-                            "s_gn": s_gn_t.detach().clone(),
-                        }
-                    vals = _hess_device_body(
-                        theta_norm, y_norm, lam_mat, s_gn_t
+                    vals = torch.cat(
+                        [
+                            Ctt.sum(0)[_iu_t0, _iu_t1],
+                            torch.cat(
+                                [
+                                    Cty.reshape(n_seg, n_theta * Da),
+                                    Cyy[:, _iu_y0, _iu_y1],
+                                ],
+                                dim=1,
+                            ).reshape(-1),
+                        ]
                     )
                 return vals.cpu().numpy()
 
