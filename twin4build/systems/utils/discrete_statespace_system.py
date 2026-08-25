@@ -63,7 +63,7 @@ def _functorch_active() -> bool:
         return True
 
 
-def _discretize_onestep(A, B, E, F, u, sample_time):
+def _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
     """Effective-matrix ZOH discretization: ``(Ad, Bd)`` for the current ``u``."""
     # Broadcast-friendly bilinear terms (einsum would require the batch dims of
     # E/F and u to match exactly; the fast single-shooting rollout batches u
@@ -81,15 +81,29 @@ def _discretize_onestep(A, B, E, F, u, sample_time):
     # dim that the freshly-allocated M does not.
     top = torch.cat([A_eff * T, B_eff * T], dim=-1)  # (..., n, n+m)
     M = torch.nn.functional.pad(top, (0, 0, 0, m))  # add m zero rows -> (..., n+m, n+m)
-    # Under functorch transforms matrix_exp has no batching rule, so use the
-    # pure-matmul scaling-and-squaring helper; in plain eager/autograd (the
-    # fast single-shooting rollout) the fused native op is much cheaper per
-    # step and has a native backward.
-    expM = _expm_ss(M) if _functorch_active() else torch.matrix_exp(M)
+    # Callers that know they are part of a transformed/compiled pure path pass
+    # the mode explicitly.  ``None`` preserves compatibility for direct calls,
+    # while the explicit bool keeps the private functorch-state query out of
+    # compiled production graphs.
+    if transform_mode is None:
+        transform_mode = _functorch_active()
+    expM = _expm_ss(M) if transform_mode else torch.matrix_exp(M)
     return expM[..., :n, :n], expM[..., :n, n:]
 
 
-def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
+def bilinear_onestep(
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    x,
+    u,
+    sample_time,
+    disc_cache=None,
+    transform_mode=None,
+):
     """Pure one ZOH step of a (bilinear) state-space system.
 
     A functorch-compatible re-expression of :meth:`DiscreteStatespaceSystem.do_step`
@@ -121,8 +135,12 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
     the gradient exact (it is what ``jacrev`` over ``do_step`` does anyway --
     functorch bypasses the cache).
     """
-    if disc_cache is None or _functorch_active():
-        Ad, Bd = _discretize_onestep(A, B, E, F, u, sample_time)
+    if transform_mode is None:
+        transform_mode = _functorch_active()
+    if disc_cache is None or transform_mode:
+        Ad, Bd = _discretize_onestep(
+            A, B, E, F, u, sample_time, transform_mode=transform_mode
+        )
     else:
         mask = disc_cache.get("mask")
         if mask is None:
@@ -137,7 +155,9 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
         if u_rel_live.requires_grad:
             # Differentiable bilinear inputs: gradient must flow through THIS
             # step's discretization -- no reuse.
-            Ad, Bd = _discretize_onestep(A, B, E, F, u, sample_time)
+            Ad, Bd = _discretize_onestep(
+                A, B, E, F, u, sample_time, transform_mode=False
+            )
         else:
             u_rel = u_rel_live.detach()
             prev = disc_cache.get("u_rel")
@@ -148,7 +168,9 @@ def bilinear_onestep(A, B, C, D, E, F, x, u, sample_time, disc_cache=None):
             ):
                 Ad, Bd = disc_cache["Ad"], disc_cache["Bd"]
             else:
-                Ad, Bd = _discretize_onestep(A, B, E, F, u, sample_time)
+                Ad, Bd = _discretize_onestep(
+                    A, B, E, F, u, sample_time, transform_mode=False
+                )
                 disc_cache.update(u_rel=u_rel.clone(), Ad=Ad, Bd=Bd)
 
     x_next = (Ad @ x.unsqueeze(-1)).squeeze(-1) + (Bd @ u.unsqueeze(-1)).squeeze(-1)

@@ -117,6 +117,12 @@ def simulate(model, hours, step_size):
     }
 
 
+def observed_support(matrix):
+    """Matrix indices that are nonzero in at least one component batch."""
+    mask = (matrix != 0).any(dim=0)
+    return {tuple(int(v) for v in row) for row in mask.nonzero().tolist()}
+
+
 class TestFusionExactness(unittest.TestCase):
     """The fused one-step map must equal the hand-derived monolithic model."""
 
@@ -233,6 +239,178 @@ class TestFusionStability(unittest.TestCase):
         # With R ~ 0 the three temperatures are essentially one node.
         self.assertLess(float((res["t_a"] - res["t_w"]).abs().max()), 0.5)
         self.assertLess(float((res["t_b"] - res["t_w"]).abs().max()), 0.5)
+
+
+class TestFusionStructuralSupport(unittest.TestCase):
+    """Static matrix support must be safe at every parameter iterate."""
+
+    def setUp(self):
+        self.model, *_ = build_model(model_id="support_contract")
+        simulate(self.model, 1, 600)
+        self.fused = next(
+            iter(self.model.simulation_model._fused_components.values())
+        )
+
+    def assert_support_covers(self, unit, matrices):
+        declared = unit._ss_support()
+        for name, matrix in zip(("D", "E", "F"), matrices[3:]):
+            self.assertTrue(
+                observed_support(matrix) <= set(declared[name]),
+                f"{type(unit).__name__} {name} has an undeclared nonzero",
+            )
+
+    def test_declared_support_covers_zero_and_random_interior_values(self):
+        generator = torch.Generator().manual_seed(126)
+        for entry in self.fused._units:
+            unit = entry["unit"]
+            defaults = {
+                name: getattr(unit, name).get() for name in unit.PARAM_NAMES
+            }
+            cases = [defaults]
+
+            zero_case = dict(defaults)
+            for name in ("f_air", "f_wall"):
+                if name in zero_case:
+                    zero_case[name] = torch.zeros_like(zero_case[name])
+            cases.append(zero_case)
+
+            for _ in range(5):
+                params = {}
+                for name, value in defaults.items():
+                    factor = 0.6 + 0.8 * torch.rand((), generator=generator)
+                    params[name] = (
+                        value * factor
+                        if bool((value != 0).any())
+                        else torch.full_like(value, float(factor) * 0.1)
+                    )
+                cases.append(params)
+
+            for params in cases:
+                self.assert_support_covers(unit, unit._build_matrices(params))
+
+    def test_composite_mass_unit_support_is_conservative(self):
+        mass = tb.BuildingSpaceMassSystem(id="support_mass")
+        params = {
+            "V": torch.tensor([65.0], dtype=torch.float64),
+            "G_occ": torch.tensor([3e-6], dtype=torch.float64),
+            "m_inf": torch.tensor([0.001], dtype=torch.float64),
+        }
+        self.assert_support_covers(mass, mass._build_matrices(params))
+
+    def test_assemble_is_differentiable_and_fullgraph_traceable(self):
+        base = self.fused._forward_params()
+        target_names = ("C_air", "R_in", "R_a")
+        targets = []
+        for entry in self.fused._units:
+            for name in target_names:
+                key = f"{entry['param_prefix']}.{name}"
+                if key in base and key not in targets:
+                    targets.append(key)
+        targets = targets[:3]
+        self.assertEqual(len(targets), 3)
+        theta0 = torch.stack([base[key].reshape(-1)[0] for key in targets])
+
+        def packed_matrices(theta):
+            params = dict(base)
+            for i, key in enumerate(targets):
+                params[key] = theta[i].reshape(1)
+            return torch.cat(
+                [matrix.reshape(-1) for matrix in self.fused._assemble(params)]
+            )
+
+        value = packed_matrices(theta0)
+        jacobian = torch.func.jacrev(packed_matrices)(theta0)
+        curvature = torch.func.hessian(
+            lambda theta: packed_matrices(theta).square().mean()
+        )(theta0)
+        self.assertTrue(bool(torch.isfinite(value).all()))
+        self.assertTrue(bool(torch.isfinite(jacobian).all()))
+        self.assertTrue(bool(torch.isfinite(curvature).all()))
+
+        if hasattr(torch, "compile"):
+            compiled = torch.compile(
+                packed_matrices, backend="eager", fullgraph=True
+            )
+            self.assertTrue(
+                torch.allclose(compiled(theta0), value, rtol=1e-10, atol=1e-12)
+            )
+            hessian_fn = torch.func.hessian(
+                lambda theta: packed_matrices(theta).square().mean()
+            )
+            compiled_hessian = torch.compile(
+                hessian_fn, backend="aot_eager", fullgraph=True
+            )
+            compiled_curvature = compiled_hessian(theta0)
+            error = (compiled_curvature - curvature).abs()
+            max_index = int(error.argmax())
+            reference_at_max = float(curvature.reshape(-1)[max_index])
+            compiled_at_max = float(compiled_curvature.reshape(-1)[max_index])
+            self.assertTrue(
+                torch.allclose(
+                    compiled_curvature,
+                    curvature,
+                    rtol=1e-8,
+                    atol=1e-10,
+                ),
+                "compiled Hessian max-error entry: "
+                f"{compiled_at_max:.12g} != {reference_at_max:.12g}",
+            )
+
+    def test_transform_path_matches_eager_and_does_not_mutate_cache(self):
+        state = self.fused.get_state()
+        inputs = {name: port.get() for name, port in self.fused.input.items()}
+        params = self.fused._forward_params()
+        target = next(key for key in params if key.endswith(".R_a"))
+        theta0 = params[target].reshape(-1)[0]
+
+        def transformed(theta):
+            live_params = dict(params)
+            live_params[target] = theta.reshape(1)
+            state_next, _ = self.fused.forward(
+                state,
+                inputs,
+                live_params,
+                600.0,
+                transform_mode=True,
+            )
+            return state_next
+
+        self.fused._fwd_mat_cache = None
+        transformed_value = transformed(theta0)
+        self.assertIsNone(self.fused._fwd_mat_cache)
+
+        eager_params = dict(params)
+        eager_params[target] = theta0.reshape(1)
+        eager_value, _ = self.fused.forward(
+            state, inputs, eager_params, 600.0, transform_mode=False
+        )
+        self.assertTrue(
+            torch.allclose(
+                transformed_value, eager_value, rtol=2e-8, atol=2e-9
+            )
+        )
+
+        jacobian = torch.func.jacrev(transformed)(theta0)
+        curvature = torch.func.hessian(
+            lambda theta: transformed(theta).square().mean()
+        )(theta0)
+        self.assertTrue(bool(torch.isfinite(jacobian).all()))
+        self.assertTrue(bool(torch.isfinite(curvature).all()))
+        if hasattr(torch, "compile"):
+            transformed_hessian = torch.func.hessian(
+                lambda theta: transformed(theta).square().mean()
+            )
+            compiled_hessian = torch.compile(
+                transformed_hessian, backend="aot_eager", fullgraph=True
+            )
+            self.assertTrue(
+                torch.allclose(
+                    compiled_hessian(theta0),
+                    curvature,
+                    rtol=1e-7,
+                    atol=1e-9,
+                )
+            )
 
 
 if __name__ == "__main__":

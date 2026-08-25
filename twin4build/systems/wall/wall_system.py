@@ -281,6 +281,7 @@ class WallSystem(core.System, nn.Module):
         return x0
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("C", "R_a", "R_b")
 
     #: Fusable coupling ports: both temperature inputs enter the linear B
@@ -301,6 +302,14 @@ class WallSystem(core.System, nn.Module):
             "y": {"heatFlowRateA": 0, "heatFlowRateB": 1, "wallTemperature": 2},
         }
 
+    def _ss_support(self):
+        """Conservative structural support of the ``D``, ``E`` and ``F`` matrices."""
+        return {
+            "D": frozenset({(0, 0), (1, 1)}),
+            "E": frozenset(),
+            "F": frozenset(),
+        }
+
     def _build_matrices(self, p=None):
         """Build the wall state-space matrices ``(A, B, C, D, E, F)`` from the
         physical parameters -- a pure function of ``p`` (a dict of physical
@@ -319,22 +328,23 @@ class WallSystem(core.System, nn.Module):
         # during stepping, outside initialize()'s device context.
         dev, dt = C.device, C.dtype
 
-        A = torch.zeros((n_c, 1, 1), dtype=dt, device=dev)
-        A[:, 0, 0] = -1 / (R_a * C) - 1 / (R_b * C)
-
-        B = torch.zeros((n_c, 1, 2), dtype=dt, device=dev)
-        B[:, 0, 0] = 1 / (R_a * C)
-        B[:, 0, 1] = 1 / (R_b * C)
+        inv_ra = 1 / R_a
+        inv_rb = 1 / R_b
+        A = (-(inv_ra + inv_rb) / C).reshape(n_c, 1, 1)
+        B = torch.stack([inv_ra / C, inv_rb / C], dim=-1).unsqueeze(1)
 
         # Outputs: [heatFlowRateA, heatFlowRateB, wallTemperature]
-        C_out = torch.zeros((n_c, 3, 1), dtype=dt, device=dev)
-        C_out[:, 0, 0] = 1 / R_a
-        C_out[:, 1, 0] = 1 / R_b
-        C_out[:, 2, 0] = 1.0
-
-        D = torch.zeros((n_c, 3, 2), dtype=dt, device=dev)
-        D[:, 0, 0] = -1 / R_a
-        D[:, 1, 1] = -1 / R_b
+        one = torch.ones_like(C)
+        zero = torch.zeros_like(C)
+        C_out = torch.stack([inv_ra, inv_rb, one], dim=1).unsqueeze(-1)
+        D = torch.stack(
+            [
+                torch.stack([-inv_ra, zero], dim=-1),
+                torch.stack([zero, -inv_rb], dim=-1),
+                torch.stack([zero, zero], dim=-1),
+            ],
+            dim=1,
+        )
 
         # No bilinear terms.
         E = torch.zeros((n_c, 2, 1, 1), dtype=dt, device=dev)
@@ -361,7 +371,7 @@ class WallSystem(core.System, nn.Module):
             id=f"ss_model_{self.id}",
         )
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step wall dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`. ``inputs`` is a
@@ -374,16 +384,32 @@ class WallSystem(core.System, nn.Module):
         # per theta in a sequential rollout, not once per step).  sample_time
         # is part of the key: the attached disc_cache holds (Ad, Bd)
         # discretized at a specific T.
-        cache = getattr(self, "_fwd_mat_cache", None)
-        if cache is None or cache[0] is not params or cache[2] != sample_time:
-            cache = (params, self._build_matrices(params), sample_time, {})
-            self._fwd_mat_cache = cache
-        A, B, C_out, D, E, F = cache[1]
+        if transform_mode:
+            matrices = self._build_matrices(params)
+            disc_cache = None
+        else:
+            cache = getattr(self, "_fwd_mat_cache", None)
+            if cache is None or cache[0] is not params or cache[2] != sample_time:
+                cache = (params, self._build_matrices(params), sample_time, {})
+                self._fwd_mat_cache = cache
+            matrices = cache[1]
+            disc_cache = cache[3]
+        A, B, C_out, D, E, F = matrices
         u = torch.stack(
             [inputs["temperatureA"], inputs["temperatureB"]], dim=-1
         )
         x_next, y = bilinear_onestep(
-            A, B, C_out, D, E, F, x, u, sample_time, disc_cache=cache[3]
+            A,
+            B,
+            C_out,
+            D,
+            E,
+            F,
+            x,
+            u,
+            sample_time,
+            disc_cache=disc_cache,
+            transform_mode=transform_mode,
         )
         return x_next, {
             "heatFlowRateA": y[..., 0],

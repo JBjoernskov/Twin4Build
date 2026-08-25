@@ -282,6 +282,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         return x0
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("V", "G_occ", "m_inf")
 
     def _ss_layout(self):
@@ -294,6 +295,14 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
                 ("outdoorCO2", 1), ("numberOfPeople", 1),
             ],
             "y": {"indoorCO2": 0},
+        }
+
+    def _ss_support(self):
+        """Conservative structural support of the ``D``, ``E`` and ``F`` matrices."""
+        return {
+            "D": frozenset(),
+            "E": frozenset({(1, 0, 0)}),
+            "F": frozenset({(0, 0, 2)}),
         }
 
     def _build_matrices(self, p=None):
@@ -323,21 +332,15 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         density_air = constants.RHO_AIR
         air_mass = V * density_air  # (n_c,)
 
-        # Initialize A and B matrices with zeros - shape (n_c, n_states, n_states/n_inputs)
-        A = torch.zeros((n_c, n_states, n_states), dtype=dt, device=dev)
-        B = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
-
-        # State matrix A: -sum of all flow rates / air_mass
-        A[:, 0, 0] = -(m_inf / air_mass)  # Base coefficient from infiltration
-
-        # Input matrix B coefficients
-        # Outdoor CO2 (from infiltration)
-        B[:, 0, 2] = m_inf / air_mass  # outdoorCO2 coefficient
-
-        # Number of people
-        B[:, 0, 3] = (
+        zero = torch.zeros_like(air_mass)
+        infiltration = m_inf / air_mass
+        people_gain = (
             (G_occ / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6
-        )  # numberOfPeople coefficient
+        )
+        A = (-infiltration).reshape(n_c, n_states, n_states)
+        B = torch.stack(
+            [zero, zero, infiltration, people_gain], dim=-1
+        ).unsqueeze(1)
 
         # Output matrix C - Identity matrix for direct observation
         # Shape: (n_c, n_states, n_states)
@@ -352,14 +355,22 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         D = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
-        E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=dt, device=dev)
-        # -m_ex*C (input 1, state 0)
-        E[:, 1, 0, 0] = -1 / air_mass  # exhaustAirFlowRate * C
+        E = torch.stack(
+            [zero, -1 / air_mass, zero, zero], dim=1
+        ).reshape(n_c, n_inputs, n_states, n_states)
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
-        F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=dt, device=dev)
-        # m_sup*C_sup (inputs 0 and 2)
-        F[:, 0, 0, 2] = 1 / air_mass  # supplyAirFlowRate * supplyAirCO2
+        u_multiplier = torch.tensor(
+            [1.0, 0.0, 0.0, 0.0], dtype=dt, device=dev
+        ).reshape(1, n_inputs, 1, 1)
+        u_coefficient = torch.tensor(
+            [0.0, 0.0, 1.0, 0.0], dtype=dt, device=dev
+        ).reshape(1, 1, 1, n_inputs)
+        F = (
+            (1 / air_mass).reshape(n_c, 1, 1, 1)
+            * u_multiplier
+            * u_coefficient
+        )
 
         return A, B, C, D, E, F
 
@@ -385,7 +396,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             F=F,
         )
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step CO2 dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`; ``inputs`` is a dict
@@ -397,17 +408,33 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         # per theta in a sequential rollout, not once per step).  sample_time
         # is part of the key: the attached disc_cache holds (Ad, Bd)
         # discretized at a specific T.
-        cache = getattr(self, "_fwd_mat_cache", None)
-        if cache is None or cache[0] is not params or cache[2] != sample_time:
-            cache = (params, self._build_matrices(params), sample_time, {})
-            self._fwd_mat_cache = cache
-        A, B, C, D, E, F = cache[1]
+        if transform_mode:
+            matrices = self._build_matrices(params)
+            disc_cache = None
+        else:
+            cache = getattr(self, "_fwd_mat_cache", None)
+            if cache is None or cache[0] is not params or cache[2] != sample_time:
+                cache = (params, self._build_matrices(params), sample_time, {})
+                self._fwd_mat_cache = cache
+            matrices = cache[1]
+            disc_cache = cache[3]
+        A, B, C, D, E, F = matrices
         u = torch.stack(
             [inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"],
              inputs["outdoorCO2"], inputs["numberOfPeople"]], dim=-1,
         )
         x_next, y = bilinear_onestep(
-            A, B, C, D, E, F, x, u, sample_time, disc_cache=cache[3]
+            A,
+            B,
+            C,
+            D,
+            E,
+            F,
+            x,
+            u,
+            sample_time,
+            disc_cache=disc_cache,
+            transform_mode=transform_mode,
         )
         return x_next, {"indoorCO2": y[..., 0]}
 

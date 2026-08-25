@@ -605,6 +605,10 @@ class Estimator:
                   nonlinear-constraint curvature in the supplied Lagrangian
                   Hessian. This enables IPOPT's strict KKT convergence test but
                   makes each Hessian evaluation more expensive.
+                - "compile_hessian" (bool, default False): Lower the exact
+                  Hessian transform with ``torch.compile(fullgraph=True)``.
+                  Requires ``exact_hessian=True``; the first Hessian call pays
+                  compilation cost, so benchmark before enabling routinely.
                 - "early_stopping" (bool or dict, default: enabled when
                   ``gauss_newton`` is on): Patience-based stagnation stop
                   with a best-feasible-iterate checkpoint. A dict overrides

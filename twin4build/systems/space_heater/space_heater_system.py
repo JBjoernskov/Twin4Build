@@ -483,6 +483,7 @@ class SpaceHeaterSystem(core.System, nn.Module):
         return x0
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
+    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("thermalMassHeatCapacity", "UA")
 
     def _build_matrices(self, p=None):
@@ -506,30 +507,43 @@ class SpaceHeaterSystem(core.System, nn.Module):
         # during stepping, outside initialize()'s device context.
         dev, dt = C_elem.device, C_elem.dtype
 
-        # LTI part: Only UA/C on diagonal - shape (n_c, n, n)
-        A = torch.zeros((n_c, n, n), dtype=dt, device=dev)
-        for i in range(n):
-            A[:, i, i] = -UA_elem / C_elem
+        ua_over_c = UA_elem / C_elem
+        ones_n = torch.ones((n,), dtype=dt, device=dev)
+        input_supply = torch.tensor([1.0, 0.0, 0.0], dtype=dt, device=dev)
+        input_flow = torch.tensor([0.0, 1.0, 0.0], dtype=dt, device=dev)
+        input_indoor = torch.tensor([0.0, 0.0, 1.0], dtype=dt, device=dev)
+        first_state = torch.nn.functional.one_hot(
+            torch.tensor(0, device=dev), num_classes=n
+        ).to(dt)
+        last_state = torch.nn.functional.one_hot(
+            torch.tensor(n - 1, device=dev), num_classes=n
+        ).to(dt)
 
-        # B matrix: Only UA/C for indoor temperature input - shape (n_c, n, n_inputs)
-        B = torch.zeros((n_c, n, n_inputs), dtype=dt, device=dev)
-        for i in range(n):
-            B[:, i, 2] = UA_elem / C_elem
+        A = torch.diag_embed(-ua_over_c.unsqueeze(-1) * ones_n)
+        B = (
+            ua_over_c.reshape(n_c, 1, 1)
+            * ones_n.reshape(1, n, 1)
+            * input_indoor.reshape(1, 1, n_inputs)
+        )
 
-        # State-input coupling (E): waterFlowRate - shape (n_c, n_inputs, n, n)
-        E = torch.zeros((n_c, n_inputs, n, n), dtype=dt, device=dev)
-        for i in range(n):
-            E[:, 1, i, i] = -c_p / C_elem
-            if i > 0:
-                E[:, 1, i, i - 1] = c_p / C_elem
+        transport = -torch.eye(n, dtype=dt, device=dev)
+        if n > 1:
+            transport = transport + torch.diag(
+                torch.ones(n - 1, dtype=dt, device=dev), diagonal=-1
+            )
+        E = (
+            (c_p / C_elem).reshape(n_c, 1, 1, 1)
+            * input_flow.reshape(1, n_inputs, 1, 1)
+            * transport.reshape(1, 1, n, n)
+        )
+        F = (
+            (c_p / C_elem).reshape(n_c, 1, 1, 1)
+            * input_supply.reshape(1, n_inputs, 1, 1)
+            * first_state.reshape(1, 1, n, 1)
+            * input_flow.reshape(1, 1, 1, n_inputs)
+        )
 
-        # Input-input coupling (F): T_supply * m_dot for first state - shape (n_c, n_inputs, n, n_inputs)
-        F = torch.zeros((n_c, n_inputs, n, n_inputs), dtype=dt, device=dev)
-        F[:, 0, 0, 1] = c_p / C_elem  # Only first state, T_supply * m_dot
-
-        # Output matrices - shape (n_c, n_outputs, n) and (n_c, n_outputs, n_inputs)
-        C_out = torch.zeros((n_c, 1, n), dtype=dt, device=dev)
-        C_out[:, 0, n - 1] = 1.0
+        C_out = last_state.reshape(1, 1, n).expand(n_c, -1, -1)
         D = torch.zeros((n_c, 1, n_inputs), dtype=dt, device=dev)
 
         return A, B, C_out, D, E, F
@@ -557,7 +571,7 @@ class SpaceHeaterSystem(core.System, nn.Module):
             id=f"ss_model_{self.id}",
         )
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step radiator dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` is a
@@ -571,17 +585,33 @@ class SpaceHeaterSystem(core.System, nn.Module):
         # per theta in a sequential rollout, not once per step).  sample_time
         # is part of the key: the attached disc_cache holds (Ad, Bd)
         # discretized at a specific T.
-        cache = getattr(self, "_fwd_mat_cache", None)
-        if cache is None or cache[0] is not params or cache[2] != sample_time:
-            cache = (params, self._build_matrices(params), sample_time, {})
-            self._fwd_mat_cache = cache
-        A, B, C_out, D, E, F = cache[1]
+        if transform_mode:
+            matrices = self._build_matrices(params)
+            disc_cache = None
+        else:
+            cache = getattr(self, "_fwd_mat_cache", None)
+            if cache is None or cache[0] is not params or cache[2] != sample_time:
+                cache = (params, self._build_matrices(params), sample_time, {})
+                self._fwd_mat_cache = cache
+            matrices = cache[1]
+            disc_cache = cache[3]
+        A, B, C_out, D, E, F = matrices
         u = torch.stack(
             [inputs["supplyWaterTemperature"], inputs["waterFlowRate"],
              inputs["indoorTemperature"]], dim=-1,
         )
         x_next, y = bilinear_onestep(
-            A, B, C_out, D, E, F, x, u, sample_time, disc_cache=cache[3]
+            A,
+            B,
+            C_out,
+            D,
+            E,
+            F,
+            x,
+            u,
+            sample_time,
+            disc_cache=disc_cache,
+            transform_mode=transform_mode,
         )
         outlet = y[..., 0]
         UA_elem = params["UA"] / self.nelements

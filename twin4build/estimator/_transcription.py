@@ -355,6 +355,9 @@ def _solve_sparse_collocation(
     # tangents over one reverse pass, vs Da cotangents) in exchange for a
     # reachable KKT test and Newton-rate convergence.
     exact_hessian = bool(options.pop("exact_hessian", False))
+    compile_hessian = bool(options.pop("compile_hessian", False))
+    if compile_hessian and not exact_hessian:
+        raise ValueError("compile_hessian requires exact_hessian=True")
     # ``early_stopping``: patience-based stagnation stop + best-feasible-iterate
     # checkpoint (see solve_ipopt_constrained).  False disables; a dict
     # overrides the patience/tolerance defaults.  Default: on whenever the GN
@@ -678,7 +681,9 @@ def _solve_sparse_collocation(
         if boundary_state_init == "auto":
             with torch.no_grad():
                 _, _M_ws = vmap(
-                    lambda yi, ci: composer.F_aug(yi, theta0_phys, ci)
+                    lambda yi, ci: composer.F_aug(
+                        yi, theta0_phys, ci, transform_mode=True
+                    )
                 )(y0_phys, CAP)
                 _ws_fit = float(
                     (((ACT - _apply_meas_lag(_M_ws)) / SD_meas) ** 2)[_incl].mean()
@@ -702,13 +707,19 @@ def _solve_sparse_collocation(
                 "best-feasible incumbent (the solve cannot return worse)."
             )
         if boundary_state_init == "data":
-            Jm = jacrev(lambda y: composer.F_aug(y, theta0_phys, CAP[0])[1])(y0_phys[0].clone())
+            Jm = jacrev(
+                lambda y: composer.F_aug(
+                    y, theta0_phys, CAP[0], transform_mode=True
+                )[1]
+            )(y0_phys[0].clone())
             # Measurement predicted AT the warm start, needed for the correction
             # below (one cheap vmap over the segments).
             with torch.no_grad():
-                _, M0 = vmap(lambda yi, ci: composer.F_aug(yi, theta0_phys, ci))(
-                    y0_phys, CAP
-                )
+                _, M0 = vmap(
+                    lambda yi, ci: composer.F_aug(
+                        yi, theta0_phys, ci, transform_mode=True
+                    )
+                )(y0_phys, CAP)
             seeded, allmap, _seeded_dims = [], [], set()
             for m in range(len(md_list)):
                 j = int(Jm[m].abs().argmax())
@@ -782,7 +793,11 @@ def _solve_sparse_collocation(
         """vmap ``F_aug`` over all segments -> (Y_next (n_seg,Da), Meas (n_seg,n_meas))."""
         theta_phys = _denorm(theta_norm)
         y_phys = y_from_norm(y_norm)
-        Yn, Meas = vmap(lambda yi, ci: composer.F_aug(yi, theta_phys, ci))(y_phys, CAP)
+        Yn, Meas = vmap(
+            lambda yi, ci: composer.F_aug(
+                yi, theta_phys, ci, transform_mode=True
+            )
+        )(y_phys, CAP)
         # Lag applies to the MEASUREMENTS only -- never to Yn, which carries the
         # continuity defects.
         return y_to_norm(Yn), _apply_meas_lag(Meas)
@@ -816,7 +831,12 @@ def _solve_sparse_collocation(
         return defect.reshape(-1).cpu().numpy()
 
     def _end_norm_fn(y_norm_i, theta_norm, captured_i):
-        Yn, _ = composer.F_aug(y_from_norm(y_norm_i), _denorm(theta_norm), captured_i)
+        Yn, _ = composer.F_aug(
+            y_from_norm(y_norm_i),
+            _denorm(theta_norm),
+            captured_i,
+            transform_mode=True,
+        )
         return y_to_norm(Yn)
 
     # One vmap(jacrev) evaluates d(end_norm, meas/SD)/d(y, theta) for EVERY
@@ -853,7 +873,9 @@ def _solve_sparse_collocation(
         y_norm = zt[n_theta:].reshape(n_seg, Da)
 
         def _both(y_i, th, cap_i):
-            Yn, meas = composer.F_aug(y_from_norm(y_i), _denorm(th), cap_i)
+            Yn, meas = composer.F_aug(
+                y_from_norm(y_i), _denorm(th), cap_i, transform_mode=True
+            )
             return torch.cat([y_to_norm(Yn), meas / SD_meas])
 
         # One traced pass for BOTH Jacobians (the vjp sweeps over the output
@@ -1197,7 +1219,9 @@ def _solve_sparse_collocation(
                 y_i, th, cap_i, lam_i, obj_mask_i, act_i, s_gn
             ):
                 """One segment's exact nonlinear Lagrangian contribution."""
-                Yn, meas = composer.F_aug(y_from_norm(y_i), _denorm(th), cap_i)
+                Yn, meas = composer.F_aug(
+                    y_from_norm(y_i), _denorm(th), cap_i, transform_mode=True
+                )
                 residual = (meas - act_i) / SD_meas
                 return (lam_i * y_to_norm(Yn)).sum() + 0.5 * s_gn * (
                     obj_mask_i * residual.square()
@@ -1230,6 +1254,21 @@ def _solve_sparse_collocation(
                     ),
                     chunk_size=None if _hchunk >= n_seg else _hchunk,
                 )(y_norm, CAP, lam_by_seg, _obj_mask, _ACT_eff)
+
+            if compile_hessian:
+                if not hasattr(torch, "compile"):
+                    raise RuntimeError(
+                        "compile_hessian requires a PyTorch build with torch.compile"
+                    )
+                _combined_curvature = torch.compile(
+                    _combined_curvature,
+                    fullgraph=True,
+                    dynamic=False,
+                )
+                LOGGER.config(
+                    "Exact-Hessian transform will be lowered by torch.compile "
+                    "(fullgraph=True, dynamic=False)."
+                )
 
             # Keep packing on the model device and emit values in exactly the
             # order declared by hess_rows/hess_cols.
