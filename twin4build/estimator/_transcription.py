@@ -371,7 +371,6 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
             0.0,
             t.get("pre_ipopt_total_seconds", 0.0)
             - t.get("composer_build_seconds", 0.0)
-            - t.get("reference_segment_simulation_seconds", 0.0)
             - t.get("capture_rollout_seconds", 0.0),
         )
         t["audit_other_seconds"] = max(
@@ -687,10 +686,6 @@ def _solve_sparse_collocation(
     jac_rows_a = jac_cols_a = None
     n_g_a = n_links * Da
     if composer is not None and composer.meas_sources:
-        z0t = torch.tensor(z0, dtype=tps.float_dtype(), device=dev)
-        with profiler.phase("reference_segment_simulation_seconds"):
-            with torch.no_grad():
-                _simulate(z0t[:n_theta], z0t[n_theta:].reshape(n_seg, D))
         theta0_phys = _denorm(torch.tensor(z0[:n_theta], dtype=tps.float_dtype(), device=dev))
         s0_phys = s_from_norm(torch.tensor(z0[n_theta:], dtype=tps.float_dtype(), device=dev).reshape(n_seg, D))
         # Continuity chains: segment -> next segment within the same period.
