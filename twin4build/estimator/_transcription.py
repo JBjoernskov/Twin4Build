@@ -106,32 +106,25 @@ def _aggregate_objective_targets(
 
 
 def _fixed_basis_hessian_two_args(grad_fn, x, y, *rest):
-    """Hessian blocks from explicit, statically sized JVP bases.
+    """Hessian blocks from explicit, statically sized VJP bases.
 
     ``torch.func.hessian`` builds its forward-mode basis with data-dependent
     diagonal offsets that Dynamo cannot specialize in current Colab PyTorch.
-    This equivalent formulation supplies fixed identity bases directly, so the
-    exact Hessian can be lowered with ``torch.compile(fullgraph=True)``.
+    A JVP-over-gradient workaround still hits a CUDA fake/inference-tensor bug.
+    This reverse-over-reverse formulation supplies fixed cotangent bases
+    directly and avoids both compiler failures.
     """
     primals = (x, y, *rest)
-    rest_zeros = tuple(torch.zeros_like(value) for value in rest)
     x_zero = torch.zeros_like(x)
     y_zero = torch.zeros_like(y)
+    _, pullback = torch.func.vjp(grad_fn, *primals)
 
-    def directional(x_tangent, y_tangent):
-        _, tangent = torch.func.jvp(
-            grad_fn,
-            primals,
-            (x_tangent, y_tangent, *rest_zeros),
-        )
-        return tangent
-
-    hxx, hxy = vmap(lambda basis: directional(basis, y_zero))(
+    hxx, hxy = vmap(lambda basis: pullback((basis, y_zero))[:2])(
         torch.eye(x.numel(), dtype=x.dtype, device=x.device).reshape(
             x.numel(), *x.shape
         )
     )
-    hyx, hyy = vmap(lambda basis: directional(x_zero, basis))(
+    hyx, hyy = vmap(lambda basis: pullback((x_zero, basis))[:2])(
         torch.eye(y.numel(), dtype=y.dtype, device=y.device).reshape(
             y.numel(), *y.shape
         )
