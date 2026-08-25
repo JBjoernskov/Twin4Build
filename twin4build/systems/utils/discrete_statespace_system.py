@@ -100,7 +100,10 @@ def _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
     if transform_mode and _TRANSFORM_MATRIX_EXP == "ss":
         expM = _expm_ss(M)
     else:
-        expM = torch.matrix_exp(M)
+        # Inductor can preserve a non-contiguous higher-order-AD layout at an
+        # external ``linalg_matrix_exp`` call.  The native CUDA kernel contains
+        # an internal view that requires contiguous batch storage.
+        expM = torch.matrix_exp(M.contiguous())
     return expM[..., :n, :n], expM[..., :n, n:]
 
 
