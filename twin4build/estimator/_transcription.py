@@ -45,6 +45,8 @@ from __future__ import annotations
 
 import datetime
 import os as _os
+import time as _time
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Dict, List, Tuple
 
@@ -57,6 +59,41 @@ from twin4build.simulator._composed import StateLayout as _StateLayout
 from twin4build.simulator._composed import collect_stateful as _collect_stateful
 from twin4build.utils.logger import LOGGER
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
+
+
+class _PhaseProfiler:
+    """Opt-in synchronized wall-clock timings for collocation phases."""
+
+    def __init__(self, enabled: bool, device: torch.device):
+        self.enabled = enabled
+        self.device = device
+        self.timings: Dict[str, float] = {}
+
+    def _sync(self) -> None:
+        if self.enabled and self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+
+    def start(self):
+        if not self.enabled:
+            return None
+        self._sync()
+        return _time.perf_counter()
+
+    def stop(self, name: str, started) -> None:
+        if started is None:
+            return
+        self._sync()
+        self.timings[name] = self.timings.get(name, 0.0) + (
+            _time.perf_counter() - started
+        )
+
+    @contextmanager
+    def phase(self, name: str):
+        started = self.start()
+        try:
+            yield
+        finally:
+            self.stop(name, started)
 
 
 def _segment_boundaries(n_t: int, n_segments: int) -> List[int]:
@@ -195,6 +232,8 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     # and Jacobians run on the model's device.  Inbound z vectors are placed
     # on `dev`, outbound values go through .cpu().numpy().
     dev = self.simulator.model.device
+    profiler = _PhaseProfiler(bool(options.pop("profile_phases", False)), dev)
+    transcription_started = profiler.start()
 
     if method[0] != "casadi":
         raise ValueError(
@@ -218,10 +257,11 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
         x0_param_values, self._flat_components, self._parameter_names,
         normalized=True, overwrite=True,
     )
-    self.simulator.simulate(
-        start_time=start_times, end_time=end_times, step_size=step_sizes,
-        show_progress_bar=False,
-    )
+    with profiler.phase("warm_start_initial_simulation_seconds"):
+        self.simulator.simulate(
+            start_time=start_times, end_time=end_times, step_size=step_sizes,
+            show_progress_bar=False,
+        )
     stateful = _collect_stateful(self.simulator.model)
     assert stateful, (
         "No StatefulSystem components found -- multiple-shooting has no boundary "
@@ -250,7 +290,10 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
         _, _, n_t_p, _ = core.Simulator.get_simulation_timesteps(s_p, e_p, step_p)
         bounds_p = _segment_boundaries(n_t_p, n_t_p)
         Kp = len(bounds_p) - 1
-        state0_p = _warmstart_segment_states(self, layout, bounds_p, s_p, e_p, step_p)
+        with profiler.phase("warm_start_boundary_collection_seconds"):
+            state0_p = _warmstart_segment_states(
+                self, layout, bounds_p, s_p, e_p, step_p
+            )
         actual_p = {
             md.id: np.asarray(self.actual_readings[md.id][p].to_numpy(), dtype=np.float64).flatten()
             for md, _ in self._measurements
@@ -316,11 +359,42 @@ def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamesp
     # *defect constraints* with an explicit block-bidiagonal Jacobian; IPOPT's
     # sparse linear solver exploits the structure (each defect row touches
     # only s_i, s_{i+1}, theta).  The objective is data-fit only.
-    return _solve_sparse_collocation(
+    result = _solve_sparse_collocation(
         self, method, options, n_theta, D, n_seg, layout, seg_starts, seg_ends,
         seg_steps, seg_len, seg_actual, continuity_pairs, s_to_norm, s_from_norm,
-        z0, lb, ub, seg_is_warmup,
+        z0, lb, ub, seg_is_warmup, profiler=profiler,
     )
+    profiler.stop("transcription_total_seconds", transcription_started)
+    if profiler.enabled:
+        t = profiler.timings
+        t["pre_ipopt_other_seconds"] = max(
+            0.0,
+            t.get("pre_ipopt_total_seconds", 0.0)
+            - t.get("composer_build_seconds", 0.0)
+            - t.get("reference_segment_simulation_seconds", 0.0)
+            - t.get("capture_rollout_seconds", 0.0),
+        )
+        t["audit_other_seconds"] = max(
+            0.0,
+            t.get("postsolve_audit_total_seconds", 0.0)
+            - t.get("audit_defect_seconds", 0.0)
+            - t.get("audit_nlp_forward_seconds", 0.0)
+            - t.get("audit_composed_rollout_seconds", 0.0)
+            - t.get("audit_object_graph_rollout_seconds", 0.0),
+        )
+        t["transcription_orchestration_other_seconds"] = max(
+            0.0,
+            t["transcription_total_seconds"]
+            - t.get("warm_start_initial_simulation_seconds", 0.0)
+            - t.get("warm_start_boundary_collection_seconds", 0.0)
+            - t.get("pre_ipopt_total_seconds", 0.0)
+            - t.get("ipopt_total_seconds", 0.0)
+            - t.get("postsolve_attach_state_seconds", 0.0)
+            - t.get("postsolve_audit_total_seconds", 0.0),
+        )
+        result.transcription_timing = dict(profiler.timings)
+        LOGGER.result("COLLOCATION PHASE TIMINGS (s): %s", result.transcription_timing)
+    return result
 
 
 def _warmstart_segment_states(self, layout, bounds_idx, start_time, end_time, step_size):
@@ -365,7 +439,7 @@ def _warmstart_segment_states(self, layout, bounds_idx, start_time, end_time, st
 def _solve_sparse_collocation(
     self, method, options, n_theta, D, n_seg, layout, seg_starts, seg_ends,
     seg_steps, seg_len, seg_actual, continuity_pairs, s_to_norm, s_from_norm,
-    z0, lb, ub, seg_is_warmup=None,
+    z0, lb, ub, seg_is_warmup=None, profiler=None,
 ):
     """Hard-constraint collocation with a block-bidiagonal sparse Jacobian.
 
@@ -384,6 +458,8 @@ def _solve_sparse_collocation(
     # IPOPT itself stays on the CPU; the torch evaluations run on the model's
     # device (inbound z -> dev, outbound -> .cpu().numpy()).
     dev = self.simulator.model.device
+    profiler = profiler or _PhaseProfiler(False, dev)
+    pre_ipopt_started = profiler.start()
     cp = [(int(a), int(b)) for a, b in continuity_pairs]
     n_links = len(cp)
     n_g = n_links * D
@@ -465,6 +541,7 @@ def _solve_sparse_collocation(
     # states or multi-branch parameters), fall back to the exact-but-slow FD
     # path.
     composer = None
+    composer_started = profiler.start()
     try:
         # Indexed theta spec: shared parameters route several (comp, attr)
         # entries to one theta slot; raises on multi-branch (n_c > 1)
@@ -491,6 +568,8 @@ def _solve_sparse_collocation(
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning("Composer unavailable (%s) -- using finite-difference Jacobian.", exc)
         composer = None
+    finally:
+        profiler.stop("composer_build_seconds", composer_started)
 
     def _denorm(th_norm):
         # Single source of truth for the normalized->physical map
@@ -609,8 +688,9 @@ def _solve_sparse_collocation(
     n_g_a = n_links * Da
     if composer is not None and composer.meas_sources:
         z0t = torch.tensor(z0, dtype=tps.float_dtype(), device=dev)
-        with torch.no_grad():
-            _simulate(z0t[:n_theta], z0t[n_theta:].reshape(n_seg, D))
+        with profiler.phase("reference_segment_simulation_seconds"):
+            with torch.no_grad():
+                _simulate(z0t[:n_theta], z0t[n_theta:].reshape(n_seg, D))
         theta0_phys = _denorm(torch.tensor(z0[:n_theta], dtype=tps.float_dtype(), device=dev))
         s0_phys = s_from_norm(torch.tensor(z0[n_theta:], dtype=tps.float_dtype(), device=dev).reshape(n_seg, D))
         # Continuity chains: segment -> next segment within the same period.
@@ -631,12 +711,13 @@ def _solve_sparse_collocation(
         # 1:1 onto the chain's segment indices.
         CAP = torch.zeros((n_seg, len(composer._captured_keys)), dtype=tps.float_dtype(), device=dev)
         fb0 = torch.zeros((n_seg, n_fb), dtype=tps.float_dtype(), device=dev)
-        R = self.simulator.capture_rollout(
-            composer,
-            [seg_starts[chain[0]] for chain in _chains],
-            [seg_ends[chain[-1]] for chain in _chains],
-            [seg_steps[chain[0]] for chain in _chains],
-        )
+        with profiler.phase("capture_rollout_seconds"):
+            R = self.simulator.capture_rollout(
+                composer,
+                [seg_starts[chain[0]] for chain in _chains],
+                [seg_ends[chain[-1]] for chain in _chains],
+                [seg_steps[chain[0]] for chain in _chains],
+            )
         for p, chain in enumerate(_chains):
             idx = torch.tensor(chain[: R.n_t[p]], dtype=torch.long, device=dev)
             CAP[idx] = R.CAP[p][: len(idx)]
@@ -1145,26 +1226,29 @@ def _solve_sparse_collocation(
         zt = torch.tensor(z, dtype=tps.float_dtype(), device=dev)
         theta_norm = zt[:n_theta]
         y_norm = zt[n_theta:].reshape(n_seg, Da)
-        g_vals = np.asarray(g_fun_fast(z), dtype=np.float64)
+        with profiler.phase("audit_defect_seconds"):
+            g_vals = np.asarray(g_fun_fast(z), dtype=np.float64)
         max_defect = float(np.abs(g_vals).max()) if g_vals.size else 0.0
         next_of = dict(cp)
         with torch.no_grad():
-            _, Meas_nlp = _fwd_all(theta_norm, y_norm)
+            with profiler.phase("audit_nlp_forward_seconds"):
+                _, Meas_nlp = _fwd_all(theta_norm, y_norm)
             theta_phys = _denorm(theta_norm)
             y_phys = y_from_norm(y_norm)
             Meas_roll = torch.zeros_like(Meas_nlp)
-            for s0 in period_starts:
-                gi, y = s0, y_phys[s0]
-                while True:
-                    y_next, meas = composer.F_aug(y, theta_phys, CAP[gi])
-                    Meas_roll[gi] = meas
-                    nxt = next_of.get(gi)
-                    if nxt is None:
-                        break
-                    gi, y = nxt, y_next
-            # Same one-step sensor-lag shift the objective applies, so this
-            # rollout is comparable to Meas_nlp and to the do_step rollout.
-            Meas_roll = _apply_meas_lag(Meas_roll)
+            with profiler.phase("audit_composed_rollout_seconds"):
+                for s0 in period_starts:
+                    gi, y = s0, y_phys[s0]
+                    while True:
+                        y_next, meas = composer.F_aug(y, theta_phys, CAP[gi])
+                        Meas_roll[gi] = meas
+                        nxt = next_of.get(gi)
+                        if nxt is None:
+                            break
+                        gi, y = nxt, y_next
+                # Same one-step sensor-lag shift the objective applies, so this
+                # rollout is comparable to Meas_nlp and to the do_step rollout.
+                Meas_roll = _apply_meas_lag(Meas_roll)
             # Real object-graph (do_step) rollout from the same estimated
             # initial component states and theta.  Divergence from the F_aug
             # rollout is *model mismatch* between the composed map and do_step
@@ -1175,28 +1259,29 @@ def _solve_sparse_collocation(
                 param_values, self._flat_components, self._parameter_names,
                 normalized=True, overwrite=True,
             )
-            for s0 in period_starts:
-                chain = [s0]
-                while chain[-1] in next_of:
-                    chain.append(next_of[chain[-1]])
-                x0 = y_phys[s0, :D]
+            with profiler.phase("audit_object_graph_rollout_seconds"):
+                for s0 in period_starts:
+                    chain = [s0]
+                    while chain[-1] in next_of:
+                        chain.append(next_of[chain[-1]])
+                    x0 = y_phys[s0, :D]
 
-                def _seed(x0=x0):
-                    for comp, (a, b), (n_c, ss) in zip(
-                        layout.components, layout.slices, layout.shapes
-                    ):
-                        comp.set_state(x0[a:b].reshape(1, n_c, ss))
+                    def _seed(x0=x0):
+                        for comp, (a, b), (n_c, ss) in zip(
+                            layout.components, layout.slices, layout.shapes
+                        ):
+                            comp.set_state(x0[a:b].reshape(1, n_c, ss))
 
-                self.simulator.simulate(
-                    start_time=[seg_starts[s0]], end_time=[seg_ends[chain[-1]]],
-                    step_size=[seg_steps[s0]], show_progress_bar=False,
-                    after_initialize=_seed,
-                )
-                for m, (md, _) in enumerate(self._measurements):
-                    vals = md.input["measuredValue"].history(
-                        i_t=slice(0, len(chain)), i_s=0, i_c=0
+                    self.simulator.simulate(
+                        start_time=[seg_starts[s0]], end_time=[seg_ends[chain[-1]]],
+                        step_size=[seg_steps[s0]], show_progress_bar=False,
+                        after_initialize=_seed,
                     )
-                    Meas_step[chain, m] = vals.reshape(-1).detach()
+                    for m, (md, _) in enumerate(self._measurements):
+                        vals = md.input["measuredValue"].history(
+                            i_t=slice(0, len(chain)), i_s=0, i_c=0
+                        )
+                        Meas_step[chain, m] = vals.reshape(-1).detach()
         audit = {
             "return_status": str(getattr(result, "status", "")),
             "max_defect": max_defect,
@@ -1551,14 +1636,18 @@ def _solve_sparse_collocation(
                 es_cfg.get("feas_tol", 1e-2), es_cfg.get("patience", 10),
                 es_cfg.get("min_delta_rel", 1e-3), es_cfg.get("theta_tol", 1e-4),
             )
-        result = solve_ipopt_constrained(
-            z0_a, lb_a, ub_a, obj_fun, obj_grad, n_g_a, g_fun_fast, g_jac_vals_fast,
-            jac_rows_a, jac_cols_a, options=options,
-            hess_vals=hess_vals_fn, hess_rows=hess_rows, hess_cols=hess_cols,
-            early_stopping=es_cfg,
-        )
-        _attach_x0(result, result.x, Da, y_from_norm)
-        _audit_fast(result)
+        profiler.stop("pre_ipopt_total_seconds", pre_ipopt_started)
+        with profiler.phase("ipopt_total_seconds"):
+            result = solve_ipopt_constrained(
+                z0_a, lb_a, ub_a, obj_fun, obj_grad, n_g_a, g_fun_fast,
+                g_jac_vals_fast, jac_rows_a, jac_cols_a, options=options,
+                hess_vals=hess_vals_fn, hess_rows=hess_rows, hess_cols=hess_cols,
+                early_stopping=es_cfg,
+            )
+        with profiler.phase("postsolve_attach_state_seconds"):
+            _attach_x0(result, result.x, Da, y_from_norm)
+        with profiler.phase("postsolve_audit_total_seconds"):
+            _audit_fast(result)
         result.x = np.asarray(result.x, dtype=np.float64)[:n_theta]
         result.nfev = self._eval_count
         return result
@@ -1573,11 +1662,14 @@ def _solve_sparse_collocation(
             "(bound equality).", len(period_starts),
         )
     _jac_selfcheck(z0, jac_rows, jac_cols, n_g, g_fun, g_jac_vals, D)
-    result = solve_ipopt_constrained(
-        z0, lb, ub, obj_fun, obj_grad, n_g, g_fun, g_jac_vals,
-        jac_rows, jac_cols, options=options,
-    )
-    _attach_x0(result, result.x, D, s_from_norm)
+    profiler.stop("pre_ipopt_total_seconds", pre_ipopt_started)
+    with profiler.phase("ipopt_total_seconds"):
+        result = solve_ipopt_constrained(
+            z0, lb, ub, obj_fun, obj_grad, n_g, g_fun, g_jac_vals,
+            jac_rows, jac_cols, options=options,
+        )
+    with profiler.phase("postsolve_attach_state_seconds"):
+        _attach_x0(result, result.x, D, s_from_norm)
     result.x = np.asarray(result.x, dtype=np.float64)[:n_theta]
     result.nfev = self._eval_count
     return result
