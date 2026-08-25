@@ -105,6 +105,40 @@ def _aggregate_objective_targets(
     return count, target_mean
 
 
+def _fixed_basis_hessian_two_args(grad_fn, x, y, *rest):
+    """Hessian blocks from explicit, statically sized JVP bases.
+
+    ``torch.func.hessian`` builds its forward-mode basis with data-dependent
+    diagonal offsets that Dynamo cannot specialize in current Colab PyTorch.
+    This equivalent formulation supplies fixed identity bases directly, so the
+    exact Hessian can be lowered with ``torch.compile(fullgraph=True)``.
+    """
+    primals = (x, y, *rest)
+    rest_zeros = tuple(torch.zeros_like(value) for value in rest)
+    x_zero = torch.zeros_like(x)
+    y_zero = torch.zeros_like(y)
+
+    def directional(x_tangent, y_tangent):
+        _, tangent = torch.func.jvp(
+            grad_fn,
+            primals,
+            (x_tangent, y_tangent, *rest_zeros),
+        )
+        return tangent
+
+    hxx, hxy = vmap(lambda basis: directional(basis, y_zero))(
+        torch.eye(x.numel(), dtype=x.dtype, device=x.device).reshape(
+            x.numel(), *x.shape
+        )
+    )
+    hyx, hyy = vmap(lambda basis: directional(x_zero, basis))(
+        torch.eye(y.numel(), dtype=y.dtype, device=y.device).reshape(
+            y.numel(), *y.shape
+        )
+    )
+    return (hxx, hxy), (hyx, hyy)
+
+
 def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamespace:
     """Run a collocation (simultaneous transcription) estimation solve.
 
@@ -1243,13 +1277,25 @@ def _solve_sparse_collocation(
                     _hchunk, n_seg, _hseg_bytes * n_seg / 1e9, _budget / 1e9,
                 )
 
-            def _combined_curvature(theta_norm, y_norm, lam_by_seg, s_gn):
-                """Full exact Lagrangian Hessian from one transform per segment."""
-                hess_fn = torch.func.hessian(
+            if compile_hessian:
+                _segment_grad = torch.func.grad(
                     _exact_lagrangian_segment, argnums=(0, 1)
                 )
+
+                def _segment_hessian(yi, th, ci, li, mi, ai, scale):
+                    return _fixed_basis_hessian_two_args(
+                        _segment_grad, yi, th, ci, li, mi, ai, scale
+                    )
+
+            else:
+                _segment_hessian = torch.func.hessian(
+                    _exact_lagrangian_segment, argnums=(0, 1)
+                )
+
+            def _combined_curvature(theta_norm, y_norm, lam_by_seg, s_gn):
+                """Full exact Lagrangian Hessian from one transform per segment."""
                 return vmap(
-                    lambda yi, ci, li, mi, ai: hess_fn(
+                    lambda yi, ci, li, mi, ai: _segment_hessian(
                         yi, theta_norm, ci, li, mi, ai, s_gn
                     ),
                     chunk_size=None if _hchunk >= n_seg else _hchunk,

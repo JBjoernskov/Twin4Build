@@ -15,6 +15,7 @@ twin4build._IS_TESTING = True
 # Local application imports
 from twin4build.estimator._transcription import (  # noqa: E402
     _aggregate_objective_targets,
+    _fixed_basis_hessian_two_args,
 )
 
 
@@ -88,6 +89,61 @@ class TestHessianPackingOrder(unittest.TestCase):
 
 class TestCombinedExactHessian(unittest.TestCase):
     """One scalar transform must equal the three separate curvature terms."""
+
+    def test_fixed_basis_hessian_compiles_and_matches_eager(self):
+        def scalar(x, y, scale):
+            return scale * (
+                x.sin().sum()
+                + x.square().sum() * y.square().sum()
+                + x[0] * y[1]
+            )
+
+        x = torch.tensor([0.2, -0.4, 0.7], dtype=torch.float64)
+        y = torch.tensor([-0.3, 0.5], dtype=torch.float64)
+        scale = torch.tensor(0.8, dtype=torch.float64)
+        grad_fn = torch.func.grad(scalar, argnums=(0, 1))
+
+        def fixed(x_, y_, scale_):
+            return _fixed_basis_hessian_two_args(
+                grad_fn, x_, y_, scale_
+            )
+
+        expected = torch.func.hessian(scalar, argnums=(0, 1))(x, y, scale)
+        actual = fixed(x, y, scale)
+        for expected_row, actual_row in zip(expected, actual):
+            for expected_block, actual_block in zip(expected_row, actual_row):
+                torch.testing.assert_close(actual_block, expected_block)
+
+        if hasattr(torch, "compile"):
+            compiled = torch.compile(
+                fixed, backend="aot_eager", fullgraph=True, dynamic=False
+            )
+            compiled_actual = compiled(x, y, scale)
+            for expected_row, actual_row in zip(expected, compiled_actual):
+                for expected_block, actual_block in zip(
+                    expected_row, actual_row
+                ):
+                    torch.testing.assert_close(actual_block, expected_block)
+
+            xs = torch.stack([x, x + 0.1, x - 0.2])
+            scales = torch.tensor([0.8, 0.5, 1.1], dtype=torch.float64)
+
+            def batched(xs_, y_, scales_):
+                return torch.func.vmap(
+                    lambda x_i, scale_i: fixed(x_i, y_, scale_i)
+                )(xs_, scales_)
+
+            expected_batched = batched(xs, y, scales)
+            compiled_batched = torch.compile(
+                batched, backend="aot_eager", fullgraph=True, dynamic=False
+            )(xs, y, scales)
+            for expected_row, actual_row in zip(
+                expected_batched, compiled_batched
+            ):
+                for expected_block, actual_block in zip(
+                    expected_row, actual_row
+                ):
+                    torch.testing.assert_close(actual_block, expected_block)
 
     def test_combined_matches_gauss_newton_residual_and_constraint_curvature(self):
         dtype = torch.float64
