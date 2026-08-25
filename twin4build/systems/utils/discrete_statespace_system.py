@@ -1,5 +1,6 @@
 # Standard library imports
 import datetime
+import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -9,6 +10,15 @@ import torch.nn as nn
 # Local application imports
 import twin4build.utils.types as tps
 from twin4build import core
+
+
+_TRANSFORM_MATRIX_EXP = os.environ.get(
+    "TWIN4BUILD_TRANSFORM_MATRIX_EXP", "ss"
+).lower()
+if _TRANSFORM_MATRIX_EXP not in {"ss", "native"}:
+    raise ValueError(
+        "TWIN4BUILD_TRANSFORM_MATRIX_EXP must be either 'ss' or 'native'"
+    )
 
 
 def _expm_ss(M, order=8, squarings=18):
@@ -87,7 +97,10 @@ def _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
     # compiled production graphs.
     if transform_mode is None:
         transform_mode = _functorch_active()
-    expM = _expm_ss(M) if transform_mode else torch.matrix_exp(M)
+    if transform_mode and _TRANSFORM_MATRIX_EXP == "ss":
+        expM = _expm_ss(M)
+    else:
+        expM = torch.matrix_exp(M)
     return expM[..., :n, :n], expM[..., :n, n:]
 
 
