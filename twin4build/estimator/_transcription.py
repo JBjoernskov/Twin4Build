@@ -132,6 +132,52 @@ def _fixed_basis_hessian_two_args(grad_fn, x, y, *rest):
     return (hxx, hxy), (hyx, hyy)
 
 
+class _CudaGraphCallable:
+    """Capture and replay a tensor-only callable without Dynamo/AOT tracing."""
+
+    def __init__(self, fn, warmup_calls=3):
+        self.fn = fn
+        self.warmup_calls = int(warmup_calls)
+        self.graph = None
+        self.static_inputs = None
+        self.static_output = None
+
+    def _capture(self, inputs):
+        self.static_inputs = tuple(torch.empty_like(value) for value in inputs)
+        for target, value in zip(self.static_inputs, inputs):
+            target.copy_(value)
+
+        warmup_stream = torch.cuda.Stream()
+        warmup_stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(warmup_stream):
+            for _ in range(self.warmup_calls):
+                reference_output = self.fn(*self.static_inputs)
+        torch.cuda.current_stream().wait_stream(warmup_stream)
+
+        self.graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self.graph):
+            self.static_output = self.fn(*self.static_inputs)
+        # Stream capture records work instead of relying on it to populate the
+        # output buffers. Replay once so the first invocation returns real data.
+        self.graph.replay()
+        torch.testing.assert_close(
+            self.static_output,
+            reference_output,
+            rtol=1e-9,
+            atol=1e-11,
+            msg="Direct CUDA Graph replay differs from eager Hessian output",
+        )
+        return self.static_output
+
+    def __call__(self, *inputs):
+        if self.graph is None:
+            return self._capture(inputs)
+        for target, value in zip(self.static_inputs, inputs):
+            target.copy_(value)
+        self.graph.replay()
+        return self.static_output
+
+
 def solve_transcription(estimator, method: tuple, options: Dict) -> SimpleNamespace:
     """Run a collocation (simultaneous transcription) estimation solve.
 
@@ -388,9 +434,10 @@ def _solve_sparse_collocation(
     compile_hessian_backend = str(
         options.pop("compile_hessian_backend", "inductor")
     ).lower()
-    if compile_hessian_backend not in {"inductor", "cudagraphs"}:
+    if compile_hessian_backend not in {"inductor", "cudagraphs", "cuda_graph"}:
         raise ValueError(
-            "compile_hessian_backend must be either 'inductor' or 'cudagraphs'"
+            "compile_hessian_backend must be 'inductor', 'cudagraphs', "
+            "or 'cuda_graph'"
         )
     # ``early_stopping``: patience-based stagnation stop + best-feasible-iterate
     # checkpoint (see solve_ipopt_constrained).  False disables; a dict
@@ -1302,21 +1349,32 @@ def _solve_sparse_collocation(
                 )(y_norm, CAP, lam_by_seg, _obj_mask, _ACT_eff)
 
             if compile_hessian:
-                if not hasattr(torch, "compile"):
+                if compile_hessian_backend == "cuda_graph":
+                    if dev.type != "cuda":
+                        raise ValueError(
+                            "compile_hessian_backend='cuda_graph' requires CUDA"
+                        )
+                    _combined_curvature = _CudaGraphCallable(_combined_curvature)
+                    LOGGER.config(
+                        "Exact-Hessian transform will be captured directly "
+                        "with torch.cuda.CUDAGraph."
+                    )
+                elif not hasattr(torch, "compile"):
                     raise RuntimeError(
                         "compile_hessian requires a PyTorch build with torch.compile"
                     )
-                _combined_curvature = torch.compile(
-                    _combined_curvature,
-                    backend=compile_hessian_backend,
-                    fullgraph=True,
-                    dynamic=False,
-                )
-                LOGGER.config(
-                    "Exact-Hessian transform will be lowered by torch.compile "
-                    "(backend=%s, fullgraph=True, dynamic=False).",
-                    compile_hessian_backend,
-                )
+                else:
+                    _combined_curvature = torch.compile(
+                        _combined_curvature,
+                        backend=compile_hessian_backend,
+                        fullgraph=True,
+                        dynamic=False,
+                    )
+                    LOGGER.config(
+                        "Exact-Hessian transform will be lowered by torch.compile "
+                        "(backend=%s, fullgraph=True, dynamic=False).",
+                        compile_hessian_backend,
+                    )
 
             # Keep packing on the model device and emit values in exactly the
             # order declared by hess_rows/hess_cols.
