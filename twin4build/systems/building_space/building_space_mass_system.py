@@ -360,12 +360,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         ).reshape(n_c, n_inputs, n_states, n_states)
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
-        u_multiplier = torch.tensor(
-            [1.0, 0.0, 0.0, 0.0], dtype=dt, device=dev
-        ).reshape(1, n_inputs, 1, 1)
-        u_coefficient = torch.tensor(
-            [0.0, 0.0, 1.0, 0.0], dtype=dt, device=dev
-        ).reshape(1, 1, 1, n_inputs)
+        input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
+        u_multiplier = input_basis[0].reshape(1, n_inputs, 1, 1)
+        u_coefficient = input_basis[2].reshape(1, 1, 1, n_inputs)
         F = (
             (1 / air_mass).reshape(n_c, 1, 1, 1)
             * u_multiplier

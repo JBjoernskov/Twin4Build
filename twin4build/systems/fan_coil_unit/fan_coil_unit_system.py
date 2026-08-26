@@ -496,15 +496,13 @@ class FanCoilUnitSystem(core.System, nn.Module):
 
         ua_over_c = UA_elem / C_elem
         ones_n = torch.ones((n,), dtype=dt, device=dev)
-        input_supply = torch.tensor([1.0, 0.0, 0.0], dtype=dt, device=dev)
-        input_flow = torch.tensor([0.0, 1.0, 0.0], dtype=dt, device=dev)
-        input_air = torch.tensor([0.0, 0.0, 1.0], dtype=dt, device=dev)
-        first_state = torch.nn.functional.one_hot(
-            torch.tensor(0, device=dev), num_classes=n
-        ).to(dt)
-        last_state = torch.nn.functional.one_hot(
-            torch.tensor(n - 1, device=dev), num_classes=n
-        ).to(dt)
+        input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
+        state_basis = torch.eye(n, dtype=dt, device=dev)
+        input_supply = input_basis[0]
+        input_flow = input_basis[1]
+        input_air = input_basis[2]
+        first_state = state_basis[0]
+        last_state = state_basis[-1]
 
         A = torch.diag_embed(-ua_over_c.unsqueeze(-1) * ones_n)
         B = (

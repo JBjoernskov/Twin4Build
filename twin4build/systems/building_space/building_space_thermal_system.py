@@ -663,12 +663,10 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         D = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
-        u_exhaust = torch.nn.functional.one_hot(
-            torch.tensor(2, device=dev), num_classes=n_inputs
-        ).to(dt)
-        state_air = torch.nn.functional.one_hot(
-            torch.tensor(0, device=dev), num_classes=n_states
-        ).to(dt)
+        input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
+        state_basis = torch.eye(n_states, dtype=dt, device=dev)
+        u_exhaust = input_basis[2]
+        state_air = state_basis[0]
         E = (
             (-constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
             * u_exhaust.reshape(1, n_inputs, 1, 1)
@@ -677,12 +675,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         )
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
-        u_supply_flow = torch.nn.functional.one_hot(
-            torch.tensor(1, device=dev), num_classes=n_inputs
-        ).to(dt)
-        u_supply_temperature = torch.nn.functional.one_hot(
-            torch.tensor(3, device=dev), num_classes=n_inputs
-        ).to(dt)
+        u_supply_flow = input_basis[1]
+        u_supply_temperature = input_basis[3]
         F = (
             (constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
             * u_supply_flow.reshape(1, n_inputs, 1, 1)
