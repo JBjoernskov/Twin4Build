@@ -167,6 +167,24 @@ class _CudaGraphCallable:
             atol=1e-11,
             msg="Direct CUDA Graph replay differs from eager Hessian output",
         )
+
+        # A capture-time comparison cannot detect an input accidentally baked
+        # into the graph. Perturb every input buffer, compare a second eager
+        # evaluation with replay, then restore the real first-call inputs.
+        for index, target in enumerate(self.static_inputs):
+            target.add_((index + 1) * 1e-4)
+        probe_output = self.fn(*self.static_inputs)
+        self.graph.replay()
+        torch.testing.assert_close(
+            self.static_output,
+            probe_output,
+            rtol=1e-9,
+            atol=1e-11,
+            msg="Direct CUDA Graph replay does not track changed Hessian inputs",
+        )
+        for target, value in zip(self.static_inputs, inputs):
+            target.copy_(value)
+        self.graph.replay()
         return self.static_output
 
     def __call__(self, *inputs):
