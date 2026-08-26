@@ -605,17 +605,11 @@ class Estimator:
                   nonlinear-constraint curvature in the supplied Lagrangian
                   Hessian. This enables IPOPT's strict KKT convergence test but
                   makes each Hessian evaluation more expensive.
-                - "compile_hessian" (bool, default False): Accelerate the exact
-                  Hessian transform using ``compile_hessian_backend``. Requires
-                  ``exact_hessian=True``; the first Hessian call pays setup
-                  cost, so benchmark before enabling routinely.
-                - "compile_hessian_backend" ("inductor", "cudagraphs",
-                  "cuda_graph", or "fixed_eager"; default "inductor"): Backend
-                  used when ``compile_hessian`` is enabled. ``cudagraphs``
-                  captures a Dynamo/AOT-decomposed graph without Inductor
-                  fusion; ``cuda_graph`` directly captures the tensor-only
-                  Hessian; ``fixed_eager`` runs that same fixed-basis Hessian
-                  eagerly as an operation-for-operation reference.
+                - "capture_hessian" (bool, default: enabled for exact Hessians
+                  on CUDA): Capture and replay the exact-Hessian transform with
+                  ``torch.cuda.CUDAGraph``. Requires ``exact_hessian=True`` and
+                  a CUDA model. The graph is scoped to one solve and validates
+                  replay against eager evaluations before IPOPT proceeds.
                 - "early_stopping" (bool or dict, default: enabled when
                   ``gauss_newton`` is on): Patience-based stagnation stop
                   with a best-feasible-iterate checkpoint. A dict overrides

@@ -446,22 +446,11 @@ def _solve_sparse_collocation(
     # tangents over one reverse pass, vs Da cotangents) in exchange for a
     # reachable KKT test and Newton-rate convergence.
     exact_hessian = bool(options.pop("exact_hessian", False))
-    compile_hessian = bool(options.pop("compile_hessian", False))
-    if compile_hessian and not exact_hessian:
-        raise ValueError("compile_hessian requires exact_hessian=True")
-    compile_hessian_backend = str(
-        options.pop("compile_hessian_backend", "inductor")
-    ).lower()
-    if compile_hessian_backend not in {
-        "inductor",
-        "cudagraphs",
-        "cuda_graph",
-        "fixed_eager",
-    }:
-        raise ValueError(
-            "compile_hessian_backend must be 'inductor', 'cudagraphs', "
-            "'cuda_graph', or 'fixed_eager'"
-        )
+    capture_hessian = bool(
+        options.pop("capture_hessian", exact_hessian and dev.type == "cuda")
+    )
+    if capture_hessian and not exact_hessian:
+        raise ValueError("capture_hessian requires exact_hessian=True")
     # ``early_stopping``: patience-based stagnation stop + best-feasible-iterate
     # checkpoint (see solve_ipopt_constrained).  False disables; a dict
     # overrides the patience/tolerance defaults.  Default: on whenever the GN
@@ -1347,19 +1336,13 @@ def _solve_sparse_collocation(
                     _hchunk, n_seg, _hseg_bytes * n_seg / 1e9, _budget / 1e9,
                 )
 
-            if compile_hessian:
-                _segment_grad = torch.func.grad(
-                    _exact_lagrangian_segment, argnums=(0, 1)
-                )
+            _segment_grad = torch.func.grad(
+                _exact_lagrangian_segment, argnums=(0, 1)
+            )
 
-                def _segment_hessian(yi, th, ci, li, mi, ai, scale):
-                    return _fixed_basis_hessian_two_args(
-                        _segment_grad, yi, th, ci, li, mi, ai, scale
-                    )
-
-            else:
-                _segment_hessian = torch.func.hessian(
-                    _exact_lagrangian_segment, argnums=(0, 1)
+            def _segment_hessian(yi, th, ci, li, mi, ai, scale):
+                return _fixed_basis_hessian_two_args(
+                    _segment_grad, yi, th, ci, li, mi, ai, scale
                 )
 
             def _combined_curvature(theta_norm, y_norm, lam_by_seg, s_gn):
@@ -1371,38 +1354,14 @@ def _solve_sparse_collocation(
                     chunk_size=None if _hchunk >= n_seg else _hchunk,
                 )(y_norm, CAP, lam_by_seg, _obj_mask, _ACT_eff)
 
-            if compile_hessian:
-                if compile_hessian_backend == "fixed_eager":
-                    LOGGER.config(
-                        "Exact-Hessian transform uses the compiler-compatible "
-                        "fixed-basis implementation without compilation."
-                    )
-                elif compile_hessian_backend == "cuda_graph":
-                    if dev.type != "cuda":
-                        raise ValueError(
-                            "compile_hessian_backend='cuda_graph' requires CUDA"
-                        )
-                    _combined_curvature = _CudaGraphCallable(_combined_curvature)
-                    LOGGER.config(
-                        "Exact-Hessian transform will be captured directly "
-                        "with torch.cuda.CUDAGraph."
-                    )
-                elif not hasattr(torch, "compile"):
-                    raise RuntimeError(
-                        "compile_hessian requires a PyTorch build with torch.compile"
-                    )
-                else:
-                    _combined_curvature = torch.compile(
-                        _combined_curvature,
-                        backend=compile_hessian_backend,
-                        fullgraph=True,
-                        dynamic=False,
-                    )
-                    LOGGER.config(
-                        "Exact-Hessian transform will be lowered by torch.compile "
-                        "(backend=%s, fullgraph=True, dynamic=False).",
-                        compile_hessian_backend,
-                    )
+            if capture_hessian:
+                if dev.type != "cuda":
+                    raise ValueError("capture_hessian requires a CUDA model")
+                _combined_curvature = _CudaGraphCallable(_combined_curvature)
+                LOGGER.config(
+                    "Exact-Hessian transform will be captured directly "
+                    "with torch.cuda.CUDAGraph."
+                )
 
             # Keep packing on the model device and emit values in exactly the
             # order declared by hess_rows/hess_cols.
@@ -1452,7 +1411,8 @@ def _solve_sparse_collocation(
                 "EXACT Hessian of the Lagrangian enabled: %d nonzeros (upper "
                 "triangle), %d segments, %d links, %d scored. Objective term = "
                 "Gauss-Newton + residual curvature; constraint term = "
-                "sum(lam*d2g); both via vmap(jacfwd(jacrev)). Verified against "
+                "sum(lam*d2g); both via fixed-basis reverse-over-reverse AD. "
+                "Verified against "
                 "finite differences to 6e-5 (3.6e-5 for the constraint term "
                 "alone).",
                 len(hess_rows), n_seg, n_links, n_i,
