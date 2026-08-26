@@ -609,12 +609,13 @@ class Estimator:
                   Hessian transform using ``compile_hessian_backend``. Requires
                   ``exact_hessian=True``; the first Hessian call pays setup
                   cost, so benchmark before enabling routinely.
-                - "compile_hessian_backend" ("inductor", "cudagraphs", or
-                  "cuda_graph", default "inductor"): Backend used when
-                  ``compile_hessian`` is enabled. ``cudagraphs`` captures a
-                  Dynamo/AOT-decomposed graph without Inductor fusion;
-                  ``cuda_graph`` directly captures the tensor-only Hessian and
-                  avoids compilation.
+                - "compile_hessian_backend" ("inductor", "cudagraphs",
+                  "cuda_graph", or "fixed_eager"; default "inductor"): Backend
+                  used when ``compile_hessian`` is enabled. ``cudagraphs``
+                  captures a Dynamo/AOT-decomposed graph without Inductor
+                  fusion; ``cuda_graph`` directly captures the tensor-only
+                  Hessian; ``fixed_eager`` runs that same fixed-basis Hessian
+                  eagerly as an operation-for-operation reference.
                 - "early_stopping" (bool or dict, default: enabled when
                   ``gauss_newton`` is on): Patience-based stagnation stop
                   with a best-feasible-iterate checkpoint. A dict overrides

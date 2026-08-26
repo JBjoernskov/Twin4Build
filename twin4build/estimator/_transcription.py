@@ -452,10 +452,15 @@ def _solve_sparse_collocation(
     compile_hessian_backend = str(
         options.pop("compile_hessian_backend", "inductor")
     ).lower()
-    if compile_hessian_backend not in {"inductor", "cudagraphs", "cuda_graph"}:
+    if compile_hessian_backend not in {
+        "inductor",
+        "cudagraphs",
+        "cuda_graph",
+        "fixed_eager",
+    }:
         raise ValueError(
             "compile_hessian_backend must be 'inductor', 'cudagraphs', "
-            "or 'cuda_graph'"
+            "'cuda_graph', or 'fixed_eager'"
         )
     # ``early_stopping``: patience-based stagnation stop + best-feasible-iterate
     # checkpoint (see solve_ipopt_constrained).  False disables; a dict
@@ -1367,7 +1372,12 @@ def _solve_sparse_collocation(
                 )(y_norm, CAP, lam_by_seg, _obj_mask, _ACT_eff)
 
             if compile_hessian:
-                if compile_hessian_backend == "cuda_graph":
+                if compile_hessian_backend == "fixed_eager":
+                    LOGGER.config(
+                        "Exact-Hessian transform uses the compiler-compatible "
+                        "fixed-basis implementation without compilation."
+                    )
+                elif compile_hessian_backend == "cuda_graph":
                     if dev.type != "cuda":
                         raise ValueError(
                             "compile_hessian_backend='cuda_graph' requires CUDA"
