@@ -609,6 +609,10 @@ class Estimator:
                   Hessian transform with ``torch.compile(fullgraph=True)``.
                   Requires ``exact_hessian=True``; the first Hessian call pays
                   compilation cost, so benchmark before enabling routinely.
+                - "compile_hessian_backend" ("inductor" or "cudagraphs",
+                  default "inductor"): Backend used when ``compile_hessian`` is
+                  enabled. ``cudagraphs`` captures the decomposed static graph
+                  without Inductor/Triton fusion.
                 - "early_stopping" (bool or dict, default: enabled when
                   ``gauss_newton`` is on): Patience-based stagnation stop
                   with a best-feasible-iterate checkpoint. A dict overrides

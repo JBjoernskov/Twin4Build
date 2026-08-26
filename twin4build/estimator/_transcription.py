@@ -385,6 +385,13 @@ def _solve_sparse_collocation(
     compile_hessian = bool(options.pop("compile_hessian", False))
     if compile_hessian and not exact_hessian:
         raise ValueError("compile_hessian requires exact_hessian=True")
+    compile_hessian_backend = str(
+        options.pop("compile_hessian_backend", "inductor")
+    ).lower()
+    if compile_hessian_backend not in {"inductor", "cudagraphs"}:
+        raise ValueError(
+            "compile_hessian_backend must be either 'inductor' or 'cudagraphs'"
+        )
     # ``early_stopping``: patience-based stagnation stop + best-feasible-iterate
     # checkpoint (see solve_ipopt_constrained).  False disables; a dict
     # overrides the patience/tolerance defaults.  Default: on whenever the GN
@@ -1301,12 +1308,14 @@ def _solve_sparse_collocation(
                     )
                 _combined_curvature = torch.compile(
                     _combined_curvature,
+                    backend=compile_hessian_backend,
                     fullgraph=True,
                     dynamic=False,
                 )
                 LOGGER.config(
                     "Exact-Hessian transform will be lowered by torch.compile "
-                    "(fullgraph=True, dynamic=False)."
+                    "(backend=%s, fullgraph=True, dynamic=False).",
+                    compile_hessian_backend,
                 )
 
             # Keep packing on the model device and emit values in exactly the
