@@ -50,13 +50,16 @@ def _expm_ss(M, order=8, squarings=18):
     I = torch.eye(N, dtype=M.dtype, device=M.device)
     Ms = M / (2.0 ** squarings)
     term = I
-    acc = I
+    # Track exp(Ms) - I so the small non-identity part is not repeatedly
+    # rounded against one when fixed overscaling makes Ms tiny.  If
+    # exp(A) = I + D, then exp(2A) - I = 2D + D@D.
+    delta = torch.zeros_like(M)
     for k in range(1, order + 1):
         term = term @ Ms / k  # (N,N) broadcasts against any leading batch dims
-        acc = acc + term
+        delta = delta + term
     for _ in range(squarings):
-        acc = acc @ acc
-    return acc
+        delta = 2.0 * delta + delta @ delta
+    return I + delta
 
 
 def _functorch_active() -> bool:
