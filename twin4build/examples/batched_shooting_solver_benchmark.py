@@ -114,7 +114,7 @@ def run(arm, hours, maxiter, n_starts, batch_size, device, capture):
             "n_starts": n_starts,
             "batch_size": batch_size,
             "start_seed": 42,
-            "start_spread": 0.15,
+            "start_strategy": "uniform_bounds",
             "capture": capture,
         }
     if device == "cuda":

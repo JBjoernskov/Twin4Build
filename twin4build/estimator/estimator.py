@@ -559,7 +559,9 @@ class Estimator:
                   ``"batched-bfgs"``, ``"batched-lm"``, and
                   ``"batched-newton"``. Select composed execution on the
                   Simulator. Options include ``n_starts``, ``batch_size``,
-                  ``start_seed``, ``start_spread``, ``normalized_starts``,
+                  ``start_seed``, ``start_strategy`` (``"uniform_bounds"`` by
+                  default, or ``"local"`` with ``start_spread``),
+                  ``normalized_starts``,
                   ``maxiter``, ``gtol``, ``ftol``, and ``capture``.
 
                 Mode selection: use ``"ad"`` when all components are
@@ -2663,9 +2665,12 @@ class Estimator:
 
             normalized_starts = options.pop("normalized_starts", None)
             n_starts = int(options.pop("n_starts", 1))
+            start_strategy = options.pop("start_strategy", "uniform_bounds")
             start_spread = float(options.pop("start_spread", 0.15))
             start_seed = options.pop("start_seed", 0)
             if normalized_starts is None:
+                lb_norm = np.asarray(self.bounds.lb, dtype=np.float64)
+                ub_norm = np.asarray(self.bounds.ub, dtype=np.float64)
                 rng = np.random.default_rng(start_seed)
                 starts = np.repeat(
                     np.asarray(self._x0_norm, dtype=np.float64)[None, :],
@@ -2673,16 +2678,22 @@ class Estimator:
                     axis=0,
                 )
                 if n_starts > 1:
-                    starts[1:] += rng.uniform(
-                        -start_spread,
-                        start_spread,
-                        size=starts[1:].shape,
-                    )
-                    starts = np.clip(
-                        starts,
-                        np.asarray(self.bounds.lb, dtype=np.float64),
-                        np.asarray(self.bounds.ub, dtype=np.float64),
-                    )
+                    if start_strategy == "uniform_bounds":
+                        starts[1:] = rng.uniform(
+                            lb_norm, ub_norm, size=starts[1:].shape
+                        )
+                    elif start_strategy == "local":
+                        starts[1:] += rng.uniform(
+                            -start_spread,
+                            start_spread,
+                            size=starts[1:].shape,
+                        )
+                        starts = np.clip(starts, lb_norm, ub_norm)
+                    else:
+                        raise ValueError(
+                            "start_strategy must be 'uniform_bounds' or "
+                            f"'local'; got {start_strategy!r}"
+                        )
             else:
                 starts = np.asarray(normalized_starts, dtype=np.float64)
                 if starts.ndim == 1:
