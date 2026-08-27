@@ -35,6 +35,14 @@ def _fixed_basis_hessian(loss_fn, x):
 class BatchedShootingEvaluator:
     """Derivative bundles for :class:`FastSingleShooting`."""
 
+    # Direct replay is validated for primal values and first-order reverse-mode
+    # gradients. PyTorch's jacfwd and nested higher-order transforms currently
+    # trigger cudaErrorIllegalAddress when their captured graphs are replayed
+    # on the full shooting horizon, even though their eager CUDA evaluations
+    # are valid. Keep those bundles eager; objective-only line searches remain
+    # captured for every method.
+    _CAPTURE_SAFE_BUNDLES = frozenset({"values", "value_grad"})
+
     def __init__(self, objective, capture=False):
         self.objective = objective
         self.capture = bool(capture)
@@ -70,7 +78,12 @@ class BatchedShootingEvaluator:
         if x.device.type == "cuda":
             torch.cuda.synchronize(x.device)
         started = time.perf_counter()
-        if not self.capture or x.device.type != "cuda":
+        capture_bundle = (
+            self.capture
+            and x.device.type == "cuda"
+            and name in self._CAPTURE_SAFE_BUNDLES
+        )
+        if not capture_bundle:
             output = fn(x)
         else:
             graph = self._graphs.get(name)

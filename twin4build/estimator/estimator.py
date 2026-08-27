@@ -562,7 +562,11 @@ class Estimator:
                   ``start_seed``, ``start_strategy`` (``"uniform_bounds"`` by
                   default, or ``"local"`` with ``start_spread``),
                   ``normalized_starts``,
-                  ``maxiter``, ``gtol``, ``ftol``, and ``capture``.
+                  ``maxiter``, ``gtol``, ``ftol``, and ``capture``. CUDA
+                  Graph capture applies to objective values and first-order
+                  gradients; residual Jacobians and exact Hessians remain
+                  eager because PyTorch cannot safely replay those
+                  higher-order transforms.
 
                 Mode selection: use ``"ad"`` when all components are
                 ``torch.nn.Module`` (preferred, faster); use ``"fd"`` for
