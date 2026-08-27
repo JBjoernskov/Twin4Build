@@ -23,8 +23,8 @@ from twin4build.examples.collocation_comparison import (
 class TestFastSingleShooting(unittest.TestCase):
     """Numerical-equivalence regression check for the fast single-shooting objective.
 
-    The composed-map objective (``options={"fast": True}``) is enabled WITHOUT
-    per-run validation against the object-graph objective.  Equivalence holds
+    The composed-map objective (selected on ``Simulator``) is enabled WITHOUT
+    per-run validation against the object-graph objective. Equivalence holds
     by construction -- each composable component's ``do_step`` is a thin
     port-I/O wrapper delegating to the same ``forward`` the composer threads --
     and THIS test is the tripwire guarding that contract (plus the composer's
@@ -41,7 +41,9 @@ class TestFastSingleShooting(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         model = load_model()
-        cls.estimator = tb.Estimator(tb.Simulator(model))
+        cls.estimator = tb.Estimator(
+            tb.Simulator(model, execution_mode="composed")
+        )
         cls.parameters = example_parameters(model)
         cls.measurements = example_measurements(model)
         start = EXAMPLE_START[0]
@@ -58,7 +60,7 @@ class TestFastSingleShooting(unittest.TestCase):
             step_size=STEP_SIZE,
             n_warmup=5,
             method=("scipy", "SLSQP", "ad"),
-            options={"maxiter": 1, "fast": True},
+            options={"maxiter": 1},
         )
 
     def _eval(self, theta_np, use_fast):
@@ -129,6 +131,22 @@ class TestFastSingleShooting(unittest.TestCase):
                 f"(slow={slow:.8g}, fast={fast:.8g}, rel={rel:.3e})",
             )
 
+    def test_estimator_fast_option_is_removed(self):
+        model = load_model()
+        estimator = tb.Estimator(tb.Simulator(model))
+        start = EXAMPLE_START[0]
+        with self.assertRaisesRegex(TypeError, "execution_mode='composed'"):
+            estimator.estimate(
+                parameters=example_parameters(model),
+                measurements=example_measurements(model),
+                start_time=[start],
+                end_time=[start + datetime.timedelta(hours=2)],
+                step_size=STEP_SIZE,
+                n_warmup=0,
+                method=("scipy", "SLSQP", "ad"),
+                options={"maxiter": 1, "fast": True},
+            )
+
 
 def shared_example_parameters(model):
     """The example parameter set with the two damper flow rates collapsed
@@ -153,7 +171,9 @@ class TestFastSingleShootingSharedTheta(TestFastSingleShooting):
     @classmethod
     def setUpClass(cls):
         model = load_model()
-        cls.estimator = tb.Estimator(tb.Simulator(model))
+        cls.estimator = tb.Estimator(
+            tb.Simulator(model, execution_mode="composed")
+        )
         cls.parameters = shared_example_parameters(model)
         cls.measurements = example_measurements(model)
         start = EXAMPLE_START[0]
@@ -167,7 +187,7 @@ class TestFastSingleShootingSharedTheta(TestFastSingleShooting):
             step_size=STEP_SIZE,
             n_warmup=5,
             method=("scipy", "SLSQP", "ad"),
-            options={"maxiter": 1, "fast": True},
+            options={"maxiter": 1},
         )
 
 
@@ -204,7 +224,9 @@ class TestFastSingleShootingOccupancyTheta(TestFastSingleShooting):
     @classmethod
     def setUpClass(cls):
         model = load_model()
-        cls.estimator = tb.Estimator(tb.Simulator(model))
+        cls.estimator = tb.Estimator(
+            tb.Simulator(model, execution_mode="composed")
+        )
         cls.parameters = occupancy_theta_parameters(model)
         cls.measurements = example_measurements(model)
         start = EXAMPLE_START[0]
@@ -218,7 +240,7 @@ class TestFastSingleShootingOccupancyTheta(TestFastSingleShooting):
             step_size=STEP_SIZE,
             n_warmup=5,
             method=("scipy", "SLSQP", "ad"),
-            options={"maxiter": 1, "fast": True},
+            options={"maxiter": 1},
         )
 
 
@@ -243,7 +265,9 @@ class TestFastSingleShootingNonComposableTheta(unittest.TestCase):
         from twin4build.systems.utils.occupancy_system import OccupancySystem
 
         model = load_model()
-        estimator = tb.Estimator(tb.Simulator(model))
+        estimator = tb.Estimator(
+            tb.Simulator(model, execution_mode="composed")
+        )
         start = EXAMPLE_START[0]
         end = start + datetime.timedelta(hours=6)
 
@@ -260,7 +284,7 @@ class TestFastSingleShootingNonComposableTheta(unittest.TestCase):
                 step_size=STEP_SIZE,
                 n_warmup=0,
                 method=("scipy", "SLSQP", "ad"),
-                options={"maxiter": 1, "fast": True},
+                options={"maxiter": 1},
             )
         finally:
             composed._has_real_forward = saved

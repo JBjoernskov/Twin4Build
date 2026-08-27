@@ -109,7 +109,7 @@ class Estimator:
       poor initial parameter guesses and returns the estimated initial state
       as part of the fit.
 
-    Two optimizer *backends* are supported:
+    Three optimizer *backends* are supported:
 
     - **SciPy** (``method=("scipy", <optimizer>, <mode>)``): local optimizers
       (SLSQP, L-BFGS-B, TNC, trust-constr, trf, dogbox) and global optimizers
@@ -117,11 +117,12 @@ class Estimator:
     - **CasADi/IPOPT** (``method=("casadi", "ipopt", "ad")``): the IPOPT
       interior-point solver, optionally with the collocation transcription
       (``method=("casadi", "ipopt", "ad", "collocation")``).
+    - **Custom torch** (``method=("custom", <optimizer>, "ad")``): experimental
+      batched BFGS, Levenberg-Marquardt, and stabilized exact Newton solvers
+      for composed single-shooting.
 
-    For composable torch models, ``options={"fast": True}`` replaces the
-    object-graph objective with an equivalent composed one-step map that
-    skips the per-step Python dispatch (see the Single-Shooting section
-    below); values and gradients are identical by construction.
+    Composed execution is selected on :class:`Simulator`, not through
+    estimator options: ``Simulator(model, execution_mode="composed")``.
 
     Mathematical Formulation
     ------------------------
@@ -264,15 +265,16 @@ class Estimator:
     this: the per-step Jacobians contract, so single-shooting remains well
     behaved even on multi-week horizons.
 
-    For composable torch models, ``options={"fast": True}`` builds a pure
+    For composable torch models, ``Simulator(..., execution_mode="composed")``
+    builds a pure
     one-step map :math:`F_{\text{aug}}` by composing the components'
     ``forward`` methods, captures the exogenous inputs once from a reference
     rollout, and evaluates the same objective as a plain sequential torch
     rollout -- removing the per-step object-graph dispatch. Every composable
     component's ``do_step`` delegates to the same ``forward`` the composed
     map threads, so the fast objective is exact by construction; the
-    estimator silently falls back to the object-graph objective for
-    non-composable models.
+    estimator uses the object-graph objective for non-composable models with
+    SciPy/CasADi; custom batched methods require full composability.
 
     Collocation
     ~~~~~~~~~~~
@@ -353,16 +355,17 @@ class Estimator:
     ...     method=("scipy", "SLSQP", "ad")  # Preferred for most problems
     ... )
 
-    Fast single-shooting for composable torch models (same result, faster):
+    Composed single-shooting for composable torch models:
 
+    >>> simulator = tb.Simulator(model, execution_mode="composed")
+    >>> estimator = tb.Estimator(simulator)
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
     ...     start_time=start,
     ...     end_time=end,
     ...     step_size=step,
-    ...     method=("scipy", "SLSQP", "ad"),
-    ...     options={"fast": True}
+    ...     method=("scipy", "SLSQP", "ad")
     ... )
 
     IPOPT single-shooting via CasADi:
@@ -514,7 +517,8 @@ class Estimator:
                 ``"trf"``, ``"dogbox"``) or, recommended, a tuple
                 ``(library, optimizer, mode)`` or
                 ``(library, optimizer, mode, transcription)`` where
-                ``library`` is ``"scipy"`` or ``"casadi"``, ``optimizer`` is
+                ``library`` is ``"scipy"``, ``"casadi"``, or ``"custom"``,
+                ``optimizer`` is
                 the algorithm name, ``mode`` is ``"ad"`` (automatic
                 differentiation) or ``"fd"`` (finite difference), and the
                 optional ``transcription`` is ``"single_shooting"`` (default)
@@ -551,6 +555,12 @@ class Estimator:
                   sparse hard continuity constraints. Robust to poor initial
                   parameter guesses. See the class docstring's Collocation
                   section for the formulation.
+                - Custom backend (AD, composed single-shooting only):
+                  ``"batched-bfgs"``, ``"batched-lm"``, and
+                  ``"batched-newton"``. Select composed execution on the
+                  Simulator. Options include ``n_starts``, ``batch_size``,
+                  ``start_seed``, ``start_spread``, ``normalized_starts``,
+                  ``maxiter``, ``gtol``, ``ftol``, and ``capture``.
 
                 Mode selection: use ``"ad"`` when all components are
                 ``torch.nn.Module`` (preferred, faster); use ``"fd"`` for
@@ -579,21 +589,6 @@ class Estimator:
                 - "ftol": Function tolerance (SciPy: solver default applies
                   when omitted; CasADi: mapped to IPOPT's ``tol``)
                 - "verbose": Verbosity level
-
-                Fast single-shooting (SciPy/CasADi backends, torch models only):
-
-                - "fast" (bool, default False): Replace the object-graph
-                  objective with the composed one-step-map rollout described
-                  in the class docstring's Single-Shooting section. Values
-                  and gradients are identical by construction; the estimator
-                  silently falls back to the object-graph objective when the
-                  model is not composable (components without ``forward``,
-                  ``n_c > 1`` states or multi-branch parameters, or a
-                  measurement the composed map cannot produce). Shared
-                  parameters are supported.
-                - "fast_validate" (bool, default False): Additionally
-                  cross-check the fast objective against the object-graph
-                  objective on the initial iterate (debugging aid).
 
                 Collocation transcription only:
 
@@ -936,6 +931,9 @@ class Estimator:
             # IPOPT via CasADi (optional dependency).  Single-shooting: same
             # objective as the SciPy backends, only the optimizer changes.
             ("casadi", "ipopt", "ad"),
+            ("custom", "batched-bfgs", "ad"),
+            ("custom", "batched-lm", "ad"),
+            ("custom", "batched-newton", "ad"),
         ]
         default_none_method = ("scipy", "SLSQP", "ad")
         default_methods = [("scipy", "SLSQP", "ad")]
@@ -1127,7 +1125,7 @@ class Estimator:
         self._set_bounds(normalize=True)
 
         # Run optimization based on method
-        if method[0] not in ("scipy", "casadi"):
+        if method[0] not in ("scipy", "casadi", "custom"):
             raise ValueError(f"Unsupported library: {method[0]}")
 
         if options is None:
@@ -2619,28 +2617,27 @@ class Estimator:
         if method[1] in ["trf", "dogbox"] and method[2] == "ad":
             self._log_initial_jacobian_diagnostic()
 
-        # -- Optional fast single-shooting objective ---------------------------
-        # options={"fast": True} replaces the object-graph objective with a
-        # sequential rollout of the composed pure one-step map (F_aug) --
-        # exogenous inputs captured once, no per-eval model.initialize / CSV
-        # re-reads.  Structural compatibility is always checked at build time
-        # (un-composable models fall back to the exact path); numerical
-        # equivalence holds BY CONSTRUCTION (each component's do_step is a thin
-        # wrapper delegating to the same forward the composer threads) and is
-        # regression-checked by tests/estimator/test_fast_shooting.py, not
-        # re-proven per run.
-        # options={"fast_validate": True} additionally cross-checks value and
-        # gradient against the object-graph objective at runtime (debugging
-        # aid; costs ~3 object-graph evaluations).
+        # -- Simulator-selected composed single-shooting objective -------------
+        # Composed execution belongs to Simulator: Estimator only supplies the
+        # parameter and residual contracts. The old estimate options ``fast``
+        # and ``fast_validate`` were removed to avoid two owners for execution
+        # policy.
         self._fast_obj = None
-        fast_requested = bool(options.pop("fast", False))
-        fast_validate = bool(options.pop("fast_validate", False))
+        removed_fast = [k for k in ("fast", "fast_validate") if k in options]
+        if removed_fast:
+            raise TypeError(
+                "Estimator options 'fast' and 'fast_validate' were removed; "
+                "construct Simulator(model, execution_mode='composed') instead."
+            )
+        composed_requested = (
+            getattr(self.simulator, "execution_mode", "object_graph") == "composed"
+        )
         if (
-            fast_requested
+            composed_requested
             and self._transcription == "single_shooting"
             and method[2] == "ad"
         ):
-            self._setup_fast_objective(validate=fast_validate)
+            self._setup_fast_objective(validate=False)
 
         # Run optimization based on method
         LOGGER.task("Running optimization")
@@ -2653,6 +2650,56 @@ class Estimator:
             from twin4build.estimator._transcription import solve_transcription
 
             result = solve_transcription(self, method, dict(options))
+        elif method[0] == "custom":
+            if self._fast_obj is None:
+                raise RuntimeError(
+                    "Custom batched shooting requires "
+                    "Simulator(model, execution_mode='composed') and a "
+                    "fully composable model."
+                )
+            from twin4build.estimator._batched_shooting import (
+                solve_batched_shooting,
+            )
+
+            normalized_starts = options.pop("normalized_starts", None)
+            n_starts = int(options.pop("n_starts", 1))
+            start_spread = float(options.pop("start_spread", 0.15))
+            start_seed = options.pop("start_seed", 0)
+            if normalized_starts is None:
+                rng = np.random.default_rng(start_seed)
+                starts = np.repeat(
+                    np.asarray(self._x0_norm, dtype=np.float64)[None, :],
+                    n_starts,
+                    axis=0,
+                )
+                if n_starts > 1:
+                    starts[1:] += rng.uniform(
+                        -start_spread,
+                        start_spread,
+                        size=starts[1:].shape,
+                    )
+                    starts = np.clip(
+                        starts,
+                        np.asarray(self.bounds.lb, dtype=np.float64),
+                        np.asarray(self.bounds.ub, dtype=np.float64),
+                    )
+            else:
+                starts = np.asarray(normalized_starts, dtype=np.float64)
+                if starts.ndim == 1:
+                    starts = starts[None, :]
+                if starts.shape[1] != len(self._x0_norm):
+                    raise ValueError(
+                        "normalized_starts must have shape "
+                        f"(n_starts, {len(self._x0_norm)})"
+                    )
+            result = solve_batched_shooting(
+                self._fast_obj,
+                method[1],
+                starts,
+                self.bounds.lb,
+                self.bounds.ub,
+                options,
+            )
         elif method[0] == "casadi":
             # IPOPT (via CasADi) single-shooting solve.  Reuses the exact
             # AD objective / gradient the SciPy backends use -- only the
@@ -2880,7 +2927,7 @@ class Estimator:
         if opt_message:
             LOGGER.result("Solver message: %s", opt_message)
 
-        if method[0] in ("scipy", "casadi"):
+        if method[0] in ("scipy", "casadi", "custom"):
             # Leave the model at the OPTIMUM, not at the last objective
             # evaluation: the solver's final evaluation is a line-search probe
             # (and for the transcription/collocation backends the returned x
@@ -2924,6 +2971,9 @@ class Estimator:
         estimated_initial_state = getattr(result, "estimated_initial_state", None)
         transcription_audit = getattr(result, "transcription_audit", None)
         transcription_timing = getattr(result, "transcription_timing", None)
+        multistart_audit = getattr(result, "multistart_audit", None)
+        derivative_stats = getattr(result, "derivative_stats", None)
+        iteration_history = getattr(result, "iteration_history", None)
 
         result = EstimationResult(
             result_x=result_x,
@@ -2950,6 +3000,12 @@ class Estimator:
             result["transcription_audit"] = transcription_audit
         if transcription_timing is not None:
             result["transcription_timing"] = transcription_timing
+        if multistart_audit is not None:
+            result["multistart_audit"] = multistart_audit
+        if derivative_stats is not None:
+            result["derivative_stats"] = derivative_stats
+        if iteration_history is not None:
+            result["iteration_history"] = iteration_history
 
         with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -2979,7 +3035,7 @@ class Estimator:
         threads -- and is regression-checked by
         ``tests/estimator/test_fast_shooting.py``.
 
-        With ``validate=True`` (``options={"fast_validate": True}``) the
+        With ``validate=True`` (internal debugging use) the
         objective value AND gradient are additionally cross-checked against
         the object-graph objective at ``x0`` and a perturbed theta before the
         fast path is enabled -- a runtime debugging aid costing ~3
@@ -3088,7 +3144,7 @@ class Estimator:
             If output format is invalid.
         """
         # Fast path: composed one-step map rollout (see _shooting.py), built
-        # in _scipy_solver when options={"fast": True}.  Both paths end in
+        # in _scipy_solver when Simulator selects composed execution. Both paths end in
         # _loglike_from_residuals, so value/diagnostics contracts are shared
         # by construction.
         if getattr(self, "_fast_obj", None) is not None and output == "scalar":
@@ -3789,7 +3845,9 @@ class EstimationResult(dict):
         Depending on the estimation configuration, additional keys may be
         present on the result dict: ``estimated_initial_state`` (per-component
         initial states) and ``transcription_audit`` (collocation
-        solution-quality audit). Results saved to disk can be reloaded with
+        solution-quality audit), or ``multistart_audit``,
+        ``derivative_stats``, and ``iteration_history`` for custom batched
+        shooting. Results saved to disk can be reloaded with
         :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
 
     Examples:

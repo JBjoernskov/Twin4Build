@@ -40,10 +40,9 @@ falls back to the exact path for un-composable models (components without
 composed map cannot produce).
 ``tests/estimator/test_fast_shooting.py`` regression-checks the end-to-end
 value + gradient parity (guards the delegation contract and the composer's
-wiring/capture logic); ``options={"fast_validate": True}`` re-enables the
-runtime cross-check as a debugging aid.
+wiring/capture logic).
 
-Enable with ``estimator.estimate(..., options={"fast": True})``.
+Enable with ``Simulator(model, execution_mode="composed")``.
 """
 
 from __future__ import annotations
@@ -116,6 +115,27 @@ class FastSingleShooting:
                 [md.id for (md, _), l in zip(estimator._measurements, self.meas_lag) if l],
             )
         self._capture()
+        self._sd = torch.tensor(
+            [float(sd) for _md, sd in estimator._measurements],
+            dtype=tps.float_dtype(),
+            device=estimator._device,
+        )
+        self._denom = float(estimator._n_timesteps * len(estimator._measurements))
+        # A single canonical scale makes every start and every custom solver
+        # optimize exactly the same function.  Per-start scaling would make
+        # objective values and stopping tolerances incomparable.
+        with torch.no_grad():
+            x0 = torch.as_tensor(
+                estimator._x0_norm,
+                dtype=tps.float_dtype(),
+                device=estimator._device,
+            )
+            weighted = self.raw_residuals(x0) / self._sd
+            mse0 = torch.sum(weighted.square()) / self._denom
+            self.loss_scale = torch.clamp(
+                mse0 / 100.0,
+                min=torch.finfo(weighted.dtype).tiny,
+            ).detach()
 
     def _denorm(self, th_norm: torch.Tensor) -> torch.Tensor:
         # Single source of truth for the normalized->physical map
@@ -158,30 +178,37 @@ class FastSingleShooting:
         )
 
     # -- the rollout ----------------------------------------------------------
-    def _rollout_meas(self, theta_phys: torch.Tensor):
+    def _rollout_meas(
+        self, theta_phys: torch.Tensor, *, transform_mode: bool = False
+    ):
         """Modelled measurements per period: list of ``(n_t, n_meas)``
         (the shared sequential rollout, :meth:`Simulator.rollout_composed`)."""
         sim = self.est.simulator
         return [
-            sim.rollout_composed(self.composer, self.Y0[p], theta_phys, self.CAP[p])
+            sim.rollout_composed(
+                self.composer,
+                self.Y0[p],
+                theta_phys,
+                self.CAP[p],
+                transform_mode=transform_mode,
+            )
             for p in range(len(self.n_t))
         ]
 
-    # -- Estimator._obj drop-in (scalar mode) ---------------------------------
-    def loglike(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:
-        """Same contract (and side-effect diagnostics) as ``Estimator._obj``
-        in scalar mode; differentiable w.r.t. ``theta`` (normalized)."""
-        if output != "scalar":
-            raise ValueError("fast single-shooting objective is scalar-only")
-        est = self.est
+    def raw_residuals(
+        self, theta: torch.Tensor, *, transform_mode: bool = False
+    ) -> torch.Tensor:
+        """Pure scored residual matrix ``actual - model``.
+
+        This method has no logging or estimator-state mutation and is therefore
+        safe under ``torch.func`` transforms and CUDA Graph capture.
+        """
         theta_phys = self._denorm(theta)
-        Ms = self._rollout_meas(theta_phys)
-        nw = est._n_warmup
+        Ms = self._rollout_meas(theta_phys, transform_mode=transform_mode)
+        nw = self.est._n_warmup
         raw_terms = []
         for p, M in enumerate(Ms):
             if any(self.meas_lag):
-                # Lagged sensors report the previous step's producer output
-                # (see __init__); step 0 reads the initialized value.
                 cols = []
                 for m, lag in enumerate(self.meas_lag):
                     if lag:
@@ -190,7 +217,66 @@ class FastSingleShooting:
                         cols.append(M[:, m])
                 M = torch.stack(cols, dim=1)
             raw_terms.append(self.ACT[p][nw:] - M[nw:])
-        raw = torch.cat(raw_terms, dim=0)  # (N, n_meas)
+        return torch.cat(raw_terms, dim=0)
+
+    def residual_vector(
+        self, theta: torch.Tensor, *, transform_mode: bool = False
+    ) -> torch.Tensor:
+        """Weighted residual whose squared norm equals :meth:`loss`."""
+        raw = self.raw_residuals(theta, transform_mode=transform_mode)
+        return (
+            raw / self._sd / torch.sqrt(self.loss_scale * self._denom)
+        ).reshape(-1)
+
+    def loss(
+        self, theta: torch.Tensor, *, transform_mode: bool = False
+    ) -> torch.Tensor:
+        residual = self.residual_vector(theta, transform_mode=transform_mode)
+        return torch.sum(residual.square())
+
+    def batched_loss(self, theta_batch: torch.Tensor) -> torch.Tensor:
+        if theta_batch.device.type == "cpu":
+            return torch.stack([self.loss(th) for th in theta_batch])
+        return torch.func.vmap(
+            lambda th: self.loss(th, transform_mode=True)
+        )(theta_batch)
+
+    def batched_value_and_grad(
+        self, theta_batch: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if theta_batch.device.type == "cpu":
+            z = theta_batch.detach().clone().requires_grad_(True)
+            value = torch.stack([self.loss(th) for th in z])
+            (grad,) = torch.autograd.grad(value.sum(), z)
+            return value.detach(), grad.detach()
+        fn = torch.func.grad_and_value(
+            lambda th: self.loss(th, transform_mode=True)
+        )
+        grad, value = torch.func.vmap(fn)(theta_batch)
+        return value, grad
+
+    def batched_residual_and_jacobian(
+        self, theta_batch: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        fn = torch.func.jacfwd(
+            lambda th: self.residual_vector(th, transform_mode=True),
+            argnums=0,
+            has_aux=False,
+        )
+        residual = torch.func.vmap(
+            lambda th: self.residual_vector(th, transform_mode=True)
+        )(theta_batch)
+        jacobian = torch.func.vmap(fn)(theta_batch)
+        return residual, jacobian
+
+    # -- Estimator._obj drop-in (scalar mode) ---------------------------------
+    def loglike(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:
+        """Same contract (and side-effect diagnostics) as ``Estimator._obj``
+        in scalar mode; differentiable w.r.t. ``theta`` (normalized)."""
+        if output != "scalar":
+            raise ValueError("fast single-shooting objective is scalar-only")
+        est = self.est
+        raw = self.raw_residuals(theta)
         # Everything downstream of the raw residuals (sd weighting, padded-
         # horizon normalization, rescale-to-100, diagnostics) is THE shared
         # objective -- the same method the object-graph _obj ends in, so the

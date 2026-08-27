@@ -166,7 +166,9 @@ class Simulator:
     >>> temperature_history = space.output["indoorTemperature"].history()
     """
 
-    def __init__(self, model: core.Model):
+    _EXECUTION_MODES = ("object_graph", "composed")
+
+    def __init__(self, model: core.Model, execution_mode: str = "object_graph"):
         """
         Initialize the Simulator instance.
 
@@ -175,12 +177,23 @@ class Simulator:
 
         Args:
             model: The model to be simulated.
+            execution_mode: Default execution engine. ``"object_graph"`` is
+                the general port/history engine. ``"composed"`` enables the
+                pure composed-map engine for compatible differentiable
+                workflows such as estimation; :meth:`simulate` may override
+                it per call.
 
         Notes:
             The simulator maintains internal state about the current simulation,
             including time steps and component states.
         """
+        if execution_mode not in self._EXECUTION_MODES:
+            raise ValueError(
+                f"execution_mode must be one of {self._EXECUTION_MODES}; "
+                f"got {execution_mode!r}"
+            )
         self.model = model
+        self.execution_mode = execution_mode
 
     @staticmethod
     def _assign_component_inputs(
@@ -389,6 +402,7 @@ class Simulator:
         show_progress_bar: bool = True,
         iteration_method: str = "gauss-seidel",
         after_initialize=None,
+        execution_mode: str = None,
         **kwargs,
     ) -> None:
         """
@@ -414,11 +428,29 @@ class Simulator:
                 (re)initialization and before the time loop. Used by the
                 collocation transcription to inject per-segment initial states;
                 ``None`` (default) is a no-op.
+            execution_mode: Optional per-call override of the mode selected at
+                construction. The composed mode preserves the normal history
+                contract; its reusable tensor rollout is exposed through the
+                composed-map methods below.
 
         Raises:
             AssertionError: If input parameters are invalid or missing timezone info.
             FMICallException: If the FMU simulation fails.
         """
+        mode = self.execution_mode if execution_mode is None else execution_mode
+        if mode not in self._EXECUTION_MODES:
+            raise ValueError(
+                f"execution_mode must be one of {self._EXECUTION_MODES}; "
+                f"got {mode!r}"
+            )
+        # Public simulation must populate every component port/history,
+        # including non-composable data/FMUs. The object-graph traversal is the
+        # materialization pass for that contract. In composed mode its result
+        # also provides the reference capture reused by pure tensor rollouts;
+        # Estimator/Optimizer therefore avoid this traversal on subsequent
+        # objective evaluations.
+        self._last_execution_mode = mode
+
         for legacy_key, new_key in (
             ("startTime", "start_time"),
             ("endTime", "end_time"),
@@ -589,7 +621,9 @@ class Simulator:
             layout=layout, meas_ids=meas_ids,
         )
 
-    def rollout_composed(self, composer, y0, theta, cap) -> torch.Tensor:
+    def rollout_composed(
+        self, composer, y0, theta, cap, *, transform_mode: bool = False
+    ) -> torch.Tensor:
         """Sequentially roll the composed map over one period (see
         :func:`~twin4build.simulator._composed.sequential_rollout`).
 
@@ -605,4 +639,6 @@ class Simulator:
         """
         from twin4build.simulator._composed import sequential_rollout
 
-        return sequential_rollout(composer, y0, theta, cap)
+        return sequential_rollout(
+            composer, y0, theta, cap, transform_mode=transform_mode
+        )

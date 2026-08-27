@@ -21,13 +21,31 @@ Twin4Build has two component execution paths:
 
 * ``do_step`` integrates a component into the object-graph simulator. It reads
   and writes ports and histories.
-* ``forward(state, inputs, parameters, sample_time, ...)`` is composed into the
-  fast estimation and collocation maps. PyTorch may call it under ``vmap``,
+* ``forward(state, inputs, parameters, sample_time, ...)`` is composed by
+  ``Simulator(..., execution_mode="composed")`` for estimation and
+  collocation maps. PyTorch may call it under ``vmap``,
   ``jacrev``, higher-order differentiation, or CUDA Graph capture.
 
 ``do_step`` must be a thin I/O wrapper around ``forward``. There must not be a
 second implementation of the physics. Otherwise normal simulation and the
 derivative supplied to an optimizer can silently describe different models.
+
+Execution-mode ownership
+------------------------
+
+Execution policy belongs to :class:`~twin4build.simulator.simulator.Simulator`.
+Use ``Simulator(model, execution_mode="composed")`` to select reusable pure
+rollouts, or override one public run with
+``simulator.simulate(..., execution_mode="object_graph")``. Estimator no
+longer accepts ``fast`` or ``fast_validate`` options. The experimental
+``("custom", "batched-bfgs", "ad")``, ``batched-lm``, and
+``batched-newton`` methods require composed execution and fail rather than
+silently dropping a derivative path.
+
+The object-graph materialization pass remains responsible for complete port
+and history population, including data-driven and FMU components. Pure
+rollouts reuse the captured exogenous tensors and must keep shapes static;
+this is required for start-axis ``vmap`` and direct CUDA Graph replay.
 
 Pure ``forward`` contract
 -------------------------
