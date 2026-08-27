@@ -134,6 +134,19 @@ class TestCollocationSensorLag(unittest.TestCase):
         )
         self.assertTrue(self.result["transcription_audit"]["per_sensor"])
 
+    def test_callbacks_share_forward_and_derivative_evaluations(self):
+        stats = self.result["transcription_audit"]["callback_cache"]
+        self.assertLess(
+            stats["forward_evaluations"],
+            stats["objective_values"] + stats["constraints"],
+        )
+        self.assertLessEqual(
+            stats["derivative_evaluations"],
+            stats["objective_gradients"] + stats["constraint_jacobians"],
+        )
+        self.assertGreater(stats["forward_cache_hits"], 0)
+        self.assertGreater(stats["derivative_cache_hits"], 0)
+
     def test_composed_rollout_matches_do_step_rollout(self):
         """The composed map and the object graph must produce the same signal.
 
