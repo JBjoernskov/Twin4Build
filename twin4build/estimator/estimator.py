@@ -614,6 +614,11 @@ class Estimator:
                   period's initial boundary state at its warm-start value so
                   the feasible set is exactly the single-shooting trajectory
                   manifold (mainly for equivalence testing).
+                - "profile_phases" (bool, default False): Record synchronized
+                  wall-clock timings for collocation setup, IPOPT, and the
+                  post-solve audit in ``result["transcription_timing"]``.
+                  CUDA synchronization makes this a benchmarking option, not
+                  a production-performance setting.
                 - "boundary_state_init" ({"auto", "data", "rollout"},
                   default "auto"): Where the collocation boundary states
                   start.  **You normally do not set this** -- "auto"
@@ -2913,6 +2918,7 @@ class Estimator:
         # continuous prediction from it (see EstimationResult).
         estimated_initial_state = getattr(result, "estimated_initial_state", None)
         transcription_audit = getattr(result, "transcription_audit", None)
+        transcription_timing = getattr(result, "transcription_timing", None)
 
         result = EstimationResult(
             result_x=result_x,
@@ -2937,6 +2943,8 @@ class Estimator:
             result["estimated_initial_state"] = estimated_initial_state
         if transcription_audit is not None:
             result["transcription_audit"] = transcription_audit
+        if transcription_timing is not None:
+            result["transcription_timing"] = transcription_timing
 
         with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
