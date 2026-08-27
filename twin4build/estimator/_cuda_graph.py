@@ -32,6 +32,7 @@ class CudaGraphCallable:
             reference_output,
             rtol=1e-9,
             atol=1e-11,
+            equal_nan=True,
             msg="Direct CUDA Graph replay differs from eager output",
         )
         for index, target in enumerate(self.static_inputs):
@@ -43,6 +44,7 @@ class CudaGraphCallable:
             probe_output,
             rtol=1e-9,
             atol=1e-11,
+            equal_nan=True,
             msg="Direct CUDA Graph replay does not track changed inputs",
         )
         for target, value in zip(self.static_inputs, inputs):

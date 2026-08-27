@@ -99,6 +99,26 @@ class TestBatchedShootingSolvers(unittest.TestCase):
         )
         np.testing.assert_allclose(result.x, [0.0, 1.0], atol=1e-6)
 
+    def test_lm_nonfinite_start_does_not_abort_other_slots(self):
+        objective = _QuadraticResidual()
+        starts = np.array([[np.nan, 0.5], [0.9, 0.1]])
+        result = solve_batched_shooting(
+            objective,
+            "batched-lm",
+            starts,
+            np.zeros(2),
+            np.ones(2),
+            {"maxiter": 20, "gtol": 1e-8},
+        )
+        self.assertEqual(
+            result.multistart_audit[0]["status"],
+            "failed_nonfinite_or_line_search",
+        )
+        self.assertTrue(result.multistart_audit[1]["success"])
+        np.testing.assert_allclose(
+            result.x, objective.target.numpy(), atol=1e-6
+        )
+
     def test_deterministic_chunking(self):
         objective = _QuadraticResidual()
         starts = np.array([[0.9, 0.1], [0.2, 0.2], [0.7, 0.8]])

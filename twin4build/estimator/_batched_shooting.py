@@ -180,9 +180,12 @@ def _solve_chunk(
         converged = active & (pg_norm <= gtol * (1.0 + torch.abs(f)))
         converged_all |= converged
         active &= ~converged
-        failed_now = active & (
-            ~torch.isfinite(f) | ~torch.isfinite(g).all(dim=1)
-        )
+        derivatives_finite = torch.isfinite(g).all(dim=1)
+        if method == "batched-lm":
+            derivatives_finite &= torch.isfinite(jac).all(dim=(1, 2))
+        elif method == "batched-newton":
+            derivatives_finite &= torch.isfinite(hess).all(dim=(1, 2))
+        failed_now = active & (~torch.isfinite(f) | ~derivatives_finite)
         failed |= failed_now
         active &= ~failed_now
         history.append(
@@ -199,16 +202,36 @@ def _solve_chunk(
         if method == "batched-bfgs":
             direction = -torch.bmm(inv_h, pg[:, :, None]).squeeze(-1)
         elif method == "batched-lm":
-            normal = 2.0 * torch.bmm(jac.transpose(1, 2), jac)
+            safe_jac = torch.where(
+                active[:, None, None], jac, torch.zeros_like(jac)
+            )
+            safe_g = torch.where(active[:, None], g, torch.zeros_like(g))
+            normal = 2.0 * torch.bmm(
+                safe_jac.transpose(1, 2), safe_jac
+            )
             diagonal_scale = torch.clamp(
                 torch.diagonal(normal, dim1=1, dim2=2), min=1.0
             )
             matrix = normal + torch.diag_embed(
                 damping[:, None] * diagonal_scale
             )
-            direction = torch.linalg.solve(matrix, -g[:, :, None]).squeeze(-1)
+            matrix = torch.where(active[:, None, None], matrix, eye)
+            direction, solve_info = torch.linalg.solve_ex(
+                matrix, (-safe_g)[:, :, None]
+            )
+            direction = direction.squeeze(-1)
+            solve_failed = active & (solve_info != 0)
+            failed |= solve_failed
+            active &= ~solve_failed
+            direction = torch.where(
+                active[:, None], direction, torch.zeros_like(direction)
+            )
         else:
-            sym = 0.5 * (hess + hess.transpose(1, 2))
+            safe_hess = torch.where(
+                active[:, None, None], hess, torch.zeros_like(hess)
+            )
+            safe_g = torch.where(active[:, None], g, torch.zeros_like(g))
+            sym = 0.5 * (safe_hess + safe_hess.transpose(1, 2))
             # Increase a per-slot shift until all active systems are positive
             # definite; inactive slots receive identity systems.
             shift = damping.clone()
@@ -217,7 +240,9 @@ def _solve_chunk(
                 matrix = sym + shift[:, None, None] * eye
                 chol, info = torch.linalg.cholesky_ex(matrix)
                 ok = (info == 0) | ~active
-                solved = torch.cholesky_solve((-g)[:, :, None], chol).squeeze(-1)
+                solved = torch.cholesky_solve(
+                    (-safe_g)[:, :, None], chol
+                ).squeeze(-1)
                 direction = torch.where(ok[:, None], solved, direction)
                 if bool(ok.all()):
                     break
