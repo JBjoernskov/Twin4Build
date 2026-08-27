@@ -35,9 +35,18 @@ class CudaGraphCallable:
             equal_nan=True,
             msg="Direct CUDA Graph replay differs from eager output",
         )
-        for index, target in enumerate(self.static_inputs):
-            target.add_((index + 1) * 1e-4)
-        probe_output = self.fn(*self.static_inputs)
+        # Never interleave eager autograd with graph replay on the graph's own
+        # static buffers: higher-order transforms may retain workspace aliases
+        # and poison the next replay (observed as cudaErrorIllegalAddress for
+        # shooting Jacobian/Hessian graphs). Compute the eager reference from
+        # independent inputs, then copy those values into the captured buffers.
+        probe_inputs = tuple(
+            value + (index + 1) * 1e-4
+            for index, value in enumerate(inputs)
+        )
+        probe_output = self.fn(*probe_inputs)
+        for target, value in zip(self.static_inputs, probe_inputs):
+            target.copy_(value)
         self.graph.replay()
         torch.testing.assert_close(
             self.static_output,
