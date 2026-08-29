@@ -21,6 +21,11 @@ class System:
     A base-class representing a component model used as part of a simulation model.
     The methods :func:`~twin4build.systems.saref4syst.system.System.initialize`, :func:`~twin4build.systems.saref4syst.system.System.do_step` must be implemented by the subclass.
 
+    Tensor-based subclasses should also implement one pure ``forward`` function
+    and delegate ``do_step`` mathematics to it. See
+    :doc:`/manual/differentiable_system_models` for the complete transform,
+    device, cache, and structural-support contract.
+
     Args:
         connects_at: A list of connection points (inputs) of the system.
         connected_through: A list of Connection objects (outputs) of the system.
@@ -30,6 +35,10 @@ class System:
     """
 
     sp = None
+    #: Opt in only when ``forward`` accepts ``transform_mode`` and its complete
+    #: call tree bypasses mutable caches and tensor-dependent Python behavior.
+    #: See :doc:`/manual/differentiable_system_models`.
+    SUPPORTS_TRANSFORM_MODE = False
 
     def __str__(self):
         t = PrettyTable(field_names=["input", "output"], divider=True)
@@ -383,10 +392,13 @@ class System:
         as ``[(prefix, unit), ...]`` in state order (the order
         :meth:`collect_states` walks them).
 
-        Each unit exposes ``_build_matrices(p)`` and ``_ss_layout()``; the
-        prefix is the attribute path used to route prefixed parameter names
-        (empty for a leaf component that is its own unit).  Composites
-        override this to enumerate their submodels.
+        Each unit exposes ``_build_matrices(p)``, ``_ss_layout()`` and
+        ``_ss_support()``.  The latter declares conservative structural
+        support for the D/E/F matrices so fusion never infers graph structure
+        from a parameter-dependent tensor value.  The prefix is the attribute
+        path used to route prefixed parameter names (empty for a leaf component
+        that is its own unit).  Composites override this to enumerate their
+        submodels.
         """
         if hasattr(self, "_build_matrices"):
             return [("", self)]

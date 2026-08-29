@@ -495,6 +495,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         return x0
 
     #: Physical RC parameters, in a fixed order (the ``forward`` theta contract).
+    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = (
         "C_air", "C_wall", "C_boundary",
         "R_in", "R_out", "R_boundary",
@@ -527,10 +528,23 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             u.append(("wallHeatGain", self.n_walls))
         return {"u": u, "y": {"indoorTemperature": 0, "wallTemperature": 1}}
 
+    def _ss_support(self):
+        """Conservative structural support of the ``D``, ``E`` and ``F`` matrices.
+
+        Entries are matrix-index tuples that may be nonzero for any admissible
+        parameter value.  Fusion uses this static contract for control flow; it
+        must therefore remain a superset even when a coefficient is zero at a
+        particular parameter iterate.
+        """
+        return {
+            "D": frozenset(),
+            "E": frozenset({(2, 0, 0)}),
+            "F": frozenset({(1, 0, 3)}),
+        }
+
     def _build_matrices(self, p=None):
         """Build the RC state-space matrices ``(A, B, C, D, E, F)`` from the
-        physical parameters -- a **pure** function of ``p`` (no side effects
-        beyond caching ``n_states`` / ``n_inputs``).
+        physical parameters -- a **pure** function of ``p``.
 
         ``p`` is a dict ``{name: value}`` of *physical* parameter tensors
         (:attr:`PARAM_NAMES`).  When ``None`` it defaults to the component's own
@@ -548,7 +562,6 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         # Calculate number of states
         n_states = 2  # Base states: air and wall temperature
         n_states += self.n_boundary_temperature  # Add boundary wall state
-        self.n_states = n_states
 
         # Calculate number of inputs based on input dictionary
         n_inputs = len(self.input) - 2  # Base inputs from input dictionary
@@ -556,7 +569,6 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         n_inputs += (
             self.n_boundary_temperature
         )  # Add one input for boundary temperature
-        self.n_inputs = n_inputs
 
         # Get parameter values - shape (n_c_param,); may be 1 even when
         # self.n_c > 1 (compiled/batched components share identical params).
@@ -574,50 +586,69 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         # cache miss during stepping, outside initialize()'s device context.
         dev, dt = C_air.device, C_air.dtype
 
-        # Initialize A and B matrices with zeros - shape (n_c, n_states, n_states/n_inputs)
-        A = torch.zeros((n_c, n_states, n_states), dtype=dt, device=dev)
-        B = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
-
-        # Air temperature equation coefficients
-        A[:, 0, 0] = -1 / (R_in * C_air)
-        A[:, 0, 1] = 1 / (R_in * C_air)  # T_wall coefficient
-
+        zero = torch.zeros_like(C_air)
+        air_wall = 1 / (R_in * C_air)
+        wall_air = 1 / (R_in * C_wall)
+        wall_outdoor = 1 / (R_out * C_wall)
         if self.n_boundary_temperature == 1:
-            # Add heat exchange with boundary wall
-            A[:, 0, 0] -= 1 / (R_boundary * C_air)  # T_bound_wall coefficient
-            A[:, 0, 2] = 1 / (R_boundary * C_air)  # T_bound_wall coefficient
-            A[:, 2, 0] = 1 / (
-                R_boundary * C_boundary
-            )  # T_air coefficient for boundary wall
-            A[:, 2, 2] = -2 / (R_boundary * C_boundary)  # T_bound_wall coefficient
+            air_boundary = 1 / (R_boundary * C_air)
+            boundary_air = 1 / (R_boundary * C_boundary)
+            A = torch.stack(
+                [
+                    torch.stack(
+                        [-air_wall - air_boundary, air_wall, air_boundary],
+                        dim=-1,
+                    ),
+                    torch.stack(
+                        [wall_air, -wall_air - wall_outdoor, zero], dim=-1
+                    ),
+                    torch.stack(
+                        [boundary_air, zero, -2 * boundary_air], dim=-1
+                    ),
+                ],
+                dim=1,
+            )
+        else:
+            A = torch.stack(
+                [
+                    torch.stack([-air_wall, air_wall], dim=-1),
+                    torch.stack([wall_air, -wall_air - wall_outdoor], dim=-1),
+                ],
+                dim=1,
+            )
 
-        # Exterior wall temperature equation coefficients
-        A[:, 1, 0] = 1 / (R_in * C_wall)  # T_air coefficient
-        A[:, 1, 1] = -1 / (R_in * C_wall) - 1 / (R_out * C_wall)  # T_wall coefficient
-
-        # Input matrix B coefficients - match the order in do_step
-        # Outdoor temperature
-        B[:, 1, 0] = 1 / (R_out * C_wall)  # T_out coefficient for wall
-
-        # Solar radiation
-        B[:, 0, 4] = f_air / C_air  # Radiation coefficient for air
-        B[:, 1, 4] = f_wall / C_wall  # Radiation coefficient for wall
-
-        # Number of people
-        B[:, 0, 5] = Q_occ_gain / C_air  # N_people coefficient
-
-        # Space heater heat input
-        B[:, 0, 6] = 1 / C_air  # Q_sh coefficient
-
+        air_inputs = [
+            zero,
+            zero,
+            zero,
+            zero,
+            f_air / C_air,
+            Q_occ_gain / C_air,
+            1 / C_air,
+        ]
+        wall_inputs = [
+            wall_outdoor,
+            zero,
+            zero,
+            zero,
+            f_wall / C_wall,
+            zero,
+            zero,
+        ]
         if self.n_boundary_temperature == 1:
-            # Boundary temperature
-            B[:, 2, 7] = 1 / (R_boundary * C_boundary)  # T_bound coefficient
-
-        # Wall heat gains (at the end of the input vector): heat flow [W]
-        # produced by connected WallSystem components enters the air node.
-        for i in range(self.n_walls):
-            wall_input_idx = (n_inputs - self.n_walls) + i
-            B[:, 0, wall_input_idx] = 1 / C_air  # Q_wall coefficient
+            air_inputs.append(zero)
+            wall_inputs.append(zero)
+        air_inputs.extend([1 / C_air] * self.n_walls)
+        wall_inputs.extend([zero] * self.n_walls)
+        b_rows = [
+            torch.stack(air_inputs, dim=-1),
+            torch.stack(wall_inputs, dim=-1),
+        ]
+        if self.n_boundary_temperature == 1:
+            boundary_inputs = [zero] * n_inputs
+            boundary_inputs[7] = boundary_air
+            b_rows.append(torch.stack(boundary_inputs, dim=-1))
+        B = torch.stack(b_rows, dim=1)
 
         # Output matrix C - Identity matrix for direct observation of all states
         # Shape: (n_c, n_states, n_states)
@@ -632,16 +663,26 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         D = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
-        E = torch.zeros((n_c, n_inputs, n_states, n_states), dtype=dt, device=dev)
-        # -m_ex*cp*T_air (input 2, state 0)
-        E[:, 2, 0, 0] = -constants.CP_AIR / C_air  # exhaustAirFlowRate * T_air
+        input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
+        state_basis = torch.eye(n_states, dtype=dt, device=dev)
+        u_exhaust = input_basis[2]
+        state_air = state_basis[0]
+        E = (
+            (-constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
+            * u_exhaust.reshape(1, n_inputs, 1, 1)
+            * state_air.reshape(1, 1, n_states, 1)
+            * state_air.reshape(1, 1, 1, n_states)
+        )
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
-        F = torch.zeros((n_c, n_inputs, n_states, n_inputs), dtype=dt, device=dev)
-        # m_sup*cp*T_sup (inputs 1 and 3)
-        F[:, 1, 0, 3] = (
-            constants.CP_AIR / C_air
-        )  # supplyAirFlowRate * supplyAirTemperature
+        u_supply_flow = input_basis[1]
+        u_supply_temperature = input_basis[3]
+        F = (
+            (constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
+            * u_supply_flow.reshape(1, n_inputs, 1, 1)
+            * state_air.reshape(1, 1, n_states, 1)
+            * u_supply_temperature.reshape(1, 1, 1, n_inputs)
+        )
 
         return A, B, C_out, D, E, F
 
@@ -649,6 +690,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         """Create the internal :class:`DiscreteStatespaceSystem` used by
         ``do_step`` from the matrices built by :meth:`_build_matrices`."""
         A, B, C_out, D, E, F = self._build_matrices()
+        self.n_states = A.shape[-1]
+        self.n_inputs = B.shape[-1]
 
         # Initial state - shape (n_c, n_states)
         x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
@@ -736,7 +779,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         self.output["indoorTemperature"]._set(outs["indoorTemperature"], i_t=step_index)
         self.output["wallTemperature"]._set(outs["wallTemperature"], i_t=step_index)
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step dynamics: ``(state, inputs, params) -> (new_state, outputs)``.
 
         The functorch-compatible re-expression of :meth:`do_step` -- it rebuilds
@@ -763,11 +806,17 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         # theta instead of once per step (see OneStepComposer._params_for /
         # System._forward_params).  sample_time is part of the key because the
         # attached disc_cache holds (Ad, Bd) discretized at a specific T.
-        cache = getattr(self, "_fwd_mat_cache", None)
-        if cache is None or cache[0] is not params or cache[2] != sample_time:
-            cache = (params, self._build_matrices(params), sample_time, {})
-            self._fwd_mat_cache = cache
-        A, B, C, D, E, F = cache[1]
+        if transform_mode:
+            matrices = self._build_matrices(params)
+            disc_cache = None
+        else:
+            cache = getattr(self, "_fwd_mat_cache", None)
+            if cache is None or cache[0] is not params or cache[2] != sample_time:
+                cache = (params, self._build_matrices(params), sample_time, {})
+                self._fwd_mat_cache = cache
+            matrices = cache[1]
+            disc_cache = cache[3]
+        A, B, C, D, E, F = matrices
         cols = [
             inputs["outdoorTemperature"], inputs["supplyAirFlowRate"],
             inputs["exhaustAirFlowRate"], inputs["supplyAirTemperature"],
@@ -779,7 +828,17 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         if self.n_walls > 0:
             u = torch.cat([u, inputs["wallHeatGain"]], dim=-1)
         x_next, y = bilinear_onestep(
-            A, B, C, D, E, F, x, u, sample_time, disc_cache=cache[3]
+            A,
+            B,
+            C,
+            D,
+            E,
+            F,
+            x,
+            u,
+            sample_time,
+            disc_cache=disc_cache,
+            transform_mode=transform_mode,
         )
         return x_next, {"indoorTemperature": y[..., 0], "wallTemperature": y[..., 1]}
 

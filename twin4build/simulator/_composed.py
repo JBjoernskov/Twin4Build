@@ -249,6 +249,13 @@ class OneStepComposer:
             comp.id for comp, _ in (outputs or []) if _has_real_forward(comp)
         }
         self.cone = self._influence_cone(seed_extra)
+        self._default_params = {
+            comp.id: {
+                name: rgetattr(comp, name).get()
+                for name in getattr(comp, "PARAM_NAMES", ())
+            }
+            for comp in self.cone
+        }
 
         # Static input wiring for every cone component: port -> source spec.
         # A port's source is one of:
@@ -516,7 +523,7 @@ class OneStepComposer:
     # the single continuous-rollout source of truth; a per-segment capture
     # would evaluate stateful/data-indexed signals like the OccupancySystem's
     # ``previousIndoorCo2Measured`` at the wrong step.)
-    def _params_for(self, comp, theta):
+    def _params_for(self, comp, theta, use_cache=True):
         """Physical-parameter dict for ``comp``: estimated entries from ``theta``
         (a 1-D tensor in theta_spec order), the rest from the component's
         defaults (``getattr(comp, name).get()``).
@@ -530,13 +537,15 @@ class OneStepComposer:
         -tensor identities let the components' ``_build_matrices`` cache the
         (theta-only, step-independent) state-space matrices the same way.
         """
-        cache = self._theta_param_cache
-        if cache is None or cache[0] is not theta:
-            cache = (theta, {})
-            self._theta_param_cache = cache
-        hit = cache[1].get(comp.id)
-        if hit is not None:
-            return hit
+        cache = None
+        if use_cache:
+            cache = self._theta_param_cache
+            if cache is None or cache[0] is not theta:
+                cache = (theta, {})
+                self._theta_param_cache = cache
+            hit = cache[1].get(comp.id)
+            if hit is not None:
+                return hit
         p = {}
         est = self.theta_by_comp.get(comp.id, {})
         # For composites the attrs are prefixed (thermal.C_air); pass them
@@ -550,17 +559,16 @@ class OneStepComposer:
                     # (some components read n_c from a parameter's shape).
                     p[name] = theta[est[name]].reshape(1)
                 else:
-                    # rgetattr: PARAM_NAMES may contain dotted paths into
-                    # owned sub-objects (e.g. "supply_damper.a").
-                    p[name] = rgetattr(comp, name).get()
+                    p[name] = self._default_params[comp.id][name]
         # Prefixed estimated params (composite: "thermal.C_air") -> pass through.
         for attr, idx in est.items():
             if "." in attr:
                 p[attr] = theta[idx].reshape(1)
-        cache[1][comp.id] = p
+        if cache is not None:
+            cache[1][comp.id] = p
         return p
 
-    def F(self, states_flat, theta, captured, feedback=None):
+    def F(self, states_flat, theta, captured, feedback=None, transform_mode=None):
         """One pure step for a single segment.
 
         Args:
@@ -608,9 +616,18 @@ class OneStepComposer:
                     inputs[port] = torch.stack(vals).reshape(1, -1)  # (n_c=1, n_v)
                 else:
                     inputs[port] = captured[spec[1]].reshape(1)  # (n_c=1,)
-            params = self._params_for(c, theta)
+            params = self._params_for(c, theta, use_cache=not transform_mode)
             st = states.get(c.id, None)
-            x_next_c, outs = c.forward(st, inputs, params, self.sample_time)
+            if getattr(c, "SUPPORTS_TRANSFORM_MODE", False):
+                x_next_c, outs = c.forward(
+                    st,
+                    inputs,
+                    params,
+                    self.sample_time,
+                    transform_mode=transform_mode,
+                )
+            else:
+                x_next_c, outs = c.forward(st, inputs, params, self.sample_time)
             produced[c.id] = outs
             if c.id in self.state_index:
                 x_next_parts[self.state_index[c.id]] = x_next_c.reshape(-1)
@@ -650,7 +667,7 @@ class OneStepComposer:
         """Augmented-state width: component states + cut-feedback lag variables."""
         return self.D + len(self._feedback_keys)
 
-    def F_aug(self, y_flat, theta, captured):
+    def F_aug(self, y_flat, theta, captured, transform_mode=None):
         """Augmented one-step map over ``y = [state | feedback]``.
 
         The cut-feedback signals are one-step *lag variables* -- i.e. state in a
@@ -665,7 +682,9 @@ class OneStepComposer:
         n_fb = len(self._feedback_keys)
         s = y_flat[: self.D]
         w = y_flat[self.D:] if n_fb else None
-        x_next, meas, fb_out = self.F(s, theta, captured, w)
+        x_next, meas, fb_out = self.F(
+            s, theta, captured, w, transform_mode=transform_mode
+        )
         y_next = torch.cat([x_next, fb_out]) if n_fb else x_next
         return y_next, meas
 

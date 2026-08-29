@@ -153,6 +153,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
     """
 
     PARAM_NAMES: tuple = ()
+    SUPPORTS_TRANSFORM_MODE = True
 
     def __init__(self, members: List, internal_arcs: List[tuple], **kwargs):
         super().__init__(**kwargs)
@@ -265,10 +266,60 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         # -- state offsets from the default-parameter matrices ---------------
         offset = 0
         for entry in self._units:
-            A = entry["unit"]._build_matrices()[0]
+            unit = entry["unit"]
+            matrices = unit._build_matrices()
+            A, _, C, D, E, F = matrices
             entry["n_states"] = A.shape[-1]
             entry["x_offset"] = offset
             offset += entry["n_states"]
+            support = unit._ss_support()
+            assert set(support) == {"D", "E", "F"}, (
+                f"{type(unit).__name__}._ss_support() must define exactly D, E and F"
+            )
+
+            d_by_row = {}
+            for row, col in support["D"]:
+                assert 0 <= row < D.shape[-2] and 0 <= col < D.shape[-1], (
+                    f"{type(unit).__name__} declares out-of-range D support "
+                    f"({row}, {col}) for shape {tuple(D.shape[-2:])}"
+                )
+                d_by_row.setdefault(row, []).append(col)
+
+            e_inputs = set()
+            for input_col, state_row, state_col in support["E"]:
+                assert (
+                    0 <= input_col < E.shape[-3]
+                    and 0 <= state_row < E.shape[-2]
+                    and 0 <= state_col < E.shape[-1]
+                ), (
+                    f"{type(unit).__name__} declares out-of-range E support "
+                    f"({input_col}, {state_row}, {state_col}) for shape "
+                    f"{tuple(E.shape[-3:])}"
+                )
+                e_inputs.add(input_col)
+
+            f_by_input = {}
+            for input_col, state_row, input_col_2 in support["F"]:
+                assert (
+                    0 <= input_col < F.shape[-3]
+                    and 0 <= state_row < F.shape[-2]
+                    and 0 <= input_col_2 < F.shape[-1]
+                ), (
+                    f"{type(unit).__name__} declares out-of-range F support "
+                    f"({input_col}, {state_row}, {input_col_2}) for shape "
+                    f"{tuple(F.shape[-3:])}"
+                )
+                f_by_input.setdefault(input_col, set()).add(input_col_2)
+
+            entry["support"] = {
+                "D_by_row": {
+                    row: tuple(sorted(cols)) for row, cols in d_by_row.items()
+                },
+                "E_inputs": frozenset(e_inputs),
+                "F_by_input": {
+                    col: tuple(sorted(cols)) for col, cols in f_by_input.items()
+                },
+            }
         self._n_joint_states = offset
 
         # -- input columns: internal (substituted) or external (joint u) -----
@@ -297,6 +348,26 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                         cols.append(("ext", ext_index[name]))
             entry["cols"] = cols
 
+        # Bilinear inputs must be external.  Validate this structural rule once
+        # from the declared support instead of asserting inside every traced
+        # assembly.
+        for i, entry in enumerate(self._units):
+            support = entry["support"]
+            bilinear_inputs = set(support["E_inputs"]) | set(
+                support["F_by_input"]
+            )
+            for k in bilinear_inputs:
+                assert entry["cols"][k][0] == "ext", (
+                    f"bilinear input column {k} of unit {i} is internal -- "
+                    "cluster is not fusable"
+                )
+            for input_cols in support["F_by_input"].values():
+                for k2 in input_cols:
+                    assert entry["cols"][k2][0] == "ext", (
+                        "bilinear F term references an internal input -- "
+                        "cluster is not fusable"
+                    )
+
         # -- output rows: every member output, namespaced --------------------
         # (unit index, row) per published output name.
         self._out_names: List[str] = []
@@ -318,6 +389,42 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                 f"internal arc source {s.id}.{s_port} is not a state-space "
                 "output of the cluster"
             )
+
+        # Validate the declared feedthrough graph once.  Runtime matrix values
+        # cannot safely decide graph structure: a coefficient may vanish only
+        # at the current parameter iterate, and inspecting it would synchronize
+        # CUDA during every transformed assembly.
+        visiting = set()
+        visited = set()
+        input_order = []
+
+        def visit_input(i, k):
+            node = (i, k)
+            if node in visited:
+                return
+            assert node not in visiting, (
+                "algebraic loop in fused feedthrough support -- cluster is not "
+                "fusable"
+            )
+            visiting.add(node)
+            kind = self._units[i]["cols"][k]
+            if kind[0] == "int":
+                j, row = self._sender_rows[(kind[1], kind[2])]
+                for kk in self._units[j]["support"]["D_by_row"].get(row, ()):
+                    visit_input(j, kk)
+            visiting.remove(node)
+            visited.add(node)
+            input_order.append(node)
+
+        for i, entry in enumerate(self._units):
+            for k in range(len(entry["cols"])):
+                visit_input(i, k)
+        self._input_order = tuple(input_order)
+        self.PARAM_NAMES = tuple(
+            f"{entry['param_prefix']}.{name}"
+            for entry in self._units
+            for name in entry["unit"].PARAM_NAMES
+        )
 
         self._fwd_mat_cache = None
         self._do_step_params = None
@@ -358,49 +465,34 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         # Row cache keyed (unit index, column); cycle-guarded (a cyclic
         # feedthrough chain would be a purely algebraic loop -- not fusable).
         row_cache = {}
-
-        def input_row(i, k, _busy=frozenset()):
-            hit = row_cache.get((i, k))
-            if hit is not None:
-                return hit
-            assert (i, k) not in _busy, (
-                "algebraic loop in fused feedthrough chain -- cluster is not "
-                "fusable"
-            )
+        ext_eye = torch.eye(M, dtype=dtype, device=device)
+        for i, k in self._input_order:
             kind = units[i]["cols"][k]
             if kind[0] == "ext":
                 sx = torch.zeros((n_c, 1, N), dtype=dtype, device=device)
-                su = torch.zeros((n_c, 1, M), dtype=dtype, device=device)
-                su[:, 0, kind[1]] = 1.0
+                su = ext_eye[kind[1]].reshape(1, 1, M).expand(n_c, -1, -1)
             else:
                 j, row = self._sender_rows[(kind[1], kind[2])]
-                Aj, Bj, Cj, Dj, Ej, Fj = mats[j]
+                _, _, Cj, Dj, _, _ = mats[j]
                 oj, nj = units[j]["x_offset"], units[j]["n_states"]
-                sx = torch.zeros((n_c, 1, N), dtype=dtype, device=device)
-                sx[:, 0, oj:oj + nj] = _expand(Cj)[:, row, :]
+                sx = torch.nn.functional.pad(
+                    _expand(Cj)[:, row:row + 1, :],
+                    (oj, N - oj - nj),
+                )
                 su = torch.zeros((n_c, 1, M), dtype=dtype, device=device)
                 Dj_row = _expand(Dj)[:, row, :]  # (n_c, m_j)
-                if bool((Dj_row.detach() != 0).any()):
-                    for kk in range(Dj_row.shape[-1]):
-                        col = Dj_row[:, kk]
-                        if not bool((col.detach() != 0).any()):
-                            continue
-                        sub_sx, sub_su = input_row(j, kk, _busy | {(i, k)})
-                        sx = sx + col.reshape(n_c, 1, 1) * sub_sx
-                        su = su + col.reshape(n_c, 1, 1) * sub_su
+                for kk in units[j]["support"]["D_by_row"].get(row, ()):
+                    col = Dj_row[:, kk]
+                    sub_sx, sub_su = row_cache[(j, kk)]
+                    sx = sx + col.reshape(n_c, 1, 1) * sub_sx
+                    su = su + col.reshape(n_c, 1, 1) * sub_su
             row_cache[(i, k)] = (sx, su)
-            return sx, su
-
-        A = torch.zeros((n_c, N, N), dtype=dtype, device=device)
-        B = torch.zeros((n_c, N, M), dtype=dtype, device=device)
-        E = torch.zeros((n_c, M, N, N), dtype=dtype, device=device)
-        F = torch.zeros((n_c, M, N, M), dtype=dtype, device=device)
 
         S = []  # per unit: (S_x (n_c, m_i, N), S_u (n_c, m_i, M))
         for i, entry in enumerate(units):
             m_i = len(entry["cols"])
             if m_i:
-                rows = [input_row(i, k) for k in range(m_i)]
+                rows = [row_cache[(i, k)] for k in range(m_i)]
                 sx = torch.cat([r[0] for r in rows], dim=1)
                 su = torch.cat([r[1] for r in rows], dim=1)
             else:
@@ -408,13 +500,25 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                 su = torch.zeros((n_c, 0, M), dtype=dtype, device=device)
             S.append((sx, su))
 
+        a_parts = []
+        b_parts = []
+        e_parts = []
+        f_parts = []
         for i, entry in enumerate(units):
             Ai, Bi, Ci, Di, Ei, Fi = (_expand(t) for t in mats[i])
             o, n = entry["x_offset"], entry["n_states"]
             sx, su = S[i]
-            A[:, o:o + n, o:o + n] += Ai
-            A[:, o:o + n, :] = A[:, o:o + n, :] + Bi @ sx
-            B[:, o:o + n, :] = B[:, o:o + n, :] + Bi @ su
+            a_parts.append(
+                torch.nn.functional.pad(
+                    Ai, (o, N - o - n, o, N - o - n)
+                )
+                + torch.nn.functional.pad(
+                    Bi @ sx, (0, 0, o, N - o - n)
+                )
+            )
+            b_parts.append(
+                torch.nn.functional.pad(Bi @ su, (0, 0, o, N - o - n))
+            )
 
             # Bilinear terms must act on external inputs only: substituted
             # (state-valued) bilinear inputs would create quadratic state
@@ -422,40 +526,61 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             for k, kind in enumerate(entry["cols"]):
                 Ek = Ei[:, k]  # (n_c, n, n)
                 Fk = Fi[:, k]  # (n_c, n, m_i)
-                has_E = bool((Ek.detach() != 0).any())
-                has_F = bool((Fk.detach() != 0).any())
-                if not (has_E or has_F):
+                has_E = k in entry["support"]["E_inputs"]
+                f_inputs = entry["support"]["F_by_input"].get(k, ())
+                if not has_E and not f_inputs:
                     continue
-                assert kind[0] == "ext", (
-                    f"bilinear input column {k} of unit {i} is internal -- "
-                    "cluster is not fusable"
-                )
                 j = kind[1]
                 if has_E:
-                    E[:, j, o:o + n, o:o + n] += Ek
-                if has_F:
-                    for k2, kind2 in enumerate(entry["cols"]):
-                        col = Fk[:, :, k2]  # (n_c, n)
-                        if not bool((col.detach() != 0).any()):
-                            continue
-                        assert kind2[0] == "ext", (
-                            "bilinear F term references an internal input -- "
-                            "cluster is not fusable"
-                        )
-                        F[:, j, o:o + n, kind2[1]] += col
+                    e_parts.append(
+                        ext_eye[j].reshape(1, M, 1, 1)
+                        * torch.nn.functional.pad(
+                            Ek, (o, N - o - n, o, N - o - n)
+                        ).unsqueeze(1)
+                    )
+                for k2 in f_inputs:
+                    kind2 = entry["cols"][k2]
+                    col = Fk[:, :, k2]  # (n_c, n)
+                    col_joint = torch.nn.functional.pad(
+                        col, (o, N - o - n)
+                    )
+                    f_parts.append(
+                        ext_eye[j].reshape(1, M, 1, 1)
+                        * col_joint.unsqueeze(1).unsqueeze(-1)
+                        * ext_eye[kind2[1]].reshape(1, 1, 1, M)
+                    )
+
+        A = torch.stack(a_parts).sum(0)
+        B = torch.stack(b_parts).sum(0)
+        E = (
+            torch.stack(e_parts).sum(0)
+            if e_parts
+            else torch.zeros((n_c, M, N, N), dtype=dtype, device=device)
+        )
+        F = (
+            torch.stack(f_parts).sum(0)
+            if f_parts
+            else torch.zeros((n_c, M, N, M), dtype=dtype, device=device)
+        )
 
         # Published outputs: y = (C_i + D_i S_x) x + (D_i S_u) u_ext rows.
-        P = len(self._out_names)
-        C = torch.zeros((n_c, P, N), dtype=dtype, device=device)
-        D = torch.zeros((n_c, P, M), dtype=dtype, device=device)
-        for p, (i, row) in enumerate(self._out_rows):
+        c_rows = []
+        d_rows = []
+        for i, row in self._out_rows:
             _, _, Ci, Di, _, _ = mats[i]
             o, n = self._units[i]["x_offset"], self._units[i]["n_states"]
             sx, su = S[i]
-            C[:, p, o:o + n] += _expand(Ci)[:, row, :]
             Di_row = _expand(Di)[:, row:row + 1, :]  # (n_c, 1, m_i)
-            C[:, p, :] = C[:, p, :] + (Di_row @ sx)[:, 0, :]
-            D[:, p, :] = D[:, p, :] + (Di_row @ su)[:, 0, :]
+            c_rows.append(
+                torch.nn.functional.pad(
+                    _expand(Ci)[:, row:row + 1, :],
+                    (o, N - o - n),
+                )
+                + Di_row @ sx
+            )
+            d_rows.append(Di_row @ su)
+        C = torch.cat(c_rows, dim=1)
+        D = torch.cat(d_rows, dim=1)
 
         return A, B, C, D, E, F
 
@@ -463,7 +588,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
     # forward / do_step
     # ------------------------------------------------------------------
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step of the fused cluster: ``(state, inputs, params) ->
         (new_state, outputs)``.
 
@@ -472,14 +597,30 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         (``"<member_key>.<unit>.<name>"``); outputs cover every member output,
         namespaced.  Matrices are cached per params-dict identity (theta-only
         work, done once per theta in a sequential rollout)."""
-        cache = getattr(self, "_fwd_mat_cache", None)
-        if cache is None or cache[0] is not params or cache[2] != sample_time:
-            cache = (params, self._assemble(params), sample_time, {})
-            self._fwd_mat_cache = cache
-        A, B, C, D, E, F = cache[1]
+        if transform_mode:
+            matrices = self._assemble(params)
+            disc_cache = None
+        else:
+            cache = getattr(self, "_fwd_mat_cache", None)
+            if cache is None or cache[0] is not params or cache[2] != sample_time:
+                cache = (params, self._assemble(params), sample_time, {})
+                self._fwd_mat_cache = cache
+            matrices = cache[1]
+            disc_cache = cache[3]
+        A, B, C, D, E, F = matrices
         u = torch.stack([inputs[name] for name in self._ext_names], dim=-1)
         x_next, y = bilinear_onestep(
-            A, B, C, D, E, F, x, u, sample_time, disc_cache=cache[3]
+            A,
+            B,
+            C,
+            D,
+            E,
+            F,
+            x,
+            u,
+            sample_time,
+            disc_cache=disc_cache,
+            transform_mode=transform_mode,
         )
         outputs = {name: y[..., p] for p, name in enumerate(self._out_names)}
         return x_next, outputs

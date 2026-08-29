@@ -167,6 +167,14 @@ class CascadeControllerSystem(core.System, nn.Module):
             if hasattr(ctrl, "_config") and "parameters" in ctrl._config:
                 for param in ctrl._config["parameters"]:
                     self._config["parameters"].append(f"{prefix}.{param}")
+        self.PARAM_NAMES = tuple(
+            f"{prefix}.{name}"
+            for prefix, ctrl in (
+                ("ctrl_a", self.ctrl_a),
+                ("ctrl_b", self.ctrl_b),
+            )
+            for name in getattr(ctrl, "PARAM_NAMES", ())
+        )
 
     @property
     def config(self):
@@ -286,7 +294,9 @@ class CascadeControllerSystem(core.System, nn.Module):
             f"unrecognized input ports {list(ctrl.input.keys())}"
         )
 
-    def forward(self, x, inputs, params, sample_time):
+    SUPPORTS_TRANSFORM_MODE = True
+
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step of the composite cascade = ctrl_a -> ctrl_b.
 
         State is ``[ctrl_a_state | ctrl_b_state]`` (the order
@@ -298,15 +308,19 @@ class CascadeControllerSystem(core.System, nn.Module):
         """
         # Identity-keyed cache: a sequential rollout re-calls forward with the
         # SAME params dict every step (see OneStepComposer._params_for).
-        cache = getattr(self, "_fwd_param_cache", None)
-        if cache is None or cache[0] is not params:
-            cache = (
-                params,
-                self._resolve_sub_params(self.ctrl_a, "ctrl_a", params),
-                self._resolve_sub_params(self.ctrl_b, "ctrl_b", params),
-            )
-            self._fwd_param_cache = cache
-        _, p_a, p_b = cache
+        if transform_mode:
+            p_a = self._resolve_sub_params(self.ctrl_a, "ctrl_a", params)
+            p_b = self._resolve_sub_params(self.ctrl_b, "ctrl_b", params)
+        else:
+            cache = getattr(self, "_fwd_param_cache", None)
+            if cache is None or cache[0] is not params:
+                cache = (
+                    params,
+                    self._resolve_sub_params(self.ctrl_a, "ctrl_a", params),
+                    self._resolve_sub_params(self.ctrl_b, "ctrl_b", params),
+                )
+                self._fwd_param_cache = cache
+            _, p_a, p_b = cache
 
         n_a = self.ctrl_a.state_size()
         x_a, x_b = x[..., :n_a], x[..., n_a:]
@@ -314,13 +328,21 @@ class CascadeControllerSystem(core.System, nn.Module):
         in_a = self._route_forward_inputs(
             self.ctrl_a, inputs["setpointValue_a"], inputs["actualValue_a"]
         )
-        x_a_n, out_a = self.ctrl_a.forward(x_a, in_a, p_a, sample_time)
+        kwargs_a = (
+            {"transform_mode": transform_mode}
+            if getattr(self.ctrl_a, "SUPPORTS_TRANSFORM_MODE", False)
+            else {}
+        )
+        x_a_n, out_a = self.ctrl_a.forward(x_a, in_a, p_a, sample_time, **kwargs_a)
 
         in_b = self._route_forward_inputs(
             self.ctrl_b, out_a["inputSignal"], inputs["actualValue_b"]
         )
-        x_b_n, out_b = self.ctrl_b.forward(x_b, in_b, p_b, sample_time)
+        kwargs_b = (
+            {"transform_mode": transform_mode}
+            if getattr(self.ctrl_b, "SUPPORTS_TRANSFORM_MODE", False)
+            else {}
+        )
+        x_b_n, out_b = self.ctrl_b.forward(x_b, in_b, p_b, sample_time, **kwargs_b)
 
-        return torch.cat([x_a_n, x_b_n], dim=-1), {
-            "inputSignal": out_b["inputSignal"]
-        }
+        return torch.cat([x_a_n, x_b_n], dim=-1), {"inputSignal": out_b["inputSignal"]}

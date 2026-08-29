@@ -142,6 +142,97 @@ def _aggregate_objective_targets(
     return count, target_mean
 
 
+def _fixed_basis_hessian_two_args(grad_fn, x, y, *rest):
+    """Hessian blocks from explicit, statically sized VJP bases.
+
+    ``torch.func.hessian`` builds its forward-mode basis with data-dependent
+    diagonal offsets that Dynamo cannot specialize in current Colab PyTorch.
+    A JVP-over-gradient workaround still hits a CUDA fake/inference-tensor bug.
+    This reverse-over-reverse formulation supplies fixed cotangent bases
+    directly and avoids both compiler failures.
+    """
+    primals = (x, y, *rest)
+    x_zero = torch.zeros_like(x)
+    y_zero = torch.zeros_like(y)
+    _, pullback = torch.func.vjp(grad_fn, *primals)
+
+    hxx, hxy = vmap(lambda basis: pullback((basis, y_zero))[:2])(
+        torch.eye(x.numel(), dtype=x.dtype, device=x.device).reshape(
+            x.numel(), *x.shape
+        )
+    )
+    hyx, hyy = vmap(lambda basis: pullback((x_zero, basis))[:2])(
+        torch.eye(y.numel(), dtype=y.dtype, device=y.device).reshape(
+            y.numel(), *y.shape
+        )
+    )
+    return (hxx, hxy), (hyx, hyy)
+
+
+class _CudaGraphCallable:
+    """Capture and replay a tensor-only callable without Dynamo/AOT tracing."""
+
+    def __init__(self, fn, warmup_calls=3):
+        self.fn = fn
+        self.warmup_calls = int(warmup_calls)
+        self.graph = None
+        self.static_inputs = None
+        self.static_output = None
+
+    def _capture(self, inputs):
+        self.static_inputs = tuple(torch.empty_like(value) for value in inputs)
+        for target, value in zip(self.static_inputs, inputs):
+            target.copy_(value)
+
+        warmup_stream = torch.cuda.Stream()
+        warmup_stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(warmup_stream):
+            for _ in range(self.warmup_calls):
+                reference_output = self.fn(*self.static_inputs)
+        torch.cuda.current_stream().wait_stream(warmup_stream)
+
+        self.graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self.graph):
+            self.static_output = self.fn(*self.static_inputs)
+        # Stream capture records work instead of relying on it to populate the
+        # output buffers. Replay once so the first invocation returns real data.
+        self.graph.replay()
+        torch.testing.assert_close(
+            self.static_output,
+            reference_output,
+            rtol=1e-9,
+            atol=1e-11,
+            msg="Direct CUDA Graph replay differs from eager Hessian output",
+        )
+
+        # A capture-time comparison cannot detect an input accidentally baked
+        # into the graph. Perturb every input buffer, compare a second eager
+        # evaluation with replay, then restore the real first-call inputs.
+        for index, target in enumerate(self.static_inputs):
+            target.add_((index + 1) * 1e-4)
+        probe_output = self.fn(*self.static_inputs)
+        self.graph.replay()
+        torch.testing.assert_close(
+            self.static_output,
+            probe_output,
+            rtol=1e-9,
+            atol=1e-11,
+            msg="Direct CUDA Graph replay does not track changed Hessian inputs",
+        )
+        for target, value in zip(self.static_inputs, inputs):
+            target.copy_(value)
+        self.graph.replay()
+        return self.static_output
+
+    def __call__(self, *inputs):
+        if self.graph is None:
+            return self._capture(inputs)
+        for target, value in zip(self.static_inputs, inputs):
+            target.copy_(value)
+        self.graph.replay()
+        return self.static_output
+
+
 class _IterateCache:
     """One-iterate cache shared by all composable IPOPT callbacks."""
 
@@ -487,6 +578,11 @@ def _solve_sparse_collocation(
     # tangents over one reverse pass, vs Da cotangents) in exchange for a
     # reachable KKT test and Newton-rate convergence.
     exact_hessian = bool(options.pop("exact_hessian", False))
+    capture_hessian = bool(
+        options.pop("capture_hessian", exact_hessian and dev.type == "cuda")
+    )
+    if capture_hessian and not exact_hessian:
+        raise ValueError("capture_hessian requires exact_hessian=True")
     # ``early_stopping``: patience-based stagnation stop + best-feasible-iterate
     # checkpoint (see solve_ipopt_constrained).  False disables; a dict
     # overrides the patience/tolerance defaults.  Default: on whenever the GN
@@ -818,7 +914,9 @@ def _solve_sparse_collocation(
         if boundary_state_init == "auto":
             with torch.no_grad():
                 _, _M_ws = vmap(
-                    lambda yi, ci: composer.F_aug(yi, theta0_phys, ci)
+                    lambda yi, ci: composer.F_aug(
+                        yi, theta0_phys, ci, transform_mode=True
+                    )
                 )(y0_phys, CAP)
                 _ws_fit = float(
                     (((ACT - _apply_meas_lag(_M_ws)) / SD_meas) ** 2)[_incl].mean()
@@ -842,13 +940,19 @@ def _solve_sparse_collocation(
                 "best-feasible incumbent (the solve cannot return worse)."
             )
         if boundary_state_init == "data":
-            Jm = jacrev(lambda y: composer.F_aug(y, theta0_phys, CAP[0])[1])(y0_phys[0].clone())
+            Jm = jacrev(
+                lambda y: composer.F_aug(
+                    y, theta0_phys, CAP[0], transform_mode=True
+                )[1]
+            )(y0_phys[0].clone())
             # Measurement predicted AT the warm start, needed for the correction
             # below (one cheap vmap over the segments).
             with torch.no_grad():
-                _, M0 = vmap(lambda yi, ci: composer.F_aug(yi, theta0_phys, ci))(
-                    y0_phys, CAP
-                )
+                _, M0 = vmap(
+                    lambda yi, ci: composer.F_aug(
+                        yi, theta0_phys, ci, transform_mode=True
+                    )
+                )(y0_phys, CAP)
             seeded, allmap, _seeded_dims = [], [], set()
             for m in range(len(md_list)):
                 j = int(Jm[m].abs().argmax())
@@ -922,7 +1026,11 @@ def _solve_sparse_collocation(
         """Evaluate all segments once, before applying measurement lag."""
         theta_phys = _denorm(theta_norm)
         y_phys = y_from_norm(y_norm)
-        Yn, Meas = vmap(lambda yi, ci: composer.F_aug(yi, theta_phys, ci))(y_phys, CAP)
+        Yn, Meas = vmap(
+            lambda yi, ci: composer.F_aug(
+                yi, theta_phys, ci, transform_mode=True
+            )
+        )(y_phys, CAP)
         return y_to_norm(Yn), Meas
 
     def _fwd_all(theta_norm, y_norm):
@@ -1007,7 +1115,12 @@ def _solve_sparse_collocation(
         )
 
     def _end_norm_fn(y_norm_i, theta_norm, captured_i):
-        Yn, _ = composer.F_aug(y_from_norm(y_norm_i), _denorm(theta_norm), captured_i)
+        Yn, _ = composer.F_aug(
+            y_from_norm(y_norm_i),
+            _denorm(theta_norm),
+            captured_i,
+            transform_mode=True,
+        )
         return y_to_norm(Yn)
 
     # One vmap(jacrev) evaluates d(end_norm, meas/SD)/d(y, theta) for EVERY
@@ -1040,7 +1153,9 @@ def _solve_sparse_collocation(
         y_norm = zt[n_theta:].reshape(n_seg, Da)
 
         def _both(y_i, th, cap_i):
-            Yn, meas = composer.F_aug(y_from_norm(y_i), _denorm(th), cap_i)
+            Yn, meas = composer.F_aug(
+                y_from_norm(y_i), _denorm(th), cap_i, transform_mode=True
+            )
             return torch.cat([y_to_norm(Yn), meas / SD_meas])
 
         # One traced pass for BOTH Jacobians (the vjp sweeps over the output
@@ -1388,7 +1503,9 @@ def _solve_sparse_collocation(
                 y_i, th, cap_i, lam_i, obj_mask_i, act_i, s_gn
             ):
                 """One segment's exact nonlinear Lagrangian contribution."""
-                Yn, meas = composer.F_aug(y_from_norm(y_i), _denorm(th), cap_i)
+                Yn, meas = composer.F_aug(
+                    y_from_norm(y_i), _denorm(th), cap_i, transform_mode=True
+                )
                 residual = (meas - act_i) / SD_meas
                 return (lam_i * y_to_norm(Yn)).sum() + 0.5 * s_gn * (
                     obj_mask_i * residual.square()
@@ -1410,17 +1527,32 @@ def _solve_sparse_collocation(
                     _hchunk, n_seg, _hseg_bytes * n_seg / 1e9, _budget / 1e9,
                 )
 
+            _segment_grad = torch.func.grad(
+                _exact_lagrangian_segment, argnums=(0, 1)
+            )
+
+            def _segment_hessian(yi, th, ci, li, mi, ai, scale):
+                return _fixed_basis_hessian_two_args(
+                    _segment_grad, yi, th, ci, li, mi, ai, scale
+                )
+
             def _combined_curvature(theta_norm, y_norm, lam_by_seg, s_gn):
                 """Full exact Lagrangian Hessian from one transform per segment."""
-                hess_fn = torch.func.hessian(
-                    _exact_lagrangian_segment, argnums=(0, 1)
-                )
                 return vmap(
-                    lambda yi, ci, li, mi, ai: hess_fn(
+                    lambda yi, ci, li, mi, ai: _segment_hessian(
                         yi, theta_norm, ci, li, mi, ai, s_gn
                     ),
                     chunk_size=None if _hchunk >= n_seg else _hchunk,
                 )(y_norm, CAP, lam_by_seg, _obj_mask, _ACT_eff)
+
+            if capture_hessian:
+                if dev.type != "cuda":
+                    raise ValueError("capture_hessian requires a CUDA model")
+                _combined_curvature = _CudaGraphCallable(_combined_curvature)
+                LOGGER.config(
+                    "Exact-Hessian transform will be captured directly "
+                    "with torch.cuda.CUDAGraph."
+                )
 
             # Keep packing on the model device and emit values in exactly the
             # order declared by hess_rows/hess_cols.
@@ -1470,7 +1602,8 @@ def _solve_sparse_collocation(
                 "EXACT Hessian of the Lagrangian enabled: %d nonzeros (upper "
                 "triangle), %d segments, %d links, %d scored. Objective term = "
                 "Gauss-Newton + residual curvature; constraint term = "
-                "sum(lam*d2g); both via vmap(jacfwd(jacrev)). Verified against "
+                "sum(lam*d2g); both via fixed-basis reverse-over-reverse AD. "
+                "Verified against "
                 "finite differences to 6e-5 (3.6e-5 for the constraint term "
                 "alone).",
                 len(hess_rows), n_seg, n_links, n_i,

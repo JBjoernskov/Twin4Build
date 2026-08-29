@@ -693,12 +693,22 @@ implementation of the physics. Components without ``forward`` still work
 everywhere else; the estimator silently falls back to the object-graph
 objective for models containing them.
 
+This is a strict execution contract, not only a performance recommendation.
+Read :doc:`differentiable_system_models` before implementing or modifying any
+tensor-based ``System`` or nested ``torch.nn.Module``. It documents parameter
+routing, static structure, device-safe tensor creation, cache bypass,
+``transform_mode`` propagation, state-space support declarations, and the
+required value/Jacobian/Hessian/replay tests.
+
 Performance Considerations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Always use torch operations to enable automatic differentiation
-- Use vectorized operations when possible
-- Profile code to identify bottlenecks
+- Follow the pure tensor contract in :doc:`differentiable_system_models`;
+  arbitrary use of torch operations is not sufficient for higher-order
+  differentiation or CUDA Graph capture.
+- Use vectorized, functional operations and preserve hidden ``vmap`` batch
+  dimensions.
+- Profile code only after value and derivative parity have been established.
 
 Debugging Tips
 ~~~~~~~~~~~~~~

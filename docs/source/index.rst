@@ -50,6 +50,7 @@ This documentation is organized into three main sections:
    :hidden:
 
    manual/developer_reference
+   manual/differentiable_system_models
    
 
 
