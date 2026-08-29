@@ -38,9 +38,9 @@ Use ``Simulator(model, execution_mode="composed")`` to select reusable pure
 rollouts, or override one public run with
 ``simulator.simulate(..., execution_mode="object_graph")``. Estimator no
 longer accepts ``fast`` or ``fast_validate`` options. The experimental
-``("custom", "batched-bfgs", "ad")``, ``batched-lm``, and
-``batched-newton`` methods require composed execution and fail rather than
-silently dropping a derivative path.
+``("custom", "batched-sqp", "ad")``, ``batched-bfgs``, ``batched-lm``,
+and ``batched-newton`` methods require composed execution and fail rather
+than silently dropping a derivative path.
 
 The object-graph materialization pass remains responsible for complete port
 and history population, including data-driven and FMU components. Pure

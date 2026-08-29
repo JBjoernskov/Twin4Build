@@ -21,7 +21,7 @@ Estimation and optimization
 
    <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_benchmark_collocation.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Solver comparison, CPU vs GPU</b>: SLSQP single-shooting against IPOPT collocation (Gauss-Newton and exact-Hessian variants) on the full-workflow calibration problem &mdash; wall-clock, fit quality, the torch-vs-IPOPT cost split that bounds any GPU speedup, and whether float32 can satisfy the collocation defect tolerance</p>
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_batched_shooting_solver_benchmark.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Batched single-shooting solvers</b>: experimental custom projected BFGS, Levenberg-Marquardt and stabilized exact Newton against SciPy SLSQP, with deterministic multistart pools, derivative timing, convergence quality and CUDA Graph startup separated</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_batched_shooting_solver_benchmark.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>CUDA-graph batched SQP</b>: dense bound-constrained Torch SQP against SciPy SLSQP from the same canonical start, plus deterministic full-bound multistart throughput, derivative timing, convergence quality and CUDA Graph startup</p>
 
 .. raw:: html
 

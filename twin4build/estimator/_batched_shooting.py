@@ -67,9 +67,7 @@ class BatchedShootingEvaluator:
 
         def fn(batch):
             grad, value = torch.func.vmap(grad_value)(batch)
-            hess = torch.func.vmap(
-                lambda th: _fixed_basis_hessian(loss, th)
-            )(batch)
+            hess = torch.func.vmap(lambda th: _fixed_basis_hessian(loss, th))(batch)
             return value, grad, hess
 
         return self._call("value_grad_hessian", fn, x)
@@ -86,10 +84,11 @@ class BatchedShootingEvaluator:
         if not capture_bundle:
             output = fn(x)
         else:
-            graph = self._graphs.get(name)
+            graph_key = (name, tuple(x.shape))
+            graph = self._graphs.get(graph_key)
             if graph is None:
                 graph = CudaGraphCallable(fn)
-                self._graphs[name] = graph
+                self._graphs[graph_key] = graph
             output = graph(x)
             # CUDAGraph reuses static output buffers. Solver iterates retain
             # previous values across later replays, so return owned snapshots.
@@ -128,10 +127,7 @@ def _armijo(evaluator, x, f, g, direction, active, lb, ub, max_backtracks):
         ft = evaluator.values(trial)
         projected_slope = torch.sum(g * (trial - x), dim=1)
         ok = (
-            active
-            & ~accepted
-            & torch.isfinite(ft)
-            & (ft <= f + 1e-4 * projected_slope)
+            active & ~accepted & torch.isfinite(ft) & (ft <= f + 1e-4 * projected_slope)
         )
         x_best = torch.where(ok[:, None], trial, x_best)
         f_best = torch.where(ok, ft, f_best)
@@ -142,6 +138,107 @@ def _armijo(evaluator, x, f, g, direction, active, lb, ub, max_backtracks):
     return x_best, f_best, accepted & active, calls
 
 
+def _batched_armijo(evaluator, x, f, g, direction, active, lb, ub, candidates):
+    """Evaluate a geometric line-search schedule in one batched rollout."""
+    alphas = torch.pow(
+        torch.as_tensor(0.5, dtype=x.dtype, device=x.device),
+        torch.arange(candidates, dtype=x.dtype, device=x.device),
+    )
+    trial = torch.clamp(
+        x[:, None, :] + alphas[None, :, None] * direction[:, None, :],
+        lb,
+        ub,
+    )
+    batch, _, n_theta = trial.shape
+    ft = evaluator.values(trial.reshape(batch * candidates, n_theta)).reshape(
+        batch, candidates
+    )
+    step = trial - x[:, None, :]
+    projected_slope = torch.sum(g[:, None, :] * step, dim=2)
+    acceptable = (
+        active[:, None]
+        & torch.isfinite(ft)
+        & (ft <= f[:, None] + 1e-4 * projected_slope)
+    )
+    accepted = acceptable.any(dim=1)
+    first = torch.argmax(acceptable.to(torch.int64), dim=1)
+    row = torch.arange(batch, device=x.device)
+    selected_x = trial[row, first]
+    selected_f = ft[row, first]
+    return (
+        torch.where(accepted[:, None], selected_x, x),
+        torch.where(accepted, selected_f, f),
+        accepted,
+        candidates,
+    )
+
+
+def _solve_box_qp(hess, grad, x, lb, ub, active, tol=1e-10):
+    """Solve small positive-definite, box-constrained QPs by active sets."""
+    batch, n_theta = grad.shape
+    step_lb = lb - x
+    step_ub = ub - x
+    step = torch.zeros_like(grad)
+    at_lower = torch.zeros_like(grad, dtype=torch.bool)
+    at_upper = torch.zeros_like(grad, dtype=torch.bool)
+    eye = torch.eye(n_theta, dtype=x.dtype, device=x.device).expand(
+        batch, n_theta, n_theta
+    )
+
+    # At most n variables can enter and n can leave the working set. Fixed
+    # iteration count keeps all tensor shapes stable for batched GPU solves.
+    for _ in range(2 * n_theta + 1):
+        fixed = at_lower | at_upper | ~active[:, None]
+        fixed_step = torch.where(fixed, step, torch.zeros_like(step))
+        rhs = -grad - torch.bmm(hess, fixed_step[:, :, None]).squeeze(-1)
+        free = ~fixed
+        matrix = torch.where(
+            free[:, :, None] & free[:, None, :],
+            hess,
+            torch.zeros_like(hess),
+        )
+        matrix = matrix + torch.diag_embed(fixed.to(x.dtype))
+        rhs = torch.where(free, rhs, torch.zeros_like(rhs))
+        solved, info = torch.linalg.solve_ex(matrix, rhs[:, :, None])
+        candidate = fixed_step + solved.squeeze(-1)
+        candidate = torch.where((info == 0)[:, None], candidate, -grad)
+
+        below = free & (candidate < step_lb - tol)
+        above = free & (candidate > step_ub + tol)
+        primal_violation = below | above
+        if bool(primal_violation.any()):
+            step = torch.where(below, step_lb, step)
+            step = torch.where(above, step_ub, step)
+            at_lower |= below
+            at_upper |= above
+            continue
+
+        step = torch.clamp(candidate, step_lb, step_ub)
+        model_grad = grad + torch.bmm(hess, step[:, :, None]).squeeze(-1)
+        lower_bad = at_lower & (model_grad < -tol)
+        upper_bad = at_upper & (model_grad > tol)
+        dual_violation = lower_bad | upper_bad
+        if not bool(dual_violation.any()):
+            break
+
+        # Release only the worst multiplier per slot to avoid cycling.
+        violation = torch.where(
+            lower_bad,
+            -model_grad,
+            torch.where(upper_bad, model_grad, torch.zeros_like(model_grad)),
+        )
+        release = torch.argmax(violation, dim=1)
+        release_mask = (
+            torch.nn.functional.one_hot(release, num_classes=n_theta).to(torch.bool)
+            & dual_violation
+        )
+        at_lower &= ~release_mask
+        at_upper &= ~release_mask
+        step = torch.where(release_mask, torch.zeros_like(step), step)
+
+    return torch.where(active[:, None], step, torch.zeros_like(step))
+
+
 def _solve_chunk(
     evaluator,
     x0,
@@ -150,23 +247,36 @@ def _solve_chunk(
     ub,
     *,
     maxiter=200,
-    max_nfev=2000,
+    max_nfev=None,
     gtol=1e-4,
     ftol=1e-8,
     patience=4,
     max_backtracks=25,
     max_step=0.25,
+    sqp_line_search_candidates=12,
+    sqp_max_step=1.0,
 ):
+    if max_nfev is None:
+        evaluations_per_iteration = (
+            sqp_line_search_candidates + 1
+            if method == "batched-sqp"
+            else max_backtracks + 1
+        )
+        max_nfev = 1 + int(maxiter) * evaluations_per_iteration
     x = torch.clamp(x0.clone(), lb, ub)
     batch, n_theta = x.shape
-    eye = torch.eye(n_theta, dtype=x.dtype, device=x.device).expand(
-        batch, n_theta, n_theta
-    ).clone()
+    eye = (
+        torch.eye(n_theta, dtype=x.dtype, device=x.device)
+        .expand(batch, n_theta, n_theta)
+        .clone()
+    )
     inv_h = eye.clone()
+    bfgs_h = eye.clone()
     damping = torch.full((batch,), 1e-3, dtype=x.dtype, device=x.device)
     active = torch.ones(batch, dtype=torch.bool, device=x.device)
     converged_all = torch.zeros_like(active)
     failed = torch.zeros_like(active)
+    stalled_slots = torch.zeros_like(active)
     stagnant = torch.zeros(batch, dtype=torch.int64, device=x.device)
     nit = torch.zeros(batch, dtype=torch.int64, device=x.device)
     nfev = torch.zeros(batch, dtype=torch.int64, device=x.device)
@@ -176,9 +286,7 @@ def _solve_chunk(
     if method == "batched-lm":
         residual, jac = evaluator.residual_jacobian(x)
         f = torch.sum(residual.square(), dim=1)
-        g = 2.0 * torch.bmm(
-            jac.transpose(1, 2), residual[:, :, None]
-        ).squeeze(-1)
+        g = 2.0 * torch.bmm(jac.transpose(1, 2), residual[:, :, None]).squeeze(-1)
     elif method == "batched-newton":
         f, g, hess = evaluator.value_grad_hessian(x)
     else:
@@ -214,24 +322,18 @@ def _solve_chunk(
 
         if method == "batched-bfgs":
             direction = -torch.bmm(inv_h, pg[:, :, None]).squeeze(-1)
+        elif method == "batched-sqp":
+            direction = _solve_box_qp(bfgs_h, g, x, lb, ub, active)
         elif method == "batched-lm":
-            safe_jac = torch.where(
-                active[:, None, None], jac, torch.zeros_like(jac)
-            )
+            safe_jac = torch.where(active[:, None, None], jac, torch.zeros_like(jac))
             safe_g = torch.where(active[:, None], g, torch.zeros_like(g))
-            normal = 2.0 * torch.bmm(
-                safe_jac.transpose(1, 2), safe_jac
-            )
+            normal = 2.0 * torch.bmm(safe_jac.transpose(1, 2), safe_jac)
             diagonal_scale = torch.clamp(
                 torch.diagonal(normal, dim1=1, dim2=2), min=1.0
             )
-            matrix = normal + torch.diag_embed(
-                damping[:, None] * diagonal_scale
-            )
+            matrix = normal + torch.diag_embed(damping[:, None] * diagonal_scale)
             matrix = torch.where(active[:, None, None], matrix, eye)
-            direction, solve_info = torch.linalg.solve_ex(
-                matrix, (-safe_g)[:, :, None]
-            )
+            direction, solve_info = torch.linalg.solve_ex(matrix, (-safe_g)[:, :, None])
             direction = direction.squeeze(-1)
             solve_failed = active & (solve_info != 0)
             failed |= solve_failed
@@ -240,9 +342,7 @@ def _solve_chunk(
                 active[:, None], direction, torch.zeros_like(direction)
             )
         else:
-            safe_hess = torch.where(
-                active[:, None, None], hess, torch.zeros_like(hess)
-            )
+            safe_hess = torch.where(active[:, None, None], hess, torch.zeros_like(hess))
             safe_g = torch.where(active[:, None], g, torch.zeros_like(g))
             sym = 0.5 * (safe_hess + safe_hess.transpose(1, 2))
             # Increase a per-slot shift until all active systems are positive
@@ -253,9 +353,7 @@ def _solve_chunk(
                 matrix = sym + shift[:, None, None] * eye
                 chol, info = torch.linalg.cholesky_ex(matrix)
                 ok = (info == 0) | ~active
-                solved = torch.cholesky_solve(
-                    (-safe_g)[:, :, None], chol
-                ).squeeze(-1)
+                solved = torch.cholesky_solve((-safe_g)[:, :, None], chol).squeeze(-1)
                 direction = torch.where(ok[:, None], solved, direction)
                 if bool(ok.all()):
                     break
@@ -263,15 +361,32 @@ def _solve_chunk(
             damping = shift
 
         direction_norm = torch.amax(torch.abs(direction), dim=1)
-        direction = direction * torch.clamp(
-            max_step / torch.clamp(direction_norm, min=1e-30),
-            max=1.0,
-        )[:, None]
+        step_limit = sqp_max_step if method == "batched-sqp" else max_step
+        direction = (
+            direction
+            * torch.clamp(
+                step_limit / torch.clamp(direction_norm, min=1e-30),
+                max=1.0,
+            )[:, None]
+        )
 
         old_x, old_f, old_g = x, f, g
-        x_trial, _f_trial, accepted, trial_calls = _armijo(
-            evaluator, x, f, pg, direction, active, lb, ub, max_backtracks
-        )
+        if method == "batched-sqp":
+            x_trial, _f_trial, accepted, trial_calls = _batched_armijo(
+                evaluator,
+                x,
+                f,
+                g,
+                direction,
+                active,
+                lb,
+                ub,
+                sqp_line_search_candidates,
+            )
+        else:
+            x_trial, _f_trial, accepted, trial_calls = _armijo(
+                evaluator, x, f, pg, direction, active, lb, ub, max_backtracks
+            )
         line_search_failed = attempted & ~accepted
         failed |= line_search_failed
         nfev += active.to(torch.int64) * trial_calls
@@ -320,19 +435,52 @@ def _solve_chunk(
             )
             sy = s[:, :, None] * y[:, None, :]
             ident_minus = eye - rho[:, None, None] * sy
-            updated = torch.bmm(
-                torch.bmm(ident_minus, inv_h),
-                ident_minus.transpose(1, 2),
-            ) + rho[:, None, None] * s[:, :, None] * s[:, None, :]
+            updated = (
+                torch.bmm(
+                    torch.bmm(ident_minus, inv_h),
+                    ident_minus.transpose(1, 2),
+                )
+                + rho[:, None, None] * s[:, :, None] * s[:, None, :]
+            )
             inv_h = torch.where(valid[:, None, None], updated, eye)
+        elif method == "batched-sqp":
+            s = x - old_x
+            y = g - old_g
+            bs = torch.bmm(bfgs_h, s[:, :, None]).squeeze(-1)
+            sbs = torch.sum(s * bs, dim=1)
+            sy = torch.sum(s * y, dim=1)
+            use_damping = sy < 0.2 * sbs
+            theta = torch.where(
+                use_damping,
+                0.8 * sbs / torch.clamp(sbs - sy, min=1e-30),
+                torch.ones_like(sy),
+            )
+            r = theta[:, None] * y + (1.0 - theta)[:, None] * bs
+            sr = torch.sum(s * r, dim=1)
+            valid = (
+                accepted & torch.isfinite(r).all(dim=1) & (sbs > 1e-14) & (sr > 1e-14)
+            )
+            updated = (
+                bfgs_h
+                - bs[:, :, None]
+                * bs[:, None, :]
+                / torch.clamp(sbs, min=1e-14)[:, None, None]
+                + r[:, :, None]
+                * r[:, None, :]
+                / torch.clamp(sr, min=1e-14)[:, None, None]
+            )
+            updated = 0.5 * (updated + updated.transpose(1, 2))
+            bfgs_h = torch.where(valid[:, None, None], updated, bfgs_h)
 
         rel = torch.abs(old_f - f) / torch.clamp(torch.abs(old_f), min=1.0)
         stagnant = torch.where(
             accepted & (rel <= ftol), stagnant + 1, torch.zeros_like(stagnant)
         )
-        stagnation_converged = attempted & accepted & (stagnant >= patience)
-        converged_all |= stagnation_converged
-        active &= ~stagnation_converged
+        # Small objective changes alone do not satisfy first-order KKT
+        # conditions. Stop stalled slots without labelling them converged.
+        stalled_now = attempted & accepted & (stagnant >= patience)
+        stalled_slots |= stalled_now
+        active &= ~stalled_now
         active &= accepted
         nit += attempted.to(torch.int64)
 
@@ -342,6 +490,7 @@ def _solve_chunk(
         "fun": f.detach(),
         "success": success.detach(),
         "failed": failed.detach(),
+        "stalled": stalled_slots.detach(),
         "nit": nit.detach(),
         "nfev": nfev.detach(),
         "njev": njev.detach(),
@@ -373,12 +522,10 @@ def solve_batched_shooting(
     chunk_lengths = []
     started = time.perf_counter()
     for first in range(0, starts.shape[0], batch_size):
-        start_chunk = starts[first:first + batch_size]
+        start_chunk = starts[first : first + batch_size]
         chunk_lengths.append(start_chunk.shape[0])
         if start_chunk.shape[0] < batch_size:
-            padding = start_chunk[-1:].expand(
-                batch_size - start_chunk.shape[0], -1
-            )
+            padding = start_chunk[-1:].expand(batch_size - start_chunk.shape[0], -1)
             start_chunk = torch.cat([start_chunk, padding], dim=0)
         solved = _solve_chunk(
             evaluator,
@@ -389,7 +536,7 @@ def solve_batched_shooting(
             **options,
         )
         keep = chunk_lengths[-1]
-        for key in ("x", "fun", "success", "failed", "nit", "nfev", "njev"):
+        for key in ("x", "fun", "success", "failed", "stalled", "nit", "nfev", "njev"):
             solved[key] = solved[key][:keep]
         chunks.append(solved)
     elapsed = time.perf_counter() - started
@@ -397,12 +544,11 @@ def solve_batched_shooting(
     f_all = torch.cat([c["fun"] for c in chunks])
     success_all = torch.cat([c["success"] for c in chunks])
     failed_all = torch.cat([c["failed"] for c in chunks])
+    stalled_all = torch.cat([c["stalled"] for c in chunks])
     nit_all = torch.cat([c["nit"] for c in chunks])
     nfev_all = torch.cat([c["nfev"] for c in chunks])
     njev_all = torch.cat([c["njev"] for c in chunks])
-    eligible = torch.where(
-        success_all, f_all, torch.full_like(f_all, float("inf"))
-    )
+    eligible = torch.where(success_all, f_all, torch.full_like(f_all, float("inf")))
     best = int(torch.argmin(eligible if torch.isfinite(eligible).any() else f_all))
     audit = []
     for i in range(starts.shape[0]):
@@ -416,7 +562,11 @@ def solve_batched_shooting(
                     else (
                         "failed_nonfinite_or_line_search"
                         if bool(failed_all[i].cpu())
-                        else "iteration_or_evaluation_limit"
+                        else (
+                            "stalled"
+                            if bool(stalled_all[i].cpu())
+                            else "iteration_or_evaluation_limit"
+                        )
                     )
                 ),
                 "objective": float(f_all[i].cpu()),

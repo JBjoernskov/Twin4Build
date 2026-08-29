@@ -556,9 +556,12 @@ class Estimator:
                   parameter guesses. See the class docstring's Collocation
                   section for the formulation.
                 - Custom backend (AD, composed single-shooting only):
-                  ``"batched-bfgs"``, ``"batched-lm"``, and
-                  ``"batched-newton"``. Select composed execution on the
-                  Simulator. Options include ``n_starts``, ``batch_size``,
+                  ``"batched-sqp"``, ``"batched-bfgs"``, ``"batched-lm"``,
+                  and ``"batched-newton"``. Batched SQP uses a dense,
+                  bound-constrained BFGS quadratic subproblem and is the
+                  closest custom analogue to SciPy SLSQP. Select composed
+                  execution on the Simulator. Options include
+                  ``n_starts``, ``batch_size``,
                   ``start_seed``, ``start_strategy`` (``"uniform_bounds"`` by
                   default, or ``"local"`` with ``start_spread``),
                   ``normalized_starts``,
@@ -937,6 +940,7 @@ class Estimator:
             # IPOPT via CasADi (optional dependency).  Single-shooting: same
             # objective as the SciPy backends, only the optimizer changes.
             ("casadi", "ipopt", "ad"),
+            ("custom", "batched-sqp", "ad"),
             ("custom", "batched-bfgs", "ad"),
             ("custom", "batched-lm", "ad"),
             ("custom", "batched-newton", "ad"),

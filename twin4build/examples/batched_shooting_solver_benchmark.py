@@ -3,7 +3,7 @@
 Run, for example::
 
     python -m twin4build.examples.batched_shooting_solver_benchmark \
-        --arm batched-bfgs --hours 24 --maxiter 20 --device cpu
+        --arm batched-sqp --hours 24 --maxiter 20 --device cpu
 
 The full A100 study uses ``--hours 120 --n-starts 8``.  SciPy SLSQP is the
 single-start reference and always uses the identical canonical initial point.
@@ -157,7 +157,7 @@ def run(arm, hours, maxiter, n_starts, batch_size, device, capture):
         actual = np.asarray(
             estimator.actual_readings[measuring_device.id][0].to_numpy(),
             dtype=np.float64,
-        )[warmup:warmup + len(predicted)]
+        )[warmup : warmup + len(predicted)]
         sensor_rmse[measuring_device.id] = float(
             np.sqrt(np.mean((actual - predicted) ** 2))
         )
@@ -194,7 +194,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--arm",
-        choices=("slsqp", "batched-bfgs", "batched-lm", "batched-newton"),
+        choices=(
+            "slsqp",
+            "batched-sqp",
+            "batched-bfgs",
+            "batched-lm",
+            "batched-newton",
+        ),
         required=True,
     )
     parser.add_argument("--hours", type=int, default=24)

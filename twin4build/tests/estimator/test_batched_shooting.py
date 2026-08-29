@@ -6,6 +6,7 @@ import torch
 
 from twin4build.estimator._batched_shooting import (
     BatchedShootingEvaluator,
+    _solve_box_qp,
     solve_batched_shooting,
 )
 
@@ -58,7 +59,12 @@ class TestBatchedShootingSolvers(unittest.TestCase):
     def test_all_methods_converge_from_same_starts(self):
         starts = np.array([[0.9, 0.1], [0.0, 1.0], [0.4, 0.4]])
         objective = _QuadraticResidual()
-        for method in ("batched-bfgs", "batched-lm", "batched-newton"):
+        for method in (
+            "batched-sqp",
+            "batched-bfgs",
+            "batched-lm",
+            "batched-newton",
+        ):
             with self.subTest(method=method):
                 result = solve_batched_shooting(
                     objective,
@@ -79,12 +85,26 @@ class TestBatchedShootingSolvers(unittest.TestCase):
                 self.assertLess(result.fun, 1e-10)
                 self.assertEqual(len(result.multistart_audit), 3)
                 for chunk_history in result.iteration_history:
-                    values = [
-                        row["best_objective"] for row in chunk_history
-                    ]
+                    values = [row["best_objective"] for row in chunk_history]
                     self.assertTrue(
                         all(b <= a + 1e-12 for a, b in zip(values, values[1:]))
                     )
+
+    def test_box_qp_releases_coupled_active_variables(self):
+        hess = torch.tensor([[[2.0, 1.0], [1.0, 2.0]]], dtype=torch.float64)
+        grad = torch.tensor([[-2.0, 0.0]], dtype=torch.float64)
+        x = torch.full((1, 2), 0.5, dtype=torch.float64)
+        step = _solve_box_qp(
+            hess,
+            grad,
+            x,
+            torch.zeros(2, dtype=torch.float64),
+            torch.ones(2, dtype=torch.float64),
+            torch.ones(1, dtype=torch.bool),
+        )
+        torch.testing.assert_close(
+            step, torch.tensor([[0.5, -0.25]], dtype=torch.float64)
+        )
 
     def test_bound_active_solution(self):
         objective = _QuadraticResidual()
@@ -115,9 +135,7 @@ class TestBatchedShootingSolvers(unittest.TestCase):
             "failed_nonfinite_or_line_search",
         )
         self.assertTrue(result.multistart_audit[1]["success"])
-        np.testing.assert_allclose(
-            result.x, objective.target.numpy(), atol=1e-6
-        )
+        np.testing.assert_allclose(result.x, objective.target.numpy(), atol=1e-6)
 
     def test_deterministic_chunking(self):
         objective = _QuadraticResidual()
