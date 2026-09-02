@@ -342,7 +342,7 @@ def main():
     print(model)
 
     # --- 2.1 Set Up Simulation Parameters ---
-    simulator = tb.Simulator(model)
+    simulator = tb.Simulator(model, execution_mode="composed")
     step_size = 1200  # 20 minutes in seconds
 
     start_time = [
@@ -687,7 +687,7 @@ def main():
         # maxiter=5 is NOT converged: it leaves the pooled objective at ~70
         # where ~29 is reachable, and the extra iterations are cheap on the
         # ``fast`` composed-rollout path.
-        options={"maxiter": 5, "fast": True},
+        options={"maxiter": 5},
     )
 
     if USE_COLLOCATION_REFINEMENT:
