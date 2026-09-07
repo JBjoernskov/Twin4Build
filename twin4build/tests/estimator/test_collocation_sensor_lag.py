@@ -89,7 +89,9 @@ class TestCollocationSensorLag(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         model = load_model()
-        estimator = tb.Estimator(tb.Simulator(model))
+        estimator = tb.Estimator(
+            tb.Simulator(model, execution_mode="composed")
+        )
         start = EXAMPLE_START[0]
         end = start + datetime.timedelta(hours=24)
         parameters = example_parameters(model)
@@ -105,7 +107,7 @@ class TestCollocationSensorLag(unittest.TestCase):
             step_size=STEP_SIZE,
             n_warmup=5,
             method=("scipy", "SLSQP", "ad"),
-            options={"maxiter": cls.PREFIT_ITERS, "fast": True},
+            options={"maxiter": cls.PREFIT_ITERS},
         )
         # estimate() leaves the model at the fitted values; carry them into the
         # collocation call as its x0.

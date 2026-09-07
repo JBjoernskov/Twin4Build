@@ -822,7 +822,7 @@ def capture_reference_rollout(
     )
 
 
-def sequential_rollout(composer, y0, theta, cap):
+def sequential_rollout(composer, y0, theta, cap, *, transform_mode=False):
     """Roll the composed map over one period; returns ``(n_t, n_meas)``.
 
     A plain Python loop, NOT ``vmap``: with a handful of periods the vmap
@@ -840,7 +840,9 @@ def sequential_rollout(composer, y0, theta, cap):
     y = y0
     rows = []
     for t in range(cap.shape[0]):
-        y, meas = composer.F_aug(y, theta, cap[t])
+        y, meas = composer.F_aug(
+            y, theta, cap[t], transform_mode=transform_mode
+        )
         rows.append(meas)
     if not rows:
         return torch.zeros(

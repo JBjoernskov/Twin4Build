@@ -187,7 +187,7 @@ def build_chain_model(n_zones: int, model_id: str):
 
 def _attach_synthetic_measurements(model, zones, sensors, step_size):
     """Simulate the truth on the current device and attach noisy readings."""
-    simulator = tb.Simulator(model)
+    simulator = tb.Simulator(model, execution_mode="composed")
     end = START + datetime.timedelta(hours=N_HOURS)
     simulator.simulate(
         start_time=START, end_time=end, step_size=step_size,
@@ -215,7 +215,7 @@ def run_simulation_case(
         n_zones, f"bench_sim_{n_zones}_{device}_{str(dtype).replace('torch.', '')}"
     )
     model.to(device, dtype)
-    simulator = tb.Simulator(model)
+    simulator = tb.Simulator(model, execution_mode="composed")
     end = START + datetime.timedelta(hours=N_HOURS)
     kw = dict(
         start_time=START, end_time=end, step_size=EST_STEP,
@@ -279,7 +279,7 @@ def run_estimation_case(
         options = {"maxiter": maxiter}
     else:
         method = ("scipy", "SLSQP", "ad")
-        options = {"maxiter": maxiter, "fast": True}
+        options = {"maxiter": maxiter}
 
     estimator = tb.Estimator(simulator)
     with GpuUtilSampler(enabled=device != "cpu") as util:

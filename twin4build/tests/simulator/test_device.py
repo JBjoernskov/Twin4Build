@@ -124,7 +124,7 @@ class TestModelToCUDA(unittest.TestCase):
         )
 
         model, zone_a, zone_b, wall, sensor_a, sensor_b = build_two_zone_model()
-        simulator = tb.Simulator(model)
+        simulator = tb.Simulator(model, execution_mode="composed")
         start = START
         end = START + datetime.timedelta(hours=N_HOURS)
 
@@ -159,7 +159,7 @@ class TestModelToCUDA(unittest.TestCase):
             step_size=STEP_SIZE,
             n_warmup=0,
             method=("scipy", "SLSQP", "ad"),
-            options={"maxiter": 2, "fast": True},
+            options={"maxiter": 2},
         )
         # _setup_fast_objective only keeps the fast path when its value and
         # gradient agree with the object-graph objective -- on the GPU.

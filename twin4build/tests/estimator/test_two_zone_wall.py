@@ -126,7 +126,9 @@ class TestTwoZoneWall(unittest.TestCase):
             cls.sensor_a,
             cls.sensor_b,
         ) = build_two_zone_model()
-        cls.simulator = tb.Simulator(cls.model)
+        cls.simulator = tb.Simulator(
+            cls.model, execution_mode="composed"
+        )
         cls.start = START
         cls.end = START + datetime.timedelta(hours=N_HOURS)
 
@@ -210,7 +212,7 @@ class TestTwoZoneWall(unittest.TestCase):
             step_size=STEP_SIZE,
             n_warmup=0,
             method=("scipy", "SLSQP", "ad"),
-            options={"maxiter": 1, "fast": True},
+            options={"maxiter": 1},
         )
         fast = estimator._fast_obj
         self.assertIsNotNone(

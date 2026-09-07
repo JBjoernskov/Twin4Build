@@ -679,9 +679,9 @@ Example (a minimal pass-through gate; see
 The ``do_step``/``forward`` contract
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Components that should be usable by the *fast* estimation paths (the
-``options={"fast": True}`` single-shooting objective and the collocation
-transcription's composed Jacobian) additionally implement a **pure**
+Components that should be usable by the composed execution paths
+(``Simulator(..., execution_mode="composed")``, custom batched shooting, and
+the collocation transcription's composed Jacobian) additionally implement a **pure**
 ``forward(state, inputs, parameters, ...)`` method: a side-effect-free
 function from tensors to tensors. For such components, ``do_step`` MUST be a
 thin port-I/O wrapper that reads its inputs from the ports, delegates all
