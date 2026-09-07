@@ -281,6 +281,14 @@ def load_from_spreadsheet(
             filename=cached_filename,
             root=cache_root,
         )
+        # Keep cache paths below the traditional Windows MAX_PATH boundary.
+        # The descriptive key can exceed it for long pytest/conda roots.
+        if len(os.path.abspath(cached_filename)) >= 240:
+            cache_dir = os.path.dirname(cached_filename)
+            short_name = hashlib.sha1(
+                os.path.basename(cached_filename).encode("utf-8")
+            ).hexdigest()
+            cached_filename = os.path.join(cache_dir, f"{short_name}.pickle")
     if cache and os.path.isfile(cached_filename):
         df = pd.read_pickle(cached_filename)
     else:
@@ -312,6 +320,7 @@ def load_from_spreadsheet(
             df = df[valuename]
 
         if cache:
+            os.makedirs(os.path.dirname(cached_filename), exist_ok=True)
             df.to_pickle(cached_filename)
 
     return df

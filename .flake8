@@ -30,7 +30,13 @@ extend-ignore =
     # Name may be undefined (due to star imports)
     F405,
     # f-string missing placeholders (often used for future formatting)
-    F541
+    F541,
+    # Imports intentionally follow path/bootstrap setup in entry points
+    E402,
+    # Conditional solver closures are intentionally rebound by backend
+    F811,
+    # Examples and diagnostics retain named intermediate values for inspection
+    F841
 
 exclude = 
     .git,

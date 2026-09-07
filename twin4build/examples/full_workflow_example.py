@@ -11,7 +11,7 @@ Demonstrates the complete Twin4Build workflow on a single model:
    schedule to minimize electricity cost (Danish Elspot prices) while maintaining
    thermal comfort — matching ``full_workflow_example.ipynb``.
 
-Calibration uses a two-stage estimator warm-start (fast SciPy SLSQP, then
+Calibration uses a two-stage estimator warm-start (SciPy SLSQP, then
 CasADi/IPOPT collocation), as in the notebook.
 """
 
@@ -342,7 +342,11 @@ def main():
     print(model)
 
     # --- 2.1 Set Up Simulation Parameters ---
-    simulator = tb.Simulator(model, execution_mode="composed")
+    simulator = tb.Simulator(
+        model,
+        execution_mode="functional",
+        execution_backend="eager",
+    )
     step_size = 1200  # 20 minutes in seconds
 
     start_time = [
@@ -686,7 +690,7 @@ def main():
         method=("scipy", "SLSQP", "ad"),
         # maxiter=5 is NOT converged: it leaves the pooled objective at ~70
         # where ~29 is reachable, and the extra iterations are cheap on the
-        # ``fast`` composed-rollout path.
+        # Functional eager rollout.
         options={"maxiter": 5},
     )
 
@@ -997,7 +1001,11 @@ def main():
     print(f"Using real Elspot prices from Dec 11-13, 2024")
 
     # --- 3.4 Run Initial Simulation (Before Optimization) ---
-    simulator_opt = tb.Simulator(model)
+    simulator_opt = tb.Simulator(
+        model,
+        execution_mode="functional",
+        execution_backend="eager",
+    )
     simulator_opt.simulate(
         step_size=opt_step_size, start_time=opt_start_time, end_time=opt_end_time
     )
@@ -1042,7 +1050,7 @@ def main():
 
     optimizer = tb.Optimizer(simulator_opt)
 
-    opt_options = {"maxiter": 300, "tol": 1e-15, "disp": True, "fast": True}
+    opt_options = {"maxiter": 300, "tol": 1e-15, "disp": True}
 
     optimizer.optimize(
         start_time=opt_start_time,

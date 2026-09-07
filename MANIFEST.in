@@ -1,5 +1,11 @@
 include README.md
 include LICENSE.txt
+include benchmarks/__init__.py
+include benchmarks/common.py
+include benchmarks/run_smoke.py
+include benchmarks/simulation_scaling_benchmark.ipynb
+include benchmarks/estimation_scaling_benchmark.ipynb
+include benchmarks/optimization_scaling_benchmark.ipynb
 recursive-include twin4build *.csv
 recursive-include twin4build *.ttl
 recursive-include twin4build *.xlsm
@@ -8,6 +14,12 @@ recursive-include twin4build *.json
 # Local simulation outputs (gitignored) must not enter sdists/wheels.
 prune generated_files
 prune build
+prune twin4build/tests
 prune twin4build/examples/generated_files
 prune twin4build/tests/generated_files
+prune benchmarks/.ipynb_checkpoints
+prune benchmarks/__pycache__
 global-exclude **/generated_files/**
+global-exclude *.py[cod]
+global-exclude *_results.*
+global-exclude *_cache.*

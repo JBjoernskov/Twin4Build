@@ -55,6 +55,7 @@ Key Components:
         - OnOffSystem: Binary state system
         - DiscreteStatespaceSystem: General-purpose discrete state-space model
         - ScalarProductSystem: Elementwise scalar product
+        - FunctionSystem: User-supplied transformation of named inputs
         - OccupancySystem / OccupancyDetectorSystem: Occupancy modeling and detection
         - SigmoidGate: Smooth gating function
 
@@ -62,6 +63,8 @@ Note:
     Most systems are implemented using PyTorch for efficient computation and
     optimization. FMUs can still be wrapped via FmuSystem.
 """
+
+import importlib
 
 # Define what gets exported with wildcard imports
 __all__ = [
@@ -126,154 +129,97 @@ __all__ = [
     "OnOffSystem",
     "DiscreteStatespaceSystem",
     "ScalarProductSystem",
+    "FunctionSystem",
     "OccupancySystem",
     "OccupancyDetectorSystem",
     "SigmoidGate",
 ]
 
-# Local application imports
-from twin4build.systems.air_handling_unit.air_handling_unit_system import (
-    AirHandlingUnitSystem,
-)
+_MODULES = {
+    "AirHandlingUnitSystem": "air_handling_unit.air_handling_unit_system",
+    "AirToAirHeatRecoverySystem": "air_to_air_heat_recovery.air_to_air_heat_recovery_system",
+    "BuildingSpaceMassSystem": "building_space.building_space_mass_system",
+    "BuildingSpaceThermalSystem": "building_space.building_space_thermal_system",
+    "BuildingSpaceSystem": "building_space.building_space_system",
+    "CoilSystem": "coil.coil_system",
+    "FanCoilUnitSystem": "fan_coil_unit.fan_coil_unit_system",
+    "ClassificationAnnControllerSystem": "controller.classification_ann_controller.classification_ann_controller_system",
+    "ControllerIdentificationSystem": "controller.controller_identification.controller_identification_system",
+    "ControllerIdentificationPISystem": "controller.controller_identification.controller_identification_pi_system",
+    "ActuatorSeeds": "controller.controller_identification.loop_classifier",
+    "LoopScore": "controller.controller_identification.loop_classifier",
+    "confidence_label": "controller.controller_identification.loop_classifier",
+    "derive_actuator_seeds": "controller.controller_identification.loop_classifier",
+    "score_pair": "controller.controller_identification.loop_classifier",
+    "RewireReport": "controller.controller_identification.pi_loop_rewire",
+    "NeuralPolicyControllerSystem": "controller.neural_policy_controller.neural_policy_controller_system",
+    "OnOffControllerSystem": "controller.rulebased_controller.on_off_controller.on_off_controller_system",
+    "SmoothOnOffControllerSystem": "controller.rulebased_controller.on_off_controller.smooth_on_off_controller_system",
+    "SATCompensatedControllerSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
+    "SATLinearRuleSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
+    "ScheduleSwitchControllerSystem": "controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_system",
+    "CascadeControllerSystem": "controller.setpoint_controller.cascade_controller.cascade_controller_system",
+    "PIDControllerSystem": "controller.setpoint_controller.pid_controller.pid_controller_system",
+    "DamperSystem": "damper.damper_system",
+    "FanSystem": "fan.fan_system",
+    "ReturnFlowJunctionSystem": "junction.return_flow_junction_system",
+    "SupplyFlowJunctionSystem": "junction.supply_flow_junction_system",
+    "OutdoorEnvironmentSystem": "outdoor_environment.outdoor_environment_system",
+    "PiecewiseLinearScheduleSystem": "schedule.piecewise_linear_schedule_system",
+    "ScheduleSystem": "schedule.schedule_system",
+    "SensorSystem": "sensor.sensor_system",
+    "ShadingDeviceSystem": "shading_device.shading_device_system",
+    "SpaceHeaterSystem": "space_heater.space_heater_system",
+    "DiscreteStatespaceSystem": "utils.discrete_statespace_system",
+    "FmuSystem": "utils.fmu_system",
+    "MaxSystem": "utils.max_system",
+    "OccupancyDetectorSystem": "utils.occupancy_detector_system",
+    "SigmoidGate": "utils.sigmoid_gate",
+    "OccupancySystem": "utils.occupancy_system",
+    "OnOffSystem": "utils.on_off_system",
+    "PiecewiseLinearSystem": "utils.piecewise_linear_system",
+    "FunctionSystem": "utils.function_system",
+    "ScalarProductSystem": "utils.scalar_product_system",
+    "TimeSeriesInputSystem": "utils.time_series_input_system",
+    "ValveSystem": "valve.valve_system",
+    "WallSystem": "wall.wall_system",
+}
 
-# Air to Air Heat Recovery
-from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
-    AirToAirHeatRecoverySystem,
-)
-from twin4build.systems.building_space.building_space_mass_system import (
-    BuildingSpaceMassSystem,
-)
-from twin4build.systems.building_space.building_space_thermal_system import (
-    BuildingSpaceThermalSystem,
-)
+_ALIASES = {
+    "BuildingSpaceTorchSystem": "BuildingSpaceSystem",
+    "BuildingSpaceMassTorchSystem": "BuildingSpaceMassSystem",
+    "BuildingSpaceThermalTorchSystem": "BuildingSpaceThermalSystem",
+    "WallTorchSystem": "WallSystem",
+    "DamperTorchSystem": "DamperSystem",
+    "ValveTorchSystem": "ValveSystem",
+    "CoilTorchSystem": "CoilSystem",
+    "FanTorchSystem": "FanSystem",
+    "SpaceHeaterTorchSystem": "SpaceHeaterSystem",
+    "FanCoilUnitTorchSystem": "FanCoilUnitSystem",
+    "AirHandlingUnitTorchSystem": "AirHandlingUnitSystem",
+    "OnOffControllerTorchSystem": "SmoothOnOffControllerSystem",
+    "ScheduleSwitchControllerTorchSystem": "ScheduleSwitchControllerSystem",
+    "SATCompensatedControllerTorchSystem": "SATCompensatedControllerSystem",
+    "ControllerIdentificationTorchSystem": "ControllerIdentificationSystem",
+    "ControllerIdentificationPITorchSystem": "ControllerIdentificationPISystem",
+    "fmuSystem": "FmuSystem",
+}
 
-# Building Spaces
-from twin4build.systems.building_space.building_space_system import (
-    BuildingSpaceSystem,
-)
 
-# Coils
-from twin4build.systems.coil.coil_system import CoilSystem
+def __getattr__(name):
+    canonical_name = _ALIASES.get(name, name)
+    module_name = _MODULES.get(canonical_name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(
+        importlib.import_module(f"{__name__}.{module_name}"), canonical_name
+    )
+    globals()[name] = value
+    return value
 
-# Fan Coil Unit
-from twin4build.systems.fan_coil_unit.fan_coil_unit_system import (
-    FanCoilUnitSystem,
-)
-from twin4build.systems.controller.classification_ann_controller.classification_ann_controller_system import (
-    ClassificationAnnControllerSystem,
-)
-from twin4build.systems.controller.controller_identification.controller_identification_system import (
-    ControllerIdentificationSystem,
-)
-from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
-    ControllerIdentificationPISystem,
-)
-from twin4build.systems.controller.controller_identification.loop_classifier import (
-    ActuatorSeeds,
-    LoopScore,
-    confidence_label,
-    derive_actuator_seeds,
-    score_pair,
-)
-from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
-    RewireReport,
-)
-from twin4build.systems.controller.neural_policy_controller.neural_policy_controller_system import (
-    NeuralPolicyControllerSystem,
-)
-from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_system import (
-    OnOffControllerSystem,
-)
-from twin4build.systems.controller.rulebased_controller.on_off_controller.smooth_on_off_controller_system import (
-    SmoothOnOffControllerSystem,
-)
-from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system import (
-    SATCompensatedControllerSystem,
-    SATLinearRuleSystem,
-)
-from twin4build.systems.controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_system import (
-    ScheduleSwitchControllerSystem,
-)
-from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
-    CascadeControllerSystem,
-)
 
-# Controllers
-from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
-    PIDControllerSystem,
-)
-
-# Damper
-from twin4build.systems.damper.damper_system import DamperSystem
-
-# Fan
-from twin4build.systems.fan.fan_system import FanSystem
-from twin4build.systems.junction.return_flow_junction_system import (
-    ReturnFlowJunctionSystem,
-)
-
-# Junction
-from twin4build.systems.junction.supply_flow_junction_system import (
-    SupplyFlowJunctionSystem,
-)
-
-# Outdoor Environment
-from twin4build.systems.outdoor_environment.outdoor_environment_system import (
-    OutdoorEnvironmentSystem,
-)
-from twin4build.systems.schedule.piecewise_linear_schedule_system import (
-    PiecewiseLinearScheduleSystem,
-)
-
-# Schedules
-from twin4build.systems.schedule.schedule_system import ScheduleSystem
-
-# Sensors
-from twin4build.systems.sensor.sensor_system import SensorSystem
-
-# Shading
-from twin4build.systems.shading_device.shading_device_system import ShadingDeviceSystem
-
-# Space Heater
-from twin4build.systems.space_heater.space_heater_system import (
-    SpaceHeaterSystem,
-)
-from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
-
-# Utils
-from twin4build.systems.utils.fmu_system import FmuSystem
-from twin4build.systems.utils.max_system import MaxSystem
-from twin4build.systems.utils.occupancy_detector_system import OccupancyDetectorSystem
-from twin4build.systems.utils.sigmoid_gate import SigmoidGate
-from twin4build.systems.utils.occupancy_system import OccupancySystem
-from twin4build.systems.utils.on_off_system import OnOffSystem
-from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
-from twin4build.systems.utils.scalar_product_system import ScalarProductSystem
-from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-
-# Valves
-from twin4build.systems.valve.valve_system import ValveSystem
-
-# Wall
-from twin4build.systems.wall.wall_system import WallSystem
-
-# Time series input
-
-# Deprecated class-name aliases (removed in twin4build 2.1)
-BuildingSpaceTorchSystem = BuildingSpaceSystem
-BuildingSpaceMassTorchSystem = BuildingSpaceMassSystem
-BuildingSpaceThermalTorchSystem = BuildingSpaceThermalSystem
-WallTorchSystem = WallSystem
-DamperTorchSystem = DamperSystem
-ValveTorchSystem = ValveSystem
-CoilTorchSystem = CoilSystem
-FanTorchSystem = FanSystem
-SpaceHeaterTorchSystem = SpaceHeaterSystem
-FanCoilUnitTorchSystem = FanCoilUnitSystem
-AirHandlingUnitTorchSystem = AirHandlingUnitSystem
-OnOffControllerTorchSystem = SmoothOnOffControllerSystem
-ScheduleSwitchControllerTorchSystem = ScheduleSwitchControllerSystem
-SATCompensatedControllerTorchSystem = SATCompensatedControllerSystem
-ControllerIdentificationTorchSystem = ControllerIdentificationSystem
-ControllerIdentificationPITorchSystem = ControllerIdentificationPISystem
-fmuSystem = FmuSystem
+def _load_system_classes():
+    """Load canonical system exports for translator pattern discovery."""
+    return tuple(getattr(importlib.import_module(f"{__name__}.{module}"), name)
+                 for name, module in _MODULES.items()
+                 if name.endswith("System"))

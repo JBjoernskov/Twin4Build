@@ -12,6 +12,7 @@ import warnings
 import __main__
 import numpy as np
 from dateutil import tz
+import twin4build
 
 # Curses TUI removed in twin4build 2.0 in favor of dual ANSI stdout + plain logfile.
 # Keep the name defined so leftover guarded TUI branches (never entered when
@@ -217,7 +218,9 @@ class Logger:
             return
 
         # Flush at normal interpreter exit
-        if (not self._file_flush_registered) or (self._file_flush_logfile_path != logfile_path):
+        if (not self._file_flush_registered) or (
+            self._file_flush_logfile_path != logfile_path
+        ):
             atexit.register(self._flush_log_buffer, logfile_path)
             self._file_flush_registered = True
             self._file_flush_logfile_path = logfile_path
@@ -256,7 +259,6 @@ class Logger:
         if not hasattr(self, "_twin4build_module"):
             try:
                 # Local application imports
-                import twin4build
 
                 self._twin4build_module = twin4build
             except ImportError:
@@ -567,11 +569,23 @@ class Logger:
         take priority. Badges without a color suffix use default colors.
         """
         status_lower = status.lower()
-        if ":green]" in status_lower or "[ok]" in status_lower or "[success]" in status_lower:
+        if (
+            ":green]" in status_lower
+            or "[ok]" in status_lower
+            or "[success]" in status_lower
+        ):
             return self.OK_COLOR_PAIR
-        elif ":red]" in status_lower or "[error]" in status_lower or "[failed]" in status_lower:
+        elif (
+            ":red]" in status_lower
+            or "[error]" in status_lower
+            or "[failed]" in status_lower
+        ):
             return self.ERROR_COLOR_PAIR
-        elif ":yellow]" in status_lower or "[warning]" in status_lower or "[warn]" in status_lower:
+        elif (
+            ":yellow]" in status_lower
+            or "[warning]" in status_lower
+            or "[warn]" in status_lower
+        ):
             return self.WARNING_COLOR_PAIR
         elif "[debug]" in status_lower:
             return self.INFO_COLOR_PAIR
@@ -1066,7 +1080,9 @@ class Logger:
                 print()
                 for indent, message, status, level, location in self._curses_lines:
                     print(
-                        self._format_line_ansi(indent, message, status, level, location),
+                        self._format_line_ansi(
+                            indent, message, status, level, location
+                        ),
                         flush=True,
                     )
 
@@ -1185,7 +1201,9 @@ class Logger:
                 self._stdscr.addstr(display_row, col_pos, message)
                 col_pos += len(message)
             elif col_pos < width - 1:
-                self._stdscr.addstr(display_row, col_pos, message[: width - 1 - col_pos])
+                self._stdscr.addstr(
+                    display_row, col_pos, message[: width - 1 - col_pos]
+                )
                 col_pos = width - 1
 
             if location and col_pos + len(location_text) <= width:
@@ -1351,9 +1369,7 @@ class Logger:
                     )
             elif len(match_idx) >= 1:
                 idx = match_idx[-1]
-                self.status[idx] = self._apply_color_to_status(
-                    self.status[idx], status
-                )
+                self.status[idx] = self._apply_color_to_status(self.status[idx], status)
                 self.print_lines()
         else:
             if self._block_count > 0:
@@ -1421,7 +1437,10 @@ class Logger:
         """
         # Fast filter check - avoid expensive operations if filtered; but let a
         # caller whitelist override so whitelisted callers still see this status type
-        if not self._status_filters.get("debug", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("debug", True)
+            and not self._caller_whitelist_active
+        ):
             return
         # Evaluate callable message if needed
         if callable(message):
@@ -1456,7 +1475,10 @@ class Logger:
         """
         # Fast filter check - avoid expensive operations if filtered; but let a
         # caller whitelist override so whitelisted callers still see this status type
-        if not self._status_filters.get("info", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("info", True)
+            and not self._caller_whitelist_active
+        ):
             return
         # Evaluate callable message if needed
         if callable(message):
@@ -1477,13 +1499,22 @@ class Logger:
         )
 
     def warning(
-        self, message, *args, change_status=False, ignore_no_match=False, location=None, warn_once=False
+        self,
+        message,
+        *args,
+        change_status=False,
+        ignore_no_match=False,
+        location=None,
+        warn_once=False,
     ):
         """Log a warning. Dual mode:
         - change_status=False (default): prints new yellow [OUTCOME] line.
         - change_status=True: recolors existing line yellow.
         """
-        if not self._status_filters.get("warning", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("warning", True)
+            and not self._caller_whitelist_active
+        ):
             return
         if callable(message):
             message = message()
@@ -1511,7 +1542,10 @@ class Logger:
         - change_status=False (default): prints new red [OUTCOME] line.
         - change_status=True: recolors existing line red.
         """
-        if not self._status_filters.get("error", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("error", True)
+            and not self._caller_whitelist_active
+        ):
             return
         if callable(message):
             message = message()
@@ -1535,7 +1569,10 @@ class Logger:
         - change_status=False (default): prints new green [OUTCOME] line.
         - change_status=True: recolors existing line green.
         """
-        if not self._status_filters.get("ok", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("ok", True)
+            and not self._caller_whitelist_active
+        ):
             return
         if callable(message):
             message = message()
@@ -1552,16 +1589,17 @@ class Logger:
             location=location,
         )
 
-    def task(
-        self, message, *args, location=None
-    ):
+    def task(self, message, *args, location=None):
         """Log a task entry. Tasks are units of work that can self-nest.
 
         Always prints a new [TASK] line. Use add_level() after to indent children.
         Close with remove_level() and ok/warning/error(msg, change_status=True)
         to propagate color.
         """
-        if not self._status_filters.get("task", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("task", True)
+            and not self._caller_whitelist_active
+        ):
             return
         if callable(message):
             message = message()
@@ -1576,16 +1614,17 @@ class Logger:
             location=location,
         )
 
-    def section(
-        self, message, *args, location=None
-    ):
+    def section(self, message, *args, location=None):
         """Log a section entry. Sections are data-organizing containers.
 
         Use for structural grouping (not temporal workflow). Children should only
         be [SECTION], [INFO], [ITER], or [RESULT] -- never [TASK], [OUTCOME],
         or [DEBUG].
         """
-        if not self._status_filters.get("section", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("section", True)
+            and not self._caller_whitelist_active
+        ):
             return
         if callable(message):
             message = message()
@@ -1600,15 +1639,16 @@ class Logger:
             location=location,
         )
 
-    def result(
-        self, message, *args, location=None
-    ):
+    def result(self, message, *args, location=None):
         """Log a result/output data line. Can self-nest for hierarchical results.
 
         Use for reported results from computation, not for input/setup values
         (use config() for those).
         """
-        if not self._status_filters.get("result", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("result", True)
+            and not self._caller_whitelist_active
+        ):
             return
         if callable(message):
             message = message()
@@ -1623,11 +1663,12 @@ class Logger:
             location=location,
         )
 
-    def config(
-        self, message, *args, location=None
-    ):
+    def config(self, message, *args, location=None):
         """Log a configuration value. Format: 'Label: value'."""
-        if not self._status_filters.get("config", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("config", True)
+            and not self._caller_whitelist_active
+        ):
             return
         if callable(message):
             message = message()
@@ -1642,11 +1683,12 @@ class Logger:
             location=location,
         )
 
-    def iter(
-        self, message, *args, location=None
-    ):
+    def iter(self, message, *args, location=None):
         """Log iteration metrics. Format: 'Eval N: key=value | key=value (Xs)'."""
-        if not self._status_filters.get("iter", True) and not self._caller_whitelist_active:
+        if (
+            not self._status_filters.get("iter", True)
+            and not self._caller_whitelist_active
+        ):
             return
         if callable(message):
             message = message()

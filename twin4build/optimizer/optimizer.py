@@ -3,6 +3,7 @@
 import datetime
 import os
 import time as time_module
+from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple, Union
 
 # Third party imports
@@ -15,8 +16,16 @@ from scipy.optimize import Bounds, least_squares, minimize
 import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.utils.types as tps
+from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
+from twin4build.utils.method_spec import parse_method
+from twin4build.utils.result import ResultDict
 from twin4build.utils.validate_period import validate_period
+from twin4build.optimizer._pareto import pareto_front as _pareto_front
+from twin4build.optimizer._single_shooting import (
+    CapturedControlObjective,
+    FunctionalControlObjective,
+)
 
 
 def _min_max_normalize(x, min_val=None, max_val=None):
@@ -34,15 +43,11 @@ class Optimizer:
     This class optimizes model inputs (variables) (e.g., setpoints) by minimizing a loss function, using gradient-based or other optimization algorithms.
     The optimizer implements soft constraints on model outputs (embedded in the loss function) and hard constraints on variables.
 
-    For composable torch models the loss is evaluated (by default) with a fast
-    composed objective: the components' ``forward`` methods are composed into a
-    pure one-step map, the exogenous inputs are captured once from a reference
-    simulation, and each evaluation is a plain sequential torch rollout with
-    the gradient obtained in a single autograd pass -- identical values and
-    gradients by construction, several times faster than simulating the full
-    object graph per evaluation. Models the composed map cannot express fall
-    back to the object-graph objective automatically (see the ``fast`` option
-    of :meth:`optimize`).
+    For composable torch models, select
+    ``Simulator(model, execution_mode="functional")`` to evaluate the loss with a
+    pure one-step map. Exogenous inputs are captured once and each evaluation
+    becomes a sequential torch rollout with one autograd pass. Models the
+    functional model cannot express fall back to the object objective.
 
     Args:
         simulator: The simulator instance for running simulations.
@@ -317,7 +322,7 @@ class Optimizer:
             simulator, core.Simulator
         ), "Simulator must be a twin4build.core.Simulator instance"
         self.simulator = simulator
-        self._fast_obj = None
+        self._functional_objective = None
 
     @property
     def _device(self) -> torch.device:
@@ -436,7 +441,7 @@ class Optimizer:
         self,
         start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
         end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
-        step_size: Union[float, List[float]] = None,
+        step_size: Union[int, List[int]] = None,
         variables: List[Tuple[Any, str, float, float]] = None,
         objectives: List[Tuple[Any, str, str]] = None,
         eq_cons: List[Tuple[Any, str, Any]] = None,
@@ -482,12 +487,9 @@ class Optimizer:
                 - "L-BFGS-B": Limited-memory BFGS with bounds
                 - "TNC": Truncated Newton algorithm with bounds
                 - "trust-constr": Trust-region constrained optimization
-                - "trf": Trust Region Reflective (for least-squares problems)
-                - "dogbox": Dogleg algorithm (for least-squares problems)
 
                 Examples: ``("scipy", "SLSQP", "ad")`` is preferred for most
-                constrained optimization problems; ``("scipy", "trf", "fd")``
-                for non-PyTorch models with a least-squares formulation.
+                constrained optimization problems.
 
             options: Additional options for the chosen method:
 
@@ -500,24 +502,14 @@ class Optimizer:
                 - "initial_constr_penalty": Initial constraint penalty
                 - "constraint_penalty": Weight of the soft constraint penalty
                   terms in the loss (default 100)
-                - "fast" (bool, default True): Evaluate the loss with the
-                  composed one-step-map rollout (exogenous inputs captured
-                  once, decision variables threaded through a pure torch
-                  rollout, gradient via a single autograd pass) instead of a
-                  full object-graph simulation per evaluation. Values and
-                  gradients are identical by construction; the optimizer
-                  silently falls back to the object-graph objective when the
-                  model is not composable (components without ``forward``,
-                  no stateful components, or a loss output the composed map
-                  cannot produce).
-                - "fast_validate" (bool, default False): Additionally
-                  cross-check the fast loss and gradient against the
-                  object-graph objective at the initial iterate (debugging
-                  aid; costs ~2 object-graph evaluations).
+                Functional execution and CUDA graph capture are selected on
+                ``Simulator`` via ``execution_mode`` and
+                ``execution_backend``.
                 - Additional method-specific options as supported by SciPy optimizers
 
         Returns:
-            The SciPy optimization result object. The optimized actuator
+            OptimizationResult: A dict-like result with SciPy-compatible
+            mapping and attribute access. The optimized actuator
             trajectories are also applied to the model, so a subsequent
             ``simulator.simulate(...)`` runs with the optimal inputs.
         """
@@ -531,6 +523,7 @@ class Optimizer:
                 raise TypeError(
                     f"`{legacy_key}` has been removed. Use `{new_key}` instead."
                 )
+        reject_unexpected_kwargs("Optimizer.optimize", kwargs)
 
         self._variables = variables or []
         self._objectives = objectives or []
@@ -600,17 +593,11 @@ class Optimizer:
             ("scipy", "L-BFGS-B", "ad"),
             ("scipy", "TNC", "ad"),
             ("scipy", "trust-constr", "ad"),
-            ("scipy", "trf", "ad"),
-            ("scipy", "dogbox", "ad"),
-            ("scipy", "trf", "fd"),
-            ("scipy", "dogbox", "fd"),
         ]
         default_methods = [("scipy", "SLSQP", "ad")]
         default_mode = (
             "ad"  # Always choose automatic differentiation mode when ambiguous
         )
-
-        from twin4build.utils.method_spec import parse_method
 
         method, _transcription = parse_method(
             method,
@@ -685,7 +672,8 @@ class Optimizer:
         # Check for conflicting constraints: can't minimize and have equality constraint on same output
         if self._objectives and self._eq_cons:
             minimize_pairs = {
-                (component, output_name) for component, output_name in self._objectives
+                (component, output_name)
+                for component, output_name, _ in self._objectives
             }
             equality_pairs = {
                 (component, output_name) for component, output_name, _ in self._eq_cons
@@ -705,7 +693,9 @@ class Optimizer:
         LOGGER.config("Variables: %d", len(self._variables))
         LOGGER.add_level()
         for component, output_name, *bounds in self._variables:
-            bounds_str = f" (lb={bounds[0]}, ub={bounds[1]})" if len(bounds) >= 2 else ""
+            bounds_str = (
+                f" (lb={bounds[0]}, ub={bounds[1]})" if len(bounds) >= 2 else ""
+            )
             LOGGER.debug("%s.%s%s", component.id, output_name, bounds_str)
         LOGGER.remove_level()
         LOGGER.config("Objectives: %d", len(self._objectives))
@@ -721,7 +711,9 @@ class Optimizer:
         n_periods = len(self._start_time)
         LOGGER.config("Time periods: %d", n_periods)
         LOGGER.add_level()
-        for i, (s, e, ss) in enumerate(zip(self._start_time, self._end_time, self._stepSize)):
+        for i, (s, e, ss) in enumerate(
+            zip(self._start_time, self._end_time, self._stepSize)
+        ):
             LOGGER.config("Period %d: %s -> %s (step=%ss)", i + 1, s, e, ss)
         LOGGER.remove_level()
 
@@ -795,7 +787,7 @@ class Optimizer:
                 "yes",
             ):
                 options["maxiter"] = 1
-            result = self._scipy_solver(method=method, **options)
+            result = self._solve_scipy(method=method, **options)
         else:
             LOGGER.remove_level()
             LOGGER.error("Running optimization", change_status=True)
@@ -804,6 +796,111 @@ class Optimizer:
         LOGGER.remove_level()
         LOGGER.ok("Running optimization", change_status=True)
         return OptimizationResult.from_scipy(result)
+
+    def pareto_front(
+        self,
+        start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        step_size: Union[int, List[int]] = None,
+        variables: List[Tuple[Any, str, float, float]] = None,
+        objective1: Tuple[Any, str, str] = None,
+        objective2: Tuple[Any, str, str] = None,
+        eq_cons: List[Tuple[Any, str, Any]] = None,
+        ineq_cons: List[Tuple[Any, str, str, Any]] = None,
+        n_points: int = 11,
+        delta: float = 1e-3,
+        method: tuple = ("scipy", "SLSQP", "ad"),
+        batched_prepass: bool = True,
+        prepass_options: Dict = None,
+        options: Dict = None,
+    ):
+        """Trace a bi-objective front with the augmented epsilon-constraint method.
+
+        Functional execution, including the optional batched prepass, is selected
+        by constructing ``Simulator(model, execution_mode="functional")``.
+        Optimizer options do not select execution mode.  Supported methods are
+        ``("scipy", "SLSQP", "ad")`` and
+        ``("casadi", "ipopt", "ad", "collocation")``.
+        SLSQP and IPOPT remain host solvers; the CUDA Graph backend can capture
+        and replay fixed-shape device derivatives. IPOPT receives the exact
+        sparse Hessian of the collocation Lagrangian. The old three-element
+        IPOPT spelling is rejected because it ambiguously implied direct shooting.
+        """
+        if tuple(method) not in (
+            ("scipy", "SLSQP", "ad"),
+            ("casadi", "ipopt", "ad", "collocation"),
+        ):
+            raise ValueError(
+                "pareto_front requires exact AD derivatives with "
+                '("scipy", "SLSQP", "ad") or '
+                f'("casadi", "ipopt", "ad", "collocation"); got {method}.'
+            )
+        for name, obj in (("objective1", objective1), ("objective2", objective2)):
+            if obj is None or len(obj) != 3:
+                raise ValueError(
+                    f"{name} must be a (component, output_name, 'min'|'max') tuple"
+                )
+            component, output_name, objective_type = obj
+            if not hasattr(component, "output") or output_name not in component.output:
+                raise ValueError(f"{name}: output '{output_name}' is not available")
+            if objective_type not in ("min", "max"):
+                raise ValueError(
+                    f"{name}: objective type must be 'min' or 'max', got "
+                    f"'{objective_type}'"
+                )
+        if n_points < 2:
+            raise ValueError("n_points must be at least 2")
+        if not variables:
+            raise ValueError("No decision variables specified for optimization")
+
+        self._variables = variables
+        self._objectives = [tuple(objective1), tuple(objective2)]
+        self._eq_cons = eq_cons or []
+        self._ineq_cons = ineq_cons or []
+        self._start_time, self._end_time, self._stepSize = validate_period(
+            start_time, end_time, step_size
+        )
+        self._max_values = {}
+        (
+            self._second_time_steps,
+            self._date_time_steps,
+            self._max_timesteps,
+            self._n_timesteps,
+        ) = core.Simulator.get_simulation_timesteps(
+            self._start_time, self._end_time, self._stepSize
+        )
+        self._timestep_mask = torch.ones(
+            self._max_timesteps, len(self._start_time), dtype=torch.bool
+        )
+        for i_s, n_timesteps in enumerate(self._n_timesteps):
+            self._timestep_mask[n_timesteps:, i_s] = False
+
+        options = dict(options or {})
+        prepass_options = dict(prepass_options or {})
+        if os.environ.get("TWIN4BUILD_TESTING", "").lower() in ("1", "true", "yes"):
+            options["maxiter"] = 1
+            n_points = min(n_points, 3)
+            prepass_options.setdefault("max_iter", 3)
+
+        LOGGER.task("Generating Pareto front")
+        LOGGER.add_level()
+        try:
+            result = _pareto_front(
+                self,
+                n_points=n_points,
+                delta=delta,
+                method=method,
+                use_prepass=batched_prepass,
+                prepass_options=prepass_options,
+                options=options,
+            )
+        except Exception:
+            LOGGER.remove_level()
+            LOGGER.error("Generating Pareto front", change_status=True)
+            raise
+        LOGGER.remove_level()
+        LOGGER.ok("Generating Pareto front", change_status=True)
+        return result
 
     # def _torch_solver(
     #     self,
@@ -1008,7 +1105,13 @@ class Optimizer:
     #         print(f"Current learning rate: {current_lr}")
     #         print(f"Loss at step {i}: {self.loss.detach().item()}")
 
-    def _scipy_solver(self, method: tuple = None, tol: float = None, **options):
+    def _solve_scipy(
+        self,
+        method: tuple = None,
+        tol: float = None,
+        scipy_constraints: list = None,
+        **options,
+    ):
         """
         Perform optimization using SciPy's optimization algorithms.
 
@@ -1043,6 +1146,9 @@ class Optimizer:
                 - "initial_tr_radius": Initial trust region radius
                 - "initial_constr_penalty": Initial constraint penalty
                 - Additional method-specific options as supported by SciPy optimizers
+            scipy_constraints: Optional SciPy constraint dictionaries or
+                constraint objects passed to ``scipy.optimize.minimize`` as
+                hard constraints.
 
         Note:
             This method automatically handles the conversion between PyTorch tensors and
@@ -1050,212 +1156,13 @@ class Optimizer:
             when the same parameters are evaluated multiple times. The method supports
             both equality and inequality constraints through the loss function formulation.
         """
-        self._eval_count = 0
-        self._solver_start_time = time_module.time()
-
         if method is None:
             method = ("scipy", "SLSQP", "ad")
 
         LOGGER.task("Starting scipy solver: %s (%s mode)", method[1], method[2])
         LOGGER.add_level()
 
-        self._constraint_penalty = options.pop("constraint_penalty", 100)
-
-        for component in self.simulator.model.components.values():
-            if isinstance(component, nn.Module):
-                for parameter in component.parameters():
-                    parameter.requires_grad_(False)
-
-        # Set before initializing the model
-        for component, output_name, *bounds in self._variables:
-            component.output[output_name].do_normalization = True
-
-        LOGGER.task("Initializing model")
-        self.simulator.model.initialize(
-            start_time=self._start_time,
-            end_time=self._end_time,
-            step_size=self._stepSize,
-        )
-
-        # Create initial guess vector
-        x0 = []
-        bounds_list = []
-
-        n_periods = len(self._start_time)
-
-        # Create flattened vector using vectorized operations, excluding padded values
-        x0_tensors = []
-
-        for component, output_name, *bounds in self._variables:
-            component.output[output_name].set_requires_grad(True)
-
-            # Get the full history tensor for this component
-            if component.output[output_name].do_normalization:
-                history_tensor = component.output[
-                    output_name
-                ].normalized_history.detach()
-            else:
-                history_tensor = component.output[output_name].history().detach()
-
-            # Extract only actual timesteps (no padding) for each period
-            # History shape is (n_t, n_s, n_c) - time-first layout
-            period_tensors = []
-            for period_idx in range(n_periods):
-                actual_timesteps = self._n_timesteps[period_idx]
-                # Slice time dimension, index scenario dimension, keep all components
-                period_data = history_tensor[:actual_timesteps, period_idx, :]
-                period_tensors.append(period_data)
-
-            # Concatenate all periods for this variable
-            flattened_history = torch.cat(period_tensors, dim=0)
-            x0_tensors.append(flattened_history)
-
-            # Set bounds for actual timesteps only
-            total_actual_elements = flattened_history.numel()
-            for _ in range(total_actual_elements):
-                if len(bounds) >= 2:
-                    lower, upper = bounds[0], bounds[1]
-                    if component.output[output_name].do_normalization:
-                        lower = (
-                            component.output[output_name]
-                            .normalize(torch.tensor(lower))
-                            .item()
-                        )
-                        upper = (
-                            component.output[output_name]
-                            .normalize(torch.tensor(upper))
-                            .item()
-                        )
-                    bounds_list.append((lower, upper))
-                else:
-                    bounds_list.append((None, None))
-
-        # Interleave the tensors: [var1_t0, var2_t0, var1_t1, var2_t1, ...]
-        # This matches the expected structure for the theta vector
-        if x0_tensors:
-            # Stack tensors and transpose to interleave
-            stacked = torch.stack(
-                x0_tensors, dim=1
-            )  # Shape: (total_actual_timesteps, n_variables)
-            # scipy requires float64 regardless of the model dtype.
-            x0 = (
-                stacked.flatten().detach().cpu().numpy().astype(np.float64)
-            )  # Flatten to get interleaved structure
-        else:
-            x0 = np.array([])
-
-        # Create bounds object for SciPy
-        if all(b[0] is not None and b[1] is not None for b in bounds_list):
-            bounds_obj = Bounds(
-                [b[0] for b in bounds_list], [b[1] for b in bounds_list]
-            )
-        else:
-            bounds_obj = None
-
-        # Pre-compute constraint values
-        def _get_constraint_value(component, output_name, component_or_value):
-            """Helper function to get constraint value, handling both ScheduleSystem and scalar values"""
-            n_s = len(self._start_time)
-            n_t = max(self._n_timesteps)
-            n_c = component.output[output_name].n_c
-
-            if isinstance(component.output[output_name], tps.Scalar):
-                # Shape: (n_t, n_s, n_c) - time-first layout
-                desired_shape = (n_t, n_s, n_c)
-            elif isinstance(component.output[output_name], tps.Vector):
-                # Shape: (n_t, n_s, n_c, n_v) - time-first layout
-                desired_shape = (
-                    n_t,
-                    n_s,
-                    n_c,
-                    component.output[output_name].n_v,
-                )
-            else:
-                raise ValueError(
-                    f"Invalid constraint value type: {type(component.output[output_name])}"
-                )
-
-            if isinstance(component_or_value, (int, float)):
-                return torch.full(
-                    desired_shape,
-                    component_or_value,
-                    dtype=tps.float_dtype(),
-                    device=self._device,
-                )
-            elif isinstance(component_or_value, systems.ScheduleSystem):
-                # The schedule may be standalone (not part of the model), in
-                # which case Model.to() never moved it -- align explicitly.
-                component_or_value.initialize(
-                    start_time=self._start_time,
-                    end_time=self._end_time,
-                    step_size=self._stepSize,
-                )
-                return (
-                    component_or_value.output["scheduleValue"]
-                    .history()
-                    .to(device=self._device, dtype=tps.float_dtype())
-                )
-            elif isinstance(component_or_value, torch.Tensor):
-                return component_or_value.to(
-                    device=self._device, dtype=tps.float_dtype()
-                )
-            else:
-                raise ValueError(
-                    f"Invalid constraint value type: {type(component_or_value)}"
-                )
-
-        self.equality_constraint_values = {}
-        if self._eq_cons is not None:
-            for component, output_name, desired_value in self._eq_cons:
-                self.equality_constraint_values[component, output_name] = (
-                    _get_constraint_value(component, output_name, desired_value)
-                )
-
-        self.inequality_constraint_values = {}
-        if self._ineq_cons is not None:
-            for (
-                component,
-                output_name,
-                constraint_type,
-                desired_value,
-            ) in self._ineq_cons:
-                constraint_val = _get_constraint_value(
-                    component, output_name, desired_value
-                )
-                self.inequality_constraint_values[
-                    (component, output_name, constraint_type)
-                ] = constraint_val
-
-        # Initialize caching variables for AD
-        self._theta_jac = 1000000 * torch.ones_like(
-            torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)  # torch.nan
-        )
-        self._theta_hes = torch.nan * torch.ones_like(
-            torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)
-        )
-        self._theta_obj = 1000000 * torch.ones_like(
-            torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)
-        )
-
-        # -- Fast composed objective (default ON) ------------------------------
-        # Replaces the object-graph simulate-per-evaluation with a sequential
-        # rollout of the composed pure one-step map (see _fast_objective.py):
-        # exogenous inputs captured once, decision-variable slots driven by
-        # theta, gradient via one autograd pass instead of jacrev around the
-        # simulation.  Structural compatibility is checked at build time --
-        # non-composable models silently fall back to the object-graph
-        # objective.  Numerical equivalence holds by construction (each
-        # composable component's do_step delegates to the same forward the
-        # composer threads) and is regression-checked by
-        # tests/optimizer/test_fast_objective.py.
-        # options={"fast": False} opts out; options={"fast_validate": True}
-        # additionally cross-checks value and gradient against the object-graph
-        # objective at the initial iterate (debugging aid, costs ~2 evals).
-        fast_requested = bool(options.pop("fast", True))
-        fast_validate = bool(options.pop("fast_validate", False))
-        self._fast_obj = None
-        if fast_requested and method[2] == "ad":
-            self._setup_fast_objective(x0, validate=fast_validate)
+        x0, bounds_obj = self._prepare_scipy_problem(method, options)
 
         # Run optimization based on method
         optimizer_name = method[1]
@@ -1278,15 +1185,29 @@ class Optimizer:
                 )
             else:
                 # These are general optimization algorithms
-                result = minimize(
-                    self._obj_ad,
-                    x0,
-                    method=optimizer_name,
-                    jac=self._jac_ad,
-                    bounds=bounds_obj,
-                    tol=tol,
-                    options=options,
-                )
+                if (
+                    optimizer_name == "SLSQP"
+                    and self._functional_objective is not None
+                    and self.simulator.execution_backend == "cuda_graph"
+                ):
+                    result = self._solve_scipy_captured_slsqp(
+                        x0,
+                        bounds_obj,
+                        tol,
+                        scipy_constraints,
+                        options,
+                    )
+                else:
+                    result = minimize(
+                        self._obj_ad,
+                        x0,
+                        method=optimizer_name,
+                        jac=self._jac_ad,
+                        bounds=bounds_obj,
+                        tol=tol,
+                        constraints=scipy_constraints if scipy_constraints else (),
+                        options=options,
+                    )
         else:
             LOGGER.remove_level()
             LOGGER.error(
@@ -1300,16 +1221,20 @@ class Optimizer:
                 "Finite difference mode is not yet implemented for the optimizer. Use automatic differentiation mode."
             )
 
-        # Apply the solution to the model: one object-graph evaluation at
+        # Apply the solution to the model: one object evaluation at
         # result.x writes the optimal trajectories into the decision-variable
         # ports and re-runs the simulation, so component histories hold the
         # optimized signals (guaranteed -- SciPy's last internal evaluation is
-        # not necessarily at the solution, and with the fast objective no
+        # not necessarily at the solution, and with the functional objective no
         # simulation ran during the solve at all).
-        self.__obj_ad(torch.tensor(result.x, dtype=tps.float_dtype(), device=self._device))
+        self.apply_solution(result.x)
 
         elapsed = time_module.time() - self._solver_start_time
-        LOGGER.info("Optimization finished in %.1fs (%d function evaluations)", elapsed, self._eval_count)
+        LOGGER.info(
+            "Optimization finished in %.1fs (%d function evaluations)",
+            elapsed,
+            self._eval_count,
+        )
         opt_success = getattr(result, "success", None)
         opt_message = getattr(result, "message", None)
         opt_nit = getattr(result, "nit", None)
@@ -1349,101 +1274,269 @@ class Optimizer:
                 change_status=True,
                 ignore_no_match=True,
             )
+        return result
 
-    def _setup_fast_objective(self, x0, validate: bool = False) -> None:
-        """Build the composed-map objective (see ``_fast_objective.py``).
+    def _solve_scipy_captured_slsqp(
+        self, x0, bounds_obj, tol, scipy_constraints, options
+    ):
+        """Serve SLSQP from one directly captured functional value/grad bundle."""
+        evaluator = CapturedControlObjective(self._functional_objective)
+        cache = {"key": None, "value": None, "gradient": None}
 
-        On success sets ``self._fast_obj`` (consumed by :meth:`_obj_ad` /
+        def bundle(x):
+            x_np = np.asarray(x, dtype=np.float64)
+            key = x_np.tobytes()
+            if key == cache["key"]:
+                return cache["value"], cache["gradient"]
+            z = torch.as_tensor(x_np, dtype=tps.float_dtype(), device=self._device)
+            value_t, gradient_t = evaluator.value_and_grad(z)
+            value = float(value_t.detach().cpu())
+            gradient = gradient_t.detach().cpu().numpy().astype(np.float64)
+            self.obj = value_t.detach().clone()
+            self.jac = gradient_t.detach().clone()
+            self._theta_obj = z.detach().clone()
+            self._theta_jac = z.detach().clone()
+            self._eval_count += 1
+            LOGGER.iter(
+                "Evaluation %d: loss %.6f (%.1fs)",
+                self._eval_count,
+                value,
+                time_module.time() - self._solver_start_time,
+            )
+            cache.update(key=key, value=value, gradient=gradient)
+            return value, gradient
+
+        try:
+            result = minimize(
+                lambda x: bundle(x)[0],
+                x0,
+                method="SLSQP",
+                jac=lambda x: bundle(x)[1],
+                bounds=bounds_obj,
+                tol=tol,
+                constraints=scipy_constraints if scipy_constraints else (),
+                options=options,
+            )
+            result.derivative_stats = {
+                "scipy_value_gradient_bundle": dict(evaluator.stats),
+                "scope": "functional objective and gradient; host SciPy callbacks",
+            }
+            return result
+        finally:
+            evaluator.close()
+
+    def apply_solution(self, theta) -> None:
+        """Write a solver decision vector into the model and re-simulate."""
+        self.__obj_ad(
+            torch.tensor(
+                np.asarray(theta), dtype=tps.float_dtype(), device=self._device
+            )
+        )
+
+    def _prepare_scipy_problem(self, method: tuple, options: dict):
+        """Initialize and build the shared SciPy NLP state.
+
+        This setup is shared by the ordinary solver and Pareto subproblems.
+        Objective-related options are consumed in place.
+        """
+        self._eval_count = 0
+        self._solver_start_time = time_module.time()
+        self._constraint_penalty = options.pop("constraint_penalty", 100)
+
+        if "fast" in options:
+            raise TypeError(
+                "Optimizer option 'fast' has been removed; construct "
+                "Simulator(model, execution_mode='functional') instead."
+            )
+
+        for component in self.simulator.model.components.values():
+            if isinstance(component, nn.Module):
+                for parameter in component.parameters():
+                    parameter.requires_grad_(False)
+
+        for component, output_name, *bounds in self._variables:
+            component.output[output_name].do_normalization = True
+
+        LOGGER.task("Initializing model")
+        self.simulator.model.initialize(
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
+        )
+
+        bounds_list = []
+        x0_tensors = []
+        n_periods = len(self._start_time)
+        for component, output_name, *bounds in self._variables:
+            port = component.output[output_name]
+            active_history = (
+                port.normalized_history if port.do_normalization else port.history()
+            )
+            if not active_history.is_leaf:
+                # A previous object AD evaluation may have installed a
+                # differentiable trajectory in this leaf port. Start each NLP
+                # from a detached trajectory so requires_grad can be enabled
+                # again and repeated solves remain independent.
+                port.initialize(
+                    n_t=self._max_timesteps,
+                    n_s=n_periods,
+                    n_c=port.n_c,
+                    values=port.history().detach(),
+                    force=True,
+                )
+            port.set_requires_grad(True)
+            history_tensor = (
+                port.normalized_history.detach()
+                if port.do_normalization
+                else port.history().detach()
+            )
+            period_tensors = [
+                history_tensor[: self._n_timesteps[i_s], i_s, :]
+                for i_s in range(n_periods)
+            ]
+            flattened_history = torch.cat(period_tensors, dim=0)
+            x0_tensors.append(flattened_history)
+
+            for _ in range(flattened_history.numel()):
+                if len(bounds) >= 2:
+                    lower, upper = bounds[:2]
+                    if port.do_normalization:
+                        lower = port.normalize(torch.tensor(lower)).item()
+                        upper = port.normalize(torch.tensor(upper)).item()
+                    bounds_list.append((lower, upper))
+                else:
+                    bounds_list.append((None, None))
+
+        if x0_tensors:
+            x0 = (
+                torch.stack(x0_tensors, dim=1)
+                .flatten()
+                .detach()
+                .cpu()
+                .numpy()
+                .astype(np.float64)
+            )
+        else:
+            x0 = np.array([], dtype=np.float64)
+
+        bounds_obj = None
+        if bounds_list and all(
+            lower is not None and upper is not None for lower, upper in bounds_list
+        ):
+            bounds_obj = Bounds(
+                [lower for lower, _ in bounds_list],
+                [upper for _, upper in bounds_list],
+            )
+
+        def _get_constraint_value(component, output_name, component_or_value):
+            n_s = len(self._start_time)
+            n_t = max(self._n_timesteps)
+            port = component.output[output_name]
+            if isinstance(port, tps.Scalar):
+                desired_shape = (n_t, n_s, port.n_c)
+            elif isinstance(port, tps.Vector):
+                desired_shape = (n_t, n_s, port.n_c, port.n_v)
+            else:
+                raise ValueError(f"Invalid constraint value type: {type(port)}")
+
+            if isinstance(component_or_value, (int, float)):
+                return torch.full(
+                    desired_shape,
+                    component_or_value,
+                    dtype=tps.float_dtype(),
+                    device=self._device,
+                )
+            if isinstance(component_or_value, systems.ScheduleSystem):
+                component_or_value.initialize(
+                    start_time=self._start_time,
+                    end_time=self._end_time,
+                    step_size=self._stepSize,
+                )
+                return (
+                    component_or_value.output["scheduleValue"]
+                    .history()
+                    .to(device=self._device, dtype=tps.float_dtype())
+                )
+            if isinstance(component_or_value, torch.Tensor):
+                return component_or_value.to(
+                    device=self._device, dtype=tps.float_dtype()
+                )
+            raise ValueError(
+                f"Invalid constraint value type: {type(component_or_value)}"
+            )
+
+        self.equality_constraint_values = {
+            (component, output_name): _get_constraint_value(
+                component, output_name, desired_value
+            )
+            for component, output_name, desired_value in self._eq_cons
+        }
+        self.inequality_constraint_values = {
+            (component, output_name, constraint_type): _get_constraint_value(
+                component, output_name, desired_value
+            )
+            for component, output_name, constraint_type, desired_value in self._ineq_cons
+        }
+
+        theta0 = torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)
+        self._theta_jac = 1000000 * torch.ones_like(theta0)
+        self._theta_hes = torch.nan * torch.ones_like(theta0)
+        self._theta_obj = 1000000 * torch.ones_like(theta0)
+
+        self._functional_objective = None
+        removed = {"fast", "fast_validate"}.intersection(options)
+        if removed:
+            raise TypeError(
+                f"Removed optimizer option(s): {', '.join(sorted(removed))}. "
+                "Select functional execution on Simulator."
+            )
+        if self.simulator.execution_mode == "functional" and method[2] == "ad":
+            self._setup_functional_objective(x0)
+
+        return x0, bounds_obj
+
+    def _setup_functional_objective(self, x0) -> None:
+        """Build the functional single-shooting objective.
+
+        On success sets ``self._functional_objective`` (consumed by
+        :meth:`_obj_ad` /
         :meth:`_jac_ad`); on any structural incompatibility leaves it ``None``
-        and the exact object-graph objective is used.  With ``validate=True``
-        (``options={"fast_validate": True}``) the loss value AND gradient are
-        additionally cross-checked against the object-graph objective at the
-        initial iterate before the fast path is enabled -- a runtime debugging
-        aid costing ~2 object-graph evaluations.
+        and the exact object objective is used. With ``validate=True``
+        Structural incompatibilities leave the functional objective unset and
+        use the object execution path.
         """
         t0 = time_module.time()
         try:
-            from twin4build.optimizer._fast_objective import FastControlObjective
-
-            fast = FastControlObjective(self)
+            functional = FunctionalControlObjective(self)
         except Exception as exc:
             LOGGER.config(
-                "Fast objective unavailable (%s); using object-graph objective",
+                "Functional objective unavailable (%s); using object objective",
                 exc,
             )
             return
 
-        if validate:
-            theta0 = torch.tensor(x0, dtype=tps.float_dtype(), device=self._device)
-            f_fast, g_fast = fast.value_and_grad(theta0)
-            f_slow = self.__obj_ad(theta0.clone())
-            g_slow = torch.func.jacrev(self.__obj_ad, argnums=0)(theta0.clone())
-            rel_f = float(
-                abs(f_fast - f_slow) / max(1e-12, abs(float(f_slow)))
-            )
-            gscale = max(1e-12, float(g_slow.abs().max()))
-            rel_g = float((g_fast - g_slow).abs().max()) / gscale
-            # fp32 accumulates roundoff over the rollout; loosen the parity
-            # thresholds accordingly (they only gate the fast-path opt-in).
-            if tps.float_dtype() == torch.float64:
-                tol_f, tol_g = 1e-6, 1e-4
-            else:
-                tol_f, tol_g = 1e-3, 1e-2
-            if rel_f > tol_f or rel_g > tol_g:
-                LOGGER.warning(
-                    "Fast objective validation FAILED (value rel=%.3e, "
-                    "gradient rel=%.3e); using object-graph objective",
-                    rel_f,
-                    rel_g,
-                )
-                return
-            LOGGER.config(
-                "Fast objective validated (value rel=%.3e, gradient rel=%.3e)",
-                rel_f,
-                rel_g,
-            )
-
-        self._fast_obj = fast
+        self._functional_objective = functional
         LOGGER.config(
-            "Fast objective enabled (built in %.1fs)", time_module.time() - t0
+            "Functional objective enabled (built in %.1fs)", time_module.time() - t0
         )
 
-    def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
-        """
-        Objective function for automatic differentiation.
-
-        Args:
-            theta (torch.Tensor): Flattened parameter vector containing values for all periods,
-                                 timesteps, and actuators.
-
-        Returns:
-            torch.Tensor: Objective value.
-        """
-        # Reshape theta using vectorized operations
+    def _write_variables(self, theta: torch.Tensor) -> None:
+        """Write an interleaved normalized decision vector to output ports."""
         n_actuators = len(self._variables)
         n_periods = len(self._start_time)
-
-        # Reshape theta from interleaved format [var1_t0, var2_t0, var1_t1, var2_t1, ...]
-        # to (total_actual_timesteps, n_variables) format
         total_actual_timesteps = int(len(theta) / n_actuators)
         theta_matrix = theta.reshape(total_actual_timesteps, n_actuators)
 
-        # Update decision variables for each actuator
         for i, (component, output_name, *bounds) in enumerate(self._variables):
-            # Extract values for this actuator across all actual timesteps
             actuator_values = theta_matrix[:, i]
-
-            # Construct values tensor in time-first format: (n_t, n_s, n_c)
-            # where n_t = max_timesteps, n_s = n_periods, n_c = 1
             n_c = component.output[output_name].n_c
             reconstructed_tensor = torch.full(
                 (self._max_timesteps, n_periods, n_c),
                 0,
                 dtype=tps.float_dtype(),
                 device=self._device,
-            )  # FIX OF NAN JACOBIAN: 0 instead float('nan')
+            )
 
-            # Fill in the actual values period by period
             value_idx = 0
             for period_idx in range(n_periods):
                 actual_timesteps = self._n_timesteps[period_idx]
@@ -1454,13 +1547,11 @@ class Optimizer:
                 reconstructed_tensor[:actual_timesteps, period_idx, 0] = period_values
                 value_idx += actual_timesteps
 
-            # Denormalize if needed
             if component.output[output_name].do_normalization:
                 values = component.output[output_name].denormalize(reconstructed_tensor)
             else:
                 values = reconstructed_tensor
 
-            # Initialize with the new values (time-first format)
             component.output[output_name].initialize(
                 n_t=self._max_timesteps,
                 n_s=len(self._start_time),
@@ -1468,43 +1559,47 @@ class Optimizer:
                 force=True,
             )
 
-        # Run simulation
+    def _graph_parts(self, theta: torch.Tensor) -> SimpleNamespace:
+        """Evaluate and decompose the object-execution optimization loss."""
+        self._write_variables(theta)
         self.simulator.simulate(
             start_time=self._start_time,
             end_time=self._end_time,
             step_size=self._stepSize,
             show_progress_bar=False,
+            execution_mode="object",
+            execution_backend="eager",
         )
 
-        # Compute loss - initialize as tensor to avoid NaN propagation issues
-        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
         k = self._constraint_penalty
-
-        # Handle equality constraints
-        # Use boolean mask (n_t, n_s) to index 3D tensors (n_t, n_s, n_c) -> (num_valid, n_c)
         mask = self._timestep_mask
 
-        if self._eq_cons is not None:
-            for constraint in self._eq_cons:
-                component, output_name, desired_value = constraint
-                # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
-                y = component.output[output_name].history()[mask]
-                desired_tensor = self.equality_constraint_values[
-                    component, output_name
-                ][mask]
-                y_norm = component.output[output_name].normalize(y)
-                desired_tensor_norm = component.output[output_name].normalize(
-                    desired_tensor
-                )
-                loss += k * torch.mean(torch.abs(y_norm - desired_tensor_norm))
+        eq = []
+        for component, output_name, desired_value in self._eq_cons:
+            y = component.output[output_name].history()[mask]
+            desired_tensor = self.equality_constraint_values[component, output_name][
+                mask
+            ]
+            y_norm = component.output[output_name].normalize(y)
+            desired_tensor_norm = component.output[output_name].normalize(
+                desired_tensor
+            )
+            eq.append(k * torch.mean(torch.abs(y_norm - desired_tensor_norm)))
 
-        # Handle inequality constraints
-        if self._ineq_cons is not None:
-            ineq_upper_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
-            ineq_lower_term = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
-            for constraint in self._ineq_cons:
-                component, output_name, constraint_type, desired_value = constraint
-                # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
+        ineq = None
+        if self._ineq_cons:
+            ineq_upper_term = torch.tensor(
+                0.0, dtype=tps.float_dtype(), device=self._device
+            )
+            ineq_lower_term = torch.tensor(
+                0.0, dtype=tps.float_dtype(), device=self._device
+            )
+            for (
+                component,
+                output_name,
+                constraint_type,
+                desired_value,
+            ) in self._ineq_cons:
                 y = component.output[output_name].history()[mask]
                 desired_tensor = self.inequality_constraint_values[
                     (component, output_name, constraint_type)
@@ -1513,29 +1608,36 @@ class Optimizer:
                 desired_tensor_norm = component.output[output_name].normalize(
                     desired_tensor
                 )
-
                 if constraint_type == "upper":
-                    # Penalize when y > desired_value
-                    constraint_violations = torch.relu(y_norm - desired_tensor_norm)
-                    ineq_upper_term += torch.mean(constraint_violations)
-                elif constraint_type == "lower":
-                    # Penalize when y < desired_value
-                    constraint_violations = torch.relu(desired_tensor_norm - y_norm)
-                    ineq_lower_term += torch.mean(constraint_violations)
+                    ineq_upper_term += torch.mean(
+                        torch.relu(y_norm - desired_tensor_norm)
+                    )
+                else:
+                    ineq_lower_term += torch.mean(
+                        torch.relu(desired_tensor_norm - y_norm)
+                    )
+            ineq = k * (ineq_upper_term + ineq_lower_term)
 
-            loss += k * (ineq_upper_term + ineq_lower_term)
+        objs = []
+        phys = []
+        for component, output_name, objective_type in self._objectives:
+            y = component.output[output_name].history()[mask]
+            y_norm = component.output[output_name].normalize(y)
+            mean_norm = torch.mean(y_norm)
+            objs.append(mean_norm if objective_type == "min" else -mean_norm)
+            phys.append(torch.mean(y))
+        return SimpleNamespace(eq=eq, ineq=ineq, objs=objs, phys=phys)
 
-        # Handle minimization objectives
-        if self._objectives is not None:
-            for component, output_name, objective_type in self._objectives:
-                # History has shape (n_t, n_s, n_c) - index with mask to get valid entries
-                y = component.output[output_name].history()[mask]
-                y_norm = component.output[output_name].normalize(y)
-                if objective_type == "min":
-                    loss += torch.mean(y_norm)
-                elif objective_type == "max":
-                    loss += -torch.mean(y_norm)
-
+    def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """Evaluate the scalar object-execution objective."""
+        parts = self._graph_parts(theta)
+        loss = torch.tensor(0.0, dtype=tps.float_dtype(), device=self._device)
+        for term in parts.eq:
+            loss = loss + term
+        if parts.ineq is not None:
+            loss = loss + parts.ineq
+        for objective in parts.objs:
+            loss = loss + objective
         self.obj = loss
         return self.obj
 
@@ -1556,8 +1658,8 @@ class Optimizer:
             return self.obj.detach().cpu().numpy().astype(np.float64)
         else:
             self._theta_obj = theta
-            if self._fast_obj is not None:
-                self.obj = self._fast_obj.loss(theta)
+            if self._functional_objective is not None:
+                self.obj = self._functional_objective.loss(theta)
             else:
                 self.obj = self.__obj_ad(theta)
             self._eval_count += 1
@@ -1599,10 +1701,10 @@ class Optimizer:
             return self.jac.detach().cpu().numpy().astype(np.float64)
         else:
             self._theta_jac = theta
-            if self._fast_obj is not None:
+            if self._functional_objective is not None:
                 # One autograd pass yields value AND gradient: cache both so a
                 # subsequent f(theta) query is free.
-                f, g = self._fast_obj.value_and_grad(theta)
+                f, g = self._functional_objective.value_and_grad(theta)
                 self.obj = f
                 self._theta_obj = theta
                 self.jac = g
@@ -1652,7 +1754,7 @@ class Optimizer:
             return self.hes.detach().cpu().numpy().astype(np.float64)
 
 
-class OptimizationResult(dict):
+class OptimizationResult(ResultDict):
     """Dict-like result of :meth:`Optimizer.optimize`, parallel to EstimationResult.
 
     Wraps the SciPy ``OptimizeResult`` fields and keeps attribute access
@@ -1661,8 +1763,6 @@ class OptimizationResult(dict):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        for key, value in kwargs.items():
-            setattr(self, key, value)
 
     @classmethod
     def from_scipy(cls, result) -> "OptimizationResult":
@@ -1691,8 +1791,4 @@ class OptimizationResult(dict):
                     data[key] = getattr(result, key)
         return cls(**data)
 
-    def __copy__(self):
-        return OptimizationResult(**self)
-
-    def copy(self):
-        return self.__copy__()
+    __copy__ = ResultDict.copy

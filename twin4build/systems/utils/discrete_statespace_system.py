@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 # Third party imports
 import torch
 import torch.nn as nn
+from scipy import signal
 
 # Local application imports
 import twin4build.utils.types as tps
@@ -38,7 +39,7 @@ def _expm_ss(M, order=8, squarings=18):
     """
     N = M.shape[-1]
     I = torch.eye(N, dtype=M.dtype, device=M.device)
-    Ms = M / (2.0 ** squarings)
+    Ms = M / (2.0**squarings)
     term = I
     # Track exp(Ms) - I so the small non-identity part is not repeatedly
     # rounded against one when fixed overscaling makes Ms tiny.  If
@@ -153,9 +154,13 @@ def bilinear_onestep(
             m_dim = B.shape[-1]
             mask = torch.zeros(m_dim, dtype=torch.bool, device=u.device)
             if E is not None:
-                mask |= (E.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
+                mask |= (
+                    (E.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
+                )
             if F is not None:
-                mask |= (F.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
+                mask |= (
+                    (F.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
+                )
             disc_cache["mask"] = mask
         u_rel_live = u[..., mask]
         if u_rel_live.requires_grad:
@@ -949,7 +954,6 @@ class DiscreteStatespaceSystem(core.System):
         """
         # Convert transfer function to state space
         # Third party imports
-        from scipy import signal
 
         A, B, C, D = signal.tf2ss(num, den)
         return cls(A=A, B=B, C=C, D=D, sample_time=sample_time, **kwargs)

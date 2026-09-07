@@ -21,6 +21,7 @@ The optimizer should learn:
 import datetime
 import os
 import tempfile
+import shutil
 
 # Third party imports
 import matplotlib.pyplot as plt
@@ -264,7 +265,6 @@ def generate_data_with_twin4build(
 
     # Cleanup
     # Standard library imports
-    import shutil
 
     shutil.rmtree(temp_dir)
 
@@ -731,7 +731,6 @@ def run_multi_signal_identification_example():
 
     # Cleanup
     # Standard library imports
-    import shutil
 
     shutil.rmtree(temp_dir)
 

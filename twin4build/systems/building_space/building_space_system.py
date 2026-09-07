@@ -183,16 +183,16 @@ class BuildingSpaceSystem(core.System, nn.Module):
         step_size: int,
     ) -> None:
         """Initialize the system and its submodels."""
-        is_compiled = hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1
+        is_batched = hasattr(self, "_n_c_batched") and self._n_c_batched > 1
 
-        # Propagate compiled n_c to sub-models so they allocate
+        # Propagate batched n_c to sub-models so they allocate
         # I/O tensors with the correct parallel-component dimension.
-        if is_compiled:
-            self.thermal._n_c_compiled = self._n_c_compiled
-            self.mass._n_c_compiled = self._n_c_compiled
+        if is_batched:
+            self.thermal._n_c_batched = self._n_c_batched
+            self.mass._n_c_batched = self._n_c_batched
 
-        if is_compiled and self.thermal.manual_setup_n_walls:
-            # Compiled meta component: topology values were pre-set by
+        if is_batched and self.thermal.manual_setup_n_walls:
+            # Batched meta component: topology values were pre-set by
             # _copy_init_attrs during model compilation.  The meta
             # component's connects_at may have a different connection
             # count than the per-component topology, so skip discovery.
@@ -203,7 +203,9 @@ class BuildingSpaceSystem(core.System, nn.Module):
                 cp for cp in self.connects_at if cp.input_port == "boundaryTemperature"
             ]
             n_boundary_temperature = (
-                len(connection_point[0].connects_system_through) if connection_point else 0
+                len(connection_point[0].connects_system_through)
+                if connection_point
+                else 0
             )
             assert (
                 n_boundary_temperature == 0 or n_boundary_temperature == 1
@@ -214,7 +216,9 @@ class BuildingSpaceSystem(core.System, nn.Module):
                 cp for cp in self.connects_at if cp.input_port == "wallHeatGain"
             ]
             n_walls = (
-                len(connection_point[0].connects_system_through) if connection_point else 0
+                len(connection_point[0].connects_system_through)
+                if connection_point
+                else 0
             )
 
             self.thermal.n_walls = n_walls
@@ -348,7 +352,9 @@ def saref_signature_pattern_sensor():
     )
 
     sp.add_rule(
-        StepRule(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
+        StepRule(
+            subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo
+        )
     )
     sp.add_rule(
         StepRule(
@@ -364,7 +370,9 @@ def saref_signature_pattern_sensor():
         StepRule(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
     )
     sp.add_rule(
-        StepRule(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
+        StepRule(
+            subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo
+        )
     )
     sp.add_rule(
         PathRule(
@@ -417,7 +425,9 @@ def saref_signature_pattern():
     )
 
     sp.add_rule(
-        StepRule(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
+        StepRule(
+            subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo
+        )
     )
     sp.add_rule(
         StepRule(
@@ -433,7 +443,9 @@ def saref_signature_pattern():
         StepRule(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
     )
     sp.add_rule(
-        StepRule(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
+        StepRule(
+            subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo
+        )
     )
     sp.add_rule(
         PathRule(
@@ -480,7 +492,9 @@ def brick_signature_pattern():  # Fits to site A
             core.namespace.BOT.Space,
         )
     )  # TODO: '_space' should be '_Office', but the site b ttl file has a bug
-    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    solar_radiance_sensor = Node(
+        cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor
+    )
     outside_air_temperature_sensor = Node(
         cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
     )
@@ -493,16 +507,17 @@ def brick_signature_pattern():  # Fits to site A
         id="building_space_signature_pattern_brick",
     )
 
-    sp.add_node(solar_radiance_sensor, optional=True) # Optional because it is not always present
-    sp.add_node(outside_air_temperature_sensor, optional=True) # Optional because it is not always present
+    sp.add_node(
+        solar_radiance_sensor, optional=True
+    )  # Optional because it is not always present
+    sp.add_node(
+        outside_air_temperature_sensor, optional=True
+    )  # Optional because it is not always present
 
     sp.add_rule(
-        AnyPathRule(
-            subject=ahu, object=space, predicate=feeds, endpoints_only=True
-        ) & NoStepRule(subject=ahu, object=vav, predicate=feeds)
+        AnyPathRule(subject=ahu, object=space, predicate=feeds, endpoints_only=True)
+        & NoStepRule(subject=ahu, object=vav, predicate=feeds)
     )
-
-
 
     sp.add_connection(
         ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space
@@ -514,9 +529,7 @@ def brick_signature_pattern():  # Fits to site A
     sp.add_connection(
         outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"
     )
-    sp.add_connection(
-        solar_radiance_sensor, "globalIrradiation", "globalIrradiation"
-    )
+    sp.add_connection(solar_radiance_sensor, "globalIrradiation", "globalIrradiation")
     sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
 
     # Interzonal/boundary coupling is modeled by a separate WallSystem
@@ -578,7 +591,9 @@ def brick_signature_pattern_vav():
             core.namespace.BOT.Space,
         )
     )
-    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor )
+    solar_radiance_sensor = Node(
+        cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor
+    )
     outside_air_temperature_sensor = Node(
         cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
     )
@@ -587,8 +602,12 @@ def brick_signature_pattern_vav():
 
     sp = SignaturePattern(id="building_space_signature_pattern_brick_vav")
 
-    sp.add_node(solar_radiance_sensor, optional=True) # Optional because it is not always present
-    sp.add_node(outside_air_temperature_sensor, optional=True) # Optional because it is not always present
+    sp.add_node(
+        solar_radiance_sensor, optional=True
+    )  # Optional because it is not always present
+    sp.add_node(
+        outside_air_temperature_sensor, optional=True
+    )  # Optional because it is not always present
 
     sp.add_rule(StepRule(subject=ahu, object=vav, predicate=feeds))
     sp.add_rule(StepRule(subject=vav, object=space, predicate=feeds))
@@ -601,7 +620,9 @@ def brick_signature_pattern_vav():
     )
     sp.add_connection(vav, "outletAirTemperature", "supplyAirTemperature")
     sp.add_connection(solar_radiance_sensor, "globalIrradiation", "globalIrradiation")
-    sp.add_connection(outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature")
+    sp.add_connection(
+        outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"
+    )
     sp.add_modeled_node(space)
 
     return sp

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Optional, Union
 
 # Local application imports
-import twin4build.core as core
+from twin4build.systems.saref4syst.system import System
 
 
 class Connection:
@@ -20,7 +20,7 @@ class Connection:
 
     def __init__(
         self,
-        connects_system: Union[core.System, None] = None,
+        connects_system: Union[System, None] = None,
         connects_system_at: Union[list, None] = None,
         output_port: Optional[str] = None,
     ):
@@ -34,11 +34,11 @@ class Connection:
             output_port: The name of the property that the connection sends. Defaults to None.
         """
 
-        assert isinstance(connects_system, core.System) or connects_system is None, (
+        assert isinstance(connects_system, System) or connects_system is None, (
             'Attribute "connects_system" is of type "'
             + str(type(connects_system))
             + '" but must be of type "'
-            + str(core.System)
+            + str(System)
             + '"'
         )
         assert isinstance(connects_system_at, list) or connects_system_at is None, (

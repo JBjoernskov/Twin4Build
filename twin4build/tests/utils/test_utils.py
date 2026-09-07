@@ -1,10 +1,19 @@
 # Standard library imports
 import datetime
+import importlib
+import io
 import os
+import pickle
+import shutil
+import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 # Third party imports
 from dateutil import tz
+import numpy as np
+import pandas as pd
 
 # Local application imports
 # Set test flag
@@ -15,6 +24,33 @@ from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.uppath import uppath
 from twin4build.utils.validate_period import validate_period
+from twin4build.utils.data_loaders.load import load_database_config
+from twin4build.utils.data_loaders.load import load_from_spreadsheet
+from twin4build.utils.data_loaders.load import parseDateStr
+from twin4build.utils.data_loaders.load import sample_from_df
+from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.dict_utils import compare_dict_structure
+from twin4build.utils.dict_utils import flatten_dict
+from twin4build.utils.dict_utils import get_dict_differences
+from twin4build.utils.dict_utils import merge_dicts
+from twin4build.utils.get_main_dir import get_main_dir
+from twin4build.utils.get_obj_attr import get_obj_attr
+from twin4build.utils.get_object_properties import get_object_properties
+from twin4build.utils.logger import Logger as PrintProgress
+from twin4build.utils.mkdir_in_root import mkdir_in_root
+from twin4build.utils.plot import Colors, Entry, plot
+from twin4build.utils.print_estimation_result import print_estimation_result
+from twin4build.utils.simple_cycle import simple_cycles
+from twin4build.utils.unit_converters.functions import _do_nothing
+from twin4build.utils.unit_converters.functions import add_attr
+from twin4build.utils.unit_converters.functions import change_sign
+from twin4build.utils.unit_converters.functions import multiply_const
+from twin4build.utils.unit_converters.functions import regularize
+from twin4build.utils.unit_converters.functions import (
+    to_degC_from_degK,
+    to_degK_from_degC,
+)
+import twin4build.utils.constants as constants
 
 twin4build._IS_TESTING = True
 
@@ -220,24 +256,20 @@ class TestDataLoaders(unittest.TestCase):
     def test_sample_from_df_imports(self):
         """Test that data loader functions can be imported."""
         # Local application imports
-        from twin4build.utils.data_loaders.load import sample_from_df
 
         self.assertIsNotNone(sample_from_df)
 
     def test_parseDateStr_imports(self):
         """Test that parseDateStr can be imported."""
         # Local application imports
-        from twin4build.utils.data_loaders.load import parseDateStr
 
         self.assertIsNotNone(parseDateStr)
 
     def test_parseDateStr_valid(self):
         """Test parseDateStr with valid date string."""
         # Third party imports
-        import numpy as np
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import parseDateStr
 
         result = parseDateStr("2023-01-15T10:30:00")
         self.assertIsNotNone(result)
@@ -246,10 +278,8 @@ class TestDataLoaders(unittest.TestCase):
     def test_parseDateStr_empty(self):
         """Test parseDateStr with empty string."""
         # Third party imports
-        import numpy as np
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import parseDateStr
 
         result = parseDateStr("")
         self.assertTrue(np.isnat(result))
@@ -257,10 +287,8 @@ class TestDataLoaders(unittest.TestCase):
     def test_parseDateStr_invalid(self):
         """Test parseDateStr with invalid date string."""
         # Third party imports
-        import numpy as np
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import parseDateStr
 
         result = parseDateStr("not_a_date")
         self.assertTrue(np.isnat(result))
@@ -268,10 +296,8 @@ class TestDataLoaders(unittest.TestCase):
     def test_sample_from_df_basic(self):
         """Test sample_from_df with basic DataFrame."""
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import sample_from_df
 
         # Create test DataFrame
         dates = pd.date_range(
@@ -301,10 +327,8 @@ class TestDataLoaders(unittest.TestCase):
     def test_sample_from_df_constant_resample(self):
         """Test sample_from_df with constant resampling."""
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import sample_from_df
 
         # Create test DataFrame
         dates = pd.date_range(
@@ -337,10 +361,8 @@ class TestDataLoaders(unittest.TestCase):
     def test_sample_from_df_no_resample(self):
         """Test sample_from_df without resampling."""
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import sample_from_df
 
         # Create test DataFrame
         dates = pd.date_range(
@@ -370,10 +392,8 @@ class TestDataLoaders(unittest.TestCase):
     def test_sample_from_df_with_timezone_aware_data(self):
         """Test sample_from_df with timezone-aware datetime data."""
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import sample_from_df
 
         # Create test DataFrame with timezone-aware dates
         dates = pd.date_range(
@@ -402,10 +422,8 @@ class TestDataLoaders(unittest.TestCase):
     def test_sample_from_df_with_multiple_columns(self):
         """Test sample_from_df with multiple value columns (no specific valuecolumn)."""
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import sample_from_df
 
         # Create test DataFrame with multiple value columns
         dates = pd.date_range(
@@ -443,10 +461,8 @@ class TestDataLoaders(unittest.TestCase):
     def test_sample_from_df_preserve_order_reversed(self):
         """Test sample_from_df with reversed date order."""
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import sample_from_df
 
         # Create test DataFrame with reversed dates (newest first)
         dates = pd.date_range(
@@ -485,7 +501,6 @@ class TestLoadDatabaseConfig(unittest.TestCase):
     def test_load_database_config_defaults(self):
         """Test load_database_config returns defaults when no config file."""
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_database_config
 
         config = load_database_config()
 
@@ -497,10 +512,8 @@ class TestLoadDatabaseConfig(unittest.TestCase):
     def test_load_database_config_with_env_vars(self):
         """Test load_database_config uses environment variables."""
         # Standard library imports
-        import os
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_database_config
 
         # Set environment variables
         original_host = os.environ.get("TIMESCALEDB_HOST")
@@ -519,11 +532,8 @@ class TestLoadDatabaseConfig(unittest.TestCase):
     def test_load_database_config_with_ini_file(self):
         """Test load_database_config with INI file."""
         # Standard library imports
-        import os
-        import tempfile
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_database_config
 
         # Create a temporary INI file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
@@ -548,7 +558,6 @@ class TestLoadDatabaseConfig(unittest.TestCase):
     def test_load_database_config_nonexistent_file(self):
         """Test load_database_config with nonexistent file returns defaults."""
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_database_config
 
         config = load_database_config(config_file="nonexistent_file.ini")
 
@@ -559,11 +568,8 @@ class TestLoadDatabaseConfig(unittest.TestCase):
     def test_load_database_config_custom_section(self):
         """Test load_database_config with custom section."""
         # Standard library imports
-        import os
-        import tempfile
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_database_config
 
         # Create a temporary INI file with custom section
         with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
@@ -588,14 +594,10 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
     def test_load_from_csv(self):
         """Test load_from_spreadsheet with CSV file."""
         # Standard library imports
-        import os
-        import tempfile
 
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_from_spreadsheet
 
         # Create a temporary CSV file
         dates = pd.date_range(
@@ -638,14 +640,10 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
     def test_load_from_csv_with_cache(self):
         """Test load_from_spreadsheet with caching enabled."""
         # Standard library imports
-        import os
-        import tempfile
 
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_from_spreadsheet
 
         # Create a temporary CSV file
         dates = pd.date_range(
@@ -703,14 +701,10 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
     def test_load_from_xlsx(self):
         """Test load_from_spreadsheet with XLSX file."""
         # Standard library imports
-        import os
-        import tempfile
 
         # Third party imports
-        import pandas as pd
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_from_spreadsheet
 
         # Create a temporary XLSX file
         dates = pd.date_range(
@@ -754,11 +748,8 @@ class TestLoadFromSpreadsheet(unittest.TestCase):
     def test_load_from_spreadsheet_invalid_extension(self):
         """Test load_from_spreadsheet with invalid file extension."""
         # Standard library imports
-        import os
-        import tempfile
 
         # Local application imports
-        from twin4build.utils.data_loaders.load import load_from_spreadsheet
 
         # Create a temporary file with invalid extension
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -787,36 +778,29 @@ class TestPlotUtilities(unittest.TestCase):
     def test_plot_imports(self):
         """Test that plot utilities can be imported."""
         # Local application imports
-        from twin4build.utils.plot import Colors, Entry, plot
 
         self.assertIsNotNone(plot)
         self.assertIsNotNone(Entry)
         self.assertIsNotNone(Colors)
         with self.assertRaises(ImportError):
-            from twin4build.utils.plot import plot_component  # noqa: F401
+            importlib.import_module("twin4build.utils.plot.plot_component")
 
 
 class TestUnitConverters(unittest.TestCase):
     def test_do_nothing(self):
         # Local application imports
-        from twin4build.utils.unit_converters.functions import _do_nothing
 
         self.assertEqual(_do_nothing(5), 5)
         self.assertEqual(_do_nothing(-3.14), -3.14)
 
     def test_change_sign(self):
         # Local application imports
-        from twin4build.utils.unit_converters.functions import change_sign
 
         self.assertEqual(change_sign(5), -5)
         self.assertEqual(change_sign(-3.14), 3.14)
 
     def test_temperature_conversions(self):
         # Local application imports
-        from twin4build.utils.unit_converters.functions import (
-            to_degC_from_degK,
-            to_degK_from_degC,
-        )
 
         # 0 degC = 273.15 K
         self.assertAlmostEqual(to_degC_from_degK(273.15), 0)
@@ -828,7 +812,6 @@ class TestUnitConverters(unittest.TestCase):
 
     def test_multiply_const(self):
         # Local application imports
-        from twin4build.utils.unit_converters.functions import multiply_const
 
         converter = multiply_const(2.5)
         self.assertEqual(converter(4), 10.0)
@@ -836,7 +819,6 @@ class TestUnitConverters(unittest.TestCase):
 
     def test_regularize(self):
         # Local application imports
-        from twin4build.utils.unit_converters.functions import regularize
 
         converter = regularize(0)
         self.assertEqual(converter(5), 5)
@@ -845,7 +827,6 @@ class TestUnitConverters(unittest.TestCase):
 
     def test_add_attr(self):
         # Local application imports
-        from twin4build.utils.unit_converters.functions import add_attr
 
         class TestObj:
             def __init__(self):
@@ -861,7 +842,6 @@ class TestGetObjAttr(unittest.TestCase):
     def test_get_obj_attr_normal(self):
         """Test get_obj_attr with normal object."""
         # Local application imports
-        from twin4build.utils.get_obj_attr import get_obj_attr
 
         class TestObj:
             def __init__(self):
@@ -881,7 +861,6 @@ class TestGetObjAttr(unittest.TestCase):
     def test_get_obj_attr_inverse(self):
         """Test get_obj_attr with inverse mapping."""
         # Local application imports
-        from twin4build.utils.get_obj_attr import get_obj_attr
 
         class TestObj:
             def __init__(self):
@@ -901,7 +880,6 @@ class TestGetObjectProperties(unittest.TestCase):
     def test_get_object_properties(self):
         """Test get_object_properties returns all properties."""
         # Local application imports
-        from twin4build.utils.get_object_properties import get_object_properties
 
         class TestObj:
             def __init__(self):
@@ -920,7 +898,6 @@ class TestGetObjectProperties(unittest.TestCase):
     def test_get_object_properties_empty(self):
         """Test get_object_properties with object without properties."""
         # Local application imports
-        from twin4build.utils.get_object_properties import get_object_properties
 
         class EmptyObj:
             pass
@@ -937,7 +914,6 @@ class TestDeprecation(unittest.TestCase):
     def test_deprecate_args_with_position(self):
         """Test deprecate_args with positional replacement."""
         # Local application imports
-        from twin4build.utils.deprecation import deprecate_args
 
         kwargs = {"old_arg": "value1"}
         with self.assertWarns(DeprecationWarning):
@@ -955,7 +931,6 @@ class TestDeprecation(unittest.TestCase):
     def test_deprecate_args_without_position(self):
         """Test deprecate_args without position (None)."""
         # Local application imports
-        from twin4build.utils.deprecation import deprecate_args
 
         kwargs = {"old_param": 42}
         with self.assertWarns(DeprecationWarning):
@@ -973,7 +948,6 @@ class TestDeprecation(unittest.TestCase):
     def test_deprecate_args_invalid_position(self):
         """Test deprecate_args with invalid position raises ValueError."""
         # Local application imports
-        from twin4build.utils.deprecation import deprecate_args
 
         kwargs = {"old_arg": "value"}
         with self.assertRaises(ValueError):
@@ -987,7 +961,6 @@ class TestDeprecation(unittest.TestCase):
     def test_deprecate_args_no_deprecated_args(self):
         """Test deprecate_args when no deprecated args are in kwargs."""
         # Local application imports
-        from twin4build.utils.deprecation import deprecate_args
 
         kwargs = {"normal_arg": "value"}
         value_map = deprecate_args(
@@ -1004,7 +977,6 @@ class TestDeprecation(unittest.TestCase):
     def test_deprecate_args_multiple(self):
         """Test deprecate_args with multiple deprecated arguments."""
         # Local application imports
-        from twin4build.utils.deprecation import deprecate_args
 
         kwargs = {"old1": "val1", "old2": "val2"}
         with self.assertWarns(DeprecationWarning):
@@ -1025,7 +997,6 @@ class TestDictUtils(unittest.TestCase):
     def test_compare_dict_structure_same(self):
         """Test compare_dict_structure with same structure."""
         # Local application imports
-        from twin4build.utils.dict_utils import compare_dict_structure
 
         dict1 = {"a": 1, "b": {"c": 2}}
         dict2 = {"a": 3, "b": {"c": 4}}
@@ -1036,7 +1007,6 @@ class TestDictUtils(unittest.TestCase):
     def test_compare_dict_structure_different(self):
         """Test compare_dict_structure with different structure."""
         # Local application imports
-        from twin4build.utils.dict_utils import compare_dict_structure
 
         dict1 = {"a": 1, "b": {"c": 2}}
         dict2 = {"a": 3, "x": {"y": 4}}
@@ -1049,7 +1019,6 @@ class TestDictUtils(unittest.TestCase):
     def test_compare_dict_structure_nested_diff(self):
         """Test compare_dict_structure with deeply nested differences."""
         # Local application imports
-        from twin4build.utils.dict_utils import compare_dict_structure
 
         dict1 = {"a": {"b": {"c": 1, "d": 2}}, "e": 3}
         dict2 = {"a": {"b": {"c": 1}}, "e": 3}
@@ -1061,7 +1030,6 @@ class TestDictUtils(unittest.TestCase):
     def test_compare_dict_structure_non_dict(self):
         """Test compare_dict_structure with non-dict values."""
         # Local application imports
-        from twin4build.utils.dict_utils import compare_dict_structure
 
         dict1 = "not a dict"
         dict2 = {"a": 1}
@@ -1073,7 +1041,6 @@ class TestDictUtils(unittest.TestCase):
     def test_get_dict_differences_basic(self):
         """Test get_dict_differences with basic differences."""
         # Local application imports
-        from twin4build.utils.dict_utils import get_dict_differences
 
         dict1 = {"a": 1, "b": 2}
         dict2 = {"a": 1, "c": 3}
@@ -1086,7 +1053,6 @@ class TestDictUtils(unittest.TestCase):
     def test_get_dict_differences_nested(self):
         """Test get_dict_differences with nested dictionaries."""
         # Local application imports
-        from twin4build.utils.dict_utils import get_dict_differences
 
         dict1 = {"a": {"b": 1, "c": 2}, "d": 3}
         dict2 = {"a": {"b": 1}, "e": 4}
@@ -1100,7 +1066,6 @@ class TestDictUtils(unittest.TestCase):
     def test_get_dict_differences_non_dict(self):
         """Test get_dict_differences with non-dict inputs."""
         # Local application imports
-        from twin4build.utils.dict_utils import get_dict_differences
 
         result = get_dict_differences("not a dict", {"a": 1})
         self.assertFalse(result["structure_mismatch"])
@@ -1108,7 +1073,6 @@ class TestDictUtils(unittest.TestCase):
     def test_merge_dicts_standard(self):
         """Test merge_dicts with standard merge."""
         # Local application imports
-        from twin4build.utils.dict_utils import merge_dicts
 
         dict1 = {"a": 1, "b": {"c": 2}}
         dict2 = {"b": {"d": 3}, "e": 4}
@@ -1122,7 +1086,6 @@ class TestDictUtils(unittest.TestCase):
     def test_merge_dicts_prioritize_dict1(self):
         """Test merge_dicts with dict1 priority."""
         # Local application imports
-        from twin4build.utils.dict_utils import merge_dicts
 
         dict1 = {"a": 1, "b": None, "c": {"d": 2}}
         dict2 = {"a": 10, "b": 20, "c": {"d": 30, "e": 40}, "f": 50}
@@ -1143,7 +1106,6 @@ class TestDictUtils(unittest.TestCase):
     def test_merge_dicts_prioritize_dict2(self):
         """Test merge_dicts with dict2 priority."""
         # Local application imports
-        from twin4build.utils.dict_utils import merge_dicts
 
         dict1 = {"a": 10, "b": 20, "c": {"d": 30}}
         dict2 = {"a": 1, "b": None, "c": {"d": 2}}
@@ -1159,7 +1121,6 @@ class TestDictUtils(unittest.TestCase):
     def test_merge_dicts_nested_dicts(self):
         """Test merge_dicts with deeply nested dictionaries."""
         # Local application imports
-        from twin4build.utils.dict_utils import merge_dicts
 
         dict1 = {"a": {"b": {"c": 1}}}
         dict2 = {"a": {"b": {"d": 2}}}
@@ -1171,7 +1132,6 @@ class TestDictUtils(unittest.TestCase):
     def test_flatten_dict(self):
         """Test flatten_dict function returns list of tuples."""
         # Local application imports
-        from twin4build.utils.dict_utils import flatten_dict
 
         # Create a simple object for testing
         class TestObj:
@@ -1188,7 +1148,6 @@ class TestDictUtils(unittest.TestCase):
     def test_flatten_dict_nested(self):
         """Test flatten_dict with nested dictionaries."""
         # Local application imports
-        from twin4build.utils.dict_utils import flatten_dict
 
         class TestObj:
             def __init__(self):
@@ -1209,7 +1168,6 @@ class TestDictUtils(unittest.TestCase):
     def test_flatten_dict_empty(self):
         """Test flatten_dict with empty dictionary."""
         # Local application imports
-        from twin4build.utils.dict_utils import flatten_dict
 
         class TestObj:
             pass
@@ -1221,7 +1179,6 @@ class TestDictUtils(unittest.TestCase):
     def test_flatten_dict_non_dict(self):
         """Test flatten_dict with non-dictionary input."""
         # Local application imports
-        from twin4build.utils.dict_utils import flatten_dict
 
         class TestObj:
             pass
@@ -1235,11 +1192,8 @@ class TestMkdirInRoot(unittest.TestCase):
     def test_mkdir_in_root_basic(self):
         """Test mkdir_in_root creates directories."""
         # Standard library imports
-        import shutil
-        import tempfile
 
         # Local application imports
-        from twin4build.utils.mkdir_in_root import mkdir_in_root
 
         # Use a temp directory as root
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1257,10 +1211,8 @@ class TestGetMainDir(unittest.TestCase):
     def test_get_main_dir(self):
         """Test get_main_dir returns a valid directory."""
         # Standard library imports
-        import os
 
         # Local application imports
-        from twin4build.utils.get_main_dir import get_main_dir
 
         # Should return the main directory of the project
         main_dir = get_main_dir()
@@ -1274,7 +1226,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_initialization(self):
         """Test PrintProgress initialization."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertIsNotNone(p)
@@ -1286,7 +1237,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_enable_disable(self):
         """Test PrintProgress enable/disable functionality."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         # Auto-disabled in test environments
@@ -1304,7 +1254,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_verbose_setting(self):
         """Test PrintProgress verbose setting."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertEqual(p.verbose, 3)
@@ -1318,7 +1267,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_add_line(self):
         """Test PrintProgress add_line method."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         p.add_line(indent="  ", message="Test message", status="OK")
@@ -1331,7 +1279,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_get_char_level(self):
         """Test PrintProgress get_char_level method."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
 
@@ -1345,7 +1292,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_current_level(self):
         """Test PrintProgress current_level property."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         self.assertEqual(p.current_level, 0)
@@ -1353,10 +1299,8 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_add_remove_level(self):
         """Test PrintProgress add_level and remove_level."""
         # Standard library imports
-        from unittest.mock import patch
 
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         p._allow_in_tests = True
@@ -1376,10 +1320,8 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_call(self):
         """Test PrintProgress __call__ method."""
         # Standard library imports
-        from unittest.mock import patch
 
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         p._allow_in_tests = True
@@ -1398,7 +1340,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_call_disabled(self):
         """Test PrintProgress __call__ when disabled."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         # Instance is auto-disabled in test environments
@@ -1413,7 +1354,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_context_manager(self):
         """Test PrintProgress as context manager."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         # Instance is auto-disabled in test environments
         with PrintProgress() as p:
@@ -1423,7 +1363,6 @@ class TestPrintProgress(unittest.TestCase):
     def test_print_progress_is_interactive(self):
         """Test PrintProgress is_interactive method."""
         # Local application imports
-        from twin4build.utils.logger import Logger as PrintProgress
 
         p = PrintProgress()
         # This should return True or False depending on environment
@@ -1435,7 +1374,6 @@ class TestSimpleCycle(unittest.TestCase):
     def test_simple_cycles(self):
         """Test simple_cycles function for detecting cycles in a graph."""
         # Local application imports
-        from twin4build.utils.simple_cycle import simple_cycles
 
         # Create a simple graph with a cycle: A -> B -> C -> A
         graph = {"A": {"B"}, "B": {"C"}, "C": {"A"}}
@@ -1447,7 +1385,6 @@ class TestSimpleCycle(unittest.TestCase):
     def test_no_cycles(self):
         """Test simple_cycles with acyclic graph."""
         # Local application imports
-        from twin4build.utils.simple_cycle import simple_cycles
 
         # Acyclic graph: A -> B -> C
         graph = {"A": {"B"}, "B": {"C"}, "C": set()}
@@ -1458,7 +1395,6 @@ class TestSimpleCycle(unittest.TestCase):
     def test_multiple_cycles(self):
         """Test simple_cycles with multiple cycles."""
         # Local application imports
-        from twin4build.utils.simple_cycle import simple_cycles
 
         # Graph with two cycles
         graph = {"A": {"B"}, "B": {"A", "C"}, "C": {"D"}, "D": {"C"}}
@@ -1471,7 +1407,6 @@ class TestConstants(unittest.TestCase):
     def test_constants_import(self):
         """Test that constants can be imported."""
         # Local application imports
-        import twin4build.utils.constants as constants
 
         self.assertIsNotNone(constants.ABSOLUTE_ZERO_CELSIUS)
         self.assertAlmostEqual(constants.ABSOLUTE_ZERO_CELSIUS, -273.15, places=2)
@@ -1483,7 +1418,6 @@ class TestPrintEstimationResult(unittest.TestCase):
     def setUp(self):
         """Create test data for estimation results."""
         # Third party imports
-        import numpy as np
 
         # Create sample estimation result data
         self.result_dict = {
@@ -1495,11 +1429,8 @@ class TestPrintEstimationResult(unittest.TestCase):
     def test_print_estimation_result_from_dict(self):
         """Test print_estimation_result with a result dictionary."""
         # Standard library imports
-        import io
-        import sys
 
         # Local application imports
-        from twin4build.utils.print_estimation_result import print_estimation_result
 
         # Capture stdout
         captured_output = io.StringIO()
@@ -1522,13 +1453,8 @@ class TestPrintEstimationResult(unittest.TestCase):
     def test_print_estimation_result_from_pickle(self):
         """Test print_estimation_result with a pickle file."""
         # Standard library imports
-        import io
-        import pickle
-        import sys
-        import tempfile
 
         # Local application imports
-        from twin4build.utils.print_estimation_result import print_estimation_result
 
         # Create a temporary pickle file
         with tempfile.NamedTemporaryFile(
@@ -1558,7 +1484,6 @@ class TestPrintEstimationResult(unittest.TestCase):
     def test_print_estimation_result_file_not_found(self):
         """Test print_estimation_result raises FileNotFoundError for non-existent file."""
         # Local application imports
-        from twin4build.utils.print_estimation_result import print_estimation_result
 
         with self.assertRaises(FileNotFoundError):
             print_estimation_result("nonexistent_file.pickle")
@@ -1566,10 +1491,8 @@ class TestPrintEstimationResult(unittest.TestCase):
     def test_print_estimation_result_wrong_extension(self):
         """Test print_estimation_result raises ValueError for wrong file extension."""
         # Standard library imports
-        import tempfile
 
         # Local application imports
-        from twin4build.utils.print_estimation_result import print_estimation_result
 
         # Create a temporary file with wrong extension
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -1586,7 +1509,6 @@ class TestPrintEstimationResult(unittest.TestCase):
     def test_print_estimation_result_missing_key(self):
         """Test print_estimation_result raises AssertionError for missing keys."""
         # Local application imports
-        from twin4build.utils.print_estimation_result import print_estimation_result
 
         # Test missing result_x
         invalid_dict = {
@@ -1618,10 +1540,8 @@ class TestPrintEstimationResult(unittest.TestCase):
     def test_print_estimation_result_length_mismatch(self):
         """Test print_estimation_result raises AssertionError for length mismatch."""
         # Third party imports
-        import numpy as np
 
         # Local application imports
-        from twin4build.utils.print_estimation_result import print_estimation_result
 
         # Create dict with mismatched lengths
         invalid_dict = {
@@ -1637,14 +1557,10 @@ class TestPrintEstimationResult(unittest.TestCase):
     def test_print_estimation_result_value_formatting(self):
         """Test print_estimation_result formats values correctly."""
         # Standard library imports
-        import io
-        import sys
 
         # Third party imports
-        import numpy as np
 
         # Local application imports
-        from twin4build.utils.print_estimation_result import print_estimation_result
 
         # Create result with various value types
         result_dict = {

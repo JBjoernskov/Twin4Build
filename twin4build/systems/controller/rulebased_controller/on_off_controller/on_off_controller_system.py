@@ -10,6 +10,7 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.translator.translator import StepRule, Node, SignaturePattern
 from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.deprecation import deprecate_name
 
 
 class OnOffControllerSystem(core.System):
@@ -72,42 +73,36 @@ class OnOffControllerSystem(core.System):
     # Deprecated camelCase aliases (removed in 2.1)
     @property
     def offValue(self):
-        from twin4build.utils.deprecation import deprecate_name
 
         deprecate_name("offValue", "off_value")
         return self.off_value
 
     @offValue.setter
     def offValue(self, value):
-        from twin4build.utils.deprecation import deprecate_name
 
         deprecate_name("offValue", "off_value")
         self.off_value = value
 
     @property
     def onValue(self):
-        from twin4build.utils.deprecation import deprecate_name
 
         deprecate_name("onValue", "on_value")
         return self.on_value
 
     @onValue.setter
     def onValue(self, value):
-        from twin4build.utils.deprecation import deprecate_name
 
         deprecate_name("onValue", "on_value")
         self.on_value = value
 
     @property
     def isReverse(self):
-        from twin4build.utils.deprecation import deprecate_name
 
         deprecate_name("isReverse", "is_reverse")
         return self.is_reverse
 
     @isReverse.setter
     def isReverse(self, value):
-        from twin4build.utils.deprecation import deprecate_name
 
         deprecate_name("isReverse", "is_reverse")
         self.is_reverse = value

@@ -16,6 +16,7 @@ structure and parameters from the observed data.
 import datetime
 import os
 import tempfile
+import shutil
 
 # Third party imports
 import matplotlib.pyplot as plt
@@ -320,7 +321,6 @@ def generate_data_with_twin4build(
 
     # Cleanup
     # Standard library imports
-    import shutil
 
     shutil.rmtree(temp_dir)
 
@@ -513,7 +513,7 @@ def run_controller_identification_example():
     setpoint_schedule = tb.ScheduleSystem(filename=sp_file, id="setpoint_input")
 
     # Create the controller to identify
-    # Uses composed candidate controllers (default: P, PI, PID variants)
+    # Uses combined candidate controllers (default: P, PI, PID variants)
     controller = tb.ControllerIdentificationSystem(
         n_sensors=1,
         n_setpoints=1,
@@ -748,7 +748,6 @@ def run_controller_identification_example():
 
     # Cleanup
     # Standard library imports
-    import shutil
 
     shutil.rmtree(temp_dir)
 

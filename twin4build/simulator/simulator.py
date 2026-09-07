@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 import datetime
-import math
+import time
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -15,7 +15,17 @@ from tqdm import tqdm
 # Local application imports
 import twin4build.core as core
 import twin4build.systems as systems
+from twin4build.simulator._functional import (
+    FunctionalModel,
+    StateLayout,
+    collect_stateful,
+    functional_rollout,
+    record_exogenous_inputs,
+)
+from twin4build.simulator._functional_simulation import run_functional_simulation
+from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
+from twin4build.utils.simulation_time import get_simulation_timesteps
 from twin4build.utils.validate_period import validate_period
 
 # import george
@@ -166,9 +176,15 @@ class Simulator:
     >>> temperature_history = space.output["indoorTemperature"].history()
     """
 
-    _EXECUTION_MODES = ("object_graph", "composed")
+    _EXECUTION_MODES = ("object", "functional")
+    _EXECUTION_BACKENDS = ("eager", "cuda_graph")
 
-    def __init__(self, model: core.Model, execution_mode: str = "object_graph"):
+    def __init__(
+        self,
+        model: core.Model,
+        execution_mode: str = "object",
+        execution_backend: str = "eager",
+    ):
         """
         Initialize the Simulator instance.
 
@@ -177,11 +193,10 @@ class Simulator:
 
         Args:
             model: The model to be simulated.
-            execution_mode: Default execution engine. ``"object_graph"`` is
-                the general port/history engine. ``"composed"`` enables the
-                pure composed-map engine for compatible differentiable
-                workflows such as estimation; :meth:`simulate` may override
-                it per call.
+            execution_mode: ``"object"`` for normal component stepping or
+                ``"functional"`` for the sequential ``F_aug`` rollout.
+            execution_backend: ``"eager"`` or ``"cuda_graph"``. CUDA Graphs
+                require functional mode and a CUDA model.
 
         Notes:
             The simulator maintains internal state about the current simulation,
@@ -192,8 +207,60 @@ class Simulator:
                 f"execution_mode must be one of {self._EXECUTION_MODES}; "
                 f"got {execution_mode!r}"
             )
+        if execution_backend not in self._EXECUTION_BACKENDS:
+            raise ValueError(
+                f"execution_backend must be one of {self._EXECUTION_BACKENDS}; "
+                f"got {execution_backend!r}"
+            )
+        if execution_backend == "cuda_graph" and execution_mode != "functional":
+            raise ValueError(
+                "execution_backend='cuda_graph' requires " "execution_mode='functional'"
+            )
         self.model = model
         self.execution_mode = execution_mode
+        self.execution_backend = execution_backend
+        self._functional_session = None
+        self._functional_setup_count = 0
+        self._functional_setup_seconds = 0.0
+        self._exogenous_recording_cache = None
+        self._exogenous_recording_cache_hit = False
+        self._exogenous_recording_cache_hits = 0
+        self._exogenous_recording_cache_misses = 0
+        self._cuda_graph_capture_count = 0
+        self._cuda_graph_replay_count = 0
+        self._cuda_graph_capture_seconds = 0.0
+        self._cuda_graph_replay_seconds = 0.0
+
+    def clear_execution_cache(self) -> None:
+        """Discard cached functional sessions and exogenous recordings.
+
+        Cache keys detect normal changes to periods, initialized source data,
+        model parameters and topology. Call this method after mutating a custom
+        data source whose state is not represented by tensor-like component
+        attributes or port histories.
+        """
+        session, self._functional_session = self._functional_session, None
+        if session is not None:
+            session.close()
+        self._exogenous_recording_cache = None
+        self._exogenous_recording_cache_hit = False
+
+    def close(self) -> None:
+        """Deterministically release cached execution resources."""
+        self.clear_execution_cache()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.close()
+        return False
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
     @staticmethod
     def _assign_component_inputs(
@@ -207,8 +274,6 @@ class Simulator:
             component (core.System): The component to assign inputs to.
             step_index (int): The current timestep index.
 
-        Raises:
-            ValueError: If any input value is NaN.
         """
         # Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connects_at:
@@ -222,27 +287,71 @@ class Simulator:
                 input_component_index = connection_point.input_component_index.get(
                     connection, slice(None)
                 )
-                component.input[connection_point.input_port]._set(
-                    connected_component.output[connection.output_port].get(
-                        i_v=output_port_index,
-                        i_c=output_component_index,
-                    ),
-                    i_t=step_index,
-                    i_v=input_port_index,
-                    i_c=input_component_index,
-                )
+                try:
+                    component.input[connection_point.input_port]._set(
+                        connected_component.output[connection.output_port].get(
+                            i_v=output_port_index,
+                            i_c=output_component_index,
+                        ),
+                        i_t=step_index,
+                        i_v=input_port_index,
+                        i_c=input_component_index,
+                    )
+                except IndexError as exc:
+                    raise IndexError(
+                        f"Batched component-index mapping failed for "
+                        f"{connected_component.id}.{connection.output_port} -> "
+                        f"{component.id}.{connection_point.input_port}; "
+                        f"output_i_c={output_component_index}, "
+                        f"input_i_c={input_component_index}"
+                    ) from exc
 
-                # Actually, we HAVE to check for nans because it breaks jacobian calculation in optimizer will include nans which breaks scipy solver.
-                if torch.any(
-                    torch.isnan(component.input[connection_point.input_port].get())
-                ):
-                    LOGGER.debug(
-                        "Component input: %s",
-                        component.input[connection_point.input_port].get(),
-                    )
-                    raise ValueError(
-                        f"Input {connection_point.input_port} of component {component.id} is NaN"
-                    )
+    @staticmethod
+    def _validate_component_inputs(model):
+        """Validate connected input histories with one normal-path host sync."""
+        connected_ports = []
+        seen = set()
+        for component in model.components.values():
+            for connection_point in component.connects_at:
+                port_name = connection_point.input_port
+                port = component.input[port_name]
+                if id(port) not in seen:
+                    connected_ports.append((component, port_name, port))
+                    seen.add(id(port))
+
+        checks = [
+            torch.isfinite(
+                port._history if port._history is not None else port._tensor
+            ).all()
+            for _, _, port in connected_ports
+        ]
+        if not checks:
+            return 0, 0
+        all_finite = bool(torch.stack(checks).all().item())
+        if all_finite:
+            return len(checks), 1
+
+        for component, port_name, port in connected_ports:
+            value = port._history if port._history is not None else port._tensor
+            invalid = ~torch.isfinite(value)
+            if not bool(invalid.any().item()):
+                continue
+            index = invalid.nonzero()[0].detach().cpu().tolist()
+            location = []
+            labels = (
+                ("timestep", "period", "component_index", "vector_index")
+                if port._history is not None
+                else ("period", "component_index", "vector_index")
+            )
+            for label, position in zip(labels, index):
+                location.append(f"{label}={position}")
+            offending = value[tuple(index)].detach().cpu().item()
+            LOGGER.debug("Component input history: %s", value)
+            raise ValueError(
+                f"Input {port_name} of component {component.id} is non-finite "
+                f"at {', '.join(location)}; value={offending}"
+            )
+        raise ValueError("Connected component input validation failed")
 
     @staticmethod
     def _do_system_time_step(
@@ -341,40 +450,7 @@ class Simulator:
                 - max_timesteps (int): Length of the longest period.
                 - n_timesteps (List[int]): Actual number of steps per period.
         """
-        if isinstance(start_time, datetime.datetime):
-            start_time = [start_time]
-        if isinstance(end_time, datetime.datetime):
-            end_time = [end_time]
-        if isinstance(step_size, int):
-            step_size = [step_size]
-        second_time_steps = []
-        date_time_steps = []
-        n_timesteps = []
-        for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
-            n_steps = math.floor((end_time_ - start_time_).total_seconds() / step_size_)
-            second_time_steps.append([i * step_size_ for i in range(n_steps)])
-            date_time_steps.append(
-                [
-                    start_time_ + datetime.timedelta(seconds=i * step_size_)
-                    for i in range(n_steps)
-                ]
-            )
-            n_timesteps.append(n_steps)
-        max_timesteps = max(
-            [len(second_time_steps_) for second_time_steps_ in second_time_steps]
-        )
-        second_time_steps = [
-            second_time_steps_ + [np.nan] * (max_timesteps - len(second_time_steps_))
-            for second_time_steps_ in second_time_steps
-        ]
-        date_time_steps = [
-            date_time_steps_ + [np.nan] * (max_timesteps - len(date_time_steps_))
-            for date_time_steps_ in date_time_steps
-        ]
-
-        second_time_steps = np.array(second_time_steps)
-        date_time_steps = np.array(date_time_steps)
-        return second_time_steps, date_time_steps, max_timesteps, n_timesteps
+        return get_simulation_timesteps(start_time, end_time, step_size)
 
     def set_simulation_timesteps(
         self, start_time: datetime.datetime, end_time: datetime.datetime, step_size: int
@@ -403,6 +479,7 @@ class Simulator:
         iteration_method: str = "gauss-seidel",
         after_initialize=None,
         execution_mode: str = None,
+        execution_backend: str = None,
         **kwargs,
     ) -> None:
         """
@@ -428,28 +505,35 @@ class Simulator:
                 (re)initialization and before the time loop. Used by the
                 collocation transcription to inject per-segment initial states;
                 ``None`` (default) is a no-op.
-            execution_mode: Optional per-call override of the mode selected at
-                construction. The composed mode preserves the normal history
-                contract; its reusable tensor rollout is exposed through the
-                composed-map methods below.
+            execution_mode: Optional per-call override of ``"object"`` or
+                ``"functional"``.
+            execution_backend: Optional per-call override of ``"eager"`` or
+                ``"cuda_graph"``.
 
         Raises:
             AssertionError: If input parameters are invalid or missing timezone info.
             FMICallException: If the FMU simulation fails.
         """
         mode = self.execution_mode if execution_mode is None else execution_mode
+        backend = (
+            self.execution_backend if execution_backend is None else execution_backend
+        )
         if mode not in self._EXECUTION_MODES:
             raise ValueError(
                 f"execution_mode must be one of {self._EXECUTION_MODES}; "
                 f"got {mode!r}"
             )
-        # Public simulation must populate every component port/history,
-        # including non-composable data/FMUs. The object-graph traversal is the
-        # materialization pass for that contract. In composed mode its result
-        # also provides the reference capture reused by pure tensor rollouts;
-        # Estimator/Optimizer therefore avoid this traversal on subsequent
-        # objective evaluations.
+        if backend not in self._EXECUTION_BACKENDS:
+            raise ValueError(
+                f"execution_backend must be one of {self._EXECUTION_BACKENDS}; "
+                f"got {backend!r}"
+            )
+        if backend == "cuda_graph" and mode != "functional":
+            raise ValueError(
+                "execution_backend='cuda_graph' requires " "execution_mode='functional'"
+            )
         self._last_execution_mode = mode
+        self._last_execution_backend = backend
 
         for legacy_key, new_key in (
             ("startTime", "start_time"),
@@ -460,6 +544,7 @@ class Simulator:
                 raise TypeError(
                     f"`{legacy_key}` has been removed. Use `{new_key}` instead."
                 )
+        reject_unexpected_kwargs("Simulator.simulate", kwargs)
 
         start_time, end_time, step_size = validate_period(
             start_time, end_time, step_size
@@ -480,14 +565,31 @@ class Simulator:
         self.step_size = step_size
         self.iteration_method = iteration_method
         self.get_simulation_timesteps(start_time, end_time, step_size)
-        self.model.initialize(start_time, end_time, step_size)
         second_time_steps, date_time_steps, max_timesteps, _ = (
             Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         )
         self.second_time_steps = second_time_steps
         self.date_time_steps = date_time_steps
         self.n_timesteps = max_timesteps
+        initialization_started = None
+        functional_device = None
+        if mode == "functional":
+            simulation_model = (
+                getattr(self.model, "_simulation_model", None) or self.model
+            )
+            functional_device = torch.device(
+                getattr(simulation_model, "device", torch.device("cpu"))
+            )
+            if functional_device.type == "cuda":
+                torch.cuda.synchronize(functional_device)
+            initialization_started = time.perf_counter()
         self.model.initialize(start_time, end_time, step_size)
+        if initialization_started is not None:
+            if functional_device.type == "cuda":
+                torch.cuda.synchronize(functional_device)
+            self._functional_initialization_seconds = (
+                time.perf_counter() - initialization_started
+            )
         # Optional hook fired after (re)initialization, before the time loop.
         # Used by multiple-shooting / collocation estimation to overwrite each
         # segment's initial state with the optimizer's boundary decision
@@ -497,6 +599,32 @@ class Simulator:
         # ordinary simulation is unaffected.
         if after_initialize is not None:
             after_initialize()
+        if mode == "functional":
+            if iteration_method != "gauss-seidel":
+                raise RuntimeError(
+                    f"execution_mode={mode!r} supports only gauss-seidel " "semantics"
+                )
+            simulation_model = (
+                getattr(self.model, "_simulation_model", None) or self.model
+            )
+            device = getattr(simulation_model, "device", torch.device("cpu"))
+            if backend == "cuda_graph" and torch.device(device).type != "cuda":
+                raise RuntimeError(
+                    "execution_backend='cuda_graph' requires a functional "
+                    "CUDA model; call model.to('cuda') first"
+                )
+            run_functional_simulation(
+                self,
+                backend,
+                step_size,
+                max_timesteps,
+                len(start_time),
+            )
+            return
+        self._last_execution_metadata = {
+            "execution_mode": mode,
+            "execution_backend": backend,
+        }
         if show_progress_bar:
             for step_index in tqdm(
                 range(max_timesteps),
@@ -526,15 +654,24 @@ class Simulator:
                     step_index,
                     iteration_method,
                 )
+        validation_started = time.perf_counter()
+        validation_check_count, validation_host_sync_count = (
+            self._validate_component_inputs(self.model)
+        )
+        self._last_execution_metadata.update(
+            {
+                "validation_seconds": time.perf_counter() - validation_started,
+                "validation_check_count": validation_check_count,
+                "validation_host_sync_count": validation_host_sync_count,
+            }
+        )
 
-    # -- composed-map simulation (fast paths) ---------------------------------
+    # -- functional-map simulation --------------------------------------------
     # The model can also be simulated as a pure sequential rollout of ONE
-    # composed one-step map (every composable component's ``do_step`` delegates
-    # to a pure ``forward``; see twin4build/simulator/_composed.py).  The
-    # Estimator's fast single-shooting and collocation transcriptions and the
-    # Optimizer's fast control objective are all built on these three methods.
+    # functional one-step map (every supported component's ``do_step``
+    # delegates to a pure ``forward``).
 
-    def compose(
+    def build_functional_model(
         self,
         theta_spec=None,
         measurements=None,
@@ -543,8 +680,9 @@ class Simulator:
     ):
         """Build the pure one-step map for the current model.
 
-        Runs the shared structural checks and returns ``(layout, composer)``.
-        Raises ``RuntimeError`` if the model cannot be expressed as a composed
+        Runs the shared structural checks and returns
+        ``(layout, functional_model)``. Raises ``RuntimeError`` if the model
+        cannot be expressed as a functional
         map; callers treat that as "fall back to the object-graph engine".
 
         Args:
@@ -561,28 +699,20 @@ class Simulator:
                 list; all periods must share one step size.
 
         Returns:
-            ``(layout, composer)``: the
-            :class:`~twin4build.simulator._composed.StateLayout` of the
+            ``(layout, functional_model)``: the
+            :class:`~twin4build.simulator._functional.StateLayout` of the
             stateful components and the
-            :class:`~twin4build.simulator._composed.OneStepComposer`.
+            :class:`~twin4build.simulator._functional.FunctionalModel`.
         """
-        from twin4build.simulator._composed import (
-            OneStepComposer,
-            StateLayout,
-            collect_stateful,
-        )
-
         stateful = collect_stateful(self.model)
         if not stateful:
             raise RuntimeError("no stateful components")
         layout = StateLayout(stateful)
-        if any(getattr(c, "n_c", 1) != 1 for c in layout.components):
-            raise RuntimeError("n_c > 1 states")
         steps = step_size if isinstance(step_size, (list, tuple)) else [step_size]
         steps = [int(s) for s in steps]
         if len(set(steps)) != 1:
             raise RuntimeError("mixed step sizes across periods")
-        composer = OneStepComposer(
+        functional_model = FunctionalModel(
             self.model,
             layout.components,
             list(theta_spec or []),
@@ -590,19 +720,24 @@ class Simulator:
             measurements=measurements,
             outputs=outputs,
         )
-        if composer.D != layout.width:
-            raise RuntimeError("composer state width mismatch")
-        return layout, composer
+        if functional_model.D != layout.width:
+            raise RuntimeError("functional model state width mismatch")
+        return layout, functional_model
 
-    def capture_rollout(
-        self, composer, start_time, end_time, step_size, layout=None, meas_ids=()
+    def record_exogenous_inputs(
+        self,
+        functional_model,
+        start_time,
+        end_time,
+        step_size,
+        layout=None,
+        meas_ids=(),
     ):
-        """One batched reference ``do_step`` rollout capturing the composed
-        map's frozen inputs (see
-        :func:`~twin4build.simulator._composed.capture_reference_rollout`).
+        """Record the functional model's exogenous input tape.
 
         Args:
-            composer: The composer returned by :meth:`compose`.
+            functional_model: The model returned by
+                :meth:`build_functional_model`.
             start_time: Per-period start times (list).
             end_time: Per-period end times (list).
             step_size: Per-period step sizes (list).
@@ -612,33 +747,45 @@ class Simulator:
 
         Returns:
             ``SimpleNamespace`` of per-period lists: ``state0``, ``Y0``,
-            ``CAP``, ``FB``, ``MEAS``, ``n_t``.
+            ``exogenous_tape``, ``feedback_tape``, ``measurement_tape``,
+            ``n_timesteps``.
         """
-        from twin4build.simulator._composed import capture_reference_rollout
-
-        return capture_reference_rollout(
-            self, composer, start_time, end_time, step_size,
-            layout=layout, meas_ids=meas_ids,
+        return record_exogenous_inputs(
+            self,
+            functional_model,
+            start_time,
+            end_time,
+            step_size,
+            layout=layout,
+            meas_ids=meas_ids,
         )
 
-    def rollout_composed(
-        self, composer, y0, theta, cap, *, transform_mode: bool = False
+    def rollout_functional(
+        self,
+        functional_model,
+        y0,
+        theta,
+        exogenous_tape,
+        *,
+        transform_mode: bool = False,
     ) -> torch.Tensor:
-        """Sequentially roll the composed map over one period (see
-        :func:`~twin4build.simulator._composed.sequential_rollout`).
+        """Sequentially roll the functional model over one period.
 
         Args:
-            composer: The composer returned by :meth:`compose`.
+            functional_model: The model returned by
+                :meth:`build_functional_model`.
             y0: ``(D_aug,)`` augmented initial state ``[state0 | FB[0]]``.
             theta: ``(n_theta,)`` physical parameters in theta_spec order.
-            cap: ``(n_t, n_captured)`` captured inputs for the period.
+            exogenous_tape: ``(n_t, n_exogenous)`` recorded inputs.
 
         Returns:
             ``(n_t, n_meas)`` modelled outputs; differentiable w.r.t.
-            ``theta``, ``y0`` and ``cap``.
+            ``theta``, ``y0`` and ``exogenous_tape``.
         """
-        from twin4build.simulator._composed import sequential_rollout
-
-        return sequential_rollout(
-            composer, y0, theta, cap, transform_mode=transform_mode
+        return functional_rollout(
+            functional_model,
+            y0,
+            theta,
+            exogenous_tape,
+            transform_mode=transform_mode,
         )

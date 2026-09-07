@@ -4,42 +4,47 @@ controller\_identification
 Modules
 -------
 
-controller\_identification\_pi\_torch\_system module
-----------------------------------------------------
+twin4build.systems.controller.controller\_identification.controller\_identification\_pi\_system module
+------------------------------------------------------------------------------------------------------
 
-.. automodule:: twin4build.systems.controller.controller_identification.controller_identification_pi_torch_system
+.. automodule:: twin4build.systems.controller.controller_identification.controller_identification_pi_system
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-controller\_identification\_torch\_system module
-------------------------------------------------
+twin4build.systems.controller.controller\_identification.controller\_identification\_system module
+--------------------------------------------------------------------------------------------------
 
-.. automodule:: twin4build.systems.controller.controller_identification.controller_identification_torch_system
+.. automodule:: twin4build.systems.controller.controller_identification.controller_identification_system
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-extractor module
-----------------
+twin4build.systems.controller.controller\_identification.extractor module
+-------------------------------------------------------------------------
 
 .. automodule:: twin4build.systems.controller.controller_identification.extractor
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-loop\_classifier module
------------------------
+twin4build.systems.controller.controller\_identification.loop\_classifier module
+--------------------------------------------------------------------------------
 
 .. automodule:: twin4build.systems.controller.controller_identification.loop_classifier
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-pi\_loop\_rewire module
------------------------
+twin4build.systems.controller.controller\_identification.pi\_loop\_rewire module
+--------------------------------------------------------------------------------
 
 .. automodule:: twin4build.systems.controller.controller_identification.pi_loop_rewire
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:

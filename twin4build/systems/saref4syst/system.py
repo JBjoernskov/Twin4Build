@@ -11,9 +11,10 @@ import torch
 from prettytable import PrettyTable
 
 # Local application imports
-import twin4build.core as core
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
+from twin4build.utils.simulation_time import get_simulation_timesteps
+from twin4build.utils.state_marker import StateMarker
 
 
 class System:
@@ -124,7 +125,7 @@ class System:
         self._n_c = 1  # Number of parallel components (for vectorization)
 
     @classmethod
-    def add_signature_pattern(cls, signature_pattern: core.SignaturePattern) -> None:
+    def add_signature_pattern(cls, signature_pattern: Any) -> None:
         """
         Add a signature pattern to the system.
         """
@@ -262,14 +263,14 @@ class System:
             end_time (datetime.datetime): The end time of the simulation.
             step_size (int): The step size of the simulation in seconds.
         """
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+        _, _, max_timesteps, _ = get_simulation_timesteps(
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
         for input in self.input.values():
-            input.initialize(n_t=max_timesteps, n_s=batch_size)
+            input.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for output in self.output.values():
-            output.initialize(n_t=max_timesteps, n_s=batch_size)
+            output.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
 
     def do_step(
         self,
@@ -308,7 +309,6 @@ class System:
         not as direct System attributes -- so only genuinely owned state is
         collected.
         """
-        from twin4build.utils.types import State
 
         if _visited is None:
             _visited = set()
@@ -319,7 +319,7 @@ class System:
         states: List[Any] = []
         subs = []
         for attr in vars(self).values():
-            if isinstance(attr, State):
+            if isinstance(attr, StateMarker):
                 states.append(attr)
             elif isinstance(attr, System) and attr is not self:
                 subs.append(attr)
@@ -432,7 +432,7 @@ class System:
         offset = 0
         for s in self.collect_states():
             w = int(s.n_v)
-            s.set(x[..., offset:offset + w])
+            s.set(x[..., offset : offset + w])
             offset += w
 
     def state_names(self) -> List[str]:
@@ -495,11 +495,7 @@ class System:
             if not isinstance(spec, dict):
                 continue
             bounds = spec.get(leaf)
-            if (
-                not isinstance(bounds, dict)
-                or "lb" not in bounds
-                or "ub" not in bounds
-            ):
+            if not isinstance(bounds, dict) or "lb" not in bounds or "ub" not in bounds:
                 continue
             lb = float(bounds["lb"])
             ub = float(bounds["ub"])

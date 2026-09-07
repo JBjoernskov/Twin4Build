@@ -170,8 +170,8 @@ class CoilSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
-            self.n_c = self._n_c_compiled
+        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
+            self.n_c = self._n_c_batched
         else:
             self.n_c = 1
 
@@ -255,6 +255,7 @@ class CoilSystem(core.System, nn.Module):
         self.output["outletAirTemperature"]._set(
             outs["outletAirTemperature"], i_t=step_index
         )
+
 
 # Deprecated aliases (removed in twin4build 2.1)
 CoilTorchSystem = CoilSystem

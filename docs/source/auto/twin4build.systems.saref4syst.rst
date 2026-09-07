@@ -4,24 +4,24 @@ saref4syst
 Modules
 -------
 
-connection module
------------------
+twin4build.systems.saref4syst.connection module
+-----------------------------------------------
 
 .. automodule:: twin4build.systems.saref4syst.connection
    :members:
    :show-inheritance:
    :undoc-members:
 
-connection\_point module
-------------------------
+twin4build.systems.saref4syst.connection\_point module
+------------------------------------------------------
 
 .. automodule:: twin4build.systems.saref4syst.connection_point
    :members:
    :show-inheritance:
    :undoc-members:
 
-system module
--------------
+twin4build.systems.saref4syst.system module
+-------------------------------------------
 
 .. automodule:: twin4build.systems.saref4syst.system
    :members:

@@ -132,14 +132,17 @@ class SmoothOnOffControllerSystem(core.System, nn.Module):
         self.input["actualValue"].initialize(
             n_t=max_timesteps,
             n_s=batch_size,
+            n_c=self.n_c,
         )
         self.input["setpointValue"].initialize(
             n_t=max_timesteps,
             n_s=batch_size,
+            n_c=self.n_c,
         )
         self.output["inputSignal"].initialize(
             n_t=max_timesteps,
             n_s=batch_size,
+            n_c=self.n_c,
         )
 
         # Expand parameters to n_c dimension for vectorization

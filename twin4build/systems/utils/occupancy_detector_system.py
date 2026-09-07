@@ -19,8 +19,8 @@ class OccupancyDetectorSystem(SigmoidGate):
         \sigma = S\bigl(0.5 + k\,(N_{occ} - T)\bigr)
 
     where :math:`T` is the ``threshold``, :math:`k` is the ``steepness``, and
-    :math:`S` is the smooth clamp of :func:`~twin4build.systems.utils.\
-smooth_saturation.clamp`.
+    :math:`S` is the smooth clamp of
+    :func:`~twin4build.systems.utils.smooth_saturation.clamp`.
 
     **Choosing ``steepness`` for estimation.**  The ramp is linear only over
     :math:`|N_{occ} - T| < 1/(2k)`; outside that window the gradient decays

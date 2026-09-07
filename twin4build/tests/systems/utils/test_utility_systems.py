@@ -79,7 +79,6 @@ class TestDiscreteStatespaceSystem(unittest.TestCase):
     def test_state_property(self):
         """Test get_state and set_state methods."""
         # Standard library imports
-        import datetime
 
         # Must initialize before get_state/set_state
         start_time = [datetime.datetime(2024, 1, 1)]

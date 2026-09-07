@@ -4,7 +4,7 @@ Examples and Tutorials
 All hands-on guides live in the example notebooks under
 ``twin4build/examples/`` -- each is a self-contained, runnable tutorial that
 combines explanation with executable code. The theory and API reference live
-in the class docstrings (see the `API Documentation <../auto/twin4build.html>`_,
+in the class docstrings (see the :doc:`API documentation </auto/twin4build>`,
 in particular :class:`~twin4build.simulator.simulator.Simulator`,
 :class:`~twin4build.estimator.estimator.Estimator`,
 :class:`~twin4build.optimizer.optimizer.Optimizer`, and
@@ -15,8 +15,13 @@ run locally in Jupyter. Colab badges are rewritten at docs build time to the
 git branch/tag for this documentation version (e.g. ``dev`` docs open
 ``blob/dev/...``, ``latest`` opens ``blob/main/...``).
 
-For performance studies -- CPU vs GPU, and single-shooting vs collocation --
-see :doc:`benchmarks`.
+For performance studies -- CPU vs GPU, solver boundaries, and batched model
+scaling -- see :doc:`benchmarks`. The canonical notebooks are in the
+repository-level ``benchmarks/`` directory, not ``twin4build/examples/``.
+
+.. raw:: html
+
+   <p><a target="_blank" href="https://github.com/JBjoernskov/Twin4Build/tree/GITHUB_NOTEBOOK_BRANCH/benchmarks/">Browse the canonical benchmark notebooks for this documentation version</a></p>
 
 Basics of Twin4Build
 --------------------
@@ -124,6 +129,6 @@ If you encounter issues with examples:
 Additional Resources
 --------------------
 
-- `API Documentation <../auto/twin4build.html>`_
+- :doc:`API documentation </auto/twin4build>`
 - :doc:`developer_reference`
 - `GitHub Repository <https://github.com/JBjoernskov/Twin4Build/>`_

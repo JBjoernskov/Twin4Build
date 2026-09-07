@@ -7,6 +7,7 @@ import os
 import sys
 from collections import OrderedDict
 from typing import List, Optional, Union
+import copyreg
 
 # Third party imports
 import numpy as np
@@ -16,6 +17,7 @@ from dateutil import tz
 
 # Local application imports
 import twin4build.core as core
+from twin4build.utils.state_marker import StateMarker
 
 # ---------------------------------------------------------------------------
 # Framework-wide floating-point dtype.
@@ -62,7 +64,8 @@ class Vector:
         n_c (int): Number of parallel components.
         n_v (int): The size of the vector (number of elements).
         log_history (bool): Whether to log the history of values.
-        history (torch.Tensor): The history of values over time with shape (n_s, n_c, n_t, n_v).
+        history (torch.Tensor): Time-first history with shape
+            ``(n_t, n_s, n_c, n_v)``.
         is_leaf (bool): Whether this vector is a leaf node in the graph (input).
         do_normalization (bool): Whether to normalize the history.
         optional (bool): Whether the vector is optional.
@@ -575,7 +578,8 @@ class Scalar:
         n_s (int): Number of simulations.
         n_c (int): Number of parallel components.
         log_history (bool): Whether to log the history of values.
-        history (torch.Tensor): The history of values over time with shape (n_s, n_c, n_t).
+        history (torch.Tensor): Time-first history with shape
+            ``(n_t, n_s, n_c)``.
         is_leaf (bool): Whether this scalar is a leaf node in the graph (input).
         do_normalization (bool): Whether to normalize the history.
         optional (bool): Whether the scalar is optional.
@@ -1068,21 +1072,34 @@ def theta_bound_tensors(parameters, device=None):
     The vectorized companion to :func:`denormalize_unit`: the estimator's fast
     paths denormalize a whole theta vector at once and need the physical
     bounds and scaling as plain tensors (``Parameter`` itself is a Tensor
-    subclass and breaks under functorch).  Scalar bounds only (``n_c == 1``).
-    ``device`` places the bounds where the rollout runs (the model's device).
+    subclass and breaks under functorch). Multi-branch parameters contribute
+    one bound entry per branch. ``device`` places the bounds where the rollout
+    runs (the model's device).
     """
+
+    def _flat_bound(parameter, name):
+        return np.asarray(
+            getattr(parameter, name).detach().cpu(), dtype=np.float64
+        ).reshape(-1)
+
+    lbs = [_flat_bound(p, "min_value") for p in parameters]
+    ubs = [_flat_bound(p, "max_value") for p in parameters]
     lb = torch.tensor(
-        [float(np.asarray(p.min_value.detach().cpu()).flatten()[0]) for p in parameters],
+        np.concatenate(lbs) if lbs else np.empty(0),
         dtype=float_dtype(),
         device=device,
     )
     ub = torch.tensor(
-        [float(np.asarray(p.max_value.detach().cpu()).flatten()[0]) for p in parameters],
+        np.concatenate(ubs) if ubs else np.empty(0),
         dtype=float_dtype(),
         device=device,
     )
     log_mask = torch.tensor(
-        [getattr(p, "scaling", "linear") == "log" for p in parameters],
+        [
+            getattr(p, "scaling", "linear") == "log"
+            for p in parameters
+            for _ in range(int(getattr(p, "n_c", 1)))
+        ],
         device=device,
     )
     return lb, ub, log_mask
@@ -1235,15 +1252,11 @@ class Parameter(nn.Parameter):
         # Bounds follow the parameter's device/dtype so they stay valid after
         # Model.to (bounds are often assigned after the move, e.g. by
         # Estimator._set_bounds).
-        self._min_value = _match_tensor(
-            _broadcast_for_n_c(value, self._n_c), self.data
-        )
+        self._min_value = _match_tensor(_broadcast_for_n_c(value, self._n_c), self.data)
 
     @max_value.setter
     def max_value(self, value):
-        self._max_value = _match_tensor(
-            _broadcast_for_n_c(value, self._n_c), self.data
-        )
+        self._max_value = _match_tensor(_broadcast_for_n_c(value, self._n_c), self.data)
 
     def normalize(
         self,
@@ -1340,7 +1353,7 @@ class Parameter(nn.Parameter):
         )
 
 
-class State:
+class State(StateMarker):
     """A System's continuous internal state -- first-class, alongside :class:`Parameter` / :class:`Scalar` / :class:`Vector`.
 
     A ``System`` holds three kinds of things: I/O ports (:class:`Scalar` /
@@ -2183,7 +2196,6 @@ def _get_tps_obj_state(obj):
         state = getstate_fn()
     else:
         # Standard library imports
-        import copyreg
 
         slots_to_save = copyreg._slotnames(obj.__class__)  # type: ignore[attr-defined]
         if slots_to_save:

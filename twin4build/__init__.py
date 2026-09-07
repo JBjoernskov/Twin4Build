@@ -1,38 +1,48 @@
+"""Twin4Build's public API.
+
+The primary workflow is intentionally small:
+
+1. construct a :class:`Model` directly, or translate a :class:`SemanticModel`;
+2. call ``model.load()`` and optionally ``model.to(device, dtype)``;
+3. create a :class:`Simulator` and call ``simulate``;
+4. pass that simulator to :class:`Estimator` or :class:`Optimizer`.
+
+System classes and the ``Scalar``, ``Vector``, ``Parameter``, and ``State``
+types are also available from this namespace. Backend-specific solver controls
+belong in the ``options`` argument of ``estimate`` or ``optimize``.
 """
-This API documentation focuses on describing the **behavior and concepts** of each module rather than implementation details.
-You'll find explanations of what each component does, how it interacts with other parts of the system,
-and the conceptual framework behind the functionality - not the internal code structure.
-"""
+
+# Standard library imports
+import importlib
+from importlib.metadata import PackageNotFoundError, version
 
 # Test flag must be defined FIRST to avoid circular imports
 _IS_TESTING = False
 _IMPORT_COMPLETE = False
 
+try:
+    __version__ = version("twin4build")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
+
 # Local application imports
-from twin4build.systems.saref4syst.system import System
-from twin4build.systems.saref4syst.connection import Connection
-from twin4build.systems.saref4syst.connection_point import ConnectionPoint
-from twin4build.model.model import Model
-from twin4build.model.semantic_model.semantic_model import SemanticModel
-from twin4build.model.simulation_model.simulation_model import SimulationModel
-from twin4build.simulator.simulator import Simulator
-from twin4build.estimator.estimator import Estimator
-from twin4build.translator.translator import Translator
-from twin4build.optimizer.optimizer import Optimizer, OptimizationResult
-from twin4build.estimator.estimator import EstimationResult
-
-# from twin4build.core import ontologies
-import twin4build.utils.plot as plot
-from twin4build.systems import *  # Note that only names in the __all__ list are imported. It is VERY important to have this import last
-
-import twin4build.utils.types as types
+import twin4build.systems as _systems
 from twin4build.utils.deprecation import deprecate_name
 
-# Preferred custom-component types
-Vector = types.Vector
-Scalar = types.Scalar
-Parameter = types.Parameter
-State = types.State
+_PUBLIC_MODULES = {
+    "System": "twin4build.systems.saref4syst.system",
+    "Connection": "twin4build.systems.saref4syst.connection",
+    "ConnectionPoint": "twin4build.systems.saref4syst.connection_point",
+    "Model": "twin4build.model.model",
+    "SemanticModel": "twin4build.model.semantic_model.semantic_model",
+    "SimulationModel": "twin4build.model.simulation_model.simulation_model",
+    "Simulator": "twin4build.simulator.simulator",
+    "Estimator": "twin4build.estimator.estimator",
+    "EstimationResult": "twin4build.estimator.estimator",
+    "Translator": "twin4build.translator.translator",
+    "Optimizer": "twin4build.optimizer.optimizer",
+    "OptimizationResult": "twin4build.optimizer.optimizer",
+}
 
 _DEPRECATED_TOP_LEVEL = {
     "RewireReport": "twin4build.systems.controller.controller_identification",
@@ -82,22 +92,35 @@ __all__ = [
     "Scalar",
     "Parameter",
     "State",
+    "__version__",
 ]
 
 
 def __getattr__(name: str):
+    if name == "types":
+        value = importlib.import_module("twin4build.utils.types")
+    elif name == "plot":
+        value = importlib.import_module("twin4build.utils.plot")
+    elif name in {"Vector", "Scalar", "Parameter", "State"}:
+        value = getattr(importlib.import_module("twin4build.utils.types"), name)
+    elif name in _PUBLIC_MODULES:
+        value = getattr(importlib.import_module(_PUBLIC_MODULES[name]), name)
+    elif name in _systems.__all__:
+        value = getattr(_systems, name)
+    else:
+        value = None
+    if value is not None:
+        globals()[name] = value
+        return value
     if name in _TORCH_ALIASES:
         deprecate_name(name, _TORCH_ALIASES[name])
-        import twin4build.systems as _systems
 
         return getattr(_systems, name)
     if name in _DEPRECATED_TOP_LEVEL:
         deprecate_name(name, _DEPRECATED_TOP_LEVEL[name])
-        import twin4build.systems as _systems
 
         return getattr(_systems, name)
     raise AttributeError(f"module 'twin4build' has no attribute {name!r}")
-
 
 
 _IMPORT_COMPLETE = True

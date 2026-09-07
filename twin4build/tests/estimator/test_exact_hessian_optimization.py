@@ -13,7 +13,7 @@ import twin4build
 twin4build._IS_TESTING = True
 
 # Local application imports
-from twin4build.estimator._transcription import (  # noqa: E402
+from twin4build.estimator._collocation import (  # noqa: E402
     _aggregate_objective_targets,
     _fixed_basis_hessian_two_args,
 )
