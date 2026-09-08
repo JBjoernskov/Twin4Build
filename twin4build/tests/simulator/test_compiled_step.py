@@ -93,7 +93,13 @@ def test_compiled_rollout_matches_eager_step():
         theta = torch.as_tensor(
             self._x0_norm, dtype=tps.float_dtype(), device=self._device
         ).unsqueeze(0)
-        results[self.simulator.compile_step] = obj.batched_value_and_grad(theta + 0.05)
+        # single start (scalar compiled step) and a batch of three (compiled batched step)
+        batch = torch.cat([theta + 0.05, theta - 0.03, theta + 0.11], dim=0)
+        results[self.simulator.compile_step] = (
+            obj.batched_value_and_grad(theta + 0.05),
+            obj.batched_value_and_grad(batch),
+            obj.batched_loss(batch),
+        )
         raise Done
 
     original_dispatch = tb.Estimator._dispatch_solve
@@ -120,7 +126,11 @@ def test_compiled_rollout_matches_eager_step():
                 pass
     finally:
         tb.Estimator._dispatch_solve = original_dispatch
-    v0, g0 = results[False]
-    v1, g1 = results[True]
+    (v0, g0), (bv0, bg0), l0 = results[False]
+    (v1, g1), (bv1, bg1), l1 = results[True]
     torch.testing.assert_close(v1, v0, rtol=1e-12, atol=1e-12)
     torch.testing.assert_close(g1, g0, rtol=1e-11, atol=1e-11)
+    torch.testing.assert_close(bv1, bv0, rtol=1e-12, atol=1e-12)
+    torch.testing.assert_close(bg1, bg0, rtol=1e-11, atol=1e-11)
+    torch.testing.assert_close(l1, l0, rtol=1e-12, atol=1e-12)
+    torch.testing.assert_close(bv1[0], v1[0], rtol=1e-12, atol=1e-12)  # batch row 0 == single start

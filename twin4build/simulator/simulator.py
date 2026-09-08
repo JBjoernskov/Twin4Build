@@ -27,11 +27,19 @@ def _has_triton() -> bool:
         return False
 
 
+def _functorch_active() -> bool:
+    try:
+        return bool(torch._C._are_functorch_transforms_active())
+    except AttributeError:  # pragma: no cover - very old torch
+        return False
+
+
 from twin4build.simulator._functional import (
     FunctionalModel,
     StateLayout,
     collect_stateful,
     functional_rollout,
+    functional_rollout_batched,
     record_exogenous_inputs,
 )
 from twin4build.simulator._functional_simulation import run_functional_simulation
@@ -821,7 +829,11 @@ class Simulator:
         cache-using (``transform_mode=False``) rollout is never compiled.
         """
         step = None
-        if transform_mode and self.step_compilation_active(theta.device):
+        if (
+            transform_mode
+            and not _functorch_active()  # vmap/jacfwd over a compiled fn is unsupported
+            and self.step_compilation_active(theta.device)
+        ):
             step = functional_model.compiled_step
         return functional_rollout(
             functional_model,
@@ -830,6 +842,23 @@ class Simulator:
             exogenous_tape,
             transform_mode=transform_mode,
             step=step,
+        )
+
+    def rollout_functional_batched(
+        self, functional_model, Y0, Theta, exogenous_tape
+    ) -> torch.Tensor:
+        """Roll a batch of parameter vectors over one period (transform mode).
+
+        ``Y0 (B, D_aug)``, ``Theta (B, n_theta)`` -> ``(B, n_t, n_meas)``.
+        With ``compile_step`` active for ``Theta``'s device the compiled
+        batched step (``compile(vmap(F_aug))``) is used; otherwise the scalar
+        rollout is ``vmap``-ed.
+        """
+        step = None
+        if not _functorch_active() and self.step_compilation_active(Theta.device):
+            step = functional_model.compiled_batched_step
+        return functional_rollout_batched(
+            functional_model, Y0, Theta, exogenous_tape, step=step
         )
 
     def step_compilation_active(self, device) -> bool:

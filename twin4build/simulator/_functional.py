@@ -940,6 +940,30 @@ class FunctionalModel:
         return self._n_feedback
 
     @property
+    def compiled_batched_step(self):
+        """``vmap`` of the transform-mode ``F_aug`` over a batch, compiled.
+
+        ``step(Y, Theta, u) -> (Y_next, meas)`` with ``Y (B, D_aug)``,
+        ``Theta (B, n_theta)`` and one shared exogenous row ``u``.  The vmap
+        sits *inside* ``torch.compile`` -- Dynamo inlines it -- because
+        ``vmap`` applied from eager code to a compiled function is not
+        supported.  One compiled object serves every batch size (Dynamo
+        re-specializes per shape).  Used by the batched single-shooting
+        bundles (multi-start SQP) instead of ``vmap`` over the scalar rollout.
+        """
+        step = self.__dict__.get("_compiled_batched_step")
+        if step is None:
+            model = self
+
+            def _step(y, theta, u):
+                return model.F_aug(y, theta, u, transform_mode=True)
+
+            batched = torch.func.vmap(_step, in_dims=(0, 0, None))
+            step = torch.compile(batched, fullgraph=True, dynamic=False)
+            self.__dict__["_compiled_batched_step"] = step
+        return step
+
+    @property
     def compiled_step(self):
         """``F_aug`` in transform mode, compiled once with ``torch.compile``.
 
@@ -1212,6 +1236,34 @@ def functional_rollout(
             device=exogenous_tape.device,
         )
     return torch.stack(rows)
+
+
+def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, step=None):
+    """Roll a *batch* of parameter vectors over one period.
+
+    ``Y0 (B, D_aug)``, ``Theta (B, n_theta)``; returns ``(B, n_t, n_meas)``.
+    With ``step`` (the compiled batched step) every time step is one call
+    over the whole batch; without it the scalar transform-mode rollout is
+    ``vmap``-ed, which is what the batched bundles always did.
+    """
+    if step is None:
+        return torch.func.vmap(
+            lambda y0, th: functional_rollout(
+                functional_model, y0, th, exogenous_tape, transform_mode=True
+            )
+        )(Y0, Theta)
+    Y = Y0
+    rows = []
+    for t in range(exogenous_tape.shape[0]):
+        Y, meas = step(Y, Theta, exogenous_tape[t])
+        rows.append(meas)
+    if not rows:
+        return torch.zeros(
+            (Y0.shape[0], 0, functional_model.n_meas),
+            dtype=exogenous_tape.dtype,
+            device=exogenous_tape.device,
+        )
+    return torch.stack(rows, dim=1)
 
 
 def functional_rollout_tape(

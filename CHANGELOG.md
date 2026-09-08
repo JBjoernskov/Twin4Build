@@ -49,6 +49,12 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   and gradients match eager to 1e-15 (issue #134); the first call pays a
   one-time compile of about 45 s.  `System.state_size()` is cached after the
   first call (Dynamo cannot trace the `vars()` walk it used every step).
+  The batched single-shooting bundles (multi-start SQP, its line search)
+  roll the batch out with a compiled `vmap` of the step
+  (`FunctionalModel.compiled_batched_step`, `Simulator.rollout_functional_batched`)
+  because `vmap` applied from eager code to a compiled function is not
+  supported; functorch transforms over a compiled step fall back to the
+  eager step automatically.
 
 - `_expm_ss` (fixed-schedule scaling-and-squaring matrix exponential used by
   every state-space component in transform mode) evaluates the Taylor part in
