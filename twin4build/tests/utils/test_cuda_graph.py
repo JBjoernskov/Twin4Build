@@ -205,6 +205,7 @@ def test_capture_records_phases_and_notes_the_failing_phase(monkeypatch):
     x = torch.ones(4, device="cuda", dtype=torch.float64)
     wrapper(x)
     assert wrapper.last_phase == "done"
+    assert cuda_graph.LAST_PHASE == "capture:done"
 
     calls = {"n": 0}
 
@@ -220,4 +221,5 @@ def test_capture_records_phases_and_notes_the_failing_phase(monkeypatch):
         wrapper(x)
     assert wrapper.last_phase == "record"
     notes = getattr(info.value, "__notes__", [])
-    assert any("capture phase: record" in note for note in notes)
+    assert any("phase: capture:record" in note for note in notes)
+    assert cuda_graph.LAST_PHASE == "capture:record"

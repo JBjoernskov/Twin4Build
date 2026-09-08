@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+from twin4build.utils import _cuda_graph
 from twin4build.utils._cuda_graph import CudaGraphCallable
 
 
@@ -75,6 +76,14 @@ class BatchedObjectiveEvaluator:
         return self._call("value_grad_hessian", fn, x)
 
     def _call(self, name, fn, x):
+        try:
+            return self._call_inner(name, fn, x)
+        except Exception as exc:
+            if x.device.type == "cuda" and hasattr(exc, "add_note"):
+                exc.add_note(_cuda_graph.phase_note())
+            raise
+
+    def _call_inner(self, name, fn, x):
         if x.device.type == "cuda":
             torch.cuda.synchronize(x.device)
         started = time.perf_counter()
@@ -84,6 +93,8 @@ class BatchedObjectiveEvaluator:
             and name in self._CAPTURE_SAFE_BUNDLES
         )
         if not capture_bundle:
+            if x.device.type == "cuda":
+                _cuda_graph.mark_phase(f"{name}:eager")
             output = fn(x)
             graph_event = None
         else:
@@ -98,13 +109,18 @@ class BatchedObjectiveEvaluator:
             output = graph(x)
             # CUDAGraph reuses static output buffers. Solver iterates retain
             # previous values across later replays, so return owned snapshots.
+            _cuda_graph.mark_phase(f"{name}:{graph_event}:clone-outputs")
             if isinstance(output, tuple):
                 output = tuple(value.clone() for value in output)
             else:
                 output = output.clone()
+        if x.device.type == "cuda":
+            _cuda_graph.mark_phase(f"{name}:finite-bundle")
         output = self._finite_bundle(name, output)
         if x.device.type == "cuda":
+            _cuda_graph.mark_phase(f"{name}:final-sync")
             torch.cuda.synchronize(x.device)
+            _cuda_graph.mark_phase(f"{name}:done")
         seconds = time.perf_counter() - started
         stat = self.stats.setdefault(
             name,

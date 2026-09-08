@@ -21,6 +21,29 @@ def _sync_phases_enabled() -> bool:
     return os.environ.get(SYNC_PHASES_ENV, "").strip().lower() in {"1", "true", "yes"}
 
 
+# Most recent phase entered by any capture wrapper or bundle caller in this
+# process.  Read it after a CUDA fault to learn which step launched the
+# faulting kernel (with SYNC_PHASES_ENV on, the preceding phases completed
+# without a device error).
+LAST_PHASE: str | None = None
+
+
+def mark_phase(name: str) -> None:
+    """Record ``name`` as the current phase, syncing first if enabled."""
+    global LAST_PHASE
+    if _sync_phases_enabled():
+        torch.cuda.synchronize()
+    LAST_PHASE = name
+
+
+def phase_note() -> str:
+    return (
+        f"CUDA graph phase: {LAST_PHASE} (per-phase device sync "
+        f"{'on' if _sync_phases_enabled() else 'off'}; set {SYNC_PHASES_ENV}=1 "
+        f"to attribute asynchronous faults)"
+    )
+
+
 class CudaGraphCaptureInvalidated(RuntimeError):
     """The CUDA context can no longer safely run an eager fallback."""
 
@@ -140,14 +163,11 @@ class CudaGraphCallable:
             )
         _drain_deferred_graphs()
         started = time.perf_counter()
-        sync_phases = _sync_phases_enabled()
-
         def phase(name: str) -> None:
             # Synchronizing here attributes an asynchronous fault to the
             # phase that launched it (the previous one) instead of to the
             # caller's next synchronize.
-            if sync_phases:
-                torch.cuda.synchronize()
+            mark_phase(f"capture:{name}")
             self.last_phase = name
 
         try:
@@ -209,11 +229,7 @@ class CudaGraphCallable:
             phase("done")
         except Exception as exc:
             if hasattr(exc, "add_note"):
-                exc.add_note(
-                    f"CUDA graph capture phase: {self.last_phase} "
-                    f"(per-phase device sync {'on' if sync_phases else 'off'}; "
-                    f"set {SYNC_PHASES_ENV}=1 to attribute asynchronous faults)"
-                )
+                exc.add_note(phase_note())
             if is_cuda_graph_capture_invalidated(exc):
                 _capture_invalidated = True
             self.close()
