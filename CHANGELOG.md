@@ -37,6 +37,14 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- Cycle removal breaks ties deterministically (by component id) when several
+  edges break the same number of cycles and carry the same priority.  The
+  winner used to follow the cycle enumeration over a set-based graph, i.e.
+  Python's hash seed, so two processes could cut different edges of the same
+  algebraic loop and place the one-step Gauss-Seidel lag on different signals
+  -- different discrete-time models, with trajectories differing in the third
+  significant digit for the canonical one-zone benchmark.
+
 - Collocation estimator: the box on the boundary states is now each
   dimension's warm-start range widened by `boundary_state_margin` (default
   6 std), instead of a fixed +/-6 std box.  The fixed box clipped the warm
