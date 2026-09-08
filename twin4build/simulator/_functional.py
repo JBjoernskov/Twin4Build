@@ -940,6 +940,31 @@ class FunctionalModel:
         return self._n_feedback
 
     @property
+    def compiled_step(self):
+        """``F_aug`` in transform mode, compiled once with ``torch.compile``.
+
+        The whole step traces as one Dynamo graph (no graph breaks), so
+        ``fullgraph=True`` guards against silent fallbacks; ``dynamic=False``
+        because every call has the same shapes.  Inductor fuses the step's
+        elementwise chains into a few hundred Triton kernels instead of the
+        ~2000 ATen kernels of the eager step, which shrinks the captured CUDA
+        graph and its replay time several-fold (issue #134).  Compiled on
+        first use (tens of seconds, cached on disk by Inductor); the callable
+        is cached on the model.  Requires a Triton-capable torch build
+        (``torch.utils._triton.has_triton()``).
+        """
+        step = self.__dict__.get("_compiled_step")
+        if step is None:
+            model = self
+
+            def _step(y, theta, u):
+                return model.F_aug(y, theta, u, transform_mode=True)
+
+            step = torch.compile(_step, fullgraph=True, dynamic=False)
+            self.__dict__["_compiled_step"] = step
+        return step
+
+    @property
     def D_aug(self) -> int:
         """Augmented-state width: component states + cut-feedback lag variables."""
         return self.D + self._n_feedback
@@ -1148,9 +1173,13 @@ def record_exogenous_inputs(
 
 
 def functional_rollout(
-    functional_model, y0, theta, exogenous_tape, *, transform_mode=False
+    functional_model, y0, theta, exogenous_tape, *, transform_mode=False, step=None
 ):
     """Roll the functional map over one period; returns ``(n_t, n_meas)``.
+
+    ``step`` optionally replaces ``functional_model.F_aug`` with a callable
+    ``step(y, theta, u) -> (y_next, meas)`` -- the compiled transform-mode
+    step from :meth:`FunctionalModel.compiled_step` -- for every time step.
 
     A plain Python loop, NOT ``vmap``: with a handful of periods the vmap
     dispatch overhead exceeds the batching gain, and staying in ordinary eager
@@ -1166,11 +1195,16 @@ def functional_rollout(
     """
     y = y0
     rows = []
-    for t in range(exogenous_tape.shape[0]):
-        y, meas = functional_model.F_aug(
-            y, theta, exogenous_tape[t], transform_mode=transform_mode
-        )
-        rows.append(meas)
+    if step is None:
+        for t in range(exogenous_tape.shape[0]):
+            y, meas = functional_model.F_aug(
+                y, theta, exogenous_tape[t], transform_mode=transform_mode
+            )
+            rows.append(meas)
+    else:
+        for t in range(exogenous_tape.shape[0]):
+            y, meas = step(y, theta, exogenous_tape[t])
+            rows.append(meas)
     if not rows:
         return torch.zeros(
             (0, functional_model.n_meas),

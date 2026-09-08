@@ -15,6 +15,18 @@ from tqdm import tqdm
 # Local application imports
 import twin4build.core as core
 import twin4build.systems as systems
+def _has_triton() -> bool:
+    """Inductor's CUDA backend needs Triton; absent on Windows torch wheels."""
+    try:
+        from torch.utils._triton import has_triton
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        return bool(has_triton())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 from twin4build.simulator._functional import (
     FunctionalModel,
     StateLayout,
@@ -178,12 +190,14 @@ class Simulator:
 
     _EXECUTION_MODES = ("object", "functional")
     _EXECUTION_BACKENDS = ("eager", "cuda_graph")
+    _COMPILE_STEP_OPTIONS = (True, False, "auto")
 
     def __init__(
         self,
         model: core.Model,
         execution_mode: str = "object",
         execution_backend: str = "eager",
+        compile_step: Union[bool, str] = "auto",
     ):
         """
         Initialize the Simulator instance.
@@ -195,6 +209,14 @@ class Simulator:
             model: The model to be simulated.
             execution_mode: ``"object"`` for normal component stepping or
                 ``"functional"`` for the sequential ``F_aug`` rollout.
+            compile_step: ``True``, ``False`` or ``"auto"`` (default).  Compile
+                the functional transform-mode step with ``torch.compile``
+                (Inductor) before it is captured or run eagerly.  ``"auto"``
+                enables it on CUDA when the torch build has Triton; ``True``
+                requires Triton and raises otherwise.  Compiled steps keep the
+                same results (relative differences at 1e-15) with a several-
+                fold smaller CUDA graph and faster replay; the first call pays
+                a one-time compile of tens of seconds.
             execution_backend: ``"eager"`` or ``"cuda_graph"``. CUDA Graphs
                 require functional mode and a CUDA model.
 
@@ -216,9 +238,21 @@ class Simulator:
             raise ValueError(
                 "execution_backend='cuda_graph' requires " "execution_mode='functional'"
             )
+        if compile_step not in self._COMPILE_STEP_OPTIONS:
+            raise ValueError(
+                f"compile_step must be one of {self._COMPILE_STEP_OPTIONS}; "
+                f"got {compile_step!r}"
+            )
+        if compile_step is True and not _has_triton():
+            raise ValueError(
+                "compile_step=True requires a Triton-capable torch build "
+                "(Inductor's CUDA backend); this torch has none. Use "
+                "compile_step='auto' to compile only where available."
+            )
         self.model = model
         self.execution_mode = execution_mode
         self.execution_backend = execution_backend
+        self.compile_step = compile_step
         self._functional_session = None
         self._functional_setup_count = 0
         self._functional_setup_seconds = 0.0
@@ -781,11 +815,34 @@ class Simulator:
         Returns:
             ``(n_t, n_meas)`` modelled outputs; differentiable w.r.t.
             ``theta``, ``y0`` and ``exogenous_tape``.
+
+        With ``compile_step`` active for ``theta``'s device the transform-mode
+        step runs through :attr:`FunctionalModel.compiled_step`; the
+        cache-using (``transform_mode=False``) rollout is never compiled.
         """
+        step = None
+        if transform_mode and self.step_compilation_active(theta.device):
+            step = functional_model.compiled_step
         return functional_rollout(
             functional_model,
             y0,
             theta,
             exogenous_tape,
             transform_mode=transform_mode,
+            step=step,
         )
+
+    def step_compilation_active(self, device) -> bool:
+        """Whether functional rollouts on ``device`` use the compiled step.
+
+        ``compile_step=True`` always (validated at construction), ``False``
+        never, ``"auto"`` on CUDA devices when this torch has Triton (Linux
+        wheels ship it; Windows wheels do not, and then the eager step is
+        used exactly as before).
+        """
+        if self.compile_step is True:
+            return True
+        if self.compile_step is False:
+            return False
+        device = torch.device(device)
+        return device.type == "cuda" and _has_triton()

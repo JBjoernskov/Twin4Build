@@ -37,6 +37,19 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- `Simulator(compile_step=...)`: the functional transform-mode step can be
+  compiled with `torch.compile` (Inductor) before it is captured or run
+  eagerly.  `"auto"` (default) enables it on CUDA when the torch build has
+  Triton (Linux wheels; Windows wheels have none and keep the eager step),
+  `True` requires it, `False` disables it.  Inside `torch.compile` the
+  state-space matrix exponential uses pointwise products (`_expm_ss_fused`)
+  so Inductor fuses them; eager keeps the cuBLAS form.  On the one-zone
+  shooting benchmark the captured graph replays in 0.35 s instead of 1.41 s,
+  its driver-side executable shrinks from 1.9 GiB to 0.36 GiB, and values
+  and gradients match eager to 1e-15 (issue #134); the first call pays a
+  one-time compile of about 45 s.  `System.state_size()` is cached after the
+  first call (Dynamo cannot trace the `vars()` walk it used every step).
+
 - `_expm_ss` (fixed-schedule scaling-and-squaring matrix exponential used by
   every state-space component in transform mode) evaluates the Taylor part in
   Horner form and each squaring as one fused `baddbmm`, cutting it from ~100
