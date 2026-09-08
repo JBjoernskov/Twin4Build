@@ -38,19 +38,30 @@ def _expm_ss(M, order=8, squarings=18):
     matmuls and only *improve* accuracy for well-scaled matrices.
     """
     N = M.shape[-1]
+    lead = M.shape[:-2]
+    # Work on a (batch, N, N) view so every step is ONE fused ``baddbmm``
+    # kernel.  Written as separate mul / matmul / add ops this routine cost
+    # ~100 tiny kernels per call, and it runs once per state-space component
+    # per rollout step: on the captured shooting graph it was ~2/3 of all
+    # nodes (issue #134).  ``baddbmm`` has vmap, forward-AD and reverse-AD
+    # rules, so the collocation ``vmap`` path and ``jacfwd``/``hessian`` keep
+    # working.
+    Ms = (M / (2.0**squarings)).reshape(-1, N, N)
     I = torch.eye(N, dtype=M.dtype, device=M.device)
-    Ms = M / (2.0**squarings)
-    term = I
-    # Track exp(Ms) - I so the small non-identity part is not repeatedly
-    # rounded against one when fixed overscaling makes Ms tiny.  If
-    # exp(A) = I + D, then exp(2A) - I = 2D + D@D.
-    delta = torch.zeros_like(M)
-    for k in range(1, order + 1):
-        term = term @ Ms / k  # (N,N) broadcasts against any leading batch dims
-        delta = delta + term
+    I_b = I.expand(Ms.shape[0], N, N)
+    # Truncated Taylor series in Horner form:
+    #   exp(Ms) - I = Ms @ q,   q = I + Ms/2 @ (I + Ms/3 @ (... (I + Ms/order)))
+    # Tracking ``delta = exp(Ms) - I`` keeps the small non-identity part at
+    # full relative precision instead of rounding it against one; the fixed
+    # overscaling makes ``Ms`` tiny, so this matters through the squarings.
+    q = I_b
+    for k in range(order, 1, -1):
+        q = torch.baddbmm(I, Ms, q, alpha=1.0 / k)  # I + Ms @ q / k
+    delta = torch.bmm(Ms, q)
+    # If exp(A) = I + D, then exp(2A) - I = 2D + D@D  (one fused kernel each).
     for _ in range(squarings):
-        delta = 2.0 * delta + delta @ delta
-    return I + delta
+        delta = torch.baddbmm(delta, delta, delta, beta=2.0)
+    return (I + delta).reshape(*lead, N, N)
 
 
 def _functorch_active() -> bool:

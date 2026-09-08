@@ -37,6 +37,13 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- `_expm_ss` (fixed-schedule scaling-and-squaring matrix exponential used by
+  every state-space component in transform mode) evaluates the Taylor part in
+  Horner form and each squaring as one fused `baddbmm`, cutting it from ~100
+  to ~30 kernels per call; same schedule, same accuracy (2e-12 relative
+  against `torch.matrix_exp`), same derivatives.  Forward kernels per
+  rollout step on the one-zone benchmark drop from 819 to 707 (issue #134).
+
 - Cycle removal breaks ties deterministically (by component id) when several
   edges break the same number of cycles and carry the same priority.  The
   winner used to follow the cycle enumeration over a set-based graph, i.e.
