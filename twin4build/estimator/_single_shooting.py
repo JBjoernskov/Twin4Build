@@ -259,14 +259,21 @@ class FunctionalEstimationObjective:
     def batched_value_and_grad(
         self, theta_batch: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        if theta_batch.device.type == "cpu":
-            z = theta_batch.detach().clone().requires_grad_(True)
-            value = torch.stack([self.loss(th) for th in z])
-            (grad,) = torch.autograd.grad(value.sum(), z)
-            return value.detach(), grad.detach()
-        fn = torch.func.grad_and_value(lambda th: self.loss(th, transform_mode=True))
-        grad, value = torch.func.vmap(fn)(theta_batch)
-        return value, grad
+        # Plain reverse-mode autograd on every device.  functorch's
+        # ``vmap(grad_and_value(loss))`` records a CUDA graph that is valid
+        # for exactly one launch on some builds (torch 2.11+cu128 on an A100:
+        # the second replay raises an illegal memory access even back-to-back
+        # with nothing in between, while the same graph replays fine on torch
+        # 2.13+cu130/Windows).  Plain autograd over the same rollout replays
+        # correctly there and captures in half the time.  Batches roll out
+        # sequentially inside the one graph; the transform-mode rollout
+        # (no parameter cache) keeps the captured graph free of Python-side
+        # state.
+        z = theta_batch.detach().clone().requires_grad_(True)
+        transform_mode = theta_batch.device.type != "cpu"
+        value = torch.stack([self.loss(th, transform_mode=transform_mode) for th in z])
+        (grad,) = torch.autograd.grad(value.sum(), z)
+        return value.detach(), grad.detach()
 
     def batched_residual_and_jacobian(
         self, theta_batch: torch.Tensor

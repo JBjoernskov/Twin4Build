@@ -37,11 +37,12 @@ class BatchedObjectiveEvaluator:
     """Derivative bundles for ``FunctionalEstimationObjective``."""
 
     # Direct replay is validated for primal values and first-order reverse-mode
-    # gradients. PyTorch's jacfwd and nested higher-order transforms currently
-    # trigger cudaErrorIllegalAddress when their captured graphs are replayed
-    # on the full shooting horizon, even though their eager CUDA evaluations
-    # are valid. Keep those bundles eager; objective-only line searches remain
-    # captured for every method.
+    # gradients (plain autograd, see ``batched_value_and_grad``).  functorch
+    # transforms under capture -- jacfwd, nested higher-order transforms, and
+    # on some builds even ``vmap(grad_and_value)`` -- record graphs that raise
+    # cudaErrorIllegalAddress on a later replay although their eager CUDA
+    # evaluations are valid.  Keep those bundles eager; objective-only line
+    # searches remain captured for every method.
     _CAPTURE_SAFE_BUNDLES = frozenset({"values", "value_grad"})
     _NONFINITE_PENALTY = 1e20
 
