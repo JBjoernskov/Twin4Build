@@ -48,11 +48,13 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   warm-start defaults (`mu_init=1e-6`, `warm_start_init_point`, tiny bound
   push); any `ipopt.*` key passed by the caller still wins.
 - Single-shooting value/gradient bundle uses plain reverse-mode autograd on
-  CUDA instead of functorch's `vmap(grad_and_value)`.  The functorch version
-  recorded a CUDA graph that was valid for exactly one launch on torch
-  2.11+cu128 (A100): every multi-zone shooting benchmark case died with an
-  illegal memory access at the first replay.  Plain autograd over the same
-  rollout replays correctly and captures in about half the time.
+  CUDA instead of functorch's `grad_and_value` transform.  The functorch
+  version recorded a CUDA graph that was valid for exactly one launch on
+  torch 2.11+cu128 (A100): every multi-zone shooting benchmark case died
+  with an illegal memory access at the first replay.  Plain autograd over
+  the same rollout replays correctly and captures in about half the time;
+  batches keep a `vmap` forward rollout (capture-safe on the same A100) so
+  eight starts replay in about the time of one.
 - `CudaGraphCallable` records the capture phase it is in (`last_phase`) and
   attaches it as a note to any exception raised during capture; with
   `T4B_CUDA_GRAPH_SYNC_PHASES=1` the device is synchronized after every phase

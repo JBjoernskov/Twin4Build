@@ -259,19 +259,24 @@ class FunctionalEstimationObjective:
     def batched_value_and_grad(
         self, theta_batch: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # Plain reverse-mode autograd on every device.  functorch's
-        # ``vmap(grad_and_value(loss))`` records a CUDA graph that is valid
-        # for exactly one launch on some builds (torch 2.11+cu128 on an A100:
-        # the second replay raises an illegal memory access even back-to-back
-        # with nothing in between, while the same graph replays fine on torch
-        # 2.13+cu130/Windows).  Plain autograd over the same rollout replays
-        # correctly there and captures in half the time.  Batches roll out
-        # sequentially inside the one graph; the transform-mode rollout
-        # (no parameter cache) keeps the captured graph free of Python-side
-        # state.
+        # Reverse mode is plain ``torch.autograd.grad`` on every device.
+        # functorch's ``grad_and_value`` transform records a CUDA graph that
+        # is valid for exactly one launch on some builds (torch 2.11+cu128 on
+        # an A100: the second replay raises an illegal memory access even
+        # back-to-back with nothing in between, while the same graph replays
+        # fine on torch 2.13+cu130/Windows).  ``vmap`` of the *forward*
+        # rollout alone is capture-safe (validated on the same A100 with an
+        # eager cross-check), so batches keep one wide rollout; a single
+        # start skips vmap, which captures faster.  The transform-mode
+        # rollout (no parameter cache) keeps the captured graph free of
+        # Python-side state.
         z = theta_batch.detach().clone().requires_grad_(True)
-        transform_mode = theta_batch.device.type != "cpu"
-        value = torch.stack([self.loss(th, transform_mode=transform_mode) for th in z])
+        if theta_batch.device.type == "cpu":
+            value = torch.stack([self.loss(th) for th in z])
+        elif z.shape[0] == 1:
+            value = self.loss(z[0], transform_mode=True).unsqueeze(0)
+        else:
+            value = torch.func.vmap(lambda th: self.loss(th, transform_mode=True))(z)
         (grad,) = torch.autograd.grad(value.sum(), z)
         return value.detach(), grad.detach()
 
