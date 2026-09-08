@@ -47,6 +47,13 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 - Collocation estimator: a "rollout" (feasible) start applies IPOPT
   warm-start defaults (`mu_init=1e-6`, `warm_start_init_point`, tiny bound
   push); any `ipopt.*` key passed by the caller still wins.
+- Benchmark harness: the peak-memory sampler thread no longer calls the CUDA
+  runtime (allocator bookkeeping only; device-wide memory is read on the main
+  thread before/after each timed region), failed cases keep the child's
+  traceback, and the collocation preflight uses a measured VRAM model
+  (~1.16 GiB per zone on an A100) against the actual card instead of a
+  sparse-storage count.  Adds `benchmarks/colab_debug_multizone.ipynb`, a
+  focused in-process reproducer for the multi-zone CUDA fault seen on A100.
 - IPOPT early stopping no longer counts infeasible iterates as stagnation
   (the rule is exposed as `twin4build.solvers.ipopt.early_stopping_step`);
   cold starts were being cut mid-descent at their first feasible incumbent.

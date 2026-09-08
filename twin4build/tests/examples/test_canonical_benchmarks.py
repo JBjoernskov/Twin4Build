@@ -19,6 +19,12 @@ NOTEBOOKS = {
     "estimation_scaling_benchmark.ipynb",
     "optimization_scaling_benchmark.ipynb",
 }
+# Colab runners/diagnostics that reuse the harness but are not authoritative
+# result notebooks (no published-results section, no serialize_results cell).
+AUXILIARY_NOTEBOOKS = {
+    "colab_estimation_benchmark.ipynb",
+    "colab_debug_multizone.ipynb",
+}
 
 
 def _common():
@@ -26,7 +32,9 @@ def _common():
 
 
 def test_exactly_three_authoritative_notebooks():
-    assert {path.name for path in BENCHMARKS.glob("*.ipynb")} == NOTEBOOKS
+    assert {path.name for path in BENCHMARKS.glob("*.ipynb")} == (
+        NOTEBOOKS | AUXILIARY_NOTEBOOKS
+    )
 
 
 def test_notebooks_are_colab_ready_and_unexecuted():
@@ -83,7 +91,9 @@ def test_canonical_matrices_and_scaling_sizes():
         ("cuda", "slsqp-single-shooting", 1),
         ("cuda", "custom-batched-sqp", 1),
         ("cuda", "custom-batched-sqp", 8),
+        ("cuda", "ipopt-collocation", 1),
     }
+    assert common.ESTIMATION_CPU_MAX_ZONES == 10
     assert common.ESTIMATION_SOLVER_BUDGET == 300
     assert common.BenchmarkConfig(mode="full").estimation_repeats == 1
     assert set(common.OPTIMIZATION_MATRIX) == {
@@ -240,15 +250,24 @@ def test_benchmark_sources_exclude_retired_terminology():
 def test_scaling_preflights_retain_unsafe_dimensions():
     common = _common()
     safe = common._collocation_preflight(1, 2)
-    assert safe["mathematically_safe"]
+    assert safe["implementation_supported"]
+    previous_vram = 0
     for zones in (1, 10, 50, 100, 300):
         collocation = common._collocation_preflight(zones, 120)
-        assert collocation["mathematically_safe"]
         assert collocation["implementation_supported"]
         assert collocation["replica_count"] == zones
         assert collocation["replica_theta_width"] == 28
         assert collocation["replica_state_width"] == 16
-        assert collocation["preflight_reason"] is None
+        # Sparse storage never trips the cap at these sizes; the empirical
+        # VRAM model (1.16 GiB/zone measured on an A100) decides, and its
+        # verdict depends on the card the test runs on -- so check the
+        # consistency of the verdict rather than its value.
+        assert collocation["estimated_peak_vram_bytes"] > previous_vram
+        previous_vram = collocation["estimated_peak_vram_bytes"]
+        assert collocation["mathematically_safe"] == collocation["vram_safe"]
+        assert (collocation["preflight_reason"] is None) == collocation["vram_safe"]
+        if collocation["cuda_device_total_bytes"] is None:
+            assert collocation["vram_safe"]
         pareto = common._pareto_preflight(zones, 72)
         assert pareto["preflight_n_scalar_constraints"] > 1
         assert pareto["sparse_jacobian_nnz"] > pareto["preflight_n_variables"]

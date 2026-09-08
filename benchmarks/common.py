@@ -165,6 +165,14 @@ ESTIMATION_SOLVER_BUDGET = 300
 OPTIMIZATION_SOLVER_BUDGET = 300
 PARETO_SOLVER_BUDGET = 300
 MAX_COLLOCATION_DENSE_HESSIAN_BYTES = 8 * 1024**3
+# Measured peak VRAM of the exact-Hessian collocation solve on an A100 40 GB
+# (torch max_memory_allocated): 1.25 GiB at 1 zone, 11.7 GiB at 10 zones,
+# out-of-memory at 50 zones (>30.7 GiB allocated, 39.5 GiB in use).  The AD
+# bundles (Jacobian / Hessian tapes over 360 steps) dominate, not the sparse
+# storage the old preflight counted, so the fit is ~1.16 GiB per zone.
+COLLOCATION_VRAM_GIB_PER_ZONE = 1.16
+COLLOCATION_VRAM_GIB_BASE = 0.6  # CUDA context + 1-zone intercept
+COLLOCATION_VRAM_SAFETY_FRACTION = 0.85
 MAX_PARETO_SCALAR_CONSTRAINTS = 150_000
 MAX_PARETO_DENSE_JACOBIAN_BYTES = 2 * 1024**3
 
@@ -322,13 +330,21 @@ class _PeakMemoryMonitor:
       ``max_memory_reserved``): bookkeeping the allocator keeps anyway, reset
       at region start and read at region end.  This is the process's own
       tensor memory (CUDA Graph pools are reserved memory).
-    * A daemon thread sampling ``torch.cuda.mem_get_info`` (device-wide used
-      bytes, which includes the CUDA context, MUMPS/CasADi host-side buffers
-      pinned on device, and any other process) and the process RSS once per
-      ``MEMORY_SAMPLER_INTERVAL_SECONDS``.  Each sample is two ~100 us calls;
-      at 1 Hz that is < 0.1 % of any region this suite times, and the thread
-      holds the GIL only for those calls.  The sampler is started before and
-      joined after the timing window.
+    * A daemon thread sampling the caching allocator's *bookkeeping*
+      (``memory_reserved`` / ``memory_allocated``, pure host-side counters)
+      and the process RSS once per ``MEMORY_SAMPLER_INTERVAL_SECONDS``.  The
+      thread deliberately makes NO CUDA runtime/driver call: PyTorch captures
+      CUDA Graphs in ``capture_error_mode="global"``, where a potentially
+      unsafe CUDA API call from ANY thread (``cudaMemGetInfo`` included)
+      can invalidate the capture in flight.  An earlier version of this
+      sampler polled ``torch.cuda.mem_get_info``; every multi-zone shooting
+      case on an A100 (torch 2.11 / CUDA 12.8) then died with an illegal
+      memory access right after graph capture, while the same cases had
+      passed on a laptop before the sampler existed.  A local reproduction
+      (torch 2.13 / CUDA 13, Windows) did NOT trigger it, so the sampler is a
+      suspect by timing rather than a confirmed cause; keeping the thread
+      free of CUDA calls is the safe contract either way.  Device-wide used
+      memory is read on the main thread before and after the region instead.
     * Windows' process-lifetime peak working set (``peak_wset``), which the
       OS tracks for free.  Each benchmark case runs in a fresh interpreter,
       so the lifetime peak is the case peak.
@@ -339,8 +355,9 @@ class _PeakMemoryMonitor:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._proc = psutil.Process() if psutil is not None else None
-        self.device_used_peak = 0
         self.device_used_baseline: int | None = None
+        self.device_used_end: int | None = None
+        self.reserved_peak_sampled = 0
         self.rss_peak = 0
         self.samples = 0
         self.stats: dict[str, Any] = {}
@@ -360,11 +377,10 @@ class _PeakMemoryMonitor:
         self._last_beat = now
         try:
             if self.cuda:
-                free, total = torch.cuda.mem_get_info()
-                used = int(total - free)
-                if self.device_used_baseline is None:
-                    self.device_used_baseline = used
-                self.device_used_peak = max(self.device_used_peak, used)
+                # Allocator bookkeeping only -- safe during a graph capture.
+                self.reserved_peak_sampled = max(
+                    self.reserved_peak_sampled, int(torch.cuda.memory_reserved())
+                )
             if self._proc is not None:
                 self.rss_peak = max(self.rss_peak, int(self._proc.memory_info().rss))
             self.samples += 1
@@ -375,9 +391,19 @@ class _PeakMemoryMonitor:
         while not self._stop.wait(MEMORY_SAMPLER_INTERVAL_SECONDS):
             self._sample()
 
+    @staticmethod
+    def _device_used_bytes() -> int | None:
+        """Device-wide used bytes; MAIN THREAD ONLY (CUDA runtime call)."""
+        try:
+            free, total = torch.cuda.mem_get_info()
+            return int(total - free)
+        except Exception:
+            return None
+
     def __enter__(self) -> "_PeakMemoryMonitor":
         if self.cuda:
             torch.cuda.reset_peak_memory_stats()
+            self.device_used_baseline = self._device_used_bytes()
         self._sample()
         self._thread = threading.Thread(
             target=self._run, name="t4b-benchmark-memory", daemon=True
@@ -390,6 +416,8 @@ class _PeakMemoryMonitor:
         if self._thread is not None:
             self._thread.join(timeout=5.0)
         self._sample()
+        if self.cuda:
+            self.device_used_end = self._device_used_bytes()
         stats: dict[str, Any] = {
             "sampler_interval_seconds": MEMORY_SAMPLER_INTERVAL_SECONDS,
             "sampler_samples": self.samples,
@@ -399,7 +427,10 @@ class _PeakMemoryMonitor:
             "torch_cuda_max_allocated_bytes": None,
             "torch_cuda_max_reserved_bytes": None,
             "cuda_device_used_baseline_bytes": self.device_used_baseline,
-            "cuda_device_used_peak_bytes": self.device_used_peak or None,
+            "cuda_device_used_end_bytes": self.device_used_end,
+            # Process footprint sampled from allocator bookkeeping (no CUDA
+            # call); the allocator's own max_memory_reserved is the exact peak.
+            "torch_cuda_reserved_peak_sampled_bytes": self.reserved_peak_sampled or None,
             "cuda_device_total_bytes": None,
         }
         try:
@@ -1962,8 +1993,40 @@ def _collocation_preflight(n_zones: int, hours: int) -> dict[str, Any]:
         and hessian_bytes <= MAX_COLLOCATION_DENSE_HESSIAN_BYTES
     )
     implementation_supported = True
-    safe = storage_safe
+    # Empirical VRAM model against the actual card (the storage count above
+    # under-estimated the 50-zone case by two orders of magnitude).
+    estimated_vram_bytes = int(
+        (COLLOCATION_VRAM_GIB_BASE + COLLOCATION_VRAM_GIB_PER_ZONE * n_zones) * 1024**3
+    )
+    device_total_bytes = None
+    if torch.cuda.is_available():
+        try:
+            device_total_bytes = int(torch.cuda.mem_get_info()[1])
+        except Exception:
+            device_total_bytes = None
+    vram_safe = (
+        device_total_bytes is None
+        or estimated_vram_bytes <= COLLOCATION_VRAM_SAFETY_FRACTION * device_total_bytes
+    )
+    safe = storage_safe and vram_safe
+    if not storage_safe:
+        reason = (
+            "replica-sparse estimator collocation storage exceeds "
+            "the configured safety cap"
+        )
+    elif not vram_safe:
+        reason = (
+            f"estimated peak VRAM {estimated_vram_bytes / 1024**3:.1f} GiB "
+            f"({COLLOCATION_VRAM_GIB_PER_ZONE} GiB/zone, measured on A100) exceeds "
+            f"{COLLOCATION_VRAM_SAFETY_FRACTION:.0%} of the "
+            f"{device_total_bytes / 1024**3:.1f} GiB card"
+        )
+    else:
+        reason = None
     return {
+        "estimated_peak_vram_bytes": estimated_vram_bytes,
+        "cuda_device_total_bytes": device_total_bytes,
+        "vram_safe": vram_safe,
         "preflight_kind": "collocation_hessian_exact",
         "n_collocation_state_variables": n_state_variables,
         "n_collocation_nlp_variables": n_nlp_variables,
@@ -1979,14 +2042,7 @@ def _collocation_preflight(n_zones: int, hours: int) -> dict[str, Any]:
         "implementation_supported": implementation_supported,
         "safety_limit_bytes": MAX_COLLOCATION_DENSE_HESSIAN_BYTES,
         "mathematically_safe": safe,
-        "preflight_reason": (
-            None
-            if safe
-            else (
-                "replica-sparse estimator collocation storage exceeds "
-                "the configured safety cap"
-            )
-        ),
+        "preflight_reason": reason,
     }
 
 
@@ -2196,6 +2252,13 @@ def _run_estimation_case_subprocess(
             ),
             "child_returncode": completed.returncode,
             "child_stderr": (completed.stderr or "")[-4000:],
+            # The child writes its own traceback into result.json; without it
+            # a CUDA fault only leaves the one-line message in the row.
+            "child_traceback": (
+                (envelope.get("traceback") or "")[-6000:]
+                if isinstance(envelope, dict)
+                else ""
+            ),
             "seed": config.seed,
         }
 
