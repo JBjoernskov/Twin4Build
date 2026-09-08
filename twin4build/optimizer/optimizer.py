@@ -502,10 +502,11 @@ class Optimizer:
                 - "initial_constr_penalty": Initial constraint penalty
                 - "constraint_penalty": Weight of the soft constraint penalty
                   terms in the loss (default 100)
+                - Additional method-specific options as supported by SciPy optimizers
+
                 Functional execution and CUDA graph capture are selected on
                 ``Simulator`` via ``execution_mode`` and
-                ``execution_backend``.
-                - Additional method-specific options as supported by SciPy optimizers
+                ``execution_backend``, not through these options.
 
         Returns:
             OptimizationResult: A dict-like result with SciPy-compatible
