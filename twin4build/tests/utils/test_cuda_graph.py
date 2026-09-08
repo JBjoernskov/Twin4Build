@@ -196,3 +196,28 @@ def test_fixed_shape_collocation_bundle_capture_replay_parity():
     assert bundle.stats["capture_seconds"] > 0
     assert bundle.stats["replay_seconds"] >= 0
     bundle.close()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_capture_records_phases_and_notes_the_failing_phase(monkeypatch):
+    monkeypatch.setenv(cuda_graph.SYNC_PHASES_ENV, "1")
+    wrapper = cuda_graph.CudaGraphCallable(lambda x: x * 2.0)
+    x = torch.ones(4, device="cuda", dtype=torch.float64)
+    wrapper(x)
+    assert wrapper.last_phase == "done"
+
+    calls = {"n": 0}
+
+    def flaky(x):
+        # Warmup passes; the record phase raises, so the note must say "record".
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("boom during record")
+        return x * 2.0
+
+    wrapper = cuda_graph.CudaGraphCallable(flaky)
+    with pytest.raises(RuntimeError, match="boom") as info:
+        wrapper(x)
+    assert wrapper.last_phase == "record"
+    notes = getattr(info.value, "__notes__", [])
+    assert any("capture phase: record" in note for note in notes)

@@ -47,6 +47,10 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 - Collocation estimator: a "rollout" (feasible) start applies IPOPT
   warm-start defaults (`mu_init=1e-6`, `warm_start_init_point`, tiny bound
   push); any `ipopt.*` key passed by the caller still wins.
+- `CudaGraphCallable` records the capture phase it is in (`last_phase`) and
+  attaches it as a note to any exception raised during capture; with
+  `T4B_CUDA_GRAPH_SYNC_PHASES=1` the device is synchronized after every phase
+  so an asynchronous CUDA fault is attributed to the phase that launched it.
 - Benchmark harness: the peak-memory sampler thread no longer calls the CUDA
   runtime (allocator bookkeeping only; device-wide memory is read on the main
   thread before/after each timed region), failed cases keep the child's

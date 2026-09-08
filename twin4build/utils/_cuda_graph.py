@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import inspect
+import os
 import time
 import weakref
 
 import torch
+
+# Set T4B_CUDA_GRAPH_SYNC_PHASES=1 to synchronize the device after every phase
+# of a capture (warmup, record, replay, parity check).  CUDA reports an
+# asynchronous fault at the next synchronizing call, so without this an
+# illegal memory access raised by, say, the replay only surfaces at the
+# caller's synchronize and the phase is lost.  Costs one extra sync per phase.
+SYNC_PHASES_ENV = "T4B_CUDA_GRAPH_SYNC_PHASES"
+
+
+def _sync_phases_enabled() -> bool:
+    return os.environ.get(SYNC_PHASES_ENV, "").strip().lower() in {"1", "true", "yes"}
 
 
 class CudaGraphCaptureInvalidated(RuntimeError):
@@ -109,6 +121,8 @@ class CudaGraphCallable:
         self.replay_count = 0
         self.capture_seconds = 0.0
         self.replay_seconds = 0.0
+        # Last capture phase entered; on failure the phase the fault surfaced in.
+        self.last_phase: str | None = None
 
     @property
     def fn(self):
@@ -126,20 +140,35 @@ class CudaGraphCallable:
             )
         _drain_deferred_graphs()
         started = time.perf_counter()
+        sync_phases = _sync_phases_enabled()
+
+        def phase(name: str) -> None:
+            # Synchronizing here attributes an asynchronous fault to the
+            # phase that launched it (the previous one) instead of to the
+            # caller's next synchronize.
+            if sync_phases:
+                torch.cuda.synchronize()
+            self.last_phase = name
+
         try:
+            phase("static-inputs")
             self.static_inputs = tuple(torch.empty_like(value) for value in inputs)
             for target, value in zip(self.static_inputs, inputs):
                 target.copy_(value)
+            phase("warmup")
             warmup_stream = torch.cuda.Stream()
             warmup_stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(warmup_stream):
                 for _ in range(self.warmup_calls):
                     reference_output = self.fn(*self.static_inputs)
             torch.cuda.current_stream().wait_stream(warmup_stream)
+            phase("record")
             self.graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(self.graph):
                 self.static_output = self.fn(*self.static_inputs)
+            phase("replay")
             self.graph.replay()
+            phase("parity-check")
             torch.testing.assert_close(
                 self.static_output,
                 reference_output,
@@ -177,7 +206,14 @@ class CudaGraphCallable:
                 for target, value in zip(self.static_inputs, inputs):
                     target.copy_(value)
                 self.graph.replay()
+            phase("done")
         except Exception as exc:
+            if hasattr(exc, "add_note"):
+                exc.add_note(
+                    f"CUDA graph capture phase: {self.last_phase} "
+                    f"(per-phase device sync {'on' if sync_phases else 'off'}; "
+                    f"set {SYNC_PHASES_ENV}=1 to attribute asynchronous faults)"
+                )
             if is_cuda_graph_capture_invalidated(exc):
                 _capture_invalidated = True
             self.close()
