@@ -26,6 +26,9 @@ from twin4build.systems.air_handling_unit.air_handling_unit_system import (
 from twin4build.systems.building_space.building_space_system import (
     BuildingSpaceSystem,
 )
+from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
+    ControllerIdentificationPISystem,
+)
 from twin4build.systems.outdoor_environment.outdoor_environment_system import (
     OutdoorEnvironmentSystem,
 )
@@ -72,10 +75,31 @@ def build_graph(sm):
         g.add((vav, BRICK.feeds, room))
         _point(g, vav, f"R0{i}_VAV01_CMD", BRICK.Damper_Position_Command)
         _point(g, vav, f"R0{i}_FCI01", BRICK.Supply_Air_Flow_Sensor)
+        _point(g, vav, f"R0{i}_SpFCI01_C", BRICK.Supply_Air_Flow_Setpoint)
         _point(g, room, f"R0{i}_TRU01", BRICK.Zone_Air_Temperature_Sensor)
+        _point(g, room, f"R0{i}_SpTRU01", BRICK.Zone_Air_Temperature_Setpoint)
+        _point(g, room, f"R0{i}_SpTRU01_K", BRICK.Zone_Air_Cooling_Temperature_Setpoint)
         _point(g, room, f"R0{i}_CO201", BRICK.Zone_CO2_Level_Sensor)
+    # A second VAV on room R02 (HTR rooms have up to four): each VAV must
+    # get its own controller although they share the room's sensor and
+    # setpoints (regression: the walker used to keep one match per room).
+    vav2 = EX["R02_VAV02"]
+    g.add((vav2, RDF.type, BRICK.VAV))
+    g.add((ahu, BRICK.feeds, vav2))
+    g.add((vav2, BRICK.feeds, EX["R02"]))
+    _point(g, vav2, "R02_VAV02_CMD", BRICK.Damper_Position_Command)
+    _point(g, vav2, "R02_FCI02", BRICK.Supply_Air_Flow_Sensor)
+    _point(g, vav2, "R02_SpFCI02_C", BRICK.Supply_Air_Flow_Setpoint)
     # ``isPointOf`` is only materialised by the reasoner from ``hasPoint``
     # (owl:inverseOf) -- the patterns rely on that, as for real graphs.
+
+
+def _outgoing_components(component, port):
+    out = []
+    for conn in component.connected_through:
+        if conn.output_port == port:
+            out.extend(cp.connection_point_of for cp in conn.connects_system_at)
+    return out
 
 
 class TestBrick14BmsPatterns(unittest.TestCase):
@@ -96,6 +120,7 @@ class TestBrick14BmsPatterns(unittest.TestCase):
                 AirHandlingUnitSystem,
                 OutdoorEnvironmentSystem,
                 SensorSystem,
+                ControllerIdentificationPISystem,
             ],
             id=self.MODEL_ID,
         )
@@ -134,7 +159,7 @@ class TestBrick14BmsPatterns(unittest.TestCase):
         # Room volume read from ``brick:volume [brick:value x]``.
         self.assertAlmostEqual(float(rooms["R01"].mass.V.get()), 21.0)
         self.assertAlmostEqual(float(rooms["R02"].mass.V.get()), 22.0)
-        self.assertEqual(len(incoming(ahu, "exhaustTemperature")), 2)
+        self.assertEqual(len(incoming(ahu, "exhaustTemperature")), 2)  # one slot per room
         self.assertEqual(
             [c.uuid for c in incoming(ahu, "supplyAirTemperatureSetpoint")],
             ["AHU01_SAT_SP"],
@@ -147,6 +172,29 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             self.assertEqual(incoming(sensors[f"R0{i}_CO201"], "measuredValue"), [rooms[f"R0{i}"]])
             self.assertEqual(incoming(sensors[f"R0{i}_FCI01"], "measuredValue"), [ahu])
         self.assertEqual(incoming(sensors["AHU01_SAT"], "measuredValue"), [ahu])
+
+        # One PI-CITS per VAV, with the loop variables taken from the room:
+        # zone temperature sensor -> sensorValue, zone temperature setpoints
+        # -> setpointValue, and the VAV flow setpoint on the gate bus.
+        cits_list = by_cls["ControllerIdentificationPISystem"]
+        self.assertEqual(len(cits_list), 3)  # R01_VAV01, R02_VAV01, R02_VAV02
+        gates = []
+        for cits in cits_list:
+            uuids = lambda port: sorted(c.uuid for c in incoming(cits, port))  # noqa: E731
+            (sensor_uuid,) = uuids("sensorValue")
+            i = sensor_uuid[2]  # R0<i>_TRU01
+            self.assertEqual(sensor_uuid, f"R0{i}_TRU01")
+            self.assertEqual(uuids("setpointValue"), [f"R0{i}_SpTRU01", f"R0{i}_SpTRU01_K"])
+            (gate,) = uuids("onOffSignal")
+            gates.append(gate)
+            # Every controller feeds its historised command sensor ...
+            downstream = _outgoing_components(cits, "inputSignal")
+            self.assertTrue(any(isinstance(c, SensorSystem) for c in downstream))
+        self.assertEqual(sorted(gates), ["R01_SpFCI01_C", "R02_SpFCI01_C", "R02_SpFCI02_C"])
+        # ... and the AHU damper slot of each room is driven by exactly one
+        # of that room's controllers (one connection per Vector slot).
+        drivers = [c for c in cits_list if ahu in _outgoing_components(c, "inputSignal")]
+        self.assertEqual(len(drivers), 2)
 
         outdoor = by_cls["OutdoorEnvironmentSystem"][0]
         self.assertEqual(outdoor.uuid_outdoorTemperature, "WS01_TOUT")
