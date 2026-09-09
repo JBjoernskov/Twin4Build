@@ -578,8 +578,15 @@ class Translator:
 
                 for sm_node in candidate_sm_nodes:
 
-                    # Initialize tracking structures for this DFS traversal
+                    # Initialize tracking structures for this DFS traversal.
+                    # The seed binding is recorded up front: otherwise the
+                    # seed stays unbound while its neighbourhood is
+                    # explored, a backward hop (room -> its VAVs) can bind
+                    # the seed's SP node to a *sibling* first, and the
+                    # seed's own descendants are then rejected as binding
+                    # conflicts (one match per room instead of one per VAV).
                     initial_map = {n: None for n in signature_pattern.nodes}
+                    initial_map[sp_node] = sm_node
                     feasible = {n: set() for n in signature_pattern.nodes}
                     comparison_table = {n: set() for n in signature_pattern.nodes}
                     candidate_maps = [Translator._copy_nodemap(initial_map)]
@@ -2180,34 +2187,12 @@ class Translator:
                         )
                         if component_fingerprint is not None:
                             # Composite identity from a ModeledNode group:
-                            # keep a *per-member* slice in the human-readable
-                            # prefix so the id still hints at every
-                            # participant, then suffix with the fingerprint
-                            # so two groups sharing the same members but
-                            # different relational shape get distinct ids.
-                            # Naively concatenating full short names blows
-                            # past Windows 260-char MAX_PATH when the id is
-                            # used as a filename under
-                            # ``model_parameters/<class>/<id>.json``; the
-                            # fingerprint guarantees uniqueness so the slice
-                            # is purely a debugging aid.
-                            name_budget = 80
-                            n_members = len(modeled_match_nodes_sorted)
-                            per_member = max(
-                                4, (name_budget // max(1, n_members)) - 2
+                            # human-readable member slices + fingerprint
+                            # suffix; see ``_composite_component_id``.
+                            id_ = Translator._composite_component_id(
+                                [n.get_short_name() for n in modeled_match_nodes_sorted],
+                                component_fingerprint,
                             )
-                            tokens: List[str] = []
-                            for n in modeled_match_nodes_sorted:
-                                short = core.sanitize_id(n.get_short_name())
-                                if len(short) > per_member:
-                                    # Keep the tail: for most
-                                    # naming schemes (e.g. Mortar
-                                    # ``bldg1_ZONE_AHU01_RM115_Zone_...``)
-                                    # the trailing segment carries the role
-                                    # while the prefix is common boilerplate.
-                                    short = short[-per_member:]
-                                tokens.append(f"[{short}]")
-                            id_ = "".join(tokens) + f"_{component_fingerprint[:16]}"
                         else:
                             # No fingerprint (non-composite ModeledNode path):
                             # fall back to the bracketed-members form.
@@ -2333,6 +2318,59 @@ class Translator:
             LOGGER.ok("Class: %s", component_cls.__name__, change_status=True)
         LOGGER.remove_level()
         LOGGER.ok("Instantiating components", change_status=True)
+
+    #: Character budget for the human-readable prefix of a composite
+    #: (multi-member ``ModeledNode``) component id.  The id doubles as a
+    #: filename under ``model_parameters/<class>/<id>.json``, so it must
+    #: stay well below Windows' 260-char ``MAX_PATH`` once the model
+    #: directory prefix is added.
+    COMPOSITE_ID_NAME_BUDGET = 80
+
+    @staticmethod
+    def _composite_component_id(
+        short_names: List[str],
+        fingerprint: str,
+        name_budget: int = COMPOSITE_ID_NAME_BUDGET,
+    ) -> str:
+        """Id for a component modeled on a multi-member ``ModeledNode`` group.
+
+        Keeps a *per-member* slice of every participant's short name in a
+        bracketed prefix (a debugging aid, so the id still hints at the
+        members) and suffixes the relational ``fingerprint`` which alone
+        guarantees uniqueness.
+
+        The prefix is hard-capped at ``name_budget`` characters.  The
+        earlier implementation only shrank the per-member slice down to a
+        minimum of four characters, so the prefix still grew linearly with
+        the group size: an AHU pattern binding 351 VAVs plus their damper
+        commands produced a ~4 kB id, which is unreadable and fails with
+        ``FileNotFoundError`` / ``OSError`` as soon as it is used as a
+        filename.  When the members do not fit, the prefix is truncated
+        and ``+N`` records how many members were left out.  Groups that
+        did fit before keep exactly the same id.
+        """
+        n_members = len(short_names)
+        per_member = max(4, (name_budget // max(1, n_members)) - 2)
+        tokens: List[str] = []
+        for name in short_names:
+            short = core.sanitize_id(name)
+            if len(short) > per_member:
+                # Keep the tail: for most naming schemes (e.g. Mortar
+                # ``bldg1_ZONE_AHU01_RM115_Zone_...``) the trailing segment
+                # carries the role while the prefix is common boilerplate.
+                short = short[-per_member:]
+            tokens.append(f"[{short}]")
+        prefix = "".join(tokens)
+        if len(prefix) > name_budget:
+            kept: List[str] = []
+            length = 0
+            for tok in tokens:
+                if length + len(tok) > name_budget:
+                    break
+                kept.append(tok)
+                length += len(tok)
+            prefix = "".join(kept) + f"+{n_members - len(kept)}"
+        return f"{prefix}_{fingerprint[:16]}"
 
     @staticmethod
     def _is_standalone_component(component: core.System) -> bool:
@@ -2514,6 +2552,28 @@ class Translator:
         }
         LOGGER.remove_level()
         LOGGER.ok("Connecting components", change_status=True)
+
+    @staticmethod
+    def _binding_compatible(bound: Any, sm_node: Any) -> bool:
+        """``sm_node`` may extend a map whose slot is unbound, bound to the
+        same node, or set-bound to a tuple containing it."""
+        if bound is None:
+            return True
+        if isinstance(bound, tuple):
+            return sm_node in bound or bound == sm_node
+        return bound == sm_node
+
+    @staticmethod
+    def _cached_descendants_consistent(
+        current_map: Dict[Node, Any], cached: Dict[Node, Any]
+    ) -> bool:
+        """True iff ``cached`` agrees with ``current_map`` on every node the
+        latter has already bound (see the descendant-cache back-fill)."""
+        for sp_n, sm_n in cached.items():
+            bound = current_map.get(sp_n)
+            if bound is not None and bound != sm_n:
+                return False
+        return True
 
     @staticmethod
     def _copy_nodemap(nodemap: Dict[Node, Any]) -> Dict[Node, Any]:
@@ -2921,6 +2981,36 @@ class Translator:
         LOGGER.debug("Entering prune_recursive (bidirectional)")
         LOGGER.add_level()
         LOGGER.debug(lambda: Translator._get_node_string(sp_subject, sm_subject))
+        _diag_walker = _match_diag_enabled(signature_pattern)
+
+        # Binding-consistency guard.  A candidate map that already binds
+        # ``sp_subject`` to a *different* SM node cannot be extended through
+        # this SM node: the walker would otherwise carry the descendants of
+        # a sibling match back up through a shared hub (one AHU feeding
+        # several rooms) and, when the hub level re-assigns ``sp_subject``,
+        # leave those foreign descendants in the map -- e.g. room R01
+        # ending up with room R02's ``brick:volume`` literal.
+        consistent_maps = [
+            m
+            for m in candidate_maps
+            if Translator._binding_compatible(m.get(sp_subject), sm_subject)
+        ]
+        if candidate_maps and not consistent_maps:
+            # Note: ``feasible`` is deliberately left untouched -- the
+            # conflict is specific to the maps being extended, not to the
+            # (sp_subject, sm_subject) pair, which may well be the seed of
+            # its own match (e.g. the sibling VAVs of one room).
+            if _diag_walker:
+                _match_diag_write(
+                    f"[WALKER]   PRUNE reason=binding-conflict "
+                    f"pattern={signature_pattern.id} "
+                    f"sp_subject={sp_subject.id} "
+                    f"sm_subject={_diag_sm_name(sm_subject)}"
+                )
+            LOGGER.debug("Pruned (binding conflict)")
+            LOGGER.remove_level()
+            return candidate_maps, feasible, comparison_table, True
+        candidate_maps = consistent_maps
 
         feasible.setdefault(sp_subject, set()).add(sm_subject)
         comparison_table.setdefault(sp_subject, set()).add(sm_subject)
@@ -3026,6 +3116,40 @@ class Translator:
                     sm_neighbors = [
                         x for x in sm_neighbors if not (x in seen or seen.add(x))
                     ]
+
+                    if isinstance(rule, NoStepRule):
+                        # Stand-alone veto: the branch survives iff *no*
+                        # adjacent SM node under the predicate is of the
+                        # forbidden class (an absent predicate trivially
+                        # satisfies the veto).  Nothing is bound.  Before
+                        # this special case the generic "no pair matched /
+                        # missing predicate" pruning below killed every
+                        # branch carrying a stand-alone ``NoStepRule``, so
+                        # the veto only ever worked inside the ``&``
+                        # composite with a positive rule.
+                        far_node = direction.far(rule)
+                        forbidden = [
+                            x for x in sm_neighbors if x.isinstance(far_node.cls)
+                        ]
+                        if forbidden:
+                            feasible[sp_subject].discard(sm_subject)
+                            LOGGER.debug(
+                                "Pruned (NoStepRule veto) [%s]: %s",
+                                direction.name,
+                                Translator._binding_short_name(forbidden[0]),
+                            )
+                            if _diag_walker:
+                                _match_diag_write(
+                                    f"[WALKER]   PRUNE dir={direction.name} "
+                                    f"reason=veto "
+                                    f"pattern={signature_pattern.id} "
+                                    f"sp_subject={sp_subject.id} "
+                                    f"sp_neighbor={sp_neighbor.id} "
+                                    f"sm_subject={_diag_sm_name(sm_subject)}"
+                                )
+                            LOGGER.remove_level()
+                            return candidate_maps, feasible, comparison_table, True
+                        continue
 
                     if sm_neighbors:
                         rule_pairs, _, _, ruleset = rule.apply(
@@ -3148,9 +3272,19 @@ class Translator:
                                 )
                                 for m in maps_for_pair:
                                     m[matched_sp_object] = matched_sm_object
-                                    for sp_n, sm_n in cached.items():
-                                        if m.get(sp_n) is None:
-                                            m[sp_n] = sm_n
+                                    # Cached descendants were derived under
+                                    # the bindings of an earlier branch;
+                                    # only back-fill when they agree with
+                                    # every node this branch has already
+                                    # bound.  Without the check a hub node
+                                    # (e.g. one AHU feeding many rooms)
+                                    # leaks one room's downstream literals
+                                    # (``brick:volume`` value, ...) into
+                                    # the maps of its siblings.
+                                    if Translator._cached_descendants_consistent(m, cached):
+                                        for sp_n, sm_n in cached.items():
+                                            if m.get(sp_n) is None:
+                                                m[sp_n] = sm_n
                                 valid_maps.extend(maps_for_pair)
                                 match_found = True
 
@@ -3464,9 +3598,11 @@ class Translator:
                             )
                             for m in maps_for_pair:
                                 m[matched_sp_object] = matched_sm_object
-                                for sp_n, sm_n in cached.items():
-                                    if m.get(sp_n) is None:
-                                        m[sp_n] = sm_n
+                                # See the matching guard in __prune_recursive.
+                                if Translator._cached_descendants_consistent(m, cached):
+                                    for sp_n, sm_n in cached.items():
+                                        if m.get(sp_n) is None:
+                                            m[sp_n] = sm_n
                             valid_maps.extend(maps_for_pair)
                             match_found = True
 
