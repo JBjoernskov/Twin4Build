@@ -572,8 +572,15 @@ class Translator:
 
                 for sm_node in candidate_sm_nodes:
 
-                    # Initialize tracking structures for this DFS traversal
+                    # Initialize tracking structures for this DFS traversal.
+                    # The seed binding is recorded up front: otherwise the
+                    # seed stays unbound while its neighbourhood is
+                    # explored, a backward hop (room -> its VAVs) can bind
+                    # the seed's SP node to a *sibling* first, and the
+                    # seed's own descendants are then rejected as binding
+                    # conflicts (one match per room instead of one per VAV).
                     initial_map = {n: None for n in signature_pattern.nodes}
+                    initial_map[sp_node] = sm_node
                     feasible = {n: set() for n in signature_pattern.nodes}
                     comparison_table = {n: set() for n in signature_pattern.nodes}
                     candidate_maps = [Translator._copy_nodemap(initial_map)]
