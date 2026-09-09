@@ -22,7 +22,7 @@ import rdflib.tools.csv2rdf
 import typer
 from bs4 import BeautifulSoup
 from openpyxl import load_workbook
-from rdflib import RDF, RDFS, Graph, Literal, Namespace, URIRef
+from rdflib import RDF, RDFS, BNode, Graph, Literal, Namespace, URIRef
 from rdflib.tools.rdf2dot import rdf2dot
 
 # Local application imports
@@ -97,7 +97,13 @@ class SemanticEntity:
     """
 
     def __init__(self, uri: Union[str, URIRef, Literal], model: "SemanticModel"):
-        self.uri = URIRef(uri) if isinstance(uri, str) else uri
+        # ``BNode`` (and ``URIRef`` / ``Literal``) are ``str`` subclasses, so a
+        # plain ``isinstance(uri, str)`` check would silently re-wrap a blank
+        # node as a ``URIRef`` and break every ``predicate_objects`` lookup on
+        # it.  Only bare strings are promoted to ``URIRef``.
+        if isinstance(uri, str) and not isinstance(uri, (URIRef, BNode, Literal)):
+            uri = URIRef(uri)
+        self.uri = uri
         self.model = model
         self._namespace = (None, None)
 
@@ -2317,18 +2323,18 @@ class SemanticModel:
             else:
                 return SemanticLiteral(value, self, datatype=datatype, lang=lang)
 
-        # Handle BNodes — preserve as BNode so predicate_objects() queries work correctly
+        # Handle BNodes -- keyed separately so a blank node id can never
+        # collide with a URI.  ``SemanticObject.__init__`` preserves the
+        # ``BNode`` type, so the regular constructor is used: an earlier
+        # hand-rolled ``__new__`` initialisation here silently fell out of
+        # sync with ``SemanticInstance.__init__`` (missing
+        # ``_inverse_attributes``), crashing ``get_predicate_subject_pairs``
+        # for any pattern that walks *into* a blank node such as a Brick
+        # ``ref:hasExternalReference`` target.
         if isinstance(value, rdflib.term.BNode):
             bnode_key = f"__bnode__{str(value)}"
             if bnode_key not in self._instances:
-                inst = SemanticInstance.__new__(SemanticInstance)
-                inst.uri = value  # Keep as BNode
-                inst.model = self
-                inst._namespace = (None, None)
-                inst._types = None
-                inst._direct_types = None
-                inst._attributes = None
-                self._instances[bnode_key] = inst
+                self._instances[bnode_key] = SemanticInstance(value, self)
             return self._instances[bnode_key]
 
         # Handle URIs
