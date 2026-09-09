@@ -11,6 +11,7 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.smooth_saturation import clamp
 from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.deprecation import deprecate_name
 
 
 class SmoothOnOffControllerSystem(core.System, nn.Module):
@@ -109,14 +110,43 @@ class SmoothOnOffControllerSystem(core.System, nn.Module):
         self._config = {
             "parameters": ["off_value", "on_value", "steepness", "is_reverse"],
         }
-        # Deprecated attribute aliases until 2.1 (same Parameter objects)
-        self.offValue = self.off_value
-        self.onValue = self.on_value
-        self.isReverse = self.is_reverse
-
     @property
     def config(self):
         return self._config
+
+    # Deprecated camelCase aliases (removed in 2.1).  Properties, not copies:
+    # a stored alias went stale whenever ``off_value``/``on_value`` was
+    # replaced (``expand_to_n_c``, ``Model.batch_components``), and the
+    # functional path then read the construction-time default.
+    @property
+    def offValue(self):
+        deprecate_name("offValue", "off_value")
+        return self.off_value
+
+    @offValue.setter
+    def offValue(self, value):
+        deprecate_name("offValue", "off_value")
+        self.off_value = value
+
+    @property
+    def onValue(self):
+        deprecate_name("onValue", "on_value")
+        return self.on_value
+
+    @onValue.setter
+    def onValue(self, value):
+        deprecate_name("onValue", "on_value")
+        self.on_value = value
+
+    @property
+    def isReverse(self):
+        deprecate_name("isReverse", "is_reverse")
+        return self.is_reverse
+
+    @isReverse.setter
+    def isReverse(self, value):
+        deprecate_name("isReverse", "is_reverse")
+        self.is_reverse = value
 
     def initialize(
         self,
@@ -181,7 +211,7 @@ class SmoothOnOffControllerSystem(core.System, nn.Module):
         )
         return off_value + switch_signal * (on_value - off_value)
 
-    PARAM_NAMES = ("offValue", "onValue", "steepness")
+    PARAM_NAMES = ("off_value", "on_value", "steepness")
 
     def forward(self, x, inputs, params, sample_time):
         """Pure one-step on-off switching (functorch-safe, stateless).
@@ -204,8 +234,8 @@ class SmoothOnOffControllerSystem(core.System, nn.Module):
         # sigmoid(k * error) → 0 when error << 0 (OFF)
         output_signal = self.power_law_saturation(
             error,
-            off_value=params["offValue"],
-            on_value=params["onValue"],
+            off_value=params["off_value"],
+            on_value=params["on_value"],
             steepness=params["steepness"],
         )
         return x, {"inputSignal": output_signal}

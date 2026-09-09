@@ -895,7 +895,7 @@ def _set_truth(roles: dict[str, Any], values: dict[str, float]) -> None:
         "mass.G_occ",
         "mass.m_inf",
     ):
-        rgetattr(space, key).set(values[key])
+        rgetattr(space, key).set(values[key], normalized=False)
     for obj, prefix, names in (
         (wall, "wall", ("C", "R_a", "R_b")),
         (heater, "heater", ("thermalMassHeatCapacity", "UA")),
@@ -904,7 +904,7 @@ def _set_truth(roles: dict[str, Any], values: dict[str, float]) -> None:
         (valve, "valve", ("waterFlowRateMax", "valveAuthority")),
     ):
         for name in names:
-            rgetattr(obj, name).set(values[f"{prefix}.{name}"])
+            rgetattr(obj, name).set(values[f"{prefix}.{name}"], normalized=False)
     heater.initialize_UA = False
     for damper, internal, prefix in (
         (supply, occupancy.supply_damper, "supply_damper"),
@@ -912,12 +912,12 @@ def _set_truth(roles: dict[str, Any], values: dict[str, float]) -> None:
     ):
         for name in ("a", "nominalAirFlowRate"):
             value = values[f"{prefix}.{name}"]
-            rgetattr(damper, name).set(value)
-            rgetattr(internal, name).set(value)
+            rgetattr(damper, name).set(value, normalized=False)
+            rgetattr(internal, name).set(value, normalized=False)
     for name in ("V", "G_occ", "m_inf"):
         value = values[f"mass.{name}"]
-        rgetattr(occupancy, f"mass.{name}").set(value)
-    detector.threshold.set(values["occupancy_detector.threshold"])
+        rgetattr(occupancy, f"mass.{name}").set(value, normalized=False)
+    detector.threshold.set(values["occupancy_detector.threshold"], normalized=False)
 
 
 def build_multizone_model(

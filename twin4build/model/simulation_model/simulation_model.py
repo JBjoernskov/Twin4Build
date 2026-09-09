@@ -312,6 +312,7 @@ class SimulationModel:
         "_flat_execution_order",
         "_required_initialization_connections",
         "_components_no_cycles",
+        "_removed_cycle_edges",
         "_fused_components",
         "_fusion_member_to_fused",
         "enable_fusion",
@@ -2770,6 +2771,9 @@ class SimulationModel:
         """
         iteration = 0
         max_iterations = 1000  # Safety limit to prevent infinite loops
+        # (from id, to id) of every cut, in cut order: the one-step-lag
+        # placement of the discrete-time model, inspectable for parity checks.
+        self._removed_cycle_edges: List[Tuple[str, str]] = []
 
         LOGGER.task("Detecting cycles")
         LOGGER.add_level()
@@ -2815,6 +2819,7 @@ class SimulationModel:
 
             # Remove ALL connections between the selected components
             c_from, c_to = best_edge
+            self._removed_cycle_edges.append((c_from.id, c_to.id))
             self._remove_all_edges_between_components(c_from, c_to)
 
             # Update cycles list by removing cycles that contained the removed edge
@@ -2878,6 +2883,32 @@ class SimulationModel:
         Returns:
             The best edge tuple (c_from, c_to) to remove
         """
+
+        # A batched model must place its one-step lags where the source model
+        # placed them: an edge pointing backwards across the preserved source
+        # execution priorities *is* a source-model cut.  Restrict the candidates
+        # to those edges whenever any exist -- the cycle count below is
+        # otherwise dominated by cross-loop cycles through a meta component
+        # that batches several source components (e.g. every PID controller),
+        # which moved the lag onto a forward edge and changed the discrete-time
+        # model relative to the unbatched one.
+        def _points_backwards(edge):
+            source_priority = getattr(edge[0], "_batched_execution_priority", None)
+            target_priority = getattr(edge[1], "_batched_execution_priority", None)
+            return (
+                source_priority is not None
+                and target_priority is not None
+                and source_priority >= target_priority
+            )
+
+        backward_edges = {
+            edge: count
+            for edge, count in edge_cycle_count.items()
+            if _points_backwards(edge)
+        }
+        if backward_edges:
+            edge_cycle_count = backward_edges
+
         # Group edges by cycle participation count (descending)
         max_cycle_count = max(edge_cycle_count.values())
         best_edges = [
