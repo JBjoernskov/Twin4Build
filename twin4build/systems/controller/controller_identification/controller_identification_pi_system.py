@@ -93,12 +93,19 @@ class ControllerIdentificationPISystem(ControllerIdentificationSystem):
         )
 
     def _build_components(self) -> None:
-        """Build candidates and freeze ``Td = 0`` on every PI candidate.
+        """Build candidates, freeze ``Td = 0`` and mark ``kp`` / ``Ti`` estimable.
 
         The base class already constructs the candidate with ``Td = 0`` from
         ``_candidate_entries[*][1]``, but we also flip ``requires_grad`` off
         defensively so callers that wire ``Td`` into their estimable-parameter
         list cannot accidentally re-introduce a derivative term.
+
+        ``kp`` and ``Ti`` are switched *on*: :class:`PIDControllerSystem`
+        creates them with ``requires_grad=False`` and
+        :meth:`ControllerIdentificationSystem.get_estimable_parameters` skips
+        frozen parameters, so without this ``Estimator.estimate(parameters=
+        "auto")`` silently fitted only the gate parameters and left the
+        gains at their rewire seeds.
         """
         super()._build_components()
         for a in range(self.n_actuators):
@@ -109,6 +116,10 @@ class ControllerIdentificationPISystem(ControllerIdentificationSystem):
                         torch.tensor(0.0, dtype=torch.float64), normalized=False
                     )
                     cand.Td.requires_grad = False
+                for attr in ("kp", "Ti"):
+                    p = getattr(cand, attr, None)
+                    if p is not None and hasattr(p, "requires_grad"):
+                        p.requires_grad = True
 
 
 # ---------------------------------------------------------------------------
