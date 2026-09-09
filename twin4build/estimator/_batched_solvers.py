@@ -43,7 +43,9 @@ class BatchedObjectiveEvaluator:
     # cudaErrorIllegalAddress on a later replay although their eager CUDA
     # evaluations are valid.  Keep those bundles eager; objective-only line
     # searches remain captured for every method.
-    _CAPTURE_SAFE_BUNDLES = frozenset({"values", "value_grad"})
+    _CAPTURE_SAFE_BUNDLES = frozenset(
+        {"values", "value_grad", "column_values", "column_value_grad"}
+    )
     _NONFINITE_PENALTY = 1e20
 
     def __init__(self, objective):
@@ -60,6 +62,16 @@ class BatchedObjectiveEvaluator:
     def value_grad(self, x):
         fn = self.objective.batched_value_and_grad
         return self._call("value_grad", fn, x)
+
+    def column_values(self, x):
+        """Per-column losses ``(B, n_meas)`` (block trust-region acceptance)."""
+        fn = self.objective.batched_column_loss
+        return self._call("column_values", fn, x)
+
+    def column_value_grad(self, x):
+        """Per-column losses and the gradient of their sum."""
+        fn = self.objective.batched_column_loss_and_grad
+        return self._call("column_value_grad", fn, x)
 
     def residual_jacobian(self, x):
         fn = self.objective.batched_residual_and_jacobian
@@ -158,6 +170,19 @@ class BatchedObjectiveEvaluator:
             )
             grad = torch.where(invalid[:, None], torch.zeros_like(grad), grad)
             output = value, grad
+        elif name == "column_values":
+            invalid = ~torch.isfinite(output).all(dim=1)
+            output = torch.where(
+                invalid[:, None], torch.full_like(output, self._NONFINITE_PENALTY), output
+            )
+        elif name == "column_value_grad":
+            cols, grad = output
+            invalid = ~torch.isfinite(cols).all(dim=1) | ~torch.isfinite(grad).all(dim=1)
+            cols = torch.where(
+                invalid[:, None], torch.full_like(cols, self._NONFINITE_PENALTY), cols
+            )
+            grad = torch.where(invalid[:, None], torch.zeros_like(grad), grad)
+            output = cols, grad
         else:
             invalid = torch.zeros(
                 output[0].shape[0],
@@ -869,6 +894,328 @@ def _solve_chunk(
     }
 
 
+# --------------------------------------------------------------------------- #
+# Block trust region ("batched-tr")
+# --------------------------------------------------------------------------- #
+def _damped_bfgs_update(model, s_vec, y_vec, accepted):
+    """Powell-damped BFGS update of a (batch, n, n) curvature model."""
+    bs = torch.bmm(model, s_vec[:, :, None]).squeeze(-1)
+    sbs = torch.sum(s_vec * bs, dim=1)
+    sy = torch.sum(s_vec * y_vec, dim=1)
+    use_damping = sy < 0.2 * sbs
+    theta = torch.where(
+        use_damping, 0.8 * sbs / torch.clamp(sbs - sy, min=1e-30), torch.ones_like(sy)
+    )
+    r = theta[:, None] * y_vec + (1.0 - theta)[:, None] * bs
+    sr = torch.sum(s_vec * r, dim=1)
+    valid = accepted & torch.isfinite(r).all(dim=1) & (sbs > 1e-14) & (sr > 1e-14)
+    updated = (
+        model
+        - bs[:, :, None] * bs[:, None, :] / torch.clamp(sbs, min=1e-14)[:, None, None]
+        + r[:, :, None] * r[:, None, :] / torch.clamp(sr, min=1e-14)[:, None, None]
+    )
+    return torch.where(valid[:, None, None], updated, model)
+
+
+def _resolve_blocks(objective, n_theta, n_meas, spec, device):
+    """Parameter blocks and their residual columns.
+
+    ``spec``: ``"auto"`` (from :meth:`parameter_structure` of the objective),
+    ``None`` (one block), or an explicit list of theta-index lists (columns are
+    then attributed by the objective's structure where available, else all
+    columns belong to every block, i.e. acceptance on the total loss).
+    """
+    theta_block = None
+    column_block = None
+    if spec == "auto" and hasattr(objective, "parameter_structure"):
+        theta_block, column_block, n_blocks = objective.parameter_structure()
+        theta_block = np.asarray(theta_block)
+        column_block = np.asarray(column_block)
+        blocks = [np.flatnonzero(theta_block == b) for b in range(n_blocks)]
+    elif spec is None or spec == "auto":
+        blocks = [np.arange(n_theta)]
+    else:
+        blocks = [np.asarray(list(b), dtype=np.int64) for b in spec]
+        if hasattr(objective, "parameter_structure"):
+            _tb, column_block, _nb = objective.parameter_structure()
+            column_block = np.asarray(column_block)
+            theta_block = np.asarray(_tb)
+            # Blocks must be unions of structure components: merge explicit
+            # blocks that share a component, otherwise their per-block
+            # acceptance would read another block's decrease as its own.
+            parent = list(range(len(blocks)))
+
+            def find(i):
+                while parent[i] != i:
+                    parent[i] = parent[parent[i]]
+                    i = parent[i]
+                return i
+
+            owner_of = {}
+            for k, idx in enumerate(blocks):
+                for comp in set(theta_block[idx].tolist()):
+                    if comp in owner_of:
+                        parent[find(k)] = find(owner_of[comp])
+                    else:
+                        owner_of[comp] = k
+            merged = {}
+            for k, idx in enumerate(blocks):
+                merged.setdefault(find(k), []).append(idx)
+            blocks = [np.sort(np.concatenate(group)) for group in merged.values()]
+    flat = np.concatenate(blocks) if blocks else np.zeros(0, dtype=np.int64)
+    if sorted(flat.tolist()) != list(range(n_theta)):
+        raise ValueError("tr_blocks must partition every theta index exactly once")
+    # column indicator (n_meas, n_blocks): which columns' losses each block owns
+    M = torch.zeros(n_meas, len(blocks), dtype=torch.float64, device=device)
+    if column_block is not None and theta_block is not None and len(blocks) > 1:
+        for k, idx in enumerate(blocks):
+            owner_ids = set(theta_block[idx].tolist())
+            cols = np.flatnonzero(np.isin(column_block, list(owner_ids)))
+            M[torch.as_tensor(cols, device=device, dtype=torch.long), k] = 1.0
+    else:
+        M[:, :] = 1.0
+    layout = [torch.as_tensor(b, dtype=torch.long, device=device) for b in blocks]
+    return layout, M
+
+
+def _validate_blocks(evaluator, x, lb, ub, layout, M, n_checks=3, rel=1e-3):
+    """Perturb a few parameters and confirm only their own block's columns move."""
+    if len(layout) <= 1:
+        return True, "single block"
+    base = evaluator.column_values(x[:1])
+    rng = np.random.default_rng(0)
+    for k in rng.choice(len(layout), size=min(n_checks, len(layout)), replace=False):
+        j = int(layout[k][rng.integers(len(layout[k]))])
+        trial = x[:1].clone()
+        span = float(ub[j] - lb[j])
+        trial[0, j] = torch.clamp(trial[0, j] + rel * span, lb[j], ub[j])
+        if float(trial[0, j] - x[0, j]) == 0.0:
+            trial[0, j] = torch.clamp(trial[0, j] - rel * span, lb[j], ub[j])
+        cols = evaluator.column_values(trial)
+        changed = (cols - base).abs() > 1e-9 * (1.0 + base.abs())
+        foreign = changed[0] & (M[:, k] == 0)
+        if bool(foreign.any()):
+            return False, (
+                f"parameter {j} of block {k} changed {int(foreign.sum())} column(s) "
+                "outside its block"
+            )
+    return True, "validated"
+
+
+def _solve_block_trust_region(
+    evaluator,
+    x0,
+    lb,
+    ub,
+    *,
+    maxiter=200,
+    gtol=1e-4,
+    ftol=1e-8,
+    patience=4,
+    tr_blocks="auto",
+    tr_radius=0.05,
+    tr_max_radius=0.5,
+    tr_min_radius=1e-9,
+    tr_accept=1e-4,
+    tr_expand=0.75,
+    tr_shrink=0.5,
+    tr_scale_floor=0.0,
+    tr_retries=4,
+    tr_validate=True,
+    max_nfev=None,
+):
+    """Structure-aware trust-region SQP: one radius and one acceptance per block.
+
+    Blocks are parameter groups that share no residual column (independent
+    zones of a batched model; the whole vector when everything is coupled).
+    Each block minimises its own quadratic model (damped-BFGS curvature) in
+    the intersection of the box and its own trust box, all blocks and starts
+    in parallel; a block is accepted on the ratio of its own actual to
+    predicted decrease and its radius grows or shrinks accordingly.  A block
+    whose gradient is unreliable (a rough loss surface) collapses its radius
+    without stalling the others -- the failure mode of the joint line search
+    on multi-zone estimation (issue #142).
+    """
+    x = torch.clamp(x0.clone(), lb, ub)
+    batch, n_theta = x.shape
+    dtype, device = x.dtype, x.device
+    cols, g = evaluator.column_value_grad(x)
+    n_meas = cols.shape[1]
+    layout, M = _resolve_blocks(evaluator.objective, n_theta, n_meas, tr_blocks, device)
+    structure_note = "unstructured"
+    if tr_validate and len(layout) > 1:
+        ok, structure_note = _validate_blocks(evaluator, x, lb, ub, layout, M)
+        if not ok:
+            layout, M = _resolve_blocks(evaluator.objective, n_theta, n_meas, None, device)
+            structure_note = "fallback to one block: " + structure_note
+    n_blocks = len(layout)
+    nfev = torch.full((batch,), 1, dtype=torch.int64, device=device)
+    njev = torch.full((batch,), 1, dtype=torch.int64, device=device)
+    if max_nfev is None:
+        # one gradient bundle plus up to (1 + tr_retries) trials per iteration
+        max_nfev = 1 + int(maxiter) * (2 + int(tr_retries))
+
+    f_block = cols @ M  # (batch, n_blocks)
+    radius = torch.full((batch, n_blocks), float(tr_radius), dtype=dtype, device=device)
+    models = [
+        torch.eye(len(idx), dtype=dtype, device=device).expand(batch, len(idx), len(idx)).clone()
+        for idx in layout
+    ]
+    block_active = torch.ones(batch, n_blocks, dtype=torch.bool, device=device)
+    block_converged = torch.zeros_like(block_active)
+    block_collapsed = torch.zeros_like(block_active)
+    stagnant = torch.zeros(batch, n_blocks, dtype=torch.int64, device=device)
+    nit = torch.zeros(batch, dtype=torch.int64, device=device)
+    accepted_steps = torch.zeros(batch, n_blocks, dtype=torch.int64, device=device)
+    rejected_steps = torch.zeros_like(accepted_steps)
+    history = []
+
+    def block_pg_norm(grad):
+        pg = _projected_gradient(x, grad, lb, ub)
+        return torch.stack([pg.index_select(1, idx).abs().amax(dim=1) for idx in layout], dim=1)
+
+    pgn = block_pg_norm(g)
+    block_converged |= pgn <= gtol
+    block_active &= ~block_converged
+
+    for _ in range(int(maxiter)):
+        row_active = block_active.any(dim=1) & (nfev < max_nfev)
+        if not bool(row_active.any()):
+            break
+        # --- per-block step with in-iteration retries at a shrunk radius -----------------
+        # (the trust-region counterpart of a backtracking line search: a rejected
+        # block retries immediately with a smaller box instead of waiting an
+        # iteration, so evaluations per iteration are comparable with the SQP)
+        accept = torch.zeros(batch, n_blocks, dtype=torch.bool, device=device)
+        trial = x.clone()
+        pending = block_active.clone()
+        for _retry in range(int(tr_retries) + 1):
+            if not bool(pending.any()):
+                break
+            direction = torch.zeros_like(x)
+            predicted = torch.zeros(batch, n_blocks, dtype=dtype, device=device)
+            step_inf = torch.zeros_like(predicted)
+            for k, idx in enumerate(layout):
+                xb = x.index_select(1, idx)
+                gb = g.index_select(1, idx)
+                diag = torch.diagonal(models[k], dim1=1, dim2=2).clamp_min(1e-12)
+                scale = torch.rsqrt(diag)
+                scale = scale / scale.amax(dim=1, keepdim=True)
+                if tr_scale_floor > 0:
+                    scale = scale.clamp_min(float(tr_scale_floor))
+                half = radius[:, k : k + 1] * scale
+                lbb = torch.maximum(lb.index_select(0, idx)[None, :], xb - half)
+                ubb = torch.minimum(ub.index_select(0, idx)[None, :], xb + half)
+                active_k = pending[:, k]
+                d = _solve_box_qp(models[k], gb, xb, lbb, ubb, active_k)
+                pred = -(torch.sum(gb * d, dim=1) + 0.5 * torch.sum(d * torch.bmm(models[k], d[:, :, None]).squeeze(-1), dim=1))
+                bad = active_k & (~torch.isfinite(d).all(dim=1) | ~torch.isfinite(pred) | (pred <= 0))
+                if bool(bad.any()):
+                    eye = torch.eye(len(idx), dtype=dtype, device=device).expand(batch, len(idx), len(idx))
+                    models[k] = torch.where(bad[:, None, None], eye, models[k])
+                    d_retry = _solve_box_qp(eye, gb, xb, lbb, ubb, bad)
+                    d = torch.where(bad[:, None], d_retry, d)
+                    pred = -(torch.sum(gb * d, dim=1) + 0.5 * torch.sum(d * torch.bmm(models[k], d[:, :, None]).squeeze(-1), dim=1))
+                d = torch.where(active_k[:, None], d, torch.zeros_like(d))
+                direction[:, idx] = d
+                predicted[:, k] = torch.where(active_k, pred, torch.zeros_like(pred))
+                step_inf[:, k] = (d.abs() / scale).amax(dim=1)
+
+            candidate = torch.clamp(x + direction, lb, ub)
+            cols_trial = evaluator.column_values(candidate)
+            nfev += pending.any(dim=1).to(torch.int64)
+            f_trial = cols_trial @ M
+            actual = f_block - f_trial
+            rho = actual / torch.clamp(predicted, min=1e-300)
+            finite_trial = torch.isfinite(f_trial)
+            ok = pending & finite_trial & (predicted > 0) & (rho >= tr_accept)
+            # take accepted blocks' parameters into the trial point
+            ok_theta = torch.zeros_like(x, dtype=torch.bool)
+            for k, idx in enumerate(layout):
+                ok_theta[:, idx] = ok[:, k : k + 1]
+            trial = torch.where(ok_theta, candidate, trial)
+            # radius update on the ratio (Armijo-like acceptance keeps progress on a
+            # rough loss surface; the radius still shrinks on a poor ratio)
+            grow = ok & (rho >= tr_expand) & (step_inf >= 0.9 * radius)
+            poor = pending & ~ok
+            radius = torch.where(grow, torch.clamp(2.0 * radius, max=tr_max_radius), radius)
+            radius = torch.where(poor, torch.clamp(tr_shrink * torch.minimum(step_inf, radius), min=tr_min_radius), radius)
+            radius = torch.where(ok & (rho < 0.25), torch.clamp(tr_shrink * radius, min=tr_min_radius), radius)
+            accept |= ok
+            pending = poor & (radius > tr_min_radius)
+
+        # --- apply accepted blocks -----------------------------------------------------
+        accept_theta = torch.zeros_like(x, dtype=torch.bool)
+        for k, idx in enumerate(layout):
+            accept_theta[:, idx] = accept[:, k : k + 1]
+        old_x, old_g = x, g
+        x = torch.where(accept_theta, trial, x)
+        any_accepted = accept.any(dim=1)
+        if bool(any_accepted.any()):
+            cols_new, g_new = evaluator.column_value_grad(x)
+            nfev += any_accepted.to(torch.int64)
+            njev += any_accepted.to(torch.int64)
+            cols = torch.where(any_accepted[:, None], cols_new, cols)
+            g = torch.where(any_accepted[:, None], g_new, g)
+            f_new = cols @ M
+            rel = (f_block - f_new).abs() / torch.clamp(f_block.abs(), min=1.0)
+            stagnant = torch.where(accept & (rel <= ftol), stagnant + 1, torch.where(accept, torch.zeros_like(stagnant), stagnant))
+            f_block = f_new
+            # curvature update per accepted block
+            s_all = x - old_x
+            y_all = g - old_g
+            for k, idx in enumerate(layout):
+                models[k] = _damped_bfgs_update(
+                    models[k], s_all.index_select(1, idx), y_all.index_select(1, idx), accept[:, k]
+                )
+        accepted_steps += accept.to(torch.int64)
+        rejected_steps += (block_active & ~accept).to(torch.int64)
+        nit += row_active.to(torch.int64)
+
+        pgn = block_pg_norm(g)
+        block_converged |= block_active & accept & (pgn <= gtol)
+        block_collapsed |= block_active & (radius <= tr_min_radius)
+        stalled = block_active & (stagnant >= patience)
+        block_active &= ~(block_converged | block_collapsed | stalled)
+        history.append({
+            "f": f_block.sum(dim=1).detach().cpu().tolist(),
+            "accepted_blocks": accept.sum(dim=1).detach().cpu().tolist(),
+            "active_blocks": block_active.sum(dim=1).detach().cpu().tolist(),
+            "median_radius": radius.median(dim=1).values.detach().cpu().tolist(),
+            "min_radius": radius.amin(dim=1).detach().cpu().tolist(),
+            "max_block_pg": pgn.amax(dim=1).detach().cpu().tolist(),
+        })
+
+    f = f_block.sum(dim=1)
+    converged_all = block_converged.all(dim=1)
+    zeros = torch.zeros(batch, dtype=torch.int64, device=device)
+    return {
+        "x": x.detach(),
+        "fun": f.detach(),
+        "success": converged_all.detach(),
+        "nonfinite_failed": torch.zeros(batch, dtype=torch.bool, device=device),
+        "line_search_failed": (block_collapsed.all(dim=1) & ~converged_all).detach(),
+        "stalled": ((~block_active).all(dim=1) & ~converged_all & ~block_collapsed.all(dim=1)).detach(),
+        "nit": nit.detach(),
+        "nfev": nfev.detach(),
+        "njev": njev.detach(),
+        "hessian_resets": zeros.clone(),
+        "descent_fallbacks": zeros.clone(),
+        "restoration_uses": zeros.clone(),
+        "finite_candidates": zeros.clone(),
+        "last_alpha": radius.median(dim=1).values.detach(),
+        "curvature_block_sizes": [len(idx) for idx in layout],
+        "n_blocks": n_blocks,
+        "structure": structure_note,
+        "block_converged": block_converged.detach(),
+        "block_collapsed": block_collapsed.detach(),
+        "block_radius": radius.detach(),
+        "block_accepted_steps": accepted_steps.detach(),
+        "block_rejected_steps": rejected_steps.detach(),
+        "history": history,
+    }
+
+
 def solve_batched_multistart(
     objective,
     method,
@@ -916,14 +1263,25 @@ def solve_batched_multistart(
         if start_chunk.shape[0] < batch_size:
             padding = start_chunk[-1:].expand(batch_size - start_chunk.shape[0], -1)
             start_chunk = torch.cat([start_chunk, padding], dim=0)
-        solved = _solve_chunk(
-            evaluator,
-            start_chunk,
-            method,
-            lb_t,
-            ub_t,
-            **options,
-        )
+        if method == "batched-tr":
+            tr_keys = {
+                "maxiter", "gtol", "ftol", "patience", "max_nfev", "tr_blocks",
+                "tr_radius", "tr_max_radius", "tr_min_radius", "tr_accept",
+                "tr_expand", "tr_shrink", "tr_scale_floor", "tr_retries", "tr_validate",
+            }
+            tr_options = {k: v for k, v in options.items() if k in tr_keys}
+            solved = _solve_block_trust_region(
+                evaluator, start_chunk, lb_t, ub_t, **tr_options
+            )
+        else:
+            solved = _solve_chunk(
+                evaluator,
+                start_chunk,
+                method,
+                lb_t,
+                ub_t,
+                **options,
+            )
         keep = chunk_lengths[-1]
         for key in (
             "x",

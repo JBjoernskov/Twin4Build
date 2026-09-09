@@ -37,6 +37,22 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- New batched shooting solver method `("custom", "batched-tr", "ad")`: a
+  structure-aware trust-region step.  `FunctionalModel.index_coupling()`
+  derives independent parameter blocks and their residual columns from the
+  wiring (independent zones of a batched layout become separate blocks; a
+  fully coupled model is one block), the objective exposes per-column losses
+  (`batched_column_loss`, `batched_column_loss_and_grad`), and each block
+  minimises its own damped-BFGS model inside its own scaled trust box, is
+  accepted on the ratio of its own actual to predicted decrease, and grows or
+  shrinks its own radius.  A block on a rough loss surface (the exploding
+  per-zone gradients behind the batched SQP's line-search failures at 50 and
+  100 zones, issue #141) collapses its radius without stalling the others.
+  Options: `tr_blocks` (`"auto"`, `None`, or explicit index lists, merged to
+  unions of structure components), `tr_radius`, `tr_max_radius`,
+  `tr_min_radius`, `tr_accept`, `tr_expand`, `tr_shrink`, `tr_retries`,
+  `tr_scale_floor`, `tr_validate` (issue #142).
+
 - `Simulator(compile_step=...)`: the functional transform-mode step can be
   compiled with `torch.compile` (Inductor) before it is captured or run
   eagerly.  `"auto"` (default) enables it on CUDA when the torch build has

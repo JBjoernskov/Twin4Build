@@ -955,6 +955,7 @@ class Estimator:
             # objective as the SciPy backends, only the optimizer changes.
             ("casadi", "ipopt", "ad"),
             ("custom", "batched-sqp", "ad"),
+            ("custom", "batched-tr", "ad"),
             ("custom", "batched-bfgs", "ad"),
             ("custom", "batched-lm", "ad"),
             ("custom", "batched-newton", "ad"),

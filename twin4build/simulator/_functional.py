@@ -939,6 +939,133 @@ class FunctionalModel:
     def n_feedback(self) -> int:
         return self._n_feedback
 
+    # -- coupling structure ------------------------------------------------------
+    def index_coupling(self):
+        """Independent blocks of the estimation problem, from the wiring alone.
+
+        Nodes are ``(component id, batch index)``; two nodes are joined when a
+        connection routes one into the other (the exact ``_apply_routes``
+        semantics, applied to index vectors), when a feedback lag connects
+        them, or when they share a theta entry.  Theta entries and residual
+        columns attach to the nodes they belong to.  Connected components are
+        the blocks: a batched layout of independent zones yields one block per
+        zone; an air-handling unit feeding every zone joins them all; a fully
+        coupled model yields a single block, which is the unstructured case.
+
+        Returns ``(theta_block, column_block, n_blocks)``: ``theta_block[t]``
+        is the block id of theta entry ``t`` (every entry has one);
+        ``column_block[c]`` is the block id of residual column ``c`` or ``-1``
+        when no estimated parameter reaches it (exogenous / external columns).
+        """
+        parent: Dict[object, object] = {}
+
+        def find(a):
+            parent.setdefault(a, a)
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        def owners(producer, out_port, routes):
+            """(producer index or -1) per routed slot, via the real route code."""
+            n = self._component_n_c(producer)
+            width = max(1, int(self._output_width(producer, out_port)))
+            tags = torch.arange(1, n + 1, dtype=torch.float64)[:, None].expand(n, width)
+            mapped = self._apply_routes(tags, routes)
+            if mapped.ndim == 1:
+                mapped = mapped[:, None]
+            rows = mapped.reshape(mapped.shape[0], -1)
+            out = []
+            for row in rows:
+                out.append(sorted({int(v) - 1 for v in row.tolist() if v > 0}))
+            return out  # list over slots -> producer indices feeding that slot
+
+        # feedback vector layout: position -> (producer id, index) set
+        fb_owner: List[List[tuple]] = []
+        for sources in self._fb_producer:
+            merged: List[set] = []
+            for src in sources:
+                for slot, idxs in enumerate(owners(src[0], src[1], src[2])):
+                    while len(merged) <= slot:
+                        merged.append(set())
+                    merged[slot].update((src[0].id, i) for i in idxs)
+            fb_owner.extend([sorted(m) for m in merged])
+
+        def bind(consumer_id, spec):
+            if spec[0] == "fresh":
+                for src in spec[1]:
+                    for slot, idxs in enumerate(owners(src[0], src[1], src[2])):
+                        for i in idxs:
+                            union((consumer_id, slot), (src[0].id, i))
+            elif spec[0] == "feedback":
+                sl = spec[1]
+                for slot, pos in enumerate(range(sl.start, sl.stop)):
+                    if pos < len(fb_owner):
+                        for node in fb_owner[pos]:
+                            union((consumer_id, slot), node)
+            elif spec[0] == "mixed":
+                for part in spec[1]:
+                    bind(consumer_id, part)
+            elif spec[0] == "vector":
+                for part in spec[1]:
+                    bind(consumer_id, part)
+            # "exogenous": data, no coupling
+
+        for cid, ports in self.wiring.items():
+            for _port, spec in ports:
+                bind(cid, spec)
+
+        # theta entries: per-index slices attach entry start+i to index i; a
+        # single shared entry couples every index of the component.
+        n_theta = 0
+        for cid, attrs in self.theta_by_comp.items():
+            comp = next((c for c in self.cone if c.id == cid), None)
+            n_c = self._component_n_c(comp) if comp is not None else 1
+            for _attr, idx in attrs.items():
+                if isinstance(idx, slice):
+                    entries = list(range(idx.start, idx.stop))
+                    n_theta = max(n_theta, idx.stop)
+                    if len(entries) == n_c:
+                        for i, t in enumerate(entries):
+                            union(("theta", t), (cid, i))
+                    else:
+                        for t in entries:
+                            for i in range(n_c):
+                                union(("theta", t), (cid, i))
+                else:
+                    t = int(idx)
+                    n_theta = max(n_theta, t + 1)
+                    for i in range(n_c):
+                        union(("theta", t), (cid, i))
+
+        # residual columns
+        col_root: List[object] = [None] * self.n_meas
+        for src, sl in zip(self.meas_sources, self.meas_slices):
+            if src[0] == "fresh":
+                comp = next(c for c in self.cone if c.id == src[1])
+                for slot, idxs in enumerate(owners(comp, src[2], src[3])):
+                    c = sl.start + slot
+                    if c < self.n_meas:
+                        for i in idxs:
+                            union(("col", c), (comp.id, i))
+        roots = {}
+        theta_block = np.full(n_theta, -1, dtype=np.int64)
+        for t in range(n_theta):
+            r = find(("theta", t))
+            theta_block[t] = roots.setdefault(r, len(roots))
+        column_block = np.full(self.n_meas, -1, dtype=np.int64)
+        for c in range(self.n_meas):
+            if ("col", c) in parent:
+                r = find(("col", c))
+                if r in roots:
+                    column_block[c] = roots[r]
+        return theta_block, column_block, len(roots)
+
     @property
     def compiled_batched_step(self):
         """``vmap`` of the transform-mode ``F_aug`` over a batch, compiled.
