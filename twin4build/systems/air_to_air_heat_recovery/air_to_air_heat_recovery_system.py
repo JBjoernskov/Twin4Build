@@ -296,10 +296,16 @@ class AirToAirHeatRecoverySystem(core.System):
         C_exh = secondary_flow * constants.CP_AIR
         C_min = torch.min(C_sup, C_exh)
 
+        # Zero flow on either side (dampers closed, unit off) is a normal
+        # state handled by ``has_flow`` above; the capacity ratios are
+        # clamped so the (discarded) heat-recovery branch stays finite.
+        C_sup_safe = torch.clamp(C_sup, min=1e-9 * constants.CP_AIR)
+        C_exh_safe = torch.clamp(C_exh, min=1e-9 * constants.CP_AIR)
+
         # Calculate primary temperature out with heat recovery
         primary_temp_out_hr = primary_temp_in + eps_op * (
             secondary_temp_in - primary_temp_in
-        ) * (C_min / C_sup)
+        ) * (C_min / C_sup_safe)
 
         # Clamp to setpoint based on operation mode
         # In heating mode: clamp if output > setpoint
@@ -318,7 +324,7 @@ class AirToAirHeatRecoverySystem(core.System):
 
         # Calculate secondary temperature out using energy conservation
         primary_delta_T = primary_temp_out_hr - primary_temp_in
-        secondary_delta_T = primary_delta_T * (C_sup / C_exh)
+        secondary_delta_T = primary_delta_T * (C_sup / C_exh_safe)
         secondary_temp_out_hr = secondary_temp_in - secondary_delta_T
 
         # Select final outputs: heat recovery values if conditions met, else pass-through
