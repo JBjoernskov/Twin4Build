@@ -39,6 +39,9 @@ EXPECTED_COMPONENTS = [
     "office_space_heater",
     "office_space_heater_valve",
     "office_supply_damper",
+    # Consumer-less schedule matched from the spreadsheet; kept since the
+    # translator retains stand-alone (input-free) components.
+    "office_temperature_cooling_system_setpoint",
     "office_temperature_heating_controller",
     "office_temperature_heating_setpoint",
     "office_temperature_sensor",
