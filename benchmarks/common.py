@@ -162,6 +162,8 @@ RESULTS_TAG_ENV = "T4B_BENCHMARK_RESULTS_TAG"
 def _tagged(benchmark: str) -> str:
     tag = os.environ.get(RESULTS_TAG_ENV, "").strip()
     return f"{benchmark}_{tag}" if tag else benchmark
+BATCHED_TR_RADIUS = 0.25
+
 ESTIMATION_METHODS = {
     "slsqp-single-shooting": ("scipy", "SLSQP", "ad"),
     "ipopt-collocation": ("casadi", "ipopt", "ad", "collocation"),
@@ -1957,6 +1959,11 @@ def _run_estimation(
                 [zone + group * n_zones for group in range(CANONICAL_THETA_PER_ZONE)]
                 for zone in range(n_zones)
             ]
+        elif method[1] == "batched-tr":
+            # Validated configuration (issue #142, 10 zones: noise-floor RMSE in
+            # a single smooth stage): initial scaled radius a quarter of the
+            # normalized range.  Blocks come from the wiring (tr_blocks="auto").
+            options["tr_radius"] = BATCHED_TR_RADIUS
     result, seconds = timed(
         device,
         lambda: estimator.estimate(
@@ -2080,6 +2087,8 @@ def _estimation_case_base(
         budget_basis = (
             "run to native convergence with maxiter=300; fixed across scaling sizes"
         )
+        if solver == "custom-batched-tr":
+            budget_basis += f"; single smooth stage, tr_radius={BATCHED_TR_RADIUS}"
     elif solver == "slsqp5-ipopt-collocation":
         solver_variant = "slsqp5-then-collocation"
         budget_basis = (
