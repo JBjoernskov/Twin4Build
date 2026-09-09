@@ -2912,6 +2912,13 @@ class SimulationModel:
                 outgoing_count = len(c_from.connected_through)
                 return preserves_batched_order, outgoing_count
 
+            # Deterministic base order before the (stable) priority sort: the
+            # candidate order otherwise follows the cycle enumeration over a
+            # set-based graph, i.e. Python's hash seed, and a hash-dependent
+            # cut moves the Gauss-Seidel one-step lag onto a different signal
+            # between two processes -- a different discrete-time model, with
+            # measurably different trajectories.
+            best_edges.sort(key=lambda edge: (edge[0].id, edge[1].id))
             best_edges.sort(key=edge_priority, reverse=True)
 
         LOGGER.info(
