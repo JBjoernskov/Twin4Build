@@ -222,6 +222,24 @@ class FunctionalEstimationObjective:
         """
         theta_phys = self._denorm(theta)
         Ms = self._rollout_meas(theta_phys, transform_mode=transform_mode)
+        return self._raw_residuals_from_meas(Ms)
+
+    def _rollout_meas_batched(self, theta_phys_batch: torch.Tensor):
+        """Batched counterpart of :meth:`_rollout_meas`: list of ``(B, n_t, n_meas)``."""
+        sim = self.est.simulator
+        B = theta_phys_batch.shape[0]
+        return [
+            sim.rollout_functional_batched(
+                self.composer,
+                self.Y0[p].unsqueeze(0).expand(B, -1),
+                theta_phys_batch,
+                self.CAP[p],
+            )
+            for p in range(len(self.n_t))
+        ]
+
+    def _raw_residuals_from_meas(self, Ms) -> torch.Tensor:
+        """Pure post-processing of rolled-out measurements (one sample; ``vmap``-able)."""
         nw = self.est._n_warmup
         raw_terms = []
         for p, M in enumerate(Ms):
@@ -249,12 +267,20 @@ class FunctionalEstimationObjective:
         residual = self.residual_vector(theta, transform_mode=transform_mode)
         return torch.sum(residual.square())
 
+    def _loss_from_meas(self, Ms) -> torch.Tensor:
+        raw = self._raw_residuals_from_meas(Ms)
+        residual = (raw / self._sd / torch.sqrt(self.loss_scale * self._denom)).reshape(-1)
+        return torch.sum(residual.square())
+
     def batched_loss(self, theta_batch: torch.Tensor) -> torch.Tensor:
         if theta_batch.device.type == "cpu":
             return torch.stack([self.loss(th) for th in theta_batch])
-        return torch.func.vmap(lambda th: self.loss(th, transform_mode=True))(
-            theta_batch
-        )
+        if theta_batch.shape[0] == 1:
+            return self.loss(theta_batch[0], transform_mode=True).unsqueeze(0)
+        # Batched rollout (compiled batched step where available), then the
+        # pure residual post-processing vmap-ed over the batch dimension.
+        Ms = self._rollout_meas_batched(self._denorm(theta_batch))
+        return torch.func.vmap(self._loss_from_meas)(Ms)
 
     def batched_value_and_grad(
         self, theta_batch: torch.Tensor
@@ -271,12 +297,7 @@ class FunctionalEstimationObjective:
         # rollout (no parameter cache) keeps the captured graph free of
         # Python-side state.
         z = theta_batch.detach().clone().requires_grad_(True)
-        if theta_batch.device.type == "cpu":
-            value = torch.stack([self.loss(th) for th in z])
-        elif z.shape[0] == 1:
-            value = self.loss(z[0], transform_mode=True).unsqueeze(0)
-        else:
-            value = torch.func.vmap(lambda th: self.loss(th, transform_mode=True))(z)
+        value = self.batched_loss(z)
         (grad,) = torch.autograd.grad(value.sum(), z)
         return value.detach(), grad.detach()
 

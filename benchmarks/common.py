@@ -146,6 +146,17 @@ ESTIMATION_CPU_MAX_ZONES = 10
 # run_estimation_scaling: no row is written for them, so a later run without
 # the variable picks them up from the checkpoint as still-queued cases.
 ESTIMATION_DEFER_SOLVERS_ENV = "T4B_BENCHMARK_DEFER_SOLVERS"
+# Same for devices (e.g. ``cpu``): no row is written, the case stays queued.
+ESTIMATION_DEFER_DEVICES_ENV = "T4B_BENCHMARK_DEFER_DEVICES"
+# A tag appended to every checkpoint / results file name, so a run under a
+# different configuration (another machine, the compiled functional step)
+# keeps its own checkpoint instead of resuming from rows measured elsewhere.
+RESULTS_TAG_ENV = "T4B_BENCHMARK_RESULTS_TAG"
+
+
+def _tagged(benchmark: str) -> str:
+    tag = os.environ.get(RESULTS_TAG_ENV, "").strip()
+    return f"{benchmark}_{tag}" if tag else benchmark
 ESTIMATION_METHODS = {
     "slsqp-single-shooting": ("scipy", "SLSQP", "ad"),
     "ipopt-collocation": ("casadi", "ipopt", "ad", "collocation"),
@@ -612,7 +623,7 @@ def serialize_results(
     git_ref: str | None = None,
 ) -> Path:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    path = RESULTS_DIR / f"{benchmark}_{dt.datetime.now():%Y%m%d_%H%M%S}.json"
+    path = RESULTS_DIR / f"{_tagged(benchmark)}_{dt.datetime.now():%Y%m%d_%H%M%S}.json"
     payload = {
         "schema_version": 3,
         "benchmark": benchmark,
@@ -633,7 +644,7 @@ def checkpoint_results(
     """Atomically retain all completed rows after every benchmark case."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     suffix = "in_progress" if config.mode == "full" else "smoke_in_progress"
-    path = RESULTS_DIR / f"{benchmark}_{suffix}.json"
+    path = RESULTS_DIR / f"{_tagged(benchmark)}_{suffix}.json"
     temporary = path.with_suffix(".tmp")
     payload = {
         "schema_version": 3,
@@ -651,7 +662,7 @@ def checkpoint_results(
 def resume_simulation_rows(config: BenchmarkConfig) -> list[dict[str, Any]]:
     """Load only rows matching the current benchmark horizon and schema."""
     suffix = "in_progress" if config.mode == "full" else "smoke_in_progress"
-    path = RESULTS_DIR / f"simulation_scaling_{suffix}.json"
+    path = RESULTS_DIR / f"{_tagged('simulation_scaling')}_{suffix}.json"
     if not path.exists():
         return []
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -687,7 +698,7 @@ def resume_simulation_rows(config: BenchmarkConfig) -> list[dict[str, Any]]:
 def resume_estimation_rows(config: BenchmarkConfig) -> list[dict[str, Any]]:
     """Load matching estimation attempts, including failed audit rows."""
     suffix = "in_progress" if config.mode == "full" else "smoke_in_progress"
-    path = RESULTS_DIR / f"estimation_scaling_{suffix}.json"
+    path = RESULTS_DIR / f"{_tagged('estimation_scaling')}_{suffix}.json"
     if not path.exists():
         return []
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -2079,6 +2090,12 @@ def _estimation_case_base(
         "model_layout": "batched",
         "execution_mode": "functional",
         "execution_backend": "cuda_graph" if device == "cuda" else "eager",
+        # Simulator(compile_step="auto") compiles the functional step where the
+        # torch build has Triton (Linux wheels); rows from such runs are not
+        # comparable with eager-step rows, so record which one this is.
+        "step_compiled": bool(
+            tb.Simulator(None, execution_mode="functional").step_compilation_active(device)
+        ),
         "solver": solver,
         "solver_variant": solver_variant,
         "n_starts": n_starts,
@@ -2284,9 +2301,16 @@ def run_estimation_scaling(config: BenchmarkConfig) -> list[dict[str, Any]]:
     }
     if deferred:
         print(f"[estimation_scaling] deferring solvers: {sorted(deferred)}", flush=True)
+    deferred_devices = {
+        name.strip()
+        for name in os.environ.get(ESTIMATION_DEFER_DEVICES_ENV, "").split(",")
+        if name.strip()
+    }
+    if deferred_devices:
+        print(f"[estimation_scaling] deferring devices: {sorted(deferred_devices)}", flush=True)
     for n_zones in config.zone_counts:
         for device, solver, n_starts in ESTIMATION_MATRIX:
-            if solver in deferred:
+            if solver in deferred or device in deferred_devices:
                 continue
             base = _estimation_case_base(
                 config, n_zones, device, solver, n_starts

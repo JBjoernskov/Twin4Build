@@ -408,8 +408,18 @@ class System:
         )
 
     def state_size(self) -> int:
-        """Total continuous-state width ``D`` (sum of owned state widths)."""
-        return sum(int(s.n_v) for s in self.collect_states())
+        """Total continuous-state width ``D`` (sum of owned state widths).
+
+        Cached after the first call: state markers are declared at
+        construction, and ``collect_states`` walks ``vars(self)``, which a
+        compiled forward (``torch.compile`` of the functional step) cannot
+        trace.  Forwards that need the width every step read the cached int.
+        """
+        cached = self.__dict__.get("_state_size_cache")
+        if cached is None:
+            cached = sum(int(s.n_v) for s in self.collect_states())
+            self.__dict__["_state_size_cache"] = cached
+        return cached
 
     def get_state(self) -> torch.Tensor:
         """Current continuous state, ``(n_s, n_c, D)``, differentiable.

@@ -12,6 +12,39 @@ import twin4build.utils.types as tps
 from twin4build import core
 
 
+def _small_matmul(a, b):
+    """``a @ b`` for tiny matrices as broadcast multiply + sum.
+
+    Under ``torch.compile`` a ``bmm``/``baddbmm`` on a 3x3 stays a separate
+    cuBLAS call; written as pointwise-multiply + reduction Inductor fuses it
+    with the surrounding arithmetic into one Triton kernel.  Only used while
+    Dynamo is tracing (see :func:`_expm_ss`); eager code keeps cuBLAS, which
+    is faster when nothing fuses.
+    """
+    return (a.unsqueeze(-1) * b.unsqueeze(-3)).sum(-2)
+
+
+def _expm_ss_fused(M, order=8, squarings=18):
+    """:func:`_expm_ss` with every product written for kernel fusion.
+
+    Same schedule and arithmetic as :func:`_expm_ss` (Horner-form Taylor
+    part tracking ``exp(Ms) - I``, then ``squarings`` doublings); differs only
+    in expressing the products through :func:`_small_matmul`.  Selected
+    automatically inside :func:`_expm_ss` while ``torch.compile`` traces the
+    functional step; exposed for tests.
+    """
+    N = M.shape[-1]
+    Ms = M / (2.0**squarings)
+    I = torch.eye(N, dtype=M.dtype, device=M.device)
+    q = I.expand_as(Ms)
+    for k in range(order, 1, -1):
+        q = I + _small_matmul(Ms, q) / k
+    delta = _small_matmul(Ms, q)
+    for _ in range(squarings):
+        delta = 2.0 * delta + _small_matmul(delta, delta)
+    return I + delta
+
+
 def _expm_ss(M, order=8, squarings=18):
     """Matrix exponential via scaling-and-squaring + a Taylor series.
 
@@ -37,20 +70,36 @@ def _expm_ss(M, order=8, squarings=18):
     SLSQP solution.)  Extra squarings of an O(1) stable matrix cost a few small
     matmuls and only *improve* accuracy for well-scaled matrices.
     """
+    if torch.compiler.is_compiling():
+        # Inductor: pointwise products fuse; cuBLAS calls would not.  The
+        # exponential's ~25 products per call were 79 % of the kernels left
+        # in a compiled rollout step (issue #134).
+        return _expm_ss_fused(M, order=order, squarings=squarings)
     N = M.shape[-1]
+    lead = M.shape[:-2]
+    # Work on a (batch, N, N) view so every step is ONE fused ``baddbmm``
+    # kernel.  Written as separate mul / matmul / add ops this routine cost
+    # ~100 tiny kernels per call, and it runs once per state-space component
+    # per rollout step: on the captured shooting graph it was ~2/3 of all
+    # nodes (issue #134).  ``baddbmm`` has vmap, forward-AD and reverse-AD
+    # rules, so the collocation ``vmap`` path and ``jacfwd``/``hessian`` keep
+    # working.
+    Ms = (M / (2.0**squarings)).reshape(-1, N, N)
     I = torch.eye(N, dtype=M.dtype, device=M.device)
-    Ms = M / (2.0**squarings)
-    term = I
-    # Track exp(Ms) - I so the small non-identity part is not repeatedly
-    # rounded against one when fixed overscaling makes Ms tiny.  If
-    # exp(A) = I + D, then exp(2A) - I = 2D + D@D.
-    delta = torch.zeros_like(M)
-    for k in range(1, order + 1):
-        term = term @ Ms / k  # (N,N) broadcasts against any leading batch dims
-        delta = delta + term
+    I_b = I.expand(Ms.shape[0], N, N)
+    # Truncated Taylor series in Horner form:
+    #   exp(Ms) - I = Ms @ q,   q = I + Ms/2 @ (I + Ms/3 @ (... (I + Ms/order)))
+    # Tracking ``delta = exp(Ms) - I`` keeps the small non-identity part at
+    # full relative precision instead of rounding it against one; the fixed
+    # overscaling makes ``Ms`` tiny, so this matters through the squarings.
+    q = I_b
+    for k in range(order, 1, -1):
+        q = torch.baddbmm(I, Ms, q, alpha=1.0 / k)  # I + Ms @ q / k
+    delta = torch.bmm(Ms, q)
+    # If exp(A) = I + D, then exp(2A) - I = 2D + D@D  (one fused kernel each).
     for _ in range(squarings):
-        delta = 2.0 * delta + delta @ delta
-    return I + delta
+        delta = torch.baddbmm(delta, delta, delta, beta=2.0)
+    return (I + delta).reshape(*lead, N, N)
 
 
 def _functorch_active() -> bool:
