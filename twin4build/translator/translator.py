@@ -2450,6 +2450,28 @@ class Translator:
         LOGGER.ok("Connecting components", change_status=True)
 
     @staticmethod
+    def _binding_compatible(bound: Any, sm_node: Any) -> bool:
+        """``sm_node`` may extend a map whose slot is unbound, bound to the
+        same node, or set-bound to a tuple containing it."""
+        if bound is None:
+            return True
+        if isinstance(bound, tuple):
+            return sm_node in bound or bound == sm_node
+        return bound == sm_node
+
+    @staticmethod
+    def _cached_descendants_consistent(
+        current_map: Dict[Node, Any], cached: Dict[Node, Any]
+    ) -> bool:
+        """True iff ``cached`` agrees with ``current_map`` on every node the
+        latter has already bound (see the descendant-cache back-fill)."""
+        for sp_n, sm_n in cached.items():
+            bound = current_map.get(sp_n)
+            if bound is not None and bound != sm_n:
+                return False
+        return True
+
+    @staticmethod
     def _copy_nodemap(nodemap: Dict[Node, Any]) -> Dict[Node, Any]:
         return {k: v for k, v in nodemap.items()}
 
@@ -2855,6 +2877,32 @@ class Translator:
         LOGGER.debug("Entering prune_recursive (bidirectional)")
         LOGGER.add_level()
         LOGGER.debug(lambda: Translator._get_node_string(sp_subject, sm_subject))
+        _diag_walker = _match_diag_enabled(signature_pattern)
+
+        # Binding-consistency guard.  A candidate map that already binds
+        # ``sp_subject`` to a *different* SM node cannot be extended through
+        # this SM node: the walker would otherwise carry the descendants of
+        # a sibling match back up through a shared hub (one AHU feeding
+        # several rooms) and, when the hub level re-assigns ``sp_subject``,
+        # leave those foreign descendants in the map -- e.g. room R01
+        # ending up with room R02's ``brick:volume`` literal.
+        consistent_maps = [
+            m
+            for m in candidate_maps
+            if Translator._binding_compatible(m.get(sp_subject), sm_subject)
+        ]
+        if candidate_maps and not consistent_maps:
+            if _diag_walker:
+                _match_diag_write(
+                    f"[WALKER]   PRUNE reason=binding-conflict "
+                    f"pattern={signature_pattern.id} "
+                    f"sp_subject={sp_subject.id} "
+                    f"sm_subject={_diag_sm_name(sm_subject)}"
+                )
+            LOGGER.debug("Pruned (binding conflict)")
+            LOGGER.remove_level()
+            return candidate_maps, feasible, comparison_table, True
+        candidate_maps = consistent_maps
 
         feasible.setdefault(sp_subject, set()).add(sm_subject)
         comparison_table.setdefault(sp_subject, set()).add(sm_subject)
@@ -2960,6 +3008,40 @@ class Translator:
                     sm_neighbors = [
                         x for x in sm_neighbors if not (x in seen or seen.add(x))
                     ]
+
+                    if isinstance(rule, NoStepRule):
+                        # Stand-alone veto: the branch survives iff *no*
+                        # adjacent SM node under the predicate is of the
+                        # forbidden class (an absent predicate trivially
+                        # satisfies the veto).  Nothing is bound.  Before
+                        # this special case the generic "no pair matched /
+                        # missing predicate" pruning below killed every
+                        # branch carrying a stand-alone ``NoStepRule``, so
+                        # the veto only ever worked inside the ``&``
+                        # composite with a positive rule.
+                        far_node = direction.far(rule)
+                        forbidden = [
+                            x for x in sm_neighbors if x.isinstance(far_node.cls)
+                        ]
+                        if forbidden:
+                            feasible[sp_subject].discard(sm_subject)
+                            LOGGER.debug(
+                                "Pruned (NoStepRule veto) [%s]: %s",
+                                direction.name,
+                                Translator._binding_short_name(forbidden[0]),
+                            )
+                            if _diag_walker:
+                                _match_diag_write(
+                                    f"[WALKER]   PRUNE dir={direction.name} "
+                                    f"reason=veto "
+                                    f"pattern={signature_pattern.id} "
+                                    f"sp_subject={sp_subject.id} "
+                                    f"sp_neighbor={sp_neighbor.id} "
+                                    f"sm_subject={_diag_sm_name(sm_subject)}"
+                                )
+                            LOGGER.remove_level()
+                            return candidate_maps, feasible, comparison_table, True
+                        continue
 
                     if sm_neighbors:
                         rule_pairs, _, _, ruleset = rule.apply(
@@ -3082,9 +3164,19 @@ class Translator:
                                 )
                                 for m in maps_for_pair:
                                     m[matched_sp_object] = matched_sm_object
-                                    for sp_n, sm_n in cached.items():
-                                        if m.get(sp_n) is None:
-                                            m[sp_n] = sm_n
+                                    # Cached descendants were derived under
+                                    # the bindings of an earlier branch;
+                                    # only back-fill when they agree with
+                                    # every node this branch has already
+                                    # bound.  Without the check a hub node
+                                    # (e.g. one AHU feeding many rooms)
+                                    # leaks one room's downstream literals
+                                    # (``brick:volume`` value, ...) into
+                                    # the maps of its siblings.
+                                    if Translator._cached_descendants_consistent(m, cached):
+                                        for sp_n, sm_n in cached.items():
+                                            if m.get(sp_n) is None:
+                                                m[sp_n] = sm_n
                                 valid_maps.extend(maps_for_pair)
                                 match_found = True
 
@@ -3398,9 +3490,11 @@ class Translator:
                             )
                             for m in maps_for_pair:
                                 m[matched_sp_object] = matched_sm_object
-                                for sp_n, sm_n in cached.items():
-                                    if m.get(sp_n) is None:
-                                        m[sp_n] = sm_n
+                                # See the matching guard in __prune_recursive.
+                                if Translator._cached_descendants_consistent(m, cached):
+                                    for sp_n, sm_n in cached.items():
+                                        if m.get(sp_n) is None:
+                                            m[sp_n] = sm_n
                             valid_maps.extend(maps_for_pair)
                             match_found = True
 
