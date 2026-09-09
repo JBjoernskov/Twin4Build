@@ -91,8 +91,11 @@ def test_canonical_matrices_and_scaling_sizes():
         ("cuda", "slsqp-single-shooting", 1),
         ("cuda", "custom-batched-sqp", 1),
         ("cuda", "custom-batched-sqp", 8),
+        ("cuda", "custom-batched-tr", 1),
+        ("cuda", "custom-batched-tr", 8),
         ("cuda", "ipopt-collocation", 1),
     }
+    assert common.ESTIMATION_METHODS["custom-batched-tr"] == ("custom", "batched-tr", "ad")
     assert common.ESTIMATION_CPU_MAX_ZONES == 10
     assert common.ESTIMATION_SOLVER_BUDGET == 300
     assert common.BenchmarkConfig(mode="full").estimation_repeats == 1

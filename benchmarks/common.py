@@ -133,6 +133,11 @@ ESTIMATION_MATRIX = [
     ("cuda", "slsqp-single-shooting", 1),
     ("cuda", "custom-batched-sqp", 1),
     ("cuda", "custom-batched-sqp", 8),
+    # Block trust region (issue #142): same starts, per-zone blocks from the
+    # model structure, per-block acceptance/radius; kept alongside the batched
+    # SQP rows so its line-search failures at 50/100 zones stay as the reference.
+    ("cuda", "custom-batched-tr", 1),
+    ("cuda", "custom-batched-tr", 8),
     ("cuda", "ipopt-collocation", 1),
     # "slsqp5-ipopt-collocation" (5 SLSQP iterations, then collocation) was
     # dropped from the matrix: it was a workaround for the +/-6 boundary-state
@@ -162,6 +167,7 @@ ESTIMATION_METHODS = {
     "ipopt-collocation": ("casadi", "ipopt", "ad", "collocation"),
     "slsqp5-ipopt-collocation": ("staged", "slsqp5-ipopt-collocation", "ad"),
     "custom-batched-sqp": ("custom", "batched-sqp", "ad"),
+    "custom-batched-tr": ("custom", "batched-tr", "ad"),
 }
 COLLOCATION_SOLVERS = frozenset(
     {"ipopt-collocation", "slsqp5-ipopt-collocation"}
@@ -2069,7 +2075,7 @@ def _estimation_case_base(
         if solver in COLLOCATION_SOLVERS
         else {}
     )
-    if solver == "custom-batched-sqp":
+    if solver in ("custom-batched-sqp", "custom-batched-tr"):
         solver_variant = f"{n_starts}-start"
         budget_basis = (
             "run to native convergence with maxiter=300; fixed across scaling sizes"
