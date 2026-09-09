@@ -460,49 +460,128 @@ def saref_signature_pattern():
     return sp
 
 
-def brick_signature_pattern():  # Fits to site A
-    """
-    Get the BRICK-only signature pattern of the building space component.
+_BRICK_SPACE_CLASSES = (
+    core.namespace.BRICK.Room,
+    core.namespace.BRICK.Enclosed_space,
+    core.namespace.BRICK.Open_space,
+    core.namespace.BRICK.HVAC_Zone,
+    # Brick 1.4 deprecates its location classes in favour of
+    # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+    # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+    core.namespace.REC.Room,
+    core.namespace.REC.Zone,
+    core.namespace.BOT.Space,
+)
 
-    Returns:
-        SignaturePattern: The BRICK-only signature pattern of the building space component.
-    """
+_SOLAR_SENSOR_CLASSES = (
+    # ``Global_Solar_Irradiation_Sensor`` is not a Brick class (it survives
+    # for graphs that extend Brick with it); ``Solar_Irradiance_Sensor`` is
+    # the Brick 1.4 class (W/m2).
+    core.namespace.BRICK.Global_Solar_Irradiation_Sensor,
+    core.namespace.BRICK.Solar_Irradiance_Sensor,
+)
 
-    ahu = Node(cls=core.namespace.BRICK.AHU)
-    # node1 = Node(cls=core.namespace.BRICK.Damper)
-    # node2 = Node(cls=core.namespace.BRICK.Zone)  # Compatibility with both site A and B (A uses Zone and B uses HVAC_Zone)
-    space = Node(
+_REHEAT_PART_CLASSES = (
+    core.namespace.BRICK.Heating_Coil,
+    core.namespace.BRICK.Cooling_Coil,
+    core.namespace.BRICK.Reheat_Valve,
+)
+_REHEAT_POINT_CLASSES = (
+    core.namespace.BRICK.Reheat_Command,
+    core.namespace.BRICK.Heating_Command,
+    core.namespace.BRICK.Valve_Command,
+)
+
+
+def _add_brick_volume_parameter(sp, space):
+    """Bind the room volume ``space brick:volume [ brick:value x ]`` to ``mass.V``.
+
+    The chain is *required* and the value holder is a modeled node: with an
+    ``OptionalRule`` chain the translator's disconnected-merge step treats
+    the free literal as a shared resource and copies one room's volume into
+    every other room (the same failure mode documented for the sensor
+    ``externalref`` chains).  Every Brick space pattern is therefore
+    registered twice -- with and without this chain -- and the MILP prefers
+    the with-volume variant (one more modeled node) whenever the graph
+    carries the geometry.
+    """
+    volume_node = Node(cls=(core.BlankNode,))
+    volume_value = Node(
         cls=(
-            core.namespace.BRICK.Room,
-            core.namespace.BRICK.Enclosed_space,
-            core.namespace.BRICK.Open_space,
-            core.namespace.BRICK.HVAC_Zone,
-            core.namespace.BOT.Space,
+            core.namespace.XSD.float,
+            core.namespace.XSD.double,
+            core.namespace.XSD.decimal,
+            core.namespace.XSD.integer,
         )
-    )  # TODO: '_space' should be '_Office', but the site b ttl file has a bug
-    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    )
+    sp.add_rule(StepRule(subject=space, object=volume_node, predicate=core.namespace.BRICK.volume))
+    sp.add_rule(StepRule(subject=volume_node, object=volume_value, predicate=core.namespace.BRICK.value))
+    sp.add_parameter("mass.V", volume_value)
+    sp.add_modeled_node(volume_node)
+
+
+def _brick_space_pattern(topology: str, with_volume: bool):
+    """Factory for the Brick building-space patterns.
+
+    ``topology``:
+
+    * ``"vav_no_reheat"`` -- ``AHU feeds VAV feeds Room`` where the VAV is a
+      plain damper box (no coil part, no reheat / heating / valve command
+      point): the room receives ``AHU.supplyAirTemperature``.
+    * ``"vav"`` -- ``AHU feeds VAV feeds Room`` with reheat: the room receives
+      ``VAV.outletAirTemperature`` from a :class:`FanCoilUnitSystem`.
+    * ``"direct"`` -- AHU feeds the room through any path *not* via a VAV
+      (Mortar site A style): the room receives ``AHU.supplyAirTemperature``.
+
+    All variants share the ``space`` modeled node, so the MILP keeps one per
+    room; ``with_volume`` adds the ``brick:volume`` parameter chain (see
+    :func:`_add_brick_volume_parameter`).
+    """
+    ahu = Node(cls=core.namespace.BRICK.AHU)
+    vav = Node(cls=core.namespace.BRICK.VAV)
+    space = Node(cls=_BRICK_SPACE_CLASSES)
+    solar_radiance_sensor = Node(cls=_SOLAR_SENSOR_CLASSES)
     outside_air_temperature_sensor = Node(
         cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
     )
-
-    vav = Node(cls=core.namespace.BRICK.VAV)
-
     feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
 
+    suffix = "_with_volume" if with_volume else ""
     sp = SignaturePattern(
-        id="building_space_signature_pattern_brick",
+        id=f"building_space_signature_pattern_brick_{topology}{suffix}"
     )
+    sp.add_node(solar_radiance_sensor, optional=True)  # not always present
+    sp.add_node(outside_air_temperature_sensor, optional=True)  # not always present
 
-    sp.add_node(solar_radiance_sensor, optional=True) # Optional because it is not always present
-    sp.add_node(outside_air_temperature_sensor, optional=True) # Optional because it is not always present
-
-    sp.add_rule(
-        AnyPathRule(
-            subject=ahu, object=space, predicate=feeds, endpoints_only=True
-        ) & NoStepRule(subject=ahu, object=vav, predicate=feeds)
-    )
-
-
+    if topology == "direct":
+        sp.add_rule(
+            AnyPathRule(subject=ahu, object=space, predicate=feeds, endpoints_only=True)
+            & NoStepRule(subject=ahu, object=vav, predicate=feeds)
+        )
+        sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
+    else:
+        sp.add_rule(StepRule(subject=ahu, object=vav, predicate=feeds))
+        sp.add_rule(StepRule(subject=vav, object=space, predicate=feeds))
+        if topology == "vav_no_reheat":
+            sp.add_rule(
+                NoStepRule(
+                    subject=vav,
+                    object=Node(cls=_REHEAT_PART_CLASSES),
+                    predicate=core.namespace.BRICK.hasPart,
+                )
+            )
+            sp.add_rule(
+                NoStepRule(
+                    subject=vav,
+                    object=Node(cls=_REHEAT_POINT_CLASSES),
+                    predicate=core.namespace.BRICK.hasPoint,
+                )
+            )
+            sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
+        elif topology == "vav":
+            sp.add_connection(vav, "outletAirTemperature", "supplyAirTemperature")
+        else:
+            raise ValueError(topology)
 
     sp.add_connection(
         ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space
@@ -510,105 +589,37 @@ def brick_signature_pattern():  # Fits to site A
     sp.add_connection(
         ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space
     )
-    # # sp.add_input("numberOfPeople", node5, "measuredValue")
+    sp.add_connection(solar_radiance_sensor, "globalIrradiation", "globalIrradiation")
     sp.add_connection(
         outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"
     )
-    sp.add_connection(
-        solar_radiance_sensor, "globalIrradiation", "globalIrradiation"
-    )
-    sp.add_connection(ahu, "supplyAirTemperature", "supplyAirTemperature")
-
+    if with_volume:
+        _add_brick_volume_parameter(sp, space)
     # Interzonal/boundary coupling is modeled by a separate WallSystem
     # (wired manually, or via a future wall/adjacency signature pattern).
     sp.add_modeled_node(space)
-
-    # sp_eq = SignaturePattern(
-    #     id="building_space_signature_pattern_brick_eq",
-    # )
-
-    #######################
-
-    # sp_eq.add_rule(
-    #     StepRule(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
-    # )
-    # sp_eq.add_rule(
-    #     StepRule(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
-    # )
-
-    # # TODO: How to handle inverse predicates?
-    # diff = core.Diff()
-    # diff.remove(node0, core.namespace.BRICK.feeds, node2)
-    # diff.remove(node2, core.namespace.BRICK.isFedBy, node0)
-    # diff.add(node2, core.namespace.BRICK.hasPart, node3)
-
-    # sp.add_equivalent(sp_eq, diff)
-
     return sp
 
 
-def brick_signature_pattern_vav():
-    """
-    BRICK signature pattern for a building space served by an AHU via a VAV/FCU.
-
-    Mirrors physical reality: AHU → VAV/FCU (adds reheat) → Room.
-    The supply air temperature entering the room comes from the FCU outlet,
-    not directly from the AHU.
-
-    Topology::
-
-        AHU  feeds  VAV  feeds  Room
-
-    Connections:
-        AHU.supplyAirFlowRate  → BuildingSpace.supplyAirFlowRate
-        AHU.exhaustAirFlowRate → BuildingSpace.exhaustAirFlowRate
-        VAV.outletAirTemperature → BuildingSpace.supplyAirTemperature
-
-    The MILP solver will prefer this pattern over the direct AHU pattern when
-    a VAV is present between the AHU and the room, because it covers more nodes.
-    """
-    ahu = Node(cls=core.namespace.BRICK.AHU)
-    vav = Node(cls=core.namespace.BRICK.VAV)
-    space = Node(
-        cls=(
-            core.namespace.BRICK.Room,
-            core.namespace.BRICK.Enclosed_space,
-            core.namespace.BRICK.Open_space,
-            core.namespace.BRICK.HVAC_Zone,
-            core.namespace.BOT.Space,
-        )
-    )
-    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor )
-    outside_air_temperature_sensor = Node(
-        cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
-    )
-
-    feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
-
-    sp = SignaturePattern(id="building_space_signature_pattern_brick_vav")
-
-    sp.add_node(solar_radiance_sensor, optional=True) # Optional because it is not always present
-    sp.add_node(outside_air_temperature_sensor, optional=True) # Optional because it is not always present
-
-    sp.add_rule(StepRule(subject=ahu, object=vav, predicate=feeds))
-    sp.add_rule(StepRule(subject=vav, object=space, predicate=feeds))
-
-    sp.add_connection(
-        ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space
-    )
-    sp.add_connection(
-        ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space
-    )
-    sp.add_connection(vav, "outletAirTemperature", "supplyAirTemperature")
-    sp.add_connection(solar_radiance_sensor, "globalIrradiation", "globalIrradiation")
-    sp.add_connection(outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature")
-    sp.add_modeled_node(space)
-
-    return sp
+def brick_signature_pattern_vav_no_reheat(with_volume: bool = False):
+    """See :func:`_brick_space_pattern` (``"vav_no_reheat"``)."""
+    return _brick_space_pattern("vav_no_reheat", with_volume)
 
 
-BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern_vav())
-BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern())
+def brick_signature_pattern_vav(with_volume: bool = False):
+    """See :func:`_brick_space_pattern` (``"vav"``); kept for site B / Mortar graphs."""
+    return _brick_space_pattern("vav", with_volume)
+
+
+def brick_signature_pattern(with_volume: bool = False):  # Fits to site A
+    """See :func:`_brick_space_pattern` (``"direct"``)."""
+    return _brick_space_pattern("direct", with_volume)
+
+
+for _with_volume in (True, False):
+    BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern_vav_no_reheat(_with_volume))
+    BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern_vav(_with_volume))
+    BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern(_with_volume))
 BuildingSpaceSystem.add_signature_pattern(saref_signature_pattern())
 BuildingSpaceSystem.add_signature_pattern(saref_signature_pattern_sensor())
 

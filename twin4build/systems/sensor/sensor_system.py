@@ -606,6 +606,11 @@ def get_brick_zone_air_temp_sensor_with_ref_pattern():
         cls=(
             core.namespace.BRICK.Room,
             core.namespace.BRICK.HVAC_Zone,
+            # Brick 1.4 deprecates its location classes in favour of
+            # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+            # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
         )
@@ -671,6 +676,11 @@ def get_brick_zone_air_temp_sensor_virtual_pattern():
         cls=(
             core.namespace.BRICK.Room,
             core.namespace.BRICK.HVAC_Zone,
+            # Brick 1.4 deprecates its location classes in favour of
+            # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+            # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
         )
@@ -693,6 +703,127 @@ def get_brick_zone_air_temp_sensor_virtual_pattern():
     )
     sp.add_connection(room, "indoorTemperature", "measuredValue")
     sp.add_modeled_node(sensor)
+    return sp
+
+
+def _brick_room_classes():
+    return (
+        core.namespace.BRICK.Room,
+        core.namespace.BRICK.HVAC_Zone,
+        core.namespace.BRICK.Enclosed_space,
+        core.namespace.BRICK.Open_space,
+        core.namespace.REC.Room,
+        core.namespace.REC.Zone,
+    )
+
+
+def get_brick_room_zone_air_temp_sensor_with_ref_pattern():
+    """BRICK Zone_Air_Temperature_Sensor attached to the *room*, with a timeseries reference.
+
+    BMS-derived graphs (e.g. Hoeje-Taastrup Raadhus) hang the zone
+    temperature sensor off the room rather than off the VAV serving it::
+
+        Zone_Air_Temperature_Sensor  isPointOf             Room / Zone
+        Zone_Air_Temperature_Sensor  hasExternalReference  <ExternalRef/BNode>
+                                                                +- hasTimeseriesId -> <uuid>
+
+    Same wiring as :func:`get_brick_zone_air_temp_sensor_with_ref_pattern`
+    (``room.indoorTemperature -> sensor.measuredValue``); paired with
+    :func:`get_brick_room_zone_air_temp_sensor_virtual_pattern` following
+    the two-pattern split explained above.
+    """
+    sensor = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
+    room = Node(cls=_brick_room_classes())
+    externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    timeseries_id = Node(cls=core.namespace.XSD.string)
+
+    sp = SignaturePattern(id="brick_room_zone_air_temp_sensor_with_ref_pattern")
+    sp.add_rule(
+        StepRule(subject=sensor, object=room, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_rule(
+        StepRule(
+            subject=sensor,
+            object=externalref,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )
+    )
+    sp.add_rule(
+        StepRule(
+            subject=externalref,
+            object=timeseries_id,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )
+    )
+    sp.add_parameter("uuid", timeseries_id)
+    sp.add_connection(room, "indoorTemperature", "measuredValue")
+    sp.add_modeled_node(sensor)
+    sp.add_modeled_node(externalref)
+    return sp
+
+
+def get_brick_room_zone_air_temp_sensor_virtual_pattern():
+    """BRICK Zone_Air_Temperature_Sensor attached to the *room*, no timeseries reference.
+
+    Topology::
+
+        Zone_Air_Temperature_Sensor  isPointOf  Room / Zone
+
+    Mutually exclusive with
+    :func:`get_brick_room_zone_air_temp_sensor_with_ref_pattern` via the
+    shared ``sensor`` modeled node; the with-ref variant wins when both match.
+    """
+    sensor = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
+    room = Node(cls=_brick_room_classes())
+
+    sp = SignaturePattern(id="brick_room_zone_air_temp_sensor_virtual_pattern")
+    sp.add_rule(
+        StepRule(subject=sensor, object=room, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_connection(room, "indoorTemperature", "measuredValue")
+    sp.add_modeled_node(sensor)
+    return sp
+
+
+def get_brick_room_zone_co2_sensor_with_ref_pattern():
+    """BRICK Zone_CO2_Level_Sensor attached to the room, with a timeseries reference.
+
+    Topology::
+
+        Zone_CO2_Level_Sensor  isPointOf             Room / Zone
+        Zone_CO2_Level_Sensor  hasExternalReference  <ExternalRef/BNode>
+                                                         +- hasTimeseriesId -> <uuid>
+
+    Wires the BuildingSpace mass-balance output ``indoorCO2`` into the
+    sensor so simulated and measured CO2 can be compared.
+    """
+    sensor = Node(cls=core.namespace.BRICK.Zone_CO2_Level_Sensor)
+    room = Node(cls=_brick_room_classes())
+    externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    timeseries_id = Node(cls=core.namespace.XSD.string)
+
+    sp = SignaturePattern(id="brick_room_zone_co2_sensor_with_ref_pattern")
+    sp.add_rule(
+        StepRule(subject=sensor, object=room, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_rule(
+        StepRule(
+            subject=sensor,
+            object=externalref,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )
+    )
+    sp.add_rule(
+        StepRule(
+            subject=externalref,
+            object=timeseries_id,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )
+    )
+    sp.add_parameter("uuid", timeseries_id)
+    sp.add_connection(room, "indoorCO2", "measuredValue")
+    sp.add_modeled_node(sensor)
+    sp.add_modeled_node(externalref)
     return sp
 
 
@@ -778,6 +909,11 @@ def get_brick_supply_air_flow_sensor_with_ref_pattern():
         cls=(
             core.namespace.BRICK.Room,
             core.namespace.BRICK.HVAC_Zone,
+            # Brick 1.4 deprecates its location classes in favour of
+            # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+            # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
         )
@@ -849,6 +985,11 @@ def get_brick_supply_air_flow_sensor_virtual_pattern():
         cls=(
             core.namespace.BRICK.Room,
             core.namespace.BRICK.HVAC_Zone,
+            # Brick 1.4 deprecates its location classes in favour of
+            # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+            # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
         )
@@ -969,6 +1110,9 @@ class SensorSystem(core.System):
         # split is required.
         get_brick_zone_air_temp_sensor_with_ref_pattern(),
         get_brick_zone_air_temp_sensor_virtual_pattern(),
+        get_brick_room_zone_air_temp_sensor_with_ref_pattern(),
+        get_brick_room_zone_air_temp_sensor_virtual_pattern(),
+        get_brick_room_zone_co2_sensor_with_ref_pattern(),
         get_brick_ahu_supply_air_temp_sensor_with_ref_pattern(),
         get_brick_ahu_supply_air_temp_sensor_virtual_pattern(),
         get_brick_supply_air_flow_sensor_with_ref_pattern(),
