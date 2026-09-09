@@ -151,6 +151,86 @@ def test_batched_mapping_preserves_heterogeneous_parameters():
     assert len(set(actual.tolist())) == 3
 
 
+def _all_parameter_values(component):
+    import torch
+
+    values = {}
+    if isinstance(component, torch.nn.Module):
+        for name, obj in component.named_parameters(recurse=True):
+            values[name] = obj.get().detach().reshape(-1).tolist()
+    return values
+
+
+def test_zone_copies_keep_every_template_parameter():
+    """Zone replication deep-copies the template; a ``tps.Parameter`` deep copy
+    used to re-normalize its data (unbounded values became 1.0), so gate
+    steepness, the on/off controller output and the boundary node all drifted
+    from the canonical example.  Every parameter must match the template."""
+    common = _common()
+    template = common._translated_template()
+    components, roles = common._prefix_copy(template, 0)
+    n_checked = 0
+    for component in components:
+        source_id = component.id.removeprefix("zone_0__")
+        expected = _all_parameter_values(template.components[source_id])
+        actual = _all_parameter_values(component)
+        assert set(actual) == set(expected)
+        for name in expected:
+            np.testing.assert_allclose(
+                actual[name], expected[name], rtol=1e-12, err_msg=f"{source_id}.{name}"
+            )
+            n_checked += 1
+    assert n_checked > 40
+    assert float(roles["office_occupancy_detector"].steepness.get()) == 10.0
+    assert float(roles["office_occupancy_controller"].on_value.get()) == pytest.approx(0.3)
+
+
+def test_truth_values_are_physical_after_replication():
+    common = _common()
+    model, parts = common.build_multizone_model(
+        2, model_id="canonical_benchmark_truth_test"
+    )
+    truth = parts["parameters"][0]
+    comps = model.components
+    assert float(comps["zone_0__office"].thermal.C_air.get()) == pytest.approx(
+        truth["thermal.C_air"], rel=1e-12
+    )
+    assert float(
+        comps["zone_0__office_temperature_heating_controller"].kp.get()
+    ) == pytest.approx(truth["heating_pid.kp"], rel=1e-12)
+    assert float(comps["zone_0__office_occupancy_detector"].threshold.get()) == pytest.approx(
+        truth["occupancy_detector.threshold"], rel=1e-12
+    )
+    # untouched by the truth: still the canonical example's values
+    assert float(comps["zone_0__office_occupancy_detector"].steepness.get()) == 10.0
+    assert float(comps["zone_0__office"].thermal.C_boundary.get()) == pytest.approx(1e6, rel=1e-6)
+
+
+def test_batched_model_cuts_cycles_where_the_source_model_does():
+    """The one-step lag of every feedback loop must sit on the same signal in
+    the batched and the unbatched model; a meta component that batches several
+    source components (every PID controller) adds cross-loop cycles, and the
+    cycle-count criterion alone moved the cut onto a forward edge."""
+    common = _common()
+    model, parts = common.build_multizone_model(2, model_id="canonical_benchmark_cut_test")
+    common._align_repeated_roles_for_batch(model, parts["zone_parts"])
+    batched, _ = common.batch_model(model, measure=False)
+    source_cuts = set(model.simulation_model._removed_cycle_edges)
+    assert source_cuts, "the canonical model has feedback loops"
+
+    def source_ids(meta_id):
+        component = batched.components[meta_id]
+        return getattr(component, "_source_component_ids", (meta_id,))
+
+    batched_cuts = set()
+    for c_from, c_to in batched.simulation_model._removed_cycle_edges:
+        for a in source_ids(c_from):
+            for b in source_ids(c_to):
+                if a.split("__", 1)[0] == b.split("__", 1)[0]:  # same zone
+                    batched_cuts.add((a, b))
+    assert batched_cuts == source_cuts
+
+
 def test_batched_estimation_problem_maps_all_private_slices_and_sensors():
     common = _common()
     setup = common.batched_estimation_problem(

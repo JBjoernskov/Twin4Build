@@ -7,6 +7,7 @@ import os
 import sys
 from collections import OrderedDict
 from typing import List, Optional, Union
+import copy
 import copyreg
 
 # Third party imports
@@ -1195,6 +1196,22 @@ class Parameter(nn.Parameter):
 
         return instance
 
+    def __deepcopy__(self, memo):
+        """Deep copy preserving bounds, ``n_c`` and scaling.
+
+        ``nn.Parameter.__deepcopy__`` rebuilds the copy as
+        ``type(self)(self.data.clone(), requires_grad)``: the *normalized*
+        data would be re-normalized against default bounds, so an unbounded
+        value became ``1.0`` and a bounded one its normalized fraction.  Reuse
+        the pickle path, which restores the normalization state.
+        """
+        if id(self) in memo:
+            return memo[id(self)]
+        rebuild, args = self.__reduce_ex__(4)
+        result = rebuild(*copy.deepcopy(args, memo))
+        memo[id(self)] = result
+        return result
+
     def __reduce_ex__(self, proto):
         """Custom serialization method that reuses PyTorch's logic but returns our own rebuild function."""
         # Get the state using our own logic (equivalent to PyTorch's)
@@ -2163,9 +2180,17 @@ if not hasattr(torch.nn.Parameter, "get"):
 
 
 # Our own rebuild functions for tps.Parameter
+def _identity_bounds(data):
+    """Bounds under which the constructor's normalization is the identity, so
+    ``data`` (already normalized) is stored unchanged; the pickled state then
+    restores the real bounds."""
+    return torch.zeros_like(data), torch.ones_like(data)
+
+
 def _rebuild_tps_parameter(data, requires_grad, backward_hooks):
     """Rebuild a tps.Parameter instance (equivalent to torch._utils._rebuild_parameter)."""
-    param = Parameter(data, requires_grad=requires_grad)
+    lo, hi = _identity_bounds(data)
+    param = Parameter(data, min_value=lo, max_value=hi, requires_grad=requires_grad)
     # NB: This line exists only for backwards compatibility; the
     # general expectation is that backward_hooks is an empty
     # OrderedDict.  See Note [Don't serialize hooks]
@@ -2175,7 +2200,8 @@ def _rebuild_tps_parameter(data, requires_grad, backward_hooks):
 
 def _rebuild_tps_parameter_with_state(data, requires_grad, backward_hooks, state):
     """Rebuild a tps.Parameter instance with state (equivalent to torch._utils._rebuild_parameter_with_state)."""
-    param = Parameter(data, requires_grad=requires_grad)
+    lo, hi = _identity_bounds(data)
+    param = Parameter(data, min_value=lo, max_value=hi, requires_grad=requires_grad)
     # NB: This line exists only for backwards compatibility; the
     # general expectation is that backward_hooks is an empty
     # OrderedDict.  See Note [Don't serialize hooks]
