@@ -27,6 +27,7 @@ SOURCES = {
     "rdfs.ttl": "http://www.w3.org/2000/01/rdf-schema#",
     "owl.ttl": "http://www.w3.org/2002/07/owl#",
     "rec.ttl": "https://w3id.org/rec#",
+    "brickref.ttl": ontology_remote.BRICKREF,
 }
 
 

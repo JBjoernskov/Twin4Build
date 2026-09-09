@@ -477,10 +477,23 @@ def brick_signature_pattern():  # Fits to site A
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
             core.namespace.BRICK.HVAC_Zone,
+            # Brick 1.4 deprecates its location classes in favour of
+            # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+            # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
             core.namespace.BOT.Space,
         )
     )  # TODO: '_space' should be '_Office', but the site b ttl file has a bug
-    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    solar_radiance_sensor = Node(
+        cls=(
+            # ``Global_Solar_Irradiation_Sensor`` is not a Brick class (it
+            # survives for graphs that extend Brick with it);
+            # ``Solar_Irradiance_Sensor`` is the Brick 1.4 class (W/m2).
+            core.namespace.BRICK.Global_Solar_Irradiation_Sensor,
+            core.namespace.BRICK.Solar_Irradiance_Sensor,
+        )
+    )
     outside_air_temperature_sensor = Node(
         cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
     )
@@ -575,10 +588,23 @@ def brick_signature_pattern_vav():
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
             core.namespace.BRICK.HVAC_Zone,
+            # Brick 1.4 deprecates its location classes in favour of
+            # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+            # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
             core.namespace.BOT.Space,
         )
     )
-    solar_radiance_sensor = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor )
+    solar_radiance_sensor = Node(
+        cls=(
+            # ``Global_Solar_Irradiation_Sensor`` is not a Brick class (it
+            # survives for graphs that extend Brick with it);
+            # ``Solar_Irradiance_Sensor`` is the Brick 1.4 class (W/m2).
+            core.namespace.BRICK.Global_Solar_Irradiation_Sensor,
+            core.namespace.BRICK.Solar_Irradiance_Sensor,
+        )
+    )
     outside_air_temperature_sensor = Node(
         cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
     )

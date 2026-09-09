@@ -1463,7 +1463,14 @@ def brick_signature_pattern_vav():
             core.namespace.BRICK.Supply_Air_Flow_Sensor,
         )
     )
-    setpoints = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Setpoint)
+    setpoints = Node(
+        cls=(
+            core.namespace.BRICK.Zone_Air_Temperature_Setpoint,
+            # Flow-controlled VAV dampers (e.g. BMS-derived graphs where
+            # the damper command tracks a supply-air-flow setpoint).
+            core.namespace.BRICK.Supply_Air_Flow_Setpoint,
+        )
+    )
     actuators = Node(cls=core.namespace.BRICK.Command)
     externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     timeseries_id = Node(cls=core.namespace.XSD.string)
@@ -1534,7 +1541,14 @@ def brick_signature_pattern_vav_damper():
             core.namespace.BRICK.Supply_Air_Flow_Sensor,
         )
     )
-    setpoints = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Setpoint)
+    setpoints = Node(
+        cls=(
+            core.namespace.BRICK.Zone_Air_Temperature_Setpoint,
+            # Flow-controlled VAV dampers (e.g. BMS-derived graphs where
+            # the damper command tracks a supply-air-flow setpoint).
+            core.namespace.BRICK.Supply_Air_Flow_Setpoint,
+        )
+    )
     damper_equip = Node(cls=core.namespace.BRICK.Damper)
     damper_cmd = Node(cls=core.namespace.BRICK.Damper_Position_Setpoint)
     externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))

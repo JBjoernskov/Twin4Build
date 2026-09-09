@@ -793,7 +793,15 @@ def brick_signature_pattern():
     """
     weather_station = Node(cls=core.namespace.BRICK.Weather_Station)
     temp = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    irrad = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    irrad = Node(
+        cls=(
+            # ``Global_Solar_Irradiation_Sensor`` is not a Brick class (it
+            # survives for graphs that extend Brick with it);
+            # ``Solar_Irradiance_Sensor`` is the Brick 1.4 class (W/m2).
+            core.namespace.BRICK.Global_Solar_Irradiation_Sensor,
+            core.namespace.BRICK.Solar_Irradiance_Sensor,
+        )
+    )
     externalref_temp = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     externalref_irrad = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     timeseriesid_temp = Node(cls=core.namespace.XSD.string)
@@ -877,7 +885,15 @@ def brick_signature_pattern_standalone():
     sensor's external reference timeseries ID.
     """
     temp = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    irrad = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    irrad = Node(
+        cls=(
+            # ``Global_Solar_Irradiation_Sensor`` is not a Brick class (it
+            # survives for graphs that extend Brick with it);
+            # ``Solar_Irradiance_Sensor`` is the Brick 1.4 class (W/m2).
+            core.namespace.BRICK.Global_Solar_Irradiation_Sensor,
+            core.namespace.BRICK.Solar_Irradiance_Sensor,
+        )
+    )
     externalref_temp = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     externalref_irrad = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     timeseriesid_temp = Node(cls=core.namespace.XSD.string)
