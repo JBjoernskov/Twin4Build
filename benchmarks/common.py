@@ -1855,11 +1855,20 @@ def _estimation_window(config: BenchmarkConfig) -> dict[str, Any]:
 
 
 def _make_estimation_estimator(model: Any, device: str) -> tb.Estimator:
+    """The estimator every estimation row is measured with.
+
+    CUDA rows are run with ``compile_step=True``, not ``"auto"``: a published row
+    must be a compiled-step row, and ``True`` raises on a torch build without
+    Triton (Windows wheels) instead of silently producing an eager-step row that
+    is not comparable with the rest of the matrix.  CPU rows are the explicit
+    eager reference.
+    """
     return tb.Estimator(
         tb.Simulator(
             model,
             execution_mode="functional",
             execution_backend="cuda_graph" if device == "cuda" else "eager",
+            compile_step=device == "cuda",
         )
     )
 
@@ -2105,12 +2114,11 @@ def _estimation_case_base(
         "model_layout": "batched",
         "execution_mode": "functional",
         "execution_backend": "cuda_graph" if device == "cuda" else "eager",
-        # Simulator(compile_step="auto") compiles the functional step where the
-        # torch build has Triton (Linux wheels); rows from such runs are not
-        # comparable with eager-step rows, so record which one this is.
-        "step_compiled": bool(
-            tb.Simulator(None, execution_mode="functional").step_compilation_active(device)
-        ),
+        # CUDA rows are always measured with Simulator(compile_step=True) and
+        # CPU rows with compile_step=False (see _make_estimation_estimator), so
+        # this records that policy rather than probing what happens to be
+        # available; eager-step rows are not comparable with compiled ones.
+        "step_compiled": device == "cuda",
         "solver": solver,
         "solver_variant": solver_variant,
         "n_starts": n_starts,
