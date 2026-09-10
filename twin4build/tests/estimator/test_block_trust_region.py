@@ -27,8 +27,9 @@ class SeparableQuadratic:
     exact but unreliable at the step scale).
     """
 
-    def __init__(self, n_blocks=4, width=3, cols=5, rough_block=None, seed=0):
+    def __init__(self, n_blocks=4, width=3, cols=5, rough_block=None, seed=0, nan_above=None):
         g = torch.Generator().manual_seed(seed)
+        self.nan_above = nan_above  # a theta sum above this makes the model diverge (NaN)
         self.n_blocks, self.width, self.cols = n_blocks, width, cols
         self.A = [torch.randn(cols, width, generator=g, dtype=torch.float64) for _ in range(n_blocks)]
         self.b = [torch.randn(cols, generator=g, dtype=torch.float64) for _ in range(n_blocks)]
@@ -40,6 +41,8 @@ class SeparableQuadratic:
         )
 
     def _columns(self, theta):  # theta (n_theta,) -> (n_cols_total,)
+        if self.nan_above is not None and float(theta.sum()) > self.nan_above:
+            return torch.full((self.cols * self.n_blocks,), float("nan"), dtype=torch.float64)
         out = []
         for k in range(self.n_blocks):
             xk = theta[k * self.width : (k + 1) * self.width]
@@ -158,3 +161,29 @@ def test_unknown_option_is_rejected_by_the_solver_entry():
             torch.full((obj.n_theta,), 3.0, dtype=torch.float64),
             not_an_option=1,
         )
+
+
+def test_nonfinite_start_is_failed_not_converged_and_never_selected():
+    """Regression for the multistart post-fit NaN (corrected-model scaling run):
+    a start whose rollout is non-finite gets the evaluator's penalty and a zero
+    gradient, which the KKT test read as convergence, and the selection then
+    preferred that "converged" start over a start that had made progress."""
+    obj = SeparableQuadratic(nan_above=20.0)
+    n = obj.n_theta
+    starts = np.stack([np.full(n, 0.5), np.full(n, 2.9)])  # second start (sum 34.8) diverges
+    lb, ub = np.full(n, -3.0), np.full(n, 3.0)
+    res = bs.solve_batched_multistart(
+        obj, "batched-tr", starts, lb, ub, {"maxiter": 60, "batch_size": 2, "gtol": 1e-9, "ftol": 1e-15, "patience": 20}
+    )
+    audit = {a["start_index"]: a for a in res.multistart_audit}
+    assert audit[1]["status"] == "failed_nonfinite"
+    assert not audit[1]["success"]
+    # the finite start's solution is returned: every block at its least-squares optimum
+    x = torch.as_tensor(res.x, dtype=torch.float64)
+    f_opt = 0.0
+    for k in range(obj.n_blocks):
+        opt = torch.linalg.lstsq(obj.A[k], obj.b[k]).solution
+        torch.testing.assert_close(x[k * 3 : (k + 1) * 3], opt, rtol=1e-5, atol=1e-5)
+        f_opt += float((obj.A[k] @ opt - obj.b[k]).square().sum())
+    assert abs(float(res.fun) - f_opt) < 1e-6
+    assert res.message != "Projected-KKT conditions satisfied" or audit[0]["success"]

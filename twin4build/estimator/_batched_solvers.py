@@ -1074,8 +1074,16 @@ def _solve_block_trust_region(
         pg = _projected_gradient(x, grad, lb, ub)
         return torch.stack([pg.index_select(1, idx).abs().amax(dim=1) for idx in layout], dim=1)
 
+    # A start whose objective is not finite (the evaluator substitutes the
+    # penalty and a zero gradient) must never be reported converged: its
+    # projected gradient is zero by construction, which the KKT test below
+    # would otherwise read as optimality.  Such starts fail immediately.
+    penalty = float(getattr(evaluator, "_NONFINITE_PENALTY", 1e20))
+    nonfinite_failed = (~torch.isfinite(cols)).any(dim=1) | (cols >= penalty).any(dim=1)
+    block_active &= ~nonfinite_failed[:, None]
+
     pgn = block_pg_norm(g)
-    block_converged |= pgn <= gtol
+    block_converged |= (pgn <= gtol) & ~nonfinite_failed[:, None]
     block_active &= ~block_converged
 
     for _ in range(int(maxiter)):
@@ -1187,15 +1195,15 @@ def _solve_block_trust_region(
         })
 
     f = f_block.sum(dim=1)
-    converged_all = block_converged.all(dim=1)
+    converged_all = block_converged.all(dim=1) & ~nonfinite_failed
     zeros = torch.zeros(batch, dtype=torch.int64, device=device)
     return {
         "x": x.detach(),
         "fun": f.detach(),
         "success": converged_all.detach(),
-        "nonfinite_failed": torch.zeros(batch, dtype=torch.bool, device=device),
-        "line_search_failed": (block_collapsed.all(dim=1) & ~converged_all).detach(),
-        "stalled": ((~block_active).all(dim=1) & ~converged_all & ~block_collapsed.all(dim=1)).detach(),
+        "nonfinite_failed": nonfinite_failed.detach(),
+        "line_search_failed": (block_collapsed.all(dim=1) & ~converged_all & ~nonfinite_failed).detach(),
+        "stalled": ((~block_active).all(dim=1) & ~converged_all & ~nonfinite_failed & ~block_collapsed.all(dim=1)).detach(),
         "nit": nit.detach(),
         "nfev": nfev.detach(),
         "njev": njev.detach(),
@@ -1318,11 +1326,18 @@ def solve_batched_multistart(
     restoration_uses_all = torch.cat([c["restoration_uses"] for c in chunks])
     finite_candidates_all = torch.cat([c["finite_candidates"] for c in chunks])
     last_alpha_all = torch.cat([c["last_alpha"] for c in chunks])
+    # The evaluator's non-finite penalty is a finite number: a start that sat
+    # at one must not win the selection over a start that made real progress.
+    penalty = float(BatchedObjectiveEvaluator._NONFINITE_PENALTY)
     finite_objectives = torch.where(
-        torch.isfinite(f_all), f_all, torch.full_like(f_all, float("inf"))
+        torch.isfinite(f_all) & (f_all < penalty),
+        f_all,
+        torch.full_like(f_all, float("inf")),
     )
     eligible = torch.where(
-        success_all, finite_objectives, torch.full_like(f_all, float("inf"))
+        success_all & ~nonfinite_failed_all,
+        finite_objectives,
+        torch.full_like(f_all, float("inf")),
     )
     best = int(
         torch.argmin(
