@@ -1164,13 +1164,19 @@ class Model:
             for blk_idx, (sig, comps) in enumerate(by_sig.items()):
                 n_c = len(comps)
                 cls = comps[0].__class__
+                # A component whose constructor takes required arguments
+                # (FunctionSystem's ``inputs``/``fn``) declares them in
+                # ``_batch_init_kwargs`` so the meta can be built at all.
+                # Components sharing a batch share those values;
+                # _component_signature keeps differing ones apart.
+                init_kwargs = dict(getattr(comps[0], "_batch_init_kwargs", None) or {})
                 if n_c == 1:
-                    meta = cls(id=comps[0].id)
+                    meta = cls(id=comps[0].id, **init_kwargs)
                     meta._n_c_batched = 1
                     meta._source_component_ids = (meta.id,)
                 else:
                     meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
-                    meta = cls(id=meta_id)
+                    meta = cls(id=meta_id, **init_kwargs)
                     meta._n_c_batched = n_c
                     meta._source_component_ids = tuple(c.id for c in comps)
                 # Component.initialize() sizes every I/O port from ``n_c``.
@@ -1543,6 +1549,27 @@ class Model:
             )
             if hasattr(component, name)
         )
+
+        # Declared batch-construction values (a FunctionSystem's input names
+        # and its transformation) are part of the component's identity: batching
+        # two different transformations into one n_c block would silently apply
+        # one of them to both.
+        def _declared_signature(value):
+            if isinstance(value, (str, int, float, bool, type(None))):
+                return value
+            if isinstance(value, (list, tuple)):
+                return tuple(_declared_signature(item) for item in value)
+            # A callable (or any other object) counts as identity: two
+            # separately created functions are two transformations as far as
+            # batching is concerned, even if their source is identical.
+            return id(value)
+
+        init_signature = tuple(
+            (name, _declared_signature(value))
+            for name, value in sorted(
+                (getattr(component, "_batch_init_kwargs", None) or {}).items()
+            )
+        )
         outgoing = []
         for connection in getattr(component, "connected_through", ()):
             for point in connection.connects_system_at:
@@ -1576,6 +1603,7 @@ class Model:
             parameter_keys,
             state_hints,
             data_signature,
+            init_signature,
             tuple(sorted(incoming)),
             tuple(sorted(outgoing)),
         )

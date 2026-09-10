@@ -72,6 +72,7 @@ from twin4build.optimizer._pareto_common import (
     batched_prepass,
 )
 from twin4build.utils._cuda_graph import CudaGraphCallable
+from twin4build.optimizer import _pareto_trust_region as _tr
 from twin4build.utils.logger import LOGGER
 
 
@@ -405,6 +406,7 @@ def pareto_front(
     ``_objectives = [objective1, objective2]``, constraints, periods) --
     :meth:`Optimizer.pareto_front` does that before delegating here.
     """
+    use_batched_tr = tuple(method) == _tr.BATCHED_TR_METHOD
     if tuple(method) == ("casadi", "ipopt", "ad", "collocation"):
         return pareto_front_collocation(
             opt,
@@ -444,25 +446,49 @@ def pareto_front(
     labels = tuple(f"{c.id}.{p} ({t})" for c, p, t in opt._objectives)
 
     # -- anchors (lexicographic payoff table) ---------------------------------
-    LOGGER.task("Pareto sweep: anchor solves")
-    x_a1, v_a1, ok_a1, nit_a1, stats_a1 = _anchor_solve(
-        opt,
-        0,
-        x0,
-        bounds_obj,
-        solver_options,
-        method_name,
-        delta,
-    )
-    x_a2, v_a2, ok_a2, nit_a2, stats_a2 = _anchor_solve(
-        opt,
-        1,
-        x_a1,
-        bounds_obj,
-        solver_options,
-        method_name,
-        delta,
-    )
+    if use_batched_tr:
+        # Both anchors are one two-row batched solve; their values are read
+        # back through the same _EpsSubproblem the host routes use, so the
+        # payoff table is computed identically.
+        anchor_x, anchor_audit = _tr.anchors(opt, x0, bounds_obj, delta, solver_options)
+        anchor_values = []
+        for index in (0, 1):
+            anchor_sub = _EpsSubproblem(
+                opt, obj_index=index, con_index=1 - index, delta=delta
+            )
+            anchor_values.append(anchor_sub.values(anchor_x[index]))
+            anchor_stats = dict(anchor_sub.stats)
+            anchor_sub.close()
+            if index == 0:
+                stats_a1 = anchor_stats
+            else:
+                stats_a2 = anchor_stats
+        x_a1, x_a2 = anchor_x[0], anchor_x[1]
+        v_a1, v_a2 = anchor_values
+        ok_a1 = bool(anchor_audit[0].get("success", False))
+        ok_a2 = bool(anchor_audit[1].get("success", False))
+        nit_a1 = int(anchor_audit[0].get("nit", 0))
+        nit_a2 = int(anchor_audit[1].get("nit", 0))
+    else:
+        LOGGER.task("Pareto sweep: anchor solves")
+        x_a1, v_a1, ok_a1, nit_a1, stats_a1 = _anchor_solve(
+            opt,
+            0,
+            x0,
+            bounds_obj,
+            solver_options,
+            method_name,
+            delta,
+        )
+        x_a2, v_a2, ok_a2, nit_a2, stats_a2 = _anchor_solve(
+            opt,
+            1,
+            x_a1,
+            bounds_obj,
+            solver_options,
+            method_name,
+            delta,
+        )
 
     ideal = (v_a1["objs"][0], v_a2["objs"][1])
     nadir = (v_a2["objs"][0], v_a1["objs"][1])
@@ -505,56 +531,90 @@ def pareto_front(
         )
         sub.set_normalization(ideal2, nadir2)
 
-        warm = None
-        # The composed objective exists only when execution was selected on
-        # Simulator via execution_mode="functional".
-        if use_prepass and opt._functional_objective is not None:
-            LOGGER.task("Pareto sweep: batched prepass (%d copies)" % n_points)
-            try:
-                warm = batched_prepass(
-                    opt,
-                    eps_grid,
-                    x_a1,
-                    x_a2,
-                    ideal2,
-                    range2,
-                    delta,
-                    bounds_obj,
-                    **(prepass_options or {}),
+        if use_batched_tr:
+            # No prepass and no host polish: the batched second-order solve
+            # over all epsilon rows IS the sweep.
+            sweep_x, sweep_audit = _tr.sweep(
+                opt,
+                eps_grid,
+                x_a1,
+                x_a2,
+                ideal2,
+                range2,
+                delta,
+                bounds_obj,
+                options=solver_options,
+            )
+            for i, eps in enumerate(eps_grid):
+                v = sub.values(sweep_x[i])
+                rows.append(
+                    (
+                        float(eps),
+                        v,
+                        sweep_x[i],
+                        bool(sweep_audit[i].get("success", False)),
+                        int(sweep_audit[i].get("nit", 0)),
+                    )
                 )
-            except Exception as exc:
-                LOGGER.warning(
-                    "Pareto prepass failed (%s); falling back to sequential "
-                    "warm starts.",
-                    exc,
+                LOGGER.iter(
+                    "eps=%.3f | f1=%.6f f2=%.6f | feas=%.2e | status=%s",
+                    eps,
+                    v["objs"][0],
+                    v["objs"][1],
+                    max(0.0, v["f2n"] - eps),
+                    sweep_audit[i].get("status"),
                 )
+        else:
+            warm = None
+            # The composed objective exists only when execution was selected on
+            # Simulator via execution_mode="functional".
+            if use_prepass and opt._functional_objective is not None:
+                LOGGER.task("Pareto sweep: batched prepass (%d copies)" % n_points)
+                try:
+                    warm = batched_prepass(
+                        opt,
+                        eps_grid,
+                        x_a1,
+                        x_a2,
+                        ideal2,
+                        range2,
+                        delta,
+                        bounds_obj,
+                        **(prepass_options or {}),
+                    )
+                except Exception as exc:
+                    LOGGER.warning(
+                        "Pareto prepass failed (%s); falling back to sequential "
+                        "warm starts.",
+                        exc,
+                    )
 
-        LOGGER.task("Pareto sweep: %d epsilon solves" % n_points)
-        x_prev = x_a1
-        for i, eps in enumerate(eps_grid):
-            x_init = warm[i] if warm is not None else x_prev
-            res = _solve_subproblem(
-                sub, x_init, bounds_obj, solver_options, method_name, eps=eps
-            )
-            x_prev = res.x
-            v = sub.values(res.x)
-            rows.append(
-                (
-                    float(eps),
-                    v,
-                    res.x,
-                    bool(res.success),
-                    int(res.nit) if res.nit is not None else 0,
+            LOGGER.task("Pareto sweep: %d epsilon solves" % n_points)
+            x_prev = x_a1
+            for i, eps in enumerate(eps_grid):
+                x_init = warm[i] if warm is not None else x_prev
+                res = _solve_subproblem(
+                    sub, x_init, bounds_obj, solver_options, method_name, eps=eps
                 )
-            )
-            LOGGER.iter(
-                "eps=%.3f | f1=%.6f f2=%.6f | feas=%.2e | success=%s",
-                eps,
-                v["objs"][0],
-                v["objs"][1],
-                max(0.0, v["f2n"] - eps),
-                res.success,
-            )
+                x_prev = res.x
+                v = sub.values(res.x)
+                rows.append(
+                    (
+                        float(eps),
+                        v,
+                        res.x,
+                        bool(res.success),
+                        int(res.nit) if res.nit is not None else 0,
+                    )
+                )
+                LOGGER.iter(
+                    "eps=%.3f | f1=%.6f f2=%.6f | feas=%.2e | success=%s",
+                    eps,
+                    v["objs"][0],
+                    v["objs"][1],
+                    max(0.0, v["f2n"] - eps),
+                    res.success,
+                )
 
     # -- assemble -------------------------------------------------------------
     eps_arr = np.array([r[0] for r in rows])

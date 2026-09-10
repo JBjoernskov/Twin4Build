@@ -73,6 +73,9 @@ class FunctionSystem(core.System):
         self.input = {name: tps.Scalar() for name in inputs}
         self.output = {"output": tps.Scalar()}
         self._fn = fn
+        # Model.batch_components rebuilds this class for the batched meta
+        # component; declare what its constructor needs.
+        self._batch_init_kwargs = {"inputs": list(inputs), "fn": fn}
 
         self._config = {"parameters": []}
 

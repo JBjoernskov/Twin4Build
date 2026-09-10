@@ -178,7 +178,19 @@ ESTIMATION_SLSQP_WARMSTART_ITERS = 5
 ESTIMATION_CASE_MODULE = "benchmarks.estimation_case"
 ESTIMATION_BENCHMARK_IMPLEMENTATION_REVISION = 3
 OPTIMIZATION_MATRIX = [(device, "SLSQP") for device in DEVICES]
-PARETO_SOLVERS = ("SLSQP", "ipopt")
+# SLSQP is not run: on this problem it stops on SciPy's default absolute
+# ftol after one poor step (the same spurious stop the estimation matrix
+# showed), so its front recorded where it gave up.  "batched-tr" solves every
+# epsilon-subproblem at once on the device (issue #142 step, no host solver).
+PARETO_SOLVERS = ("ipopt", "batched-tr")
+# Bumped whenever a Pareto row's meaning changes, so resume drops stale rows.
+# 1: cost vs discomfort (Kelvin-hours) objectives, mandatory compiled step.
+PARETO_BENCHMARK_IMPLEMENTATION_REVISION = 1
+PARETO_METHODS = {
+    "SLSQP": ("scipy", "SLSQP", "ad"),
+    "ipopt": ("casadi", "ipopt", "ad", "collocation"),
+    "batched-tr": ("custom", "batched-tr", "ad"),
+}
 _TRANSLATED_TEMPLATE_DIRECTORIES: list[tempfile.TemporaryDirectory] = []
 ESTIMATION_SOLVER_BUDGET = 300
 OPTIMIZATION_SOLVER_BUDGET = 300
@@ -2407,6 +2419,12 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         },
         id="shared_valve_position_schedule",
     )
+    # One function object for every zone: identical lambdas are distinct
+    # objects, and Model.batch_components treats two transformations as two
+    # component kinds, which would leave each zone's discomfort unbatched.
+    def _discomfort_kelvin_hours(d):
+        return torch.relu(d["setpoint"] - d["measured"]) * (STEP_SIZE / 3600)
+
     opt_parts = []
     for i, zone in enumerate(parts["zone_parts"]):
         prefix = f"zone_{i}__"
@@ -2418,6 +2436,18 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         )
         cost = tb.ScalarProductSystem(
             scale_factor=STEP_SIZE / 3600 / 1000, id=prefix + "costs_sensor"
+        )
+        # Discomfort in Kelvin-hours per step: the one-sided comfort residual
+        # below the heating setpoint, scaled by the step length.  One-sided,
+        # not |deviation|: overheating is already priced by the cost objective
+        # and capped by the cooling constraint, so a symmetric residual would
+        # add a term that no solution ever trades against.  The optimizer
+        # reports objectives as horizon means, so total Kelvin-hours over the
+        # horizon is this objective times the number of steps.
+        discomfort = tb.FunctionSystem(
+            inputs=["setpoint", "measured"],
+            fn=_discomfort_kelvin_hours,
+            id=prefix + "discomfort_sensor",
         )
         cooling = tb.ScheduleSystem(
             weekday_ruleset={
@@ -2450,6 +2480,13 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         )
         model.add_connection(zone["office_space_heater"], cost, "Power", "input_1")
         model.add_connection(price, cost, "scheduleValue", "input_2")
+        model.add_connection(
+            zone["office_temperature_heating_setpoint"],
+            discomfort,
+            "scheduleValue",
+            "setpoint",
+        )
+        model.add_connection(zone["office"], discomfort, "indoorTemperature", "measured")
         model.add_component(cooling)
         opt_parts.append(
             {
@@ -2458,6 +2495,7 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
                 "price": price,
                 "cost": cost,
                 "cooling": cooling,
+                "discomfort": discomfort,
             }
         )
     model.load(
@@ -2477,6 +2515,7 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         "cooling",
         "office_temperature_heating_setpoint",
         "cost",
+        "discomfort",
     ):
         role_components = [zone[role] for zone in opt_parts]
         for group in groups:
@@ -2486,7 +2525,7 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         groups.append(role_components)
     groups[:] = [group for group in groups if group]
     batched, batch_seconds = batch_model(model)
-    role_keys = ("price", "cost", "cooling")
+    role_keys = ("price", "cost", "cooling", "discomfort")
     batched_parts = {}
     required_roles = role_keys + ("office", "office_temperature_heating_setpoint")
     for role in required_roles:
@@ -2726,19 +2765,36 @@ def batched_pareto_problem(
         "batch_seconds": batch_seconds,
         "batching_mapping": batching_mapping,
         "variables": [(parts["valve_schedule"], "scheduleValue", 0.0, 1.0)],
+        # Minimise electricity cost against minimising discomfort (Kelvin-hours
+        # below the heating setpoint).  The lower temperature bound that used to
+        # be a hard constraint is what discomfort now prices: keeping both would
+        # pin discomfort at zero wherever the problem is feasible and collapse
+        # the front to a single point.  The cooling setpoint stays a hard upper
+        # bound, so overheating is still ruled out rather than paid for.
         "objective1": (parts["cost"], "output", "min"),
-        "objective2": (parts["office"], "indoorTemperature", "max"),
+        "objective2": (parts["discomfort"], "output", "min"),
         "ineq_cons": [
             (parts["office"], "indoorTemperature", "upper", parts["cooling"]),
-            (
-                parts["office"],
-                "indoorTemperature",
-                "lower",
-                parts["office_temperature_heating_setpoint"],
-            ),
         ],
         "topology": _base_metrics(n_zones, 0),
         "full_mode_dimensions": _optimization_dimensions(n_zones, 72),
+    }
+
+
+def _pareto_solver_options(config: BenchmarkConfig, solver: str) -> dict[str, Any]:
+    """Solver options per Pareto arm.
+
+    The batched trust region takes the trust-region options and rejects the
+    host-solver ones, so each arm is given exactly what it understands rather
+    than a union that one of them would silently ignore.  The radius is the
+    one validated on the estimation matrix (issue #142).
+    """
+    if solver == "batched-tr":
+        return {"maxiter": config.pareto_maxiter, "tr_radius": BATCHED_TR_RADIUS}
+    return {
+        "maxiter": config.pareto_maxiter,
+        "ftol": 1e-9,
+        "hessian": "exact" if solver == "ipopt" else "limited_memory",
     }
 
 
@@ -2797,13 +2853,49 @@ def _pareto_preflight(n_zones: int, hours: int) -> dict[str, Any]:
     }
 
 
+def resume_pareto_rows(config: BenchmarkConfig, solver: str) -> list[dict[str, Any]]:
+    """Completed rows for *solver* from the checkpoint, so an interrupted sweep
+    is not repeated.  A Pareto case costs a whole front (one batched prepass
+    plus ``pareto_points`` exact solves), so re-running finished ones is the
+    difference between minutes and hours."""
+    suffix = "in_progress" if config.mode == "full" else "smoke_in_progress"
+    path = RESULTS_DIR / f"{_tagged('pareto_scaling')}_{suffix}.json"
+    if not path.exists():
+        return []
+    rows = []
+    for original in json.loads(path.read_text(encoding="utf-8")).get("rows", []):
+        if (
+            original.get("solver") == solver
+            and original.get("status") in {"ok", "nonconverged", "failed", "skipped"}
+            and original.get("n_zones") in config.zone_counts
+            and original.get("horizon_hours") == config.optimization_hours
+            and original.get("step_size_seconds") == STEP_SIZE
+            and original.get("solver_budget") == config.pareto_maxiter
+            and original.get("pareto_points") == config.pareto_points
+            and original.get("benchmark_implementation_revision")
+            == PARETO_BENCHMARK_IMPLEMENTATION_REVISION
+        ):
+            rows.append(dict(original))
+    return rows
+
+
 def _run_pareto_scaling_solver(
     config: BenchmarkConfig, solver: str
 ) -> list[dict[str, Any]]:
-    rows = []
+    rows = resume_pareto_rows(config, solver)
+    completed = {
+        (int(r["n_zones"]), int(r["repetition"]))
+        for r in rows
+        if "repetition" in r and r.get("status") != "skipped"
+    }
+    skipped_sizes = {
+        int(r["n_zones"]) for r in rows if r.get("status") == "skipped"
+    }
     devices, _ = available_devices()
     device = "cuda" if "cuda" in devices else "cpu"
     for n_zones in config.zone_counts:
+        if n_zones in skipped_sizes:
+            continue
         preflight = _pareto_preflight(n_zones, config.optimization_hours)
         base = {
             "n_zones": n_zones,
@@ -2812,15 +2904,16 @@ def _run_pareto_scaling_solver(
             "execution_mode": "functional",
             "execution_backend": "cuda_graph" if device == "cuda" else "eager",
             "solver": solver,
-            "method": (
-                ("scipy", "SLSQP", "ad")
-                if solver == "SLSQP"
-                else ("casadi", "ipopt", "ad", "collocation")
-            ),
+            "method": PARETO_METHODS[solver],
             "preferred_device": "cuda",
             "cpu_fallback": device == "cpu",
             "solver_budget": config.pareto_maxiter,
             "budget_basis": ("full_workflow constrained optimizer uses maxiter=300"),
+            "pareto_points": config.pareto_points,
+            "step_compiled": device == "cuda",
+            "benchmark_implementation_revision": (
+                PARETO_BENCHMARK_IMPLEMENTATION_REVISION
+            ),
             **_base_metrics(n_zones, config.optimization_hours),
             **_optimization_dimensions(n_zones, config.optimization_hours),
             **preflight,
@@ -2838,6 +2931,8 @@ def _run_pareto_scaling_solver(
         elapsed = []
         start_index = len(rows)
         for repetition in range(config.repeats):
+            if (n_zones, repetition) in completed:
+                continue
             setup = batched_pareto_problem(n_zones, config.seed)
             model = setup["batched_model"]
             model.to(device, torch.float64)
@@ -2846,6 +2941,10 @@ def _run_pareto_scaling_solver(
                     model,
                     execution_mode="functional",
                     execution_backend=base["execution_backend"],
+                    # Compiled, not "compiled where available": compile_step=True
+                    # raises on a torch build without Triton instead of quietly
+                    # producing an eager-step row (see _make_estimation_estimator).
+                    compile_step=device == "cuda",
                 )
             )
             attempt_started = time.perf_counter()
@@ -2865,13 +2964,7 @@ def _run_pareto_scaling_solver(
                         method=base["method"],
                         batched_prepass=True,
                         prepass_options={"max_iter": config.pareto_maxiter},
-                        options={
-                            "maxiter": config.pareto_maxiter,
-                            "ftol": 1e-9,
-                            "hessian": (
-                                "exact" if solver == "ipopt" else "limited_memory"
-                            ),
-                        },
+                        options=_pareto_solver_options(config, solver),
                     ),
                 )
             except Exception as exc:
@@ -2929,7 +3022,6 @@ def _run_pareto_scaling_solver(
                     "batch_seconds": setup["batch_seconds"],
                     "batching_mapping": setup["batching_mapping"],
                     "ground_truth": setup["truth"],
-                    "pareto_points": config.pareto_points,
                     "capture": result.capture,
                     "hessian": result.hessian,
                     "callback_shapes": getattr(result, "callback_shapes", None),

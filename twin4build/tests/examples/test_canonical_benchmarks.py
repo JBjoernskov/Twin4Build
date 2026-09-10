@@ -257,9 +257,15 @@ def test_batched_pareto_problem_aggregates_every_zone():
 
     assert len({row["thermal.C_air"] for row in setup["truth"]}) == 3
     assert len(setup["variables"]) == 1
+    # Cost against discomfort: both minimised.  Discomfort (Kelvin-hours below
+    # the heating setpoint) replaces the hard lower temperature bound, which
+    # would otherwise pin it at zero and collapse the front; the cooling
+    # setpoint stays a hard upper bound.
     assert setup["objective1"][2] == "min"
-    assert setup["objective2"][2] == "max"
-    assert len(setup["ineq_cons"]) == 2
+    assert setup["objective2"][2] == "min"
+    assert setup["objective2"][0].id.endswith("FunctionSystem")
+    assert setup["objective2"][0].n_c == 3
+    assert [c[2] for c in setup["ineq_cons"]] == ["upper"]
 
 
 def test_full_pareto_dimensions_use_shared_broadcast_schedule():

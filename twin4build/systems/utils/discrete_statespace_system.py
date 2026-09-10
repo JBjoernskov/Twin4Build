@@ -12,6 +12,14 @@ import twin4build.utils.types as tps
 from twin4build import core
 
 
+def _functorch_transform_active() -> bool:
+    """Whether a functorch transform (vmap/grad) is on the stack."""
+    try:
+        return bool(torch._C._are_functorch_transforms_active())
+    except AttributeError:  # pragma: no cover - very old torch
+        return False
+
+
 def _small_matmul(a, b):
     """``a @ b`` for tiny matrices as broadcast multiply + sum.
 
@@ -215,6 +223,15 @@ def bilinear_onestep(
         if u_rel_live.requires_grad:
             # Differentiable bilinear inputs: gradient must flow through THIS
             # step's discretization -- no reuse.
+            Ad, Bd = _discretize_onestep(
+                A, B, E, F, u, sample_time, transform_mode=False
+            )
+        elif _functorch_transform_active():
+            # Under vmap/grad transforms the cache is both unusable
+            # (``torch.allclose`` has no batching rule) and wrong: one cached
+            # discretization cannot stand for a whole batch of inputs.  A
+            # value-only batched evaluation lands here -- it has no gradient,
+            # so it would otherwise take the caching branch below.
             Ad, Bd = _discretize_onestep(
                 A, B, E, F, u, sample_time, transform_mode=False
             )

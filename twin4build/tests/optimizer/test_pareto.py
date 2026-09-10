@@ -636,6 +636,57 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
             "weakly Pareto-optimal endpoint is back",
         )
 
+    def test_energy_vs_discomfort_front_batched_trust_region(self):
+        """The batched block trust-region route solves every epsilon-subproblem
+        at once on the device: no host solver, no projected-Adam prepass."""
+        optimizer = tb.Optimizer(tb.Simulator(self.model, execution_mode="functional"))
+        res = optimizer.pareto_front(
+            start_time=self.start,
+            end_time=self.end,
+            step_size=2400,
+            variables=[(self.waterflow, "scheduleValue", 0.0, self.mf)],
+            objective1=(self.heater, "Power", "min"),
+            objective2=(self.discomfort, "output", "min"),
+            n_points=4,
+            method=("custom", "batched-tr", "ad"),
+            options={"maxiter": 30, "tr_radius": 0.25},
+        )
+
+        # One point per epsilon value, every one inside the normalized box the
+        # solver works in (decision outputs carry do_normalization = True).
+        self.assertEqual(len(res.f1), 4)
+        self.assertEqual(res.theta.shape[0], 4)
+        self.assertTrue(np.all(res.theta >= -1e-9))
+        self.assertTrue(np.all(res.theta <= 1.0 + 1e-9))
+
+        # Discomfort is a nonnegative residual, and buying comfort costs power:
+        # the front spans a real range in both objectives instead of collapsing.
+        self.assertTrue(np.all(res.f2 >= -1e-9))
+        self.assertGreater(res.f1.max() - res.f1.min(), 0.0)
+        self.assertGreater(res.f2.max() - res.f2.min(), 0.0)
+        self.assertGreater(int(res.pareto_mask.sum()), 1)
+
+        # Monotone trade-off across the epsilon grid: tightening the discomfort
+        # bound buys comfort with power, point by point.
+        self.assertTrue(np.all(np.diff(res.f1) > 0.0))
+        self.assertTrue(np.all(np.diff(res.f2) < 0.0))
+
+    def test_batched_trust_region_rejects_host_solver_options(self):
+        """A SciPy/IPOPT-only option must fail loudly rather than be ignored."""
+        optimizer = tb.Optimizer(tb.Simulator(self.model, execution_mode="functional"))
+        with self.assertRaises(TypeError):
+            optimizer.pareto_front(
+                start_time=self.start,
+                end_time=self.end,
+                step_size=2400,
+                variables=[(self.waterflow, "scheduleValue", 0.0, self.mf)],
+                objective1=(self.heater, "Power", "min"),
+                objective2=(self.discomfort, "output", "min"),
+                n_points=3,
+                method=("custom", "batched-tr", "ad"),
+                options={"maxiter": 5, "hessian": "exact"},
+            )
+
 
 class TestBatchedParetoCollocation(unittest.TestCase):
     """The one-step sparse callbacks preserve a same-class ``n_c=2`` batch."""

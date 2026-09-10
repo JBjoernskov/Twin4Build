@@ -826,15 +826,23 @@ class Optimizer:
         and replay fixed-shape device derivatives. IPOPT receives the exact
         sparse Hessian of the collocation Lagrangian. The old three-element
         IPOPT spelling is rejected because it ambiguously implied direct shooting.
+
+        ``("custom", "batched-tr", "ad")`` instead solves every
+        epsilon-subproblem at once on the device with the block trust-region
+        step: no host solver and no separate prepass.  It needs
+        ``execution_mode="functional"`` and takes the trust-region options
+        (``tr_radius``, ``tr_retries``, ...) rather than the SciPy/IPOPT ones.
         """
         if tuple(method) not in (
             ("scipy", "SLSQP", "ad"),
             ("casadi", "ipopt", "ad", "collocation"),
+            ("custom", "batched-tr", "ad"),
         ):
             raise ValueError(
                 "pareto_front requires exact AD derivatives with "
-                '("scipy", "SLSQP", "ad") or '
-                f'("casadi", "ipopt", "ad", "collocation"); got {method}.'
+                '("scipy", "SLSQP", "ad"), '
+                '("casadi", "ipopt", "ad", "collocation") or '
+                f'("custom", "batched-tr", "ad"); got {method}.'
             )
         for name, obj in (("objective1", objective1), ("objective2", objective2)):
             if obj is None or len(obj) != 3:
