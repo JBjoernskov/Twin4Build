@@ -35,6 +35,7 @@ gradient evaluation instead of one.
 
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -113,6 +114,12 @@ class _BatchedScalarizedObjective:
             simulator=SimpleNamespace(execution_backend="eager"),
         )
         self._sd = torch.ones(1, dtype=tps.float_dtype(), device=opt._device)
+        # Progress: the batched solver reports only when it returns, and a
+        # sweep without graph replay can run for many minutes, so log the
+        # gradient bundles as they go.
+        self._grad_calls = 0
+        self._started = time.perf_counter()
+        self._log_every = 5
 
     # -- the per-row loss ---------------------------------------------------
     def _row_loss(self, theta_row: torch.Tensor, coefficients: torch.Tensor):
@@ -152,7 +159,18 @@ class _BatchedScalarizedObjective:
         z = theta_batch.detach().clone().requires_grad_(True)
         losses = self._losses(z)
         (gradient,) = torch.autograd.grad(losses.sum(), z)
-        return losses.detach(), gradient.detach()
+        losses, gradient = losses.detach(), gradient.detach()
+        self._grad_calls += 1
+        if self._grad_calls % self._log_every == 0:
+            LOGGER.iter(
+                "batched trust region: %d gradient bundles, %.0f s, "
+                "loss mean %.6g max %.6g",
+                self._grad_calls,
+                time.perf_counter() - self._started,
+                float(losses.mean()),
+                float(losses.max()),
+            )
+        return losses, gradient
 
     def batched_column_loss(self, theta_batch: torch.Tensor) -> torch.Tensor:
         # One column: the scalarized row loss is not a sum of independently
