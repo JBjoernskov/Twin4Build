@@ -100,9 +100,17 @@ class _BatchedScalarizedObjective:
         self._ideal2 = float(ideal2)
         self._range2 = float(range2) if abs(float(range2)) > 1e-12 else 1.0
         # What the evaluator reads off an objective: device, backend, dtype.
+        # The backend is reported as eager on purpose.  These bundles build
+        # their forward graph under ``torch.func.vmap`` and differentiate it
+        # afterwards; recording that in a CUDA graph fails during
+        # ``capture:record``, and a failed capture sets a process-global flag
+        # that makes every later capture and eager fallback unsafe -- one
+        # arm's capture failure would take down every later arm in the
+        # process.  The rollout still runs batched on the device; only the
+        # graph replay is given up.
         self.est = SimpleNamespace(
             _device=opt._device,
-            simulator=opt.simulator,
+            simulator=SimpleNamespace(execution_backend="eager"),
         )
         self._sd = torch.ones(1, dtype=tps.float_dtype(), device=opt._device)
 
