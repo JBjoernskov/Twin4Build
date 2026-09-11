@@ -605,13 +605,25 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                         # Skip parameters that the candidate has frozen
                         # (e.g. ``Td`` on the PI subclass).
                         continue
+                    # Prefer the bounds carried by the parameter itself: the
+                    # data-driven rewire (``pi_loop_rewire._set_param``)
+                    # writes per-loop ``(x0, lb, ub)`` onto ``kp`` / ``Ti``
+                    # (Ti up to its 7200 s ceiling), and the static class
+                    # constants (Ti <= 1800 s) would reject those seeds with
+                    # "x0 must be <= upper bound".
+                    lb, ub = bounds
+                    try:
+                        lb = float(p.min_value.min().item())
+                        ub = float(p.max_value.max().item())
+                    except (AttributeError, RuntimeError, ValueError):
+                        pass
                     params.append(
                         (
                             self,
                             f"candidate_{a}_{c}.{attr}",
                             _scalar(p),
-                            bounds[0],
-                            bounds[1],
+                            lb,
+                            ub,
                         )
                     )
 
