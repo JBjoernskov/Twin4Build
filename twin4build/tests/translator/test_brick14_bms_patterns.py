@@ -191,10 +191,15 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             downstream = _outgoing_components(cits, "inputSignal")
             self.assertTrue(any(isinstance(c, SensorSystem) for c in downstream))
         self.assertEqual(sorted(gates), ["R01_SpFCI01_C", "R02_SpFCI01_C", "R02_SpFCI02_C"])
-        # ... and the AHU damper slot of each room is driven by exactly one
-        # of that room's controllers (one connection per Vector slot).
-        drivers = [c for c in cits_list if ahu in _outgoing_components(c, "inputSignal")]
-        self.assertEqual(len(drivers), 2)
+        # ... and each AHU damper Vector gets exactly one input per room slot,
+        # sourced from a controller.  Which VAV of a room drives which of the
+        # two damper vectors is up to the MILP, so only the per-slot
+        # invariant is asserted.
+        for port in ("supplyDamperPosition", "exhaustDamperPosition"):
+            sources = incoming(ahu, port)
+            self.assertEqual(len(sources), 2, port)  # one per room
+            for src in sources:
+                self.assertIsInstance(src, ControllerIdentificationPISystem)
 
         outdoor = by_cls["OutdoorEnvironmentSystem"][0]
         self.assertEqual(outdoor.uuid_outdoorTemperature, "WS01_TOUT")
