@@ -4,11 +4,21 @@
 name: ubuntu-python3.9
 
 on:
+  # Pull requests are covered by the pull_request event.  Without a branch
+  # filter here, every push to a PR branch ran this workflow a second time:
+  # two independent chances of hitting a transient runner failure, and two
+  # conflicting statuses for the same job name.
   push:
+    branches: [main, dev]
   pull_request:
 
 permissions:
   contents: read
+
+# A new push supersedes the run it interrupts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -29,9 +39,14 @@ jobs:
 
     - name: Install Graphviz
       run: |
-        sudo add-apt-repository universe
-        sudo apt update
-        sudo apt install graphviz
+        # The hosted image ships third-party apt lists (Google Chrome) whose
+        # index intermittently fails its hash check, and apt exits 100 when any
+        # list fails -- killing the job before a single test runs.  graphviz is
+        # in the Ubuntu archives, so drop the third-party lists and retry.
+        sudo rm -f /etc/apt/sources.list.d/*google-chrome*.list
+        sudo add-apt-repository -y universe
+        sudo apt-get update -o Acquire::Retries=3
+        sudo apt-get install -y --no-install-recommends graphviz
 
     - name: Cache pip
       uses: actions/cache@v4
