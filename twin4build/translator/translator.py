@@ -2182,32 +2182,12 @@ class Translator:
                         )
                         if component_fingerprint is not None:
                             # Composite identity from a ModeledNode group:
-                            # keep a *per-member* slice in the human-readable
-                            # prefix so the id still hints at every
-                            # participant, then suffix with the fingerprint
-                            # so two groups sharing the same members but
-                            # different relational shape get distinct ids.
-                            # Naively concatenating full short names blows
-                            # past Windows 260-char MAX_PATH when the id is
-                            # used as a filename under
-                            # ``model_parameters/<class>/<id>.json``; the
-                            # fingerprint guarantees uniqueness so the slice
-                            # is purely a debugging aid.
-                            name_budget = 80
-                            n_members = len(modeled_match_nodes_sorted)
-                            per_member = max(4, (name_budget // max(1, n_members)) - 2)
-                            tokens: List[str] = []
-                            for n in modeled_match_nodes_sorted:
-                                short = core.sanitize_id(n.get_short_name())
-                                if len(short) > per_member:
-                                    # Keep the tail: for most
-                                    # naming schemes (e.g. Mortar
-                                    # ``bldg1_ZONE_AHU01_RM115_Zone_...``)
-                                    # the trailing segment carries the role
-                                    # while the prefix is common boilerplate.
-                                    short = short[-per_member:]
-                                tokens.append(f"[{short}]")
-                            id_ = "".join(tokens) + f"_{component_fingerprint[:16]}"
+                            # human-readable member slices + fingerprint
+                            # suffix; see ``_composite_component_id``.
+                            id_ = Translator._composite_component_id(
+                                [n.get_short_name() for n in modeled_match_nodes_sorted],
+                                component_fingerprint,
+                            )
                         else:
                             # No fingerprint (non-composite ModeledNode path):
                             # fall back to the bracketed-members form.
@@ -2331,6 +2311,59 @@ class Translator:
             LOGGER.ok("Class: %s", component_cls.__name__, change_status=True)
         LOGGER.remove_level()
         LOGGER.ok("Instantiating components", change_status=True)
+
+    #: Character budget for the human-readable prefix of a composite
+    #: (multi-member ``ModeledNode``) component id.  The id doubles as a
+    #: filename under ``model_parameters/<class>/<id>.json``, so it must
+    #: stay well below Windows' 260-char ``MAX_PATH`` once the model
+    #: directory prefix is added.
+    COMPOSITE_ID_NAME_BUDGET = 80
+
+    @staticmethod
+    def _composite_component_id(
+        short_names: List[str],
+        fingerprint: str,
+        name_budget: int = COMPOSITE_ID_NAME_BUDGET,
+    ) -> str:
+        """Id for a component modeled on a multi-member ``ModeledNode`` group.
+
+        Keeps a *per-member* slice of every participant's short name in a
+        bracketed prefix (a debugging aid, so the id still hints at the
+        members) and suffixes the relational ``fingerprint`` which alone
+        guarantees uniqueness.
+
+        The prefix is hard-capped at ``name_budget`` characters.  The
+        earlier implementation only shrank the per-member slice down to a
+        minimum of four characters, so the prefix still grew linearly with
+        the group size: an AHU pattern binding 351 VAVs plus their damper
+        commands produced a ~4 kB id, which is unreadable and fails with
+        ``FileNotFoundError`` / ``OSError`` as soon as it is used as a
+        filename.  When the members do not fit, the prefix is truncated
+        and ``+N`` records how many members were left out.  Groups that
+        did fit before keep exactly the same id.
+        """
+        n_members = len(short_names)
+        per_member = max(4, (name_budget // max(1, n_members)) - 2)
+        tokens: List[str] = []
+        for name in short_names:
+            short = core.sanitize_id(name)
+            if len(short) > per_member:
+                # Keep the tail: for most naming schemes (e.g. Mortar
+                # ``bldg1_ZONE_AHU01_RM115_Zone_...``) the trailing segment
+                # carries the role while the prefix is common boilerplate.
+                short = short[-per_member:]
+            tokens.append(f"[{short}]")
+        prefix = "".join(tokens)
+        if len(prefix) > name_budget:
+            kept: List[str] = []
+            length = 0
+            for tok in tokens:
+                if length + len(tok) > name_budget:
+                    break
+                kept.append(tok)
+                length += len(tok)
+            prefix = "".join(kept) + f"+{n_members - len(kept)}"
+        return f"{prefix}_{fingerprint[:16]}"
 
     def _connect_components(
         self,

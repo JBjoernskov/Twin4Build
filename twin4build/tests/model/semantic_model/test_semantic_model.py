@@ -3,13 +3,9 @@ import os
 import shutil
 import tempfile
 import unittest
-from io import StringIO
 
 # Third party imports
-from rdflib import RDF, RDFS, XSD, Graph, Literal, Namespace, URIRef
-from rdflib import Namespace
-from rdflib import RDF
-from rdflib import RDF, URIRef
+from rdflib import RDF, RDFS, XSD, BNode, Graph, Literal, Namespace, URIRef
 
 # Local application imports
 import twin4build
@@ -94,11 +90,51 @@ class TestSemanticModel(unittest.TestCase):
         )
         self.assertIsInstance(literal, SemanticLiteral)
 
+    def test_get_instance_bnode_preserves_type_and_inverse_lookup(self):
+        """Blank nodes must be built by the regular constructor (regression).
+
+        ``get_instance`` used to build BNode-backed instances via ``__new__``
+        and hand-initialise a subset of the fields; the ``_inverse_attributes``
+        cache added later was missing, so ``get_predicate_subject_pairs``
+        raised ``AttributeError`` for any blank node -- e.g. the target of a
+        Brick ``ref:hasExternalReference`` -- as soon as the translator walked
+        a pattern backwards into it.
+        """
+        ex = Namespace("http://example.org/")
+        bnode = BNode()
+        self.model.instance_graph.add((ex.sensor, ex.hasExternalReference, bnode))
+        self.model.instance_graph.add((bnode, ex.hasTimeseriesId, Literal("ts-1")))
+
+        inst = self.model.get_instance(bnode)
+        self.assertIsInstance(inst, SemanticInstance)
+        self.assertIsInstance(inst.uri, BNode)
+        self.assertEqual(inst.uri, bnode)
+        self.assertIs(inst, self.model.get_instance(bnode))
+
+        # Outgoing edges still resolve through the blank node.
+        outgoing = inst.get_predicate_object_pairs()
+        self.assertIn(self.model.get_predicate(ex.hasTimeseriesId), outgoing)
+
+        # Incoming edges: this raised AttributeError before the fix.
+        incoming = inst.get_predicate_subject_pairs()
+        pred_in = self.model.get_predicate(ex.hasExternalReference)
+        self.assertIn(pred_in, incoming)
+        self.assertEqual([s.uri for s in incoming[pred_in]], [ex.sensor])
+
+    def test_semantic_object_keeps_bnode_uri(self):
+        """``SemanticObject.__init__`` must not promote a ``BNode`` to ``URIRef``."""
+        bnode = BNode()
+        obj = SemanticObject(bnode, self.model)
+        self.assertIsInstance(obj.uri, BNode)
+        obj2 = SemanticObject("http://example.org/x", self.model)
+        self.assertIsInstance(obj2.uri, URIRef)
+
     def test_get_property(self):
         """Test get_property method."""
         uri = "http://example.org/property1"
 
         # Third party imports
+        from rdflib import RDF, URIRef
 
         self.semantic_model.ontology_graph.add(
             (
@@ -119,6 +155,7 @@ class TestSemanticModel(unittest.TestCase):
         type_uri = "http://example.org/Type1"
 
         # Third party imports
+        from rdflib import RDF, URIRef
 
         self.semantic_model.instance_graph.add(
             (URIRef(uri), RDF.type, URIRef(type_uri))
@@ -167,6 +204,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_count_triples(self):
         """Test count_triples method."""
         # Third party imports
+        from rdflib import RDF, URIRef
 
         uri = "http://example.org/instance1"
         type_uri = "http://example.org/Type1"
@@ -185,6 +223,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_get_graph_copy(self):
         """Test get_graph_copy method."""
         # Third party imports
+        from rdflib import RDF, URIRef
 
         uri = "http://example.org/test_copy"
         type_uri = "http://example.org/TestType"
@@ -208,6 +247,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_add_namespaces(self):
         """Test add_namespaces method."""
         # Third party imports
+        from rdflib import Namespace
 
         custom_ns = Namespace("http://example.org/custom#")
         self.semantic_model.add_namespaces({"CUSTOM": custom_ns})
@@ -225,6 +265,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_get_predicate(self):
         """Test get_predicate method."""
         # Third party imports
+        from rdflib import RDF
 
         predicate = self.semantic_model.get_predicate(str(RDF.type))
         self.assertIsNotNone(predicate)
@@ -232,6 +273,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_get_instances_of_type(self):
         """Test get_instances_of_type method."""
         # Third party imports
+        from rdflib import RDF, URIRef
 
         type_uri = "http://example.org/TestClass"
         for i in range(3):
@@ -262,6 +304,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_bind_namespace(self):
         """Test bind_namespace method."""
         # Third party imports
+        from rdflib import Namespace
 
         custom_ns = Namespace("http://custom.example.org/")
         namespaces = {"CUSTOM": custom_ns}
@@ -287,6 +330,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_parse_namespaces(self):
         """Test parse_namespaces method."""
         # Third party imports
+        from rdflib import Namespace
 
         # This is a basic test - real ontology parsing would need actual ontology files
         custom_ns = Namespace("http://example.org/ns/")
@@ -1472,6 +1516,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_parse_wrapper_with_valid_source(self):
         """Test parse_wrapper with a valid source."""
         # Standard library imports
+        from io import StringIO
 
         graph = Graph()
         ttl_data = """
