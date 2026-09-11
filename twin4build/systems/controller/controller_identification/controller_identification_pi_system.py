@@ -38,6 +38,7 @@ from twin4build.translator.translator import (
     ModeledNode,
     Node,
     SetStepRule,
+    Predicate,
     SignaturePattern,
     StepRule,
 )
@@ -93,12 +94,19 @@ class ControllerIdentificationPISystem(ControllerIdentificationSystem):
         )
 
     def _build_components(self) -> None:
-        """Build candidates and freeze ``Td = 0`` on every PI candidate.
+        """Build candidates, freeze ``Td = 0`` and mark ``kp`` / ``Ti`` estimable.
 
         The base class already constructs the candidate with ``Td = 0`` from
         ``_candidate_entries[*][1]``, but we also flip ``requires_grad`` off
         defensively so callers that wire ``Td`` into their estimable-parameter
         list cannot accidentally re-introduce a derivative term.
+
+        ``kp`` and ``Ti`` are switched *on*: :class:`PIDControllerSystem`
+        creates them with ``requires_grad=False`` and
+        :meth:`ControllerIdentificationSystem.get_estimable_parameters` skips
+        frozen parameters, so without this ``Estimator.estimate(parameters=
+        "auto")`` silently fitted only the gate parameters and left the
+        gains at their rewire seeds.
         """
         super()._build_components()
         for a in range(self.n_actuators):
@@ -109,6 +117,10 @@ class ControllerIdentificationPISystem(ControllerIdentificationSystem):
                         torch.tensor(0.0, dtype=torch.float64), normalized=False
                     )
                     cand.Td.requires_grad = False
+                for attr in ("kp", "Ti"):
+                    p = getattr(cand, attr, None)
+                    if p is not None and hasattr(p, "requires_grad"):
+                        p.requires_grad = True
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +177,74 @@ def brick_signature_pattern_vav():
 
 
 ControllerIdentificationPISystem.add_signature_pattern(brick_signature_pattern_vav())
+
+
+def brick_signature_pattern_vav_room():
+    """BRICK VAV pattern with the loop variables on the *room* the VAV serves.
+
+    BMS-derived graphs (Hoeje-Taastrup Raadhus) keep the zone temperature
+    sensor and setpoints on the room and only the flow points and the
+    damper command on the VAV::
+
+        VAV  feeds     Room
+        Room hasPoint  Zone_Air_Temperature_Sensor              -> sensorValue
+        Room hasPoint  Zone_Air_Temperature_Setpoint (+ heating /
+                       cooling subclasses)                      -> setpointValue
+        VAV  hasPoint  Command (damper)                         -> actuator
+        VAV  hasPoint  Supply_Air_Flow_Setpoint                 -> onOffSignal
+
+    The loop identified is *damper = PI(zone temperature setpoint - zone
+    temperature)*, as in :func:`brick_signature_pattern_vav`.  The VAV's
+    supply-air-flow setpoint is the output of the room controller; it is
+    zero whenever the zone is off and positive otherwise, so it is offered
+    to the gate bus (``onOffSignal``) as the schedule-like signal, never as
+    a tracked setpoint (a pattern can feed one node into a port, so the
+    zone setpoints are not mirrored onto the gate bus here).
+    """
+    # The VAV is declared first on purpose: the matcher seeds each walk at
+    # the first node of the pattern graph (``ModeledNode`` members are not
+    # recognised as seeds), and seeding at the shared AHU would collapse
+    # the VAV branches of one room into a single match.
+    vav = Node(cls=core.namespace.BRICK.VAV)
+    room = Node(
+        cls=(
+            core.namespace.BRICK.Room,
+            core.namespace.BRICK.HVAC_Zone,
+            core.namespace.BRICK.Enclosed_space,
+            core.namespace.BRICK.Open_space,
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
+        )
+    )
+    sensors = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
+    setpoints = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Setpoint)
+    actuators = Node(cls=core.namespace.BRICK.Command)
+    flow_setpoints = Node(cls=core.namespace.BRICK.Supply_Air_Flow_Setpoint)
+    externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    timeseries_id = Node(cls=core.namespace.XSD.string)
+    feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
+
+    sp = SignaturePattern(id="controller_identification_pi_vav_room_brick")
+    sp.add_rule(StepRule(subject=vav, object=room, predicate=feeds))
+    sp.add_rule(SetStepRule(subject=room, object=sensors, predicate=core.namespace.BRICK.hasPoint))
+    sp.add_rule(SetStepRule(subject=room, object=setpoints, predicate=core.namespace.BRICK.hasPoint))
+    sp.add_rule(SetStepRule(subject=vav, object=actuators, predicate=core.namespace.BRICK.hasPoint))
+    sp.add_rule(SetStepRule(subject=vav, object=flow_setpoints, predicate=core.namespace.BRICK.hasPoint))
+    sp.add_rule(StepRule(subject=actuators, object=externalref, predicate=core.namespace.BRICKREF.hasExternalReference))
+    sp.add_rule(StepRule(subject=externalref, object=timeseries_id, predicate=core.namespace.BRICKREF.hasTimeseriesId))
+
+    sp.add_connection(sensors, "measuredValue", "sensorValue", input_port_index=sensors)
+    sp.add_connection(setpoints, "measuredValue", "setpointValue", input_port_index=setpoints)
+    sp.add_connection(flow_setpoints, "measuredValue", "onOffSignal", input_port_index=flow_setpoints)
+    # Only the VAV and its command form the modeled identity: the room's
+    # sensor / setpoint points are shared by every VAV serving that room
+    # (four in some HTR rooms), and putting them in the group would make
+    # those VAV controllers mutually exclusive.
+    ModeledNode([vav, actuators])
+    return sp
+
+
+ControllerIdentificationPISystem.add_signature_pattern(brick_signature_pattern_vav_room())
 
 
 def brick_signature_pattern_vav_damper():

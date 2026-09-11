@@ -56,11 +56,14 @@ helpers as public API. Generated results must not be added to API navigation.
 Development setup
 -----------------
 
-Twin4Build supports Python 3.9 through 3.12. Graphviz is required only for
-features and tests that render graphs.
+- Python 3.10 or higher (3.12 recommended)
+- Git
+- A code editor (VS Code, PyCharm, etc.)
+- **Conda** (recommended) or any Python environment manager
 
-Automated Conda setup
-~~~~~~~~~~~~~~~~~~~~~
+Graph drawing uses the pygraphviz 2.0 wheel (no system Graphviz install).
+
+**Quick Start**: Use the automated setup script ``python scripts/setup_dev.py`` after cloning the repository for the fastest setup experience.
 
 From the repository root:
 
@@ -73,7 +76,130 @@ The script creates a Conda environment, installs ``.[dev]``, and runs the
 discovered unittest suite. Use ``--help`` for its current options. It requires
 Conda; it is not a generic virtual-environment bootstrapper.
 
-Manual setup
+    # Clone the repository
+    git clone https://github.com/JBjoernskov/Twin4Build.git
+    cd Twin4Build
+
+    # Run the automated setup script
+    python scripts/setup_dev.py
+
+    # Or with custom options
+    python scripts/setup_dev.py --python 3.12 --env t4bdev
+
+**What the setup script does:**
+
+- Creates a conda environment with your specified Python version (default: 3.12)
+- Installs Twin4Build in development mode with all dependencies
+- Runs the test suite to verify installation
+- Provides clear next steps and available tools
+
+**Script options:**
+
+- ``--python VERSION``: Specify Python version (e.g., 3.10, 3.11, 3.12)
+- ``--env NAME``: Specify conda environment name (default: t4bdev)
+- ``--help``: Show all available options
+
+**Manual Setup (Alternative)**
+
+If you prefer to set up manually or need a different environment manager:
+
+.. code-block:: bash
+
+    # Clone the repository
+    git clone https://github.com/JBjoernskov/Twin4Build.git
+    cd Twin4Build
+
+    # Create conda environment
+    conda create -n t4bdev python=3.12
+    conda activate t4bdev
+
+    # Install in development mode with dependencies
+    pip install -e .[dev]
+
+**Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.10+ environment.
+
+Code Style and Conventions
+--------------------------
+
+Python Style Guide
+~~~~~~~~~~~~~~~~~~
+
+- Follow PEP 8 style guidelines
+- Use type hints for function parameters and return values
+- Keep line length under 88 characters (Black formatter default)
+- Use meaningful variable and function names
+
+Naming Conventions
+~~~~~~~~~~~~~~~~~~
+
+- **Classes**: PascalCase (e.g., `Model`, `SpaceHeaterSystem`)
+- **Functions and variables**: snake_case (e.g., `run_simulation`, `temperature_data`)
+- **Module-level constants**: UPPER_SNAKE_CASE (e.g., `DEFAULT_TIMESTEP`)
+- **Private methods**: prefix with underscore (e.g., `_internal_calculation`)
+- **Private attributes**: prefix with underscore (e.g., `_components`)
+- **Keys used in System.input and System.output dictionaries**: camelCase (e.g., `indoorTemperature`, `co2Concentration`)
+
+Docstring Standards
+~~~~~~~~~~~~~~~~~~~
+
+Use Google-style docstrings and type hints:
+
+.. code-block:: python
+
+    def calculate_energy_consumption(self, temperature: float, duration: float) -> float:
+        """Calculate energy consumption for a given temperature and duration.
+        
+        Args:
+            temperature: The target temperature in Celsius
+            duration: The duration in hours
+            
+        Returns:
+            Energy consumption in kWh
+            
+        Raises:
+            ValueError: If temperature is outside valid range
+        """
+        pass
+
+For public class properties (acessed from outside the class), use the @property decorator:
+
+.. code-block:: python
+
+    class MyClass:
+        @property
+        def property_name(self) -> Any:
+            """Description of the property."""
+            return self._property_name
+    
+Avoid defining setter methods for public class properties unless necessary.
+This way, we avoid accidently changing the value of a property.
+If necessary, define a setter method for the property.
+
+.. code-block:: python
+
+    class MyClass:
+        @property_name.setter
+        def property_name(self, value: Any) -> None:
+            """Description of the property."""
+            self._property_name = value
+
+Development Workflow
+--------------------
+
+Branching Strategy
+~~~~~~~~~~~~~~~~~~
+
+Twin4Build follows a disciplined branching model to keep development organized and reversible:
+
+- **Main branch**: Stable releases only, updated through approved merges from dev branch
+- **Dev branch**: Integration branch for completed features with tests and documentation
+- **Feature branches**: Each feature lives in its own branch containing only logically related changes
+
+  - Feature branches may have one level of sub-branching when needed
+  - Once complete, features merge into dev (never directly into main)
+  - Main contributors can make exemptions to this rule
+
+Git Workflow
 ~~~~~~~~~~~~
 
 .. code-block:: console

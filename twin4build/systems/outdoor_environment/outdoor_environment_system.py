@@ -215,6 +215,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         # add a dedicated entry in :data:`TRANSFORMATIONS` and extend
         # this hook with feed-specific setters.
         self._transformation_outdoorTemperature = None
+        self._transformation_globalIrradiation = None
         self.cached_initialize_arguments = []
         self.cache_root = get_main_dir()
 
@@ -594,6 +595,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 use_database=self.use_database,
                 uuid=self.uuid_globalIrradiation,
                 dbconfig=self.dbconfig_globalIrradiation,
+                transformation=self._transformation_globalIrradiation,
                 # cache=False,
             )
             time_series_irrad.initialize(start_time, end_time, step_size)
@@ -728,6 +730,29 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         """
         self._transformation_outdoorTemperature = fn
 
+    def set_transformation_by_type(self, semantic_type, fn):
+        """Route a per-Brick-class transformation to the matching feed.
+
+        :meth:`Model.set_transformations` calls this once per semantic
+        node the component models, with the class whose rule won for
+        that node: temperature-sensor classes go to the
+        ``outdoorTemperature`` feed, solar radiance / irradiance classes
+        to the ``globalIrradiation`` feed (e.g. clipping the spikes a
+        BMS irradiance sensor logs).  Unknown classes are ignored.
+        """
+        uris = {str(semantic_type.uri)} | {
+            str(c.uri) for c in getattr(semantic_type, "super_classes", [])
+        }
+        brick = core.namespace.BRICK
+        if str(brick.Temperature_Sensor) in uris:
+            self._transformation_outdoorTemperature = fn
+        elif uris & {
+            str(brick.Solar_Irradiance_Sensor),
+            str(brick.Solar_Radiance_Sensor),
+            str(brick.Global_Solar_Irradiation_Sensor),
+        }:
+            self._transformation_globalIrradiation = fn
+
     def _apply(self, x):
         return x * self.a.get() + self.b.get()
 
@@ -793,7 +818,15 @@ def brick_signature_pattern():
     """
     weather_station = Node(cls=core.namespace.BRICK.Weather_Station)
     temp = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    irrad = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    irrad = Node(
+        cls=(
+            # ``Global_Solar_Irradiation_Sensor`` is not a Brick class (it
+            # survives for graphs that extend Brick with it);
+            # ``Solar_Irradiance_Sensor`` is the Brick 1.4 class (W/m2).
+            core.namespace.BRICK.Global_Solar_Irradiation_Sensor,
+            core.namespace.BRICK.Solar_Irradiance_Sensor,
+        )
+    )
     externalref_temp = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     externalref_irrad = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     timeseriesid_temp = Node(cls=core.namespace.XSD.string)
@@ -877,7 +910,15 @@ def brick_signature_pattern_standalone():
     sensor's external reference timeseries ID.
     """
     temp = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
-    irrad = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    irrad = Node(
+        cls=(
+            # ``Global_Solar_Irradiation_Sensor`` is not a Brick class (it
+            # survives for graphs that extend Brick with it);
+            # ``Solar_Irradiance_Sensor`` is the Brick 1.4 class (W/m2).
+            core.namespace.BRICK.Global_Solar_Irradiation_Sensor,
+            core.namespace.BRICK.Solar_Irradiance_Sensor,
+        )
+    )
     externalref_temp = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     externalref_irrad = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     timeseriesid_temp = Node(cls=core.namespace.XSD.string)
