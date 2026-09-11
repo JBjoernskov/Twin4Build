@@ -215,7 +215,8 @@ class FunctionalSimulationSession:
             return None
         return port._history[step, period]
 
-    def _unconnected_value(self, component, port_name, step, period):
+    def _unconnected_value(self, component, key, step, period):
+        port_name = key[1]
         port = component.input[port_name]
         value = self._history_value(port, step, period)
         if value is not None:
@@ -243,8 +244,12 @@ class FunctionalSimulationSession:
         # A genuinely unconnected, non-leaf port has no producer capable of
         # changing it during object-graph execution. Its initialized value is
         # therefore a static exogenous constant. Components with private
-        # time-varying publishers must be handled explicitly above.
-        if not self._exogenous_sources(component, (component.id, port_name)):
+        # time-varying publishers must be handled explicitly above.  The
+        # check is per KEY: a vector port with some slots wired and others
+        # not (an AHU branch whose damper has no controller) is asked about
+        # the unconnected SLOT, not about the port as a whole -- the caller
+        # slices the slot out of the full vector value.
+        if not self._exogenous_sources(component, key):
             return port.get()[period]
         raise RuntimeError(
             f"cannot safely isolate exogenous input {component.id}.{port_name}; "
@@ -346,7 +351,7 @@ class FunctionalSimulationSession:
                         for piece in pieces[1:]:
                             value = value + piece
                     else:
-                        value = self._unconnected_value(component, key[1], step, period)
+                        value = self._unconnected_value(component, key, step, period)
                         if len(key) >= 3 and isinstance(
                             component.input[key[1]], tps.Vector
                         ):
