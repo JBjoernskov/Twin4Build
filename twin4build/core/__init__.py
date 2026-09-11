@@ -101,6 +101,7 @@ class ontology:
     RDFS = os.path.join(_ONTOLOGY_DIR, "rdfs.ttl")
     OWL = os.path.join(_ONTOLOGY_DIR, "owl.ttl")
     REC = os.path.join(_ONTOLOGY_DIR, "rec.ttl")
+    BRICKREF = os.path.join(_ONTOLOGY_DIR, "brickref.ttl")
 
     @classmethod
     def local_source(cls, namespace_uri) -> "str | None":
@@ -119,6 +120,12 @@ class ontology_remote:
     BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     T4B = "http://twin4build.org/"
     BOT = "http://www.w3id.org/bot/bot.ttl"
+    # The Brick "ref" schema is not served under its namespace URI
+    # (https://brickschema.org/schema/Brick/ref# is a 404); the source of
+    # truth is the Brick repository.
+    BRICKREF = (
+        "https://raw.githubusercontent.com/BrickSchema/Brick/master/support/ref-schema.ttl"
+    )
 
     @classmethod
     def remote_source(cls, namespace_uri) -> "str | None":
@@ -137,6 +144,7 @@ _LOCAL_BY_NAMESPACE = {
     str(namespace.RDFS): ontology.RDFS,
     str(namespace.OWL): ontology.OWL,
     str(namespace.REC): ontology.REC,
+    str(namespace.BRICKREF): ontology.BRICKREF,
 }
 
 _REMOTE_BY_NAMESPACE = {
@@ -147,6 +155,7 @@ _REMOTE_BY_NAMESPACE = {
     str(namespace.BRICK): ontology_remote.BRICK,
     str(namespace.T4B): ontology_remote.T4B,
     str(namespace.BOT): ontology_remote.BOT,
+    str(namespace.BRICKREF): ontology_remote.BRICKREF,
 }
 
 _PUBLIC_MODULES = {

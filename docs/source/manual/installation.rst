@@ -66,8 +66,9 @@ Prerequisites
 System Requirements
 ~~~~~~~~~~~~~~~~~~~
 
-- **Python**: 3.9 or higher
+- **Python**: 3.10 or higher
 - **Operating System**: Windows, macOS, or Linux
+- **Graphviz**: bundled via the pygraphviz wheel; no system install is required
 
 Python Dependencies
 ~~~~~~~~~~~~~~~~~~~
@@ -79,6 +80,7 @@ Core dependencies (automatically installed):
 - pandas
 - torch
 - pydot
+- pygraphviz (bundles Graphviz for model drawing)
 - tqdm
 - fmpy
 - scipy
@@ -145,11 +147,18 @@ Common Issues
 - Ensure PostgreSQL is installed and running
 - Check database configuration in ``database_config_example.ini``
 
+**Graph drawing / missing ``dot``**
+
+- Drawing comes from the ``pygraphviz`` wheel. Reinstall with
+  ``pip install --upgrade twin4build`` or ``pip install 'pygraphviz>=2.0.1'``.
+- ``Model.load()`` skips drawing and warns if Graphviz is unavailable.
+  Set ``draw_semantic_model=False`` / ``draw_simulation_model=False`` to silence it.
+
 **Test Failures**
 
 - Ensure all dependencies are installed: ``pip install -e .[dev]``
 - Check that the virtual environment is activated
-- Verify Python version compatibility (3.9+)
+- Verify Python version compatibility (3.10+)
 
 Getting Help
 ------------

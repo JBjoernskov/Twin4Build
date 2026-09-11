@@ -22,6 +22,7 @@ from twin4build.model.semantic_model.semantic_model import (
     get_short_name,
     parse_wrapper,
 )
+from twin4build.utils.graphviz_render import drawing_available
 
 # Set test flag
 twin4build._IS_TESTING = True
@@ -32,15 +33,8 @@ class TestSemanticModel(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Check if Graphviz is installed."""
-        cls.graphviz_installed = all(
-            [
-                shutil.which("dot") is not None,
-                shutil.which("ccomps") is not None,
-                shutil.which("gvpack") is not None,
-                shutil.which("neato") is not None,
-            ]
-        )
+        """Check if a Graphviz drawing backend is available."""
+        cls.graphviz_installed = drawing_available()
 
     def setUp(self):
         """Set up a fresh semantic model for each test."""
@@ -2125,7 +2119,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_basic(self):
         """Test basic visualize call."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize()
@@ -2138,7 +2132,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_with_custom_query(self):
         """Test visualize with custom CONSTRUCT query."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         query = """
@@ -2150,7 +2144,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_with_node_limit(self):
         """Test visualize with node_limit."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize(node_limit=5)
@@ -2158,7 +2152,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_with_triple_limit(self):
         """Test visualize with triple_limit."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize(triple_limit=10)
@@ -2166,7 +2160,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_without_full_uri(self):
         """Test visualize with include_full_uri=False."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize(include_full_uri=False)
@@ -2174,7 +2168,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_with_slice_uri_int(self):
         """Test visualize with slice_uri as integer."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize(slice_uri=20)
@@ -2182,7 +2176,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_with_slice_uri_tuple(self):
         """Test visualize with slice_uri as tuple."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize(slice_uri=(0, 30))
@@ -2190,7 +2184,7 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_with_bfs_traversal(self):
         """Test visualize with BFS traversal mode."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize(traversal_mode="bfs", node_limit=5)
@@ -2198,15 +2192,22 @@ class TestSemanticModel(unittest.TestCase):
     def test_visualize_with_generate_subgraphs(self):
         """Test visualize with generate_subgraphs=True."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize(generate_subgraphs=True)
+        subgraph_dir, _ = self.model.get_dir(folder_list=["graphs", "temp", "ccomps"])
+        subgraph_images = [
+            name
+            for name in os.listdir(subgraph_dir)
+            if name.startswith("object_graph_ccomps") and name.endswith(".svg")
+        ]
+        self.assertGreaterEqual(len(subgraph_images), 1)
 
     def test_visualize_with_custom_dpi(self):
         """Test visualize with custom DPI."""
         if not self.graphviz_installed:
-            self.skipTest("Graphviz not installed")
+            self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize(dpi=100)

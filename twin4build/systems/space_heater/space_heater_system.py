@@ -19,6 +19,7 @@ from twin4build.translator.translator import (
     StepRule,
     AnyPathRule,
     Node,
+    ModeledNode,
     OptionalRule,
     SignaturePattern,
     PathRule,
@@ -736,6 +737,63 @@ def brick_signature_pattern():
     return sp
 
 
+def brick_signature_pattern_room_heating_command():
+    """BRICK pattern for a radiator driven by a room-level heating command.
+
+    BMS-derived graphs often carry no radiator equipment, no water-flow
+    sensor and no supply-temperature point: the only heating information on
+    a room is a valve command (Hoeje-Taastrup Raadhus: ``R08_01_MVV01``, a
+    ``brick:Heating_Command`` in percent).  This pattern models one space
+    heater per such command::
+
+        Room  hasPoint  Heating_Command   -> waterFlowRate  (valve command)
+        Room                              -> indoorTemperature
+
+    ``waterFlowRate`` is fed from the command's historised
+    :class:`SensorSystem` (the leaf pattern matches the same point), so the
+    caller supplies the percent -> kg/s conversion through
+    :meth:`Model.set_transformations` (a ``brick:Heating_Command`` rule)
+    and the nominal water temperature through
+    :meth:`Model.fill_missing_inputs` (``supplyWaterTemperature``); both are
+    site data the ontology does not carry.  ``UA`` and
+    ``thermalMassHeatCapacity`` are then estimable per room.
+
+    The delivered ``Power`` is consumed by the room: the BRICK building-space
+    patterns bind the same ``Heating_Command`` node and connect
+    ``Power -> heatGain`` (see
+    :func:`twin4build.systems.building_space.building_space_system._brick_space_pattern`).
+
+    The modeled identity is the multi-member group ``[space, heating_cmd]``:
+    multi-member groups are mutex-ed per fingerprint, so this component can
+    coexist with the :class:`BuildingSpaceSystem` modeled on ``space`` and
+    with the leaf :class:`SensorSystem` modeled on the command.
+    """
+    space = Node(
+        cls=(
+            core.namespace.BRICK.Room,
+            core.namespace.BRICK.HVAC_Zone,
+            core.namespace.BRICK.Enclosed_space,
+            core.namespace.BRICK.Open_space,
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
+            core.namespace.BRICK.Space,
+        )
+    )
+    heating_cmd = Node(cls=core.namespace.BRICK.Heating_Command)
+
+    sp = SignaturePattern(id="space_heater_signature_pattern_brick_room_command")
+    sp.add_rule(
+        StepRule(
+            subject=space, object=heating_cmd, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_connection(heating_cmd, "measuredValue", "waterFlowRate")
+    sp.add_connection(space, "indoorTemperature", "indoorTemperature")
+    ModeledNode([space, heating_cmd])
+    return sp
+
+
+SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern_room_heating_command())
 SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern())
 SpaceHeaterSystem.add_signature_pattern(saref_signature_pattern())
 
