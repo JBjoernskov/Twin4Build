@@ -35,6 +35,15 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 - `get_component_by_class(dict_, ...)` → `get_components_by_class(Cls)`
 - `twin4build.utils.print_progress` → `twin4build.utils.logger`
 
+### Added
+
+- `[gpu]` extra and a documented CUDA torch install. `pip install twin4build`
+  still follows PyPI's default `torch` wheel (CPU-only on Windows).
+  `pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128`
+  pulls a CUDA 12.8+ build and Triton on Linux. Compiled / CUDA-graph paths
+  need Linux or WSL (Triton has no Windows wheels). `model.to("cuda")`
+  raises with that install line when the process has no CUDA (issue #167).
+
 ### Changed
 
 - New batched shooting solver method `("custom", "batched-tr", "ad")`: a

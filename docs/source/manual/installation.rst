@@ -25,7 +25,10 @@ For additional functionality, you can install optional dependencies:
     # For database connectivity
     pip install twin4build[database]
 
-    # For all optional dependencies
+    # CUDA torch (PyPI's default wheel is CPU-only on Windows)
+    pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+
+    # For all optional dependencies (dev + database; not CUDA torch)
     pip install twin4build[all]
 
 For Developers
@@ -107,8 +110,41 @@ Core dependencies (automatically installed):
 Optional dependencies:
 
 - ``[database]``: psycopg2-binary, sqlalchemy
+- ``[gpu]``: Triton on Linux. CUDA torch itself is not on PyPI; pass
+  ``--extra-index-url https://download.pytorch.org/whl/cu128`` (or install
+  ``torch`` from that index first). See :ref:`gpu-cuda-installation`.
 - ``[dev]``: coverage, black, flake8, isort, sphinx, sphinx-rtd-theme, sphinx-autodoc-typehints, myst-parser, twine
-- ``[all]``: everything above
+- ``[all]``: ``[dev]`` + ``[database]`` (not CUDA torch)
+
+.. _gpu-cuda-installation:
+
+GPU / CUDA installation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+``pip install twin4build`` follows PyPI's default ``torch`` wheel. On Windows
+that is the CPU-only build, so ``torch.cuda.is_available()`` is False even
+when the machine has a supported GPU.
+
+Install a CUDA 12.8+ build (Blackwell needs cu128 or newer):
+
+.. code-block:: bash
+
+    pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+
+If CPU torch is already installed, reinstall it from that index:
+
+.. code-block:: bash
+
+    pip install torch --index-url https://download.pytorch.org/whl/cu128
+    pip install twin4build[gpu]
+
+Compiled / CUDA-graph paths (``compile_step``,
+``execution_backend="cuda_graph"``) need **Linux or WSL** because Triton
+ships no Windows wheels. Native Windows can use CUDA eager execution after
+the CUDA torch install.
+
+``model.to("cuda")`` raises with this install line when the process has no
+CUDA.
 
 Verifying Installation
 ----------------------
@@ -131,6 +167,12 @@ Troubleshooting
 
 Common Issues
 ~~~~~~~~~~~~~
+
+**``torch.cuda.is_available()`` is False / Torch not compiled with CUDA**
+
+- Default ``pip install twin4build`` on Windows is CPU-only. Install CUDA
+  torch as in :ref:`gpu-cuda-installation`.
+- Compiled / CUDA-graph paths need Linux or WSL (no Triton wheels on Windows).
 
 **Import Error: No module named 'twin4build'**
 

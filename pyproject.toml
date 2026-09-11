@@ -82,6 +82,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# CUDA torch is not on PyPI: the default ``torch`` dependency is whatever
+# wheel PyPI serves (CPU-only on Windows). Install a CUDA 12.8+ build with
+#   pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+# or install torch from that index first. Triton has no Windows wheels, so
+# compiled / CUDA-graph paths need Linux or WSL (issue #167).
+gpu = [
+    "triton; platform_system == 'Linux'",
+]
 dev = [
     "coverage",
     "black",
@@ -95,7 +103,7 @@ dev = [
     "pytest-cov",
     "pytest-html",
     "build",
-    "twine"
+    "twine",
 ]
 database = [
     "psycopg2-binary",

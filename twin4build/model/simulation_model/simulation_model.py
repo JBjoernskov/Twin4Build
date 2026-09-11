@@ -43,7 +43,7 @@ from twin4build.systems.controller.controller_identification.pi_loop_rewire impo
 )
 from twin4build.systems.utils.fused_statespace_system import FusedStateSpaceSystem
 from twin4build.utils.deprecation import deprecate_name
-from twin4build.utils.device import move_object_tensors
+from twin4build.utils.device import ensure_cuda_available, move_object_tensors
 
 INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
 
@@ -437,6 +437,7 @@ class SimulationModel:
         """
 
         if device is not None:
+            ensure_cuda_available(device)
             self._device = torch.device(device)
         if dtype is not None:
             tps.set_float_dtype(dtype)

@@ -179,8 +179,37 @@ Optional extras:
 
 ```bat
 pip install twin4build[database]     # PostgreSQL connectivity
-pip install twin4build[all]          # Everything
+pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+pip install twin4build[all]          # Dev + database (not CUDA torch)
 ```
+
+### GPU / CUDA installation
+
+`pip install twin4build` installs whatever `torch` wheel PyPI serves for the
+platform. On Windows that is the **CPU-only** build, so
+`torch.cuda.is_available()` is False even on a machine with a supported GPU,
+and GPU execution modes run on CPU or fail with an opaque torch error.
+
+Install a CUDA 12.8+ build (Blackwell needs cu128 or newer):
+
+```bat
+pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+```
+
+If CPU torch is already installed, reinstall it from that index:
+
+```bat
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install twin4build[gpu]
+```
+
+`[gpu]` pulls Triton on Linux. Triton ships no Windows wheels, so the compiled
+step (`compile_step`) and CUDA-graph paths need **Linux or WSL** — native
+Windows can use CUDA eager execution after the CUDA torch install, but not
+Inductor/Triton.
+
+`model.to("cuda")` now raises with this install line when the process has no
+CUDA, instead of torch's "not compiled with CUDA enabled".
 
 The following python versions are supported (Twin4Build 2.0 requires Python 3.10+; 3.9 is no longer supported):
 
