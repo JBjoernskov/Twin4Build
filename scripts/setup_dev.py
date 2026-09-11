@@ -64,8 +64,8 @@ def check_python_version():
     current interpreter version.
     """
     version = sys.version_info
-    if version.major < 3 or (version.major == 3 and version.minor < 9):
-        print("❌ Python 3.9 or higher is required")
+    if version.major < 3 or (version.major == 3 and version.minor < 10):
+        print("❌ Python 3.10 or higher is required")
         print(f"Current version: {version.major}.{version.minor}.{version.micro}")
         return False
     print(f"✅ Python {version.major}.{version.minor}.{version.micro} detected")
@@ -208,7 +208,6 @@ def main():
         epilog="""
 Examples:
   python setup_dev.py                   # Use Python 3.12 (default)
-  python setup_dev.py --python 3.9      # Use Python 3.9
   python setup_dev.py --python 3.10     # Use Python 3.10
   python setup_dev.py --python 3.11     # Use Python 3.11
   python setup_dev.py --python 3.12     # Use Python 3.12
@@ -227,6 +226,15 @@ Examples:
         help="Name of conda environment to create (default: t4bdev)",
     )
     args = parser.parse_args()
+
+    try:
+        major_minor = tuple(int(part) for part in args.python.split(".")[:2])
+    except ValueError:
+        print(f"❌ Invalid Python version: {args.python}")
+        sys.exit(1)
+    if major_minor < (3, 10):
+        print("❌ Twin4Build 2.0 requires Python 3.10 or higher")
+        sys.exit(1)
 
     print("Twin4Build Development Environment Setup")
     print("=" * 40)

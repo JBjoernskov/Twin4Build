@@ -37,10 +37,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install Graphviz
-      run: |
-        choco install graphviz
-
+    # Graphviz comes from the pygraphviz>=2.0 wheel.
     - name: Cache pip
       uses: actions/cache@v4
       with:

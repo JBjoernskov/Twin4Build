@@ -1,6 +1,5 @@
 # Standard library imports
 import datetime
-import shutil
 import warnings
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
@@ -14,6 +13,10 @@ from prettytable import PrettyTable
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.graphviz_render import (
+    DRAWING_UNAVAILABLE_HINT,
+    drawing_available,
+)
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
 
@@ -967,15 +970,15 @@ class Model:
             # self._semantic_model.reason()
             LOGGER.ok("Parsing semantic model", change_status=True)
             if draw_semantic_model:
-                app_path = shutil.which("dot")
-                assert (
-                    app_path is not None
-                ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
-                LOGGER.task("Drawing semantic model")
-                LOGGER.add_level()
-                self._semantic_model.visualize()
-                LOGGER.remove_level()
-                LOGGER.ok("Drawing semantic model", change_status=True)
+                if not drawing_available():
+                    LOGGER.warning(DRAWING_UNAVAILABLE_HINT)
+                    warnings.warn(DRAWING_UNAVAILABLE_HINT, UserWarning)
+                else:
+                    LOGGER.task("Drawing semantic model")
+                    LOGGER.add_level()
+                    self._semantic_model.visualize()
+                    LOGGER.remove_level()
+                    LOGGER.ok("Drawing semantic model", change_status=True)
 
         else:
             apply_translator = False
@@ -1001,17 +1004,15 @@ class Model:
         )
 
         if draw_simulation_model:
-            # Get all filenames generated in the folder dirname
-            app_path = shutil.which("dot")
-            assert (
-                app_path is not None
-            ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
-
-            LOGGER.task("Drawing simulation model")
-            LOGGER.add_level()
-            self._simulation_model.visualize()
-            LOGGER.remove_level()
-            LOGGER.ok("Drawing simulation model", change_status=True)
+            if not drawing_available():
+                LOGGER.warning(DRAWING_UNAVAILABLE_HINT)
+                warnings.warn(DRAWING_UNAVAILABLE_HINT, UserWarning)
+            else:
+                LOGGER.task("Drawing simulation model")
+                LOGGER.add_level()
+                self._simulation_model.visualize()
+                LOGGER.remove_level()
+                LOGGER.ok("Drawing simulation model", change_status=True)
 
         LOGGER.remove_level()
         LOGGER.ok("Loading model", change_status=True)

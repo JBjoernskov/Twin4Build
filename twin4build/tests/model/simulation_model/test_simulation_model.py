@@ -392,17 +392,16 @@ class TestSimulationModel(unittest.TestCase):
 
     def test_visualize(self):
         """Test visualize method."""
+        from twin4build.utils.graphviz_render import drawing_available
+
         self.sim_model.add_connection(
             self.schedule, self.damper, "scheduleValue", "damperPosition"
         )
         self.sim_model.load()
 
-        # Should not raise errors (actual visualization requires graphviz)
-        try:
-            self.sim_model.visualize()
-        except Exception:
-            pass  # Visualization may fail without graphviz installed
-        self.assertTrue(True)
+        if not drawing_available():
+            self.skipTest("Graphviz drawing backend is not available")
+        self.sim_model.visualize()
 
     def test_get_object_properties(self):
         """Test get_object_properties method."""
