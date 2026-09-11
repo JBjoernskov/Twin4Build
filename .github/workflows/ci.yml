@@ -1,11 +1,21 @@
 name: CI
 
 on:
+  # Pull requests are covered by the pull_request event.  Without a branch
+  # filter here, every push to a PR branch ran the whole matrix a second
+  # time: two independent chances of hitting a transient runner failure and
+  # two conflicting statuses per job name.
   push:
+    branches: [main, dev]
   pull_request:
 
 permissions:
   contents: read
+
+# A new push supersedes the run it interrupts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   tests:
@@ -26,7 +36,15 @@ jobs:
           cache: pip
       - name: Install Graphviz (Ubuntu)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y graphviz
+        run: |
+          # The hosted image ships third-party apt lists (Google Chrome) whose
+          # index intermittently fails its hash check, and apt-get update
+          # exits 100 when any list fails -- killing the job before a single
+          # test runs.  graphviz is in the Ubuntu archives, so drop the
+          # third-party lists and retry the fetch.
+          sudo rm -f /etc/apt/sources.list.d/*google-chrome*.list
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends graphviz
       - name: Install Graphviz (Windows)
         if: runner.os == 'Windows'
         run: choco install graphviz --no-progress
@@ -51,7 +69,15 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y graphviz
+        run: |
+          # The hosted image ships third-party apt lists (Google Chrome) whose
+          # index intermittently fails its hash check, and apt-get update
+          # exits 100 when any list fails -- killing the job before a single
+          # test runs.  graphviz is in the Ubuntu archives, so drop the
+          # third-party lists and retry the fetch.
+          sudo rm -f /etc/apt/sources.list.d/*google-chrome*.list
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends graphviz
       - name: Install package and release tools
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]" build
       - name: Generate API reference
