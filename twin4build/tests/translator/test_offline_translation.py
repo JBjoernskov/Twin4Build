@@ -39,6 +39,11 @@ EXPECTED_COMPONENTS = [
     "office_space_heater",
     "office_space_heater_valve",
     "office_supply_damper",
+    # "office_temperature_cooling_system_setpoint" is matched from the
+    # spreadsheet but has no consumer and no data source (none of its
+    # use_spreadsheet / use_database / use_dict flags), so it cannot simulate
+    # and stays dropped: stand-alone components are kept only when they can
+    # run on their own.
     "office_temperature_heating_controller",
     "office_temperature_heating_setpoint",
     "office_temperature_sensor",

@@ -726,20 +726,12 @@ class Model:
                 return False
             return any(str(sc.uri) == str(b.uri) for sc in a.super_classes)
 
-        for component in self._simulation_model.components.values():
-            setter = getattr(component, "set_transformation", None)
-            if not callable(setter):
-                continue
-            semantic_nodes = sim2sem.get(component)
-            if not semantic_nodes:
-                continue
-
-            # Gather every rule that matches at least one of the
-            # component's semantic counterparts.
+        def _winner(nodes, component_id):
+            """Most-specific rule matching any of ``nodes`` (first-declared on ties)."""
             matched: List[Tuple[Any, Callable[[Any], Any], Any]] = []
             for stype, fn, original_key in rules:
                 hit = False
-                for node in semantic_nodes:
+                for node in nodes:
                     isinstance_check = getattr(node, "isinstance", None)
                     if callable(isinstance_check) and isinstance_check(
                         stype.uri
@@ -748,11 +740,8 @@ class Model:
                         break
                 if hit:
                     matched.append((stype, fn, original_key))
-
             if not matched:
-                continue
-
-            # Most-specific wins; first-declared on ties.
+                return None
             winner = matched[0]
             for cand in matched[1:]:
                 if _is_strict_subclass(cand[0], winner[0]):
@@ -763,11 +752,35 @@ class Model:
                     warnings.warn(
                         f"set_transformations: rules for {cand[2]!r} and "
                         f"{winner[2]!r} both match component "
-                        f"{component.id!r} with no subclass relationship; "
+                        f"{component_id!r} with no subclass relationship; "
                         f"keeping the first-declared rule ({winner[2]!r}).",
                         stacklevel=2,
                     )
-            setter(winner[1])
+            return winner
+
+        for component in self._simulation_model.components.values():
+            semantic_nodes = sim2sem.get(component)
+            if not semantic_nodes:
+                continue
+            typed_setter = getattr(component, "set_transformation_by_type", None)
+            if callable(typed_setter):
+                # Components that model several semantic nodes with
+                # different roles (an OutdoorEnvironmentSystem models an
+                # outdoor temperature sensor AND a solar irradiance sensor)
+                # get one rule per node, keyed by the class that won for
+                # that node, so a Temperature_Sensor rule and a
+                # Solar_Irradiance_Sensor rule reach their own feeds.
+                for node in semantic_nodes:
+                    winner = _winner([node], component.id)
+                    if winner is not None:
+                        typed_setter(winner[0], winner[1])
+                continue
+            setter = getattr(component, "set_transformation", None)
+            if not callable(setter):
+                continue
+            winner = _winner(semantic_nodes, component.id)
+            if winner is not None:
+                setter(winner[1])
 
         return self
 
