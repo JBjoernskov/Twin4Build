@@ -8,6 +8,7 @@ import torch
 # Set test flag
 import twin4build
 from twin4build.utils.types import Parameter, Scalar, Vector
+from twin4build.utils.types import TensorParameter
 
 twin4build._IS_TESTING = True
 
@@ -375,7 +376,6 @@ class TestTensorParameter(unittest.TestCase):
     def test_tensor_parameter_initialization(self):
         """Test TensorParameter initialization."""
         # Local application imports
-        from twin4build.utils.types import TensorParameter
 
         tp = TensorParameter(
             tensor=torch.tensor(5.0), min_value=0.0, max_value=10.0, normalized=False
@@ -386,7 +386,6 @@ class TestTensorParameter(unittest.TestCase):
     def test_tensor_parameter_set_get(self):
         """Test TensorParameter set and get."""
         # Local application imports
-        from twin4build.utils.types import TensorParameter
 
         tp = TensorParameter(
             tensor=torch.tensor(5.0), min_value=0.0, max_value=10.0, normalized=False
@@ -398,7 +397,6 @@ class TestTensorParameter(unittest.TestCase):
     def test_tensor_parameter_denormalize(self):
         """Test TensorParameter denormalize."""
         # Local application imports
-        from twin4build.utils.types import TensorParameter
 
         tp = TensorParameter(
             tensor=torch.tensor(5.0), min_value=0.0, max_value=10.0, normalized=False
@@ -410,7 +408,6 @@ class TestTensorParameter(unittest.TestCase):
     def test_tensor_parameter_n_c(self):
         """Test TensorParameter with n_c dimension."""
         # Local application imports
-        from twin4build.utils.types import TensorParameter
 
         tp = TensorParameter(
             tensor=torch.tensor(5.0), min_value=0.0, max_value=10.0, normalized=False

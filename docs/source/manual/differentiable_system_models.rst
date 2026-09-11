@@ -6,7 +6,8 @@ models. It applies to every :class:`~twin4build.systems.saref4syst.system.System
 that implements tensor mathematics and to every ``torch.nn.Module`` used inside
 such a system. Follow it even when a component currently runs only on the CPU:
 the same rules make the model correct under batching, automatic
-differentiation, ``torch.func`` transforms, compilation, and CUDA Graph replay.
+differentiation, ``torch.func`` transforms, component batching, and CUDA Graph
+replay.
 
 The central design rule is:
 
@@ -21,8 +22,8 @@ Twin4Build has two component execution paths:
 
 * ``do_step`` integrates a component into the object-graph simulator. It reads
   and writes ports and histories.
-* ``forward(state, inputs, parameters, sample_time, ...)`` is composed by
-  ``Simulator(..., execution_mode="composed")`` for estimation and
+* ``forward(state, inputs, parameters, sample_time, ...)`` is used by
+  ``Simulator(..., execution_mode="functional")`` for estimation and
   collocation maps. PyTorch may call it under ``vmap``,
   ``jacrev``, higher-order differentiation, or CUDA Graph capture.
 
@@ -34,12 +35,11 @@ Execution-mode ownership
 ------------------------
 
 Execution policy belongs to :class:`~twin4build.simulator.simulator.Simulator`.
-Use ``Simulator(model, execution_mode="composed")`` to select reusable pure
-rollouts, or override one public run with
-``simulator.simulate(..., execution_mode="object_graph")``. Estimator no
-longer accepts ``fast`` or ``fast_validate`` options. The experimental
-``("custom", "batched-sqp", "ad")``, ``batched-bfgs``, ``batched-lm``,
-and ``batched-newton`` methods require composed execution and fail rather
+Use ``Simulator(model, execution_mode="functional",
+execution_backend="eager")`` to select reusable pure rollouts, or override one
+public run with ``simulator.simulate(..., execution_mode="object")``. Select
+CUDA Graph independently with ``execution_backend="cuda_graph"``. The custom
+batched SQP parallel solver requires functional execution and fails rather
 than silently dropping a derivative path.
 
 The object-graph materialization pass remains responsible for complete port
@@ -255,7 +255,7 @@ Required validation
 A new or modified tensor component should test all applicable levels:
 
 #. ``do_step`` and ``forward`` produce the same one-step result.
-#. A multi-step composed rollout matches the object-graph simulator.
+#. A multi-step functional rollout matches the object simulator.
 #. CPU and CUDA values agree in float64.
 #. ``vmap`` output agrees with an explicit loop.
 #. First derivatives and, when used by exact-Hessian estimation, second
@@ -264,7 +264,7 @@ A new or modified tensor component should test all applicable levels:
 #. A transformed call does not mutate eager caches.
 #. State-space support contains every observed nonzero at zero-valued,
    boundary, and randomized interior parameter points.
-#. The full composed function can be traced with ``torch.compile(...,
+#. The full functional model can be traced with ``torch.compile(...,
    fullgraph=True)`` as a diagnostic for hidden Python behavior.
 #. CUDA Graph capture and replay track perturbed state, parameter, multiplier,
    and objective-scale inputs—not only the values used during capture.

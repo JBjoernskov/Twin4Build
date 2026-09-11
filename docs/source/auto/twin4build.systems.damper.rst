@@ -4,10 +4,10 @@ damper
 Modules
 -------
 
-damper\_torch\_system module
-----------------------------
+twin4build.systems.damper.damper\_system module
+-----------------------------------------------
 
-.. automodule:: twin4build.systems.damper.damper_torch_system
+.. automodule:: twin4build.systems.damper.damper_system
    :members:
    :show-inheritance:
    :undoc-members:

@@ -3,9 +3,12 @@ import datetime
 import os
 import tempfile
 import unittest
+from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
 # Third party imports
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +20,21 @@ from matplotlib.figure import Figure
 # Local application imports
 # Set test flag
 import twin4build
+from twin4build.utils.plot import Entry
+from twin4build.utils.plot.align_y_axes import alignYaxes
+from twin4build.utils.plot.align_y_axes import calculate_ticks
+from twin4build.utils.plot.plot import Colors
+from twin4build.utils.plot.plot import Entry, get_data
+from twin4build.utils.plot.plot import Entry, plot
+from twin4build.utils.plot.plot import PlotSettings
+from twin4build.utils.plot.plot import bar_plot_line_format
+from twin4build.utils.plot.plot import filter_nans
+from twin4build.utils.plot.plot import get_data
+from twin4build.utils.plot.plot import get_fig_axes
+from twin4build.utils.plot.plot import get_file_name
+from twin4build.utils.plot.plot import load_params
+from twin4build.utils.plot.plot import on_pick
+from twin4build.utils.plot.plot import plot
 
 twin4build._IS_TESTING = True
 
@@ -25,7 +43,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_initialization_with_numpy(self):
         """Test Entry initialization with numpy array."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         data = np.array([1.0, 2.0, 3.0, 4.0])
         entry = Entry(data=data, label="Test Data")
@@ -38,7 +55,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_initialization_with_list(self):
         """Test Entry initialization with list (converts to numpy)."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         data = [1.0, 2.0, 3.0, 4.0]
         entry = Entry(data=data, label="Test Data")
@@ -49,7 +65,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_initialization_with_tensor(self):
         """Test Entry initialization with torch tensor."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         data = torch.tensor([1.0, 2.0, 3.0, 4.0])
         entry = Entry(data=data, label="Test Data")
@@ -60,7 +75,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_initialization_with_pandas_series(self):
         """Test Entry initialization with pandas Series."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         data = pd.Series([1.0, 2.0, 3.0, 4.0])
         entry = Entry(data=data, label="Test Data")
@@ -71,7 +85,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_with_custom_styling(self):
         """Test Entry with custom styling parameters."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         data = np.array([1.0, 2.0, 3.0])
         entry = Entry(
@@ -87,7 +100,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_missing_data_raises_error(self):
         """Test that Entry raises ValueError when data is None."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         with self.assertRaises(ValueError) as context:
             Entry(data=None, label="No Data")
@@ -97,7 +109,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_missing_label_raises_error(self):
         """Test that Entry raises AssertionError when label is missing."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         data = np.array([1.0, 2.0, 3.0])
         with self.assertRaises(AssertionError):
@@ -106,7 +117,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_removed_attribute_parameter_requires_label(self):
         """Old 'attribute' alias is removed; label is required."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         data = np.array([1.0, 2.0, 3.0])
         with self.assertRaises(AssertionError):
@@ -115,7 +125,6 @@ class TestEntry(unittest.TestCase):
     def test_entry_linestyle_kwarg_does_not_set_fmt(self):
         """linestyle is no longer mapped to fmt; use fmt= instead."""
         # Local application imports
-        from twin4build.utils.plot import Entry
 
         data = np.array([1.0, 2.0, 3.0])
         entry = Entry(data=data, label="Test", linestyle="--")
@@ -127,7 +136,6 @@ class TestColors(unittest.TestCase):
     def test_colors_attributes_exist(self):
         """Test that Colors class has expected color attributes."""
         # Local application imports
-        from twin4build.utils.plot.plot import Colors
 
         self.assertIsNotNone(Colors.blue)
         self.assertIsNotNone(Colors.orange)
@@ -142,14 +150,12 @@ class TestColors(unittest.TestCase):
     def test_colors_black_is_string(self):
         """Test that black color is explicitly 'black' string."""
         # Local application imports
-        from twin4build.utils.plot.plot import Colors
 
         self.assertEqual(Colors.black, "black")
 
     def test_colors_from_seaborn(self):
         """Test that colors are tuples (from seaborn)."""
         # Local application imports
-        from twin4build.utils.plot.plot import Colors
 
         # Seaborn colors should be tuples of RGB values
         self.assertIsInstance(Colors.blue, tuple)
@@ -161,7 +167,6 @@ class TestPlotSettings(unittest.TestCase):
     def test_plot_settings_attributes(self):
         """Test PlotSettings has expected attributes."""
         # Local application imports
-        from twin4build.utils.plot.plot import PlotSettings
 
         self.assertIsNotNone(PlotSettings.legend_loc)
         self.assertIsNotNone(PlotSettings.x)
@@ -173,7 +178,6 @@ class TestPlotSettings(unittest.TestCase):
     def test_plot_settings_legend_loc_format(self):
         """Test legend_loc is a tuple of coordinates."""
         # Local application imports
-        from twin4build.utils.plot.plot import PlotSettings
 
         self.assertIsInstance(PlotSettings.legend_loc, tuple)
         self.assertEqual(len(PlotSettings.legend_loc), 2)
@@ -181,7 +185,6 @@ class TestPlotSettings(unittest.TestCase):
     def test_plot_settings_save_folder(self):
         """Test save_folder method returns a valid path."""
         # Local application imports
-        from twin4build.utils.plot.plot import PlotSettings
 
         folder = PlotSettings.save_folder()
         self.assertIsNotNone(folder)
@@ -194,7 +197,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_get_file_name_basic(self):
         """Test get_file_name converts names correctly."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_file_name
 
         result = get_file_name("Test Plot")
         self.assertEqual(result, "plot_test_plot")
@@ -202,7 +204,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_get_file_name_with_spaces(self):
         """Test get_file_name handles multiple spaces."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_file_name
 
         result = get_file_name("My Test   Plot Name")
         self.assertEqual(result, "plot_my_test___plot_name")
@@ -210,7 +211,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_get_file_name_case_insensitive(self):
         """Test get_file_name converts to lowercase."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_file_name
 
         result = get_file_name("UPPERCASE")
         self.assertEqual(result, "plot_uppercase")
@@ -218,7 +218,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_bar_plot_line_format_hourly(self):
         """Test bar_plot_line_format with hourly data."""
         # Local application imports
-        from twin4build.utils.plot.plot import bar_plot_line_format
 
         # Create a timestamp
         timestamp = pd.Timestamp("2023-01-01 14:30:00")
@@ -229,7 +228,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_bar_plot_line_format_hourly_midnight(self):
         """Test bar_plot_line_format at midnight includes day."""
         # Local application imports
-        from twin4build.utils.plot.plot import bar_plot_line_format
 
         timestamp = pd.Timestamp("2023-01-02 00:00:00")  # Monday
         result = bar_plot_line_format(timestamp, "H")
@@ -240,7 +238,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_bar_plot_line_format_daily(self):
         """Test bar_plot_line_format with daily data."""
         # Local application imports
-        from twin4build.utils.plot.plot import bar_plot_line_format
 
         timestamp = pd.Timestamp("2023-01-04 12:00:00")  # Wednesday
         result = bar_plot_line_format(timestamp, "D")
@@ -250,7 +247,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_bar_plot_line_format_daily_monday(self):
         """Test bar_plot_line_format on Monday includes week."""
         # Local application imports
-        from twin4build.utils.plot.plot import bar_plot_line_format
 
         timestamp = pd.Timestamp("2023-01-02 12:00:00")  # Monday
         result = bar_plot_line_format(timestamp, "D")
@@ -261,7 +257,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_bar_plot_line_format_weekly(self):
         """Test bar_plot_line_format with weekly data."""
         # Local application imports
-        from twin4build.utils.plot.plot import bar_plot_line_format
 
         timestamp = pd.Timestamp("2023-01-15 12:00:00")
         result = bar_plot_line_format(timestamp, "W")
@@ -273,7 +268,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_bar_plot_line_format_monthly(self):
         """Test bar_plot_line_format with monthly data."""
         # Local application imports
-        from twin4build.utils.plot.plot import bar_plot_line_format
 
         timestamp = pd.Timestamp("2023-03-15 12:00:00")
         result = bar_plot_line_format(timestamp, "M")
@@ -283,7 +277,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_bar_plot_line_format_monthly_january(self):
         """Test bar_plot_line_format in January includes year."""
         # Local application imports
-        from twin4build.utils.plot.plot import bar_plot_line_format
 
         timestamp = pd.Timestamp("2023-01-15 12:00:00")
         result = bar_plot_line_format(timestamp, "M")
@@ -294,7 +287,6 @@ class TestPlotHelperFunctions(unittest.TestCase):
     def test_bar_plot_line_format_annual(self):
         """Test bar_plot_line_format with annual data."""
         # Local application imports
-        from twin4build.utils.plot.plot import bar_plot_line_format
 
         timestamp = pd.Timestamp("2023-06-15 12:00:00")
         result = bar_plot_line_format(timestamp, "A")
@@ -307,7 +299,6 @@ class TestAlignYAxes(unittest.TestCase):
     def test_calculate_ticks_basic(self):
         """Test calculate_ticks with basic parameters."""
         # Local application imports
-        from twin4build.utils.plot.align_y_axes import calculate_ticks
 
         # Create a mock axis
         fig, ax = plt.subplots()
@@ -325,7 +316,6 @@ class TestAlignYAxes(unittest.TestCase):
     def test_calculate_ticks_with_round_to(self):
         """Test calculate_ticks with explicit round_to parameter."""
         # Local application imports
-        from twin4build.utils.plot.align_y_axes import calculate_ticks
 
         fig, ax = plt.subplots()
         ax.set_ylim(0, 50)
@@ -342,7 +332,6 @@ class TestAlignYAxes(unittest.TestCase):
     def test_calculate_ticks_zero_crossing(self):
         """Test calculate_ticks with data crossing zero."""
         # Local application imports
-        from twin4build.utils.plot.align_y_axes import calculate_ticks
 
         fig, ax = plt.subplots()
         ax.set_ylim(-50, 50)
@@ -359,7 +348,6 @@ class TestAlignYAxes(unittest.TestCase):
     def test_calculate_ticks_negative_range(self):
         """Test calculate_ticks with entirely negative range."""
         # Local application imports
-        from twin4build.utils.plot.align_y_axes import calculate_ticks
 
         fig, ax = plt.subplots()
         ax.set_ylim(-100, -10)
@@ -377,7 +365,6 @@ class TestAlignYAxes(unittest.TestCase):
     def test_alignYaxes_two_axes(self):
         """Test alignYaxes with two axes."""
         # Local application imports
-        from twin4build.utils.plot.align_y_axes import alignYaxes
 
         fig, ax1 = plt.subplots()
         ax2 = ax1.twinx()
@@ -397,7 +384,6 @@ class TestAlignYAxes(unittest.TestCase):
     def test_alignYaxes_three_axes(self):
         """Test alignYaxes with three axes."""
         # Local application imports
-        from twin4build.utils.plot.align_y_axes import alignYaxes
 
         fig, ax1 = plt.subplots()
         ax2 = ax1.twinx()
@@ -423,7 +409,6 @@ class TestAlignYAxes(unittest.TestCase):
     def test_alignYaxes_all_none_yoffsets_raises_assertion(self):
         """Test that alignYaxes raises AssertionError when all yoffsets are None."""
         # Local application imports
-        from twin4build.utils.plot.align_y_axes import alignYaxes
 
         fig, ax1 = plt.subplots()
         ax2 = ax1.twinx()
@@ -441,7 +426,6 @@ class TestAlignYAxes(unittest.TestCase):
     def test_alignYaxes_with_some_yoffsets_not_none(self):
         """Test that alignYaxes works correctly when at least one yoffset is not None."""
         # Local application imports
-        from twin4build.utils.plot.align_y_axes import alignYaxes
 
         fig, ax1 = plt.subplots()
         ax2 = ax1.twinx()
@@ -461,7 +445,6 @@ class TestLoadParams(unittest.TestCase):
     def test_load_params_executes(self):
         """Test that load_params executes without error."""
         # Local application imports
-        from twin4build.utils.plot.plot import load_params
 
         # Should not raise any exception
         try:
@@ -480,10 +463,8 @@ class TestOnPick(unittest.TestCase):
     def test_on_pick_toggle_visibility(self):
         """Test on_pick toggles line visibility."""
         # Standard library imports
-        from unittest.mock import MagicMock, Mock
 
         # Local application imports
-        from twin4build.utils.plot.plot import on_pick
 
         # Create mock figure and line
         fig = Mock()
@@ -517,10 +498,8 @@ class TestOnPick(unittest.TestCase):
     def test_on_pick_make_visible(self):
         """Test on_pick makes hidden line visible."""
         # Standard library imports
-        from unittest.mock import Mock
 
         # Local application imports
-        from twin4build.utils.plot.plot import on_pick
 
         fig = Mock()
         fig.canvas = Mock()
@@ -551,7 +530,6 @@ class TestFilterNans(unittest.TestCase):
     def test_filter_nans_no_nans(self):
         """Test filter_nans with no NaN values."""
         # Local application imports
-        from twin4build.utils.plot.plot import filter_nans
 
         time = np.array([1.0, 2.0, 3.0, 4.0])
         data = np.array([10.0, 20.0, 30.0, 40.0])
@@ -564,7 +542,6 @@ class TestFilterNans(unittest.TestCase):
     def test_filter_nans_with_nans_in_time(self):
         """Test filter_nans with NaN values in time array."""
         # Local application imports
-        from twin4build.utils.plot.plot import filter_nans
 
         time = np.array([1.0, np.nan, 3.0, 4.0])
         data = np.array([10.0, 20.0, 30.0, 40.0])
@@ -577,7 +554,6 @@ class TestFilterNans(unittest.TestCase):
     def test_filter_nans_with_pandas_nat(self):
         """Test filter_nans with pandas NaT values."""
         # Local application imports
-        from twin4build.utils.plot.plot import filter_nans
 
         time = pd.Series(
             [pd.Timestamp("2023-01-01"), pd.NaT, pd.Timestamp("2023-01-03")]
@@ -592,7 +568,6 @@ class TestFilterNans(unittest.TestCase):
     def test_filter_nans_all_nans(self):
         """Test filter_nans when all time values are NaN."""
         # Local application imports
-        from twin4build.utils.plot.plot import filter_nans
 
         time = np.array([np.nan, np.nan, np.nan])
         data = np.array([10.0, 20.0, 30.0])
@@ -609,7 +584,6 @@ class TestGetData(unittest.TestCase):
     def test_get_data_with_entry_object(self):
         """Test get_data with Entry object."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, get_data
 
         data = np.array([1.0, 2.0, 3.0])
         entry = Entry(data=data, label="Test", fmt="--", axis=2)
@@ -624,7 +598,6 @@ class TestGetData(unittest.TestCase):
     def test_get_data_with_tuple_raises(self):
         """Legacy tuple format is hard-removed; Entry is required."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_data
 
         data = np.array([1.0, 2.0, 3.0])
         with self.assertRaises(ValueError):
@@ -633,7 +606,6 @@ class TestGetData(unittest.TestCase):
     def test_get_data_with_invalid_type(self):
         """Test get_data with invalid type raises error."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_data
 
         with self.assertRaises(ValueError):
             get_data("invalid")
@@ -641,7 +613,6 @@ class TestGetData(unittest.TestCase):
     def test_get_data_converts_list_to_numpy(self):
         """Test get_data converts list to numpy array."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, get_data
 
         data = [1.0, 2.0, 3.0, 4.0]
         entry = Entry(data=data, label="List Data")
@@ -653,7 +624,6 @@ class TestGetData(unittest.TestCase):
     def test_get_data_converts_tensor_to_numpy(self):
         """Test get_data converts torch tensor to numpy array."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, get_data
 
         data = torch.tensor([1.0, 2.0, 3.0])
         entry = Entry(data=data, label="Tensor Data")
@@ -665,7 +635,6 @@ class TestGetData(unittest.TestCase):
     def test_get_data_converts_series_to_numpy(self):
         """Test get_data converts pandas Series to numpy array."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, get_data
 
         data = pd.Series([1.0, 2.0, 3.0])
         entry = Entry(data=data, label="Series Data")
@@ -677,7 +646,6 @@ class TestGetData(unittest.TestCase):
     def test_get_data_reshapes_1d_array(self):
         """Test get_data reshapes 1D array to 2D."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, get_data
 
         data = np.array([1.0, 2.0, 3.0])
         entry = Entry(data=data, label="1D Data")
@@ -706,7 +674,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_single_entry(self):
         """Test plot with a single Entry on axis 1."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry = Entry(data=self.data1, label="Sine Wave")
         fig, axes = plot(time=self.time, entries=[entry], show=False)
@@ -719,7 +686,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_multiple_entries_axis1(self):
         """Test plot with multiple entries on axis 1."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry1 = Entry(data=self.data1, label="Sine Wave")
         entry2 = Entry(data=self.data2, label="Cosine Wave")
@@ -739,7 +705,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_two_axes(self):
         """Test plot with entries on two y-axes."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry1 = Entry(data=self.data1, label="Sine Wave", axis=1)
         entry2 = Entry(data=self.data3, label="Linear Data", axis=2)
@@ -760,7 +725,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_three_axes(self):
         """Test plot with entries on three y-axes."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry1 = Entry(data=self.data1, label="Sine Wave", axis=1)
         entry2 = Entry(data=self.data2, label="Cosine Wave", axis=2)
@@ -783,7 +747,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_ylim(self):
         """Test plot with y-axis limits."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry = Entry(data=self.data1, label="Sine Wave")
 
@@ -804,7 +767,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_title(self):
         """Test plot with title."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry = Entry(data=self.data1, label="Sine Wave")
 
@@ -824,7 +786,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_custom_styling(self):
         """Test plot with custom Entry styling."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry = Entry(
             data=self.data1,
@@ -843,7 +804,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_numpy_time(self):
         """Test plot with numpy datetime array."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         time = np.array(self.time)
         entry = Entry(data=self.data1, label="Test Data")
@@ -857,7 +817,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_list_time(self):
         """Test plot with list of times (batch mode)."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         time = [self.time]
         data = self.data1.reshape(1, -1)
@@ -872,7 +831,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_single_entry_not_list(self):
         """Test plot with single Entry (not in list)."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry = Entry(data=self.data1, label="Single Entry")
 
@@ -885,7 +843,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_missing_time_raises_error(self):
         """Test plot raises error when time is missing."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry = Entry(data=self.data1, label="Test Data")
 
@@ -895,7 +852,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_missing_entries_raises_error(self):
         """Test plot raises error when entries is missing."""
         # Local application imports
-        from twin4build.utils.plot.plot import plot
 
         with self.assertRaises(AssertionError):
             plot(time=self.time, entries=None, show=False)
@@ -903,7 +859,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_no_axis1_entries_raises_error(self):
         """Test plot raises error when no entries for axis 1."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry = Entry(data=self.data1, label="Axis 2 Only", axis=2)
 
@@ -915,7 +870,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_roundto_parameters(self):
         """Test plot with roundto parameters."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry1 = Entry(data=self.data1, label="Data 1", axis=1)
         entry2 = Entry(data=self.data3, label="Data 2", axis=2)
@@ -937,7 +891,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_yoffset_parameters(self):
         """Test plot with yoffset parameters."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry1 = Entry(data=self.data1, label="Data 1", axis=1)
         entry2 = Entry(data=self.data3, label="Data 2", axis=2)
@@ -959,7 +912,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_align_zero_false(self):
         """Test plot with align_zero=False."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry1 = Entry(data=self.data1, label="Data 1", axis=1)
         entry2 = Entry(data=self.data3, label="Data 2", axis=2)
@@ -981,7 +933,6 @@ class TestPlotFunction(unittest.TestCase):
     def test_plot_with_ylim_on_multiple_axes(self):
         """Test plot with y-limits on multiple axes."""
         # Local application imports
-        from twin4build.utils.plot.plot import Entry, plot
 
         entry1 = Entry(data=self.data1, label="Data 1", axis=1)
         entry2 = Entry(data=self.data2, label="Data 2", axis=2)
@@ -1014,7 +965,6 @@ class TestGetFigAxes(unittest.TestCase):
     def test_get_fig_axes_single_plot(self):
         """Test get_fig_axes with single plot."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_fig_axes
 
         fig, axes = get_fig_axes("Single Plot", n_plots=1)
 
@@ -1027,7 +977,6 @@ class TestGetFigAxes(unittest.TestCase):
     def test_get_fig_axes_multiple_plots(self):
         """Test get_fig_axes with multiple plots."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_fig_axes
 
         fig, axes = get_fig_axes("Multiple Plots", n_plots=4, cols=2)
 
@@ -1039,7 +988,6 @@ class TestGetFigAxes(unittest.TestCase):
     def test_get_fig_axes_with_custom_size(self):
         """Test get_fig_axes with custom size."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_fig_axes
 
         fig, axes = get_fig_axes("Custom Size", n_plots=1, size_inches=(10, 8))
 
@@ -1052,7 +1000,6 @@ class TestGetFigAxes(unittest.TestCase):
     def test_get_fig_axes_with_custom_offset(self):
         """Test get_fig_axes with custom offset."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_fig_axes
 
         fig, axes = get_fig_axes("Custom Offset", n_plots=1, offset=(0.15, 0.2))
 
@@ -1064,7 +1011,6 @@ class TestGetFigAxes(unittest.TestCase):
     def test_get_fig_axes_with_multiple_rows(self):
         """Test get_fig_axes with multiple rows."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_fig_axes
 
         fig, axes = get_fig_axes("Multiple Rows", n_plots=6, cols=2)
 
@@ -1076,7 +1022,6 @@ class TestGetFigAxes(unittest.TestCase):
     def test_get_fig_axes_fewer_plots_than_grid(self):
         """Test get_fig_axes with fewer plots than grid cells."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_fig_axes
 
         # 3 plots in a 2x2 grid
         fig, axes = get_fig_axes("Partial Grid", n_plots=3, cols=2)
@@ -1089,7 +1034,6 @@ class TestGetFigAxes(unittest.TestCase):
     def test_get_fig_axes_title_set(self):
         """Test that get_fig_axes sets the title correctly."""
         # Local application imports
-        from twin4build.utils.plot.plot import get_fig_axes
 
         fig, axes = get_fig_axes("My Test Title", n_plots=1)
 

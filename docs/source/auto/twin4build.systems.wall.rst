@@ -4,10 +4,10 @@ wall
 Modules
 -------
 
-wall\_torch\_system module
---------------------------
+twin4build.systems.wall.wall\_system module
+-------------------------------------------
 
-.. automodule:: twin4build.systems.wall.wall_torch_system
+.. automodule:: twin4build.systems.wall.wall_system
    :members:
    :show-inheritance:
    :undoc-members:

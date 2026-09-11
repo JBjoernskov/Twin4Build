@@ -76,6 +76,34 @@ class TestSimulator(unittest.TestCase):
             schedule.output["scheduleValue"].history().shape[0], expected_timesteps
         )
 
+    def test_nonfinite_input_is_reported_after_complete_object_run(self):
+        start_time = datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)
+        end_time = start_time + datetime.timedelta(hours=1)
+        schedule = self.model.components["schedule"]
+        original = schedule.do_step
+        calls = []
+
+        def inject_first_step_nan(second_time, date_time, step_size, step_index):
+            original(second_time, date_time, step_size, step_index)
+            calls.append(step_index)
+            if step_index == 0:
+                schedule.output["scheduleValue"]._tensor.fill_(torch.nan)
+                schedule.output["scheduleValue"]._history[step_index].fill_(torch.nan)
+
+        schedule.do_step = inject_first_step_nan
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Input damperPosition of component damper is non-finite "
+            r"at timestep=0, period=0, component_index=0",
+        ):
+            self.simulator.simulate(
+                start_time=start_time,
+                end_time=end_time,
+                step_size=600,
+                show_progress_bar=False,
+            )
+        self.assertEqual(calls, list(range(6)))
+
     def test_simulate_batched(self):
         """Test batched simulation with multiple time periods."""
         # Define multiple simulation periods

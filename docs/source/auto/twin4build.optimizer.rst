@@ -4,8 +4,8 @@ optimizer
 Modules
 -------
 
-optimizer module
-----------------
+twin4build.optimizer.optimizer module
+-------------------------------------
 
 .. automodule:: twin4build.optimizer.optimizer
    :members:

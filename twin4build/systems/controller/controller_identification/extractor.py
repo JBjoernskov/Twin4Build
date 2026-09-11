@@ -51,11 +51,12 @@ from twin4build.systems.controller.setpoint_controller.pid_controller.pid_contro
     PIDControllerSystem,
 )
 from twin4build.systems.utils.sigmoid_gate import BandGate, SigmoidGate
-
+from twin4build.systems.sensor.sensor_system import SensorSystem
 
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+
 
 def _to_float(x: Any) -> float:
     """Best-effort scalar extraction from a ``tps.Parameter`` / ``Tensor`` / number."""
@@ -74,9 +75,7 @@ def _uri_str(node: Any) -> str:
     return str(node)
 
 
-def _topology_at_actuator(
-    cits: ControllerIdentificationSystem, actuator: int
-) -> Tuple[
+def _topology_at_actuator(cits: ControllerIdentificationSystem, actuator: int) -> Tuple[
     List[Tuple[int, core.System]],
     List[Tuple[int, core.System]],
     List[Tuple[int, core.System]],
@@ -201,6 +200,7 @@ def _sensor_uri_for_component(translator: Any, component: core.System) -> Option
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ExtractedController:
@@ -340,6 +340,7 @@ class WiringReport:
 # Candidate cloning
 # ---------------------------------------------------------------------------
 
+
 def _clone_pid(pid: PIDControllerSystem, new_id: str) -> PIDControllerSystem:
     """Construct a fresh ``PIDControllerSystem`` copying the learned scalars."""
     return PIDControllerSystem(
@@ -372,11 +373,17 @@ def _clone_candidate(
         # (PID + PID).  Non-PID cascade members would need bespoke
         # cloning here; we fall back to re-using the same class.
         return CascadeControllerSystem(
-            kp_a=_to_float(a.kp), Ti_a=_to_float(a.Ti), Td_a=_to_float(a.Td),
-            output_min_a=_to_float(a.output_min), output_max_a=_to_float(a.output_max),
+            kp_a=_to_float(a.kp),
+            Ti_a=_to_float(a.Ti),
+            Td_a=_to_float(a.Td),
+            output_min_a=_to_float(a.output_min),
+            output_max_a=_to_float(a.output_max),
             isReverse_a=bool(a.isReverse),
-            kp_b=_to_float(b.kp), Ti_b=_to_float(b.Ti), Td_b=_to_float(b.Td),
-            output_min_b=_to_float(b.output_min), output_max_b=_to_float(b.output_max),
+            kp_b=_to_float(b.kp),
+            Ti_b=_to_float(b.Ti),
+            Td_b=_to_float(b.Td),
+            output_min_b=_to_float(b.output_min),
+            output_max_b=_to_float(b.output_max),
             isReverse_b=bool(b.isReverse),
             id=new_id,
         )
@@ -417,6 +424,7 @@ def _clone_gate(
 # Selection helpers
 # ---------------------------------------------------------------------------
 
+
 def _argmax_idx(vec: torch.Tensor) -> int:
     return int(torch.argmax(vec.detach()).item())
 
@@ -438,6 +446,7 @@ def _selected_indices(
 # ---------------------------------------------------------------------------
 # Extraction
 # ---------------------------------------------------------------------------
+
 
 def extract_controller(
     cits: ControllerIdentificationSystem,
@@ -629,6 +638,7 @@ def extract_controller(
 # Wiring
 # ---------------------------------------------------------------------------
 
+
 def _build_uri_to_components(translator: Any) -> Dict[str, List[core.System]]:
     """Flatten ``translator._sem2sim_map`` into ``{uri_str: [components]}``.
 
@@ -683,7 +693,6 @@ def _pick_best_component(components: List[core.System]) -> Optional[core.System]
     component if no preference matches.
     """
     # Late import to avoid a circular dependency at module load time.
-    from twin4build.systems.sensor.sensor_system import SensorSystem
 
     if not components:
         return None
@@ -808,9 +817,13 @@ def wire_extracted_controllers(
         fb_port = _port_for_feedback(E.controller)
         for uri in E.sensor_brick_uris:
             ok = _connect_from_uri(
-                sim_model_stage2, uri_to_comps, uri,
-                E.controller, fb_port,
-                report.unmatched_sensor_uris, report.warnings,
+                sim_model_stage2,
+                uri_to_comps,
+                uri,
+                E.controller,
+                fb_port,
+                report.unmatched_sensor_uris,
+                report.warnings,
             )
             if verbose and ok:
                 print(f"  sensor {uri} -> {E.controller.id}.{fb_port}")
@@ -820,9 +833,13 @@ def wire_extracted_controllers(
         if inner_port is not None and E.sensor_b_brick_uris:
             for uri in E.sensor_b_brick_uris:
                 ok = _connect_from_uri(
-                    sim_model_stage2, uri_to_comps, uri,
-                    E.controller, inner_port,
-                    report.unmatched_sensor_uris, report.warnings,
+                    sim_model_stage2,
+                    uri_to_comps,
+                    uri,
+                    E.controller,
+                    inner_port,
+                    report.unmatched_sensor_uris,
+                    report.warnings,
                 )
                 if verbose and ok:
                     print(f"  inner sensor {uri} -> {E.controller.id}.{inner_port}")
@@ -832,9 +849,13 @@ def wire_extracted_controllers(
         if sp_port is not None:
             for uri in E.setpoint_brick_uris:
                 ok = _connect_from_uri(
-                    sim_model_stage2, uri_to_comps, uri,
-                    E.controller, sp_port,
-                    report.unmatched_sensor_uris, report.warnings,
+                    sim_model_stage2,
+                    uri_to_comps,
+                    uri,
+                    E.controller,
+                    sp_port,
+                    report.unmatched_sensor_uris,
+                    report.warnings,
                 )
                 if verbose and ok:
                     print(f"  setpoint {uri} -> {E.controller.id}.{sp_port}")
@@ -845,9 +866,13 @@ def wire_extracted_controllers(
         if E.gate is not None:
             for uri in E.gate_setpoint_brick_uris:
                 ok = _connect_from_uri(
-                    sim_model_stage2, uri_to_comps, uri,
-                    E.gate, "inputSignal",
-                    report.unmatched_sensor_uris, report.warnings,
+                    sim_model_stage2,
+                    uri_to_comps,
+                    uri,
+                    E.gate,
+                    "inputSignal",
+                    report.unmatched_sensor_uris,
+                    report.warnings,
                 )
                 if verbose and ok:
                     print(f"  gate-input {uri} -> {E.gate.id}.inputSignal")
@@ -855,13 +880,13 @@ def wire_extracted_controllers(
             # controllerSignal port.  The gate's do_step detects this
             # wire and emits gate*ctrl + (1-gate)*default_output.
             sim_model_stage2.add_connection(
-                E.controller, E.gate,
-                _output_port(E.controller), "controllerSignal",
+                E.controller,
+                E.gate,
+                _output_port(E.controller),
+                "controllerSignal",
             )
             if verbose:
-                print(
-                    f"  controller {E.controller.id} -> {E.gate.id}.controllerSignal"
-                )
+                print(f"  controller {E.controller.id} -> {E.gate.id}.controllerSignal")
             output_source = E.gate
             output_src_port = "outputSignal"
         else:
@@ -898,8 +923,10 @@ def wire_extracted_controllers(
                         )
                         continue
                     sim_model_stage2.add_connection(
-                        output_source, consumer,
-                        output_src_port, in_port,
+                        output_source,
+                        consumer,
+                        output_src_port,
+                        in_port,
                         input_port_index=in_idx,
                     )
                     report.rewired_consumers.append(
@@ -920,9 +947,7 @@ def wire_extracted_controllers(
                             f" {consumer.id}.{in_port}"
                         )
 
-        report.wired.append(
-            (E.source_cits_id, E.controller.id, E.actuator_brick_uri)
-        )
+        report.wired.append((E.source_cits_id, E.controller.id, E.actuator_brick_uri))
         if not rewired_any and rewire_actuator_consumers:
             report.warnings.append(
                 f"controller '{E.controller.id}' inserted but no downstream"
@@ -953,7 +978,8 @@ def extract_all_controllers(
     """
     extracted: List[ExtractedController] = []
     cits_list = [
-        c for c in sim_model_stage1.components.values()
+        c
+        for c in sim_model_stage1.components.values()
         if isinstance(c, ControllerIdentificationSystem)
     ]
     # Deterministic order -> deterministic new component ids.

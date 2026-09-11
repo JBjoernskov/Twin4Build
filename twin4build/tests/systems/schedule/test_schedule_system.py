@@ -1,14 +1,19 @@
 # Standard library imports
 import datetime
 import unittest
+import os
+import shutil
 
 # Third party imports
 from dateutil import tz
+import torch
 
 # Local application imports
 # Set test flag
 import twin4build
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
+from twin4build.model.model import Model
+import twin4build as tb
 
 twin4build._IS_TESTING = True
 
@@ -136,15 +141,10 @@ class TestScheduleSystem(unittest.TestCase):
     def test_caching_with_different_datetime_instances(self):
         """Test that caching works reliably with different datetime instances having same values."""
         # Standard library imports
-        import os
-        import shutil
 
         # Third party imports
-        import torch
 
         # Local application imports
-        import twin4build as tb
-        from twin4build.model.model import Model
 
         # Set test flag
         tb._IS_TESTING = True

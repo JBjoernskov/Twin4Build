@@ -4,8 +4,8 @@ neural\_policy\_controller
 Modules
 -------
 
-neural\_policy\_controller\_system module
------------------------------------------
+twin4build.systems.controller.neural\_policy\_controller.neural\_policy\_controller\_system module
+--------------------------------------------------------------------------------------------------
 
 .. automodule:: twin4build.systems.controller.neural_policy_controller.neural_policy_controller_system
    :members:

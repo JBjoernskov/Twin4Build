@@ -13,10 +13,11 @@ Package
 Modules
 -------
 
-model module
-------------
+twin4build.model.model module
+-----------------------------
 
 .. automodule:: twin4build.model.model
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:

@@ -355,8 +355,8 @@ class SpaceHeaterSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
-            self.n_c = self._n_c_compiled
+        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
+            self.n_c = self._n_c_batched
         else:
             self.n_c = 1
 
@@ -596,8 +596,12 @@ class SpaceHeaterSystem(core.System, nn.Module):
             disc_cache = cache[3]
         A, B, C_out, D, E, F = matrices
         u = torch.stack(
-            [inputs["supplyWaterTemperature"], inputs["waterFlowRate"],
-             inputs["indoorTemperature"]], dim=-1,
+            [
+                inputs["supplyWaterTemperature"],
+                inputs["waterFlowRate"],
+                inputs["indoorTemperature"],
+            ],
+            dim=-1,
         )
         x_next, y = bilinear_onestep(
             A,
@@ -686,7 +690,9 @@ def saref_signature_pattern():
         )
     )
     sp.add_rule(
-        StepRule(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
+        StepRule(
+            subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo
+        )
     )
 
     sp.add_input("waterFlowRate", node3)
@@ -713,7 +719,9 @@ def brick_signature_pattern():
     )
 
     sp.add_rule(
-        StepRule(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
+        StepRule(
+            subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf
+        )
     )
     sp.add_rule(
         StepRule(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)

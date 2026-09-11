@@ -244,7 +244,9 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
         # Store thermal parameters as tps.Parameters
         self.C_air = tps.Parameter(
-            torch.tensor(C_air, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
+            torch.tensor(C_air, dtype=tps.float_dtype()),
+            requires_grad=False,
+            scaling="log",
         )
         self.C_wall = tps.Parameter(
             torch.tensor(C_wall, dtype=tps.float_dtype()),
@@ -257,10 +259,14 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             scaling="log",
         )
         self.R_out = tps.Parameter(
-            torch.tensor(R_out, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
+            torch.tensor(R_out, dtype=tps.float_dtype()),
+            requires_grad=False,
+            scaling="log",
         )
         self.R_in = tps.Parameter(
-            torch.tensor(R_in, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
+            torch.tensor(R_in, dtype=tps.float_dtype()),
+            requires_grad=False,
+            scaling="log",
         )
         self.R_boundary = tps.Parameter(
             torch.tensor(R_boundary, dtype=tps.float_dtype()),
@@ -368,8 +374,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
-            self.n_c = self._n_c_compiled
+        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
+            self.n_c = self._n_c_batched
         else:
             self.n_c = 1
 
@@ -458,15 +464,18 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             )
 
         if self.manual_setup_n_walls == False:
-            # Find number of connected walls
-            connection_point = [
+            # Count logical vector slots, not connection objects. A compiled
+            # meta-component can have several connections targeting the same
+            # slot, each covering a different subset of its n_c branches.
+            connection_points = [
                 cp for cp in self.connects_at if cp.input_port == "wallHeatGain"
             ]
-            n_walls = (
-                len(connection_point[0].connects_system_through)
-                if connection_point
-                else 0
-            )
+            indices = [
+                int(cp.input_port_index[conn])
+                for cp in connection_points
+                for conn in cp.connects_system_through
+            ]
+            n_walls = max(indices, default=-1) + 1
             self.n_walls = n_walls
 
     def _get_initial_state_tensor(self):
@@ -497,9 +506,15 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
     #: Physical RC parameters, in a fixed order (the ``forward`` theta contract).
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = (
-        "C_air", "C_wall", "C_boundary",
-        "R_in", "R_out", "R_boundary",
-        "f_air", "f_wall", "Q_occ_gain",
+        "C_air",
+        "C_wall",
+        "C_boundary",
+        "R_in",
+        "R_out",
+        "R_boundary",
+        "f_air",
+        "f_wall",
+        "Q_occ_gain",
     )
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): connected
@@ -518,9 +533,13 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         ``n_boundary_temperature``).
         """
         u = [
-            ("outdoorTemperature", 1), ("supplyAirFlowRate", 1),
-            ("exhaustAirFlowRate", 1), ("supplyAirTemperature", 1),
-            ("globalIrradiation", 1), ("numberOfPeople", 1), ("heatGain", 1),
+            ("outdoorTemperature", 1),
+            ("supplyAirFlowRate", 1),
+            ("exhaustAirFlowRate", 1),
+            ("supplyAirTemperature", 1),
+            ("globalIrradiation", 1),
+            ("numberOfPeople", 1),
+            ("heatGain", 1),
         ]
         if self.n_boundary_temperature == 1:
             u.append(("boundaryTemperature", 1))
@@ -599,12 +618,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
                         [-air_wall - air_boundary, air_wall, air_boundary],
                         dim=-1,
                     ),
-                    torch.stack(
-                        [wall_air, -wall_air - wall_outdoor, zero], dim=-1
-                    ),
-                    torch.stack(
-                        [boundary_air, zero, -2 * boundary_air], dim=-1
-                    ),
+                    torch.stack([wall_air, -wall_air - wall_outdoor, zero], dim=-1),
+                    torch.stack([boundary_air, zero, -2 * boundary_air], dim=-1),
                 ],
                 dim=1,
             )
@@ -760,8 +775,12 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         inputs = {
             port: self.input[port].get()
             for port in (
-                "outdoorTemperature", "supplyAirFlowRate", "exhaustAirFlowRate",
-                "supplyAirTemperature", "globalIrradiation", "numberOfPeople",
+                "outdoorTemperature",
+                "supplyAirFlowRate",
+                "exhaustAirFlowRate",
+                "supplyAirTemperature",
+                "globalIrradiation",
+                "numberOfPeople",
                 "heatGain",
             )
         }
@@ -818,9 +837,13 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             disc_cache = cache[3]
         A, B, C, D, E, F = matrices
         cols = [
-            inputs["outdoorTemperature"], inputs["supplyAirFlowRate"],
-            inputs["exhaustAirFlowRate"], inputs["supplyAirTemperature"],
-            inputs["globalIrradiation"], inputs["numberOfPeople"], inputs["heatGain"],
+            inputs["outdoorTemperature"],
+            inputs["supplyAirFlowRate"],
+            inputs["exhaustAirFlowRate"],
+            inputs["supplyAirTemperature"],
+            inputs["globalIrradiation"],
+            inputs["numberOfPeople"],
+            inputs["heatGain"],
         ]
         if self.n_boundary_temperature == 1:
             cols.append(inputs["boundaryTemperature"])

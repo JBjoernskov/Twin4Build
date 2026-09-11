@@ -604,8 +604,8 @@ class ScheduleSystem(core.System):
             self.output["scheduleValue"].initialize(
                 n_t=time_series_input.n_timesteps,
                 n_s=time_series_input.batch_size,
-                n_c=1,
-                values=time_series_input.values,
+                n_c=self.n_c,
+                values=time_series_input.values.expand(-1, -1, self.n_c),
             )
         else:
             required_dicts = [
@@ -699,8 +699,8 @@ class ScheduleSystem(core.System):
             self.output["scheduleValue"].initialize(
                 n_t=max_timesteps,
                 n_s=len(start_time),
-                n_c=1,
-                values=values,
+                n_c=self.n_c,
+                values=values.expand(-1, -1, self.n_c),
             )
 
     def get_noise(self, date_time_steps):

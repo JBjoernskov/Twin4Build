@@ -12,8 +12,8 @@ Package
 Modules
 -------
 
-semantic\_model module
-----------------------
+twin4build.model.semantic\_model.semantic\_model module
+-------------------------------------------------------
 
 .. automodule:: twin4build.model.semantic_model.semantic_model
    :members:

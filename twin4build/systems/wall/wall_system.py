@@ -162,10 +162,14 @@ class WallSystem(core.System, nn.Module):
             torch.tensor(C, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.R_a = tps.Parameter(
-            torch.tensor(R_a, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
+            torch.tensor(R_a, dtype=tps.float_dtype()),
+            requires_grad=False,
+            scaling="log",
         )
         self.R_b = tps.Parameter(
-            torch.tensor(R_b, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
+            torch.tensor(R_b, dtype=tps.float_dtype()),
+            requires_grad=False,
+            scaling="log",
         )
         self.T_init = T_init
 
@@ -244,8 +248,8 @@ class WallSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
-            self.n_c = self._n_c_compiled
+        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
+            self.n_c = self._n_c_batched
         else:
             self.n_c = 1
 
@@ -274,9 +278,7 @@ class WallSystem(core.System, nn.Module):
         # Scalar.get() returns shape (n_s, n_c)
         t_wall = self.output["wallTemperature"].get()
         n_s, n_c = t_wall.shape
-        x0 = torch.zeros(
-            (n_s, n_c, 1), dtype=t_wall.dtype, device=t_wall.device
-        )
+        x0 = torch.zeros((n_s, n_c, 1), dtype=t_wall.dtype, device=t_wall.device)
         x0[:, :, 0] = t_wall
         return x0
 
@@ -395,9 +397,7 @@ class WallSystem(core.System, nn.Module):
             matrices = cache[1]
             disc_cache = cache[3]
         A, B, C_out, D, E, F = matrices
-        u = torch.stack(
-            [inputs["temperatureA"], inputs["temperatureB"]], dim=-1
-        )
+        u = torch.stack([inputs["temperatureA"], inputs["temperatureB"]], dim=-1)
         x_next, y = bilinear_onestep(
             A,
             B,
@@ -448,6 +448,7 @@ class WallSystem(core.System, nn.Module):
         self.output["heatFlowRateA"]._set(outs["heatFlowRateA"], i_t=step_index)
         self.output["heatFlowRateB"]._set(outs["heatFlowRateB"], i_t=step_index)
         self.output["wallTemperature"]._set(outs["wallTemperature"], i_t=step_index)
+
 
 # Deprecated aliases (removed in twin4build 2.1)
 WallTorchSystem = WallSystem

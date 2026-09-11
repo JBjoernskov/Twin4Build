@@ -65,7 +65,7 @@ import twin4build.utils.types as tps
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
-
+from twin4build.utils.deprecation import deprecate_name, reject_unexpected_kwargs
 
 # ---------------------------------------------------------------------------
 # Matcher diagnostic dump (env-var gated, zero-cost when disabled).
@@ -287,10 +287,9 @@ class Translator:
         self,
         semantic_model: core.SemanticModel,
         systems: List[core.System] = None,
-        systems_: List[core.System] = None,
         *,
         id: Optional[str] = None,
-        verbose=None,
+        **kwargs,
     ) -> "core.Model":
         """
         Translate a semantic model into a :class:`~twin4build.model.model.Model`.
@@ -309,12 +308,11 @@ class Translator:
 
         Args:
             semantic_model: The semantic model to translate.
-            systems_: List of system types to match against. ``None`` selects
+            systems: List of system types to match against. ``None`` selects
                 every ``core.System`` subclass with a ``.sp`` signature pattern.
-            verbose: Verbosity level forwarded to the LOGGER.
             id: Optional id for the produced :class:`Model`. When ``None`` the
                 model inherits ``semantic_model.id``. Useful when one semantic
-                model is translated multiple times with different ``systems_``
+                model is translated multiple times with different ``systems``
                 lists (e.g. a controls-only stage and a full physics stage):
                 pass distinct ids so the resulting Models do not share
                 ``generated_files/models/<id>/`` directories.
@@ -324,8 +322,9 @@ class Translator:
             input semantic model, and the translator (which carries the
             ``sim2sem`` / ``sem2sim`` maps).
         """
-        from twin4build.utils.deprecation import deprecate_name
 
+        systems_ = kwargs.pop("systems_", None)
+        verbose = kwargs.pop("verbose", None)
         if verbose is not None:
             deprecate_name("verbose=", "LOGGER.verbose")
             LOGGER.verbose = verbose
@@ -333,6 +332,7 @@ class Translator:
             deprecate_name("systems_=", "systems=")
             if systems is None:
                 systems = systems_
+        reject_unexpected_kwargs("Translator.translate", kwargs)
         LOGGER.task("Applying translator")
         LOGGER.add_level()
         if semantic_model.count_triples() == 0:
@@ -342,9 +342,9 @@ class Translator:
 
         if systems is None:
             systems_ = [
-                cls[1]
-                for cls in inspect.getmembers(systems_module, inspect.isclass)
-                if (issubclass(cls[1], (core.System,)) and hasattr(cls[1], "sp"))
+                cls
+                for cls in systems_module._load_system_classes()
+                if issubclass(cls, core.System) and hasattr(cls, "sp")
             ]
         else:
             systems_ = list(systems)
@@ -527,6 +527,7 @@ class Translator:
             Tuple of (complete_groups, incomplete_groups) where each is a nested dict:
             {ComponentClass: {SignaturePattern: [list of sp_sm_map dicts]}}
         """
+
         def _match_single_pattern(
             component_cls, signature_pattern, complete_groups, incomplete_groups
         ):
@@ -561,7 +562,9 @@ class Translator:
             # produced by parallel seeds in a multi-WCC pattern are
             # collapsed downstream.
             wccs = signature_pattern.weakly_connected_components()
-            modeled_nodes_set = set(getattr(signature_pattern, "_modeled_nodes", []) or [])
+            modeled_nodes_set = set(
+                getattr(signature_pattern, "_modeled_nodes", []) or []
+            )
             seed_sp_nodes: List["Node"] = []
             for wcc in wccs:
                 seed_for_wcc = None
@@ -1203,7 +1206,10 @@ class Translator:
                 max([len(("{:" + fmt + "}").format(x)) for x in col]) for col in mat.T
             ]
             for x in mat:
-                row = "  ".join(("{:" + str(col_maxes[i]) + fmt + "}").format(y) for i, y in enumerate(x))
+                row = "  ".join(
+                    ("{:" + str(col_maxes[i]) + fmt + "}").format(y)
+                    for i, y in enumerate(x)
+                )
                 LOGGER.debug("%s", row)
 
         def resolve_port_indices(
@@ -1528,7 +1534,10 @@ class Translator:
                                                 source_class
                                             ):
                                                 continue
-                                            if source_key not in provider_component.output:
+                                            if (
+                                                source_key
+                                                not in provider_component.output
+                                            ):
                                                 continue
                                             b = True
                                             break
@@ -1583,7 +1592,11 @@ class Translator:
                                                 for group in groups:
                                                     if output_port_index in group:
                                                         raw = group[output_port_index]
-                                                        elements = Translator._iter_binding(raw)
+                                                        elements = (
+                                                            Translator._iter_binding(
+                                                                raw
+                                                            )
+                                                        )
                                                         if elements:
                                                             sm_for_index = elements[0]
                                                         break
@@ -1591,7 +1604,11 @@ class Translator:
                                                 for group in groups:
                                                     if input_port_index in group:
                                                         raw = group[input_port_index]
-                                                        elements = Translator._iter_binding(raw)
+                                                        elements = (
+                                                            Translator._iter_binding(
+                                                                raw
+                                                            )
+                                                        )
                                                         if elements:
                                                             sm_for_index = elements[0]
                                                         break
@@ -1647,8 +1664,6 @@ class Translator:
                                     # providers (or the required-input MILP constraint)
                                     # will decide whether the connection is satisfiable.
 
-
-
         # Set up the constraints
         total_vars = N_E + N_Y + N_Y
         constraints_list = []
@@ -1690,7 +1705,9 @@ class Translator:
                     if edge_indices:
                         required_input_constraints.append(row)
                         edge_vars = [f"E_{idx}" for idx in edge_indices]
-                        constraint_desc = f"Y_{component_idx} <= {' + '.join(edge_vars)}"
+                        constraint_desc = (
+                            f"Y_{component_idx} <= {' + '.join(edge_vars)}"
+                        )
                         constraint_info.append(constraint_desc)
 
         # Convert to numpy array
@@ -1928,9 +1945,7 @@ class Translator:
                     row[N_E + idx] = 1
                 modeled_node_constraints.append(row)
                 components_str = " + ".join([f"Y_{idx}" for idx in component_indices])
-                constraint_desc = (
-                    f"{components_str} <= 1 (fingerprint {fp[:8]})"
-                )
+                constraint_desc = f"{components_str} <= 1 (fingerprint {fp[:8]})"
                 constraint_info.append(constraint_desc)
 
         # Convert to numpy array and add to constraints
@@ -1975,9 +1990,7 @@ class Translator:
                 group_members = self._sim_group_members.get(component, set())
                 fp = self._sim_fingerprint.get(component)
                 # Count non-group-member SM nodes individually.
-                node_count = sum(
-                    1 for n in modeled_nodes if n not in group_members
-                )
+                node_count = sum(1 for n in modeled_nodes if n not in group_members)
                 # A group contributes +1 in total, regardless of member count.
                 if fp is not None:
                     node_count += 1
@@ -2317,14 +2330,12 @@ class Translator:
                             self._sim2group_map[component] = {}
                         self._sim2group_map[component][sp] = [group]
                         self._sim2sem_map[component] = modeled_match_nodes
-                        self._sim_group_members[component] = set(
-                            group_member_sm_nodes
-                        )
+                        self._sim_group_members[component] = set(group_member_sm_nodes)
                         self._sim_fingerprint[component] = component_fingerprint
                         if component_fingerprint is not None:
-                            self._context_to_component[
-                                component_fingerprint
-                            ] = component
+                            self._context_to_component[component_fingerprint] = (
+                                component
+                            )
                         for modeled_match_node in modeled_match_nodes:
                             if modeled_match_node not in self._sem2sim_map:
                                 self._sem2sim_map[modeled_match_node] = set()
@@ -2707,7 +2718,9 @@ class Translator:
         elements = Translator._iter_binding(value)
         if len(elements) == 1:
             only = elements[0]
-            return only.get_short_name() if hasattr(only, "get_short_name") else str(only)
+            return (
+                only.get_short_name() if hasattr(only, "get_short_name") else str(only)
+            )
         names = [
             (e.get_short_name() if hasattr(e, "get_short_name") else str(e))
             for e in elements[:3]
@@ -2862,9 +2875,7 @@ class Translator:
             except Exception:
                 sp_key = id(sp_n)
             if isinstance(sm_v, tuple):
-                sm_key: Any = tuple(
-                    str(getattr(e, "uri", None) or e) for e in sm_v
-                )
+                sm_key: Any = tuple(str(getattr(e, "uri", None) or e) for e in sm_v)
             else:
                 sm_key = str(getattr(sm_v, "uri", None) or sm_v)
             items.append((sp_key, sm_key))
@@ -3091,9 +3102,7 @@ class Translator:
 
             for sp_predicate, sp_neighbors in sp_adj.items():
                 for sp_neighbor in sp_neighbors:
-                    edge_key = direction.edge_key(
-                        sp_subject, sp_predicate, sp_neighbor
-                    )
+                    edge_key = direction.edge_key(sp_subject, sp_predicate, sp_neighbor)
 
                     rule = ruleset.get(edge_key)
                     if rule is None:
@@ -3246,9 +3255,7 @@ class Translator:
                             # walks are independent.
                             if isinstance(matched_sm_object, tuple):
                                 feasible.setdefault(matched_sp_object, set())
-                                comparison_table.setdefault(
-                                    matched_sp_object, set()
-                                )
+                                comparison_table.setdefault(matched_sp_object, set())
                                 for elem in matched_sm_object:
                                     feasible[matched_sp_object].add(elem)
                                     comparison_table[matched_sp_object].add(elem)
@@ -3326,9 +3333,7 @@ class Translator:
                                     valid_maps.extend(child_maps)
                                     match_found = True
 
-                            elif (
-                                matched_sm_object in feasible[matched_sp_object]
-                            ):
+                            elif matched_sm_object in feasible[matched_sp_object]:
                                 cached = descendant_cache.get(
                                     (matched_sp_object, matched_sm_object), {}
                                 )
@@ -3352,9 +3357,7 @@ class Translator:
 
                         if not match_found and not isinstance(rule, OptionalRule):
                             feasible[sp_subject].discard(sm_subject)
-                            LOGGER.debug(
-                                "Pruned (no match found) [%s]", direction.name
-                            )
+                            LOGGER.debug("Pruned (no match found) [%s]", direction.name)
                             LOGGER.debug(
                                 lambda: Translator._get_node_string(
                                     sp_subject, sm_subject
@@ -4378,9 +4381,7 @@ class Translator:
             elif val_a is None and val_b is not None:
                 new_contributions += 1
 
-        LOGGER.debug(
-            "Compatibility check: %s", "pass" if is_compatible else "fail"
-        )
+        LOGGER.debug("Compatibility check: %s", "pass" if is_compatible else "fail")
 
         # Early exit if incompatible - no merge possible
         if not is_compatible:
@@ -4399,9 +4400,7 @@ class Translator:
         if new_contributions == 0:
             LOGGER.debug("No new contributions, skipping merge")
             if _diag:
-                _match_diag_write(
-                    "[MERGE]   REJECT no-new-contributions"
-                )
+                _match_diag_write("[MERGE]   REJECT no-new-contributions")
             LOGGER.remove_level()
             return False
 
@@ -4459,8 +4458,7 @@ class Translator:
                     )
                     if _diag:
                         _match_diag_write(
-                            "[MERGE]   REJECT connected upstream-edge "
-                            "missing-in-SM"
+                            "[MERGE]   REJECT connected upstream-edge " "missing-in-SM"
                         )
             else:
                 LOGGER.debug("Connected merge validation failed")
@@ -4539,14 +4537,12 @@ class Translator:
                 # via an SM edge that doesn't actually exist (e.g.
                 # AHU02 inheriting AHU01's
                 # ``Supply_Air_Temperature_Setpoint``).
-                valid, fully_evaluated = (
-                    Translator._validate_binding_against_merged(
-                        merged_group,
-                        sp_node,
-                        sm_node,
-                        signature_pattern,
-                        nodes_b=nodes_b,
-                    )
+                valid, fully_evaluated = Translator._validate_binding_against_merged(
+                    merged_group,
+                    sp_node,
+                    sm_node,
+                    signature_pattern,
+                    nodes_b=nodes_b,
                 )
                 if not valid:
                     if _diag:
@@ -4650,9 +4646,7 @@ class Translator:
                 )
                 LOGGER.add_level()
                 LOGGER.info(
-                    lambda: Translator._get_map_string(
-                        merged_group, LOGGER.info
-                    )
+                    lambda: Translator._get_map_string(merged_group, LOGGER.info)
                 )
                 LOGGER.remove_level()
             else:
@@ -4716,7 +4710,11 @@ class Node:
         return id(self)
 
     def __eq__(self, other):
-        if isinstance(other, Node) and hasattr(self, "_hash") and hasattr(other, "_hash"):
+        if (
+            isinstance(other, Node)
+            and hasattr(self, "_hash")
+            and hasattr(other, "_hash")
+        ):
             return self._hash == other._hash
         return self is other
 
@@ -4750,7 +4748,9 @@ class Node:
         cls_ = []
         for c in cls:
             if c is core.BlankNode:
-                cls_.append(core.BlankNode)  # Sentinel — matched in SemanticInstance.isinstance()
+                cls_.append(
+                    core.BlankNode
+                )  # Sentinel — matched in SemanticInstance.isinstance()
             elif isinstance(c, core.SemanticType):
                 cls_.append(c)
             elif isinstance(c, URIRef):
@@ -4859,9 +4859,9 @@ class ModeledNode(Node):
             if sp is None:
                 sp = m._signature_pattern
             else:
-                assert m._signature_pattern is sp, (
-                    "All ModeledNode members must share the same SignaturePattern."
-                )
+                assert (
+                    m._signature_pattern is sp
+                ), "All ModeledNode members must share the same SignaturePattern."
 
         self.members = list(members)
 
@@ -4963,9 +4963,7 @@ def resolve_fingerprint(modeled_node: "Node", sm_bindings: Dict["Node", Any]) ->
             for s_iri in subj_iris:
                 for o_iri in obj_iris:
                     triple_keys.append(
-                        "{}\x1f{}\x1f{}".format(
-                            s_iri, "|".join(pred_iris), o_iri
-                        )
+                        "{}\x1f{}\x1f{}".format(s_iri, "|".join(pred_iris), o_iri)
                     )
         for tk in sorted(set(triple_keys)):
             h.update(b"T\x1f")
@@ -5400,8 +5398,10 @@ class SignaturePattern:
         SignaturePattern._signatures_reversed[self] = id
         self._nodes = []
         self._required_nodes = []
-        self._program_registered_nodes = set()  # locked by add_triple (non-optional) / add_modeled_node
-        self._user_registered_nodes = set()     # set explicitly by public add_node
+        self._program_registered_nodes = (
+            set()
+        )  # locked by add_triple (non-optional) / add_modeled_node
+        self._user_registered_nodes = set()  # set explicitly by public add_node
         self._inputs = {}
         self._modeled_nodes = []
         # ``_modeled_node_groups`` maps each registered modeled identity to the
@@ -5413,9 +5413,9 @@ class SignaturePattern:
         # group — the subset of SP triples whose subject and object are both
         # members. Empty for singletons. Used at match time to compute the
         # relational fingerprint.
-        self._modeled_node_triples: Dict[
-            Node, List[Tuple[Node, "Predicate", Node]]
-        ] = {}
+        self._modeled_node_triples: Dict[Node, List[Tuple[Node, "Predicate", Node]]] = (
+            {}
+        )
         self._ruleset = {}
         self._rules = []
         self._parameters = {}
@@ -5909,7 +5909,8 @@ class SignaturePattern:
 
     def add_node(self, node, rule=None, optional=False):
         """Public user-facing method. Sets required/optional status unless the node is
-        already locked by a structural rule (add_triple non-optional / add_modeled_node)."""
+        already locked by a structural rule (add_triple non-optional / add_modeled_node).
+        """
         self._add_node(node, rule=rule, optional=optional, _lock=False, _from_user=True)
 
     def _remove_node(self, node):
@@ -6201,9 +6202,7 @@ class Direction:
         the canonical key.
         """
         return (
-            (near, predicate, far)
-            if self.name == "forward"
-            else (far, predicate, near)
+            (near, predicate, far) if self.name == "forward" else (far, predicate, near)
         )
 
     def set_intermediate_far_edge(
@@ -6424,7 +6423,11 @@ class And(Rule):
                 LOGGER.debug(
                     "Matched: %s (%s) is (%s)",
                     pair[1].get_short_name(),
-                    (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
                     c,
                 )
             LOGGER.debug("Rule applies: %s", True)
@@ -6507,7 +6510,11 @@ class Or(Rule):
                 LOGGER.debug(
                     "Matched: %s (%s) is (%s)",
                     pair[1].get_short_name(),
-                    (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
                     c,
                 )
             LOGGER.debug("Rule applies: %s", True)
@@ -6519,7 +6526,11 @@ class Or(Rule):
                 LOGGER.debug(
                     "Matched: %s (%s) is (%s)",
                     pair[1].get_short_name(),
-                    (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
                     c,
                 )
             LOGGER.debug("Rule applies: %s", True)
@@ -6531,7 +6542,11 @@ class Or(Rule):
                 LOGGER.debug(
                     "Matched: %s (%s) is (%s)",
                     pair[1].get_short_name(),
-                    (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
                     c,
                 )
             LOGGER.debug("Rule applies: %s", True)
@@ -6705,7 +6720,11 @@ class NoStepRule(Rule):
             LOGGER.debug(
                 "Matched: %s (%s) is %s",
                 pair[1].get_short_name(),
-                (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                (
+                    mst.get_short_name()
+                    if (mst := pair[1].get_most_specific_type()) is not None
+                    else "None"
+                ),
                 far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
@@ -6904,7 +6923,11 @@ class StepRule(Rule):
             LOGGER.debug(
                 "Matched: %s (%s) is %s",
                 pair[1].get_short_name(),
-                (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                (
+                    mst.get_short_name()
+                    if (mst := pair[1].get_most_specific_type()) is not None
+                    else "None"
+                ),
                 far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
@@ -7143,9 +7166,7 @@ class SetStepRule(StepRule):
         for pair in pairs:
             try:
                 if isinstance(pair[1], tuple):
-                    preview = ", ".join(
-                        o.get_short_name() for o in pair[1][:3]
-                    )
+                    preview = ", ".join(o.get_short_name() for o in pair[1][:3])
                     if len(pair[1]) > 3:
                         preview += ", ..."
                     LOGGER.debug(
@@ -7322,7 +7343,11 @@ class _SinglePath(Rule):
             LOGGER.debug(
                 "Matched: %s (%s) is %s",
                 pair[1].get_short_name(),
-                (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                (
+                    mst.get_short_name()
+                    if (mst := pair[1].get_most_specific_type()) is not None
+                    else "None"
+                ),
                 far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
@@ -7578,7 +7603,11 @@ class _MultiPath(Rule):
             LOGGER.debug(
                 "Matched: %s (%s) is %s",
                 pair[1].get_short_name(),
-                (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                (
+                    mst.get_short_name()
+                    if (mst := pair[1].get_most_specific_type()) is not None
+                    else "None"
+                ),
                 far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
@@ -7704,7 +7733,11 @@ class OptionalRule(Rule):
             LOGGER.debug(
                 "Matched: %s (%s) is %s",
                 pair[1].get_short_name(),
-                (mst.get_short_name() if (mst := pair[1].get_most_specific_type()) is not None else "None"),
+                (
+                    mst.get_short_name()
+                    if (mst := pair[1].get_most_specific_type()) is not None
+                    else "None"
+                ),
                 far_node.cls,
             )
         LOGGER.debug("Rule applies: %s", rule_applies)
@@ -8090,13 +8123,9 @@ class SetAnyPathRule(SetStepRule):
                 maps_iter = list(candidate_maps)
 
             if direction is FORWARD:
-                tuple_binding = tuple(
-                    sorted(endpoints, key=lambda o: str(o.uri))
-                )
+                tuple_binding = tuple(sorted(endpoints, key=lambda o: str(o.uri)))
                 for current_map in maps_iter:
-                    maps_for_match = (
-                        [current_map] if current_map is not None else []
-                    )
+                    maps_for_match = [current_map] if current_map is not None else []
                     pairs.append(
                         (
                             maps_for_match,
@@ -8107,9 +8136,7 @@ class SetAnyPathRule(SetStepRule):
                         )
                     )
                 try:
-                    preview = ", ".join(
-                        o.get_short_name() for o in tuple_binding[:3]
-                    )
+                    preview = ", ".join(o.get_short_name() for o in tuple_binding[:3])
                     if len(tuple_binding) > 3:
                         preview += ", ..."
                 except Exception:
@@ -8127,9 +8154,7 @@ class SetAnyPathRule(SetStepRule):
                 # runs.
                 ordered_endpoints = sorted(endpoints, key=lambda o: str(o.uri))
                 for current_map in maps_iter:
-                    maps_for_match = (
-                        [current_map] if current_map is not None else []
-                    )
+                    maps_for_match = [current_map] if current_map is not None else []
                     for i, ep in enumerate(ordered_endpoints):
                         pairs.append(
                             (

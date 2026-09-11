@@ -12,6 +12,7 @@ import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.systems.utils.smooth_saturation import clamp
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.deprecation import deprecate_args
 
 
 class _MassParams:
@@ -52,7 +53,8 @@ class _DamperParams(core.System, nn.Module):
             torch.tensor(a, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
         )
         self.nominalAirFlowRate = tps.Parameter(
-            torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()), requires_grad=False
+            torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()),
+            requires_grad=False,
         )
 
     def expand_to_n_c(self, n_c: int):
@@ -130,7 +132,6 @@ class OccupancySystem(core.System, nn.Module):
         damper_value_column: int = 1,
         **kwargs,
     ):
-        from twin4build.utils.deprecation import deprecate_args
 
         legacy = deprecate_args(
             [
@@ -228,9 +229,9 @@ class OccupancySystem(core.System, nn.Module):
         batch_size = len(start_time)
 
         for inp in self.input.values():
-            inp.initialize(n_t=max_timesteps, n_s=batch_size)
+            inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for out in self.output.values():
-            out.initialize(n_t=max_timesteps, n_s=batch_size)
+            out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
 
         assert self.co2_filename is not None, (
             f"|{self.__class__.__name__}|{self.id}|: " "co2_filename must be set."
@@ -331,9 +332,7 @@ class OccupancySystem(core.System, nn.Module):
         step_index: int,
     ) -> None:
         C_indoor = self._co2_ts.values[step_index]  # (n_s, 1) - measured
-        C_prev = (
-            self._co2_ts.values[step_index - 1] if step_index > 0 else C_indoor
-        )
+        C_prev = self._co2_ts.values[step_index - 1] if step_index > 0 else C_indoor
         damper_pos = self._damper_ts.values[step_index]  # (n_s, 1) - measured
 
         # Publish the data samples on the (unconnected) measured-data input

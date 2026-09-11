@@ -42,6 +42,7 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Tuple
+import traceback as _tb
 
 # Third party imports
 import numpy as np
@@ -64,7 +65,6 @@ from twin4build.systems.controller.controller_identification.loop_classifier imp
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.utils.logger import LOGGER
-
 
 # ---------------------------------------------------------------------------
 # Public dataclasses
@@ -121,9 +121,9 @@ class RewireReport:
     # the actuator timeseries.  Available for every CITS that had loadable
     # actuator data, regardless of whether the rewire pruned.  ``None``
     # when the actuator series was missing or the GMM bailed out.
-    kind: Optional[str] = None                  # damper / reheat / always_on / ambiguous
-    bimodality: Optional[float] = None          # cluster separation in pooled-std units
-    on_frac: Optional[float] = None             # fraction of samples flagged active
+    kind: Optional[str] = None  # damper / reheat / always_on / ambiguous
+    bimodality: Optional[float] = None  # cluster separation in pooled-std units
+    on_frac: Optional[float] = None  # fraction of samples flagged active
     # ----- Gate seeds derived from on_mask vs onOffSignal candidates -----
     # ``None`` when the rewire could not run the GMM (no actuator data) or
     # the on_mask was degenerate (all True / all False).  See
@@ -321,9 +321,7 @@ def _rewire_pi_loops(
         if isinstance(c, ControllerIdentificationPISystem)
     ]
 
-    LOGGER.info(
-        f"[REWIRE] Found {len(pi_cits_list)} PI-CITS components to rewire"
-    )
+    LOGGER.info(f"[REWIRE] Found {len(pi_cits_list)} PI-CITS components to rewire")
 
     if not pi_cits_list:
         return {}
@@ -386,9 +384,7 @@ def _rewire_pi_loops(
     # includes the input sensors (sensorValue + setpointValue +
     # onOffSignal) and the downstream actuator-measurement sensor.
     sensors_to_init = _collect_sensors(pi_cits_list)
-    LOGGER.info(
-        f"[REWIRE] Initialising {len(sensors_to_init)} sensors for data load"
-    )
+    LOGGER.info(f"[REWIRE] Initialising {len(sensors_to_init)} sensors for data load")
     # SensorSystem.initialize expects ``start_time``, ``end_time`` and
     # ``step_size`` as parallel lists (one entry per simulation batch).
     # Callers typically pass ``start_time`` / ``end_time`` as lists (one
@@ -411,9 +407,7 @@ def _rewire_pi_loops(
                 step_size=init_step,
             )
         except Exception as ex:  # noqa: BLE001
-            LOGGER.warning(
-                f"[REWIRE] Sensor '{s.id}' failed to initialise: {ex}"
-            )
+            LOGGER.warning(f"[REWIRE] Sensor '{s.id}' failed to initialise: {ex}")
 
     # Step 2: per-CITS rewire.  Pruning calls ``cits._build_components()``
     # which rebuilds the ``on_off_signal_norm_min`` /
@@ -454,10 +448,8 @@ def _rewire_pi_loops(
                 fb_sp_median_tracking_max=fb_sp_median_tracking_max,
             )
         except Exception as ex:  # noqa: BLE001
-            import traceback as _tb
             LOGGER.warning(
-                f"[REWIRE] CITS '{cits.id}' rewire failed: {ex}\n"
-                + _tb.format_exc()
+                f"[REWIRE] CITS '{cits.id}' rewire failed: {ex}\n" + _tb.format_exc()
             )
             report = RewireReport(
                 cits_id=cits.id,
@@ -808,20 +800,12 @@ def _populate_on_off_signal_norm_bounds(
         # Build fresh numpy arrays so we can edit per-slot then write
         # back.
         oo_min = (
-            cits.on_off_signal_norm_min.detach()
-            .cpu()
-            .numpy()
-            .astype(np.float64)
-            .copy()
+            cits.on_off_signal_norm_min.detach().cpu().numpy().astype(np.float64).copy()
             if hasattr(cits, "on_off_signal_norm_min")
             else np.zeros(n_oo, dtype=np.float64)
         )
         oo_max = (
-            cits.on_off_signal_norm_max.detach()
-            .cpu()
-            .numpy()
-            .astype(np.float64)
-            .copy()
+            cits.on_off_signal_norm_max.detach().cpu().numpy().astype(np.float64).copy()
             if hasattr(cits, "on_off_signal_norm_max")
             else np.ones(n_oo, dtype=np.float64)
         )
@@ -863,20 +847,23 @@ def _populate_on_off_signal_norm_bounds(
         cits.on_off_signal_norm_min = torch.tensor(oo_min, dtype=torch.float64)
         cits.on_off_signal_norm_max = torch.tensor(oo_max, dtype=torch.float64)
 
-        bounds_str = ", ".join(
-            f"slot{j}=[{oo_min[j]:.3f}, {oo_max[j]:.3f}]"
-            for j in sorted(seen_slots)
-        ) or "none"
-        LOGGER.info(
-            f"[REWIRE] onOffSignal norm bounds for '{cits.id}': {bounds_str}"
+        bounds_str = (
+            ", ".join(
+                f"slot{j}=[{oo_min[j]:.3f}, {oo_max[j]:.3f}]"
+                for j in sorted(seen_slots)
+            )
+            or "none"
         )
+        LOGGER.info(f"[REWIRE] onOffSignal norm bounds for '{cits.id}': {bounds_str}")
 
 
 def _populate_gate_seeds_from_on_mask(
     pi_cits_list: List[ControllerIdentificationPISystem],
     *,
     sharpness_beta: float = 8.0,
-) -> Dict[str, Tuple[Optional[str], Optional[float], Optional[float], Optional[GateSeeds]]]:
+) -> Dict[
+    str, Tuple[Optional[str], Optional[float], Optional[float], Optional[GateSeeds]]
+]:
     """Per-CITS: run GMM(actuator) -> on_mask -> rank onOffSignal slots.
 
     For each PI-CITS:
@@ -928,16 +915,12 @@ def _populate_gate_seeds_from_on_mask(
         # 1+2: actuator series -> GMM on_mask.
         actuator = _resolve_actuator_measurement(cits)
         if actuator is None:
-            LOGGER.info(
-                f"[REWIRE] {cits.id}: gate seeding skipped (no actuator)"
-            )
+            LOGGER.info(f"[REWIRE] {cits.id}: gate seeding skipped (no actuator)")
             results[cits.id] = (None, None, None, None)
             continue
         u = _sensor_timeseries(actuator)
         if u is None or u.size == 0:
-            LOGGER.info(
-                f"[REWIRE] {cits.id}: gate seeding skipped (no actuator data)"
-            )
+            LOGGER.info(f"[REWIRE] {cits.id}: gate seeding skipped (no actuator data)")
             results[cits.id] = (None, None, None, None)
             continue
         u, _ = _maybe_rescale_percent(u)
@@ -1298,9 +1281,7 @@ def _maybe_swap_broken_sensor(
     # sensor (or vice versa) keep only the best (sp, fb) pair: highest
     # sp quality and lowest fb quality wins.  This avoids partial
     # repairs that would leave dangling fb/sp entries.
-    candidates.sort(
-        key=lambda c: (-c[3].quality_score, c[2].quality_score)
-    )
+    candidates.sort(key=lambda c: (-c[3].quality_score, c[2].quality_score))
     used_fb: set = set()
     used_sp: set = set()
     final_swaps: List[Tuple[str, str]] = []
@@ -1407,7 +1388,9 @@ def _maybe_swap_broken_sensor(
                     )
                 for cp in list(cits.connects_at):
                     if cp.input_port in (
-                        "sensorValue", "setpointValue", "onOffSignal",
+                        "sensorValue",
+                        "setpointValue",
+                        "onOffSignal",
                     ):
                         _reindex_connection_point(cp)
             except Exception as roll_ex:  # noqa: BLE001
@@ -1508,8 +1491,8 @@ def _apply_seeds(
     # --- kp ----------------------------------------------------------------
     kp_x0 = max(kp_lb_floor, min(kp_ub_ceil, float(score.kp)))
     decade = float(kp_decade_pad)
-    kp_lb = max(kp_lb_floor, kp_x0 / (10.0 ** decade))
-    kp_ub = min(kp_ub_ceil, kp_x0 * (10.0 ** decade))
+    kp_lb = max(kp_lb_floor, kp_x0 / (10.0**decade))
+    kp_ub = min(kp_ub_ceil, kp_x0 * (10.0**decade))
     # Hard guarantee: lb <= x0 <= ub.  When x0 sits at one of the global
     # floors/ceilings the decade-pad math can collapse the interval; in
     # that case widen the opposite side instead of pushing x0 around.
@@ -1528,8 +1511,8 @@ def _apply_seeds(
     Ti_raw = score.Ti if score.Ti is not None else Ti_default
     Ti_x0 = float(np.clip(Ti_raw, Ti_lb_floor, Ti_ub_ceil))
     decade_t = float(Ti_decade_pad)
-    Ti_lb = max(Ti_lb_floor, Ti_x0 / (10.0 ** decade_t))
-    Ti_ub = min(Ti_ub_ceil, Ti_x0 * (10.0 ** decade_t))
+    Ti_lb = max(Ti_lb_floor, Ti_x0 / (10.0**decade_t))
+    Ti_ub = min(Ti_ub_ceil, Ti_x0 * (10.0**decade_t))
     # ``h`` (sample step) is a *soft* preference: don't allow Ti < h when
     # the seed itself supports it, but never let the floor push above x0.
     Ti_lb = max(Ti_lb, min(h, Ti_x0))
@@ -1739,7 +1722,10 @@ def _rewire_one(
         if n_oo > 0:
             try:
                 gate_seeds_for_mask = derive_gate_seeds_from_on_mask(
-                    active_mask, slot_signals, oo_min, oo_max,
+                    active_mask,
+                    slot_signals,
+                    oo_min,
+                    oo_max,
                 )
             except Exception as ex:  # noqa: BLE001
                 LOGGER.warning(
@@ -1762,24 +1748,16 @@ def _rewire_one(
                     span = float(oo_max[w] - oo_min[w])
                     if abs(span) > 1e-12 and n_w > 0:
                         s_norm = (sig_arr[:n_w] - float(oo_min[w])) / span
-                        gate_mode_partial = (s_norm >= thr) & (
-                            s_norm <= thr + band
-                        )
-                        gate_mode_mask = np.zeros(
-                            active_mask.size, dtype=bool
-                        )
+                        gate_mode_partial = (s_norm >= thr) & (s_norm <= thr + band)
+                        gate_mode_mask = np.zeros(active_mask.size, dtype=bool)
                         gate_mode_mask[:n_w] = gate_mode_partial
                         proposed = active_mask & gate_mode_mask
                         n_on = int(active_mask.sum())
                         n_gate = int(gate_mode_mask.sum())
                         n_combined = int(proposed.sum())
-                        winner_auc = float(
-                            gate_seeds_for_mask.auc_per_slot[w]
-                        )
+                        winner_auc = float(gate_seeds_for_mask.auc_per_slot[w])
                         polarity = (
-                            "+"
-                            if gate_seeds_for_mask.winner_polarity > 0
-                            else "-"
+                            "+" if gate_seeds_for_mask.winner_polarity > 0 else "-"
                         )
                         if n_combined >= n_min_active:
                             combined_mask = proposed
@@ -2143,11 +2121,13 @@ def _rewire_one(
     # because the +1/-1 decision only requires the sign of the slope.
     # ------------------------------------------------------------------
     if confidence in ("low", "failed"):
-        kp_heuristic = float(np.clip(
-            np.sqrt(kp_lb_floor * kp_ub_ceil) / 10.0,
-            kp_lb_floor,
-            kp_ub_ceil,
-        ))
+        kp_heuristic = float(
+            np.clip(
+                np.sqrt(kp_lb_floor * kp_ub_ceil) / 10.0,
+                kp_lb_floor,
+                kp_ub_ceil,
+            )
+        )
         Ti_heuristic = float(np.clip(Ti_default, Ti_lb_floor, Ti_ub_ceil))
         # Preserve regression's slope sign (so isReverse stays correct)
         # but override |slope|, Ti, and tag r2/reason for diagnostics.
@@ -2158,7 +2138,7 @@ def _rewire_one(
             kp=kp_heuristic,
             Ti=Ti_heuristic,
             reason=f"heuristic_seed (regression r2={winner_score.r2:.3f} "
-                   f"below confidence_low={confidence_low})",
+            f"below confidence_low={confidence_low})",
         )
         LOGGER.info(
             f"[REWIRE] {cits.id}: regression confidence={confidence} "
@@ -2184,9 +2164,7 @@ def _rewire_one(
                 input_port="sensorValue",
             )
         except (ValueError, AttributeError) as ex:
-            LOGGER.warning(
-                f"[REWIRE] {cits.id}: could not drop sensor '{s_id}': {ex}"
-            )
+            LOGGER.warning(f"[REWIRE] {cits.id}: could not drop sensor '{s_id}': {ex}")
 
     # Remove non-winning setpoint connections.
     for sp_id, (sp_obj, _conn) in list(setpoints_dict.items()):
@@ -2347,9 +2325,7 @@ def _pin_frozen_cits_state(
             val = [0.0] * n
             if 0 <= pos < n:
                 val[pos] = 1.0
-        param.set(
-            torch.tensor(val, dtype=torch.float64), normalized=False
-        )
+        param.set(torch.tensor(val, dtype=torch.float64), normalized=False)
 
     def _set_scalar(param, value: float) -> None:
         param.set(
@@ -2357,9 +2333,7 @@ def _pin_frozen_cits_state(
             normalized=False,
         )
 
-    def _find_idx(
-        connection_points, port_name: str, *keywords: str
-    ) -> Optional[int]:
+    def _find_idx(connection_points, port_name: str, *keywords: str) -> Optional[int]:
         """Return the input-port index whose wired source id contains
         any of ``keywords`` (case-insensitive)."""
         for cp in connection_points:
@@ -2382,9 +2356,7 @@ def _pin_frozen_cits_state(
             gate = getattr(cits, f"gate_{a}", None)
 
             # Find zone-air-temp sensor slot (fallback to control-temp).
-            zt_idx = _find_idx(
-                cits.connects_at, "sensorValue", "zone_air_temp"
-            )
+            zt_idx = _find_idx(cits.connects_at, "sensorValue", "zone_air_temp")
             if zt_idx is None:
                 zt_idx = _find_idx(
                     cits.connects_at,

@@ -217,8 +217,8 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
-            self.n_c = self._n_c_compiled
+        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
+            self.n_c = self._n_c_batched
         else:
             self.n_c = 1
 
@@ -291,8 +291,10 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         numberOfPeople]``; single output row ``indoorCO2``."""
         return {
             "u": [
-                ("supplyAirFlowRate", 1), ("exhaustAirFlowRate", 1),
-                ("outdoorCO2", 1), ("numberOfPeople", 1),
+                ("supplyAirFlowRate", 1),
+                ("exhaustAirFlowRate", 1),
+                ("outdoorCO2", 1),
+                ("numberOfPeople", 1),
             ],
             "y": {"indoorCO2": 0},
         }
@@ -334,13 +336,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
         zero = torch.zeros_like(air_mass)
         infiltration = m_inf / air_mass
-        people_gain = (
-            (G_occ / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6
-        )
+        people_gain = (G_occ / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6
         A = (-infiltration).reshape(n_c, n_states, n_states)
-        B = torch.stack(
-            [zero, zero, infiltration, people_gain], dim=-1
-        ).unsqueeze(1)
+        B = torch.stack([zero, zero, infiltration, people_gain], dim=-1).unsqueeze(1)
 
         # Output matrix C - Identity matrix for direct observation
         # Shape: (n_c, n_states, n_states)
@@ -355,19 +353,15 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         D = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
-        E = torch.stack(
-            [zero, -1 / air_mass, zero, zero], dim=1
-        ).reshape(n_c, n_inputs, n_states, n_states)
+        E = torch.stack([zero, -1 / air_mass, zero, zero], dim=1).reshape(
+            n_c, n_inputs, n_states, n_states
+        )
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
         input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
         u_multiplier = input_basis[0].reshape(1, n_inputs, 1, 1)
         u_coefficient = input_basis[2].reshape(1, 1, 1, n_inputs)
-        F = (
-            (1 / air_mass).reshape(n_c, 1, 1, 1)
-            * u_multiplier
-            * u_coefficient
-        )
+        F = (1 / air_mass).reshape(n_c, 1, 1, 1) * u_multiplier * u_coefficient
 
         return A, B, C, D, E, F
 
@@ -417,8 +411,13 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             disc_cache = cache[3]
         A, B, C, D, E, F = matrices
         u = torch.stack(
-            [inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"],
-             inputs["outdoorCO2"], inputs["numberOfPeople"]], dim=-1,
+            [
+                inputs["supplyAirFlowRate"],
+                inputs["exhaustAirFlowRate"],
+                inputs["outdoorCO2"],
+                inputs["numberOfPeople"],
+            ],
+            dim=-1,
         )
         x_next, y = bilinear_onestep(
             A,
@@ -456,7 +455,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         inputs = {
             port: self.input[port].get()
             for port in (
-                "supplyAirFlowRate", "exhaustAirFlowRate", "outdoorCO2",
+                "supplyAirFlowRate",
+                "exhaustAirFlowRate",
+                "outdoorCO2",
                 "numberOfPeople",
             )
         }
@@ -466,6 +467,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         )
         self.ss_model.set_state(x_next)
         self.output["indoorCO2"]._set(outs["indoorCO2"], i_t=step_index)
+
 
 # Deprecated aliases (removed in twin4build 2.1)
 BuildingSpaceMassTorchSystem = BuildingSpaceMassSystem

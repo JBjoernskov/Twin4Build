@@ -4,8 +4,8 @@ estimator
 Modules
 -------
 
-estimator module
-----------------
+twin4build.estimator.estimator module
+-------------------------------------
 
 .. automodule:: twin4build.estimator.estimator
    :members:

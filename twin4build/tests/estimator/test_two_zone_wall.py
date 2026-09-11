@@ -8,6 +8,11 @@ import pandas as pd
 import torch
 from dateutil import tz
 
+try:
+    import casadi
+except ImportError:  # pragma: no cover - depends on optional installation
+    casadi = None
+
 # Local application imports
 import twin4build as tb
 
@@ -55,9 +60,7 @@ def build_two_zone_model():
         },
         id="Outdoor",
     )
-    zero = tb.ScheduleSystem(
-        weekday_ruleset={"ruleset_default_value": 0.0}, id="Zero"
-    )
+    zero = tb.ScheduleSystem(weekday_ruleset={"ruleset_default_value": 0.0}, id="Zero")
     supply_air_temp = tb.ScheduleSystem(
         weekday_ruleset={"ruleset_default_value": 20.0}, id="SupplyAirTemp"
     )
@@ -126,9 +129,7 @@ class TestTwoZoneWall(unittest.TestCase):
             cls.sensor_a,
             cls.sensor_b,
         ) = build_two_zone_model()
-        cls.simulator = tb.Simulator(
-            cls.model, execution_mode="composed"
-        )
+        cls.simulator = tb.Simulator(cls.model, execution_mode="functional")
         cls.start = START
         cls.end = START + datetime.timedelta(hours=N_HOURS)
 
@@ -149,12 +150,16 @@ class TestTwoZoneWall(unittest.TestCase):
         )
         rng = np.random.default_rng(0)
         attach_synthetic_readings(
-            cls.model, cls.sensor_a,
-            cls.t_a.numpy() + 0.05 * rng.standard_normal(len(cls.t_a)), index,
+            cls.model,
+            cls.sensor_a,
+            cls.t_a.numpy() + 0.05 * rng.standard_normal(len(cls.t_a)),
+            index,
         )
         attach_synthetic_readings(
-            cls.model, cls.sensor_b,
-            cls.t_b.numpy() + 0.05 * rng.standard_normal(len(cls.t_b)), index,
+            cls.model,
+            cls.sensor_b,
+            cls.t_b.numpy() + 0.05 * rng.standard_normal(len(cls.t_b)),
+            index,
         )
 
     # ------------------------------------------------------------------
@@ -214,13 +219,13 @@ class TestTwoZoneWall(unittest.TestCase):
             method=("scipy", "SLSQP", "ad"),
             options={"maxiter": 1},
         )
-        fast = estimator._fast_obj
+        fast = estimator._functional_objective
         self.assertIsNotNone(
             fast, "fast single-shooting objective was not built for the wall model"
         )
 
         def eval_obj(theta_np, use_fast):
-            estimator._fast_obj = fast if use_fast else None
+            estimator._functional_objective = fast if use_fast else None
             estimator._mse_scaled = 1.0
             try:
                 z = torch.tensor(theta_np, dtype=torch.float64, requires_grad=True)
@@ -228,7 +233,7 @@ class TestTwoZoneWall(unittest.TestCase):
                 (g,) = torch.autograd.grad(f, z)
                 return float(f.detach()), g.numpy()
             finally:
-                estimator._fast_obj = fast
+                estimator._functional_objective = fast
                 estimator._mse_scaled = None
 
         x0 = np.asarray(estimator._x0_norm, dtype=np.float64)
@@ -236,8 +241,7 @@ class TestTwoZoneWall(unittest.TestCase):
         ubn = np.asarray(estimator._ub_norm, dtype=np.float64)
         rng = np.random.default_rng(3)
         thetas = [x0] + [
-            np.clip(x0 + s * (rng.random(x0.shape) - 0.5), lbn, ubn)
-            for s in (0.1, 0.3)
+            np.clip(x0 + s * (rng.random(x0.shape) - 0.5), lbn, ubn) for s in (0.1, 0.3)
         ]
         for i, theta in enumerate(thetas):
             f_slow, g_slow = eval_obj(theta, use_fast=False)
@@ -255,9 +259,7 @@ class TestTwoZoneWall(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_collocation_smoke(self):
-        try:
-            import casadi  # noqa: F401
-        except ImportError:
+        if casadi is None:
             self.skipTest("casadi not installed")
         estimator = tb.Estimator(self.simulator)
         parameters, measurements = self._estimation_setup()

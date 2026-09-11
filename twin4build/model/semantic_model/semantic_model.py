@@ -32,6 +32,7 @@ from twin4build.utils.graphviz_render import render_dot_graph
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.uppath import uppath
+from twin4build.utils.deprecation import deprecate_name
 
 DYNAMIC_PARSING = True
 IGNORE_PARSING_FOR_NAMESPACES = ["XSD", "FPO"]
@@ -1055,9 +1056,9 @@ class SemanticInstance(SemanticObject):
                     owl_transitive,
                 ) in self.model.ontology_graph
                 if is_transitive:
-                    for transitive_subj in self.model.instance_graph.transitive_subjects(
-                        pred, subj
-                    ):
+                    for (
+                        transitive_subj
+                    ) in self.model.instance_graph.transitive_subjects(pred, subj):
                         if transitive_subj != subj:
                             inferred_pairs.append((pred, transitive_subj))
 
@@ -1362,17 +1363,13 @@ class SemanticLiteral(SemanticObject):
         # literal so equivalent-property reasoning sees the full
         # ontology graph.
         predicates_used = set()
-        for _, pred, _ in self.model.instance_graph.triples(
-            (None, None, self.uri)
-        ):
+        for _, pred, _ in self.model.instance_graph.triples((None, None, self.uri)):
             predicates_used.add(pred)
         for pred in predicates_used:
             self.model.get_predicate(pred).parse_ontology()
 
         inferred_pairs: List[Tuple[URIRef, URIRef]] = []
-        for subj, pred, _ in self.model.instance_graph.triples(
-            (None, None, self.uri)
-        ):
+        for subj, pred, _ in self.model.instance_graph.triples((None, None, self.uri)):
             for equiv_pred in self.model.ontology_graph.objects(
                 pred, owl_equivalent_property
             ):
@@ -1385,9 +1382,7 @@ class SemanticLiteral(SemanticObject):
                     inferred_pairs.append((equiv_pred, subj))
 
         # Direct incoming edges.
-        for subj, pred, _ in self.model.instance_graph.triples(
-            (None, None, self.uri)
-        ):
+        for subj, pred, _ in self.model.instance_graph.triples((None, None, self.uri)):
             if self._is_class_uri(subj):
                 subj_instance = self.model.get_type(subj)
             else:
@@ -1483,7 +1478,6 @@ class SemanticModel:
             dir_conf: Directory configuration for file storage
         """
         if verbose is not None:
-            from twin4build.utils.deprecation import deprecate_name
 
             deprecate_name("verbose=", "LOGGER.verbose")
             LOGGER.verbose = verbose
@@ -2456,7 +2450,11 @@ class SemanticModel:
         if include_blank_nodes:
             typed_subjects = set(self._instance_graph.subjects(RDF.type, None))
             for s, p, o in self._instance_graph.triples((None, None, None)):
-                if isinstance(o, rdflib.term.BNode) and o not in typed_subjects and o not in processed_instances:
+                if (
+                    isinstance(o, rdflib.term.BNode)
+                    and o not in typed_subjects
+                    and o not in processed_instances
+                ):
                     inst_obj = self.get_instance(o)
                     instances.append(inst_obj)
                     processed_instances.add(o)
@@ -3179,7 +3177,9 @@ class SemanticModel:
             for subj, _, obj in self._instance_graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
 
-        LOGGER.info("Added number of symmetric triples: %d", len(new_triples) - n_triples)
+        LOGGER.info(
+            "Added number of symmetric triples: %d", len(new_triples) - n_triples
+        )
         n_triples = len(new_triples)
 
         # Handle transitive properties

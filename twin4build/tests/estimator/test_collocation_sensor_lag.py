@@ -4,7 +4,7 @@ simulator produces.
 A pass-through sensor that executes BEFORE its producer in the Gauss-Seidel
 order reads the producer's PREVIOUS-step output, so ``do_step`` -- and the
 single-shooting objective, which shifts to match (see
-``FastSingleShooting.__init__``) -- scores a one-step-lagged signal for that
+``FunctionalEstimationObjective.__init__``) -- scores a one-step-lagged signal for that
 sensor, while ``F_aug`` returns the current step's.
 
 Collocation originally omitted that shift, which made its objective a
@@ -42,7 +42,7 @@ import twin4build as tb
 
 tb._IS_TESTING = True
 
-from twin4build.examples.collocation_comparison import (
+from twin4build.tests.estimator.example_fixture import (
     EXAMPLE_START,
     STEP_SIZE,
     example_measurements,
@@ -90,7 +90,7 @@ class TestCollocationSensorLag(unittest.TestCase):
     def setUpClass(cls):
         model = load_model()
         estimator = tb.Estimator(
-            tb.Simulator(model, execution_mode="composed")
+            tb.Simulator(model, execution_mode="functional")
         )
         start = EXAMPLE_START[0]
         end = start + datetime.timedelta(hours=24)
@@ -130,14 +130,14 @@ class TestCollocationSensorLag(unittest.TestCase):
 
     def test_audit_is_reported(self):
         self.assertIn(
-            "transcription_audit",
+            "collocation_audit",
             self.result,
             "collocation result must carry the post-solve audit",
         )
-        self.assertTrue(self.result["transcription_audit"]["per_sensor"])
+        self.assertTrue(self.result["collocation_audit"]["per_sensor"])
 
     def test_callbacks_share_forward_and_derivative_evaluations(self):
-        stats = self.result["transcription_audit"]["callback_cache"]
+        stats = self.result["collocation_audit"]["callback_cache"]
         self.assertLess(
             stats["forward_evaluations"],
             stats["objective_values"] + stats["constraints"],
@@ -163,7 +163,7 @@ class TestCollocationSensorLag(unittest.TestCase):
         (measured on the full-workflow example: CO2 7.40 via F_aug vs 11.50
         via do_step) while every other sensor matches to four digits.
         """
-        per_sensor = self.result["transcription_audit"]["per_sensor"]
+        per_sensor = self.result["collocation_audit"]["per_sensor"]
         offenders = []
         for sid, e in per_sensor.items():
             roll, step = float(e["rollout_rmse"]), float(e["do_step_rmse"])

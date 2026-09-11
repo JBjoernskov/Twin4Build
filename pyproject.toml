@@ -7,6 +7,8 @@ include = ["twin4build*"]
 # Local simulation outputs often leave __init__.py under generated_files/;
 # never ship those as installable packages.
 exclude = [
+    "twin4build.tests",
+    "twin4build.tests.*",
     "*.generated_files",
     "*.generated_files.*",
 ]
@@ -73,7 +75,6 @@ dependencies = [
     "pyarrow",
     "beautifulsoup4",
     "python-dateutil",
-    "pathlib",
     "pytz",
     # CasADi ships IPOPT + MUMPS in a single pip wheel; used by the Estimator's
     # IPOPT backend and collocation transcription.
@@ -90,6 +91,10 @@ dev = [
     "sphinx-rtd-theme",
     "sphinx-autodoc-typehints",
     "myst-parser",
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "build",
     "twine"
 ]
 database = [
@@ -105,6 +110,10 @@ all = [
     "sphinx-rtd-theme",
     "sphinx-autodoc-typehints",
     "myst-parser",
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "build",
     "psycopg2-binary",
     "sqlalchemy",
     "twine"
