@@ -2,6 +2,7 @@
 import datetime
 from twin4build.systems.saref4syst.system import System
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from collections import Counter
 
 # Third party imports
 import torch
@@ -183,8 +184,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         # Build the ordered candidate list from per-type arguments.
         # If nothing is provided, fall back to defaults.
         any_type_given = (
-            setpoint_controllers is not None
-            or cascade_controllers is not None
+            setpoint_controllers is not None or cascade_controllers is not None
         )
 
         if not any_type_given:
@@ -196,17 +196,26 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             cascade_controllers = [CascadeControllerSystem]
             cascade_controller_kwargs = [
                 {
-                    "kp_a": 0.1, "Ti_a": 10.0, "Td_a": 0.0,
-                    "kp_b": 0.5, "Ti_b": 5.0, "Td_b": 0.0,
-                    "isReverse_a": True, "isReverse_b": True,
+                    "kp_a": 0.1,
+                    "Ti_a": 10.0,
+                    "Td_a": 0.0,
+                    "kp_b": 0.5,
+                    "Ti_b": 5.0,
+                    "Td_b": 0.0,
+                    "isReverse_a": True,
+                    "isReverse_b": True,
                 },
             ]
 
         # Normalize Nones to empty lists
         setpoint_controllers = setpoint_controllers or []
-        setpoint_controller_kwargs = setpoint_controller_kwargs or [{} for _ in setpoint_controllers]
+        setpoint_controller_kwargs = setpoint_controller_kwargs or [
+            {} for _ in setpoint_controllers
+        ]
         cascade_controllers = cascade_controllers or []
-        cascade_controller_kwargs = cascade_controller_kwargs or [{} for _ in cascade_controllers]
+        cascade_controller_kwargs = cascade_controller_kwargs or [
+            {} for _ in cascade_controllers
+        ]
 
         # Validate lengths
         for label, classes, kws in [
@@ -225,9 +234,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         for cls, kw in zip(cascade_controllers, cascade_controller_kwargs):
             self._candidate_entries.append((cls, kw, self.CTRL_CASCADE))
 
-        assert len(self._candidate_entries) > 0, (
-            "At least one candidate controller must be provided"
-        )
+        assert (
+            len(self._candidate_entries) > 0
+        ), "At least one candidate controller must be provided"
 
         self.n_candidates = len(self._candidate_entries)
         self._candidate_types = [e[2] for e in self._candidate_entries]
@@ -317,7 +326,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
 
         # Create candidate controller instances for each actuator
         for a in range(n_actuators):
-            for c, (CtrlClass, ctrl_kwargs, _ctype) in enumerate(self._candidate_entries):
+            for c, (CtrlClass, ctrl_kwargs, _ctype) in enumerate(
+                self._candidate_entries
+            ):
                 ctrl_id = f"{self.id}_a{a}_c{c}"
                 ctrl = CtrlClass(id=ctrl_id, **ctrl_kwargs)
                 setattr(self, f"candidate_{a}_{c}", ctrl)
@@ -332,7 +343,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 self,
                 f"alpha_{a}",
                 tps.Parameter(
-                    torch.full((self.n_candidates,), alpha_init, dtype=tps.float_dtype()),
+                    torch.full(
+                        (self.n_candidates,), alpha_init, dtype=tps.float_dtype()
+                    ),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
@@ -410,7 +423,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 self,
                 f"gamma_gate_{a}",
                 tps.Parameter(
-                    torch.full((n_on_off_signals,), gamma_init, dtype=tps.float_dtype()),
+                    torch.full(
+                        (n_on_off_signals,), gamma_init, dtype=tps.float_dtype()
+                    ),
                     min_value=0.0,
                     max_value=1.0,
                     requires_grad=False,
@@ -707,9 +722,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
 
         return params
 
-    def _append_pid_params(
-        self, params: list, ctrl: core.System, prefix: str
-    ) -> None:
+    def _append_pid_params(self, params: list, ctrl: core.System, prefix: str) -> None:
         """Append estimable PID-like parameters from *ctrl* to *params*.
 
         Works for PIDControllerSystem, On-Off controllers, and any other
@@ -725,11 +738,13 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         if hasattr(target, "Td"):
             params.append((self, f"{target_prefix}.Td", 0.0, 0.0, 0.0001, "private"))
         if hasattr(target, "output_min"):
-            params.append((self, f"{target_prefix}.output_min", 0.5, 0.0, 1.0, "private"))
+            params.append(
+                (self, f"{target_prefix}.output_min", 0.5, 0.0, 1.0, "private")
+            )
         if hasattr(target, "off_value"):
-            params.append((self, f"{target_prefix}.offValue", 0.0, 0, 1.0, "private"))
+            params.append((self, f"{target_prefix}.off_value", 0.0, 0, 1.0, "private"))
         if hasattr(target, "on_value"):
-            params.append((self, f"{target_prefix}.onValue", 1.0, 0.0, 1.0, "private"))
+            params.append((self, f"{target_prefix}.on_value", 1.0, 0.0, 1.0, "private"))
         # ``steepness`` is intentionally NOT estimated.  It is a numerical
         # hyperparameter that controls the smoothness of the soft on/off
         # transition; the underlying physical behavior is binary.  The
@@ -1084,7 +1099,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             penalty = penalty + torch.sum(alpha_gate * (1 - alpha_gate))
             # Polarity: push toward -1 or +1 via (1 - p^2)
             polarity = self._get_gate(a).polarity.get()
-            penalty = penalty + torch.sum(1 - polarity ** 2)
+            penalty = penalty + torch.sum(1 - polarity**2)
         return penalty
 
     def compute_regularization_penalty(self) -> torch.Tensor:
@@ -1143,7 +1158,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             weights[f"gate_{a}_threshold"] = gate.threshold.get().detach().clone()
             weights[f"gate_{a}_steepness"] = gate.steepness.get().detach().clone()
             weights[f"gate_{a}_polarity"] = gate.polarity.get().detach().clone()
-            weights[f"default_output_{a}"] = self._get_default_output(a).detach().clone()
+            weights[f"default_output_{a}"] = (
+                self._get_default_output(a).detach().clone()
+            )
 
         return weights
 
@@ -1244,7 +1261,6 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         lines.append(f"  Sensors: {self.n_sensors}")
         lines.append(f"  Setpoints: {self.n_setpoints}")
         lines.append(f"  Candidates: {self.n_candidates}")
-        from collections import Counter
         type_counts = Counter(self._candidate_types)
         for ctype, count in type_counts.items():
             lines.append(f"    {ctype}: {count}")
@@ -1259,7 +1275,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 ctrl = self._get_candidate(a, c)
                 ctype = self._candidate_types[c]
                 val = weights[f"alpha_{a}_{c}"].item()
-                lines.append(f"    α_{a},{c} [{ctype}] ({ctrl.__class__.__name__}): {val:.4f}")
+                lines.append(
+                    f"    α_{a},{c} [{ctype}] ({ctrl.__class__.__name__}): {val:.4f}"
+                )
 
         lines.append("  Beta (sensor selection per actuator):")
         for a in range(self.n_actuators):
@@ -1298,7 +1316,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             gate_a = getattr(self, f"gate_{a}", None)
             if gate_a is not None and hasattr(gate_a, "band"):
                 width_raw = gate_a.band.get()
-                width = width_raw.item() if hasattr(width_raw, "item") else float(width_raw)
+                width = (
+                    width_raw.item() if hasattr(width_raw, "item") else float(width_raw)
+                )
                 thresh_hi = thresh + width
                 lines.append(f"      threshold_high: {thresh_hi:.4f}")
                 lines.append(
@@ -1320,7 +1340,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             for c in range(self.n_candidates):
                 ctrl = self._get_candidate(a, c)
                 ctype = self._candidate_types[c]
-                lines.append(f"    Candidate {c} [{ctype}] ({ctrl.__class__.__name__}):")
+                lines.append(
+                    f"    Candidate {c} [{ctype}] ({ctrl.__class__.__name__}):"
+                )
 
                 if ctype == self.CTRL_CASCADE:
                     for sub_name in ("ctrl_a", "ctrl_b"):
@@ -1413,9 +1435,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             params.append(
                 (self, f"gamma_gate_{a}", gamma_x0, weight_lb, weight_ub, "private")
             )
-            params.append(
-                (self, f"gate_{a}.threshold", 18.0, 10.0, 30.0, "private")
-            )
+            params.append((self, f"gate_{a}.threshold", 18.0, 10.0, 30.0, "private"))
             # Only BandGate (and subclasses) expose a ``band`` width.
             # Advertise it to the estimator so users who swap in a
             # BandGate can learn the zone-specific deadband width;
@@ -1425,18 +1445,12 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             # which structurally prevents ``T_hi < T_lo``.
             gate_a = getattr(self, f"gate_{a}", None)
             if gate_a is not None and hasattr(gate_a, "band"):
-                params.append(
-                    (self, f"gate_{a}.band", 4.0, 0.0, 20.0, "private")
-                )
-            params.append(
-                (self, f"gate_{a}.polarity", 1.0, -1.0, 1.0, "private")
-            )
+                params.append((self, f"gate_{a}.band", 4.0, 0.0, 20.0, "private"))
+            params.append((self, f"gate_{a}.polarity", 1.0, -1.0, 1.0, "private"))
             params.append(
                 (self, f"alpha_gate_{a}", 0.5, weight_lb, weight_ub, "private")
             )
-            params.append(
-                (self, f"default_output_{a}", 0.0, 0.0, 1.0, "private")
-            )
+            params.append((self, f"default_output_{a}", 0.0, 0.0, 1.0, "private"))
 
         # Candidate controller parameters - accessed through parent using dot notation
         for a in range(self.n_actuators):
@@ -1467,11 +1481,25 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                         if sub_name == "ctrl_a":
                             if hasattr(sub, "output_min"):
                                 params.append(
-                                    (self, f"{sub_prefix}.output_min", 0.0, 0.0, 1.0, "private")
+                                    (
+                                        self,
+                                        f"{sub_prefix}.output_min",
+                                        0.0,
+                                        0.0,
+                                        1.0,
+                                        "private",
+                                    )
                                 )
                             if hasattr(sub, "output_max"):
                                 params.append(
-                                    (self, f"{sub_prefix}.output_max", 1.0, 0.0, 1.0, "private")
+                                    (
+                                        self,
+                                        f"{sub_prefix}.output_max",
+                                        1.0,
+                                        0.0,
+                                        1.0,
+                                        "private",
+                                    )
                                 )
                 else:
                     # Standard setpoint controllers (PID, on-off, etc.)
@@ -1538,7 +1566,6 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         return scales
 
 
-
 def brick_signature_pattern_vav():
     """
     BRICK signature pattern for VAV zone controller identification.
@@ -1589,21 +1616,49 @@ def brick_signature_pattern_vav():
     # matching points. Downstream ``StepRule`` hops (the
     # actuator → externalref → timeseries_id chain) are auto-broadcast
     # per element by the matcher so they remain scalar rules here.
-    sp.add_rule(SetStepRule(subject=vav, object=sensors, predicate=core.namespace.BRICK.hasPoint))
-    sp.add_rule(SetStepRule(subject=vav, object=setpoints, predicate=core.namespace.BRICK.hasPoint))
-    sp.add_rule(SetStepRule(subject=vav, object=actuators, predicate=core.namespace.BRICK.hasPoint))
-    sp.add_rule(StepRule(subject=actuators, object=externalref, predicate=core.namespace.BRICKREF.hasExternalReference))
-    sp.add_rule(StepRule(subject=externalref, object=timeseries_id, predicate=core.namespace.BRICKREF.hasTimeseriesId))
+    sp.add_rule(
+        SetStepRule(
+            subject=vav, object=sensors, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_rule(
+        SetStepRule(
+            subject=vav, object=setpoints, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_rule(
+        SetStepRule(
+            subject=vav, object=actuators, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_rule(
+        StepRule(
+            subject=actuators,
+            object=externalref,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )
+    )
+    sp.add_rule(
+        StepRule(
+            subject=externalref,
+            object=timeseries_id,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )
+    )
 
     sp.add_connection(sensors, "measuredValue", "sensorValue", input_port_index=sensors)
-    sp.add_connection(setpoints, "measuredValue", "setpointValue", input_port_index=setpoints)
+    sp.add_connection(
+        setpoints, "measuredValue", "setpointValue", input_port_index=setpoints
+    )
     # Auto-mirror every setpoint into the gate-input bus.  See the
     # corresponding pattern on ``ControllerIdentificationPISystem``
     # for the full rationale -- in short, the ``onOffSignal`` port is
     # never pruned by the rewire and gives the gate access to the
     # schedule even when the rewire winner picks a different setpoint
     # for the PI error term.
-    sp.add_connection(setpoints, "measuredValue", "onOffSignal", input_port_index=setpoints)
+    sp.add_connection(
+        setpoints, "measuredValue", "onOffSignal", input_port_index=setpoints
+    )
     # The VAV controller entity is not a first-class node in BRICK; it is
     # identified jointly by the VAV, its sensor/setpoint points and its
     # command actuators. Expressing this as a ``ModeledNode`` group makes
@@ -1660,18 +1715,52 @@ def brick_signature_pattern_vav_damper():
     # The scalar edges (isPartOf, the actuator → externalref →
     # timeseries_id chain) stay as plain ``StepRule`` and are
     # auto-broadcast over the set-bound endpoints.
-    sp.add_rule(SetStepRule(subject=vav, object=sensors, predicate=core.namespace.BRICK.hasPoint))
-    sp.add_rule(SetStepRule(subject=vav, object=setpoints, predicate=core.namespace.BRICK.hasPoint))
-    sp.add_rule(StepRule(subject=damper_equip, object=vav, predicate=core.namespace.BRICK.isPartOf))
-    sp.add_rule(SetStepRule(subject=damper_equip, object=damper_cmd, predicate=core.namespace.BRICK.hasPoint))
-    sp.add_rule(StepRule(subject=damper_cmd, object=externalref, predicate=core.namespace.BRICKREF.hasExternalReference))
-    sp.add_rule(StepRule(subject=externalref, object=timeseries_id, predicate=core.namespace.BRICKREF.hasTimeseriesId))
+    sp.add_rule(
+        SetStepRule(
+            subject=vav, object=sensors, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_rule(
+        SetStepRule(
+            subject=vav, object=setpoints, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_rule(
+        StepRule(
+            subject=damper_equip, object=vav, predicate=core.namespace.BRICK.isPartOf
+        )
+    )
+    sp.add_rule(
+        SetStepRule(
+            subject=damper_equip,
+            object=damper_cmd,
+            predicate=core.namespace.BRICK.hasPoint,
+        )
+    )
+    sp.add_rule(
+        StepRule(
+            subject=damper_cmd,
+            object=externalref,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )
+    )
+    sp.add_rule(
+        StepRule(
+            subject=externalref,
+            object=timeseries_id,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )
+    )
 
     sp.add_connection(sensors, "measuredValue", "sensorValue", input_port_index=sensors)
-    sp.add_connection(setpoints, "measuredValue", "setpointValue", input_port_index=setpoints)
+    sp.add_connection(
+        setpoints, "measuredValue", "setpointValue", input_port_index=setpoints
+    )
     # Auto-mirror setpoints into the gate-input bus (see sibling
     # pattern for rationale).
-    sp.add_connection(setpoints, "measuredValue", "onOffSignal", input_port_index=setpoints)
+    sp.add_connection(
+        setpoints, "measuredValue", "onOffSignal", input_port_index=setpoints
+    )
     # See ``brick_signature_pattern_vav``: the damper controller is an
     # implicit entity, identified by the (VAV, sensors, setpoints,
     # damper equipment, damper command) tuple.

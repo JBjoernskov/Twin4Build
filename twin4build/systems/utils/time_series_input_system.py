@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # Standard library imports
 import datetime
 import os
@@ -17,6 +19,7 @@ from twin4build.utils.data_loaders.load import (
     sample_from_df,
 )
 from twin4build.utils.get_main_dir import get_main_dir
+from twin4build.utils.deprecation import deprecate_args, deprecate_name
 
 
 class TimeSeriesInputSystem(core.System):
@@ -80,7 +83,6 @@ class TimeSeriesInputSystem(core.System):
             AssertionError: If neither df nor filename is provided.
             ValueError: If the specified file cannot be found in any of the search paths.
         """
-        from twin4build.utils.deprecation import deprecate_args, deprecate_name
 
         for legacy_key, new_key in (
             ("useSpreadsheet", "use_spreadsheet"),

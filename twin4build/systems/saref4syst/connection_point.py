@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 # Third party imports
 import torch
 
 # Local application imports
-import twin4build.core as core
+from twin4build.systems.saref4syst.system import System
+
+if TYPE_CHECKING:
+    from twin4build.systems.saref4syst.connection import Connection
 
 
 class ConnectionPoint:
@@ -23,7 +26,7 @@ class ConnectionPoint:
 
     def __init__(
         self,
-        connection_point_of: Union[core.System, None] = None,
+        connection_point_of: Union[System, None] = None,
         connects_system_through: Union[list, None] = None,
         input_port: Optional[str] = None,
     ):
@@ -36,13 +39,11 @@ class ConnectionPoint:
                 receives from. Defaults to None (empty list).
             input_port: The name of the property that the connection point receives. Defaults to None.
         """
-        assert (
-            isinstance(connection_point_of, core.System) or connection_point_of is None
-        ), (
+        assert isinstance(connection_point_of, System) or connection_point_of is None, (
             'Attribute "connection_point_of" is of type "'
             + str(type(connection_point_of))
             + '" but must be of type "'
-            + str(core.System)
+            + str(System)
             + '"'
         )
         assert (
@@ -75,14 +76,14 @@ class ConnectionPoint:
         self._output_component_index = {}
 
     @property
-    def connection_point_of(self) -> Union[core.System, None]:
+    def connection_point_of(self) -> Union[System, None]:
         """
         Get the system that the connection point is part of.
         """
         return self._connectionPointOf
 
     @connection_point_of.setter
-    def connection_point_of(self, value: Union[core.System, None]) -> None:
+    def connection_point_of(self, value: Union[System, None]) -> None:
         """
         Set the system that the connection point is part of.
         """
@@ -133,7 +134,7 @@ class ConnectionPoint:
         return self._output_port_index
 
     def set_input_port_index(
-        self, connection: core.Connection, index: [int, torch.Tensor]
+        self, connection: Connection, index: [int, torch.Tensor]
     ) -> None:
         """
         Set the index of the input port.
@@ -141,7 +142,7 @@ class ConnectionPoint:
         self._input_port_index[connection] = index
 
     def set_output_port_index(
-        self, connection: core.Connection, index: [int, torch.Tensor]
+        self, connection: Connection, index: [int, torch.Tensor]
     ) -> None:
         """
         Set the index of the output port.
@@ -163,7 +164,7 @@ class ConnectionPoint:
         return self._output_component_index
 
     def set_input_component_index(
-        self, connection: core.Connection, index: [int, torch.Tensor]
+        self, connection: Connection, index: [int, torch.Tensor]
     ) -> None:
         """
         Set the component index on the input side (i_c dimension).
@@ -171,7 +172,7 @@ class ConnectionPoint:
         self._input_component_index[connection] = index
 
     def set_output_component_index(
-        self, connection: core.Connection, index: [int, torch.Tensor]
+        self, connection: Connection, index: [int, torch.Tensor]
     ) -> None:
         """
         Set the component index on the output side (i_c dimension).

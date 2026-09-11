@@ -74,9 +74,9 @@ class ScalarProductSystem(core.System):
         )
         batch_size = len(start_time)
         for inp in self.input.values():
-            inp.initialize(n_t=max_timesteps, n_s=batch_size)
+            inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for out in self.output.values():
-            out.initialize(n_t=max_timesteps, n_s=batch_size)
+            out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
 
     def do_step(
         self,

@@ -60,3 +60,13 @@ def deprecate_name(old: str, new: str, stacklevel: int = 3) -> None:
         DeprecationWarning,
         stacklevel=stacklevel,
     )
+
+
+def reject_unexpected_kwargs(function_name: str, kwargs: Dict[str, Any]) -> None:
+    """Raise a consistent error for unsupported public keyword arguments."""
+    if kwargs:
+        names = ", ".join(repr(name) for name in sorted(kwargs))
+        suffix = "argument" if len(kwargs) == 1 else "arguments"
+        raise TypeError(
+            f"{function_name}() got unexpected keyword {suffix}: {names}"
+        )

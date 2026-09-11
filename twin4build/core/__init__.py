@@ -24,6 +24,7 @@ Defined here:
 """
 
 # Standard library imports
+import importlib
 import os
 
 # Third party imports
@@ -44,35 +45,6 @@ class BlankNode:
 
     pass
 
-# Local application imports
-from twin4build.estimator.estimator import Estimator
-from twin4build.model.model import Model
-from twin4build.model.semantic_model.semantic_model import (
-    SemanticModel,
-    SemanticEntity,
-    SemanticObject,
-    SemanticInstance,
-    SemanticLiteral,
-    SemanticProperty,
-    SemanticType,
-    SemanticPredicate,
-)
-from twin4build.model.simulation_model.simulation_model import SimulationModel
-from twin4build.simulator.simulator import Simulator
-from twin4build.systems.saref4syst.connection import Connection
-from twin4build.systems.saref4syst.connection_point import ConnectionPoint
-from twin4build.systems.saref4syst.system import System
-from twin4build.translator.translator import (
-    Translator,
-    SignaturePattern,
-    Diff,
-    StepRule,
-    NoStepRule,
-    SetStepRule,
-    OptionalRule,
-    PathRule,
-    AnyPathRule,
-)
 
 NoneType = type(None)
 
@@ -185,3 +157,39 @@ _REMOTE_BY_NAMESPACE = {
     str(namespace.BOT): ontology_remote.BOT,
     str(namespace.BRICKREF): ontology_remote.BRICKREF,
 }
+
+_PUBLIC_MODULES = {
+    "Estimator": "twin4build.estimator.estimator",
+    "Model": "twin4build.model.model",
+    "SemanticModel": "twin4build.model.semantic_model.semantic_model",
+    "SemanticEntity": "twin4build.model.semantic_model.semantic_model",
+    "SemanticObject": "twin4build.model.semantic_model.semantic_model",
+    "SemanticInstance": "twin4build.model.semantic_model.semantic_model",
+    "SemanticLiteral": "twin4build.model.semantic_model.semantic_model",
+    "SemanticProperty": "twin4build.model.semantic_model.semantic_model",
+    "SemanticType": "twin4build.model.semantic_model.semantic_model",
+    "SemanticPredicate": "twin4build.model.semantic_model.semantic_model",
+    "SimulationModel": "twin4build.model.simulation_model.simulation_model",
+    "Simulator": "twin4build.simulator.simulator",
+    "Connection": "twin4build.systems.saref4syst.connection",
+    "ConnectionPoint": "twin4build.systems.saref4syst.connection_point",
+    "System": "twin4build.systems.saref4syst.system",
+    "Translator": "twin4build.translator.translator",
+    "SignaturePattern": "twin4build.translator.translator",
+    "Diff": "twin4build.translator.translator",
+    "StepRule": "twin4build.translator.translator",
+    "NoStepRule": "twin4build.translator.translator",
+    "SetStepRule": "twin4build.translator.translator",
+    "OptionalRule": "twin4build.translator.translator",
+    "PathRule": "twin4build.translator.translator",
+    "AnyPathRule": "twin4build.translator.translator",
+}
+
+
+def __getattr__(name):
+    module_name = _PUBLIC_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(importlib.import_module(module_name), name)
+    globals()[name] = value
+    return value

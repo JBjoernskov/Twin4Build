@@ -11,6 +11,7 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
+from twin4build.utils.deprecation import deprecate_args
 
 _EMPTY_RULESET = {
     "ruleset_default_value": 0,
@@ -54,12 +55,12 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     # auto-match this class from semantic models.
     sp = None
 
-    # NOT composable: unlike the parent ``PiecewiseLinearSystem`` (fixed
+    # NOT functional: unlike the parent ``PiecewiseLinearSystem`` (fixed
     # interpolation table -> pure ``forward``), this schedule re-resolves its
     # (X, Y) table from the wall clock every step (``_resolve_xy(date_time)``)
     # -- a time source.  Overriding ``forward`` back to ``None`` makes
-    # ``_has_real_forward`` treat it as exogenous, so the composed fast paths
-    # capture its output per step (theta-independent by construction).
+    # ``_has_real_forward`` treat it as exogenous, so functional execution
+    # records its output per step (theta-independent by construction).
     forward = None
 
     def __init__(
@@ -68,8 +69,6 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         default_y: Optional[List[float]] = None,
         **kwargs,
     ) -> None:
-        from twin4build.utils.deprecation import deprecate_args
-
         legacy = deprecate_args(
             ["defaultX", "defaultY"],
             ["default_x", "default_y"],
@@ -81,9 +80,10 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
         # Auto-create a scalar weekday_ruleset when only default_x/y given.
         if default_x is not None and default_y is not None:
-            if kwargs.get("weekday_ruleset") is None and kwargs.get(
-                "weekday_ruleset"
-            ) is None:
+            if (
+                kwargs.get("weekday_ruleset") is None
+                and kwargs.get("weekday_ruleset") is None
+            ):
                 kwargs["weekday_ruleset"] = copy.deepcopy(_EMPTY_RULESET)
 
         super().__init__(**kwargs)
@@ -178,9 +178,9 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         )
         batch_size = len(start_time)
         for inp in self.input.values():
-            inp.initialize(n_t=max_timesteps, n_s=batch_size)
+            inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for out in self.output.values():
-            out.initialize(n_t=max_timesteps, n_s=batch_size)
+            out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
 
     def _resolve_xy(self, date_time: datetime.datetime, device=None):
         """Return (X_points, Y_points) tensors for the given datetime.
@@ -212,12 +212,8 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
         if self.default_x is not None and self.default_y is not None:
             return (
-                torch.tensor(
-                    self.default_x, dtype=tps.float_dtype(), device=device
-                ),
-                torch.tensor(
-                    self.default_y, dtype=tps.float_dtype(), device=device
-                ),
+                torch.tensor(self.default_x, dtype=tps.float_dtype(), device=device),
+                torch.tensor(self.default_y, dtype=tps.float_dtype(), device=device),
             )
 
         raise TypeError(

@@ -184,8 +184,8 @@ class ValveSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
-            self.n_c = self._n_c_compiled
+        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
+            self.n_c = self._n_c_batched
         else:
             self.n_c = 1
 
@@ -273,7 +273,9 @@ def saref_signature_pattern():
         StepRule(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
     )
     sp.add_rule(
-        StepRule(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
+        StepRule(
+            subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf
+        )
     )
 
     sp.add_input("valvePosition", node1, "inputSignal")

@@ -1,6 +1,7 @@
 # Standard library imports
 import datetime
 from typing import List
+import warnings
 
 # Third party imports
 import torch
@@ -121,9 +122,9 @@ class SigmoidGate(core.System, nn.Module):
         )
         batch_size = len(start_time)
         for inp in self.input.values():
-            inp.initialize(n_t=max_timesteps, n_s=batch_size)
+            inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for out in self.output.values():
-            out.initialize(n_t=max_timesteps, n_s=batch_size)
+            out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
 
         self.threshold = self.threshold.expand_to_n_c(self.n_c)
         self.steepness = self.steepness.expand_to_n_c(self.n_c)
@@ -136,9 +137,10 @@ class SigmoidGate(core.System, nn.Module):
         # least one incoming connection.
         self._controller_wired = False
         for cp in self.connects_at:
-            if cp.input_port == "controllerSignal" and len(
-                cp.connects_system_through
-            ) > 0:
+            if (
+                cp.input_port == "controllerSignal"
+                and len(cp.connects_system_through) > 0
+            ):
                 self._controller_wired = True
                 break
 
@@ -261,7 +263,6 @@ class BandGate(SigmoidGate):
         # ``band = threshold_high - threshold`` (clamped to 0) and emit
         # a one-shot DeprecationWarning so downstream code can migrate.
         if "threshold_high" in kwargs:
-            import warnings
 
             legacy_hi = float(kwargs.pop("threshold_high"))
             derived_band = max(0.0, legacy_hi - float(threshold))

@@ -1,6 +1,10 @@
 # Standard library imports
 import os
 import unittest
+import importlib
+import tempfile
+from rdflib import Literal, URIRef
+from rdflib import URIRef
 
 # Local application imports
 # Set test flag
@@ -19,6 +23,13 @@ from twin4build.translator.translator import (
     Translator,
 )
 from twin4build.utils.uppath import uppath
+from twin4build.model.semantic_model.semantic_model import SemanticInstance
+from twin4build.model.semantic_model.semantic_model import SemanticLiteral
+from twin4build.translator import translator as translator_mod
+from twin4build.translator.translator import BACKWARD, FORWARD
+from twin4build.translator.translator import BACKWARD, FORWARD, Predicate, _SinglePath
+from twin4build.translator.translator import BACKWARD, Predicate, StepRule
+import twin4build.core as core
 
 twin4build._IS_TESTING = True
 
@@ -28,10 +39,8 @@ class TestTranslator(unittest.TestCase):
         """Set up a fresh translator for each test."""
         self.translator = Translator()
         # Third party imports
-        from rdflib import URIRef
 
         # Local application imports
-        import twin4build.core as core
 
         # Set up a very small semantic model
         self.semantic_model = SemanticModel()
@@ -121,7 +130,6 @@ class TestTranslator(unittest.TestCase):
     def test_exact_rule_matching(self):
         """Test matching StepRule rules against the semantic model."""
         # Local application imports
-        import twin4build.core as core
 
         # Define pattern locally
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
@@ -155,7 +163,6 @@ class TestTranslator(unittest.TestCase):
     def test_optional_rule_matching(self):
         """Test matching Optional rules against the semantic model."""
         # Local application imports
-        import twin4build.core as core
 
         # Define pattern with optional node
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
@@ -190,7 +197,6 @@ class TestTranslator(unittest.TestCase):
         This matches the indented behavior of PathRule.
         """
         # Local application imports
-        import twin4build.core as core
 
         # AHU -> feeds -> Damper -> feeds -> Room
         # Check AHU -> Room via feeds (hop 2)
@@ -220,7 +226,6 @@ class TestTranslator(unittest.TestCase):
         Should find 3 matches for AHU -> Room (one via Damper_1, one via Damper_21, one via Damper_22)
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_room = Node(cls=core.namespace.BRICK.Room)
@@ -258,7 +263,6 @@ class TestTranslator(unittest.TestCase):
         because it tracks distinct intermediate paths (Damper_21 vs Damper_22 to Room_2).
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_room = Node(cls=core.namespace.BRICK.Room)
@@ -309,7 +313,6 @@ class TestTranslator(unittest.TestCase):
         without demanding a direct triple.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_damper = Node(cls=core.namespace.BRICK.Damper)
@@ -388,10 +391,8 @@ class TestTranslator(unittest.TestCase):
         ``Sensor_correct`` (because the path exists in the SM).
         """
         # Third party imports
-        from rdflib import URIRef
 
         # Local application imports
-        import twin4build.core as core
 
         sm = SemanticModel()
         base = "http://example.org/sensor_pollution#"
@@ -432,9 +433,7 @@ class TestTranslator(unittest.TestCase):
         # Equipment "feeds" Port "feeds" Sensor_correct, so the PathRule
         # ``Equipment -[feeds]-> Sensor`` is satisfied via Sensor_correct
         # and via Sensor_correct alone (the strays are unreachable).
-        sm.instance_graph.add(
-            (equipment_uri, core.namespace.BRICK.feeds, port_uri)
-        )
+        sm.instance_graph.add((equipment_uri, core.namespace.BRICK.feeds, port_uri))
         sm.instance_graph.add(
             (port_uri, core.namespace.BRICK.feeds, sensor_correct_uri)
         )
@@ -489,9 +488,6 @@ class TestTranslator(unittest.TestCase):
         # ``Sensor_correct`` -- not to a stray.  The strays are not
         # reachable from ``Equipment_1`` along any ``feeds`` path, so
         # ``_has_sm_path`` rejects them on positive disproof.
-        from twin4build.model.semantic_model.semantic_model import (
-            SemanticInstance,
-        )
 
         for mapping in groups:
             sensor_binding = mapping.get(node_sensor)
@@ -542,7 +538,6 @@ class TestTranslator(unittest.TestCase):
         match the legacy walker's exactly.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_damper = Node(cls=core.namespace.BRICK.Damper)
@@ -638,7 +633,6 @@ class TestTranslator(unittest.TestCase):
         expected.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_damper = Node(cls=core.namespace.BRICK.Damper)
@@ -707,7 +701,6 @@ class TestTranslator(unittest.TestCase):
         falling back to forward.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_room = Node(cls=core.namespace.BRICK.Room)
@@ -768,7 +761,6 @@ class TestTranslator(unittest.TestCase):
         cardinality gate fires symmetrically in inverse adjacency.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_room = Node(cls=core.namespace.BRICK.Room)
@@ -849,13 +841,8 @@ class TestTranslator(unittest.TestCase):
         Temperature=temperature``.
         """
         # Third party imports
-        from rdflib import URIRef
 
         # Local application imports
-        import twin4build.core as core
-        from twin4build.model.semantic_model.semantic_model import (
-            SemanticInstance,
-        )
 
         sm = SemanticModel()
         base = "http://example.org/two_hop_pathrule#"
@@ -991,10 +978,8 @@ class TestTranslator(unittest.TestCase):
         edge) keying still vetoes same-subject same-edge re-entry.
         """
         # Third party imports
-        from rdflib import URIRef
 
         # Local application imports
-        import twin4build.core as core
 
         sm = SemanticModel()
         base = "http://example.org/self_loop#"
@@ -1061,7 +1046,6 @@ class TestTranslator(unittest.TestCase):
         binding for ``node_sensors``.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_room = Node(cls=core.namespace.BRICK.Room)
         node_sensors = Node(cls=core.namespace.BRICK.Temperature_Sensor)
@@ -1121,7 +1105,6 @@ class TestTranslator(unittest.TestCase):
         canonical tuple of length 2.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_rooms = Node(cls=core.namespace.BRICK.Room)
@@ -1193,8 +1176,6 @@ class TestTranslator(unittest.TestCase):
         producing one scalar pair per reachable AHU.
         """
         # Local application imports
-        from twin4build.translator.translator import BACKWARD, Predicate, StepRule
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_rooms = Node(cls=core.namespace.BRICK.Room)
@@ -1210,9 +1191,7 @@ class TestTranslator(unittest.TestCase):
         # The Predicate equality-hash semantics make ruleset key lookup
         # by reconstructed predicate brittle; resolve the rule instance
         # by scanning the ruleset values for the SetAnyPathRule.
-        candidates = [
-            r for r in sp.ruleset.values() if isinstance(r, SetAnyPathRule)
-        ]
+        candidates = [r for r in sp.ruleset.values() if isinstance(r, SetAnyPathRule)]
         self.assertEqual(
             len(candidates),
             1,
@@ -1221,9 +1200,7 @@ class TestTranslator(unittest.TestCase):
         rule = candidates[0]
 
         room_sm = next(
-            iter(
-                self.semantic_model.get_instances_of_type(core.namespace.BRICK.Room)
-            )
+            iter(self.semantic_model.get_instances_of_type(core.namespace.BRICK.Room))
         )
 
         pairs, rule_applies, _, _ = rule.apply(
@@ -1303,7 +1280,6 @@ class TestTranslator(unittest.TestCase):
           3. ``node_ahu`` binds to a single ``AHU`` instance (scalar).
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_dampers = Node(cls=core.namespace.BRICK.Damper)
@@ -1418,7 +1394,6 @@ class TestTranslator(unittest.TestCase):
         BFS frontier.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_rooms = Node(cls=core.namespace.BRICK.Room)
@@ -1509,8 +1484,6 @@ class TestTranslator(unittest.TestCase):
         object and silently let a forbidden triple through).
         """
         # Local application imports
-        from twin4build.translator.translator import BACKWARD, FORWARD
-        import twin4build.core as core
 
         node_room = Node(cls=core.namespace.BRICK.Room)
         node_sensor = Node(cls=core.namespace.BRICK.Temperature_Sensor)
@@ -1524,14 +1497,10 @@ class TestTranslator(unittest.TestCase):
             )
         )
 
-        rule = next(
-            r for r in sp.ruleset.values() if isinstance(r, NoStepRule)
-        )
+        rule = next(r for r in sp.ruleset.values() if isinstance(r, NoStepRule))
 
         room_sm = next(
-            iter(
-                self.semantic_model.get_instances_of_type(core.namespace.BRICK.Room)
-            )
+            iter(self.semantic_model.get_instances_of_type(core.namespace.BRICK.Room))
         )
         sensor_sm = next(
             iter(
@@ -1598,13 +1567,8 @@ class TestTranslator(unittest.TestCase):
         ``[WALKER]`` event.
         """
         # Standard library imports
-        import importlib
-        import os
-        import tempfile
 
         # Local application imports
-        import twin4build.core as core
-        from twin4build.translator import translator as translator_mod
 
         # AHU --feeds-> Damper --feeds-> Room.  Modeled = node_damper
         # so the seed lands at SM Dampers.  At each Damper seed the
@@ -1641,9 +1605,7 @@ class TestTranslator(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = os.path.join(tmpdir, "matcher_diag.log")
             os.environ["TWIN4BUILD_MATCH_DIAG_FILE"] = log_path
-            os.environ["TWIN4BUILD_MATCH_DIAG_PATTERN"] = (
-                "diag_direction_label_pattern"
-            )
+            os.environ["TWIN4BUILD_MATCH_DIAG_PATTERN"] = "diag_direction_label_pattern"
             try:
                 # Reload the module-level diag-path/filter cache (the
                 # globals are read from the environment at module
@@ -1723,7 +1685,6 @@ class TestTranslator(unittest.TestCase):
         2. ``complete_matches`` is not extended by the merger.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_damper = Node(cls=core.namespace.BRICK.Damper)
@@ -1761,14 +1722,10 @@ class TestTranslator(unittest.TestCase):
         # at most these synthetic partials and -- per the PR4
         # invariant -- returns them unchanged.
         ahu_sm = next(
-            iter(
-                self.semantic_model.get_instances_of_type(core.namespace.BRICK.AHU)
-            )
+            iter(self.semantic_model.get_instances_of_type(core.namespace.BRICK.AHU))
         )
         damper_sm = next(
-            iter(
-                self.semantic_model.get_instances_of_type(core.namespace.BRICK.Damper)
-            )
+            iter(self.semantic_model.get_instances_of_type(core.namespace.BRICK.Damper))
         )
         partial_ahu = {n: None for n in sp.nodes}
         partial_ahu[node_ahu] = ahu_sm
@@ -1824,7 +1781,6 @@ class TestTranslator(unittest.TestCase):
         evaluating the veto.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_room = Node(cls=core.namespace.BRICK.Room)
         node_sensor = Node(cls=core.namespace.BRICK.Temperature_Sensor)
@@ -1869,13 +1825,6 @@ class TestTranslator(unittest.TestCase):
         their adjacency views and corrupt the ruleset).
         """
         # Local application imports
-        from twin4build.translator.translator import (
-            BACKWARD,
-            FORWARD,
-            Predicate,
-            _SinglePath,
-        )
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_room = Node(cls=core.namespace.BRICK.Room)
@@ -1902,9 +1851,7 @@ class TestTranslator(unittest.TestCase):
 
         # Pick any SM instance to play the role of the matched far node.
         ahu_sm = next(
-            iter(
-                self.semantic_model.get_instances_of_type(core.namespace.BRICK.AHU)
-            )
+            iter(self.semantic_model.get_instances_of_type(core.namespace.BRICK.AHU))
         )
 
         # Forward apply -- emits a forward intermediate, then resets
@@ -1960,7 +1907,6 @@ class TestTranslator(unittest.TestCase):
         present in the SM and does not prune when absent.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_ahu = Node(cls=core.namespace.BRICK.AHU)
         node_damper = Node(cls=core.namespace.BRICK.Damper)
@@ -2012,7 +1958,6 @@ class TestTranslator(unittest.TestCase):
         entries.
         """
         # Local application imports
-        import twin4build.core as core
 
         # Skip rdf:type triples -- those map class URIs which become
         # SemanticType (no inverse-edge view by design); we only assert
@@ -2061,7 +2006,6 @@ class TestTranslator(unittest.TestCase):
         :meth:`get_predicate_subject_pairs`.
         """
         # Local application imports
-        from twin4build.model.semantic_model.semantic_model import SemanticLiteral
 
         sm = SemanticModel()
         lit = SemanticLiteral("hello", sm)
@@ -2099,11 +2043,8 @@ class TestTranslator(unittest.TestCase):
         subjects are returned under the predicate key.
         """
         # Third party imports
-        from rdflib import Literal, URIRef
 
         # Local application imports
-        import twin4build.core as core
-        from twin4build.model.semantic_model.semantic_model import SemanticLiteral
 
         sm = SemanticModel()
         base = "http://example.org/literal_incoming#"
@@ -2152,10 +2093,8 @@ class TestTranslator(unittest.TestCase):
         to the boolean SP node.
         """
         # Third party imports
-        from rdflib import Literal, URIRef
 
         # Local application imports
-        import twin4build.core as core
 
         sm = SemanticModel()
         base = "http://example.org/steprule_literal#"
@@ -2163,11 +2102,13 @@ class TestTranslator(unittest.TestCase):
         true_lit = Literal("true", datatype=core.namespace.XSD.boolean)
 
         sm.instance_graph.add(
-            (ctrl_uri, core.namespace.RDF.type, core.namespace.S4BLDG.SetpointController)
+            (
+                ctrl_uri,
+                core.namespace.RDF.type,
+                core.namespace.S4BLDG.SetpointController,
+            )
         )
-        sm.instance_graph.add(
-            (ctrl_uri, core.namespace.S4BLDG.isReverse, true_lit)
-        )
+        sm.instance_graph.add((ctrl_uri, core.namespace.S4BLDG.isReverse, true_lit))
 
         ctrl_node = Node(cls=core.namespace.S4BLDG.SetpointController)
         bool_node = Node(cls=core.namespace.XSD.boolean)
@@ -2210,7 +2151,6 @@ class TestSignaturePattern(unittest.TestCase):
     def test_node_creation(self):
         """Test creating nodes for signature patterns."""
         # Local application imports
-        import twin4build.core as core
 
         # Create a node with a single class
         node1 = Node(cls=core.namespace.S4BLDG.Damper)
@@ -2231,7 +2171,6 @@ class TestSignaturePattern(unittest.TestCase):
     def test_exact_rule(self):
         """Test creating StepRule rules."""
         # Local application imports
-        import twin4build.core as core
 
         node1 = Node(cls=core.namespace.S4BLDG.Damper)
         node2 = Node(cls=core.namespace.S4BLDG.Controller)
@@ -2248,7 +2187,6 @@ class TestSignaturePattern(unittest.TestCase):
     def test_optional_rule(self):
         """Test creating OptionalRule rules."""
         # Local application imports
-        import twin4build.core as core
 
         node1 = Node(cls=core.namespace.S4BLDG.Damper)
         node2 = Node(cls=core.namespace.SAREF.Property)
@@ -2265,7 +2203,6 @@ class TestSignaturePattern(unittest.TestCase):
     def test_add_triple_to_pattern(self):
         """Test adding triples to signature patterns."""
         # Local application imports
-        import twin4build.core as core
 
         damper_node = Node(cls=core.namespace.S4BLDG.Damper)
         controller_node = Node(cls=core.namespace.S4BLDG.Controller)
@@ -2287,7 +2224,6 @@ class TestSignaturePattern(unittest.TestCase):
     def test_add_input_to_pattern(self):
         """Test adding inputs to signature patterns."""
         # Local application imports
-        import twin4build.core as core
 
         controller_node = Node(cls=core.namespace.S4BLDG.Controller)
 
@@ -2302,7 +2238,6 @@ class TestSignaturePattern(unittest.TestCase):
     def test_add_parameter_to_pattern(self):
         """Test adding parameters to signature patterns."""
         # Local application imports
-        import twin4build.core as core
 
         float_node = Node(cls=core.namespace.XSD.float)
 
@@ -2317,7 +2252,6 @@ class TestSignaturePattern(unittest.TestCase):
     def test_add_modeled_node(self):
         """Test adding modeled nodes to signature patterns."""
         # Local application imports
-        import twin4build.core as core
 
         damper_node = Node(cls=core.namespace.S4BLDG.Damper)
 
@@ -2342,7 +2276,6 @@ class TestSignaturePattern(unittest.TestCase):
         :meth:`SignaturePattern.add_rule`.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_a = Node(cls=core.namespace.BRICK.AHU)
         node_b = Node(cls=core.namespace.BRICK.Damper)
@@ -2420,7 +2353,6 @@ class TestSignaturePattern(unittest.TestCase):
         """A pattern wired into a single chain is one WCC; member order
         within the component matches SP node-registration order."""
         # Local application imports
-        import twin4build.core as core
 
         node_a = Node(cls=core.namespace.BRICK.AHU)
         node_b = Node(cls=core.namespace.BRICK.Damper)
@@ -2449,7 +2381,6 @@ class TestSignaturePattern(unittest.TestCase):
         up in the same WCC as its predecessor.
         """
         # Local application imports
-        import twin4build.core as core
 
         node_a1 = Node(cls=core.namespace.BRICK.AHU)
         node_b1 = Node(cls=core.namespace.BRICK.Damper)
@@ -2485,7 +2416,6 @@ class TestSignaturePattern(unittest.TestCase):
         dicts (rather than ``None`` or missing attributes), so the
         bidirectional matcher can iterate either side without guards."""
         # Local application imports
-        import twin4build.core as core
 
         n = Node(cls=core.namespace.BRICK.AHU)
         self.assertEqual(n.predicate_object_pairs, {})

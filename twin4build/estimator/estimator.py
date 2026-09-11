@@ -8,6 +8,7 @@ import functools
 import math
 import os
 import pickle
+import re as _re
 import time as time_module
 import warnings
 from contextlib import nullcontext as _nullcontext
@@ -27,7 +28,18 @@ import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.utils.types as tps
 from twin4build.systems.utils.smooth_saturation import saturation_mode
+from twin4build.estimator._batched_solvers import (
+    BatchedObjectiveEvaluator,
+    solve_batched_multistart,
+)
+from twin4build.estimator._collocation import solve_collocation
+from twin4build.estimator._single_shooting import FunctionalEstimationObjective
+from twin4build.solvers.ipopt import solve_ipopt
+from twin4build.utils._cuda_graph import is_cuda_graph_capture_invalidated
+from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
+from twin4build.utils.method_spec import parse_method
+from twin4build.utils.result import ResultDict
 from twin4build.utils.rgetattr import rgetattr
 
 # Per-sensor lower bound on the standard deviation used inside
@@ -119,10 +131,10 @@ class Estimator:
       (``method=("casadi", "ipopt", "ad", "collocation")``).
     - **Custom torch** (``method=("custom", <optimizer>, "ad")``): experimental
       batched BFGS, Levenberg-Marquardt, and stabilized exact Newton solvers
-      for composed single-shooting.
+      for functional single-shooting.
 
-    Composed execution is selected on :class:`Simulator`, not through
-    estimator options: ``Simulator(model, execution_mode="composed")``.
+    Functional execution is selected on :class:`Simulator`, not through
+    estimator options: ``Simulator(model, execution_mode="functional")``.
 
     Mathematical Formulation
     ------------------------
@@ -265,15 +277,15 @@ class Estimator:
     this: the per-step Jacobians contract, so single-shooting remains well
     behaved even on multi-week horizons.
 
-    For composable torch models, ``Simulator(..., execution_mode="composed")``
+    For composable torch models, ``Simulator(..., execution_mode="functional")``
     builds a pure
     one-step map :math:`F_{\text{aug}}` by composing the components'
     ``forward`` methods, captures the exogenous inputs once from a reference
     rollout, and evaluates the same objective as a plain sequential torch
-    rollout -- removing the per-step object-graph dispatch. Every composable
-    component's ``do_step`` delegates to the same ``forward`` the composed
-    map threads, so the fast objective is exact by construction; the
-    estimator uses the object-graph objective for non-composable models with
+    rollout -- removing the per-step object dispatch. Every functionally
+    compatible component's ``do_step`` delegates to the same ``forward`` the
+    functional model threads, so the functional objective is exact by
+    construction; the estimator uses the object objective for incompatible models with
     SciPy/CasADi; custom batched methods require full composability.
 
     Collocation
@@ -313,7 +325,7 @@ class Estimator:
     the CasADi/IPOPT backend
     (``method=("casadi", "ipopt", "ad", "collocation")``). A defect audit is
     returned as
-    ``transcription_audit`` so the quality of the converged solution can be
+    ``collocation_audit`` so the quality of the converged solution can be
     inspected (max defect, per-sensor RMSE consistency between the NLP
     solution and a forward rollout).
 
@@ -355,9 +367,9 @@ class Estimator:
     ...     method=("scipy", "SLSQP", "ad")  # Preferred for most problems
     ... )
 
-    Composed single-shooting for composable torch models:
+    Functional single-shooting for compatible torch models:
 
-    >>> simulator = tb.Simulator(model, execution_mode="composed")
+    >>> simulator = tb.Simulator(model, execution_mode="functional")
     >>> estimator = tb.Estimator(simulator)
     >>> result = estimator.estimate(
     ...     parameters=parameters,
@@ -428,11 +440,11 @@ class Estimator:
         self,
         start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
         end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
-        step_size: Union[float, List[float]] = None,
-        parameters: List[Tuple] = None,
-        measurements: List[core.System] = None,
+        step_size: Union[int, List[int]] = None,
+        parameters: Union[str, List[Tuple]] = None,
+        measurements: Union[str, List[Tuple[core.System, float]]] = None,
         n_warmup: int = 60,
-        method: Union[str, Tuple[str, str, str]] = "scipy",
+        method: Union[str, Tuple[str, str, str], Tuple[str, str, str, str]] = "scipy",
         n_cores: Optional[int] = None,
         options: Optional[Dict] = None,
         schedule: Optional[List[Dict[str, Any]]] = None,
@@ -555,17 +567,21 @@ class Estimator:
                   sparse hard continuity constraints. Robust to poor initial
                   parameter guesses. See the class docstring's Collocation
                   section for the formulation.
-                - Custom backend (AD, composed single-shooting only):
+                - Custom backend (AD, functional single-shooting only):
                   ``"batched-sqp"``, ``"batched-bfgs"``, ``"batched-lm"``,
-                  and ``"batched-newton"``. Batched SQP uses a dense,
-                  bound-constrained BFGS quadratic subproblem and is the
-                  closest custom analogue to SciPy SLSQP. Select composed
-                  execution on the Simulator. Options include
-                  ``n_starts``, ``batch_size``,
+                  and ``"batched-newton"``. Batched SQP uses bound-constrained
+                  BFGS quadratic subproblems and is the closest custom
+                  analogue to SciPy SLSQP. Its dense default can be replaced
+                  with independent curvature blocks via
+                  ``sqp_curvature_blocks`` (an equal block size, a list of
+                  block sizes, or explicit index blocks). Options include
+                  ``n_starts``, ``batch_size`` (defaults to ``n_starts``;
+                  lower it to limit GPU memory),
                   ``start_seed``, ``start_strategy`` (``"uniform_bounds"`` by
                   default, or ``"local"`` with ``start_spread``),
                   ``normalized_starts``,
-                  ``maxiter``, ``gtol``, ``ftol``, and ``capture``. CUDA
+                  ``maxiter``, ``gtol``, ``ftol``, and
+                  ``sqp_max_backtracks``. CUDA
                   Graph capture applies to objective values and first-order
                   gradients; residual Jacobians and exact Hessians remain
                   eager because PyTorch cannot safely replay those
@@ -601,21 +617,14 @@ class Estimator:
 
                 Collocation transcription only:
 
-                - "gauss_newton" (bool, default True): Supply IPOPT with a
-                  Gauss-Newton Hessian of the least-squares objective instead
-                  of the default limited-memory BFGS approximation. Turns a
-                  >1000-iteration L-BFGS crawl into a Newton-type solve.
-                - "exact_hessian" (bool, default False): Include residual and
-                  nonlinear-constraint curvature in the supplied Lagrangian
-                  Hessian. This enables IPOPT's strict KKT convergence test but
-                  makes each Hessian evaluation more expensive.
-                - "capture_hessian" (bool, default: enabled for exact Hessians
-                  on CUDA): Capture and replay the exact-Hessian transform with
-                  ``torch.cuda.CUDAGraph``. Requires ``exact_hessian=True`` and
-                  a CUDA model. The graph is scoped to one solve and validates
-                  replay against eager evaluations before IPOPT proceeds.
-                - "early_stopping" (bool or dict, default: enabled when
-                  ``gauss_newton`` is on): Patience-based stagnation stop
+                - "hessian": ``"exact"`` (default), ``"gauss_newton"``, or
+                  ``"limited_memory"``. Exact includes objective and nonlinear
+                  constraint curvature; Gauss-Newton omits constraint
+                  curvature; limited-memory delegates curvature to IPOPT.
+                  CUDA graph policy is selected only by
+                  ``Simulator.execution_backend``.
+                - "early_stopping" (bool or dict, default: enabled unless
+                  limited-memory curvature is selected): Patience-based stop
                   with a best-feasible-iterate checkpoint. A dict overrides
                   the defaults: ``patience`` (10), ``feas_tol`` (1e-2),
                   ``min_delta_rel`` (1e-3), ``theta_tol`` (1e-4).
@@ -625,9 +634,16 @@ class Estimator:
                   manifold (mainly for equivalence testing).
                 - "profile_phases" (bool, default False): Record synchronized
                   wall-clock timings for collocation setup, IPOPT, and the
-                  post-solve audit in ``result["transcription_timing"]``.
+                  post-solve audit in ``result["collocation_timing"]``.
                   CUDA synchronization makes this a benchmarking option, not
                   a production-performance setting.
+                - "boundary_state_margin" (float, default 6.0): The box on
+                  the collocation boundary states is each dimension's
+                  warm-start min/max widened by this many normalized units
+                  (standard deviations of that dimension over the warm-start
+                  trajectory).  The box therefore always contains the warm
+                  start; raise it only if a fit needs excursions far beyond
+                  the warm start's range.
                 - "boundary_state_init" ({"auto", "data", "rollout"},
                   default "auto"): Where the collocation boundary states
                   start.  **You normally do not set this** -- "auto"
@@ -721,9 +737,9 @@ class Estimator:
                 - ``estimated_initial_state``: Per-component initial states
                   recovered from the fit (collocation also estimates the
                   boundary states; single-shooting reports the warm-up result).
-                - ``transcription_audit`` (collocation only): Solution-quality
+                - ``collocation_audit`` (collocation only): Solution-quality
                   audit with the maximum continuity defect, per-sensor RMSE
-                  consistency (NLP solution vs. forward rollout vs. object-graph
+                  consistency (NLP solution vs. forward rollout vs. object
                   ``do_step`` rollout), and active-bound counts.
 
         Raises:
@@ -811,6 +827,8 @@ class Estimator:
                 "'regularization_components'; see the `schedule` argument's "
                 "docstring."
             )
+        self._log_parameters = bool(kwargs.pop("log_parameters", False))
+        reject_unexpected_kwargs("Estimator.estimate", kwargs)
 
         # Input validation and preprocessing
         if parameters is None:
@@ -855,9 +873,7 @@ class Estimator:
         # readable error.
         for s, e, ss in zip(start_time, end_time, step_size):
             if not isinstance(ss, int) or ss <= 0:
-                raise ValueError(
-                    f"step_size must be a positive integer, got {ss!r}"
-                )
+                raise ValueError(f"step_size must be a positive integer, got {ss!r}")
             if s >= e:
                 raise ValueError(
                     f"start_time ({s}) must be strictly less than end_time ({e})"
@@ -916,8 +932,6 @@ class Estimator:
         # objective evaluation logs the full denormalized theta vector as
         # ``compID.attr=value`` pairs so the caller can see *which* parameter
         # the solver is moving (or not moving) when convergence stalls.
-        self._log_parameters = bool(kwargs.pop("log_parameters", False))
-
         LOGGER.task("Estimating parameters")
         LOGGER.add_level()
 
@@ -941,6 +955,7 @@ class Estimator:
             # objective as the SciPy backends, only the optimizer changes.
             ("casadi", "ipopt", "ad"),
             ("custom", "batched-sqp", "ad"),
+            ("custom", "batched-tr", "ad"),
             ("custom", "batched-bfgs", "ad"),
             ("custom", "batched-lm", "ad"),
             ("custom", "batched-newton", "ad"),
@@ -954,8 +969,6 @@ class Estimator:
         # Transcription mode (4th, optional tuple element).  Governs *how* the
         # dynamics enter the NLP, orthogonally to the (library, optimizer, mode)
         # optimizer choice. See twin4build.utils.method_spec.parse_method.
-        from twin4build.utils.method_spec import parse_method
-
         method, transcription = parse_method(
             method,
             allowed_methods=allowed_methods,
@@ -998,9 +1011,7 @@ class Estimator:
         LOGGER.config("Time periods: %d", n_periods)
         LOGGER.add_level()
         for i, (s, e, ss) in enumerate(zip(start_time, end_time, step_size)):
-            LOGGER.config(
-                "Period %d: start=%s | end=%s | step=%ss", i + 1, s, e, ss
-            )
+            LOGGER.config("Period %d: start=%s | end=%s | step=%ss", i + 1, s, e, ss)
         LOGGER.remove_level()
 
         # Store configuration
@@ -1061,7 +1072,11 @@ class Estimator:
         for df_ in df:
             self._n_timesteps += len(df_.index)
 
-        LOGGER.config("Measurements: %d devices, %d total timesteps", len(self._measurements), self._n_timesteps)
+        LOGGER.config(
+            "Measurements: %d devices, %d total timesteps",
+            len(self._measurements),
+            self._n_timesteps,
+        )
 
         # -- Per-measurement summary ------------------------------------------
         # Cheap diagnostic that tells "no data" vs "saturated" vs "well-excited"
@@ -1101,7 +1116,13 @@ class Estimator:
                 sat_str = "  CONSTANT"
             LOGGER.iter(
                 "%s  sd=%.4g  min=%.3g max=%.3g mean=%.3g std=%.3g%s",
-                md.id, sd, vmin, vmax, vmean, vstd, sat_str,
+                md.id,
+                sd,
+                vmin,
+                vmax,
+                vmean,
+                vstd,
+                sat_str,
             )
         LOGGER.remove_level()
 
@@ -1233,9 +1254,9 @@ class Estimator:
             defaults (no regularization, inherited saturation mode,
             ``base_options`` only).
         method : tuple
-            Solver method tuple, forwarded to :meth:`_scipy_solver`.
+            Solver method tuple, forwarded to :meth:`_solve`.
         n_cores : int or None
-            Cores for FD mode, forwarded to :meth:`_scipy_solver`.
+            Cores for FD mode, forwarded to :meth:`_solve`.
         base_options : dict
             Top-level ``options`` dict; per-phase ``options`` are
             merged on top.
@@ -1244,7 +1265,7 @@ class Estimator:
         -------
         EstimationResult
             Result from the **final** phase.  The penultimate phase's
-            result is also written to disk by ``_scipy_solver`` but is
+            result is also written to disk by ``_solve`` but is
             overwritten by the final phase.
         """
         n_phases = len(schedule)
@@ -1288,9 +1309,7 @@ class Estimator:
             # override is requested.
             ctx = saturation_mode(mode) if mode is not None else _nullcontext()
             with ctx:
-                result = self._scipy_solver(
-                    method=method, n_cores=n_cores, **merged_options
-                )
+                result = self._solve(method=method, n_cores=n_cores, **merged_options)
 
             # Warm-start next phase from this phase's converged x.
             self._x0_norm = self._last_x_norm.copy()
@@ -1305,9 +1324,7 @@ class Estimator:
 
         return result
 
-    def _normalize_schedule_entry(
-        self, entry: Any, phase_idx: int
-    ) -> Dict[str, Any]:
+    def _normalize_schedule_entry(self, entry: Any, phase_idx: int) -> Dict[str, Any]:
         """Validate one schedule entry.  Unknown keys raise so typos
         surface early instead of silently being ignored.
         """
@@ -1649,13 +1666,19 @@ class Estimator:
                 # For shared parameters, all components share one parameter
                 shared_params.append((components, attr, x0, lb, ub))
 
-        LOGGER.config("Parameters: %d private, %d shared", len(private_params), len(shared_params))
+        LOGGER.config(
+            "Parameters: %d private, %d shared", len(private_params), len(shared_params)
+        )
         LOGGER.add_level()
         for comp, attr, x0, lb, ub in private_params:
-            LOGGER.debug("Private: %s.%s (x0=%s, lb=%s, ub=%s)", comp.id, attr, x0, lb, ub)
+            LOGGER.debug(
+                "Private: %s.%s (x0=%s, lb=%s, ub=%s)", comp.id, attr, x0, lb, ub
+            )
         for comps, attr, x0, lb, ub in shared_params:
             comp_ids = [c.id for c in comps]
-            LOGGER.debug("Shared: %s.%s (x0=%s, lb=%s, ub=%s)", comp_ids, attr, x0, lb, ub)
+            LOGGER.debug(
+                "Shared: %s.%s (x0=%s, lb=%s, ub=%s)", comp_ids, attr, x0, lb, ub
+            )
         LOGGER.remove_level()
 
         # Build flat lists for private parameters
@@ -1776,7 +1799,9 @@ class Estimator:
                 x0 = self._resolve_x0(components[0], attr, None)
                 for other in components[1:]:
                     other_val = self._parameter_value_as_array(rgetattr(other, attr))
-                    if not np.allclose(other_val, np.asarray(x0, dtype=float), equal_nan=True):
+                    if not np.allclose(
+                        other_val, np.asarray(x0, dtype=float), equal_nan=True
+                    ):
                         warnings.warn(
                             f"Shared parameter '{attr}' has omitted x0 but current "
                             f"values differ across components "
@@ -1893,46 +1918,44 @@ class Estimator:
         return values
 
     def _composer_theta_spec(self) -> Tuple[List[Tuple], List]:
-        """Indexed theta spec + representative parameters for the composed map.
+        """Indexed theta spec plus parameters for the functional model.
 
         Returns ``(theta_spec, unique_parameters)``:
 
-        - ``theta_spec``: one ``(component, attr, theta_index)`` entry per flat
-          parameter, with ``theta_index`` pointing into the *unique* theta
-          vector (``_theta_slices[_theta_mask[j]]``).  Shared parameters route
-          several entries to the same index, which is exactly how
-          ``OneStepComposer`` composes them.
+        - ``theta_spec``: one ``(component, attr, theta_selector)`` entry per
+          flat parameter. The selector is an integer for scalar parameters and
+          a slice for multi-branch parameters. Shared parameters route several
+          entries to the same selector.
         - ``unique_parameters``: one representative ``tps.Parameter`` per theta
           entry (the first flat occurrence), for bounds/scaling extraction
           (all members of a shared group are configured with identical
           bounds).
 
-        Raises:
-            RuntimeError: If any parameter is multi-branch (``n_c > 1``) --
-                the composed map only supports scalar theta entries.
         """
-        if any(int(n) != 1 for n in self._unique_param_n_c):
-            raise RuntimeError("multi-branch (n_c > 1) parameters")
         theta_spec = []
         rep: Dict[int, object] = {}
         for j, (comp, attr) in enumerate(
             zip(self._flat_components, self._parameter_names)
         ):
-            idx = int(self._theta_slices[int(self._theta_mask[j])][0])
-            owner, owner_attr = self._composed_owner(comp, attr)
-            theta_spec.append((owner, owner_attr, idx))
-            rep.setdefault(idx, self._flat_parameters[j])
-        unique_parameters = [rep[i] for i in range(len(rep))]
-        assert len(unique_parameters) == len(self._x0_norm)
+            unique_idx = int(self._theta_mask[j])
+            start, end = self._theta_slices[unique_idx]
+            selector = int(start) if end - start == 1 else slice(start, end)
+            owner, owner_attr = self._functional_owner(comp, attr)
+            theta_spec.append((owner, owner_attr, selector))
+            rep.setdefault(unique_idx, self._flat_parameters[j])
+        unique_parameters = [rep[i] for i in range(len(self._theta_slices))]
+        assert sum(int(getattr(p, "n_c", 1)) for p in unique_parameters) == len(
+            self._x0_norm
+        )
         return theta_spec, unique_parameters
 
-    def _composed_owner(self, comp, attr) -> Tuple[object, str]:
+    def _functional_owner(self, comp, attr) -> Tuple[object, str]:
         """Remap a theta entry on a nested sub-object onto its owning model
         component with a prefixed attribute path.
 
         Users may put theta directly on an owned sub-object -- e.g. the
         ``OccupancySystem``'s internal ``supply_damper`` (shared with a model
-        damper).  The composer routes parameters by *model component*, so such
+        damper). The functional model routes parameters by *model component*, so such
         entries must become ``(owner, "supply_damper.a")``.  Components that
         are themselves in the model pass through unchanged (including
         composites addressed with dotted attrs like ``(office,
@@ -1947,9 +1970,7 @@ class Estimator:
             # execute; its theta is routed through the owning
             # FusedStateSpaceSystem under the member's module key (see
             # FusedStateSpaceSystem._unit_params).
-            fusion_map = (
-                getattr(sim_model, "_fusion_member_to_fused", None) or {}
-            )
+            fusion_map = getattr(sim_model, "_fusion_member_to_fused", None) or {}
             fused = fusion_map.get(getattr(base, "id", None))
             if fused is not None:
                 return fused, f"{fused._member_keys[base.id]}.{base_attr}"
@@ -2380,7 +2401,9 @@ class Estimator:
             Objective function value or penalty value if evaluation fails.
         """
         try:
-            theta_tensor = torch.tensor(theta, dtype=tps.float_dtype(), device=self._device)
+            theta_tensor = torch.tensor(
+                theta, dtype=tps.float_dtype(), device=self._device
+            )
             res = self._obj(theta_tensor, output).detach().cpu().numpy()
         except FMICallException:
             res = self.res_fail
@@ -2471,13 +2494,19 @@ class Estimator:
             if param_idx not in seen_unique:
                 # Normalize the values for this unique parameter
                 lb_norm = param.normalize(
-                    torch.tensor(lb_values[i], dtype=tps.float_dtype(), device=self._device)
+                    torch.tensor(
+                        lb_values[i], dtype=tps.float_dtype(), device=self._device
+                    )
                 )
                 ub_norm = param.normalize(
-                    torch.tensor(ub_values[i], dtype=tps.float_dtype(), device=self._device)
+                    torch.tensor(
+                        ub_values[i], dtype=tps.float_dtype(), device=self._device
+                    )
                 )
                 x0_norm = param.normalize(
-                    torch.tensor(x0_values[i], dtype=tps.float_dtype(), device=self._device)
+                    torch.tensor(
+                        x0_values[i], dtype=tps.float_dtype(), device=self._device
+                    )
                 )
 
                 # Convert to numpy and flatten
@@ -2490,7 +2519,7 @@ class Estimator:
         self._ub_norm = np.array(ub_norm_list)
         self._x0_norm = np.array(x0_norm_list)
 
-    def _scipy_solver(
+    def _solve(
         self, method: tuple, n_cores: Optional[int] = None, **options
     ) -> EstimationResult:
         """
@@ -2546,7 +2575,11 @@ class Estimator:
 
         assert len(self._flat_parameters) > 0, "No parameters to optimize"
 
-        LOGGER.config("Parameters to optimize: %d (theta size: %d)", len(self._flat_parameters), len(self._x0_norm))
+        LOGGER.config(
+            "Parameters to optimize: %d (theta size: %d)",
+            len(self._flat_parameters),
+            len(self._x0_norm),
+        )
 
         # Initialize simulator
         LOGGER.task("Initializing model")
@@ -2627,117 +2660,208 @@ class Estimator:
         if method[1] in ["trf", "dogbox"] and method[2] == "ad":
             self._log_initial_jacobian_diagnostic()
 
-        # -- Simulator-selected composed single-shooting objective -------------
-        # Composed execution belongs to Simulator: Estimator only supplies the
+        # -- Simulator-selected functional single-shooting objective -----------
+        # Functional execution belongs to Simulator: Estimator only supplies the
         # parameter and residual contracts. The old estimate options ``fast``
         # and ``fast_validate`` were removed to avoid two owners for execution
         # policy.
-        self._fast_obj = None
-        removed_fast = [k for k in ("fast", "fast_validate") if k in options]
-        if removed_fast:
-            raise TypeError(
-                "Estimator options 'fast' and 'fast_validate' were removed; "
-                "construct Simulator(model, execution_mode='composed') instead."
+        self._functional_objective = None
+        removed_options = [
+            key
+            for key in (
+                "fast",
+                "fast_validate",
+                "capture",
+                "capture_derivatives",
+                "capture_hessian",
+                "gauss_newton",
+                "exact_hessian",
             )
-        composed_requested = (
-            getattr(self.simulator, "execution_mode", "object_graph") == "composed"
-        )
+            if key in options
+        ]
+        if removed_options:
+            raise TypeError(
+                f"Removed estimator option(s): {', '.join(removed_options)}. "
+                "Use hessian='exact'|'gauss_newton'|'limited_memory' and select "
+                "functional execution/CUDA graph capture on Simulator."
+            )
+        functional_requested = self.simulator.execution_mode == "functional"
         if (
-            composed_requested
+            functional_requested
             and self._transcription == "single_shooting"
             and method[2] == "ad"
         ):
-            self._setup_fast_objective(validate=False)
+            self._setup_functional_objective(validate_functional=False)
 
         # Run optimization based on method
         LOGGER.task("Running optimization")
+        result = self._dispatch_solve(method, n_cores, options)
+        return self._finalize_solve(result, method)
+
+    def _dispatch_solve(self, method, n_cores, options):
+        """Route a prepared problem to exactly one backend owner."""
+        if method[0] == "scipy":
+            return self._solve_scipy(method, n_cores, options)
+        if method == ("casadi", "ipopt", "ad"):
+            return self._solve_ipopt(method, options)
+        if method[0] == "custom":
+            return self._solve_custom(method, options)
+        raise ValueError(f"Unsupported estimator backend: {method[0]!r}")
+
+    def _solve_ipopt(self, method, options):
+        """Solve either IPOPT transcription with IPOPT-owned options."""
+        if self._transcription == "collocation":
+            return solve_collocation(self, method, dict(options))
+        if "hessian" in options:
+            raise TypeError(
+                "hessian is a collocation option; IPOPT single_shooting "
+                "currently uses limited-memory curvature"
+            )
+        result = solve_ipopt(
+            x0=np.asarray(self._x0_norm, dtype=np.float64),
+            lb=np.asarray(self.bounds.lb, dtype=np.float64),
+            ub=np.asarray(self.bounds.ub, dtype=np.float64),
+            fun=lambda x: float(self._obj_ad(x, "scalar")),
+            jac=lambda x: self._jac_ad(x, "scalar"),
+            options=dict(options),
+        )
+        result.nfev = self._eval_count
+        return result
+
+    def _solve_custom(self, method, options):
+        """Solve functional single-shooting multistart methods."""
         if self._transcription != "single_shooting":
-            # Collocation transcription: every timestep-boundary state becomes
-            # a decision variable alongside theta, tied by hard continuity
-            # constraints.  Reuses the shared setup above
-            # (params/bounds/measurements) and the result-building teardown
-            # below; only the NLP itself differs.
-            from twin4build.estimator._transcription import solve_transcription
-
-            result = solve_transcription(self, method, dict(options))
-        elif method[0] == "custom":
-            if self._fast_obj is None:
-                raise RuntimeError(
-                    "Custom batched shooting requires "
-                    "Simulator(model, execution_mode='composed') and a "
-                    "fully composable model."
-                )
-            from twin4build.estimator._batched_shooting import (
-                solve_batched_shooting,
+            raise ValueError("Custom solvers support only single_shooting")
+        if self._functional_objective is None:
+            raise RuntimeError(
+                "Custom batched solvers require functional simulator execution "
+                "and a fully functional model."
             )
-
-            normalized_starts = options.pop("normalized_starts", None)
-            n_starts = int(options.pop("n_starts", 1))
-            start_strategy = options.pop("start_strategy", "uniform_bounds")
-            start_spread = float(options.pop("start_spread", 0.15))
-            start_seed = options.pop("start_seed", 0)
-            if normalized_starts is None:
-                lb_norm = np.asarray(self.bounds.lb, dtype=np.float64)
-                ub_norm = np.asarray(self.bounds.ub, dtype=np.float64)
-                rng = np.random.default_rng(start_seed)
-                starts = np.repeat(
-                    np.asarray(self._x0_norm, dtype=np.float64)[None, :],
-                    n_starts,
-                    axis=0,
-                )
-                if n_starts > 1:
-                    if start_strategy == "uniform_bounds":
-                        starts[1:] = rng.uniform(
-                            lb_norm, ub_norm, size=starts[1:].shape
-                        )
-                    elif start_strategy == "local":
-                        starts[1:] += rng.uniform(
-                            -start_spread,
-                            start_spread,
-                            size=starts[1:].shape,
-                        )
-                        starts = np.clip(starts, lb_norm, ub_norm)
-                    else:
-                        raise ValueError(
-                            "start_strategy must be 'uniform_bounds' or "
-                            f"'local'; got {start_strategy!r}"
-                        )
-            else:
-                starts = np.asarray(normalized_starts, dtype=np.float64)
-                if starts.ndim == 1:
-                    starts = starts[None, :]
-                if starts.shape[1] != len(self._x0_norm):
-                    raise ValueError(
-                        "normalized_starts must have shape "
-                        f"(n_starts, {len(self._x0_norm)})"
+        options = dict(options)
+        if "hessian" in options:
+            raise TypeError("hessian is not a custom batched-solver option")
+        normalized_starts = options.pop("normalized_starts", None)
+        n_starts = int(options.pop("n_starts", 1))
+        start_strategy = options.pop("start_strategy", "uniform_bounds")
+        start_spread = float(options.pop("start_spread", 0.15))
+        start_seed = options.pop("start_seed", 0)
+        if normalized_starts is None:
+            lb_norm = np.asarray(self.bounds.lb, dtype=np.float64)
+            ub_norm = np.asarray(self.bounds.ub, dtype=np.float64)
+            rng = np.random.default_rng(start_seed)
+            starts = np.repeat(
+                np.asarray(self._x0_norm, dtype=np.float64)[None, :],
+                n_starts,
+                axis=0,
+            )
+            if n_starts > 1:
+                if start_strategy == "uniform_bounds":
+                    starts[1:] = rng.uniform(lb_norm, ub_norm, size=starts[1:].shape)
+                elif start_strategy == "local":
+                    starts[1:] += rng.uniform(
+                        -start_spread, start_spread, size=starts[1:].shape
                     )
-            result = solve_batched_shooting(
-                self._fast_obj,
-                method[1],
-                starts,
-                self.bounds.lb,
-                self.bounds.ub,
-                options,
-            )
-        elif method[0] == "casadi":
-            # IPOPT (via CasADi) single-shooting solve.  Reuses the exact
-            # AD objective / gradient the SciPy backends use -- only the
-            # optimizer changes.  CasADi is imported lazily so it stays an
-            # optional dependency.
-            from twin4build.estimator._casadi_ipopt import solve_ipopt
+                    starts = np.clip(starts, lb_norm, ub_norm)
+                else:
+                    raise ValueError(
+                        "start_strategy must be 'uniform_bounds' or 'local'"
+                    )
+        else:
+            starts = np.asarray(normalized_starts, dtype=np.float64)
+            if starts.ndim == 1:
+                starts = starts[None, :]
+            if starts.shape[1] != len(self._x0_norm):
+                raise ValueError(
+                    f"normalized_starts must have shape (n_starts, "
+                    f"{len(self._x0_norm)})"
+                )
+        return solve_batched_multistart(
+            self._functional_objective,
+            method[1],
+            starts,
+            self.bounds.lb,
+            self.bounds.ub,
+            options,
+        )
 
-            result = solve_ipopt(
-                x0=np.asarray(self._x0_norm, dtype=np.float64),
-                lb=np.asarray(self.bounds.lb, dtype=np.float64),
-                ub=np.asarray(self.bounds.ub, dtype=np.float64),
-                fun=lambda x: float(self._obj_ad(x, "scalar")),
-                jac=lambda x: self._jac_ad(x, "scalar"),
-                options=dict(options),
-            )
-            # Mirror the SciPy backends' ``nfev`` bookkeeping (CasADi does not
-            # report objective evaluations, but the Estimator counts them).
-            result.nfev = self._eval_count
-        elif method[1] in ["trf", "dogbox"]:
+    def _solve_scipy_captured_slsqp(self, method, options):
+        """Run SciPy SLSQP from one captured functional value/gradient bundle."""
+        evaluator = BatchedObjectiveEvaluator(self._functional_objective)
+        cache = {"key": None, "value": None, "gradient": None}
+        fallback = {"enabled": False, "reason": None}
+
+        def eager_bundle(x):
+            value = float(self._obj_ad(x, "scalar"))
+            gradient = np.asarray(self._jac_ad(x, "scalar"), dtype=np.float64)
+            return value, gradient
+
+        def bundle(x):
+            x_np = np.asarray(x, dtype=np.float64)
+            key = x_np.tobytes()
+            if cache["key"] == key:
+                return cache["value"], cache["gradient"]
+            if fallback["enabled"]:
+                value, gradient = eager_bundle(x_np)
+            else:
+                try:
+                    z = torch.as_tensor(
+                        x_np, dtype=tps.float_dtype(), device=self._device
+                    ).unsqueeze(0)
+                    values, gradients = evaluator.value_grad(z)
+                    value_tensor = values[0]
+                    gradient_tensor = gradients[0]
+                    if not torch.isfinite(value_tensor) or not torch.isfinite(
+                        gradient_tensor
+                    ).all():
+                        value = 1e10
+                        gradient = np.zeros_like(x_np)
+                    else:
+                        value = float(value_tensor.detach().cpu())
+                        gradient = np.asarray(
+                            gradient_tensor.detach().cpu().numpy(),
+                            dtype=np.float64,
+                        )
+                    self._theta_obj = z[0].detach().clone()
+                    self._theta_jac = z[0].detach().clone()
+                    self._loglike = value_tensor.detach().clone()
+                    self._jac = gradient_tensor.detach().clone()
+                    self._eval_count += 1
+                except Exception as exc:  # noqa: BLE001
+                    if is_cuda_graph_capture_invalidated(exc):
+                        raise
+                    fallback["enabled"] = True
+                    fallback["reason"] = f"{type(exc).__name__}: {exc}"
+                    LOGGER.warning(
+                        "CUDA Graph SLSQP bundle failed (%s); falling back to eager.",
+                        fallback["reason"],
+                    )
+                    value, gradient = eager_bundle(x_np)
+            cache.update(key=key, value=value, gradient=gradient)
+            return value, gradient
+
+        result = minimize(
+            lambda x: bundle(x)[0],
+            self._x0_norm,
+            method=method[1],
+            jac=lambda x: bundle(x)[1],
+            bounds=self.bounds,
+            options=options,
+        )
+        result.derivative_stats = {
+            "scipy_value_gradient_bundle": evaluator.stats.get("value_grad", {}),
+            "cuda_graph_requested": True,
+            "cuda_graph_enabled": not fallback["enabled"],
+            "fallback_reason": fallback["reason"],
+        }
+        return result
+
+    def _solve_scipy(self, method, n_cores, options):
+        """Own and validate SciPy-specific solver options."""
+        if self._transcription != "single_shooting":
+            raise ValueError("SciPy supports only single_shooting transcription")
+        if "hessian" in options:
+            raise TypeError("hessian is an IPOPT collocation option")
+        if method[1] in ["trf", "dogbox"]:
             if method[2] == "ad":
                 result = least_squares(
                     self._obj_ad,
@@ -2906,6 +3030,14 @@ class Estimator:
                     bounds=self.bounds,
                     options=options,
                 )
+            elif (
+                method[1] == "SLSQP"
+                and self._functional_objective is not None
+                and self.simulator.execution_backend == "cuda_graph"
+                and self._device.type == "cuda"
+                and self._regularization_lambda == 0
+            ):
+                result = self._solve_scipy_captured_slsqp(method, options)
             else:
                 result = minimize(
                     self._obj_ad,
@@ -2917,7 +3049,10 @@ class Estimator:
                     bounds=self.bounds,
                     options=options,
                 )
+        return result
 
+    def _finalize_solve(self, result, method):
+        """Finalize any backend result using the shared result contract."""
         elapsed = time_module.time() - self._solver_start_time
         LOGGER.task("Finishing optimization")
         LOGGER.result(
@@ -2978,7 +3113,9 @@ class Estimator:
         ):
             if param_idx not in seen_unique:
                 start, end = self._theta_slices[param_idx]
-                x_norm = torch.tensor(result.x[start:end], dtype=tps.float_dtype(), device=self._device)
+                x_norm = torch.tensor(
+                    result.x[start:end], dtype=tps.float_dtype(), device=self._device
+                )
                 x_denorm = param.denormalize(x_norm)
                 result_x_list.extend(x_denorm.detach().cpu().numpy().flatten())
                 seen_unique.add(param_idx)
@@ -2988,11 +3125,15 @@ class Estimator:
         # carry the optimised initial state through so callers can seed a
         # continuous prediction from it (see EstimationResult).
         estimated_initial_state = getattr(result, "estimated_initial_state", None)
-        transcription_audit = getattr(result, "transcription_audit", None)
-        transcription_timing = getattr(result, "transcription_timing", None)
+        collocation_audit = getattr(result, "collocation_audit", None)
+        collocation_timing = getattr(result, "collocation_timing", None)
         multistart_audit = getattr(result, "multistart_audit", None)
         derivative_stats = getattr(result, "derivative_stats", None)
         iteration_history = getattr(result, "iteration_history", None)
+        aggregate_nfev = getattr(result, "aggregate_nfev", None)
+        aggregate_njev = getattr(result, "aggregate_njev", None)
+        curvature_block_sizes = getattr(result, "curvature_block_sizes", None)
+        solver_status = getattr(result, "status", None)
 
         result = EstimationResult(
             result_x=result_x,
@@ -3015,16 +3156,23 @@ class Estimator:
         )
         if estimated_initial_state is not None:
             result["estimated_initial_state"] = estimated_initial_state
-        if transcription_audit is not None:
-            result["transcription_audit"] = transcription_audit
-        if transcription_timing is not None:
-            result["transcription_timing"] = transcription_timing
+        if collocation_audit is not None:
+            result["collocation_audit"] = collocation_audit
+        if collocation_timing is not None:
+            result["collocation_timing"] = collocation_timing
         if multistart_audit is not None:
             result["multistart_audit"] = multistart_audit
         if derivative_stats is not None:
             result["derivative_stats"] = derivative_stats
         if iteration_history is not None:
             result["iteration_history"] = iteration_history
+        if aggregate_nfev is not None:
+            result["aggregate_nfev"] = aggregate_nfev
+            result["aggregate_njev"] = aggregate_njev
+        if curvature_block_sizes is not None:
+            result["curvature_block_sizes"] = curvature_block_sizes
+        if solver_status is not None:
+            result["solver_status"] = solver_status
 
         with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -3041,42 +3189,42 @@ class Estimator:
         )
         return result
 
-    def _setup_fast_objective(self, validate: bool = False) -> None:
-        """Build the composed-map single-shooting objective.
+    def _setup_functional_objective(self, validate_functional: bool = False) -> None:
+        """Build the functional single-shooting objective.
 
-        On success sets ``self._fast_obj`` (consumed by :meth:`_obj`); on any
-        incompatibility leaves it ``None`` and the exact object-graph objective
+        On success sets ``self._functional_objective`` (consumed by
+        :meth:`_obj`); on any
+        incompatibility leaves it ``None`` and the exact object objective
         is used.  Construction itself performs the structural checks (every
         cone component composable, no shared theta, every measurement
-        producible by the composed map).  Numerical equivalence with the
-        object-graph objective holds by construction -- each composable
+        producible by the functional model). Numerical equivalence with the
+        object objective holds by construction -- each compatible
         component's ``do_step`` delegates to the same ``forward`` the composer
         threads -- and is regression-checked by
-        ``tests/estimator/test_fast_shooting.py``.
+        ``tests/estimator/test_functional_single_shooting.py``.
 
         With ``validate=True`` (internal debugging use) the
         objective value AND gradient are additionally cross-checked against
-        the object-graph objective at ``x0`` and a perturbed theta before the
-        fast path is enabled -- a runtime debugging aid costing ~3
-        object-graph evaluations.
+        the object objective at ``x0`` and a perturbed theta before the
+        functional path is enabled -- a runtime debugging aid costing about
+        three object evaluations.
         """
         t0 = time_module.time()
         try:
-            from twin4build.estimator._shooting import FastSingleShooting
-
-            fast = FastSingleShooting(self)
+            functional = FunctionalEstimationObjective(self)
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning(
                 "Fast single-shooting unavailable (%s) -- using the "
-                "object-graph objective.", exc,
+                "object objective.",
+                exc,
             )
             return
-        if not validate:
+        if not validate_functional:
             LOGGER.ok(
                 "Fast single-shooting objective enabled (setup %.1fs).",
                 time_module.time() - t0,
             )
-            self._fast_obj = fast
+            self._functional_objective = functional
             return
         try:
             rng = np.random.default_rng(0)
@@ -3090,7 +3238,7 @@ class Estimator:
                 self._mse_scaled = None
                 self._obj(zt, "scalar")
                 rmse_slow = float(self._last_rmse)
-                fast.loglike(zt, "scalar")
+                functional.loglike(zt, "scalar")
                 rmse_fast = float(self._last_rmse)
                 worst_val = max(
                     worst_val,
@@ -3106,7 +3254,7 @@ class Estimator:
             z = torch.tensor(
                 x0, dtype=tps.float_dtype(), device=self._device, requires_grad=True
             )
-            (g_fast,) = torch.autograd.grad(fast.loglike(z, "scalar"), z)
+            (g_fast,) = torch.autograd.grad(functional.loglike(z, "scalar"), z)
             g_slow, g_fast = g_slow.cpu().numpy(), g_fast.cpu().numpy()
             gscale = max(1e-12, float(np.abs(g_slow).max()))
             worst_grad = float(np.abs(g_fast - g_slow).max()) / gscale
@@ -3120,22 +3268,26 @@ class Estimator:
             if worst_val > tol_val or worst_grad > tol_grad:
                 LOGGER.warning(
                     "Fast single-shooting objective DISAGREES with the "
-                    "object-graph objective (rel value err %.2e, rel grad err "
-                    "%.2e) -- using the object-graph objective.",
-                    worst_val, worst_grad,
+                    "object objective (rel value err %.2e, rel grad err "
+                    "%.2e) -- using the object objective.",
+                    worst_val,
+                    worst_grad,
                 )
                 return
             LOGGER.ok(
                 "Fast single-shooting objective enabled (validated: rel value "
                 "err %.2e, rel grad err %.2e; setup %.1fs).",
-                worst_val, worst_grad, time_module.time() - t0,
+                worst_val,
+                worst_grad,
+                time_module.time() - t0,
             )
-            self._fast_obj = fast
+            self._functional_objective = functional
         except Exception as exc:  # noqa: BLE001
             self._mse_scaled = None
             LOGGER.warning(
                 "Fast single-shooting validation failed (%s) -- using the "
-                "object-graph objective.", exc,
+                "object objective.",
+                exc,
             )
 
     def _obj(self, theta: torch.Tensor, output: str) -> torch.Tensor:
@@ -3162,12 +3314,15 @@ class Estimator:
         ValueError
             If output format is invalid.
         """
-        # Fast path: composed one-step map rollout (see _shooting.py), built
-        # in _scipy_solver when Simulator selects composed execution. Both paths end in
+        # Functional one-step rollout (see _single_shooting.py), built in
+        # _solve when Simulator selects functional execution. Both paths end in
         # _loglike_from_residuals, so value/diagnostics contracts are shared
         # by construction.
-        if getattr(self, "_fast_obj", None) is not None and output == "scalar":
-            return self._fast_obj.loglike(theta, output)
+        if (
+            getattr(self, "_functional_objective", None) is not None
+            and output == "scalar"
+        ):
+            return self._functional_objective.loglike(theta, output)
 
         # Convert flat theta to per-parameter values
         param_values = self._theta_to_param_values(theta)
@@ -3182,11 +3337,15 @@ class Estimator:
         #
 
         simulation_readings = {
-            com.id: torch.zeros((self._n_timesteps), dtype=tps.float_dtype(), device=self._device)
+            com.id: torch.zeros(
+                (self._n_timesteps), dtype=tps.float_dtype(), device=self._device
+            )
             for com, sd in self._measurements
         }
         actual_readings = {
-            com.id: torch.zeros((self._n_timesteps), dtype=tps.float_dtype(), device=self._device)
+            com.id: torch.zeros(
+                (self._n_timesteps), dtype=tps.float_dtype(), device=self._device
+            )
             for com, sd in self._measurements
         }
 
@@ -3196,6 +3355,7 @@ class Estimator:
             end_time=self._end_time,
             step_size=self._stepSize,
             show_progress_bar=False,
+            execution_mode="object",
         )
 
         # Extract and concatenate measurements from all periods
@@ -3223,7 +3383,9 @@ class Estimator:
                 y_actual_period = self.actual_readings[measuring_device.id][batch_idx]
                 y_actual_period = y_actual_period.to_numpy()
                 y_actual_period = y_actual_period[self._n_warmup :]
-                y_actual_period = torch.tensor(y_actual_period, dtype=tps.float_dtype(), device=self._device)
+                y_actual_period = torch.tensor(
+                    y_actual_period, dtype=tps.float_dtype(), device=self._device
+                )
 
                 # Store in concatenated arrays
                 end_idx = n_time_prev + len(y_model_period)
@@ -3257,16 +3419,16 @@ class Estimator:
     ) -> torch.Tensor:
         """THE data-fit objective from raw residuals (single source of truth).
 
-        Both objective implementations end here: the object-graph :meth:`_obj`
-        and the composed-map fast path
-        (:meth:`twin4build.estimator._shooting.FastSingleShooting.loglike`).
+        Both objective implementations end here: the object :meth:`_obj`
+        and the functional path
+        (:meth:`twin4build.estimator._single_shooting.FunctionalEstimationObjective.loglike`).
         Everything downstream of the residuals -- sd weighting, MSE
         normalization, the rescale-to-100 trick, regularization, and the
         ``_last_*`` diagnostics -- therefore cannot diverge between the two.
 
         ``res_raw`` is ``(N, n_meas)`` raw residuals ``actual - model``.  ``N``
-        may be the full padded horizon (object-graph path: unfilled rows are
-        zero) or only the scored rows (fast path); either way the mean is
+        may be the full padded horizon (object path: unfilled rows are
+        zero) or only the scored rows (functional path); either way the mean is
         taken over ``_n_timesteps * n_meas`` -- identical values, matching the
         historical contract the rescaled objective was tuned on.
 
@@ -3368,8 +3530,6 @@ class Estimator:
         the id unchanged.  The first bracketed segment plus 8-char fingerprint
         is already globally unique in practice for any reasonable run.
         """
-        import re as _re
-
         m = _re.match(r"^(\[[^\]]+\]).*_([0-9a-f]{8})[0-9a-f]*$", component_id)
         if m:
             return f"{m.group(1)}_{m.group(2)}"
@@ -3410,7 +3570,11 @@ class Estimator:
             LOGGER.iter(
                 "n_theta=%d | n_residuals=%d | max ||J[:,i]||=%.4g | "
                 "zero-gradient params=%d | elapsed=%.1fs",
-                jac.shape[1], jac.shape[0], max_norm, n_dead, elapsed,
+                jac.shape[1],
+                jac.shape[0],
+                max_norm,
+                n_dead,
+                elapsed,
             )
             # Per-parameter breakdown, grouped by component, matching the
             # format of the theta-dump so the user can correlate with
@@ -3442,7 +3606,9 @@ class Estimator:
                 label = self._short_component_label(cid)
                 LOGGER.iter("%s: %s", label, "  ".join(comp_parts[cid]))
             LOGGER.remove_level()
-        except Exception as exc:  # pragma: no cover -- diagnostic must never break the run
+        except (
+            Exception
+        ) as exc:  # pragma: no cover -- diagnostic must never break the run
             LOGGER.warning("Initial Jacobian diagnostic failed: %s", exc)
             try:
                 LOGGER.remove_level()
@@ -3479,7 +3645,9 @@ class Estimator:
                 continue
             seen_unique.add(int(param_idx))
             start, end = self._theta_slices[int(param_idx)]
-            x_norm = torch.tensor(theta_np[start:end], dtype=tps.float_dtype(), device=self._device)
+            x_norm = torch.tensor(
+                theta_np[start:end], dtype=tps.float_dtype(), device=self._device
+            )
             try:
                 x_user = param.denormalize(x_norm).detach().cpu().numpy().flatten()
             except Exception:
@@ -3548,13 +3716,16 @@ class Estimator:
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
                     "eval=%d objective failed (%s: %s) -- returning penalty",
-                    self._eval_count, type(exc).__name__, exc,
+                    self._eval_count,
+                    type(exc).__name__,
+                    exc,
                 )
                 try:
                     dump_lines = self._format_theta_dump(theta.detach().cpu().numpy())
                     LOGGER.warning(
                         "theta[%d] at failure  (%d components, denormalized)",
-                        self._eval_count, len(dump_lines),
+                        self._eval_count,
+                        len(dump_lines),
                     )
                     LOGGER.add_level()
                     for line in dump_lines:
@@ -3562,7 +3733,8 @@ class Estimator:
                     LOGGER.remove_level()
                 except Exception as dump_exc:  # noqa: BLE001
                     LOGGER.warning(
-                        "could not dump failing theta: %s", dump_exc,
+                        "could not dump failing theta: %s",
+                        dump_exc,
                     )
                 penalty = 1e10
                 if output == "scalar":
@@ -3577,7 +3749,9 @@ class Estimator:
                 # the solver so the next ``torch.equal`` short-circuit
                 # returns the same penalty until the solver moves
                 # ``theta``.
-                self._loglike = torch.tensor(obj_val, dtype=tps.float_dtype(), device=self._device)
+                self._loglike = torch.tensor(
+                    obj_val, dtype=tps.float_dtype(), device=self._device
+                )
                 self._last_rmse = float("nan")
                 self._last_rmse_per_sensor = {}
                 self._last_penalty = 0.0
@@ -3586,7 +3760,9 @@ class Estimator:
             obj_f = float(np.sum(obj_val))
             if output == "scalar":
                 rmse_f = (
-                    float(self._last_rmse) if hasattr(self, "_last_rmse") else float("nan")
+                    float(self._last_rmse)
+                    if hasattr(self, "_last_rmse")
+                    else float("nan")
                 )
                 if hasattr(self, "_last_penalty") and self._last_penalty > 0:
                     LOGGER.iter(
@@ -3611,7 +3787,9 @@ class Estimator:
                 # directly comparable to the scalar-mode log line.
                 ls_obj = 0.5 * float(np.dot(obj_val, obj_val))
                 rmse_f = (
-                    float(self._last_rmse) if hasattr(self, "_last_rmse") else float("nan")
+                    float(self._last_rmse)
+                    if hasattr(self, "_last_rmse")
+                    else float("nan")
                 )
                 LOGGER.iter(
                     "eval=%d | obj=%.6f | rmse=%.4f | elapsed=%.1fs",
@@ -3622,7 +3800,9 @@ class Estimator:
                 )
             if getattr(self, "_log_parameters", False):
                 dump_lines = self._format_theta_dump(theta.detach().cpu().numpy())
-                LOGGER.iter("theta[%d]  (%d components)", self._eval_count, len(dump_lines))
+                LOGGER.iter(
+                    "theta[%d]  (%d components)", self._eval_count, len(dump_lines)
+                )
                 LOGGER.add_level()
                 for line in dump_lines:
                     LOGGER.iter("%s", line)
@@ -3648,7 +3828,8 @@ class Estimator:
                 )
                 LOGGER.iter(
                     "rmse_per_sensor[%d]  (%d sensors, worst first, new best)",
-                    self._eval_count, len(sorted_items),
+                    self._eval_count,
+                    len(sorted_items),
                 )
                 LOGGER.add_level()
                 for sid, v in sorted_items:
@@ -3720,8 +3901,11 @@ class Estimator:
 
         if torch.equal(theta, self._theta_jac):
             return np.asarray(self._jac.detach().cpu().numpy(), dtype=np.float64)
-        elif getattr(self, "_fast_obj", None) is not None and output == "scalar":
-            # Fast path: plain reverse-mode autograd through the composed-map
+        elif (
+            getattr(self, "_functional_objective", None) is not None
+            and output == "scalar"
+        ):
+            # Functional path: plain reverse-mode autograd through the functional
             # rollout.  jacrev would work too but activates functorch, which
             # forces the state-space components onto the unrolled
             # scaling-and-squaring matrix exponential (no vmap/functorch rule
@@ -3729,7 +3913,9 @@ class Estimator:
             self._theta_jac = theta
             try:
                 z = theta.detach().clone().requires_grad_(True)
-                (g,) = torch.autograd.grad(self._fast_obj.loglike(z, output), z)
+                (g,) = torch.autograd.grad(
+                    self._functional_objective.loglike(z, output), z
+                )
                 if not torch.isfinite(g).all():
                     # A partially-diverged rollout can produce a finite loss
                     # with nan gradient entries; hand the solver zeros so it
@@ -3741,10 +3927,13 @@ class Estimator:
                 self._jac = g.detach()
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
-                    "fast jacobian eval failed (%s: %s) -- returning zero "
-                    "gradient", type(exc).__name__, exc,
+                    "fast jacobian eval failed (%s: %s) -- returning zero " "gradient",
+                    type(exc).__name__,
+                    exc,
                 )
-                self._jac = torch.zeros(theta.numel(), dtype=tps.float_dtype(), device=self._device)
+                self._jac = torch.zeros(
+                    theta.numel(), dtype=tps.float_dtype(), device=self._device
+                )
             jac_np = np.asarray(self._jac.cpu().numpy(), dtype=np.float64)
             LOGGER.debug("grad_norm=%.4f", float(np.linalg.norm(jac_np.ravel())))
             return jac_np
@@ -3767,17 +3956,19 @@ class Estimator:
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
                     "jacobian eval failed (%s: %s) -- returning zero gradient",
-                    type(exc).__name__, exc,
+                    type(exc).__name__,
+                    exc,
                 )
                 if output == "scalar":
                     jac_np = np.zeros(theta.numel(), dtype=np.float64)
                 else:
                     jac_np = np.zeros(
-                        (self._n_timesteps * len(self._measurements),
-                         theta.numel()),
+                        (self._n_timesteps * len(self._measurements), theta.numel()),
                         dtype=np.float64,
                     )
-                self._jac = torch.tensor(jac_np, dtype=tps.float_dtype(), device=self._device)
+                self._jac = torch.tensor(
+                    jac_np, dtype=tps.float_dtype(), device=self._device
+                )
             LOGGER.debug(
                 "grad_norm=%.4f",
                 float(np.linalg.norm(jac_np.ravel())),
@@ -3833,7 +4024,7 @@ class Estimator:
             return np.asarray(self._hes.detach().cpu().numpy(), dtype=np.float64)
 
 
-class EstimationResult(dict):
+class EstimationResult(ResultDict):
     """
     A dictionary-like object containing parameter estimation results.
 
@@ -3863,7 +4054,7 @@ class EstimationResult(dict):
     Notes:
         Depending on the estimation configuration, additional keys may be
         present on the result dict: ``estimated_initial_state`` (per-component
-        initial states) and ``transcription_audit`` (collocation
+        initial states) and ``collocation_audit`` (collocation
         solution-quality audit), or ``multistart_audit``,
         ``derivative_stats``, and ``iteration_history`` for custom batched
         shooting. Results saved to disk can be reloaded with
@@ -3914,6 +4105,7 @@ class EstimationResult(dict):
         final_objective: Optional[float] = None,
         success: Optional[bool] = None,
         message: Optional[str] = None,
+        **metadata: Any,
     ):
         """
         Initialize the EstimationResult object.
@@ -3955,12 +4147,7 @@ class EstimationResult(dict):
             final_objective=final_objective,
             success=success,
             message=message,
+            **metadata,
         )
 
-    def __copy__(self):
-        """Create a shallow copy of the EstimationResult."""
-        return EstimationResult(**self)
-
-    def copy(self):
-        """Create a shallow copy of the EstimationResult."""
-        return self.__copy__()
+    __copy__ = ResultDict.copy

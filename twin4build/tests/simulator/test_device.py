@@ -31,6 +31,7 @@ from dateutil import tz
 import twin4build as tb
 import twin4build.utils.types as tps
 from twin4build.tests.simulator.test_fusion import build_model, simulate
+from twin4build.tests.estimator.test_two_zone_wall import build_two_zone_model
 
 tb._IS_TESTING = True
 
@@ -77,9 +78,7 @@ class TestModelToCPU(unittest.TestCase):
         for key in ("t_a", "t_b", "t_w"):
             self.assertEqual(r32[key].dtype, torch.float32)
             err = float((r64[key] - r32[key].double()).abs().max())
-            self.assertLess(
-                err, 1e-3, f"fp32 {key} deviates {err:.2e} K from fp64"
-            )
+            self.assertLess(err, 1e-3, f"fp32 {key} deviates {err:.2e} K from fp64")
 
     def test_parameter_bounds_follow_dtype(self):
         """tps.Parameter bounds are tensors nn.Module.to() does not know
@@ -119,12 +118,9 @@ class TestModelToCUDA(unittest.TestCase):
         """The fast single-shooting objective must build AND pass its internal
         value+gradient cross-check against the object-graph objective (both
         running on the GPU); the returned optimum must be finite."""
-        from twin4build.tests.estimator.test_two_zone_wall import (
-            build_two_zone_model,
-        )
 
         model, zone_a, zone_b, wall, sensor_a, sensor_b = build_two_zone_model()
-        simulator = tb.Simulator(model, execution_mode="composed")
+        simulator = tb.Simulator(model, execution_mode="functional")
         start = START
         end = START + datetime.timedelta(hours=N_HOURS)
 
@@ -161,11 +157,11 @@ class TestModelToCUDA(unittest.TestCase):
             method=("scipy", "SLSQP", "ad"),
             options={"maxiter": 2},
         )
-        # _setup_fast_objective only keeps the fast path when its value and
-        # gradient agree with the object-graph objective -- on the GPU.
+        # Functional setup keeps the functional path only when its value and
+        # gradient agree with the object objective on the GPU.
         self.assertIsNotNone(
-            estimator._fast_obj,
-            "fast single-shooting objective was not built/validated on cuda",
+            estimator._functional_objective,
+            "functional single-shooting objective was not built on CUDA",
         )
         self.assertTrue(np.all(np.isfinite(result["result_x"])))
 

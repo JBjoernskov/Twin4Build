@@ -3,6 +3,14 @@ import os
 import re
 from pathlib import Path
 
+NO_INDEX_API_PAGES = {
+    "twin4build.model",
+    "twin4build.model.simulation_model",
+    "twin4build.systems.controller.controller_identification",
+    "twin4build.translator",
+    "twin4build.utils",
+}
+
 
 def clean_rst_files(directory="source/auto"):
     """Clean up auto-generated RST files."""
@@ -101,6 +109,16 @@ def clean_rst_files(directory="source/auto"):
 
         # Remove module contents section (this is redundant)
         content = remove_module_contents_section(content)
+
+        # Some classes expose descriptor-backed fields that Sphinx discovers
+        # twice in the same generated page. Keep those pages visible, but do
+        # not register their duplicate descriptors in the Python index.
+        if file.stem in NO_INDEX_API_PAGES:
+            content = re.sub(
+                r"(\.\. automodule::[^\n]+\n)(?!   :no-index:\n)",
+                r"\1   :no-index:\n",
+                content,
+            )
 
         # Write the modified content back to the file
         with open(file, "w", encoding="utf-8") as f:

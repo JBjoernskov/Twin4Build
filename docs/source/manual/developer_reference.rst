@@ -1,67 +1,80 @@
-Developer Reference
-========================================
+Developer reference
+===================
 
-A comprehensive guide for developers who want to contribute to Twin4Build.
-This guide will help you understand the codebase structure, development workflow, and how to contribute effectively.
+This guide describes the Twin4Build 2.0 source tree, development workflow,
+public execution model, documentation build, and release process. For the
+tensor execution contract, also read :doc:`differentiable_system_models`.
 
-Architecture Overview
----------------------
+Architecture
+------------
 
-.. image:: ../_static/Twin4Build_UML_diagram.png
-   :width: 600
-   :alt: UML diagram of Twin4Build classes
+The preferred public workflow is:
 
-Core Components
-~~~~~~~~~~~~~~~
+1. Construct a :class:`~twin4build.model.model.Model`, or translate a
+   :class:`~twin4build.model.semantic_model.semantic_model.SemanticModel`.
+2. Call :meth:`~twin4build.model.model.Model.load`.
+3. Optionally move the model with
+   :meth:`~twin4build.model.model.Model.to`.
+4. Create a :class:`~twin4build.simulator.simulator.Simulator` and call
+   :meth:`~twin4build.simulator.simulator.Simulator.simulate`.
+5. Pass that simulator to an
+   :class:`~twin4build.estimator.estimator.Estimator` or
+   :class:`~twin4build.optimizer.optimizer.Optimizer`.
 
-Twin4Build is organized around five main components which are exposed through the main module:
+Execution mode and backend belong to ``Simulator``. Model layout is configured
+separately with ``Model.batch_components()``. Solver-specific settings belong
+in the ``options`` argument of ``estimate`` or ``optimize``.
 
-- **Model**: Container for building systems, components, and connections
-- **Simulator**: Handles time-based simulations and time stepping
-- **Translator**: Generates models from semantic descriptions
-- **Estimator**: Performs parameter estimation and calibration
-- **Optimizer**: Optimizes building operation and control
-
-The **core**—Model, Simulator, Estimator, Optimizer, Translator and their interactions—must remain stable and predictable. **Adjacent modules** (e.g., component models and GPU backends) extend the system but must respect explicit boundaries, documented contracts, and shared interfaces so contributors understand how their work interacts with the foundations.
-
-Package Structure
+Repository layout
 ~~~~~~~~~~~~~~~~~
 
 ::
 
-    twin4build/
-    ├── core/           # Core functionality and base classes
-    ├── model/          # Model components and building systems
-    ├── simulator/      # Simulation engine and time stepping
-    ├── translator/     # Semantic model translation
-    ├── estimator/      # Parameter estimation and calibration
-    ├── optimizer/      # Optimization algorithms
-    ├── systems/        # Building system components
-    ├── utils/          # Utility functions and helpers
-    ├── examples/       # Example notebooks and scripts
-    └── tests/          # Test suite
+   Twin4Build/
+   ├── twin4build/
+   │   ├── core/                 # Stable convenience imports and ontologies
+   │   ├── model/                # Model, SimulationModel, and SemanticModel
+   │   ├── simulator/            # Object and functional execution
+   │   ├── estimator/            # Calibration and transcription backends
+   │   ├── optimizer/            # Optimization and Pareto-front support
+   │   ├── translator/           # Semantic-to-simulation translation
+   │   ├── systems/              # Reusable component models
+   │   ├── utils/                # Ports, results, logging, plotting, and helpers
+   │   ├── examples/             # Tutorials and their data
+   │   └── tests/                # Unit and integration tests
+   ├── benchmarks/               # Canonical benchmark notebooks and shared code
+   ├── docs/
+   │   ├── source/manual/        # Hand-written documentation
+   │   └── source/auto/          # Generated API pages
+   ├── scripts/                  # Development setup and validation
+   ├── .github/workflows/        # CI and tagged PyPI publication
+   └── pyproject.toml            # Package metadata, version, and tool settings
 
-Development Environment Setup
------------------------------
+Do not treat ``generated_files/``, test fixtures, examples, or benchmark
+helpers as public API. Generated results must not be added to API navigation.
 
-Prerequisites
-~~~~~~~~~~~~~
+Development setup
+-----------------
 
-- Python 3.9 or higher (3.12 recommended)
+- Python 3.10 or higher (3.12 recommended)
 - Git
 - A code editor (VS Code, PyCharm, etc.)
 - **Conda** (recommended) or any Python environment manager
 
+Graph drawing uses the pygraphviz 2.0 wheel (no system Graphviz install).
+
 **Quick Start**: Use the automated setup script ``python scripts/setup_dev.py`` after cloning the repository for the fastest setup experience.
 
-Installation from Source
-~~~~~~~~~~~~~~~~~~~~~~~~
+From the repository root:
 
-**Automated Setup (Recommended)**
+.. code-block:: console
 
-The easiest way to set up your development environment is using the provided setup script:
+   python scripts/setup_dev.py
+   python scripts/setup_dev.py --python 3.12 --env t4bdev
 
-.. code-block:: bash
+The script creates a Conda environment, installs ``.[dev]``, and runs the
+discovered unittest suite. Use ``--help`` for its current options. It requires
+Conda; it is not a generic virtual-environment bootstrapper.
 
     # Clone the repository
     git clone https://github.com/JBjoernskov/Twin4Build.git
@@ -82,7 +95,7 @@ The easiest way to set up your development environment is using the provided set
 
 **Script options:**
 
-- ``--python VERSION``: Specify Python version (e.g., 3.9, 3.10, 3.11, 3.12)
+- ``--python VERSION``: Specify Python version (e.g., 3.10, 3.11, 3.12)
 - ``--env NAME``: Specify conda environment name (default: t4bdev)
 - ``--help``: Show all available options
 
@@ -103,7 +116,7 @@ If you prefer to set up manually or need a different environment manager:
     # Install in development mode with dependencies
     pip install -e .[dev]
 
-**Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.9+ environment.
+**Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.10+ environment.
 
 Code Style and Conventions
 --------------------------
@@ -189,578 +202,344 @@ Twin4Build follows a disciplined branching model to keep development organized a
 Git Workflow
 ~~~~~~~~~~~~
 
-1. **Create a GitHub issue** describing the work to be done
+.. code-block:: console
 
-2. **Create a feature branch** from `dev` (or `main` if exempted):
-   ::
+   conda create -n t4bdev python=3.12
+   conda activate t4bdev
+   python -m pip install -e ".[dev]"
 
-       git checkout dev
-       git pull origin dev
-       git checkout -b feature/issue-XX/description
+With ``venv``, replace the first two commands with the platform-appropriate
+environment creation and activation commands. Keep the editable install so
+source changes are imported immediately.
 
-   Replace `XX` with the issue number and `description` with a brief description.
+Style and compatibility
+-----------------------
 
-3. **Make your changes** and commit with descriptive message using imperative mood:
-   ::
+Follow PEP 8, use type hints on public interfaces, and format Python with the
+repository's Black and isort settings. Public Python identifiers use
+``snake_case`` for parameters and methods and ``PascalCase`` for classes.
 
-       git commit -m "Add new HVAC component for variable air volume systems"
+Port names are model schema keys and many remain camelCase, for example
+``indoorTemperature``. That does not make camelCase Python parameters
+preferred. Use ``start_time``, ``end_time``, ``step_size``,
+``weekday_ruleset``, and other snake_case parameters.
 
-4. **Push your branch** and create a pull request:
-   ::
+Use the 2.0 system class names such as ``BuildingSpaceSystem``,
+``DamperSystem``, ``WallSystem``, and ``FmuSystem``. Names ending in
+``TorchSystem`` are migration aliases scheduled for removal and must not be
+introduced in new examples or documentation.
 
-       git push origin feature/issue-XX/description
+Docstrings
+~~~~~~~~~~
 
-Branch Naming Conventions
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Public APIs use type hints and Google-style docstrings, which Sphinx parses
+through Napoleon:
 
-All branches must reference a GitHub issue and follow this pattern: `type/issue-XX/description`
+.. code-block:: python
 
-- `feature/issue-XX/description`: New features
-- `bugfix/issue-XX/description`: Bug fixes
-- `docs/issue-XX/description`: Documentation updates
-- `test/issue-XX/description`: Test additions or improvements
-- `refactor/issue-XX/description`: Code refactoring
+   def energy_used(power: float, duration: float) -> float:
+       """Return energy use.
 
-**Examples:**
+       Args:
+           power: Power in kW.
+           duration: Duration in hours.
 
-- `feature/issue-88/increase-test-coverage`
-- `bugfix/issue-42/fix-simulator-memory-leak`
-- `docs/issue-15/update-installation-guide`
+       Returns:
+           Energy in kWh.
 
-Definition of Done
-~~~~~~~~~~~~~~~~~~
+       Raises:
+           ValueError: If duration is negative.
+       """
+       if duration < 0:
+           raise ValueError("duration must be non-negative")
+       return power * duration
 
-A feature is considered "done" when:
+Document user-visible behavior, units, tensor shapes, and exceptions. Avoid
+restating implementation details that can change without affecting the API.
 
-- Functionality meets the agreed scope
-- Code satisfies style guidelines (validated with ``python scripts/validate_code.py``)
-- Tests (unit + integration) are included and pass
-- Documentation is updated
-- UML/architecture notes are provided when complexity requires it
+Model and simulator usage
+-------------------------
 
-This checklist ensures consistency, transparency, and predictable development velocity.
+Construct components and connect sender output ports to receiver input ports:
 
-Pull Request Process
+.. code-block:: python
+
+   import datetime as dt
+   from dateutil import tz
+   import twin4build as tb
+
+   model = tb.Model(id="developer_example")
+   source = tb.ScheduleSystem(
+       weekday_ruleset={"ruleset_default_value": 0.5},
+       id="source",
+   )
+   damper = tb.DamperSystem(id="damper")
+   model.add_connection(
+       source,
+       damper,
+       output_port="scheduleValue",
+       input_port="damperPosition",
+   )
+   model.load(
+       draw_semantic_model=False,
+       draw_simulation_model=False,
+   )
+
+   start_time = dt.datetime(2025, 1, 1, tzinfo=tz.UTC)
+   simulator = tb.Simulator(
+       model,
+       execution_mode="object",
+       execution_backend="eager",
+   )
+   simulator.simulate(
+       start_time=start_time,
+       end_time=start_time + dt.timedelta(hours=1),
+       step_size=600,
+       show_progress_bar=False,
+   )
+   values = damper.output["airFlowRate"].history()
+
+``Model.add_connection`` adds both components when necessary. Call
+``Model.add_component`` explicitly for an unconnected component. ``Model``
+does not have a ``simulate`` method; simulation is owned by ``Simulator`` and
+results remain on component port histories.
+
+Use timezone-aware datetimes. A single period accepts scalar datetime and
+integer arguments; batched periods accept equally sized lists. The interval is
+half-open: timesteps begin at ``start_time`` and stop before ``end_time``.
+
+Semantic translation
 ~~~~~~~~~~~~~~~~~~~~
 
-1. **Run code validation**: `python scripts/validate_code.py`
-2. **Run test suite locally**: Ensure all tests pass before pushing
-3. Update documentation if needed
-4. Add tests for new functionality
-5. Provide UML diagrams or architecture notes for moderately complex features
-6. Add examples if applicable
-7. Request review from maintainers
-
-Note: A pull request is required for any changes made to main and dev branches.
-
-Testing
--------
-
-Testing Strategy
-~~~~~~~~~~~~~~~~
-
-Twin4Build aims for a practical balance: ensure stability without over-engineering.
-
-**Core Requirements:**
-
-- All core features require component and integration tests to verify correctness of the Model→Simulator→Estimator→Optimizer chain
-- **Public methods MUST have unit tests**
-- **Private methods CAN have unit tests for critical functionality**
-- Adjacent modules should include targeted tests to validate their interfaces with the core
-- Before pushing to a branch, the test suite must be run locally to avoid pushing broken code
-
-Tests serve two purposes: quality assurance and developer guidance, helping newcomers understand expected behavior.
-
-Running Tests
-~~~~~~~~~~~~~
-
-Run the test suite using unittest:
-::
-
-    python -m unittest discover twin4build/tests/
-
-Run specific test files:
-::
-
-    python -m unittest twin4build.tests.test_examples
-
-Run with coverage:
-::
-
-    coverage run -m unittest discover twin4build/tests/
-    coverage report
-    coverage html  # Generate HTML coverage report
-
-Alternatively, you can use pytest which provides cleaner output and better reporting.
-pytest is fully compatible with unittest and requires no code changes.
-
-Install pytest:
-::
-
-    pip install pytest pytest-html pytest-cov
-
-Run the test suite using pytest:
-::
-
-    pytest twin4build/tests/
-
-Run specific test files:
-::
-
-    pytest twin4build/tests/systems/junction/test_junction_systems.py
-
-Run with verbose output:
-::
-
-    pytest twin4build/tests/ -v
-
-Generate HTML test report:
-::
-
-    pytest twin4build/tests/ --html=report.html --self-contained-html
-
-Run with coverage:
-::
-
-    pytest twin4build/tests/ --cov=twin4build --cov-report=html --cov-report=term-missing
-
-Code Quality Validation
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Before committing code, run the validation script to ensure your code meets Twin4Build standards:
-
-**Check code quality** (recommended before every commit):
-::
-
-    python scripts/validate_code.py
-
-**Auto-fix formatting issues**:
-::
-
-    python scripts/validate_code.py --fix
-
-**Include test suite in validation**:
-::
-
-    python scripts/validate_code.py --test
-
-**Combine options** (fix issues and run tests):
-::
-
-    python scripts/validate_code.py --fix --test
-
-**What the validation script checks**:
-
-- **Code formatting** (Black): Ensures consistent code style
-- **Import sorting** (isort): Organizes import statements
-- **Code style** (flake8): Checks for style violations, syntax errors, unused variables, etc.
-- **File issues**: Trailing whitespace, missing newlines, etc.
-- **Tests**: Runs the full test suite
-
-**Manual tool usage** (if needed):
-::
-
-    # Format code
-    black .
-    
-    # Sort imports (uses pyproject.toml config)
-    isort .
-    
-    # Check style (uses .flake8 config)
-    flake8 .
-
-Writing Tests
-~~~~~~~~~~~~~
-
-Use unittest framework for all tests:
+Translate explicitly in new code:
 
 .. code-block:: python
 
-    import unittest
-    from twin4build import Model
+   semantic_model = tb.SemanticModel(rdf_file="building.ttl", id="building")
+   model = tb.Translator().translate(semantic_model)
+   model.load()
 
-    class TestModel(unittest.TestCase):
-        
-        def setUp(self):
-            """Set up test fixtures."""
-            self.model = Model()
-        
-        def test_component_addition(self):
-            """Test adding components to model."""
-            component = self.create_test_component()
-            self.model.add_component(component)
-            self.assertIn(component, self.model.components)
-        
-        def test_simulation_run(self):
-            """Test basic simulation execution."""
-            result = self.model.simulate(start_time=0, end_time=100, step_size=1)
-            self.assertIsNotNone(result)
-            self.assertGreater(len(result), 0)
+Passing ``semantic_model_filename`` to ``Model.load`` is deprecated. Restoring
+a serialized simulation model uses ``model.load(filename=...)``.
 
-    if __name__ == '__main__':
-        unittest.main()
+Model layout, execution, and devices
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Test Organization
-~~~~~~~~~~~~~~~~~
+These are independent dimensions:
 
-Organize tests using unittest's test discovery patterns:
+* ``model_layout="standard"`` is the ordinary model returned by ``Model.load``;
+  ``model_layout="batched"`` is produced by ``model.batch_components()``.
+* ``execution_mode="object"`` is the general port/history engine;
+  ``execution_mode="functional"`` executes the reusable functional model.
+* ``execution_backend="eager"`` is the default. The CUDA-only
+  ``execution_backend="cuda_graph"`` captures and replays fixed-shape
+  functional execution.
 
-- **Test files**: Named `test_*.py`
-- **Test classes**: Inherit from `unittest.TestCase`
-- **Test methods**: Start with `test_`
+CUDA Graph is a backend, not a mode. Inspect batching with
+``get_batched_component_info`` and ``get_batch_id_for_component``. Functional
+tooling is also available directly through ``build_functional_model``,
+``record_exogenous_inputs``, and ``rollout_functional``.
 
-Advanced Testing Features
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Move a loaded model with ``model.to(device, dtype)``. The default precision is
+float64. Device and precision materially affect numerical results and
+performance and must be recorded in experiments.
 
-Use unittest's advanced features for better testing:
+Testing and validation
+----------------------
+
+The CI test command is:
+
+.. code-block:: console
+
+   python -m unittest discover twin4build/tests/ -v
+
+Run one importable module:
+
+.. code-block:: console
+
+   python -m unittest twin4build.tests.simulator.test_simulator -v
+
+Pytest is included in ``.[dev]`` and can run the same suite:
+
+.. code-block:: console
+
+   python -m pytest twin4build/tests/ -v
+   python -m pytest twin4build/tests/systems/junction/test_junction_systems.py
+   python -m pytest twin4build/tests/ --cov=twin4build --cov-report=term-missing
+
+For formatting and static checks:
+
+.. code-block:: console
+
+   python scripts/validate_code.py
+   python scripts/validate_code.py --fix
+   python scripts/validate_code.py --test
+
+The validation script runs Black, isort, flake8, file checks, and optionally
+tests. Review auto-fixes before committing.
+
+Tests should use ``test_*.py`` files and ``unittest.TestCase`` classes unless a
+focused test has a reason to use another supported pytest idiom. Public
+behavior needs unit coverage; interactions among Model, Simulator, Estimator,
+Optimizer, and Translator need integration coverage.
+
+Writing components
+------------------
+
+Custom components inherit :class:`~twin4build.systems.saref4syst.system.System`.
+Declare :class:`~twin4build.utils.types.Scalar` or
+:class:`~twin4build.utils.types.Vector` ports, initialize their histories, and
+implement ``do_step``.
 
 .. code-block:: python
 
-    class TestAdvanced(unittest.TestCase):
-        
-        @unittest.skipIf(condition, "reason")
-        def test_conditional_skip(self):
-            """Skip test based on condition."""
-            pass
-        
-        @unittest.expectedFailure
-        def test_known_failure(self):
-            """Mark test as expected to fail."""
-            pass
-        
-        def test_with_subtest(self):
-            """Use subtests for parameterized testing."""
-            test_cases = [1, 2, 3, 4]
-            for case in test_cases:
-                with self.subTest(case=case):
-                    self.assertTrue(case > 0)
+   import torch
+   import twin4build as tb
+
+   class GainSystem(tb.System):
+       def __init__(self, gain: float = 1.0, **kwargs):
+           super().__init__(**kwargs)
+           self.gain = gain
+           self.input = {"value": tb.Scalar()}
+           self.output = {"value": tb.Scalar()}
+
+       def initialize(self, start_time, end_time, step_size):
+           _, _, n_t, _ = tb.Simulator.get_simulation_timesteps(
+               start_time, end_time, step_size
+           )
+           n_s = len(start_time)
+           self.input["value"].initialize(n_t=n_t, n_s=n_s)
+           self.output["value"].initialize(n_t=n_t, n_s=n_s)
+
+       def forward(self, state, inputs, parameters, **kwargs):
+           return state, {"value": inputs["value"] * self.gain}
+
+       def do_step(self, second_time, date_time, step_size, step_index):
+           _, outputs = self.forward(
+               None,
+               {"value": self.input["value"].get()},
+               {},
+           )
+           self.output["value"]._set(outputs["value"], i_t=step_index)
+
+The exact ``forward`` signature and state semantics depend on the component
+family. Before adding functional support, follow
+:doc:`differentiable_system_models` and add value, Jacobian, Hessian, replay,
+device, and dtype tests as applicable. ``do_step`` must delegate its
+mathematics to the pure implementation so execution paths cannot drift.
 
 Documentation
 -------------
 
-Documentation Standards
-~~~~~~~~~~~~~~~~~~~~~~~
+Hand-written pages live in ``docs/source/manual/``. API pages in
+``docs/source/auto/`` are generated and should not be edited by hand.
 
-- Keep documentation up to date with code changes
-- Include code examples for all public APIs
-- Use clear, concise language
-- Include diagrams and visual aids when helpful
-- Follow reStructuredText formatting for manual pages
+From ``docs/`` on Linux or macOS:
 
-Architecture Documentation
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: console
 
-For moderately complex features, contributors should provide lightweight but effective architecture documentation:
+   make buildapi
+   make html
 
-- Small UML-style diagrams or flow charts summarizing class interactions
-- Data flow diagrams when relevant
-- Component lifecycle documentation
-- Interface contracts and boundaries
+From ``docs\`` on Windows:
 
-This documentation supports knowledge transfer, helps reviewers rapidly understand intent, reduces onboarding friction, and prevents duplicate or conflicting design efforts.
+.. code-block:: doscon
 
-**Note**: Features naturally change the architecture of the library over time. The goal of architecture documentation is not purely technical—it's communicational: to define a ubiquitous language for developer onboarding and establish a traceable history of architectural decisions.
+   make.bat buildapi
+   make.bat html
 
-Building Documentation
-~~~~~~~~~~~~~~~~~~~~~~
+``buildapi`` replaces ``docs/source/auto/`` and excludes tests, examples,
+generated modules, benchmark code, and private implementation modules.
+``html`` writes local output to ``docs/build/html/``. Open
+``docs/build/html/index.html`` to inspect it. On Read the Docs,
+``READTHEDOCS_OUTPUT`` controls the output directory.
 
-Twin4Build uses Sphinx for documentation generation. The documentation build process requires **two steps**:
+For a clean local rebuild, remove ``docs/build/`` and
+``docs/source/auto/``, then run both commands again. Do not remove hand-written
+manual pages.
 
-**Step 1: Generate API Documentation**
-
-This step auto-generates API documentation from your Python docstrings:
-
-.. code-block:: bash
-
-    cd docs
-
-    # On Windows:
-    .\make buildapi
-
-    # On Linux/Mac:
-    make buildapi
-
-**Step 2: Build HTML Documentation**
-
-This step compiles all documentation (manual + API) into HTML:
-
-.. code-block:: bash
-
-    # On Windows:
-    .\make html
-
-    # On Linux/Mac:
-    make html
-
-
-**buildapi**: 
-    - Scans your Python code for docstrings
-    - Generates `.rst` files in `source/auto/`
-    - Creates API reference documentation
-    - Runs cleanup scripts
-
-**html**:
-- Compiles all `.rst` files (manual + auto-generated)
-- Applies Sphinx theme
-- Generates final HTML documentation
-- Creates cross-references and search index
-
-**View Documentation**
-
-For viewing and browsing the documentation, open the `Twin4Build/build/html/index.html` file in your browser.
-
-**Read the Docs versions**
-
-Published docs:
-
-- ``latest`` → ``main`` → https://twin4build.readthedocs.io/en/latest/
-- ``dev`` → ``dev`` → https://twin4build.readthedocs.io/en/dev/ (activate once in the RTD project)
-
-To make ``dev`` visible (project admins):
-
-1. Open https://app.readthedocs.org/projects/twin4build/versions/
-2. Find the ``dev`` version → **Activate** (and leave it public / not hidden)
-3. Trigger a build for ``dev`` if one does not start automatically
-4. Optional: add an Automation Rule so ``dev`` stays active on future syncs
-
-Colab badges in :doc:`examples_and_tutorials` use the placeholder
-``GITHUB_NOTEBOOK_BRANCH``, which ``docs/source/conf.py`` replaces with a
-git ref GitHub/Colab can resolve: branch/tag name for normal versions
-(``/en/dev/`` → ``blob/dev/...``), and the **commit SHA** for pull-request
-previews (RTD's version slug ``118`` is not a git ref).
-
-Writing Documentation
-~~~~~~~~~~~~~~~~~~~~~
-
-**Manual Documentation**: Edit files in `docs/source/manual/`
-
-**API Documentation**: Add docstrings to your Python code:
-
-.. code-block:: python
-
-    def calculate_energy(temperature: float, duration: float) -> float:
-        """Calculate energy consumption for given conditions.
-        
-        This function computes energy usage based on temperature
-        and duration parameters for building simulation.
-        
-        Args:
-            temperature: Target temperature in Celsius
-            duration: Time duration in hours
-            
-        Returns:
-            Energy consumption in kWh
-            
-        Example:
-            >>> energy = calculate_energy(22.0, 8.0)
-            >>> print(f"Energy used: {energy} kWh")
-            Energy used: 24.5 kWh
-        """
-        return temperature * duration * 1.2
-
-Troubleshooting Documentation Build
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Common Issues:**
-
-- **Sphinx not found**: Install dev dependencies with `pip install -e .[dev]`
-- **Import errors in API docs**: Ensure Twin4Build is installed in development mode
-- **Missing modules**: Check that all dependencies are installed
-- **Build fails**: Try cleaning first: delete `docs/build/` and `docs/source/auto/` directories
-
-**Clean Build:**
-
-.. code-block:: bash
-
-    # Remove generated files and rebuild
-    cd docs
-    rm -rf build/ source/auto/  # Linux/Mac
-    rmdir /s build source\auto  # Windows
-    
-    # Then rebuild
-    make buildapi && make html  # Linux/Mac
-    .\make buildapi && .\make html  # Windows
-
-Creating Examples
-~~~~~~~~~~~~~~~~~
-
-- Use Jupyter notebooks for examples
-- Place examples in `twin4build/examples/`
-- Include both basic and advanced use cases
-- Ensure examples are self-contained and runnable
-- After adding an example, also add it to the test suite: `twin4build/tests/test_examples.py`
-
-Contributing Guidelines
------------------------
-
-Reporting Bugs
+Notebook links
 ~~~~~~~~~~~~~~
 
-- Provide python version and operating system
-- Twin4Build version
-- Minimal code example to reproduce the issue
-- Expected vs. actual behavior
-- Error messages and stack traces
+Example and benchmark badges contain ``GITHUB_NOTEBOOK_BRANCH`` in source.
+``docs/source/conf.py`` substitutes a resolvable Git ref:
 
-Suggesting Features
-~~~~~~~~~~~~~~~~~~~
+* ``latest`` uses ``main``;
+* named Read the Docs branch and tag builds use that branch or tag;
+* external pull-request previews use the commit SHA;
+* local builds use the checked-out branch, falling back to ``dev``.
 
-- Describe the use case and motivation
-- Provide examples of how the feature would be used
-- Consider implementation complexity
-- Discuss potential impacts on existing functionality
-- Clearly distinguish whether the feature extends core functionality or is an adjacent module
+Canonical performance notebooks live in ``benchmarks/``; tutorials live in
+``twin4build/examples/``. See :doc:`benchmarks` and
+:doc:`examples_and_tutorials`.
 
-Code Contribution Process
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. **Fork the repository** on GitHub
-2. **Create a feature branch** following naming conventions
-3. **Make your changes** following code style guidelines
-4. **Add examples (optional)** for new functionality
-5. **Add tests** for new functionality (required for public methods)
-6. **Update documentation** as needed
-7. **Add architecture documentation** if the feature is moderately complex
-8. **Run the test suite** to ensure everything works
-9. **Submit a pull request** with a clear description
-
-Advanced Topics
----------------
-
-Extending the Package
+API generation policy
 ~~~~~~~~~~~~~~~~~~~~~
 
-Creating Custom Components
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+The API reference documents supported package modules. Exclude:
 
-To create a custom component:
+* ``twin4build.tests`` and generated test fixtures;
+* ``twin4build.examples``;
+* ``twin4build.generated_files``;
+* repository-level ``benchmarks``;
+* private modules whose names begin with an underscore.
 
-1. Inherit from :class:`~twin4build.systems.saref4syst.system.System` (exposed as ``twin4build.core.System``)
-2. Declare the component's ``input`` and ``output`` ports as
-   :class:`~twin4build.utils.types.Scalar` / :class:`~twin4build.utils.types.Vector`
-   objects in ``__init__``
-3. Implement ``initialize`` (allocate the port tensors for the simulation
-   horizon) and ``do_step`` (advance the component one timestep)
-4. Add proper type hints and documentation
-5. Include tests for your component
+When adding a public package, regenerate the API pages and verify that it is
+reachable from ``auto/twin4build``. Do not solve unwanted API pages only with
+navigation hiding; prevent their generation.
 
-Example (a minimal pass-through gate; see
-:class:`~twin4build.systems.utils.on_off_system.OnOffSystem` for the full version):
+Contribution workflow
+---------------------
 
-.. code-block:: python
+Create focused branches from the repository's current integration branch,
+link work to an issue when required by the maintainers, and use descriptive
+imperative commit messages. Before requesting review:
 
-    import torch
-    import twin4build.core as core
-    import twin4build.utils.types as tps
+* run relevant tests and static checks;
+* update public API documentation and migration notes;
+* add architecture notes for changes with non-obvious boundaries;
+* ensure examples use preferred 2.0 names and parameters;
+* avoid committing generated runtime data.
 
-    class CustomComponent(core.System):
-        """Pass "value" through when "criteriaValue" >= threshold, else 0."""
+Changes to ``main`` and ``dev`` are reviewed through pull requests. Confirm the
+current branch policy with maintainers rather than relying on a hard-coded
+exception in this guide.
 
-        def __init__(self, threshold=0.5, **kwargs):
-            super().__init__(**kwargs)
-            self.threshold = threshold
-            self.input = {"value": tps.Scalar(), "criteriaValue": tps.Scalar()}
-            self.output = {"value": tps.Scalar()}
-
-        def initialize(self, start_time, end_time, step_size):
-            _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-                start_time, end_time, step_size
-            )
-            batch_size = len(start_time)
-            for port in list(self.input.values()) + list(self.output.values()):
-                port.initialize(n_t=max_timesteps, n_s=batch_size)
-
-        def do_step(self, second_time, date_time, step_size, step_index):
-            criteria = self.input["criteriaValue"].get()
-            value = self.input["value"].get()
-            out = torch.where(criteria >= self.threshold, value, torch.zeros_like(value))
-            self.output["value"]._set(out, i_t=step_index)
-
-The ``do_step``/``forward`` contract
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Components that should be usable by the composed execution paths
-(``Simulator(..., execution_mode="composed")``, custom batched shooting, and
-the collocation transcription's composed Jacobian) additionally implement a **pure**
-``forward(state, inputs, parameters, ...)`` method: a side-effect-free
-function from tensors to tensors. For such components, ``do_step`` MUST be a
-thin port-I/O wrapper that reads its inputs from the ports, delegates all
-math to ``forward``, and writes the results back to the output ports. This
-single-source-of-truth rule guarantees by construction that the composed
-one-step map used by the Estimator computes exactly what the object-graph
-simulation computes -- the two cannot drift apart, because there is only one
-implementation of the physics. Components without ``forward`` still work
-everywhere else; the estimator silently falls back to the object-graph
-objective for models containing them.
-
-This is a strict execution contract, not only a performance recommendation.
-Read :doc:`differentiable_system_models` before implementing or modifying any
-tensor-based ``System`` or nested ``torch.nn.Module``. It documents parameter
-routing, static structure, device-safe tensor creation, cache bypass,
-``transform_mode`` propagation, state-space support declarations, and the
-required value/Jacobian/Hessian/replay tests.
-
-Performance Considerations
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- Follow the pure tensor contract in :doc:`differentiable_system_models`;
-  arbitrary use of torch operations is not sufficient for higher-order
-  differentiation or CUDA Graph capture.
-- Use vectorized, functional operations and preserve hidden ``vmap`` batch
-  dimensions.
-- Profile code only after value and derivative parity have been established.
-
-Debugging Tips
-~~~~~~~~~~~~~~
-
-- Use logging for debugging information
-- Set breakpoints in your IDE
-- Use `pdb` for interactive debugging
-- Check component connections and data flow
-
-Release Process
+Release process
 ---------------
 
-Version Management
-~~~~~~~~~~~~~~~~~~
+``pyproject.toml`` is the source of truth for the package version. Twin4Build
+uses semantic versioning: increment MAJOR for incompatible API changes, MINOR
+for backward-compatible features, and PATCH for backward-compatible fixes.
 
-Twin4Build follows semantic versioning (MAJOR.MINOR.PATCH) to maintain clarity for users and contributors:
+For a release:
 
-- **MAJOR**: Structural changes to the core or breaking interface updates
-- **MINOR**: New features or non-breaking improvements
-- **PATCH**: Hotfixes and stability updates
+1. Set ``[project].version`` in ``pyproject.toml``.
+2. Add release notes to ``CHANGELOG.md`` and verify migration guidance.
+3. Run the full test matrix locally where practical.
+4. Regenerate and build the documentation with warnings treated as errors.
+5. Build and validate distributions:
 
-Version updates occur in both **dev** and **main** branches:
+   .. code-block:: console
 
-- Every merge into the dev branch bumps the version number with a pre-release tag
-- Main branch receives version updates only for stable releases
+      python -m build
+      python -m twine check dist/*
 
-Building and Distributing
-~~~~~~~~~~~~~~~~~~~~~~~~~
+6. Merge the reviewed release changes.
+7. Create and push an annotated ``vMAJOR.MINOR.PATCH`` tag that exactly matches
+   ``pyproject.toml``.
 
-1. Update version number in `pyproject.toml`
-2. Run full test suite
-3. Build documentation
-4. Create release notes for significant changes
-5. Tag releases in Git
-6. Create distribution:
-   ::
+The ``Publish to PyPI`` workflow builds and publishes only pushed tags whose
+names start with ``v`` and only for the configured maintainer actor. PyPI uses
+trusted publishing; contributors should not run ``twine upload`` as part of
+the normal release path. Branch merges alone do not publish a release, and
+the repository does not automatically bump the version on every ``dev``
+merge.
 
-       python -m build
-
-7. Upload to PyPI (maintainers only)
-
-Getting Help
+Getting help
 ------------
 
-- **GitHub Issues**: For bug reports and feature requests
-- **Documentation**: Check the online docs first
-- **Examples**: Review the example notebooks
-- **Code**: Examine the source code and tests
-
-Contact Information
-~~~~~~~~~~~~~~~~~~~
-
-- **Maintainer**: Jakob Bjørnskov (jabj@mmmi.sdu.dk)
-- **GitHub**: https://github.com/JBjoernskov/Twin4Build/
-- **Documentation**: https://twin4build.readthedocs.io/
+Use `GitHub Issues <https://github.com/JBjoernskov/Twin4Build/issues>`_ for
+reproducible bug reports and feature discussions. Include the Twin4Build and
+Python versions, operating system, device and dtype where relevant, a minimal
+example, and the complete error message.

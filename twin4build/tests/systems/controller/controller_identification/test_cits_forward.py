@@ -1,7 +1,7 @@
 """``ControllerIdentificationSystem`` is composable: ``do_step`` delegates to a
 pure ``forward`` (single source of truth), so a closed loop that runs through
-a CITS controller can be threaded by the composed-map engine
-(``Simulator(execution_mode="composed")``, fast single-shooting, batched GPU
+a CITS controller can be threaded by the functional-map engine
+(``Simulator(execution_mode="functional")``, fast single-shooting, batched GPU
 shooting).
 
 Two guards:
@@ -196,13 +196,13 @@ class TestCitsClosedLoopComposes(unittest.TestCase):
     def setUpClass(cls):
         cls.model, cls.cits, cls.plant, cls.sensor = build_closed_loop_model()
         cls.end = START + datetime.timedelta(hours=24)
-        sim = tb.Simulator(cls.model, execution_mode="composed")
+        sim = tb.Simulator(cls.model, execution_mode="functional")
         sim.simulate(start_time=cls.start_list(), end_time=[cls.end], step_size=STEP, show_progress_bar=False)
         y = cls.plant.output["outputSignal"].history().detach().flatten().numpy()
         index = pd.date_range(start=START, periods=len(y), freq=f"{STEP}s")
         rng = np.random.default_rng(0)
         cls.sensor.df = pd.DataFrame({"value": y + 0.01 * rng.standard_normal(len(y))}, index=index)
-        cls.estimator = tb.Estimator(tb.Simulator(cls.model, execution_mode="composed"))
+        cls.estimator = tb.Estimator(tb.Simulator(cls.model, execution_mode="functional"))
         cls.estimator.estimate(
             parameters=[(cls.cits, "candidate_0_0.kp", 1.0, 0.1, 10.0), (cls.cits, "candidate_0_0.Ti", 1800.0, 300.0, 7200.0)],
             measurements=[(cls.sensor, 0.05)],
@@ -220,8 +220,8 @@ class TestCitsClosedLoopComposes(unittest.TestCase):
 
     def _eval(self, theta_np, use_fast):
         est = self.estimator
-        fast = est._fast_obj
-        est._fast_obj = fast if use_fast else None
+        fast = est._functional_objective
+        est._functional_objective = fast if use_fast else None
         est._mse_scaled = 1.0
         try:
             z = torch.tensor(theta_np, dtype=torch.float64, requires_grad=True)
@@ -229,11 +229,11 @@ class TestCitsClosedLoopComposes(unittest.TestCase):
             (g,) = torch.autograd.grad(f, z)
             return float(f.detach()), g.numpy()
         finally:
-            est._fast_obj = fast
+            est._functional_objective = fast
             est._mse_scaled = None
 
     def test_fast_objective_built_and_controller_in_cone(self):
-        fast = self.estimator._fast_obj
+        fast = self.estimator._functional_objective
         self.assertIsNotNone(fast, "closed loop through the CITS did not compose")
         cone_ids = {c.id for c in fast.composer.cone}
         self.assertIn(self.cits.id, cone_ids)

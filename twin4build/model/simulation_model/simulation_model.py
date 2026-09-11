@@ -15,6 +15,8 @@ import torch
 import torch.nn.parameter
 from prettytable import PrettyTable
 from rdflib import RDF, RDFS, Literal, Namespace
+from bs4 import BeautifulSoup
+import pydotplus as pdp
 
 # Local application imports
 import twin4build.core as core
@@ -36,6 +38,12 @@ from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.simple_cycle import simple_cycles
 from twin4build.utils.validate_period import validate_period
+from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
+    _rewire_pi_loops,
+)
+from twin4build.systems.utils.fused_statespace_system import FusedStateSpaceSystem
+from twin4build.utils.deprecation import deprecate_name
+from twin4build.utils.device import move_object_tensors
 
 INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
 
@@ -304,6 +312,7 @@ class SimulationModel:
         "_flat_execution_order",
         "_required_initialization_connections",
         "_components_no_cycles",
+        "_removed_cycle_edges",
         "_fused_components",
         "_fusion_member_to_fused",
         "enable_fusion",
@@ -426,7 +435,6 @@ class SimulationModel:
         Returns:
             The model itself, for chaining.
         """
-        from twin4build.utils.device import move_object_tensors
 
         if device is not None:
             self._device = torch.device(device)
@@ -457,11 +465,11 @@ class SimulationModel:
         return self._dir_conf
 
     @property
-    def execution_order(self) -> List[str]:
+    def execution_order(self) -> List[List[core.System]]:
         return self._execution_order
 
     @property
-    def flat_execution_order(self) -> List[str]:
+    def flat_execution_order(self) -> List[core.System]:
         return self._flat_execution_order
 
     @dir_conf.setter
@@ -592,7 +600,11 @@ class SimulationModel:
                     tensor.detach()
                     .clone()
                     .requires_grad_(False)
-                    .type(tps.float_dtype() if tensor.is_floating_point() else tensor.dtype)
+                    .type(
+                        tps.float_dtype()
+                        if tensor.is_floating_point()
+                        else tensor.dtype
+                    )
                 )
 
             return tensor
@@ -1226,6 +1238,14 @@ class SimulationModel:
         """
         return {key: value for (key, value) in vars(object_).items()}
 
+    def get_components_by_class(
+        self, class_: Type, filter: Optional[Callable] = None
+    ) -> List[core.System]:
+        """Return components that are instances of ``class_``."""
+        return self.get_component_by_class(
+            dict_=self.components, class_=class_, filter=filter
+        )
+
     def get_component_by_class(
         self, dict_: Dict, class_: Type, filter: Optional[Callable] = None
     ) -> List:
@@ -1429,7 +1449,9 @@ class SimulationModel:
                         # ``(comp, attr, [x0]*n_c, [lb]*n_c, [ub]*n_c)``.
                         target_n_c = getattr(obj_, "n_c", 1) or 1
                         if target_n_c > 1:
-                            v_t = torch.as_tensor(v, dtype=tps.float_dtype()).reshape(-1)
+                            v_t = torch.as_tensor(v, dtype=tps.float_dtype()).reshape(
+                                -1
+                            )
                             if v_t.numel() == 1:
                                 v_t = v_t.expand(target_n_c).clone()
                             elif v_t.numel() != target_n_c:
@@ -1725,12 +1747,11 @@ class SimulationModel:
                 LOGGER.warn(
                     "fill_missing_inputs: %s.%s already has an incoming "
                     "connection; component-scoped override skipped.",
-                    comp_id, port_name,
+                    comp_id,
+                    port_name,
                 )
                 continue
-            provider, out_port = _resolve_spec(
-                spec, f"_sched_{comp_id}_{port_name}"
-            )
+            provider, out_port = _resolve_spec(spec, f"_sched_{comp_id}_{port_name}")
             self.add_connection(provider, consumer, out_port, port_name)
 
         return self
@@ -1797,9 +1818,6 @@ class SimulationModel:
         # free; the rewire helper depends on the loop-classifier,
         # actuator GMM, ... module graph which would otherwise pull
         # heavy dependencies into every ``SimulationModel`` import.
-        from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
-            _rewire_pi_loops,
-        )
 
         reports = _rewire_pi_loops(
             self,
@@ -1982,7 +2000,7 @@ class SimulationModel:
             )
 
         # Check for missing initial values AFTER all components are initialized
-        self.check_for_for_missing_initial_values()
+        self.check_for_missing_initial_values()
 
     def validate(self) -> None:
         """
@@ -2202,7 +2220,7 @@ class SimulationModel:
             violated_characters = list(np_id[isvalid == False])
             if not all(isvalid):
                 LOGGER.error(
-                    "Class: %s, id: %s: invalid id, the characters \"%s\" are not allowed.",
+                    'Class: %s, id: %s: invalid id, the characters "%s" are not allowed.',
                     component.__class__.__name__,
                     component.id,
                     ", ".join(violated_characters),
@@ -2549,9 +2567,6 @@ class SimulationModel:
         Fusion can be disabled by setting ``self.enable_fusion = False``
         before ``load()``.
         """
-        from twin4build.systems.utils.fused_statespace_system import (
-            FusedStateSpaceSystem,
-        )
 
         self._fused_components = {}
         self._fusion_member_to_fused = {}
@@ -2614,8 +2629,7 @@ class SimulationModel:
                 continue
             member_id_set = {m.id for m in members}
             internal_arcs = [
-                a for a in arcs
-                if a[0].id in member_id_set and a[2].id in member_id_set
+                a for a in arcs if a[0].id in member_id_set and a[2].id in member_id_set
             ]
             fused = FusedStateSpaceSystem(
                 members=members,
@@ -2757,6 +2771,9 @@ class SimulationModel:
         """
         iteration = 0
         max_iterations = 1000  # Safety limit to prevent infinite loops
+        # (from id, to id) of every cut, in cut order: the one-step-lag
+        # placement of the discrete-time model, inspectable for parity checks.
+        self._removed_cycle_edges: List[Tuple[str, str]] = []
 
         LOGGER.task("Detecting cycles")
         LOGGER.add_level()
@@ -2802,6 +2819,7 @@ class SimulationModel:
 
             # Remove ALL connections between the selected components
             c_from, c_to = best_edge
+            self._removed_cycle_edges.append((c_from.id, c_to.id))
             self._remove_all_edges_between_components(c_from, c_to)
 
             # Update cycles list by removing cycles that contained the removed edge
@@ -2865,6 +2883,32 @@ class SimulationModel:
         Returns:
             The best edge tuple (c_from, c_to) to remove
         """
+
+        # A batched model must place its one-step lags where the source model
+        # placed them: an edge pointing backwards across the preserved source
+        # execution priorities *is* a source-model cut.  Restrict the candidates
+        # to those edges whenever any exist -- the cycle count below is
+        # otherwise dominated by cross-loop cycles through a meta component
+        # that batches several source components (e.g. every PID controller),
+        # which moved the lag onto a forward edge and changed the discrete-time
+        # model relative to the unbatched one.
+        def _points_backwards(edge):
+            source_priority = getattr(edge[0], "_batched_execution_priority", None)
+            target_priority = getattr(edge[1], "_batched_execution_priority", None)
+            return (
+                source_priority is not None
+                and target_priority is not None
+                and source_priority >= target_priority
+            )
+
+        backward_edges = {
+            edge: count
+            for edge, count in edge_cycle_count.items()
+            if _points_backwards(edge)
+        }
+        if backward_edges:
+            edge_cycle_count = backward_edges
+
         # Group edges by cycle participation count (descending)
         max_cycle_count = max(edge_cycle_count.values())
         best_edges = [
@@ -2885,10 +2929,27 @@ class SimulationModel:
             # Prefer edges from components with more outgoing connections
             def edge_priority(edge):
                 c_from, c_to = edge
+                source_priority = getattr(c_from, "_batched_execution_priority", None)
+                target_priority = getattr(c_to, "_batched_execution_priority", None)
+                # A source-model feedback edge points backwards across the
+                # preserved execution priorities. Prefer cutting it so
+                # recompilation cannot reverse Gauss-Seidel lag semantics.
+                preserves_batched_order = int(
+                    source_priority is not None
+                    and target_priority is not None
+                    and source_priority >= target_priority
+                )
                 # Higher number of outgoing connections = higher priority for removal
                 outgoing_count = len(c_from.connected_through)
-                return outgoing_count
+                return preserves_batched_order, outgoing_count
 
+            # Deterministic base order before the (stable) priority sort: the
+            # candidate order otherwise follows the cycle enumeration over a
+            # set-based graph, i.e. Python's hash seed, and a hash-dependent
+            # cut moves the Gauss-Seidel one-step lag onto a different signal
+            # between two processes -- a different discrete-time model, with
+            # measurably different trajectories.
+            best_edges.sort(key=lambda edge: (edge[0].id, edge[1].id))
             best_edges.sort(key=edge_priority, reverse=True)
 
         LOGGER.info(
@@ -3031,9 +3092,7 @@ class SimulationModel:
         theta_mask = self._result["theta_mask"]
         theta_slices = self._result["theta_slices"]
         LOGGER.info("Load estimation result: applied parameters")
-        for comp, attr, param_idx in zip(
-            flat_components, flat_attr_list, theta_mask
-        ):
+        for comp, attr, param_idx in zip(flat_components, flat_attr_list, theta_mask):
             start, end = theta_slices[param_idx]
             raw = result_x[start:end]
             obj = rgetattr(comp, attr)
@@ -3046,7 +3105,7 @@ class SimulationModel:
                 actual,
             )
 
-    def check_for_for_missing_initial_values(self) -> None:
+    def check_for_missing_initial_values(self) -> None:
         """
         Check for missing initial values in components.
 
@@ -3063,6 +3122,15 @@ class SimulationModel:
                 raise Exception(
                     f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.output_port}'
                 )
+
+    def check_for_for_missing_initial_values(self) -> None:
+        """Deprecated typo; use :meth:`check_for_missing_initial_values`."""
+
+        deprecate_name(
+            "check_for_for_missing_initial_values",
+            "check_for_missing_initial_values",
+        )
+        self.check_for_missing_initial_values()
 
     def _get_execution_order(self) -> None:
         """
@@ -3499,8 +3567,6 @@ class SimulationModel:
 
         def _compress(dg):
             # Third party imports
-            import pydotplus as pdp
-            from bs4 import BeautifulSoup
 
             def _unquote(name):
                 """Strip surrounding double-quotes that pydotplus may add."""

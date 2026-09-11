@@ -13,10 +13,11 @@ import twin4build
 twin4build._IS_TESTING = True
 
 # Local application imports
-from twin4build.estimator._transcription import (  # noqa: E402
+from twin4build.estimator._collocation import (  # noqa: E402
     _aggregate_objective_targets,
     _assemble_objective_gradient,
     _IterateCache,
+    _pack_colored_jacobian_vals,
 )
 
 
@@ -128,5 +129,61 @@ class TestSharedObjectiveGradient(unittest.TestCase):
         torch.testing.assert_close(assembled, expected, rtol=1e-11, atol=1e-12)
 
 
+class TestPackColoredJacobianVals(unittest.TestCase):
+    """COO packing must match the old per-entry host loop exactly."""
+
+    def test_vectorized_pack_matches_per_entry_loop(self):
+        n_seg, n_links, n_rows = 4, 3, 5
+        n_tg, n_tl, n_xg, n_xl = 2, 3, 1, 4
+        device = torch.device("cpu")
+        generator = torch.Generator().manual_seed(0)
+        Jtg = torch.randn(n_seg, n_rows, n_tg, generator=generator)
+        Jtl = torch.randn(n_seg, n_rows, n_tl, generator=generator)
+        Jxg = torch.randn(n_seg, n_rows, n_xg, generator=generator)
+        Jxl = torch.randn(n_seg, n_rows, n_xl, generator=generator)
+        cp_i = torch.tensor([0, 2, 3], dtype=torch.long)
+        row_includes_local = torch.tensor(
+            [False, True, True, False, True], dtype=torch.bool
+        )
+
+        expected = []
+        for i in cp_i.tolist():
+            for row, include_local in enumerate(row_includes_local.tolist()):
+                expected.extend(Jtg[i, row].tolist())
+                if include_local:
+                    expected.extend(Jtl[i, row].tolist())
+                expected.extend(Jxg[i, row].tolist())
+                if include_local:
+                    expected.extend(Jxl[i, row].tolist())
+                expected.append(-1.0)
+
+        packed = _pack_colored_jacobian_vals(
+            Jtg, Jtl, Jxg, Jxl, cp_i, row_includes_local
+        )
+        torch.testing.assert_close(
+            packed, torch.tensor(expected, dtype=packed.dtype, device=device)
+        )
+
+    def test_empty_local_colors_keep_global_blocks_and_minus_one(self):
+        Jtg = torch.arange(8, dtype=torch.float64).reshape(2, 2, 2)
+        Jtl = torch.zeros(2, 2, 0, dtype=torch.float64)
+        Jxg = torch.arange(4, dtype=torch.float64).reshape(2, 2, 1)
+        Jxl = torch.zeros(2, 2, 0, dtype=torch.float64)
+        cp_i = torch.tensor([1], dtype=torch.long)
+        packed = _pack_colored_jacobian_vals(
+            Jtg,
+            Jtl,
+            Jxg,
+            Jxl,
+            cp_i,
+            torch.tensor([False, True]),
+        )
+        expected = torch.tensor(
+            [4.0, 5.0, 2.0, -1.0, 6.0, 7.0, 3.0, -1.0], dtype=torch.float64
+        )
+        torch.testing.assert_close(packed, expected)
+
+
 if __name__ == "__main__":
     unittest.main()
+

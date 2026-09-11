@@ -1,5 +1,7 @@
 # Standard library imports
 import unittest
+import datetime
+from dateutil import tz
 
 # Local application imports
 # Set test flag
@@ -414,10 +416,8 @@ class TestModelMethods(unittest.TestCase):
     def test_cache(self):
         """Test cache method."""
         # Standard library imports
-        import datetime
 
         # Third party imports
-        from dateutil import tz
 
         schedule = ScheduleSystem(
             weekday_ruleset={
@@ -481,7 +481,6 @@ class TestModelAdvanced(unittest.TestCase):
     def test_set_parameters(self):
         """Test set_parameters method."""
         # Local application imports
-        from twin4build.systems.damper.damper_system import DamperSystem
 
         damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
         self.model.add_component(damper)
@@ -500,7 +499,6 @@ class TestModelAdvanced(unittest.TestCase):
     def test_restore_parameters(self):
         """Test restore_parameters method."""
         # Local application imports
-        from twin4build.systems.damper.damper_system import DamperSystem
 
         damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
         self.model.add_component(damper)

@@ -26,19 +26,22 @@ def parse_method(
     if allow_transcription and isinstance(method, tuple) and len(method) == 4:
         transcription = method[3]
         allowed_transcriptions = ("single_shooting", "collocation")
-        assert transcription in allowed_transcriptions, (
-            "The 4th (transcription) element of the method tuple must be one "
-            f"of {allowed_transcriptions} - \"{transcription}\" was provided."
-        )
+        if transcription not in allowed_transcriptions:
+            raise ValueError(
+                "The 4th (transcription) element of the method tuple must be one "
+                f'of {allowed_transcriptions} - "{transcription}" was provided.'
+            )
         method = tuple(method[:3])
 
     if isinstance(method, str):
         valid_methods = list(
             set([l[0] for l in allowed_methods] + [l[1] for l in allowed_methods])
         )
-        assert (
-            method in valid_methods
-        ), f"If a string is provided, the \"method\" argument must be one of the following: {', '.join(valid_methods)} - \"{method}\" was provided."
+        if method not in valid_methods:
+            raise ValueError(
+                'If a string is provided, the "method" argument must be one of '
+                f'the following: {", ".join(valid_methods)} - "{method}" was provided.'
+            )
 
         matched = False
         for t in default_methods:
@@ -60,29 +63,29 @@ def parse_method(
                     if c[2] == default_mode:
                         method = c
                         break
+        if isinstance(method, str):
+            raise ValueError(
+                f'Method shorthand "{method}" is ambiguous. Provide the full '
+                "(library, optimizer, mode) tuple."
+            )
 
     elif isinstance(method, tuple):
-        assert (
-            len(method) == 3
-        ), f'If a tuple is provided, it must contain three elements, corresponding to the library, method, and mode (e.g. ("scipy", "SLSQP", "ad")) - "{method}" was provided.'
-        assert method[0] in [
-            l[0] for l in allowed_methods
-        ], f"If a tuple is provided, the first element must be one of the following: {', '.join(list(set([l[0] for l in allowed_methods])))} - \"{method}\" was provided."
-        assert method[1] in [
-            l[1] for l in allowed_methods
-        ], f"If a tuple is provided, the second element must be one of the following: {', '.join(list(set([l[1] for l in allowed_methods])))} - \"{method}\" was provided."
-        assert method[2] in [
-            l[2] for l in allowed_methods
-        ], f"If a tuple is provided, the third element must be one of the following: {', '.join(list(set([l[2] for l in allowed_methods])))} - \"{method}\" was provided."
+        if len(method) != 3:
+            raise ValueError(
+                "A method tuple must contain (library, optimizer, mode), e.g. "
+                f'("scipy", "SLSQP", "ad"); got {method!r}.'
+            )
 
         method_ = None
         for t in allowed_methods:
             if t[0] == method[0] and t[1] == method[1] and t[2] == method[2]:
                 method_ = t
                 break
-        assert (
-            method_ is not None
-        ), f"The method {method} is not valid. Only the following methods are supported: {', '.join([str(t) for t in allowed_methods])}"
+        if method_ is None:
+            raise ValueError(
+                f"The method {method!r} is not valid. Supported methods: "
+                f"{', '.join(str(t) for t in allowed_methods)}"
+            )
         method = method_
     elif method is None:
         if default_none_method is None:

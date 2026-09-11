@@ -7,6 +7,8 @@ include = ["twin4build*"]
 # Local simulation outputs often leave __init__.py under generated_files/;
 # never ship those as installable packages.
 exclude = [
+    "twin4build.tests",
+    "twin4build.tests.*",
     "*.generated_files",
     "*.generated_files.*",
 ]
@@ -31,9 +33,8 @@ authors = [
 ]
 description = "Dynamic simulation of buildings and integration with semantic modeling."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -54,6 +55,7 @@ dependencies = [
     "pandas",
     "torch",
     "pydot<=2.0.0",
+    "pygraphviz>=2.0.1",
     "tqdm",
     "fmpy",
     "scipy",
@@ -73,7 +75,6 @@ dependencies = [
     "pyarrow",
     "beautifulsoup4",
     "python-dateutil",
-    "pathlib",
     "pytz",
     # CasADi ships IPOPT + MUMPS in a single pip wheel; used by the Estimator's
     # IPOPT backend and collocation transcription.
@@ -90,6 +91,10 @@ dev = [
     "sphinx-rtd-theme",
     "sphinx-autodoc-typehints",
     "myst-parser",
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "build",
     "twine"
 ]
 database = [
@@ -105,6 +110,10 @@ all = [
     "sphinx-rtd-theme",
     "sphinx-autodoc-typehints",
     "myst-parser",
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "build",
     "psycopg2-binary",
     "sqlalchemy",
     "twine"
@@ -118,7 +127,7 @@ repository = "https://github.com/JBjoernskov/Twin4Build/"
 # Development tool configurations
 [tool.black]
 line-length = 88
-target-version = ['py39']
+target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = '''
 /(

@@ -1,6 +1,5 @@
 # Standard library imports
 import datetime
-import shutil
 import warnings
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
@@ -14,8 +13,14 @@ from prettytable import PrettyTable
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.deprecation import deprecate_name
+from twin4build.utils.graphviz_render import (
+    DRAWING_UNAVAILABLE_HINT,
+    drawing_available,
+)
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
+from twin4build.utils.validate_period import validate_period
 
 
 @autoreset_print
@@ -271,7 +276,6 @@ class Model:
             pass
         return m
 
-
     @property
     def id(self) -> str:
         return self._id
@@ -341,9 +345,8 @@ class Model:
         (multi-start estimation, scenario/ensemble studies, portfolios of
         buildings via the ``n_c`` component-batch dimension) and for large
         many-zone models, where per-candidate cost falls almost linearly
-        with batch size.  See
-        ``twin4build/examples/gpu_benchmark_estimation.ipynb`` and
-        ``twin4build/examples/gpu_benchmark_optimizer.ipynb``.
+        with batch size. See the canonical notebooks in the repository's
+        ``benchmarks/`` directory.
 
         Example:
             >>> model.load()
@@ -365,11 +368,11 @@ class Model:
         return self
 
     @property
-    def execution_order(self) -> List[str]:
+    def execution_order(self) -> List[List["core.System"]]:
         return self.simulation_model.execution_order
 
     @property
-    def flat_execution_order(self) -> List[str]:
+    def flat_execution_order(self) -> List["core.System"]:
         return self.simulation_model.flat_execution_order
 
     def get_dir(
@@ -484,16 +487,14 @@ class Model:
         self, class_: Type, filter: Optional[Callable] = None
     ) -> List:
         """Return components on this model that are instances of ``class_``."""
-        return self.simulation_model.get_component_by_class(
-            dict_=self.simulation_model.components, class_=class_, filter=filter
+        return self.simulation_model.get_components_by_class(
+            class_=class_, filter=filter
         )
 
     def get_component_by_class(
         self, dict_: Dict = None, class_: Type = None, filter: Optional[Callable] = None
     ) -> List:
         """Deprecated: use :meth:`get_components_by_class` (removed in 2.1)."""
-        from twin4build.utils.deprecation import deprecate_name
-
         deprecate_name("get_component_by_class", "get_components_by_class")
         if class_ is None and dict_ is not None and not isinstance(dict_, dict):
             # Called as get_component_by_class(SomeSystem)
@@ -658,9 +659,7 @@ class Model:
         )
         return self
 
-    def set_transformations(
-        self, mapping: Dict[Any, Callable[[Any], Any]]
-    ) -> "Model":
+    def set_transformations(self, mapping: Dict[Any, Callable[[Any], Any]]) -> "Model":
         """Apply unit-conversion callables to components by semantic class.
 
         Keys are RDF class IRIs (``rdflib.URIRef``, strings, or
@@ -730,9 +729,7 @@ class Model:
                 hit = False
                 for node in nodes:
                     isinstance_check = getattr(node, "isinstance", None)
-                    if callable(isinstance_check) and isinstance_check(
-                        stype.uri
-                    ):
+                    if callable(isinstance_check) and isinstance_check(stype.uri):
                         hit = True
                         break
                 if hit:
@@ -807,18 +804,21 @@ class Model:
 
     def initialize(
         self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
+        start_time: Union[datetime.datetime, List[datetime.datetime]],
+        end_time: Union[datetime.datetime, List[datetime.datetime]],
+        step_size: Union[int, List[int]],
     ) -> None:
         """
         Initialize the model for simulation.
 
         Args:
-            start_time (datetime.datetime): Start time for the simulation.
-            end_time (datetime.datetime): End time for the simulation.
-            step_size (int): Time step size for the simulation.
+            start_time: Start time or times for the simulation.
+            end_time: End time or times for the simulation.
+            step_size: Time step size or sizes in seconds.
         """
+        start_time, end_time, step_size = validate_period(
+            start_time, end_time, step_size
+        )
         self.simulation_model.initialize(start_time, end_time, step_size)
 
     def validate(self) -> None:
@@ -879,8 +879,6 @@ class Model:
                 ``SemanticModel`` + ``Translator.translate`` instead.
             simulation_model_filename: Deprecated alias for ``filename`` (removed in 2.1).
         """
-        from twin4build.utils.deprecation import deprecate_name
-
         if "verbose" in kwargs:
             deprecate_name("verbose=", "LOGGER.verbose")
             LOGGER.verbose = kwargs.pop("verbose")
@@ -980,15 +978,15 @@ class Model:
             # self._semantic_model.reason()
             LOGGER.ok("Parsing semantic model", change_status=True)
             if draw_semantic_model:
-                app_path = shutil.which("dot")
-                assert (
-                    app_path is not None
-                ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
-                LOGGER.task("Drawing semantic model")
-                LOGGER.add_level()
-                self._semantic_model.visualize()
-                LOGGER.remove_level()
-                LOGGER.ok("Drawing semantic model", change_status=True)
+                if not drawing_available():
+                    LOGGER.warning(DRAWING_UNAVAILABLE_HINT)
+                    warnings.warn(DRAWING_UNAVAILABLE_HINT, UserWarning)
+                else:
+                    LOGGER.task("Drawing semantic model")
+                    LOGGER.add_level()
+                    self._semantic_model.visualize()
+                    LOGGER.remove_level()
+                    LOGGER.ok("Drawing semantic model", change_status=True)
 
         else:
             apply_translator = False
@@ -998,9 +996,7 @@ class Model:
             # ``translate`` now returns a fully-wired ``Model``; extract the
             # simulation half and discard the wrapper since ``self`` is the
             # Model we are populating here.
-            translated_model = self._translator.translate(
-                self._semantic_model
-            )
+            translated_model = self._translator.translate(self._semantic_model)
             self._simulation_model = translated_model.simulation_model
             self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
 
@@ -1014,17 +1010,15 @@ class Model:
         )
 
         if draw_simulation_model:
-            # Get all filenames generated in the folder dirname
-            app_path = shutil.which("dot")
-            assert (
-                app_path is not None
-            ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
-
-            LOGGER.task("Drawing simulation model")
-            LOGGER.add_level()
-            self._simulation_model.visualize()
-            LOGGER.remove_level()
-            LOGGER.ok("Drawing simulation model", change_status=True)
+            if not drawing_available():
+                LOGGER.warning(DRAWING_UNAVAILABLE_HINT)
+                warnings.warn(DRAWING_UNAVAILABLE_HINT, UserWarning)
+            else:
+                LOGGER.task("Drawing simulation model")
+                LOGGER.add_level()
+                self._simulation_model.visualize()
+                LOGGER.remove_level()
+                LOGGER.ok("Drawing simulation model", change_status=True)
 
         LOGGER.remove_level()
         LOGGER.ok("Loading model", change_status=True)
@@ -1069,14 +1063,17 @@ class Model:
             # verbose=verbose,
         )
 
-    def check_for_for_missing_initial_values(self) -> None:
-        """
-        Check for missing initial values in components.
+    def check_for_missing_initial_values(self) -> None:
+        """Check whether required component outputs have initial values."""
+        self.simulation_model.check_for_missing_initial_values()
 
-        Raises:
-            Exception: If any component is missing an initial value.
-        """
-        self.simulation_model.check_for_for_missing_initial_values()
+    def check_for_for_missing_initial_values(self) -> None:
+        """Deprecated typo; use :meth:`check_for_missing_initial_values`."""
+        deprecate_name(
+            "check_for_for_missing_initial_values",
+            "check_for_missing_initial_values",
+        )
+        self.check_for_missing_initial_values()
 
     def get_semantic_object(self, key: str) -> "core.SemanticObject":
         """
@@ -1117,9 +1114,8 @@ class Model:
             self._semantic_model.visualize()
         self._simulation_model.visualize(**kwargs)
 
-
-    def build_compiled_model(self) -> "Model":
-        """Build a compiled Model with batched meta components.
+    def batch_components(self) -> "Model":
+        """Build a Model with batched meta components.
 
         Groups components within each execution group by their signature
         (class, port structure, parameter keys, state hints).  For each group
@@ -1134,10 +1130,10 @@ class Model:
 
         **After calling this method:**
 
-        1. Call ``compiled.load(draw_semantic_model=False,
+        1. Call ``batched.load(draw_semantic_model=False,
            draw_simulation_model=False)`` to compute execution order.
-        2. When initialising the compiled model for simulation, pass
-           ``n_c = component._n_c_compiled`` to every I/O port's
+        2. When initialising the batched model for simulation, pass
+           ``n_c = component._n_c_batched`` to every I/O port's
            ``initialize()`` so that tensors are allocated with the correct
            parallel-component dimension.
 
@@ -1157,51 +1153,59 @@ class Model:
           all component classes must therefore accept ``id`` as their only
           required keyword argument.
         """
-        compiled = Model(id=f"{self.id}_compiled")
+        batched = Model(id=f"{self.id}_batched")
         self._component_to_meta = {}
 
         # -- Phase 1: create one meta component per signature group --------
         # Classes that must never be lumped together even when they share a
         # signature.  Each instance is kept as-is (n_c = 1).
-        from twin4build.systems.outdoor_environment.outdoor_environment_system import OutdoorEnvironmentSystem
-        from twin4build.systems.schedule.schedule_system import ScheduleSystem
-        from twin4build.systems.sensor.sensor_system import SensorSystem
-        _NO_BATCH_CLASSES = (OutdoorEnvironmentSystem, ScheduleSystem, SensorSystem)
+        no_batch_classes = {
+            "OutdoorEnvironmentSystem",
+            "SensorSystem",
+        }
 
-        for group_idx, group in enumerate(
-            self.simulation_model.execution_order
-        ):
+        for group_idx, group in enumerate(self.simulation_model.execution_order):
             by_sig: "OrderedDict[Tuple[Any, ...], List[Any]]" = OrderedDict()
             for comp in group:
                 sig = self._component_signature(comp)
-                if isinstance(comp, _NO_BATCH_CLASSES):
-                    # Force a unique key so this component is never grouped
+                if comp.__class__.__name__ in no_batch_classes or (
+                    comp.__class__.__name__ == "ScheduleSystem"
+                    and not getattr(comp, "_allow_component_batching", False)
+                ):
                     sig = (*sig, id(comp))
                 by_sig.setdefault(sig, []).append(comp)
 
             for blk_idx, (sig, comps) in enumerate(by_sig.items()):
                 n_c = len(comps)
                 cls = comps[0].__class__
+                # A component whose constructor takes required arguments
+                # (FunctionSystem's ``inputs``/``fn``) declares them in
+                # ``_batch_init_kwargs`` so the meta can be built at all.
+                # Components sharing a batch share those values;
+                # _component_signature keeps differing ones apart.
+                init_kwargs = dict(getattr(comps[0], "_batch_init_kwargs", None) or {})
                 if n_c == 1:
-                    meta = cls(id=comps[0].id)
-                    meta._n_c_compiled = 1
+                    meta = cls(id=comps[0].id, **init_kwargs)
+                    meta._n_c_batched = 1
                     meta._source_component_ids = (meta.id,)
-                    self._copy_data_source_attrs(comps[0], meta)
                 else:
                     meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
-                    meta = cls(id=meta_id)
-                    meta._n_c_compiled = n_c
-                    meta._source_component_ids = tuple(
-                        c.id for c in comps
-                    )
-
+                    meta = cls(id=meta_id, **init_kwargs)
+                    meta._n_c_batched = n_c
+                    meta._source_component_ids = tuple(c.id for c in comps)
+                # Component.initialize() sizes every I/O port from ``n_c``.
+                # Keeping only the mapping metadata at ``_n_c_batched`` left
+                # non-stateful batched components with scalar ports.
+                meta.n_c = n_c
+                self._copy_data_source_attrs(comps[0], meta)
+                meta._batched_execution_priority = group_idx
                 self._batch_parameters(meta, comps, n_c)
                 self._copy_init_attrs(meta, comps[0])
 
                 for i_c, c in enumerate(comps):
                     self._component_to_meta[c.id] = (meta, i_c)
 
-                compiled.add_component(meta)
+                batched.add_component(meta)
 
         # -- Phase 2: wire connections between meta components -------------
         # Collect all (sender_ic, receiver_ic) pairs per unique connection
@@ -1234,7 +1238,7 @@ class Model:
                         connection_map[key]["ic_pairs"].append((s_ic, r_ic))
 
         for info in connection_map.values():
-            compiled.add_connection(
+            batched.add_connection(
                 info["s_meta"],
                 info["r_meta"],
                 info["output_port"],
@@ -1244,8 +1248,8 @@ class Model:
             )
 
             pairs = info["ic_pairs"]
-            s_n_c = getattr(info["s_meta"], "_n_c_compiled", 1)
-            r_n_c = getattr(info["r_meta"], "_n_c_compiled", 1)
+            s_n_c = getattr(info["s_meta"], "_n_c_batched", 1)
+            r_n_c = getattr(info["r_meta"], "_n_c_batched", 1)
 
             if s_n_c == 1 and r_n_c == 1:
                 continue
@@ -1262,7 +1266,7 @@ class Model:
             s_ics = torch.tensor([p[0] for p in pairs], dtype=torch.long)
             r_ics = torch.tensor([p[1] for p in pairs], dtype=torch.long)
 
-            # Walk the compiled model's connection graph to find the
+            # Walk the batched model's connection graph to find the
             # ConnectionPoint + Connection objects we just created.
             for cp in info["r_meta"].connects_at:
                 if cp.input_port != info["input_port"]:
@@ -1277,13 +1281,11 @@ class Model:
                         break
                 break
 
-        return compiled
+        return batched
 
-    # -- compiled-model look-ups ------------------------------------------
+    # -- batched-model look-ups -------------------------------------------
 
-    def get_block_id_for_component(
-        self, component_id: str
-    ) -> Optional[str]:
+    def get_batch_id_for_component(self, component_id: str) -> Optional[str]:
         """Return the meta-component id that batches *component_id*."""
         entry = self._component_to_meta.get(component_id)
         if entry is None:
@@ -1291,12 +1293,12 @@ class Model:
         meta, _ = entry
         return meta.id
 
-    def get_compiled_component_info(
+    def get_batched_component_info(
         self, component_id: str
     ) -> Optional[Tuple[Any, int]]:
         """Return ``(meta_component, i_c_index)`` for an original component.
 
-        Returns ``None`` if *component_id* has not been compiled.
+        Returns ``None`` if *component_id* has not been batched.
         """
         return self._component_to_meta.get(component_id)
 
@@ -1304,26 +1306,59 @@ class Model:
 
     _DATA_SOURCE_ATTRS = (
         # boolean flags
-        "use_spreadsheet", "use_database", "use_df", "use_dict",
+        "use_spreadsheet",
+        "use_database",
+        "use_df",
+        "use_dict",
         # ScheduleSystem / SensorSystem
-        "filename", "df", "date_column", "value_column",
-        "uuid", "name", "dbconfig",
+        "filename",
+        "df",
+        "date_column",
+        "value_column",
+        "datecolumn",
+        "valuecolumn",
+        "uuid",
+        "name",
+        "dbconfig",
+        # OccupancySystem measured inverse-model inputs
+        "co2_filename",
+        "co2_date_column",
+        "co2_value_column",
+        "co2_datecolumn",
+        "co2_valuecolumn",
+        "damper_filename",
+        "damper_date_column",
+        "damper_value_column",
+        "damper_datecolumn",
+        "damper_valuecolumn",
         # ScheduleSystem rulesets
-        "weekday_ruleset", "weekend_ruleset",
-        "monday_ruleset", "tuesday_ruleset",
-        "wednesday_ruleset", "thursday_ruleset",
-        "friday_ruleset", "saturday_ruleset",
+        "weekday_ruleset",
+        "weekend_ruleset",
+        "monday_ruleset",
+        "tuesday_ruleset",
+        "wednesday_ruleset",
+        "thursday_ruleset",
+        "friday_ruleset",
+        "saturday_ruleset",
         "sunday_ruleset",
+        "default_x",
+        "default_y",
         # OutdoorEnvironmentSystem
-        "filename_outdoorTemperature", "filename_globalIrradiation",
+        "filename_outdoorTemperature",
+        "filename_globalIrradiation",
         "filename_outdoorCo2Concentration",
-        "datecolumn_outdoorTemperature", "valuecolumn_outdoorTemperature",
-        "datecolumn_globalIrradiation", "valuecolumn_globalIrradiation",
+        "datecolumn_outdoorTemperature",
+        "valuecolumn_outdoorTemperature",
+        "datecolumn_globalIrradiation",
+        "valuecolumn_globalIrradiation",
         "datecolumn_outdoorCo2Concentration",
         "valuecolumn_outdoorCo2Concentration",
-        "uuid_outdoorTemperature", "dbconfig_outdoorTemperature",
-        "uuid_globalIrradiation", "dbconfig_globalIrradiation",
-        "uuid_outdoorCo2Concentration", "dbconfig_outdoorCo2Concentration",
+        "uuid_outdoorTemperature",
+        "dbconfig_outdoorTemperature",
+        "uuid_globalIrradiation",
+        "dbconfig_globalIrradiation",
+        "uuid_outdoorCo2Concentration",
+        "dbconfig_outdoorCo2Concentration",
     )
 
     def _copy_data_source_attrs(self, src: Any, dst: Any) -> None:
@@ -1362,9 +1397,7 @@ class Model:
             obj = getattr(obj, part)
         setattr(obj, parts[-1], value)
 
-    def _batch_parameters(
-        self, meta: Any, components: List, n_c: int
-    ) -> None:
+    def _batch_parameters(self, meta: Any, components: List, n_c: int) -> None:
         """Stack calibration parameters along the ``n_c`` dimension.
 
         Only ``tps.Parameter`` and ``tps.TensorParameter`` attributes whose
@@ -1375,10 +1408,15 @@ class Model:
         composite components that wrap sub-models.
         """
         param_dict = getattr(components[0], "parameter", None)
-        if not param_dict:
+        parameter_names = (
+            list(param_dict)
+            if param_dict
+            else list(getattr(components[0], "config", {}).get("parameters", ()))
+        )
+        if not parameter_names:
             return
 
-        for param_name in param_dict:
+        for param_name in parameter_names:
             originals = []
             for c in components:
                 p = self._resolve_dotted_attr(c, param_name)
@@ -1390,12 +1428,8 @@ class Model:
 
             if isinstance(first, tps.Parameter):
                 vals = torch.stack([p.get().squeeze() for p in originals])
-                mins = torch.stack(
-                    [p.min_value.squeeze() for p in originals]
-                )
-                maxs = torch.stack(
-                    [p.max_value.squeeze() for p in originals]
-                )
+                mins = torch.stack([p.min_value.squeeze() for p in originals])
+                maxs = torch.stack([p.max_value.squeeze() for p in originals])
                 self._set_dotted_attr(
                     meta,
                     param_name,
@@ -1411,16 +1445,12 @@ class Model:
             elif isinstance(first, tps.TensorParameter):
                 vals = torch.stack([p.get().squeeze() for p in originals])
                 mins = (
-                    torch.stack(
-                        [p.min_value.squeeze() for p in originals]
-                    )
+                    torch.stack([p.min_value.squeeze() for p in originals])
                     if first.min_value is not None
                     else None
                 )
                 maxs = (
-                    torch.stack(
-                        [p.max_value.squeeze() for p in originals]
-                    )
+                    torch.stack([p.max_value.squeeze() for p in originals])
                     if first.max_value is not None
                     else None
                 )
@@ -1450,17 +1480,18 @@ class Model:
             "T_a_nominal_sh",
             "T_b_nominal_sh",
             "TAir_nominal_sh",
+            "initialize_UA",
         ),
         "twin4build.systems.building_space.building_space_system.BuildingSpaceSystem": (),
         "twin4build.systems.controller.setpoint_controller.pid_controller"
-        ".pid_controller_system.PIDControllerSystem": (
-            "is_reverse",
-        ),
+        ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
+        "twin4build.systems.controller.rulebased_controller.on_off_controller"
+        ".on_off_controller_system.OnOffControllerSystem": ("is_reverse",),
+        "twin4build.systems.controller.rulebased_controller.on_off_controller"
+        ".smooth_on_off_controller_system.SmoothOnOffControllerSystem": ("is_reverse",),
     }
 
-    def _copy_init_attrs(
-        self, meta: Any, source: Any
-    ) -> None:
+    def _copy_init_attrs(self, meta: Any, source: Any) -> None:
         """Copy non-Parameter constructor attributes from *source* to *meta*.
 
         Only the attributes listed in ``_INIT_ATTRS_TO_COPY`` for the
@@ -1485,39 +1516,35 @@ class Model:
         # component's connects_at (populated by model.load()) and push
         # it through the thermal sub-model's setter so the manual flag
         # is set and initialize() skips its own connects_at discovery.
-        from twin4build.systems.building_space.building_space_system import (
-            BuildingSpaceSystem,
-        )
-        if isinstance(source, BuildingSpaceSystem):
+        if source.__class__.__name__ == "BuildingSpaceSystem":
             cp_boundary = [
-                cp for cp in source.connects_at
+                cp
+                for cp in source.connects_at
                 if cp.input_port == "boundaryTemperature"
             ]
             n_boundary = (
                 len(cp_boundary[0].connects_system_through) if cp_boundary else 0
             )
             cp_wall = [
-                cp for cp in source.connects_at
-                if cp.input_port == "wallHeatGain"
+                cp for cp in source.connects_at if cp.input_port == "wallHeatGain"
             ]
-            n_walls = (
-                len(cp_wall[0].connects_system_through) if cp_wall else 0
-            )
+            n_walls = len(cp_wall[0].connects_system_through) if cp_wall else 0
             meta.thermal.n_walls = n_walls
             meta.thermal.n_boundary_temperature = n_boundary
 
     # -- signature helpers ------------------------------------------------
 
     def _component_signature(self, component: Any) -> Tuple[Any, ...]:
-        input_signature = self._port_dict_signature(
-            getattr(component, "input", {})
-        )
-        output_signature = self._port_dict_signature(
-            getattr(component, "output", {})
-        )
+        input_signature = self._port_dict_signature(getattr(component, "input", {}))
+        output_signature = self._port_dict_signature(getattr(component, "output", {}))
 
+        parameter = getattr(component, "parameter", None)
         parameter_keys: Tuple[str, ...] = tuple(
-            sorted(getattr(component, "parameter", {}).keys())
+            sorted(
+                parameter.keys()
+                if parameter
+                else getattr(component, "config", {}).get("parameters", ())
+            )
         )
 
         state_hints = (
@@ -1525,6 +1552,62 @@ class Model:
             getattr(component, "n_inputs", None),
             getattr(component, "n_outputs", None),
         )
+        data_signature = tuple(
+            (name, repr(getattr(component, name)))
+            for name in (
+                "filename",
+                "date_column",
+                "value_column",
+                "weekday_ruleset",
+                "weekend_ruleset",
+            )
+            if hasattr(component, name)
+        )
+
+        # Declared batch-construction values (a FunctionSystem's input names
+        # and its transformation) are part of the component's identity: batching
+        # two different transformations into one n_c block would silently apply
+        # one of them to both.
+        def _declared_signature(value):
+            if isinstance(value, (str, int, float, bool, type(None))):
+                return value
+            if isinstance(value, (list, tuple)):
+                return tuple(_declared_signature(item) for item in value)
+            # A callable (or any other object) counts as identity: two
+            # separately created functions are two transformations as far as
+            # batching is concerned, even if their source is identical.
+            return id(value)
+
+        init_signature = tuple(
+            (name, _declared_signature(value))
+            for name, value in sorted(
+                (getattr(component, "_batch_init_kwargs", None) or {}).items()
+            )
+        )
+        outgoing = []
+        for connection in getattr(component, "connected_through", ()):
+            for point in connection.connects_system_at:
+                receiver = point.connection_point_of
+                outgoing.append(
+                    (
+                        connection.output_port,
+                        receiver.__class__.__module__,
+                        receiver.__class__.__name__,
+                        point.input_port,
+                    )
+                )
+        incoming = []
+        for point in getattr(component, "connects_at", ()):
+            for connection in point.connects_system_through:
+                sender = connection.connects_system
+                incoming.append(
+                    (
+                        sender.__class__.__module__,
+                        sender.__class__.__name__,
+                        connection.output_port,
+                        point.input_port,
+                    )
+                )
 
         return (
             component.__class__.__module__,
@@ -1533,11 +1616,13 @@ class Model:
             output_signature,
             parameter_keys,
             state_hints,
+            data_signature,
+            init_signature,
+            tuple(sorted(incoming)),
+            tuple(sorted(outgoing)),
         )
 
-    def _port_dict_signature(
-        self, port_dict: Dict[str, Any]
-    ) -> Tuple[Any, ...]:
+    def _port_dict_signature(self, port_dict: Dict[str, Any]) -> Tuple[Any, ...]:
         items = []
         for key in sorted(port_dict.keys()):
             items.append((key, self._port_signature(port_dict[key])))

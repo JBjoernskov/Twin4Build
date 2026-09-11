@@ -1,0 +1,1 @@
+"""Shared numerical-solver adapters."""

@@ -14,146 +14,182 @@ Package
 Modules
 -------
 
-constants module
-----------------
+twin4build.utils.constants module
+---------------------------------
 
 .. automodule:: twin4build.utils.constants
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-deprecation module
-------------------
+twin4build.utils.deprecation module
+-----------------------------------
 
 .. automodule:: twin4build.utils.deprecation
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-dict\_utils module
-------------------
-
-.. automodule:: twin4build.utils.dict_utils
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-get\_main\_dir module
----------------------
-
-.. automodule:: twin4build.utils.get_main_dir
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-get\_obj\_attr module
----------------------
-
-.. automodule:: twin4build.utils.get_obj_attr
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-get\_object\_properties module
+twin4build.utils.device module
 ------------------------------
 
-.. automodule:: twin4build.utils.get_object_properties
+.. automodule:: twin4build.utils.device
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-mkdir\_in\_root module
-----------------------
+twin4build.utils.dict\_utils module
+-----------------------------------
+
+.. automodule:: twin4build.utils.dict_utils
+   :no-index:
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+twin4build.utils.get\_main\_dir module
+--------------------------------------
+
+.. automodule:: twin4build.utils.get_main_dir
+   :no-index:
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+twin4build.utils.get\_obj\_attr module
+--------------------------------------
+
+.. automodule:: twin4build.utils.get_obj_attr
+   :no-index:
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+twin4build.utils.get\_object\_properties module
+-----------------------------------------------
+
+.. automodule:: twin4build.utils.get_object_properties
+   :no-index:
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+twin4build.utils.logger module
+------------------------------
+
+.. automodule:: twin4build.utils.logger
+   :no-index:
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+twin4build.utils.method\_spec module
+------------------------------------
+
+.. automodule:: twin4build.utils.method_spec
+   :no-index:
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+twin4build.utils.mkdir\_in\_root module
+---------------------------------------
 
 .. automodule:: twin4build.utils.mkdir_in_root
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-print\_estimation\_result module
---------------------------------
+twin4build.utils.print\_estimation\_result module
+-------------------------------------------------
 
 .. automodule:: twin4build.utils.print_estimation_result
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-print\_progress module
-----------------------
-
-.. automodule:: twin4build.utils.print_progress
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-rdelattr module
----------------
+twin4build.utils.rdelattr module
+--------------------------------
 
 .. automodule:: twin4build.utils.rdelattr
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-rgetattr module
----------------
+twin4build.utils.result module
+------------------------------
+
+.. automodule:: twin4build.utils.result
+   :no-index:
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+twin4build.utils.rgetattr module
+--------------------------------
 
 .. automodule:: twin4build.utils.rgetattr
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-rhasattr module
----------------
+twin4build.utils.rhasattr module
+--------------------------------
 
 .. automodule:: twin4build.utils.rhasattr
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-rsetattr module
----------------
+twin4build.utils.rsetattr module
+--------------------------------
 
 .. automodule:: twin4build.utils.rsetattr
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-simple\_cycle module
---------------------
+twin4build.utils.simple\_cycle module
+-------------------------------------
 
 .. automodule:: twin4build.utils.simple_cycle
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-test\_notebook module
----------------------
-
-.. automodule:: twin4build.utils.test_notebook
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-types module
-------------
+twin4build.utils.types module
+-----------------------------
 
 .. automodule:: twin4build.utils.types
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-uppath module
--------------
+twin4build.utils.uppath module
+------------------------------
 
 .. automodule:: twin4build.utils.uppath
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:
 
-validate\_period module
------------------------
+twin4build.utils.validate\_period module
+----------------------------------------
 
 .. automodule:: twin4build.utils.validate_period
+   :no-index:
    :members:
    :show-inheritance:
    :undoc-members:

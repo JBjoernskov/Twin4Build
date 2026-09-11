@@ -1,85 +1,104 @@
 Benchmarks
 ==========
 
-Reproducible performance studies, in the same runnable-notebook format as the
-:doc:`examples_and_tutorials`. Each notebook states what it measures, prints a
-results table, and ends with a "how to read the results" section so the numbers
-can be interpreted rather than just quoted.
+The canonical performance suite consists of exactly three authoritative
+notebooks in ``benchmarks/``. All scale the complete translated full-workflow
+topology over exactly ``1, 10, 50, 100`` zones. The ``n_zones=1`` rows
+replace the former standalone simulation, estimation, and optimization
+baselines; those notebooks and the separate Pareto notebook are superseded.
 
-All of them detect the available hardware and degrade gracefully: the GPU arms
-are skipped automatically when CUDA is unavailable, so every notebook runs
-(CPU-only) on any machine.
+.. important::
 
-Like the examples, each opens directly in Google Colab via the badge below.
-Select a GPU runtime first (**Runtime → Change runtime type → GPU**), otherwise
-only the CPU results are produced.
+   **Published results:** No reviewed timing dataset is published yet.
+   Smoke output validates structure and plumbing only. Full mode performs five
+   repetitions, retains every raw row, and reports median and spread.
 
-Estimation and optimization
----------------------------
+Every runner writes an atomic in-progress JSON checkpoint after each case.
+Interrupted runs therefore retain prior rows. CUDA timing is synchronized,
+component-batching time is separate, and failed, nonconverged, infeasible, unavailable,
+or preflight-unsafe rows retain explicit status and reasons.
 
-.. raw:: html
+Local structural and smoke checks
+---------------------------------
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_benchmark_collocation.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Solver comparison, CPU vs GPU</b>: SLSQP single-shooting against IPOPT collocation (Gauss-Newton and exact-Hessian variants) on the full-workflow calibration problem &mdash; wall-clock, fit quality, the torch-vs-IPOPT cost split that bounds any GPU speedup, and whether float32 can satisfy the collocation defect tolerance</p>
+.. code-block:: console
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_batched_shooting_solver_benchmark.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>CUDA-graph batched SQP</b>: dense bound-constrained Torch SQP against SciPy SLSQP from the same canonical start, plus deterministic full-bound multistart throughput, derivative timing, convergence quality and CUDA Graph startup</p>
+   pytest twin4build/tests/examples/test_canonical_benchmarks.py
+   python -m benchmarks.run_smoke
 
-.. raw:: html
+Do not run or publish full timings as part of routine tests.
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_benchmark_estimation.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Estimation kernels, CPU vs GPU</b>: The real estimation pipeline plus isolated kernel benchmarks (bilinear ZOH rollout, cached-discretization rollout, collocation defect evaluation) swept over batch size</p>
-
-.. raw:: html
-
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_benchmark_optimizer.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Optimizer, CPU vs GPU</b>: Control-schedule optimization throughput across devices and batch sizes</p>
-
-Scaling
--------
+Simulation scaling
+------------------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_benchmark_scaling.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Model-size scaling</b>: Forward simulation, estimation and collocation swept over the number of zones, showing how per-candidate cost falls with the component-batch dimension</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/benchmarks/simulation_scaling_benchmark.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open simulation scaling benchmark in Colab"/></a></p>
 
-Device support
---------------
+``simulation_scaling_benchmark.ipynb`` records ``model_layout`` (``standard``
+or ``batched``), ``execution_mode`` (``object`` or ``functional``), and
+``execution_backend`` (``eager`` or ``cuda_graph``). CUDA Graph is a backend
+for functional execution, never a mode. Each zone is a complete,
+prefixed deep copy of the exact 23-component, 32-connection, 13-state
+full-workflow graph. Every size has a batching-mapping audit and
+standard/batched numerical parity result.
+
+Estimation scaling
+------------------
 
 .. raw:: html
 
-   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/twin4build/examples/gpu_verify_device_support.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> <b>Device-support verification</b>: Checks that a model moved with ``Model.to(device, dtype)`` produces the same results on GPU as on CPU &mdash; run this first if a GPU result looks wrong</p>
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/benchmarks/estimation_scaling_benchmark.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open estimation scaling benchmark in Colab"/></a></p>
 
-Interpreting benchmark results
-------------------------------
+``estimation_scaling_benchmark.ipynb`` estimates all 28 theta and uses all
+four measurements per zone. Its exact applicability matrix is:
 
-A few things are worth keeping in mind when reading any of these numbers.
+* CPU: SLSQP single shooting and custom batched-SQP;
+* CUDA: SLSQP single shooting, custom batched-SQP, and IPOPT collocation.
 
-**A GPU does not make a small model faster.** For a single simulation or a
-single-start estimation of a handful of zones, each step is a microsecond-scale
-operation and kernel-launch latency dominates; the CPU usually wins. Device
-support pays off for *batched* work &mdash; multi-start estimation, scenario and
-ensemble studies, portfolios of buildings via the ``n_c`` component-batch
-dimension &mdash; and for large many-zone models, where per-candidate cost falls
-almost linearly with batch size.
+Collocation is never run on CPU. CUDA collocation explicitly passes
+``options={"hessian": "exact"}``. The fixed full scaling
+budget is five solver iterations, matching the canonical SLSQP stage in
+``full_workflow_example`` and preventing an accidental 100-iteration by
+8,400-theta run. Convergence, objective, and parameter-recovery quality remain
+visible; fixed-budget nonconvergence is not a successful speedup.
 
-**Single-shooting and collocation parallelise differently.** A single-shooting
-rollout is sequential in time (step ``t+1`` needs step ``t``) and cannot be
-parallelised over the horizon on any hardware. Collocation evaluates every
-segment's defect and derivative independently, which is exactly the shape a GPU
-rewards. Comparisons between the two therefore shift with the hardware, and a
-result measured on one device does not transfer to the other.
+Before constructing collocation problems, preflight records state/NLP
+dimensions and dense-Hessian-equivalent bytes. Cases beyond the conservative
+safety cap remain in output as skipped rows with dimensions and reasons.
 
-**Only part of a solve can move to the GPU.** The torch rollouts, Jacobians and
-Hessians run on the model's device, but the IPOPT/SciPy solver &mdash; including
-the sparse KKT factorization &mdash; stays on the CPU. The fraction of wall-clock
-spent in torch is a hard ceiling on any speedup (Amdahl), and the remaining
-per-iteration cost multiplied by the iteration count is a floor no hardware
-removes. The collocation notebook measures both explicitly.
+Optimization and Pareto scaling
+-------------------------------
 
-**Precision matters for collocation specifically.** ``Model.to(device,
-torch.float32)`` is a large speedup on consumer GPUs, whose float64 throughput
-is typically 1/32 to 1/64 of float32. But collocation enforces the dynamics as
-hard equality constraints with a tight violation tolerance, which single
-precision may be unable to satisfy. Forward simulation and optimization tolerate
-float32 far more readily.
+.. raw:: html
 
-**Compare quality at equal wall-clock, not at equal iterations.** Collocation
-promotes every timestep-boundary state to a decision variable, so its iterations
-are not comparable in count or cost to a single-shooting iteration. The
-meaningful question is which method reaches a given fit quality first.
+   <p><a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/GITHUB_NOTEBOOK_BRANCH/benchmarks/optimization_scaling_benchmark.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open optimization and Pareto scaling benchmark in Colab"/></a></p>
+
+``optimization_scaling_benchmark.ipynb`` contains two studies. Standard
+scaling uses only constrained SciPy SLSQP+AD on CPU and CUDA with the actual
+full-workflow electricity-cost objective and all heating/cooling comfort
+limits represented by soft objective penalties (they are not hard nonlinear
+solver constraints). It uses the example's 300-iteration budget and labels
+convergence, objective quality, maximum comfort-limit violation, and speedup
+eligibility.
+
+Pareto scaling runs both supported epsilon-subproblem solvers: SLSQP+AD with
+direct shooting, and the IPOPT solver with collocation transcription and an
+exact sparse segment-local Lagrangian Hessian. One shared valve schedule is
+broadcast to every batched
+zone while the flattened augmented ``n_c`` state is promoted at every
+boundary. Dynamics continuity is enforced with hard equality defects; comfort
+limits remain soft penalties and ``f2_norm <= eps`` is the only non-dynamics
+hard inequality. The host solvers remain sequential; fixed-shape device
+derivative evaluation is captured and replayed. Preflight records controls,
+boundary states, dynamics rows, the epsilon row, and sparse Jacobian/Hessian
+nonzero counts.
+
+Reproducing and reporting
+-------------------------
+
+Use full mode only in an intentional measurement session. Record commit,
+Python, Twin4Build, Torch, CUDA runtime, CPU/GPU, OS, precision, horizon,
+timestep, solver options, and all raw rows. Compare only equivalent numerical
+work and successful quality outcomes. Component batching, fallback, preflight skips,
+and solver failures are part of the record and must not be hidden.

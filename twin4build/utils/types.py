@@ -7,6 +7,8 @@ import os
 import sys
 from collections import OrderedDict
 from typing import List, Optional, Union
+import copy
+import copyreg
 
 # Third party imports
 import numpy as np
@@ -16,6 +18,7 @@ from dateutil import tz
 
 # Local application imports
 import twin4build.core as core
+from twin4build.utils.state_marker import StateMarker
 
 # ---------------------------------------------------------------------------
 # Framework-wide floating-point dtype.
@@ -62,7 +65,8 @@ class Vector:
         n_c (int): Number of parallel components.
         n_v (int): The size of the vector (number of elements).
         log_history (bool): Whether to log the history of values.
-        history (torch.Tensor): The history of values over time with shape (n_s, n_c, n_t, n_v).
+        history (torch.Tensor): Time-first history with shape
+            ``(n_t, n_s, n_c, n_v)``.
         is_leaf (bool): Whether this vector is a leaf node in the graph (input).
         do_normalization (bool): Whether to normalize the history.
         optional (bool): Whether the vector is optional.
@@ -575,7 +579,8 @@ class Scalar:
         n_s (int): Number of simulations.
         n_c (int): Number of parallel components.
         log_history (bool): Whether to log the history of values.
-        history (torch.Tensor): The history of values over time with shape (n_s, n_c, n_t).
+        history (torch.Tensor): Time-first history with shape
+            ``(n_t, n_s, n_c)``.
         is_leaf (bool): Whether this scalar is a leaf node in the graph (input).
         do_normalization (bool): Whether to normalize the history.
         optional (bool): Whether the scalar is optional.
@@ -1068,21 +1073,34 @@ def theta_bound_tensors(parameters, device=None):
     The vectorized companion to :func:`denormalize_unit`: the estimator's fast
     paths denormalize a whole theta vector at once and need the physical
     bounds and scaling as plain tensors (``Parameter`` itself is a Tensor
-    subclass and breaks under functorch).  Scalar bounds only (``n_c == 1``).
-    ``device`` places the bounds where the rollout runs (the model's device).
+    subclass and breaks under functorch). Multi-branch parameters contribute
+    one bound entry per branch. ``device`` places the bounds where the rollout
+    runs (the model's device).
     """
+
+    def _flat_bound(parameter, name):
+        return np.asarray(
+            getattr(parameter, name).detach().cpu(), dtype=np.float64
+        ).reshape(-1)
+
+    lbs = [_flat_bound(p, "min_value") for p in parameters]
+    ubs = [_flat_bound(p, "max_value") for p in parameters]
     lb = torch.tensor(
-        [float(np.asarray(p.min_value.detach().cpu()).flatten()[0]) for p in parameters],
+        np.concatenate(lbs) if lbs else np.empty(0),
         dtype=float_dtype(),
         device=device,
     )
     ub = torch.tensor(
-        [float(np.asarray(p.max_value.detach().cpu()).flatten()[0]) for p in parameters],
+        np.concatenate(ubs) if ubs else np.empty(0),
         dtype=float_dtype(),
         device=device,
     )
     log_mask = torch.tensor(
-        [getattr(p, "scaling", "linear") == "log" for p in parameters],
+        [
+            getattr(p, "scaling", "linear") == "log"
+            for p in parameters
+            for _ in range(int(getattr(p, "n_c", 1)))
+        ],
         device=device,
     )
     return lb, ub, log_mask
@@ -1178,6 +1196,22 @@ class Parameter(nn.Parameter):
 
         return instance
 
+    def __deepcopy__(self, memo):
+        """Deep copy preserving bounds, ``n_c`` and scaling.
+
+        ``nn.Parameter.__deepcopy__`` rebuilds the copy as
+        ``type(self)(self.data.clone(), requires_grad)``: the *normalized*
+        data would be re-normalized against default bounds, so an unbounded
+        value became ``1.0`` and a bounded one its normalized fraction.  Reuse
+        the pickle path, which restores the normalization state.
+        """
+        if id(self) in memo:
+            return memo[id(self)]
+        rebuild, args = self.__reduce_ex__(4)
+        result = rebuild(*copy.deepcopy(args, memo))
+        memo[id(self)] = result
+        return result
+
     def __reduce_ex__(self, proto):
         """Custom serialization method that reuses PyTorch's logic but returns our own rebuild function."""
         # Get the state using our own logic (equivalent to PyTorch's)
@@ -1235,15 +1269,11 @@ class Parameter(nn.Parameter):
         # Bounds follow the parameter's device/dtype so they stay valid after
         # Model.to (bounds are often assigned after the move, e.g. by
         # Estimator._set_bounds).
-        self._min_value = _match_tensor(
-            _broadcast_for_n_c(value, self._n_c), self.data
-        )
+        self._min_value = _match_tensor(_broadcast_for_n_c(value, self._n_c), self.data)
 
     @max_value.setter
     def max_value(self, value):
-        self._max_value = _match_tensor(
-            _broadcast_for_n_c(value, self._n_c), self.data
-        )
+        self._max_value = _match_tensor(_broadcast_for_n_c(value, self._n_c), self.data)
 
     def normalize(
         self,
@@ -1340,7 +1370,7 @@ class Parameter(nn.Parameter):
         )
 
 
-class State:
+class State(StateMarker):
     """A System's continuous internal state -- first-class, alongside :class:`Parameter` / :class:`Scalar` / :class:`Vector`.
 
     A ``System`` holds three kinds of things: I/O ports (:class:`Scalar` /
@@ -2150,9 +2180,17 @@ if not hasattr(torch.nn.Parameter, "get"):
 
 
 # Our own rebuild functions for tps.Parameter
+def _identity_bounds(data):
+    """Bounds under which the constructor's normalization is the identity, so
+    ``data`` (already normalized) is stored unchanged; the pickled state then
+    restores the real bounds."""
+    return torch.zeros_like(data), torch.ones_like(data)
+
+
 def _rebuild_tps_parameter(data, requires_grad, backward_hooks):
     """Rebuild a tps.Parameter instance (equivalent to torch._utils._rebuild_parameter)."""
-    param = Parameter(data, requires_grad=requires_grad)
+    lo, hi = _identity_bounds(data)
+    param = Parameter(data, min_value=lo, max_value=hi, requires_grad=requires_grad)
     # NB: This line exists only for backwards compatibility; the
     # general expectation is that backward_hooks is an empty
     # OrderedDict.  See Note [Don't serialize hooks]
@@ -2162,7 +2200,8 @@ def _rebuild_tps_parameter(data, requires_grad, backward_hooks):
 
 def _rebuild_tps_parameter_with_state(data, requires_grad, backward_hooks, state):
     """Rebuild a tps.Parameter instance with state (equivalent to torch._utils._rebuild_parameter_with_state)."""
-    param = Parameter(data, requires_grad=requires_grad)
+    lo, hi = _identity_bounds(data)
+    param = Parameter(data, min_value=lo, max_value=hi, requires_grad=requires_grad)
     # NB: This line exists only for backwards compatibility; the
     # general expectation is that backward_hooks is an empty
     # OrderedDict.  See Note [Don't serialize hooks]
@@ -2183,7 +2222,6 @@ def _get_tps_obj_state(obj):
         state = getstate_fn()
     else:
         # Standard library imports
-        import copyreg
 
         slots_to_save = copyreg._slotnames(obj.__class__)  # type: ignore[attr-defined]
         if slots_to_save:

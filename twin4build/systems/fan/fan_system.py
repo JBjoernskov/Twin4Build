@@ -101,7 +101,8 @@ class FanSystem(core.System, nn.Module):
             torch.tensor(nominalPowerRate, dtype=tps.float_dtype()), requires_grad=False
         )
         self.nominalAirFlowRate = tps.Parameter(
-            torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()), requires_grad=False
+            torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()),
+            requires_grad=False,
         )
         self.c1 = tps.Parameter(
             torch.tensor(c1, dtype=tps.float_dtype()), requires_grad=False
@@ -199,8 +200,8 @@ class FanSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        if hasattr(self, "_n_c_compiled") and self._n_c_compiled > 1:
-            self.n_c = self._n_c_compiled
+        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
+            self.n_c = self._n_c_batched
         else:
             self.n_c = 1
 
@@ -297,6 +298,7 @@ class FanSystem(core.System, nn.Module):
             outs["outletAirTemperature"], i_t=step_index
         )
         self.output["Power"]._set(outs["Power"], i_t=step_index)
+
 
 # Deprecated aliases (removed in twin4build 2.1)
 FanTorchSystem = FanSystem

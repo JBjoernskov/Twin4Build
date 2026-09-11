@@ -28,9 +28,11 @@ from rdflib.tools.rdf2dot import rdf2dot
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.get_obj_attr import get_obj_attr
+from twin4build.utils.graphviz_render import render_dot_graph
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.uppath import uppath
+from twin4build.utils.deprecation import deprecate_name
 
 DYNAMIC_PARSING = True
 IGNORE_PARSING_FOR_NAMESPACES = ["XSD", "FPO"]
@@ -1054,9 +1056,9 @@ class SemanticInstance(SemanticObject):
                     owl_transitive,
                 ) in self.model.ontology_graph
                 if is_transitive:
-                    for transitive_subj in self.model.instance_graph.transitive_subjects(
-                        pred, subj
-                    ):
+                    for (
+                        transitive_subj
+                    ) in self.model.instance_graph.transitive_subjects(pred, subj):
                         if transitive_subj != subj:
                             inferred_pairs.append((pred, transitive_subj))
 
@@ -1361,17 +1363,13 @@ class SemanticLiteral(SemanticObject):
         # literal so equivalent-property reasoning sees the full
         # ontology graph.
         predicates_used = set()
-        for _, pred, _ in self.model.instance_graph.triples(
-            (None, None, self.uri)
-        ):
+        for _, pred, _ in self.model.instance_graph.triples((None, None, self.uri)):
             predicates_used.add(pred)
         for pred in predicates_used:
             self.model.get_predicate(pred).parse_ontology()
 
         inferred_pairs: List[Tuple[URIRef, URIRef]] = []
-        for subj, pred, _ in self.model.instance_graph.triples(
-            (None, None, self.uri)
-        ):
+        for subj, pred, _ in self.model.instance_graph.triples((None, None, self.uri)):
             for equiv_pred in self.model.ontology_graph.objects(
                 pred, owl_equivalent_property
             ):
@@ -1384,9 +1382,7 @@ class SemanticLiteral(SemanticObject):
                     inferred_pairs.append((equiv_pred, subj))
 
         # Direct incoming edges.
-        for subj, pred, _ in self.model.instance_graph.triples(
-            (None, None, self.uri)
-        ):
+        for subj, pred, _ in self.model.instance_graph.triples((None, None, self.uri)):
             if self._is_class_uri(subj):
                 subj_instance = self.model.get_type(subj)
             else:
@@ -1452,7 +1448,8 @@ class SemanticModel:
       (:class:`SemanticInstance`, :class:`SemanticType`, etc.) around RDF resources.
     - Querying and filtering: SPARQL CONSTRUCT queries via :meth:`filter_graph`,
       with optional BFS/DFS traversal and triple/node limits.
-    - Visualization: :meth:`visualize` renders the instance graph with Graphviz.
+    - Visualization: :meth:`visualize` renders the instance graph with Graphviz
+      (pygraphviz 2.0+ in-process, or system Graphviz as a fallback).
     - Reasoning and serialization: :meth:`reason` adds inferred triples;
       :meth:`serialize` writes both graphs to Turtle files.
 
@@ -1481,7 +1478,6 @@ class SemanticModel:
             dir_conf: Directory configuration for file storage
         """
         if verbose is not None:
-            from twin4build.utils.deprecation import deprecate_name
 
             deprecate_name("verbose=", "LOGGER.verbose")
             LOGGER.verbose = verbose
@@ -2454,7 +2450,11 @@ class SemanticModel:
         if include_blank_nodes:
             typed_subjects = set(self._instance_graph.subjects(RDF.type, None))
             for s, p, o in self._instance_graph.triples((None, None, None)):
-                if isinstance(o, rdflib.term.BNode) and o not in typed_subjects and o not in processed_instances:
+                if (
+                    isinstance(o, rdflib.term.BNode)
+                    and o not in typed_subjects
+                    and o not in processed_instances
+                ):
                     inst_obj = self.get_instance(o)
                     instances.append(inst_obj)
                     processed_instances.add(o)
@@ -2972,71 +2972,9 @@ class SemanticModel:
         dot_filename = os.path.join(dirname, "object_graph.dot")
         dg.write(dot_filename)
 
-        ### ccomps ###
         dirname_ccomps, _ = self.get_dir(folder_list=["graphs", "temp", "ccomps"])
-        dot_filename_ccomps = os.path.join(dirname_ccomps, "object_graph_ccomps.dot")
         del_dir(dirname_ccomps)
-        app_path = shutil.which("ccomps")
-        assert app_path is not None, "ccomps not found"
-        args = [app_path, "-x", f"-o{dot_filename_ccomps}", f"{dot_filename}"]
-        subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        ### dot ###
-        # Get all filenames generated in the folder dirname
-        app_path = shutil.which("dot")
-        assert app_path is not None, "dot not found. Is Graphviz installed?"
-        filenames = []
-        for filename in os.listdir(dirname_ccomps):
-            file_path = os.path.join(dirname_ccomps, filename)
-            if os.path.isfile(file_path):
-                dot_filename_ccomps = file_path
-                dot_filename_dot = os.path.join(
-                    dirname_ccomps, filename.replace("ccomps", "dot")
-                )
-                dot_filename_ccomps_output = dot_filename_ccomps.replace(
-                    ".dot", f".{format}"
-                )
-                args = [
-                    app_path,
-                    "-q",
-                    f"-o{dot_filename_dot}",
-                    f"{dot_filename_ccomps}",
-                ]
-                subprocess.run(
-                    args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-                if generate_subgraphs:
-                    args = [
-                        app_path,
-                        f"-T{format}",
-                        "-q",
-                        f"-o{dot_filename_ccomps_output}",
-                        f"{dot_filename_ccomps}",
-                    ]
-                    subprocess.run(
-                        args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                    )
-                filenames.append(dot_filename_dot)
-
-        dot_filename_ccomps = os.path.join(dirname, "object_graph_ccomps_joined.dot")
-        with open(dot_filename_ccomps, "wb") as wfd:
-            for f in filenames:
-                with open(f, "rb") as fd:
-                    shutil.copyfileobj(fd, wfd)
-
-        ### gvpack ###
-        dot_filename_gvpack = os.path.join(dirname, "object_graph_gvpack.dot")
-        app_path = shutil.which("gvpack")
-        assert app_path is not None, "gvpack not found"
-        args = [
-            app_path,
-            "-array3",
-            f"-o{dot_filename_gvpack}",
-            f"{dot_filename_ccomps}",
-        ]
-        subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        ### neato ###
         # Clean stale output files from previous runs (e.g. .svg when now rendering .png)
         graphs_dir, _ = self.get_dir(folder_list=["graphs"])
         for old_file in os.listdir(graphs_dir):
@@ -3048,21 +2986,15 @@ class SemanticModel:
         semantic_model_output, _ = self.get_dir(
             folder_list=["graphs"], filename=f"semantic_model.{format}"
         )
-        app_path = shutil.which("neato")
-        assert app_path is not None, "neato not found"
-        args = [
-            app_path,
-            f"-T{format}",
-            "-n2",
-            "-Gsize=10!",
-            f"-Gdpi={dpi}",
-            "-Grankdir=RL",
-            "-q",
-            # "-v", # verbose
-            f"-o{semantic_model_output}",
-            f"{dot_filename_gvpack}",
-        ]
-        subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        render_dot_graph(
+            dot_filename=dot_filename,
+            output_path=semantic_model_output,
+            format=format,
+            dpi=dpi,
+            generate_subgraphs=generate_subgraphs,
+            temp_dir=dirname,
+            subgraph_dir=dirname_ccomps,
+        )
 
     def parse_spreadsheet(self, spreadsheet, mappings_dir=None):
         """Parse spreadsheet into RDF graph using brickify tool"""
@@ -3245,7 +3177,9 @@ class SemanticModel:
             for subj, _, obj in self._instance_graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
 
-        LOGGER.info("Added number of symmetric triples: %d", len(new_triples) - n_triples)
+        LOGGER.info(
+            "Added number of symmetric triples: %d", len(new_triples) - n_triples
+        )
         n_triples = len(new_triples)
 
         # Handle transitive properties

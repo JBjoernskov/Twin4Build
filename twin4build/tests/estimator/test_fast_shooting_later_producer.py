@@ -1,5 +1,5 @@
 """A stateless composable producer that executes AFTER its consumer (the cut
-edge of a cycle) must be part of the composed map's influence cone.
+edge of a cycle) must be part of the functional map's influence cone.
 
 Regression: ``OneStepComposer._influence_cone`` only followed producers that
 execute *earlier* than the consumer, so a stateless component on the cut edge
@@ -61,12 +61,12 @@ class TestLaterProducerInCone(unittest.TestCase):
     def setUpClass(cls):
         cls.model, cls.pid, cls.plant, cls.sensor = build_loop()
         end = START + datetime.timedelta(hours=24)
-        sim = tb.Simulator(cls.model, execution_mode="composed")
+        sim = tb.Simulator(cls.model, execution_mode="functional")
         sim.simulate(start_time=[START], end_time=[end], step_size=STEP, show_progress_bar=False)
         y = cls.plant.output["outputSignal"].history().detach().flatten().numpy()
         index = pd.date_range(start=START, periods=len(y), freq=f"{STEP}s")
         cls.sensor.df = pd.DataFrame({"value": y + 0.01 * np.random.default_rng(0).standard_normal(len(y))}, index=index)
-        cls.estimator = tb.Estimator(tb.Simulator(cls.model, execution_mode="composed"))
+        cls.estimator = tb.Estimator(tb.Simulator(cls.model, execution_mode="functional"))
         cls.estimator.estimate(
             parameters=[(cls.pid, "kp", 1.0, 0.1, 10.0)],
             measurements=[(cls.sensor, 0.05)],
@@ -79,7 +79,7 @@ class TestLaterProducerInCone(unittest.TestCase):
         )
 
     def test_plant_is_composed_whatever_the_cut(self):
-        fast = self.estimator._fast_obj
+        fast = self.estimator._functional_objective
         self.assertIsNotNone(fast, "loop through a stateless later producer did not compose")
         composer = fast.composer
         self.assertIn(self.plant.id, {c.id for c in composer.cone})
@@ -87,8 +87,8 @@ class TestLaterProducerInCone(unittest.TestCase):
         # composable, theta-dependent signal) must not have been frozen:
         # captured keys are (consumer, port), so only the schedule-fed
         # setpoint may appear for the PID.
-        self.assertNotIn((self.pid.id, "actualValue"), composer._captured_keys)
-        self.assertNotIn((self.plant.id, "inputSignal"), composer._captured_keys)
+        self.assertNotIn((self.pid.id, "actualValue"), composer._exogenous_keys)
+        self.assertNotIn((self.plant.id, "inputSignal"), composer._exogenous_keys)
         if composer.pos[self.plant.id] > composer.pos[self.pid.id]:
             # The cut fell on plant -> pid: the plant is a LATER producer and
             # must be threaded as a feedback lag variable.
@@ -96,10 +96,10 @@ class TestLaterProducerInCone(unittest.TestCase):
 
     def test_value_and_gradient_parity(self):
         est = self.estimator
-        fast = est._fast_obj
+        fast = est._functional_objective
 
         def ev(theta, use_fast):
-            est._fast_obj = fast if use_fast else None
+            est._functional_objective = fast if use_fast else None
             est._mse_scaled = 1.0
             try:
                 z = torch.tensor(theta, dtype=torch.float64, requires_grad=True)
@@ -107,7 +107,7 @@ class TestLaterProducerInCone(unittest.TestCase):
                 (g,) = torch.autograd.grad(f, z)
                 return float(f.detach()), g.numpy()
             finally:
-                est._fast_obj = fast
+                est._functional_objective = fast
                 est._mse_scaled = None
 
         x0 = np.asarray(est._x0_norm, dtype=np.float64)

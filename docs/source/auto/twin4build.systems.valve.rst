@@ -4,10 +4,10 @@ valve
 Modules
 -------
 
-valve\_torch\_system module
----------------------------
+twin4build.systems.valve.valve\_system module
+---------------------------------------------
 
-.. automodule:: twin4build.systems.valve.valve_torch_system
+.. automodule:: twin4build.systems.valve.valve_system
    :members:
    :show-inheritance:
    :undoc-members:
