@@ -420,3 +420,56 @@ class TestTensorParameter(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestParameterDeepcopy(unittest.TestCase):
+    """``copy.deepcopy`` must keep the physical value, bounds, ``n_c`` and scaling."""
+
+    def _check(self, p):
+        import copy
+        import pickle
+
+        for q in (copy.deepcopy(p), pickle.loads(pickle.dumps(p))):
+            self._check_one(p, q)
+
+    def _check_one(self, p, q):
+        self.assertIsInstance(q, Parameter)
+        torch.testing.assert_close(q.get(), p.get())
+        torch.testing.assert_close(q.data, p.data)
+        torch.testing.assert_close(q.min_value, p.min_value)
+        torch.testing.assert_close(q.max_value, p.max_value)
+        self.assertEqual(q._n_c, p._n_c)
+        self.assertEqual(q._scaling, p._scaling)
+        self.assertEqual(q.requires_grad, p.requires_grad)
+        q.set(torch.zeros_like(q.data))
+        self.assertFalse(
+            torch.equal(q.data, p.data), "copy must not alias the original"
+        )
+
+    def test_unbounded_value_survives_deepcopy(self):
+        self._check(Parameter(torch.tensor(10.0), requires_grad=False))
+
+    def test_bounded_value_survives_deepcopy(self):
+        self._check(
+            Parameter(
+                torch.tensor(10.0), min_value=0.0, max_value=100.0, requires_grad=True
+            )
+        )
+
+    def test_batched_and_log_scaled_survive_deepcopy(self):
+        self._check(
+            Parameter(torch.tensor([2.0, 3.0]), min_value=1.0, max_value=4.0, n_c=2)
+        )
+        self._check(
+            Parameter(torch.tensor(1e5), min_value=1e3, max_value=1e7, scaling="log")
+        )
+
+    def test_deepcopy_of_a_component_keeps_its_parameters(self):
+        import copy
+
+        import twin4build as tb
+
+        detector = tb.OccupancyDetectorSystem(threshold=1, steepness=10, id="det")
+        clone = copy.deepcopy(detector)
+        self.assertAlmostEqual(float(clone.steepness.get()), 10.0)
+        self.assertAlmostEqual(float(clone.threshold.get()), 1.0)

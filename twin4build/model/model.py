@@ -1479,6 +1479,10 @@ class Model:
         "twin4build.systems.building_space.building_space_system.BuildingSpaceSystem": (),
         "twin4build.systems.controller.setpoint_controller.pid_controller"
         ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
+        "twin4build.systems.controller.rulebased_controller.on_off_controller"
+        ".on_off_controller_system.OnOffControllerSystem": ("is_reverse",),
+        "twin4build.systems.controller.rulebased_controller.on_off_controller"
+        ".smooth_on_off_controller_system.SmoothOnOffControllerSystem": ("is_reverse",),
     }
 
     def _copy_init_attrs(self, meta: Any, source: Any) -> None:

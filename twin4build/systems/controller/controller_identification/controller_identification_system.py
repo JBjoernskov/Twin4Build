@@ -742,9 +742,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 (self, f"{target_prefix}.output_min", 0.5, 0.0, 1.0, "private")
             )
         if hasattr(target, "off_value"):
-            params.append((self, f"{target_prefix}.offValue", 0.0, 0, 1.0, "private"))
+            params.append((self, f"{target_prefix}.off_value", 0.0, 0, 1.0, "private"))
         if hasattr(target, "on_value"):
-            params.append((self, f"{target_prefix}.onValue", 1.0, 0.0, 1.0, "private"))
+            params.append((self, f"{target_prefix}.on_value", 1.0, 0.0, 1.0, "private"))
         # ``steepness`` is intentionally NOT estimated.  It is a numerical
         # hyperparameter that controls the smoothness of the soft on/off
         # transition; the underlying physical behavior is binary.  The
