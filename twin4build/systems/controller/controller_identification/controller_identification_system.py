@@ -10,6 +10,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.rgetattr import rgetattr
 from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system import (
     SATCompensatedControllerSystem,
 )
@@ -475,7 +476,24 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                     for param in ctrl._config["parameters"]:
                         config_params.append(f"candidate_{a}_{c}.{param}")
         self._config = {"parameters": config_params}
-
+        # ``forward`` theta contract: every tunable the pure step reads, keyed
+        # by the attribute path ``_forward_params`` / the composer resolve via
+        # ``rgetattr`` (selection weights, gate parameters, candidate gains).
+        names: List[str] = []
+        for a in range(n_actuators):
+            names += [f"alpha_{a}", f"beta_{a}", f"gamma_{a}"]
+            if self._has_cascade:
+                names.append(f"beta_b_{a}")
+            names += [f"gamma_gate_{a}", f"alpha_gate_{a}", f"default_output_{a}"]
+            gate = getattr(self, f"gate_{a}")
+            names += [f"gate_{a}.{n}" for n in getattr(gate, "PARAM_NAMES", ())]
+            for c in range(self.n_candidates):
+                ctrl = getattr(self, f"candidate_{a}_{c}")
+                names += [
+                    f"candidate_{a}_{c}.{n}" for n in getattr(ctrl, "PARAM_NAMES", ())
+                ]
+        self.PARAM_NAMES = tuple(names)
+        self._state_slices = None
         self._built = True
 
     @property
@@ -814,7 +832,10 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         # Initialize gate sub-systems
         for a in range(self.n_actuators):
             self._get_gate(a).initialize(start_time, end_time, step_size)
-
+        # Identity-stable sample time for ``forward``'s coefficient caches
+        # (the candidates key their caches on the sample-time object).
+        self._sample_time = self._scalar_sample_time(step_size)
+        self._state_slices = self._compute_state_slices()
         self.INITIALIZED = True
 
     def _compute_weighted_signals(self, actuator: int) -> Tuple[torch.Tensor, ...]:
@@ -866,95 +887,176 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
-        """Perform one simulation step.
+        """Thin port-I/O wrapper around :meth:`forward` (the single source of
+        truth for the identification math: weighted signals, candidate
+        controllers, alpha blending and the on/off gate)."""
+        inputs = {
+            "sensorValue": self.input["sensorValue"].get(),
+            "setpointValue": self.input["setpointValue"].get(),
+            "onOffSignal": self.input["onOffSignal"].get(),
+        }
+        x = self.get_state() if self.state_size() > 0 else None
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._sample_time
+        )
+        if x_next is not None:
+            self.set_state(x_next)
+        self.output["inputSignal"].set(outs["inputSignal"], step_index)
 
-        For each actuator:
-        1. Compute per-actuator weighted setpoint and feedback signals
-        2. Run all candidate controllers with actuator-specific error signal
-        3. Combine outputs using normalized alpha weights
-        """
-        n_s = self.input["sensorValue"].n_s
-        n_c = self.input["sensorValue"].n_c
+    # -- composed-map support ------------------------------------------------
+    # Continuous state is the concatenation of the candidate controllers'
+    # ``tps.State`` memories (the order :meth:`System.get_state` produces);
+    # the gates are stateless.  ``forward`` is functorch-safe: it only reads
+    # ``params`` (never ``self.<parameter>``) and the structural attributes
+    # fixed at ``initialize`` (candidate types, state slices, gate wiring).
+    SUPPORTS_TRANSFORM_MODE = True
 
-        # Process each actuator
-        actuator_outputs = torch.zeros(n_s, n_c, self.n_actuators, dtype=tps.float_dtype())
-
+    def _compute_state_slices(self) -> Dict[Tuple[int, int], Tuple[int, int]]:
+        """``(actuator, candidate) -> (offset, width)`` into the concatenated
+        state.  Each candidate's states are contiguous in
+        :meth:`collect_states` (it recurses child by child), so the slice is
+        located by identity of the candidate's first state object."""
+        all_states = self.collect_states()
+        offsets = []
+        acc = 0
+        for st in all_states:
+            offsets.append(acc)
+            acc += int(st.n_v)
+        slices = {}
         for a in range(self.n_actuators):
-            # Compute per-actuator weighted signals (each actuator has own beta/gamma/beta_b)
-            signals = self._compute_weighted_signals(a)
-            weighted_setpoint = signals[0]
-            weighted_feedback = signals[1]
-            weighted_feedback_b = signals[2] if len(signals) > 2 else None
+            for c in range(self.n_candidates):
+                own = self._get_candidate(a, c).collect_states()
+                width = sum(int(st.n_v) for st in own)
+                if width == 0:
+                    slices[(a, c)] = (acc, 0)
+                    continue
+                first = next(i for i, st in enumerate(all_states) if st is own[0])
+                slices[(a, c)] = (offsets[first], width)
+        return slices
 
-            # Run all candidate controllers and collect outputs
+    @staticmethod
+    def _sub_params(sub, prefix: str, params: dict) -> dict:
+        """Physical-parameter dict of an owned sub-system (candidate or gate)
+        from the composite ``params`` (keys ``"<prefix>.<name>"``), falling
+        back to the sub-system's own ``tps.Parameter`` values."""
+        out = {}
+        for name in getattr(sub, "PARAM_NAMES", ()):
+            key = f"{prefix}.{name}"
+            out[name] = params[key] if key in params else rgetattr(sub, name).get()
+        return out
+
+    def _resolve_forward_params(self, params: dict, transform_mode) -> dict:
+        """Per-sub-system params dicts, identity-cached on ``params`` so the
+        candidates' own identity-keyed caches (PID coefficients) keep hitting
+        across a sequential rollout."""
+        if not transform_mode:
+            cache = getattr(self, "_fwd_sub_cache", None)
+            if cache is not None and cache[0] is params:
+                return cache[1]
+        sub = {}
+        for a in range(self.n_actuators):
+            sub[("gate", a)] = self._sub_params(self._get_gate(a), f"gate_{a}", params)
+            for c in range(self.n_candidates):
+                sub[(a, c)] = self._sub_params(
+                    self._get_candidate(a, c), f"candidate_{a}_{c}", params
+                )
+        if not transform_mode:
+            self._fwd_sub_cache = (params, sub)
+        return sub
+
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+        """Pure one-step controller identification
+        ``(state, inputs, params) -> (new_state, outputs)``.
+
+        ``inputs`` holds the Vector ports ``sensorValue`` ``(..., n_sensors)``,
+        ``setpointValue`` ``(..., n_setpoints)`` and ``onOffSignal``
+        ``(..., n_on_off_signals)``; ``x`` the concatenated candidate memories
+        ``(..., D)`` (``None`` when every candidate is stateless); ``params``
+        a dict for :attr:`PARAM_NAMES`.  For each actuator: the beta / gamma
+        weighted feedback and setpoint drive every candidate's ``forward``,
+        the outputs are alpha-blended, and the gamma-gate weighted on/off
+        signal (normalised with the rewire-populated bounds) passes through
+        the actuator's gate.  Returns ``(x_next, {"inputSignal": (...,
+        n_actuators)})``.
+        """
+        if self._state_slices is None:
+            self._state_slices = self._compute_state_slices()
+        sub = self._resolve_forward_params(params, transform_mode)
+        sensor_values = inputs["sensorValue"]
+        setpoint_values = inputs["setpointValue"]
+        on_off = inputs["onOffSignal"]
+        oo_min = self.on_off_signal_norm_min.to(device=on_off.device, dtype=on_off.dtype)
+        oo_max = self.on_off_signal_norm_max.to(device=on_off.device, dtype=on_off.dtype)
+        on_off_norm = (on_off - oo_min) / (oo_max - oo_min).clamp(min=1e-6)
+
+        new_state_parts = []  # (offset, tensor)
+        actuator_outputs = []
+        for a in range(self.n_actuators):
+            gamma = params[f"gamma_{a}"]
+            gamma_norm = gamma / (torch.sum(gamma) + 1e-8)
+            beta = params[f"beta_{a}"]
+            beta_norm = beta / (torch.sum(beta) + 1e-8)
+            weighted_setpoint = torch.sum(gamma_norm * setpoint_values, dim=-1)
+            weighted_feedback = torch.sum(beta_norm * sensor_values, dim=-1)
+            weighted_feedback_b = None
+            if self._has_cascade:
+                beta_b = params[f"beta_b_{a}"]
+                beta_b_norm = beta_b / (torch.sum(beta_b) + 1e-8)
+                weighted_feedback_b = torch.sum(beta_b_norm * sensor_values, dim=-1)
+
             candidate_outputs = []
             for c in range(self.n_candidates):
                 ctrl = self._get_candidate(a, c)
                 ctype = self._candidate_types[c]
-
                 if ctype == self.CTRL_CASCADE:
-                    ctrl.input["setpointValue_a"].set(weighted_setpoint, step_index)
-                    ctrl.input["actualValue_a"].set(weighted_feedback, step_index)
-                    ctrl.input["actualValue_b"].set(weighted_feedback_b, step_index)
-                elif ctype == self.CTRL_SETPOINT:
-                    ctrl.input["setpointValue"].set(weighted_setpoint, step_index)
-                    ctrl.input["actualValue"].set(weighted_feedback, step_index)
-
-                ctrl.do_step(second_time, date_time, step_size, step_index)
-                candidate_outputs.append(ctrl.output["inputSignal"].get())
-
-            # Stack outputs: (n_candidates, n_s, n_c)
-            candidate_outputs = torch.stack(candidate_outputs, dim=0)
-
-            # Flatten to (n_candidates, n_s * n_c) for einsum
-            orig_shape = candidate_outputs.shape[1:]  # (n_s, n_c) or similar
-            candidate_outputs_flat = candidate_outputs.reshape(self.n_candidates, -1)
-
-            # Ratio-normalised weighted sum of candidate outputs
-            alpha = self._get_alpha_vector(a)
+                    ctrl_inputs = {
+                        "setpointValue_a": weighted_setpoint,
+                        "actualValue_a": weighted_feedback,
+                        "actualValue_b": weighted_feedback_b,
+                    }
+                else:
+                    ctrl_inputs = {
+                        "setpointValue": weighted_setpoint,
+                        "actualValue": weighted_feedback,
+                    }
+                offset, width = self._state_slices[(a, c)]
+                x_c = x[..., offset : offset + width] if (x is not None and width) else None
+                kwargs = (
+                    {"transform_mode": transform_mode}
+                    if getattr(ctrl, "SUPPORTS_TRANSFORM_MODE", False)
+                    else {}
+                )
+                x_c_next, out_c = ctrl.forward(
+                    x_c, ctrl_inputs, sub[(a, c)], sample_time, **kwargs
+                )
+                if width:
+                    new_state_parts.append((offset, x_c_next))
+                candidate_outputs.append(out_c["inputSignal"])
+            stacked = torch.stack(candidate_outputs, dim=0)  # (n_cand, ...)
+            alpha = params[f"alpha_{a}"]
             alpha_norm = alpha / (torch.sum(alpha) + 1e-8)
-            combined_output = torch.einsum(
-                "c,cb->b", alpha_norm, candidate_outputs_flat
-            )
+            combined = torch.einsum("c,c...->...", alpha_norm, stacked)
 
-            # Reshape back
-            combined_output = combined_output.reshape(orig_shape)
-
-            # On/off-signal-based gating with default output.  The gate
-            # input bus (``onOffSignal``) is structurally distinct from
-            # the PI-error setpoint bus (``setpointValue``), so the
-            # rewire pipeline can prune the latter without mutating the
-            # former.  Each onOffSignal slot is first mapped to a
-            # unit-free ``[0, 1]`` range using per-slot min/max bounds
-            # (populated from data by
-            # ``_populate_on_off_signal_norm_bounds`` -- defaults to
-            # identity).  This decouples the gate threshold/band x0
-            # from physical units so the same seed (e.g.,
-            # ``threshold=0.1, band=0.8``) can be used across rooms /
-            # signal types without manual tuning.
-            on_off_signal_values = self.input["onOffSignal"].get()  # (n_s, n_c, n_on_off_signals)
-            oo_range = (
-                self.on_off_signal_norm_max - self.on_off_signal_norm_min
-            ).clamp(min=1e-6)
-            on_off_signal_values_norm = (
-                on_off_signal_values - self.on_off_signal_norm_min
-            ) / oo_range
-            gamma_gate = self._get_gamma_gate_vector(a)
+            gamma_gate = params[f"gamma_gate_{a}"]
             gamma_gate_norm = gamma_gate / (torch.sum(gamma_gate) + 1e-8)
-            gate_input = torch.sum(
-                gamma_gate_norm * on_off_signal_values_norm, dim=-1
+            gate_input = torch.sum(gamma_gate_norm * on_off_norm, dim=-1)
+            gate = self._get_gate(a)
+            _, gate_out = gate.forward(
+                None, {gate.INPUT_PORT: gate_input}, sub[("gate", a)], sample_time
             )
+            gate_signal = gate_out[gate.OUTPUT_PORT]
+            alpha_g = params[f"alpha_gate_{a}"]
+            g = (1 - alpha_g) + alpha_g * gate_signal
+            default_out = params[f"default_output_{a}"]
+            actuator_outputs.append(g * combined + (1 - g) * default_out)
 
-            gate_signal = self._get_gate(a).compute_gate(gate_input)
-
-            alpha_g = self._get_alpha_gate(a)
-            gate = (1 - alpha_g) + alpha_g * gate_signal
-
-            default_out = self._get_default_output(a)
-            actuator_outputs[..., a] = gate * combined_output + (1 - gate) * default_out
-
-        # Set final output - shape (n_s, n_c, n_actuators)
-        self.output["inputSignal"].set(actuator_outputs, step_index)
+        output = torch.stack(actuator_outputs, dim=-1)
+        if new_state_parts:
+            new_state_parts.sort(key=lambda t: t[0])
+            x_next = torch.cat([t for _, t in new_state_parts], dim=-1)
+        else:
+            x_next = x
+        return x_next, {"inputSignal": output}
 
     def compute_binarization_penalty(self) -> torch.Tensor:
         """Compute binarization penalty P(x) = x(1-x) for all selection weights.
