@@ -191,15 +191,29 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             downstream = _outgoing_components(cits, "inputSignal")
             self.assertTrue(any(isinstance(c, SensorSystem) for c in downstream))
         self.assertEqual(sorted(gates), ["R01_SpFCI01_C", "R02_SpFCI01_C", "R02_SpFCI02_C"])
-        # ... and each AHU damper Vector gets exactly one input per room slot,
-        # sourced from a controller.  Which VAV of a room drives which of the
-        # two damper vectors is up to the MILP, so only the per-slot
-        # invariant is asserted.
-        for port in ("supplyDamperPosition", "exhaustDamperPosition"):
-            sources = incoming(ahu, port)
-            self.assertEqual(len(sources), 2, port)  # one per room
-            for src in sources:
-                self.assertIsInstance(src, ControllerIdentificationPISystem)
+        # ... and the AHU damper slot of each room is driven by exactly one
+        # of that room's controllers (one connection per Vector slot).
+        drivers = [c for c in cits_list if ahu in _outgoing_components(c, "inputSignal")]
+        self.assertEqual(len(drivers), 2)
+        # ... and both damper ports of a zone slot are driven by the SAME
+        # controller.  Constraint 4 of the MILP bounds each port on its own,
+        # so R02's two VAVs could split that zone's ports between them, an
+        # equally optimal solution that solver tie-breaking picked on some
+        # platforms (three drivers instead of two); the slot-coherence
+        # constraint (4b) rules it out for every solver.
+        driver_by_slot = {}
+        for cp in ahu.connects_at:
+            if cp.input_port not in ("supplyDamperPosition", "exhaustDamperPosition"):
+                continue
+            for conn in cp.connects_system_through:
+                slot = int(cp.input_port_index[conn])
+                driver_by_slot.setdefault(slot, {})[cp.input_port] = conn.connects_system
+        self.assertEqual(len(driver_by_slot), 2)  # one slot per room
+        for slot, ports in driver_by_slot.items():
+            self.assertEqual(
+                set(ports), {"supplyDamperPosition", "exhaustDamperPosition"}, slot
+            )
+            self.assertIs(ports["supplyDamperPosition"], ports["exhaustDamperPosition"])
 
         outdoor = by_cls["OutdoorEnvironmentSystem"][0]
         self.assertEqual(outdoor.uuid_outdoorTemperature, "WS01_TOUT")

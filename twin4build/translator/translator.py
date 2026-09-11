@@ -1812,6 +1812,59 @@ class Translator:
                 LinearConstraint(A_one_input, b_one_input_l, b_one_input_u)
             )
 
+        # 4b. Slot-coherence constraints: a source with candidate edges into
+        # several ports of the same target slot (one damper command feeding
+        # both ``supplyDamperPosition[k]`` and ``exhaustDamperPosition[k]``)
+        # is selected for all of those ports or for none.  Constraint 4
+        # bounds each port on its own, so two candidate sources for one zone
+        # slot could split that zone's ports between them: an equally optimal
+        # solution the solver picks by tie-breaking, and one that wires two
+        # controllers to a single zone.  Per port the edges are summed, so a
+        # port with several candidate edges from the same source is not
+        # forced off by a sibling with one.
+        conn_by_source_slot = {}
+        for e_idx, (
+            source_component,
+            target_component,
+            _,
+            target_key,
+            _,
+            input_port_index,
+        ) in E_idx_to_conn.items():
+            if input_port_index is None:
+                continue
+            by_key = conn_by_source_slot.setdefault(
+                (source_component, target_component, input_port_index), {}
+            )
+            by_key.setdefault(target_key, []).append(e_idx)
+
+        slot_coherence_constraints = []
+        for (_source, _target, slot_idx), by_key in conn_by_source_slot.items():
+            if len(by_key) < 2:
+                continue
+            first_key, *other_keys = list(by_key)
+            for other_key in other_keys:
+                row = np.zeros(total_vars)
+                for e_idx in by_key[first_key]:
+                    row[e_idx] += 1
+                for e_idx in by_key[other_key]:
+                    row[e_idx] -= 1
+                slot_coherence_constraints.append(row)
+                constraint_info.append(
+                    f"sum(E[{first_key}]) - sum(E[{other_key}]) = 0 "
+                    f"(slot {slot_idx} coherence)"
+                )
+
+        if slot_coherence_constraints:
+            A_slot_coherence = np.vstack(slot_coherence_constraints)
+            constraints_list.append(
+                LinearConstraint(
+                    A_slot_coherence,
+                    np.zeros(len(slot_coherence_constraints)),
+                    np.zeros(len(slot_coherence_constraints)),
+                )
+            )
+
         # 5. Modeled-identity mutex constraints.
         #
         # Two kinds of mutual exclusion apply here:
