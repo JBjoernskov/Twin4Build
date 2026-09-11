@@ -37,6 +37,7 @@ from twin4build.systems.controller.setpoint_controller.pid_controller.pid_contro
 from twin4build.translator.translator import (
     ModeledNode,
     Node,
+    NoStepRule,
     SetStepRule,
     Predicate,
     SignaturePattern,
@@ -244,7 +245,7 @@ def brick_signature_pattern_vav_room():
     return sp
 
 
-def brick_signature_pattern_space_heater_room():
+def brick_signature_pattern_space_heater_room(explicit_equipment: bool = True):
     """BRICK space-heater pattern: the thermostatic radiator valve loop.
 
     The heating mirror image of :func:`brick_signature_pattern_vav_room`.
@@ -282,15 +283,23 @@ def brick_signature_pattern_space_heater_room():
     sensor / setpoint / mode points are shared with the VAV loops serving
     the same room, so putting them in the group would make those
     controllers mutually exclusive.
+
+    ``explicit_equipment=False`` is the shape without a radiator node: the
+    command hangs directly off the room, guarded against the equipment
+    shape by a ``NoStepRule``.  Its modeled identity is ``[heating_cmd,
+    timeseries_id]``, distinct from the radiator (``[room, heating_cmd]``),
+    the valve (``[room, heating_cmd, externalref]``) and the command sensor
+    (``[heating_cmd, externalref]``) that all bind the same command.
     """
     # Declared first on purpose: the matcher seeds each walk at the first
     # node of the pattern graph (see the VAV pattern's note).
-    space_heater = Node(cls=(
+    space_heater_classes = (
             core.namespace.BRICK.Space_Heater,
             core.namespace.BRICK.Radiator,
             core.namespace.BRICK.Radiant_Panel,
             core.namespace.BRICK.Baseboard_Radiator,
-        ))
+        )
+    space_heater = Node(cls=space_heater_classes)
     room = Node(cls=(
             core.namespace.BRICK.Room,
             core.namespace.BRICK.HVAC_Zone,
@@ -310,8 +319,23 @@ def brick_signature_pattern_space_heater_room():
         (core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo)
     )
 
-    sp = SignaturePattern(id="controller_identification_pi_space_heater_room_brick")
-    sp.add_rule(StepRule(subject=space_heater, object=room, predicate=located_in))
+    suffix = "" if explicit_equipment else "_room_command"
+    sp = SignaturePattern(
+        id=f"controller_identification_pi_space_heater_room_brick{suffix}"
+    )
+    if explicit_equipment:
+        sp.add_rule(StepRule(subject=space_heater, object=room, predicate=located_in))
+    else:
+        # No radiator node: the command hangs off the room.  ``space_heater``
+        # then *is* the room for the rules below.
+        space_heater = room
+        sp.add_rule(
+            NoStepRule(
+                subject=Node(cls=space_heater_classes),
+                object=actuators,
+                predicate=core.namespace.BRICK.hasPoint,
+            )
+        )
     sp.add_rule(
         SetStepRule(subject=room, object=sensors, predicate=core.namespace.BRICK.hasPoint)
     )
@@ -350,13 +374,22 @@ def brick_signature_pattern_space_heater_room():
         setpoints, "measuredValue", "setpointValue", input_port_index=setpoints
     )
     sp.add_connection(gates, "measuredValue", "onOffSignal", input_port_index=gates)
-    ModeledNode([space_heater, actuators])
+    if explicit_equipment:
+        ModeledNode([space_heater, actuators])
+    else:
+        # Distinct from the radiator's ``[room, cmd]``, the valve's ``[room,
+        # cmd, externalref]`` and the command sensor's ``[cmd, externalref]``
+        # buckets on the same command.
+        ModeledNode([actuators, timeseries_id])
     return sp
 
 
 ControllerIdentificationPISystem.add_signature_pattern(brick_signature_pattern_vav_room())
 ControllerIdentificationPISystem.add_signature_pattern(
-    brick_signature_pattern_space_heater_room()
+    brick_signature_pattern_space_heater_room(explicit_equipment=True)
+)
+ControllerIdentificationPISystem.add_signature_pattern(
+    brick_signature_pattern_space_heater_room(explicit_equipment=False)
 )
 
 

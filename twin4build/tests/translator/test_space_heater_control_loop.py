@@ -9,6 +9,7 @@ must translate into the same closed loop the dampers get::
 
     CITS(zone temperature vs setpoint, gated by the flow setpoint)
         -> Heating_Command (inputSignal)
+        -> ValveSystem.valvePosition -> waterFlowRate
         -> SpaceHeaterSystem.waterFlowRate
         -> Power -> BuildingSpaceSystem.heatGain
 """
@@ -37,6 +38,7 @@ from twin4build.systems.controller.controller_identification.controller_identifi
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.space_heater.space_heater_system import SpaceHeaterSystem
+from twin4build.systems.valve.valve_system import ValveSystem
 from twin4build.tests.translator.test_brick14_bms_patterns import EX, _point, build_graph
 from twin4build.translator.translator import Translator
 
@@ -49,6 +51,7 @@ SYSTEMS = [
     BuildingSpaceSystem,
     AirHandlingUnitSystem,
     SpaceHeaterSystem,
+    ValveSystem,
     ControllerIdentificationPISystem,
     OutdoorEnvironmentSystem,
     SensorSystem,
@@ -124,15 +127,18 @@ class TestSpaceHeaterControlLoop(unittest.TestCase):
         # signal the damper loop is gated on.
         self.assertEqual(uuids("onOffSignal"), ["R01_SpFCI01_C"])
 
-    def test_radiator_is_driven_by_its_controller_and_heats_the_room(self):
+    def test_radiator_is_fed_by_the_valve_and_heats_the_room(self):
         heaters = self.model.get_components_by_class(SpaceHeaterSystem)
         self.assertEqual(len(heaters), 1, [h.id for h in heaters])
         heater = heaters[0]
         (water,) = incoming(heater, "waterFlowRate")
-        # Straight from the controller identified at the command URI, the
-        # same convention the AHU uses for the damper command.
-        self.assertIsInstance(water, ControllerIdentificationPISystem)
-        self.assertIn("MVV", water.id)
+        # Through the valve modelled on the command, which in turn reads
+        # the controller identified at that URI -- controller -> valve ->
+        # radiator, the water-side mirror of controller -> damper -> AHU.
+        self.assertIsInstance(water, ValveSystem)
+        (opening,) = incoming(water, "valvePosition")
+        self.assertIsInstance(opening, ControllerIdentificationPISystem)
+        self.assertIn("MVV", opening.id)
         (room_in,) = incoming(heater, "indoorTemperature")
         self.assertIsInstance(room_in, BuildingSpaceSystem)
         rooms = self.model.get_components_by_class(BuildingSpaceSystem)
@@ -171,8 +177,7 @@ class TestSpaceHeaterControlLoop(unittest.TestCase):
         # picked.
         heater = self.model.get_components_by_class(SpaceHeaterSystem)[0]
         self.assertEqual(
-            [type(x).__name__ for x in incoming(heater, "waterFlowRate")],
-            ["ControllerIdentificationPISystem"],
+            [type(x).__name__ for x in incoming(heater, "waterFlowRate")], ["ValveSystem"]
         )
 
 

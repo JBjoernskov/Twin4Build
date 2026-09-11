@@ -1561,6 +1561,16 @@ def _set_param(component: Any, attr: str, x0: float, lb: float, ub: float) -> No
     p = getattr(component, attr, None)
     if p is None:
         return
+    # Keep the seed strictly inside the bounds.  The callers guarantee
+    # ``lb <= x0 <= ub`` but allow equality (e.g. ``Ti_lb = Ti_x0`` when the
+    # seed sits at the sample-step floor); a log-scaled parameter written at
+    # its bound reads back one ulp outside it after the normalise /
+    # denormalise round trip, and the Estimator's strict ``x0 >= lb`` check
+    # then rejects the whole run.  A relative margin of 1e-6 is invisible to
+    # the identification and removes the edge.
+    margin = 1e-6 * max(abs(float(x0)), 1e-12)
+    lb = min(float(lb), float(x0) - margin)
+    ub = max(float(ub), float(x0) + margin)
     # Order matters: set bounds first, then write the physical value, so
     # the renormalization inside Parameter.set sees the new bounds.
     try:
