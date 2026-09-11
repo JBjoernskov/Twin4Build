@@ -244,7 +244,109 @@ def brick_signature_pattern_vav_room():
     return sp
 
 
+def brick_signature_pattern_space_heater_room():
+    """BRICK space-heater pattern: the thermostatic radiator valve loop.
+
+    The heating mirror image of :func:`brick_signature_pattern_vav_room`.
+    Where the VAV loop identifies *damper = PI(zone temperature setpoint -
+    zone temperature)*, this one identifies *valve = PI(...)* on the same
+    zone signals::
+
+        Space_Heater  feeds         Room
+        Room          hasPoint      Zone_Air_Temperature_Sensor   -> sensorValue
+        Room          hasPoint      Zone_Air_Temperature_Setpoint
+                                    (+ heating / cooling subclasses) -> setpointValue
+        Space_Heater  hasPoint      Heating_Command                -> actuator
+        Room          hasPoint      Operating_Mode_Status          -> onOffSignal
+
+    The gate bus carries the room's operating-mode status, the heating
+    counterpart of the VAV's supply-air-flow setpoint: a schedule-like
+    signal that says whether the loop is enabled, never a tracked setpoint.
+    A building whose graph has no such point simply gets no heating loop
+    here; and where the valve is in fact ungated the CITS can switch the
+    gate off on its own, because ``alpha_gate`` is estimated and drives the
+    gate factor to 1 when the signal carries no information.
+
+    Direct vs reverse action is not fixed by the pattern: the PI subclass
+    offers a reverse-acting and a direct-acting candidate and the alpha
+    weights select between them, so a radiator valve (opens when the room
+    is *below* setpoint) and a damper (opens when the room is *above* its
+    cooling setpoint) are both reachable.
+
+    The modeled identity is ``[space_heater, heating_cmd]``: the room's
+    sensor / setpoint / mode points are shared with the VAV loops serving
+    the same room, so putting them in the group would make those
+    controllers mutually exclusive.
+    """
+    # Declared first on purpose: the matcher seeds each walk at the first
+    # node of the pattern graph (see the VAV pattern's note).
+    space_heater = Node(cls=(
+            core.namespace.BRICK.Space_Heater,
+            core.namespace.BRICK.Radiator,
+            core.namespace.BRICK.Radiant_Panel,
+            core.namespace.BRICK.Baseboard_Radiator,
+        ))
+    room = Node(cls=(
+            core.namespace.BRICK.Room,
+            core.namespace.BRICK.HVAC_Zone,
+            core.namespace.BRICK.Enclosed_space,
+            core.namespace.BRICK.Open_space,
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
+        ))
+    sensors = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
+    setpoints = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Setpoint)
+    actuators = Node(cls=core.namespace.BRICK.Heating_Command)
+    gates = Node(cls=core.namespace.BRICK.Operating_Mode_Status)
+    externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    timeseries_id = Node(cls=core.namespace.XSD.string)
+    located_in = Predicate(
+        (core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo)
+    )
+
+    sp = SignaturePattern(id="controller_identification_pi_space_heater_room_brick")
+    sp.add_rule(StepRule(subject=space_heater, object=room, predicate=located_in))
+    sp.add_rule(
+        SetStepRule(subject=room, object=sensors, predicate=core.namespace.BRICK.hasPoint)
+    )
+    sp.add_rule(
+        SetStepRule(subject=room, object=setpoints, predicate=core.namespace.BRICK.hasPoint)
+    )
+    sp.add_rule(
+        SetStepRule(
+            subject=space_heater, object=actuators, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_rule(
+        SetStepRule(subject=room, object=gates, predicate=core.namespace.BRICK.hasPoint)
+    )
+    sp.add_rule(
+        StepRule(
+            subject=actuators,
+            object=externalref,
+            predicate=core.namespace.BRICKREF.hasExternalReference,
+        )
+    )
+    sp.add_rule(
+        StepRule(
+            subject=externalref,
+            object=timeseries_id,
+            predicate=core.namespace.BRICKREF.hasTimeseriesId,
+        )
+    )
+    sp.add_connection(sensors, "measuredValue", "sensorValue", input_port_index=sensors)
+    sp.add_connection(
+        setpoints, "measuredValue", "setpointValue", input_port_index=setpoints
+    )
+    sp.add_connection(gates, "measuredValue", "onOffSignal", input_port_index=gates)
+    ModeledNode([space_heater, actuators])
+    return sp
+
+
 ControllerIdentificationPISystem.add_signature_pattern(brick_signature_pattern_vav_room())
+ControllerIdentificationPISystem.add_signature_pattern(
+    brick_signature_pattern_space_heater_room()
+)
 
 
 def brick_signature_pattern_vav_damper():

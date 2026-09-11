@@ -19,6 +19,7 @@ from twin4build.translator.translator import (
     StepRule,
     AnyPathRule,
     Node,
+    Predicate,
     ModeledNode,
     OptionalRule,
     SignaturePattern,
@@ -785,6 +786,67 @@ def brick_signature_pattern_room_heating_command():
     return sp
 
 
+def brick_signature_pattern_space_heater_valve():
+    """BRICK pattern for an explicit space heater driven by a valve command.
+
+    The shape a BMS graph takes once the radiators are modelled as
+    equipment rather than as bare points on the room::
+
+        Space_Heater  feeds         Room
+        Space_Heater  hasPoint      Heating_Command
+
+    The command node is modelled by a :class:`ValveSystem` (see its
+    ``brick_signature_pattern_heating_command``), so the water side arrives
+    as a real mass flow and ``waterFlowRateMax`` carries the scale::
+
+        Heating_Command.waterFlowRate -> SpaceHeaterSystem.waterFlowRate
+        Room.indoorTemperature        -> SpaceHeaterSystem.indoorTemperature
+        SpaceHeaterSystem.Power       -> BuildingSpaceSystem.heatGain
+
+    ``supplyWaterTemperature`` stays unwired for
+    :meth:`Model.fill_missing_inputs`; ``UA`` and
+    ``thermalMassHeatCapacity`` are estimated per radiator.  The modeled
+    identity is the space heater itself.
+    """
+    space_heater = Node(
+        cls=(
+            core.namespace.BRICK.Space_Heater,
+            core.namespace.BRICK.Radiator,
+            core.namespace.BRICK.Radiant_Panel,
+            core.namespace.BRICK.Baseboard_Radiator,
+        )
+    )
+    room = Node(
+        cls=(
+            core.namespace.BRICK.Room,
+            core.namespace.BRICK.HVAC_Zone,
+            core.namespace.BRICK.Enclosed_space,
+            core.namespace.BRICK.Open_space,
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
+            core.namespace.BRICK.Space,
+        )
+    )
+    heating_cmd = Node(cls=core.namespace.BRICK.Heating_Command)
+    located_in = Predicate(
+        (core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo)
+    )
+    sp = SignaturePattern(id="space_heater_signature_pattern_brick_space_heater_valve")
+    sp.add_rule(StepRule(subject=space_heater, object=room, predicate=located_in))
+    sp.add_rule(
+        StepRule(
+            subject=space_heater,
+            object=heating_cmd,
+            predicate=core.namespace.BRICK.hasPoint,
+        )
+    )
+    sp.add_connection(heating_cmd, "waterFlowRate", "waterFlowRate")
+    sp.add_connection(room, "indoorTemperature", "indoorTemperature")
+    sp.add_modeled_node(space_heater)
+    return sp
+
+
+SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern_space_heater_valve())
 SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern_room_heating_command())
 SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern())
 SpaceHeaterSystem.add_signature_pattern(saref_signature_pattern())
