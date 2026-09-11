@@ -257,15 +257,20 @@ def brick_signature_pattern_space_heater_room():
         Room          hasPoint      Zone_Air_Temperature_Setpoint
                                     (+ heating / cooling subclasses) -> setpointValue
         Space_Heater  hasPoint      Heating_Command                -> actuator
-        Room          hasPoint      Operating_Mode_Status          -> onOffSignal
+        Room          isFedBy       VAV
+        VAV           hasPoint      Supply_Air_Flow_Setpoint       -> onOffSignal
 
-    The gate bus carries the room's operating-mode status, the heating
-    counterpart of the VAV's supply-air-flow setpoint: a schedule-like
-    signal that says whether the loop is enabled, never a tracked setpoint.
-    A building whose graph has no such point simply gets no heating loop
-    here; and where the valve is in fact ungated the CITS can switch the
-    gate off on its own, because ``alpha_gate`` is estimated and drives the
-    gate factor to 1 when the signal carries no information.
+    The gate bus carries the supply-air-flow setpoints of the VAVs serving
+    the same room -- the very signal the damper loops are gated on, and the
+    only schedule-like one a BMS room reliably carries as a number (the
+    ``Operating_Mode_Status`` point that would read more naturally is
+    text-valued in practice, so it has no numeric series to gate on).  It is
+    offered to the gate bus, never as a tracked setpoint.
+
+    Gating heating on the ventilation schedule is a hypothesis, not an
+    assumption: ``alpha_gate`` is estimated, and drives the gate factor to a
+    constant 1 when the signal explains nothing -- which is what a radiator
+    running through an unoccupied night should produce.
 
     Direct vs reverse action is not fixed by the pattern: the PI subclass
     offers a reverse-acting and a direct-acting candidate and the alpha
@@ -297,7 +302,8 @@ def brick_signature_pattern_space_heater_room():
     sensors = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
     setpoints = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Setpoint)
     actuators = Node(cls=core.namespace.BRICK.Heating_Command)
-    gates = Node(cls=core.namespace.BRICK.Operating_Mode_Status)
+    vavs = Node(cls=core.namespace.BRICK.VAV)
+    gates = Node(cls=core.namespace.BRICK.Supply_Air_Flow_Setpoint)
     externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     timeseries_id = Node(cls=core.namespace.XSD.string)
     located_in = Predicate(
@@ -317,8 +323,13 @@ def brick_signature_pattern_space_heater_room():
             subject=space_heater, object=actuators, predicate=core.namespace.BRICK.hasPoint
         )
     )
+    # The VAVs serving this room, through the materialised inverse of
+    # ``feeds``, and their flow setpoints.
     sp.add_rule(
-        SetStepRule(subject=room, object=gates, predicate=core.namespace.BRICK.hasPoint)
+        SetStepRule(subject=room, object=vavs, predicate=core.namespace.BRICK.isFedBy)
+    )
+    sp.add_rule(
+        SetStepRule(subject=vavs, object=gates, predicate=core.namespace.BRICK.hasPoint)
     )
     sp.add_rule(
         StepRule(

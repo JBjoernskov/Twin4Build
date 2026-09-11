@@ -7,7 +7,7 @@ A BMS graph with explicit radiator equipment::
 
 must translate into the same closed loop the dampers get::
 
-    CITS(zone temperature vs setpoint, gated by the operating mode)
+    CITS(zone temperature vs setpoint, gated by the flow setpoint)
         -> Heating_Command (inputSignal)
         -> SpaceHeaterSystem.waterFlowRate
         -> Power -> BuildingSpaceSystem.heatGain
@@ -66,7 +66,6 @@ def _graph(sm):
     g.add((EX.R01_RAD01, RDF.type, BRICK.Space_Heater))
     g.add((EX.R01_RAD01, BRICK.feeds, EX.R01))
     _point(g, EX.R01_RAD01, "R01_MVV01", BRICK.Heating_Command)
-    _point(g, EX.R01, "R01_Drift", BRICK.Operating_Mode_Status)
 
 
 def incoming(component, port):
@@ -121,9 +120,9 @@ class TestSpaceHeaterControlLoop(unittest.TestCase):
         # Every zone temperature setpoint on the room is offered to the
         # tracked-setpoint bus; the gamma weights pick between them.
         self.assertEqual(uuids("setpointValue"), ["R01_SpTRU01", "R01_SpTRU01_K"])
-        # Gated by the room's operating mode, the heating counterpart of the
-        # VAV's flow setpoint.
-        self.assertEqual(uuids("onOffSignal"), ["R01_Drift"])
+        # Gated on the flow setpoint of the VAV serving the room -- the same
+        # signal the damper loop is gated on.
+        self.assertEqual(uuids("onOffSignal"), ["R01_SpFCI01_C"])
 
     def test_radiator_is_driven_by_its_controller_and_heats_the_room(self):
         heaters = self.model.get_components_by_class(SpaceHeaterSystem)
