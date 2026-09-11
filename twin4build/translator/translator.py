@@ -435,8 +435,14 @@ class Translator:
             # Initialize simulation model
             sim_model = core.SimulationModel(id=model_id)
 
-            # Connect components
-            self._connect_components(result["connections"], sim_model)
+            # Register every MILP-active component and wire the active
+            # connections.  Components must be passed explicitly: a
+            # component with no active connection (a leaf sensor reading a
+            # historian, a stand-alone outdoor environment, ...) is still
+            # part of the solution and must end up in the simulation model.
+            self._connect_components(
+                result["connections"], sim_model, result["components"]
+            )
             LOGGER.remove_level()
             LOGGER.ok("Applying translator", change_status=True)
         else:
@@ -2012,10 +2018,14 @@ class Translator:
 
         # Solve the MILP problem
         if not constraints_list:
-            LOGGER.warning("No valid constraints.")
-            LOGGER.remove_level()
-            LOGGER.warning("Solving MILP problem", change_status=True)
-            return {"success": False, "message": "No valid constraints"}
+            # No connection candidates and no mutual-exclusion constraints
+            # (e.g. a set of Brick leaf sensors translated on their own).
+            # The problem is still well-posed: every component with a
+            # negative net cost is selected.  ``milp`` accepts an empty
+            # constraint list, so fall through instead of failing.
+            LOGGER.warning(
+                "No constraints in MILP problem; selecting components by objective only."
+            )
 
         res = milp(
             c=c, constraints=constraints_list, integrality=integrality, bounds=bounds
@@ -2117,6 +2127,7 @@ class Translator:
                 "message": "Optimization successful",
                 "problem_info": constraint_info,
                 "connections": connections,
+                "components": components,
             }
         LOGGER.warning("Solving MILP problem", change_status=True)
         return {"success": False, "message": res.message}
@@ -2383,10 +2394,42 @@ class Translator:
         LOGGER.remove_level()
         LOGGER.ok("Instantiating components", change_status=True)
 
+    @staticmethod
+    def _is_standalone_component(component: core.System) -> bool:
+        """True if ``component`` can be simulated without any connection.
+
+        Either it declares no input ports at all (outdoor environment,
+        schedules, ...) or it is a data-bound leaf such as a
+        :class:`SensorSystem` with a ``uuid`` / ``filename`` / ``df`` source,
+        whose ``measuredValue`` input is optional.
+        """
+        if len(getattr(component, "input", None) or {}) == 0:
+            # A source component with no inputs still needs something to
+            # emit.  A ScheduleSystem the translator instantiated from a
+            # semantic node alone has none of its source flags set and
+            # fails at simulation ("One of use_spreadsheet, use_database,
+            # or use_dict must be True"); before this change such a schedule
+            # was dropped for having no connection, so keeping it now would
+            # turn a translatable model into one that cannot simulate.
+            source_flags = [
+                getattr(component, name)
+                for name in ("use_spreadsheet", "use_database", "use_dict")
+                if hasattr(component, name)
+            ]
+            if source_flags and not any(source_flags):
+                return False
+            return True
+        return bool(
+            getattr(component, "uuid", None)
+            or getattr(component, "filename", None)
+            or getattr(component, "df", None) is not None
+        )
+
     def _connect_components(
         self,
         connections: List[Tuple[core.System, core.System, str, str]],
         sim_model: core.SimulationModel,
+        active_components: Optional[List[core.System]] = None,
     ) -> None:
         """
         Connect instantiated components and add them to simulation model
@@ -2397,9 +2440,40 @@ class Translator:
         """
         LOGGER.task("Connecting components")
         LOGGER.add_level()
+        # Components taking part in an active connection are always kept.
+        # A MILP-active component *without* any connection is kept only if
+        # it can be simulated on its own (see ``_is_standalone_component``):
+        # a Brick leaf sensor bound to a timeseries id, a stand-alone
+        # OutdoorEnvironmentSystem, a schedule.  Previously the used set was
+        # derived from the connection endpoints only, so a solution made of
+        # such components (e.g. a sensor-only translation) produced a Model
+        # with zero components and empty sim2sem / sem2sim maps.  Matched
+        # components whose inputs can never be wired (a virtual sensor with
+        # neither data nor an upstream, a damper nothing feeds) are still
+        # dropped, as before.
+        used_components = set()
+        for conn in connections:
+            used_components.add(conn[0])
+            used_components.add(conn[1])
+        dropped = []
+        for component in active_components or ():
+            if component in used_components:
+                continue
+            if Translator._is_standalone_component(component):
+                used_components.add(component)
+            else:
+                dropped.append(component)
+        if dropped:
+            LOGGER.info(
+                "Dropping %d matched component(s) with unwired inputs and no data source: %s",
+                len(dropped),
+                ", ".join(sorted(c.id for c in dropped)),
+            )
+        for component in sorted(used_components, key=lambda c: c.id):
+            sim_model.add_component(component)
+
         # Extract the components that are actually used in connections
         new_E_conn_to_sp_group = {}
-        used_components = set()
         for conn in connections:
             (
                 source,
@@ -2417,9 +2491,15 @@ class Translator:
             # sim_model.add_connection(*conn) # NOTE: we need to update output_port_index and input_port_index first below
         self.E_conn_to_sp_group = new_E_conn_to_sp_group
 
-        ### JUST ADDED ###
-        # Find which signature patterns are actually used for this component
+        # Find which signature patterns are actually used for each
+        # component.  Connected components keep only the pattern groups
+        # their active connections were derived from; components without
+        # any connection keep the groups recorded at instantiation.
         new_sim2group_map = {}
+        connected_components = {c for conn in connections for c in conn[:2]}
+        for component in used_components - connected_components:
+            if component in self._sim2group_map:
+                new_sim2group_map[component] = self._sim2group_map[component]
         for conn in connections:
             (
                 source,
