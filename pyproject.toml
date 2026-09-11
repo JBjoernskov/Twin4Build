@@ -54,6 +54,7 @@ dependencies = [
     "pandas",
     "torch",
     "pydot<=2.0.0",
+    "pygraphviz>=2.0.1; python_version >= '3.10'",
     "tqdm",
     "fmpy",
     "scipy",

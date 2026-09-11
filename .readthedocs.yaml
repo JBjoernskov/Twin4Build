@@ -11,6 +11,8 @@ build:
     python: "3.9"
   apt_packages:
     - dos2unix
+    # Python 3.9 has no pygraphviz 2.0 wheel; keep system Graphviz as fallback
+    # if autodoc or examples trigger drawing.
     - graphviz
   commands:
     # Create output directory

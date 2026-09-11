@@ -37,6 +37,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    # pygraphviz 2.0 has no Python 3.9 wheel; keep system Graphviz as fallback.
     - name: Install Graphviz
       run: |
         # The hosted image ships third-party apt lists (Google Chrome) whose

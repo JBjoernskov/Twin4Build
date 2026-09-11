@@ -52,6 +52,10 @@ Prerequisites
 - A code editor (VS Code, PyCharm, etc.)
 - **Conda** (recommended) or any Python environment manager
 
+Graph drawing uses the pygraphviz 2.0 wheel on Python 3.10+ (no system Graphviz
+install). Python 3.9 still needs Graphviz on ``PATH`` for those tests, or they
+are skipped.
+
 **Quick Start**: Use the automated setup script ``python scripts/setup_dev.py`` after cloning the repository for the fastest setup experience.
 
 Installation from Source

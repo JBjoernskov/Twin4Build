@@ -161,29 +161,24 @@ The following python versions are supported:
 
 
 
-### Graphviz (recomended)
+### Graphviz (included on Python 3.10+)
 
-To utilize the graph-drawing capabilities of twin4build, the drawing engine [Graphviz](https://graphviz.org/download) must be installed.
-It can be installed by downloading the install-file from the official website or by using your favorite package manager: 
+Graph drawing uses [Graphviz](https://graphviz.org) through [pygraphviz](https://pygraphviz.github.io) 2.0+. On Python 3.10 and newer the pygraphviz wheel bundles the Graphviz libraries, so `pip install twin4build` is enough — you do not need apt, winget, choco, or brew.
 
-#### Ubuntu
+The bundled Graphviz is licensed under EPL-2.0 (see pygraphviz's `LICENSE.graphviz`). Matplotlib's optional LaTeX text rendering is a separate system binary and is not included.
+
+On Python 3.9 there is no pygraphviz 2.0 wheel. Install Graphviz yourself and put `dot`, `neato`, `ccomps`, and `gvpack` on `PATH`, or skip drawing with `draw_semantic_model=False` / `draw_simulation_model=False`.
+
+#### Python 3.9 only
 ```bat
-sudo add-apt-repository universe
-sudo apt update
+# Ubuntu
 sudo apt install graphviz
-```
 
-#### Windows
-On windows, the winget or choco package managers can be used:
-```bat
+# Windows
 winget install graphviz
-```
-```bat
 choco install graphviz
-```
 
-#### MacOS
-```bat
+# macOS
 brew install graphviz
 ```
 ### psycopg2 binaries (Linux-only)

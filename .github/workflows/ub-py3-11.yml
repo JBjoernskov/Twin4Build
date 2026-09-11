@@ -37,17 +37,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install Graphviz
-      run: |
-        # The hosted image ships third-party apt lists (Google Chrome) whose
-        # index intermittently fails its hash check, and apt exits 100 when any
-        # list fails -- killing the job before a single test runs.  graphviz is
-        # in the Ubuntu archives, so drop the third-party lists and retry.
-        sudo rm -f /etc/apt/sources.list.d/*google-chrome*.list
-        sudo add-apt-repository -y universe
-        sudo apt-get update -o Acquire::Retries=3
-        sudo apt-get install -y --no-install-recommends graphviz
-
+    # Graphviz comes from the pygraphviz>=2.0 wheel on Python 3.10+.
     - name: Cache pip
       uses: actions/cache@v4
       with:
