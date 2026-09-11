@@ -1,5 +1,7 @@
 # Standard library imports
 import datetime
+import warnings
+import importlib
 from typing import Any, Callable, Dict, List, Optional, Union
 
 # Third party imports
@@ -1147,6 +1149,7 @@ class SensorSystem(core.System):
         use_database: bool = False,
         use_df: bool = False,
         transformation: Optional[callable] = None,
+        transformation_ref: Optional[str] = None,
         **kwargs,
     ) -> None:
         """Initialize the sensor system.
@@ -1216,8 +1219,17 @@ class SensorSystem(core.System):
         # Define inputs and outputs as private variables
         self._input = {"measuredValue": tps.Scalar()}
         self._output = {
-            "measuredValue": tps.Scalar(0)
-        }  # TODO: Not necessary to be a leaf scalar, if the sensor has inputs. Need to implement check in initialize()
+            "measuredValue": tps.Scalar(0),
+            # The historised series itself, for consumers that need the
+            # MEASUREMENT rather than the modelled value (a CO2-balance
+            # occupancy reading the room's CO2 sensor): on a virtual sensor
+            # with data, ``measuredValue`` carries the model's value (what the
+            # estimator scores) while ``measuredData`` carries the data, so a
+            # consumer of the data never closes a loop through the model.
+            # Populated only when the sensor holds data; a leaf in both
+            # engines.
+            "measuredData": tps.Scalar(0),
+        }
 
         # Store attributes as private variables
         self._use_spreadsheet = use_spreadsheet
@@ -1232,9 +1244,12 @@ class SensorSystem(core.System):
         self._is_leaf = None
         self._time_series_input = None
         self._transformation = transformation
+        if transformation is None and transformation_ref:
+            # A serialized model carries the transformation by import path.
+            self.transformation_ref = transformation_ref
 
         self._config = {
-            "parameters": ["use_spreadsheet", "use_database", "use_df"],
+            "parameters": ["use_spreadsheet", "use_database", "use_df", "transformation_ref"],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
             "database": ["uuid", "dbconfig"],
         }
@@ -1262,6 +1277,8 @@ class SensorSystem(core.System):
         Returns:
             dict: Dictionary containing output ports:
                 - "measuredValue": Measured value output [units depend on sensor type]
+                - "measuredData": The historised series (data sensors only);
+                  the measurement, never the modelled value
         """
         return self._output
 
@@ -1330,6 +1347,12 @@ class SensorSystem(core.System):
         Set the column index for sensor readings.
         """
         self._valuecolumn = value
+
+    @property
+    def has_data(self) -> bool:
+        """Whether the sensor holds a historised series (spreadsheet,
+        DataFrame or database), i.e. whether ``measuredData`` is populated."""
+        return bool(self.use_spreadsheet or self.use_database or self.use_df)
 
     @property
     def is_leaf(self) -> bool:
@@ -1460,6 +1483,37 @@ class SensorSystem(core.System):
     def transformation(self, fn: Optional[Callable]) -> None:
         self._transformation = fn
 
+    @property
+    def transformation_ref(self) -> Optional[str]:
+        """The transformation as an import path ``module:qualname`` -- the
+        form that survives ``Model.serialize()`` / ``Model.load(filename=...)``
+        (a callable is not a literal).  ``None`` when there is no
+        transformation, or when it cannot be named (a lambda or a closure):
+        such a model reloads without it, with a warning at serialize time."""
+        fn = self._transformation
+        if fn is None:
+            return None
+        qualname = getattr(fn, "__qualname__", "")
+        if not qualname or "<" in qualname or fn.__module__ is None:
+            warnings.warn(
+                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: the transformation "
+                f"{fn!r} is not importable by name and will not survive serialization; "
+                "use a module-level function.",
+                stacklevel=2,
+            )
+            return None
+        return f"{fn.__module__}:{qualname}"
+
+    @transformation_ref.setter
+    def transformation_ref(self, ref: Optional[str]) -> None:
+        if not ref:
+            return
+        module_name, _, qualname = ref.partition(":")
+        obj = importlib.import_module(module_name)
+        for part in qualname.split("."):
+            obj = getattr(obj, part)
+        self._transformation = obj
+
     def set_transformation(self, fn: Optional[Callable]) -> None:
         """Set the unit-conversion callable applied to loaded timeseries.
 
@@ -1512,6 +1566,7 @@ class SensorSystem(core.System):
 
         self.is_leaf = len(self.connects_at) == 0  # No inputs -> leaf scalar
         self.output["measuredValue"].is_leaf = self.is_leaf
+        self.output["measuredData"].is_leaf = self.has_data
 
         return (
             validated_for_simulator,
@@ -1584,6 +1639,15 @@ class SensorSystem(core.System):
             len(self.connects_at) == 0 and self.time_series_input is None
         ) == False, f'Sensor object "{self.id}" has no inputs and and holds no data.'
 
+        if self.time_series_input is not None:
+            # The data, leaf-style (pre-filled history), whether or not the
+            # sensor also models a value.
+            self.output["measuredData"].initialize(
+                n_t=self.time_series_input.n_timesteps,
+                n_s=self.time_series_input.batch_size,
+                n_c=1,
+                values=self.time_series_input.values,
+            )
         if self.is_leaf:
             # The batch initialization args are calculated in the TimeSeriesInputSystem.initialize() method.
             # They are stored in the physicalSystem object and reused here.
@@ -1623,6 +1687,8 @@ class SensorSystem(core.System):
             date_time (Optional[datetime.datetime]): Current simulation date_time.
             step_size (Optional[float]): Time step size in seconds.
         """
+        if self.time_series_input is not None:
+            self.output["measuredData"]._set(i_t=step_index)
         if self.is_leaf:
             self.output["measuredValue"]._set(i_t=step_index)
         else:

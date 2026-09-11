@@ -464,10 +464,10 @@ def brick_signature_pattern_room_co2():
             subject=vavs, object=flow_sensors, predicate=core.namespace.BRICK.hasPoint
         )
     )
-    sp.add_connection(co2_sensor, "measuredValue", "indoorCo2Measured")
+    sp.add_connection(co2_sensor, "measuredData", "indoorCo2Measured")
     sp.add_connection(
         flow_sensors,
-        "measuredValue",
+        "measuredData",
         "supplyAirFlowRateMeasured",
         input_port_index=flow_sensors,
     )

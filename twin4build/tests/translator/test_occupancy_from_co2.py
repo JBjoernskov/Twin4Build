@@ -45,6 +45,13 @@ def incoming(component, port):
     return []
 
 
+def incoming_ports(component, port):
+    for cp in component.connects_at:
+        if cp.input_port == port:
+            return {conn.output_port for conn in cp.connects_system_through}
+    return set()
+
+
 class TestOccupancyFromCO2(unittest.TestCase):
     MODEL_ID = "test_occupancy_from_co2"
 
@@ -70,6 +77,11 @@ class TestOccupancyFromCO2(unittest.TestCase):
             flows = incoming(o, "supplyAirFlowRateMeasured")
             self.assertTrue(flows and all(isinstance(f, SensorSystem) for f in flows))
             self.assertTrue(all("FCI" in f.uuid for f in flows), [f.uuid for f in flows])
+            # The MEASUREMENT, not the modelled value: the CO2 sensor is a
+            # virtual sensor fed by the zone, and reading its measuredValue
+            # would close a loop zone -> sensor -> occupancy -> zone.
+            self.assertEqual(incoming_ports(o, "indoorCo2Measured"), {"measuredData"})
+            self.assertEqual(incoming_ports(o, "supplyAirFlowRateMeasured"), {"measuredData"})
             # outdoor CO2 is left for fill_missing_inputs
             self.assertEqual(incoming(o, "outdoorCo2Concentration"), [])
 

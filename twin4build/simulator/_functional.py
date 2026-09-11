@@ -492,6 +492,14 @@ class FunctionalModel:
             else:
                 src = _single_source(comp, key[1])
                 starts = [src] if src is not None else []
+            # A data leaf output (a sensor's ``measuredData``, a pure data
+            # sensor's ``measuredValue``) is the recorded series: it has no
+            # upstream, whatever else its component is wired to.
+            starts = [
+                (p, port)
+                for p, port in starts
+                if not getattr(p.output.get(port), "is_leaf", False)
+            ]
             hit = self._upstream_theta_component([p for p, _ in starts])
             if hit is not None:
                 raise RuntimeError(
@@ -616,8 +624,10 @@ class FunctionalModel:
         and translate fused-cluster members to their executing
         ``FusedStateSpaceSystem`` (which publishes the member's outputs under
         namespaced port names)."""
-        if _is_passthrough_sensor(producer):
+        if _is_passthrough_sensor(producer) and out_port == "measuredValue":
             return self._trace_source(producer, "measuredValue")
+        # A pass-through sensor's ``measuredData`` (its historised series)
+        # is the sensor's own leaf output, not the modelled value.
         fused = self._fusion_alias.get(producer.id)
         if fused is not None:
             return fused, f"{producer.id}.{out_port}", ()

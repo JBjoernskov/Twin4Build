@@ -3751,6 +3751,19 @@ class SimulationModel:
                 class_name,
             )
             component = cls(id=sm_instance.get_short_name(), **attributes)
+            # The literals are the flattened ``populate_config()`` of the
+            # serialized component, so a nested parameter arrives as a
+            # dotted key (``mass.V``, ``supply_damper.a``) that no
+            # constructor takes, and a class may not expose every parameter
+            # as a constructor argument.  Constructors only see the
+            # keyword-shaped literals; every literal that resolves to a
+            # ``tps.Parameter`` on the built component is written to it here,
+            # so a serialized model reloads with its (fitted) values.
+            for key, value in attributes.items():
+                if value is None or not rhasattr(component, key):
+                    continue
+                if isinstance(rgetattr(component, key), (tps.Parameter, tps.TensorParameter)):
+                    self.set_parameters([value], [component], [key], overwrite=True)
             # Check if the component already exists
             self.add_component(component)
         LOGGER.remove_level()

@@ -7,6 +7,8 @@ from typing import Any, List, Tuple, Union
 # Third party imports
 import torch
 
+import twin4build.utils.types as tps
+
 # from twin4build.utils.plot.simulation_result import SimulationResult
 from prettytable import PrettyTable
 
@@ -534,7 +536,14 @@ class System:
         """
 
         def extract_value(value):
-            if hasattr(value, "detach") and hasattr(value, "numpy"):
+            # ``tps.Parameter`` (an nn.Parameter) and ``tps.TensorParameter``
+            # (what ``set_parameters(overwrite=True)`` -- the estimator's
+            # write path -- leaves behind) both publish their physical value
+            # through ``get()``; serializing anything else would write the
+            # object's repr into the graph.
+            if isinstance(value, (tps.Parameter, tps.TensorParameter)) or (
+                hasattr(value, "get") and hasattr(value, "detach")
+            ):
                 # Use .tolist() to convert numpy types to Python native types
                 # This ensures values like np.float64(1.0) become 1.0
                 return value.get().detach().cpu().numpy().flatten().tolist()

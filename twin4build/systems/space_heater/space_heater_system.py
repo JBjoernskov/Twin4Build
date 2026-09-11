@@ -256,6 +256,7 @@ class SpaceHeaterSystem(core.System, nn.Module):
         thermalMassHeatCapacity: float = 500000,
         nelements: int = 3,
         initialize_UA: bool = True,
+        UA: Optional[float] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -265,9 +266,13 @@ class SpaceHeaterSystem(core.System, nn.Module):
         self.T_b_nominal_sh = T_b_nominal_sh
         self.TAir_nominal_sh = TAir_nominal_sh
         self.nelements = nelements
-        self.initialize_UA = initialize_UA
+        # An explicit UA (a fitted value coming back from a serialized model)
+        # is the value; solving the nominal-output UA at initialize would
+        # overwrite it.
+        self.initialize_UA = initialize_UA if UA is None else False
         self.UA = tps.Parameter(
-            torch.tensor(10.0, dtype=tps.float_dtype()), requires_grad=False
+            torch.tensor(10.0 if UA is None else float(UA), dtype=tps.float_dtype()),
+            requires_grad=False,
         )  # Placeholder, will be set in initialize if initialize_UA is True
         self.thermalMassHeatCapacity = tps.Parameter(
             torch.tensor(thermalMassHeatCapacity, dtype=tps.float_dtype()),
