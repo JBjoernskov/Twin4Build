@@ -1,5 +1,6 @@
 # Standard library imports
 import datetime
+import math
 import unittest
 
 # Third party imports
@@ -62,6 +63,23 @@ class TestFanTorchSystem(unittest.TestCase):
         self.assertIsNotNone(self.fan.output["Power"].get())
         self.assertGreater(self.fan.output["outletAirTemperature"].get().item(), 20.0)
         self.assertGreater(self.fan.output["Power"].get().item(), 0.0)
+
+    def test_zero_flow_keeps_outlet_finite(self):
+        """Dampers closed / fan off (zero flow) is a normal state: the outlet
+        temperature must equal the inlet temperature, not NaN from the
+        ``P * f / (m * cp)`` temperature-rise term (regression: an AHU fed
+        by closed VAV dampers at night produced a NaN supply temperature)."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
+        self.fan.initialize(start_time=start_time, end_time=end_time, step_size=[600])
+        self.fan.input["airFlowRate"].set(torch.tensor([0.0]), i_t=0)
+        self.fan.input["inletAirTemperature"].set(torch.tensor([20.0]), i_t=0)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        self.fan.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        outlet = self.fan.output["outletAirTemperature"].get().item()
+        self.assertTrue(math.isfinite(outlet))
+        self.assertAlmostEqual(outlet, 20.0)
+        self.assertAlmostEqual(self.fan.output["Power"].get().item(), 0.0)
 
     def test_do_step_batch(self):
         """Test fan system do_step method with batch size > 1."""
