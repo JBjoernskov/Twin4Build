@@ -5,7 +5,7 @@ Twin4Build historically laid out semantic-model drawings with this pipeline::
     ccomps -x                  # split weakly connected components
     dot                        # hierarchical layout of each component
     gvpack -array3             # pack components into a 3-column array
-    neato -n2 -Gsize=10! -Gdpi={dpi} -Grankdir=RL
+    neato -n2 -Gsize=10! -Gdpi={dpi}
 
 ``pygraphviz`` 2.0 wheels bundle the Graphviz libraries and layout plugins
 but not the ``dot``, ``neato``, or ``gvpack`` executables. Layout is done
@@ -32,9 +32,27 @@ from twin4build.utils.logger import LOGGER
 
 _SYSTEM_TOOLS = ("ccomps", "dot", "gvpack", "neato")
 
-# Render-time flags historically passed to ``neato -n2``.
-_PACKED_DRAW_ARGS = "-Gsize=10! -Grankdir=RL"
+# Render-time flags passed to ``neato -n2``.
+#
+# ``rankdir`` is deliberately *not* here.  It only affects a hierarchical
+# layout, and by this point the layout is already done -- ``neato -n2`` reuses
+# the existing node positions.  The historical pipeline passed ``-Grankdir=RL``
+# at this stage, where it was silently inert.  Set ``rankdir`` on the graph
+# before layout instead (``SemanticModel.visualize(rankdir=...)``).
+_PACKED_DRAW_ARGS = "-Gsize=10!"
 _PACK_MODE = "array_3"
+
+# The system pipeline measures text with whatever metrics its Graphviz build
+# has.  Builds without a real text-layout plugin (no pango/fontconfig) fall
+# back to Times metrics while still emitting ``font-family="Courier,..."``,
+# so every node box is sized ~20% too narrow and labels are clipped.  The
+# pygraphviz wheel bundles working text layout, so prefer it.
+SYSTEM_BACKEND_HINT = (
+    "Rendering with system Graphviz because pygraphviz is not installed. "
+    "Graphviz builds without a text-layout plugin size node boxes with Times "
+    "metrics while labelling them Courier, which clips label text. Install "
+    "'pygraphviz>=2.0.1' for correctly sized nodes."
+)
 
 DRAWING_UNAVAILABLE_HINT = (
     "Graphviz drawing is unavailable. It is provided by the pygraphviz "
@@ -143,6 +161,11 @@ def render_dot_graph(
                 "pygraphviz drawing failed (%s); falling back to system Graphviz.",
                 exc,
             )
+    else:
+        # backend == "system": pygraphviz is not installed at all.  Say so,
+        # because the output is silently degraded rather than merely slower.
+        warnings.warn(SYSTEM_BACKEND_HINT, RuntimeWarning, stacklevel=2)
+        LOGGER.warning(SYSTEM_BACKEND_HINT)
 
     _render_with_system_tools(
         dot_filename=dot_filename,
@@ -276,7 +299,7 @@ def _render_with_pygraphviz(
     if "packmode" in graph.graph_attr:
         del graph.graph_attr["packmode"]
 
-    # neato -n2 -Gsize=10! -Gdpi={dpi} -Grankdir=RL
+    # neato -n2 -Gsize=10! -Gdpi={dpi}
     draw_args = f"{_PACKED_DRAW_ARGS} -Gdpi={dpi}"
     graph.draw(output_path, format=format, args=draw_args)
 
@@ -356,7 +379,6 @@ def _render_with_system_tools(
             "-n2",
             "-Gsize=10!",
             f"-Gdpi={dpi}",
-            "-Grankdir=RL",
             "-q",
             f"-o{output_path}",
             packed_dot,
