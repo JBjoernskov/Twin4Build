@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 # Third party imports
-from rdflib import RDF, RDFS, XSD, Graph, Literal, Namespace, URIRef
+from rdflib import RDF, RDFS, XSD, BNode, Graph, Literal, Namespace, URIRef
 
 # Local application imports
 import twin4build
@@ -89,6 +89,45 @@ class TestSemanticModel(unittest.TestCase):
             literal_val, datatype="http://www.w3.org/2001/XMLSchema#string"
         )
         self.assertIsInstance(literal, SemanticLiteral)
+
+    def test_get_instance_bnode_preserves_type_and_inverse_lookup(self):
+        """Blank nodes must be built by the regular constructor (regression).
+
+        ``get_instance`` used to build BNode-backed instances via ``__new__``
+        and hand-initialise a subset of the fields; the ``_inverse_attributes``
+        cache added later was missing, so ``get_predicate_subject_pairs``
+        raised ``AttributeError`` for any blank node -- e.g. the target of a
+        Brick ``ref:hasExternalReference`` -- as soon as the translator walked
+        a pattern backwards into it.
+        """
+        ex = Namespace("http://example.org/")
+        bnode = BNode()
+        self.model.instance_graph.add((ex.sensor, ex.hasExternalReference, bnode))
+        self.model.instance_graph.add((bnode, ex.hasTimeseriesId, Literal("ts-1")))
+
+        inst = self.model.get_instance(bnode)
+        self.assertIsInstance(inst, SemanticInstance)
+        self.assertIsInstance(inst.uri, BNode)
+        self.assertEqual(inst.uri, bnode)
+        self.assertIs(inst, self.model.get_instance(bnode))
+
+        # Outgoing edges still resolve through the blank node.
+        outgoing = inst.get_predicate_object_pairs()
+        self.assertIn(self.model.get_predicate(ex.hasTimeseriesId), outgoing)
+
+        # Incoming edges: this raised AttributeError before the fix.
+        incoming = inst.get_predicate_subject_pairs()
+        pred_in = self.model.get_predicate(ex.hasExternalReference)
+        self.assertIn(pred_in, incoming)
+        self.assertEqual([s.uri for s in incoming[pred_in]], [ex.sensor])
+
+    def test_semantic_object_keeps_bnode_uri(self):
+        """``SemanticObject.__init__`` must not promote a ``BNode`` to ``URIRef``."""
+        bnode = BNode()
+        obj = SemanticObject(bnode, self.model)
+        self.assertIsInstance(obj.uri, BNode)
+        obj2 = SemanticObject("http://example.org/x", self.model)
+        self.assertIsInstance(obj2.uri, URIRef)
 
     def test_get_property(self):
         """Test get_property method."""

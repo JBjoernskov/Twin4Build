@@ -260,8 +260,17 @@ class FanSystem(core.System, nn.Module):
             + params["c4"] * m_norm**3
         )
 
-        # Calculate temperature rise
-        delta_T = (power * params["f_total"]) / (m_dot * constants.CP_AIR)
+        # Calculate temperature rise.  Zero flow (dampers closed, fan off)
+        # is a normal state: guard the division so the outlet temperature
+        # stays finite (no air moves, so no heating of the air).
+        tol = 1e-9
+        has_flow = m_dot > tol
+        delta_T = torch.where(
+            has_flow,
+            (power * params["f_total"])
+            / (torch.clamp(m_dot, min=tol) * constants.CP_AIR),
+            torch.zeros_like(m_dot),
+        )
         outlet_temp = inlet_temp + delta_T
         return x, {"outletAirTemperature": outlet_temp, "Power": power}
 
