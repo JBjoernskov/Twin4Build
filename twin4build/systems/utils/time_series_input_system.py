@@ -420,6 +420,23 @@ class TimeSeriesInputSystem(core.System):
         )  # Before we used nan, but this caused issues with the optimizer when the optimizer tried to compute the gradient of the loss function.
         for batch_index, df in enumerate(self.df):
             size = len(df.index)
+            if size == 0:
+                # Surface the offending sensor instead of the opaque numpy
+                # "could not broadcast input array from shape (0,0)" error
+                # that used to escape from the assignment below.
+                source = (
+                    f"uuid={self.uuid!r}"
+                    if self.uuid is not None
+                    else f"filename={self.filename!r}"
+                    if self.filename is not None
+                    else "df"
+                )
+                raise ValueError(
+                    f'No data for "{self.id}" ({source}) in the window '
+                    f"{start_time[batch_index]} -> {end_time[batch_index]}. "
+                    "Check the timeseries id / table and that the point "
+                    "holds numeric values in that period."
+                )
             # OLD: Only fill actual data, leave rest as 0
             # values[batch_index,:size] = df.values
 
