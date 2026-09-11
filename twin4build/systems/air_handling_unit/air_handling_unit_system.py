@@ -589,6 +589,11 @@ def brick_signature_pattern():
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
             core.namespace.BRICK.HVAC_Zone,
+            # Brick 1.4 deprecates its location classes in favour of
+            # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+            # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
         )
     )
 
@@ -721,6 +726,11 @@ def brick_signature_pattern_vav_dampers():
             core.namespace.BRICK.Enclosed_space,
             core.namespace.BRICK.Open_space,
             core.namespace.BRICK.HVAC_Zone,
+            # Brick 1.4 deprecates its location classes in favour of
+            # RealEstateCore (``brick:Room brick:isReplacedBy rec:Room``,
+            # ``brick:HVAC_Zone`` -> ``rec:HVACZone`` < ``rec:Zone``).
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
         )
     )
     vavs = Node(cls=core.namespace.BRICK.VAV)
@@ -892,7 +902,102 @@ def brick_signature_pattern_vav_dampers():
 # ``add_modeled_node(ahu)`` and is mutually exclusive with the VAV
 # variant via the matcher's existing exclusion machinery (rather than
 # relying on the broken mixed-mutex semantics today).
+def brick_signature_pattern_vav_damper_commands():
+    """AHU pattern for VAV systems whose damper command is a direct VAV point.
+
+    Sibling of :func:`brick_signature_pattern_vav_dampers` for BMS-derived
+    BRICK graphs that do not model a ``brick:Damper`` equipment under each
+    VAV but attach the damper command point to the VAV itself (e.g. the
+    Hoeje-Taastrup Raadhus graph, where every VAV carries a
+    ``Damper_Position_Command`` next to its flow sensor / setpoint)::
+
+        AHU  feeds     VAV
+        VAV  feeds     Room / Zone
+        VAV  hasPoint  Damper_Position_Command | Damper_Position_Setpoint
+
+    Everything else (connections, Vector indexing by ``spaces``, the
+    free-floating optional outside-air sensor and the optional supply-air
+    temperature setpoint) mirrors the damper-equipment variant, so the
+    downstream BuildingSpace / sensor patterns line up on the same
+    ``spaces`` slots.
+
+    The two AHU patterns are mutually exclusive in practice: a VAV either
+    has a ``Damper`` part (damper-equipment variant) or a direct damper
+    command point (this variant).  A graph that models *both* on the same
+    VAV would produce two AirHandlingUnitSystem components per AHU (see the
+    note below on the non-exclusive multi-member ``ModeledNode`` mutex).
+    """
+    sp = SignaturePattern(
+        id="air_handling_unit_signature_pattern_brick_vav_damper_commands"
+    )
+
+    ahu = Node(cls=core.namespace.BRICK.AHU)
+    spaces = Node(
+        cls=(
+            core.namespace.BRICK.Room,
+            core.namespace.BRICK.Enclosed_space,
+            core.namespace.BRICK.Open_space,
+            core.namespace.BRICK.HVAC_Zone,
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
+        )
+    )
+    vavs = Node(cls=core.namespace.BRICK.VAV)
+    damper_cmds = Node(
+        cls=(
+            core.namespace.BRICK.Damper_Position_Command,
+            core.namespace.BRICK.Damper_Position_Setpoint,
+        )
+    )
+    sat_setpoint = Node(cls=core.namespace.BRICK.Supply_Air_Temperature_Setpoint)
+    oat_sensor = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
+
+    feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
+
+    sp.add_rule(SetAnyPathRule(subject=ahu, object=vavs, predicate=feeds))
+    sp.add_rule(StepRule(subject=vavs, object=spaces, predicate=feeds))
+    sp.add_rule(
+        StepRule(
+            subject=vavs, object=damper_cmds, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_node(oat_sensor, optional=True)
+    sp.add_rule(
+        OptionalRule(
+            subject=ahu,
+            object=sat_setpoint,
+            predicate=core.namespace.BRICK.hasPoint,
+        )
+    )
+
+    sp.add_connection(
+        spaces, "indoorTemperature", "exhaustTemperature", input_port_index=spaces
+    )
+    sp.add_connection(
+        damper_cmds,
+        "inputSignal",
+        "supplyDamperPosition",
+        output_port_index=damper_cmds,
+        input_port_index=spaces,
+    )
+    sp.add_connection(
+        damper_cmds,
+        "inputSignal",
+        "exhaustDamperPosition",
+        output_port_index=damper_cmds,
+        input_port_index=spaces,
+    )
+    sp.add_connection(sat_setpoint, "measuredValue", "supplyAirTemperatureSetpoint")
+    sp.add_connection(oat_sensor, "outdoorTemperature", "outdoorAirTemperature")
+
+    ModeledNode([ahu, vavs, damper_cmds])
+    return sp
+
+
 AirHandlingUnitSystem.add_signature_pattern(brick_signature_pattern_vav_dampers())
+AirHandlingUnitSystem.add_signature_pattern(
+    brick_signature_pattern_vav_damper_commands()
+)
 
 # Deprecated aliases (removed in twin4build 2.1)
 AirHandlingUnitTorchSystem = AirHandlingUnitSystem

@@ -25,3 +25,4 @@ against the same pinned versions, or bump the versions deliberately in
 | `rdfs.ttl` | http://www.w3.org/2000/01/rdf-schema# | - | W3C |
 | `owl.ttl` | http://www.w3.org/2002/07/owl# | - | W3C |
 | `rec.ttl` | https://w3id.org/rec# | latest | MIT |
+| `brickref.ttl` | https://raw.githubusercontent.com/BrickSchema/Brick/master/support/ref-schema.ttl (namespace `https://brickschema.org/schema/Brick/ref#`, not served at that URI) | master, fetched 2026-09-09 | BSD-3-Clause |
