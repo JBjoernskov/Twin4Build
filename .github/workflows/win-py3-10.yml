@@ -4,11 +4,21 @@
 name: windows-python3.10
 
 on:
+  # Pull requests are covered by the pull_request event.  Without a branch
+  # filter here, every push to a PR branch ran this workflow a second time:
+  # two independent chances of hitting a transient runner failure, and two
+  # conflicting statuses for the same job name.
   push:
+    branches: [main, dev]
   pull_request:
 
 permissions:
   contents: read
+
+# A new push supersedes the run it interrupts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
