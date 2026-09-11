@@ -544,6 +544,12 @@ def _brick_space_pattern(topology: str, with_volume: bool):
     outside_air_temperature_sensor = Node(
         cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
     )
+    # Room-level radiator: BMS graphs carry only a valve command on the room
+    # (no radiator equipment).  When a :class:`SpaceHeaterSystem` is matched
+    # there (see its ``brick_signature_pattern_room_heating_command``), its
+    # delivered ``Power`` is the room's ``heatGain``.  Optional, so rooms
+    # without heating still match.
+    heating_cmd = Node(cls=core.namespace.BRICK.Heating_Command)
     feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
 
     suffix = "_with_volume" if with_volume else ""
@@ -593,6 +599,12 @@ def _brick_space_pattern(topology: str, with_volume: bool):
     sp.add_connection(
         outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"
     )
+    sp.add_rule(
+        OptionalRule(
+            subject=space, object=heating_cmd, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_connection(heating_cmd, "Power", "heatGain")
     if with_volume:
         _add_brick_volume_parameter(sp, space)
     # Interzonal/boundary coupling is modeled by a separate WallSystem
