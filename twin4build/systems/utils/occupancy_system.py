@@ -184,15 +184,30 @@ class OccupancySystem(core.System, nn.Module):
 
         self._input = {
             "outdoorCo2Concentration": tps.Scalar(),
-            # Measured-data ports: NOT connected to any producer.  ``do_step``
-            # publishes the CSV samples here each step so that the composed
-            # fast paths (Simulator.compose) can capture them per step like
-            # any exogenous signal -- freezing them is exact because they are
-            # measured data, independent of any estimated parameter.
-            "indoorCo2Measured": tps.Scalar(),
-            "previousIndoorCo2Measured": tps.Scalar(),
-            "damperPositionMeasured": tps.Scalar(),
+            # Measured-data ports.  Two ways to feed them:
+            #  * CSV files (``co2_filename`` / ``damper_filename``): NOT
+            #    connected to any producer; ``do_step`` publishes the samples
+            #    here each step so the composed fast paths capture them like
+            #    any exogenous signal -- exact, because measured data is
+            #    independent of every estimated parameter;
+            #  * historised sensors wired by the translator
+            #    (``indoorCo2Measured`` from the room's CO2 sensor,
+            #    ``supplyAirFlowRateMeasured`` from the flow sensors of the
+            #    VAVs serving the room, one slot each).  The previous CO2
+            #    sample is then a one-step lag state and the supply flow is
+            #    the sum of the slots -- a lumped zone only sees the total.
+            "indoorCo2Measured": tps.Scalar(optional=True),
+            "previousIndoorCo2Measured": tps.Scalar(optional=True),
+            "damperPositionMeasured": tps.Scalar(optional=True),
+            "supplyAirFlowRateMeasured": tps.Vector(optional=True),
         }
+        # One-step memory of the measured CO2 when it arrives through a
+        # sensor port (unused, width 0, on the CSV path).  Initialised at the
+        # outdoor level: the very first step then sees ``dC = 0`` from a
+        # 400 ppm base, a single transient the warm-up discards.
+        self._co2_lag = tps.State(n_v=1, init_value=400.0, names=[f"{_id}.co2_prev"])
+        self._co2_from_sensor = False
+        self._flow_from_sensor = False
         self._output = {"scheduleValue": tps.Scalar()}
         self._config = {
             "parameters": [
@@ -228,35 +243,58 @@ class OccupancySystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        for inp in self.input.values():
-            inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
+        def _wired(port: str) -> bool:
+            return any(
+                cp.input_port == port and len(cp.connects_system_through) > 0
+                for cp in self.connects_at
+            )
+
+        self._co2_from_sensor = _wired("indoorCo2Measured")
+        self._flow_from_sensor = _wired("supplyAirFlowRateMeasured")
+        for name, inp in self.input.items():
+            if name == "supplyAirFlowRateMeasured":
+                inp.initialize(
+                    n_t=max_timesteps, n_s=batch_size, n_c=self.n_c,
+                    n_v=self.get_n_v_from_connections(name) or 1,
+                )
+            else:
+                inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for out in self.output.values():
             out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-
-        assert self.co2_filename is not None, (
-            f"|{self.__class__.__name__}|{self.id}|: " "co2_filename must be set."
+        # The lag state exists only on the sensor path (width 0 otherwise, so
+        # a CSV-driven occupancy stays stateless for the composer).
+        self._co2_lag.initialize(
+            n_s=batch_size, n_c=self.n_c, n_v=1 if self._co2_from_sensor else 0, force=True
         )
-        assert self.damper_filename is not None, (
-            f"|{self.__class__.__name__}|{self.id}|: " "damper_filename must be set."
-        )
-
-        self._co2_ts = TimeSeriesInputSystem(
-            id=f"co2_ts_{self.id}",
-            filename=self.co2_filename,
-            date_column=self.co2_date_column,
-            value_column=self.co2_value_column,
-            use_spreadsheet=True,
-        )
-        self._co2_ts.initialize(start_time, end_time, step_size)
-
-        self._damper_ts = TimeSeriesInputSystem(
-            id=f"damper_ts_{self.id}",
-            filename=self.damper_filename,
-            date_column=self.damper_date_column,
-            value_column=self.damper_value_column,
-            use_spreadsheet=True,
-        )
-        self._damper_ts.initialize(start_time, end_time, step_size)
+        self._co2_ts = None
+        self._damper_ts = None
+        if not self._co2_from_sensor:
+            assert self.co2_filename is not None, (
+                f"|{self.__class__.__name__}|{self.id}|: wire indoorCo2Measured "
+                "to a CO2 sensor or set co2_filename."
+            )
+            self._co2_ts = TimeSeriesInputSystem(
+                id=f"co2_ts_{self.id}",
+                filename=self.co2_filename,
+                date_column=self.co2_date_column,
+                value_column=self.co2_value_column,
+                use_spreadsheet=True,
+            )
+            self._co2_ts.initialize(start_time, end_time, step_size)
+        if not self._flow_from_sensor:
+            assert self.damper_filename is not None, (
+                f"|{self.__class__.__name__}|{self.id}|: wire "
+                "supplyAirFlowRateMeasured to the supply-air-flow sensors or set "
+                "damper_filename."
+            )
+            self._damper_ts = TimeSeriesInputSystem(
+                id=f"damper_ts_{self.id}",
+                filename=self.damper_filename,
+                date_column=self.damper_date_column,
+                value_column=self.damper_value_column,
+                use_spreadsheet=True,
+            )
+            self._damper_ts.initialize(start_time, end_time, step_size)
 
         self.mass.V = self.mass.V.expand_to_n_c(self.n_c)
         self.mass.G_occ = self.mass.G_occ.expand_to_n_c(self.n_c)
@@ -296,20 +334,32 @@ class OccupancySystem(core.System, nn.Module):
         thread theta gradients exactly.
         """
         C_indoor = inputs["indoorCo2Measured"]
-        C_prev = inputs["previousIndoorCo2Measured"]
-        damper_pos = inputs["damperPositionMeasured"]
         C_outdoor = inputs["outdoorCo2Concentration"]
-
-        m_sup = self._airflow(
-            params["supply_damper.a"],
-            params["supply_damper.nominalAirFlowRate"],
-            damper_pos,
-        )
-        m_exh = self._airflow(
-            params["exhaust_damper.a"],
-            params["exhaust_damper.nominalAirFlowRate"],
-            damper_pos,
-        )
+        if self._co2_from_sensor:
+            # ``x`` is the one-step lag of the measured CO2, (..., 1).
+            C_prev = x[..., 0]
+            x_next = C_indoor.unsqueeze(-1)
+        else:
+            C_prev = inputs["previousIndoorCo2Measured"]
+            x_next = x
+        if self._flow_from_sensor:
+            # Measured supply flow, one slot per VAV serving the zone; a
+            # balanced zone exhausts what it is supplied.
+            flow = inputs["supplyAirFlowRateMeasured"]
+            m_sup = flow.sum(dim=-1) if flow.dim() > C_indoor.dim() else flow
+            m_exh = m_sup
+        else:
+            damper_pos = inputs["damperPositionMeasured"]
+            m_sup = self._airflow(
+                params["supply_damper.a"],
+                params["supply_damper.nominalAirFlowRate"],
+                damper_pos,
+            )
+            m_exh = self._airflow(
+                params["exhaust_damper.a"],
+                params["exhaust_damper.nominalAirFlowRate"],
+                damper_pos,
+            )
 
         air_mass = params["mass.V"] * constants.RHO_AIR
         alpha = params["mass.G_occ"] * (constants.M_AIR / constants.M_CO2) * 1e6
@@ -322,7 +372,7 @@ class OccupancySystem(core.System, nn.Module):
             - (m_inf + m_sup) * C_outdoor
         ) / alpha
         N_occ = clamp(N_occ, lower=0.0, upper=1e6)
-        return x, {"scheduleValue": N_occ}
+        return x_next, {"scheduleValue": N_occ}
 
     def do_step(
         self,
@@ -331,24 +381,98 @@ class OccupancySystem(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
-        C_indoor = self._co2_ts.values[step_index]  # (n_s, 1) - measured
-        C_prev = self._co2_ts.values[step_index - 1] if step_index > 0 else C_indoor
-        damper_pos = self._damper_ts.values[step_index]  # (n_s, 1) - measured
-
-        # Publish the data samples on the (unconnected) measured-data input
-        # ports: the composed fast paths capture input-port histories per
-        # step, so this makes the data visible to Simulator.compose.
-        self.input["indoorCo2Measured"]._set(C_indoor, i_t=step_index)
-        self.input["previousIndoorCo2Measured"]._set(C_prev, i_t=step_index)
-        self.input["damperPositionMeasured"]._set(damper_pos, i_t=step_index)
-
-        inputs = {
-            "indoorCo2Measured": C_indoor,
-            "previousIndoorCo2Measured": C_prev,
-            "damperPositionMeasured": damper_pos,
-            "outdoorCo2Concentration": self.input["outdoorCo2Concentration"].get(),
-        }
-        _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        inputs = {"outdoorCo2Concentration": self.input["outdoorCo2Concentration"].get()}
+        if self._co2_from_sensor:
+            inputs["indoorCo2Measured"] = self.input["indoorCo2Measured"].get()
+            x = self._co2_lag.get()
+        else:
+            C_indoor = self._co2_ts.values[step_index]  # (n_s, 1) - measured
+            C_prev = self._co2_ts.values[step_index - 1] if step_index > 0 else C_indoor
+            # Publish the data samples on the (unconnected) measured-data
+            # input ports so the composed fast paths capture them per step.
+            self.input["indoorCo2Measured"]._set(C_indoor, i_t=step_index)
+            self.input["previousIndoorCo2Measured"]._set(C_prev, i_t=step_index)
+            inputs["indoorCo2Measured"] = C_indoor
+            inputs["previousIndoorCo2Measured"] = C_prev
+            x = None
+        if self._flow_from_sensor:
+            inputs["supplyAirFlowRateMeasured"] = self.input["supplyAirFlowRateMeasured"].get()
+        else:
+            damper_pos = self._damper_ts.values[step_index]  # (n_s, 1) - measured
+            self.input["damperPositionMeasured"]._set(damper_pos, i_t=step_index)
+            inputs["damperPositionMeasured"] = damper_pos
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
+        if self._co2_from_sensor:
+            self._co2_lag.set(x_next)
         self.output["scheduleValue"]._set(outs["scheduleValue"], i_t=step_index)
+
+
+def brick_signature_pattern_room_co2():
+    """BRICK pattern: occupancy inferred from a room's CO2 balance.
+
+    The graph-driven form of the CSV-driven construction in
+    ``full_workflow_example``::
+
+        Room  hasPoint  Zone_CO2_Level_Sensor       -> indoorCo2Measured
+        Room  isFedBy   VAV
+        VAV   hasPoint  Supply_Air_Flow_Sensor      -> supplyAirFlowRateMeasured
+                                                       (one slot per VAV, summed)
+        OccupancySystem.scheduleValue -> BuildingSpaceSystem.numberOfPeople
+
+    Both inputs are historised sensors, so the fast paths capture them as
+    exogenous signals and no gradient feedback loop runs through the
+    inferred occupancy.  ``outdoorCo2Concentration`` stays unwired for
+    ``fill_missing_inputs`` unless the building has an outdoor CO2 sensor.
+
+    Modeled identity is ``[room, co2_sensor]``: the leaf sensor pattern is a
+    singleton on the CO2 point and the zone a singleton on the room, so a
+    multi-member group is the only identity that coexists with both.
+    """
+    from twin4build.translator.translator import (
+        ModeledNode,
+        Node,
+        SetStepRule,
+        SignaturePattern,
+        StepRule,
+    )
+
+    room = Node(
+        cls=(
+            core.namespace.BRICK.Room,
+            core.namespace.BRICK.HVAC_Zone,
+            core.namespace.BRICK.Enclosed_space,
+            core.namespace.BRICK.Open_space,
+            core.namespace.REC.Room,
+            core.namespace.REC.Zone,
+            core.namespace.BRICK.Space,
+        )
+    )
+    co2_sensor = Node(cls=core.namespace.BRICK.Zone_CO2_Level_Sensor)
+    vavs = Node(cls=core.namespace.BRICK.VAV)
+    flow_sensors = Node(cls=core.namespace.BRICK.Supply_Air_Flow_Sensor)
+    sp = SignaturePattern(id="occupancy_signature_pattern_brick_room_co2")
+    sp.add_rule(
+        StepRule(subject=room, object=co2_sensor, predicate=core.namespace.BRICK.hasPoint)
+    )
+    sp.add_rule(
+        SetStepRule(subject=room, object=vavs, predicate=core.namespace.BRICK.isFedBy)
+    )
+    sp.add_rule(
+        SetStepRule(
+            subject=vavs, object=flow_sensors, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_connection(co2_sensor, "measuredValue", "indoorCo2Measured")
+    sp.add_connection(
+        flow_sensors,
+        "measuredValue",
+        "supplyAirFlowRateMeasured",
+        input_port_index=flow_sensors,
+    )
+    ModeledNode([room, co2_sensor])
+    return sp
+
+
+OccupancySystem.add_signature_pattern(brick_signature_pattern_room_co2())

@@ -575,6 +575,10 @@ def _brick_space_pattern(topology: str, with_volume: bool, heat_source: str = "c
     # delivered ``Power`` is the room's ``heatGain``.  Optional, so rooms
     # without heating still match.
     heating_cmd = Node(cls=core.namespace.BRICK.Heating_Command)
+    # Occupancy inferred from the room's CO2 balance (OccupancySystem is
+    # modelled on ``[room, co2_sensor]``); optional, so a room without a CO2
+    # sensor keeps ``numberOfPeople`` for ``fill_missing_inputs``.
+    co2_sensor = Node(cls=core.namespace.BRICK.Zone_CO2_Level_Sensor)
     space_heater = Node(
         cls=(
             core.namespace.BRICK.Space_Heater,
@@ -636,6 +640,12 @@ def _brick_space_pattern(topology: str, with_volume: bool, heat_source: str = "c
     sp.add_connection(
         outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"
     )
+    sp.add_rule(
+        OptionalRule(
+            subject=space, object=co2_sensor, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_connection(co2_sensor, "scheduleValue", "numberOfPeople")
     if heat_source == "command":
         sp.add_rule(
             OptionalRule(
