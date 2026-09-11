@@ -1,10 +1,12 @@
 # Standard library imports
 import os
+import re
 import shutil
 import tempfile
 import unittest
 
 # Third party imports
+from bs4 import BeautifulSoup
 from rdflib import RDF, RDFS, XSD, BNode, Graph, Literal, Namespace, URIRef
 
 # Local application imports
@@ -2211,6 +2213,122 @@ class TestSemanticModel(unittest.TestCase):
 
         self._setup_visualize_data()
         self.model.visualize(dpi=100)
+
+    # ==================== visualize() node label Tests ====================
+
+    def _read_object_graph_dot(self):
+        """Return the styled DOT that visualize() handed to Graphviz."""
+        dot_path, _ = self.model.get_dir(
+            folder_list=["graphs", "temp"], filename="object_graph.dot"
+        )
+        with open(dot_path, encoding="utf-8") as handle:
+            return handle.read()
+
+    @staticmethod
+    def _node_label_rows(dot_text):
+        """Return the row texts of every node's HTML-like table label."""
+        labels = re.findall(r"label=<\s*(<table.*?</table>)\s*>", dot_text, re.S)
+        return [
+            [
+                row.get_text().strip()
+                for row in BeautifulSoup(html, "html.parser").find_all("tr")
+            ]
+            for html in labels
+        ]
+
+    def _setup_composite_id_data(self):
+        """An instance whose local name is not a valid NCName.
+
+        Twin4Build's composite component ids contain "[" and "]", which makes
+        ``rdflib.namespace.split_uri`` raise, so ``rdf2dot`` falls back to
+        emitting the whole URI as the node's name.
+        """
+        example_ns = Namespace("http://example.org/")
+        self.model.add_namespaces({"EX": example_ns})
+        type_uri = URIRef("http://example.org/TestClass")
+        composite = URIRef("http://example.org/[nabc123][R08_06_O_CO202]")
+        self.model.ontology_graph.add(
+            (type_uri, RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class"))
+        )
+        self.model.instance_graph.add((composite, RDF.type, type_uri))
+        self.model.instance_graph.add(
+            (composite, URIRef("http://example.org/hasName"), Literal("composite"))
+        )
+        return str(composite)
+
+    def test_visualize_name_row_not_full_uri_for_composite_id(self):
+        """The name row must not duplicate the full-URI row (regression)."""
+        if not self.graphviz_installed:
+            self.skipTest("Graphviz drawing backend is not available")
+
+        composite_uri = self._setup_composite_id_data()
+        self.model.visualize()
+        rows_per_node = self._node_label_rows(self._read_object_graph_dot())
+        self.assertTrue(rows_per_node, "no node labels found in the styled DOT")
+        for rows in rows_per_node:
+            self.assertGreaterEqual(len(rows), 2)
+            # rows[0] is the type header, rows[1] the instance name.
+            self.assertNotEqual(
+                rows[1],
+                composite_uri,
+                "name row still duplicates the full URI row",
+            )
+            self.assertFalse(
+                rows[1].startswith("http"),
+                f"name row should be a local name, got {rows[1]!r}",
+            )
+
+    def test_visualize_name_row_not_full_uri_without_uri_row(self):
+        """include_full_uri=False must not leave the URI in the name row."""
+        if not self.graphviz_installed:
+            self.skipTest("Graphviz drawing backend is not available")
+
+        self._setup_composite_id_data()
+        self.model.visualize(include_full_uri=False)
+        for rows in self._node_label_rows(self._read_object_graph_dot()):
+            self.assertFalse(
+                rows[1].startswith("http"),
+                f"name row should be a local name, got {rows[1]!r}",
+            )
+
+    def test_visualize_table_border_attribute_not_duplicated(self):
+        """rdf2dot's lowercase border= must not survive next to BORDER=."""
+        if not self.graphviz_installed:
+            self.skipTest("Graphviz drawing backend is not available")
+
+        self._setup_visualize_data()
+        self.model.visualize()
+        for tag in set(re.findall(r"<table[^>]*>", self._read_object_graph_dot())):
+            self.assertIn("BORDER=", tag)
+            self.assertNotRegex(
+                tag,
+                r"\bborder=",
+                f"lowercase border= survives and overrides BORDER=: {tag}",
+            )
+
+    def test_visualize_rankdir_is_applied(self):
+        """rankdir must reach the DOT, where it can affect the layout."""
+        if not self.graphviz_installed:
+            self.skipTest("Graphviz drawing backend is not available")
+
+        self._setup_visualize_data()
+        self.model.visualize(rankdir="LR")
+        self.assertRegex(self._read_object_graph_dot(), r"rankdir\s*=\s*LR")
+
+    def test_visualize_rankdir_defaults_to_unset(self):
+        """Without rankdir the DOT stays as before (Graphviz default TB)."""
+        if not self.graphviz_installed:
+            self.skipTest("Graphviz drawing backend is not available")
+
+        self._setup_visualize_data()
+        self.model.visualize()
+        self.assertNotRegex(self._read_object_graph_dot(), r"rankdir\s*=")
+
+    def test_visualize_rankdir_rejects_invalid_value(self):
+        """An unusable rankdir should fail loudly rather than be ignored."""
+        self._setup_visualize_data()
+        with self.assertRaises(ValueError):
+            self.model.visualize(rankdir="sideways")
 
 
 if __name__ == "__main__":
