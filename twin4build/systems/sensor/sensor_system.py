@@ -379,14 +379,15 @@ def get_brick_command_sensor_pattern():
     """
     BRICK actuator command sensor pattern.
 
-    Matches any BRICK Command that is a hasPoint of a VAV and has a timeseries
+    Matches any BRICK Command that is a hasPoint of a terminal unit -- a VAV
+    on the air side, a space heater on the water side -- and has a timeseries
     UUID.  The SensorSystem holds the measured actuator command (ground truth for
     estimation) and receives the CITS predicted command via inputSignal so that
     the estimator can minimise the error.
 
     Topology::
 
-        VAV  hasPoint  <Command>
+        VAV | Space_Heater  hasPoint  <Command>
                           └─ hasExternalReference → <ExternalRef/BNode>
                                                         └─ hasTimeseriesId → <uuid>
 
@@ -400,7 +401,21 @@ def get_brick_command_sensor_pattern():
     and this sensor from being active on the same Command entity.
     """
     command = Node(cls=core.namespace.BRICK.Command)
-    vav = Node(cls=core.namespace.BRICK.VAV)
+    # The equipment the command actuates.  Space heaters are here so that a
+    # radiator valve command (``brick:Heating_Command`` on a
+    # ``brick:Space_Heater``) becomes controller-driven exactly like a VAV's
+    # damper command; without it the heating loop stays open in Stage 2,
+    # because the space heater reads the historised series instead of its
+    # controller's output.
+    vav = Node(
+        cls=(
+            core.namespace.BRICK.VAV,
+            core.namespace.BRICK.Space_Heater,
+            core.namespace.BRICK.Radiator,
+            core.namespace.BRICK.Radiant_Panel,
+            core.namespace.BRICK.Baseboard_Radiator,
+        )
+    )
     externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     timeseries_id = Node(cls=core.namespace.XSD.string)
 

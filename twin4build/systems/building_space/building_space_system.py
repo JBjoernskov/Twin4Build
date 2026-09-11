@@ -532,7 +532,7 @@ def _add_brick_volume_parameter(sp, space):
     sp.add_modeled_node(volume_node)
 
 
-def _brick_space_pattern(topology: str, with_volume: bool):
+def _brick_space_pattern(topology: str, with_volume: bool, heat_source: str = "command"):
     """Factory for the Brick building-space patterns.
 
     ``topology``:
@@ -544,6 +544,19 @@ def _brick_space_pattern(topology: str, with_volume: bool):
       ``VAV.outletAirTemperature`` from a :class:`FanCoilUnitSystem`.
     * ``"direct"`` -- AHU feeds the room through any path *not* via a VAV
       (Mortar site A style): the room receives ``AHU.supplyAirTemperature``.
+
+    ``heat_source`` says where the optional ``heatGain`` comes from -- a
+    pattern can feed only one node into a port, so the two radiator
+    topologies are separate patterns:
+
+    * ``"command"`` -- the room carries a bare ``brick:Heating_Command``
+      point and :class:`SpaceHeaterSystem` is modelled on
+      ``[room, command]``;
+    * ``"equipment"`` -- an explicit space heater is located in the room and
+      carries the command; the radiator is modelled on the equipment.
+
+    Both are optional rules, so a room with no radiator at all matches
+    either pattern and ``fill_missing_inputs`` supplies a constant.
 
     All variants share the ``space`` modeled node, so the MILP keeps one per
     room; ``with_volume`` adds the ``brick:volume`` parameter chain (see
@@ -562,11 +575,23 @@ def _brick_space_pattern(topology: str, with_volume: bool):
     # delivered ``Power`` is the room's ``heatGain``.  Optional, so rooms
     # without heating still match.
     heating_cmd = Node(cls=core.namespace.BRICK.Heating_Command)
+    space_heater = Node(
+        cls=(
+            core.namespace.BRICK.Space_Heater,
+            core.namespace.BRICK.Radiator,
+            core.namespace.BRICK.Radiant_Panel,
+            core.namespace.BRICK.Baseboard_Radiator,
+        )
+    )
+    located_in = Predicate(
+        (core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo)
+    )
     feeds = Predicate((core.namespace.BRICK.feeds, core.namespace.FSO.feedsFluidTo))
 
     suffix = "_with_volume" if with_volume else ""
+    heat_suffix = "" if heat_source == "command" else f"_{heat_source}_heat"
     sp = SignaturePattern(
-        id=f"building_space_signature_pattern_brick_{topology}{suffix}"
+        id=f"building_space_signature_pattern_brick_{topology}{suffix}{heat_suffix}"
     )
     sp.add_node(solar_radiance_sensor, optional=True)  # not always present
     sp.add_node(outside_air_temperature_sensor, optional=True)  # not always present
@@ -611,12 +636,22 @@ def _brick_space_pattern(topology: str, with_volume: bool):
     sp.add_connection(
         outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"
     )
-    sp.add_rule(
-        OptionalRule(
-            subject=space, object=heating_cmd, predicate=core.namespace.BRICK.hasPoint
+    if heat_source == "command":
+        sp.add_rule(
+            OptionalRule(
+                subject=space,
+                object=heating_cmd,
+                predicate=core.namespace.BRICK.hasPoint,
+            )
         )
-    )
-    sp.add_connection(heating_cmd, "Power", "heatGain")
+        sp.add_connection(heating_cmd, "Power", "heatGain")
+    elif heat_source == "equipment":
+        sp.add_rule(
+            OptionalRule(subject=space_heater, object=space, predicate=located_in)
+        )
+        sp.add_connection(space_heater, "Power", "heatGain")
+    else:
+        raise ValueError(heat_source)
     if with_volume:
         _add_brick_volume_parameter(sp, space)
     # Interzonal/boundary coupling is modeled by a separate WallSystem
@@ -625,25 +660,32 @@ def _brick_space_pattern(topology: str, with_volume: bool):
     return sp
 
 
-def brick_signature_pattern_vav_no_reheat(with_volume: bool = False):
+def brick_signature_pattern_vav_no_reheat(with_volume: bool = False, heat_source: str = "command"):
     """See :func:`_brick_space_pattern` (``"vav_no_reheat"``)."""
-    return _brick_space_pattern("vav_no_reheat", with_volume)
+    return _brick_space_pattern("vav_no_reheat", with_volume, heat_source)
 
 
-def brick_signature_pattern_vav(with_volume: bool = False):
+def brick_signature_pattern_vav(with_volume: bool = False, heat_source: str = "command"):
     """See :func:`_brick_space_pattern` (``"vav"``); kept for site B / Mortar graphs."""
-    return _brick_space_pattern("vav", with_volume)
+    return _brick_space_pattern("vav", with_volume, heat_source)
 
 
-def brick_signature_pattern(with_volume: bool = False):  # Fits to site A
+def brick_signature_pattern(with_volume: bool = False, heat_source: str = "command"):  # Fits to site A
     """See :func:`_brick_space_pattern` (``"direct"``)."""
-    return _brick_space_pattern("direct", with_volume)
+    return _brick_space_pattern("direct", with_volume, heat_source)
 
 
 for _with_volume in (True, False):
-    BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern_vav_no_reheat(_with_volume))
-    BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern_vav(_with_volume))
-    BuildingSpaceSystem.add_signature_pattern(brick_signature_pattern(_with_volume))
+    for _heat_source in ("command", "equipment"):
+        BuildingSpaceSystem.add_signature_pattern(
+            brick_signature_pattern_vav_no_reheat(_with_volume, _heat_source)
+        )
+        BuildingSpaceSystem.add_signature_pattern(
+            brick_signature_pattern_vav(_with_volume, _heat_source)
+        )
+        BuildingSpaceSystem.add_signature_pattern(
+            brick_signature_pattern(_with_volume, _heat_source)
+        )
 BuildingSpaceSystem.add_signature_pattern(saref_signature_pattern())
 BuildingSpaceSystem.add_signature_pattern(saref_signature_pattern_sensor())
 

@@ -3073,6 +3073,10 @@ class Translator:
             if Translator._binding_compatible(m.get(sp_subject), sm_subject)
         ]
         if candidate_maps and not consistent_maps:
+            # Note: ``feasible`` is deliberately left untouched -- the
+            # conflict is specific to the maps being extended, not to the
+            # (sp_subject, sm_subject) pair, which may well be the seed of
+            # its own match (e.g. the sibling VAVs of one room).
             if _diag_walker:
                 _match_diag_write(
                     f"[WALKER]   PRUNE reason=binding-conflict "
