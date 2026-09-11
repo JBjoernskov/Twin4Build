@@ -549,11 +549,16 @@ class FunctionalModel:
                             (src[0], src[1]) for src in self._trace_sources(c, port)
                         ]
                     for prod, _ in srcs:
-                        if (
-                            prod.id in self.forward_ids
-                            and self.pos[prod.id] < self.pos[c.id]
-                            and prod.id not in keep
-                        ):
+                        # Producers that execute *later* than their consumer
+                        # are included too: their edge is the cut of a cycle,
+                        # so the consumer reads the previous step's value
+                        # (do_step's Gauss-Seidel lag) and the source
+                        # classification threads it as a feedback lag
+                        # variable.  Leaving such a producer out would freeze
+                        # a theta-dependent signal into a captured constant
+                        # (e.g. a stateless AHU that executes after the zones
+                        # it feeds, driven by controllers that read them).
+                        if prod.id in self.forward_ids and prod.id not in keep:
                             keep.add(prod.id)
                             changed = True
         return [c for c in self.order if c.id in keep and c.id in self.forward_ids]

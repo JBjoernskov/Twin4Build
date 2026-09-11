@@ -1,6 +1,5 @@
 # Standard library imports
 import datetime
-import shutil
 import warnings
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
@@ -15,6 +14,10 @@ from prettytable import PrettyTable
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.utils.deprecation import deprecate_name
+from twin4build.utils.graphviz_render import (
+    DRAWING_UNAVAILABLE_HINT,
+    drawing_available,
+)
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.validate_period import validate_period
@@ -719,31 +722,20 @@ class Model:
                 return False
             return any(str(sc.uri) == str(b.uri) for sc in a.super_classes)
 
-        for component in self._simulation_model.components.values():
-            setter = getattr(component, "set_transformation", None)
-            if not callable(setter):
-                continue
-            semantic_nodes = sim2sem.get(component)
-            if not semantic_nodes:
-                continue
-
-            # Gather every rule that matches at least one of the
-            # component's semantic counterparts.
+        def _winner(nodes, component_id):
+            """Most-specific rule matching any of ``nodes`` (first-declared on ties)."""
             matched: List[Tuple[Any, Callable[[Any], Any], Any]] = []
             for stype, fn, original_key in rules:
                 hit = False
-                for node in semantic_nodes:
+                for node in nodes:
                     isinstance_check = getattr(node, "isinstance", None)
                     if callable(isinstance_check) and isinstance_check(stype.uri):
                         hit = True
                         break
                 if hit:
                     matched.append((stype, fn, original_key))
-
             if not matched:
-                continue
-
-            # Most-specific wins; first-declared on ties.
+                return None
             winner = matched[0]
             for cand in matched[1:]:
                 if _is_strict_subclass(cand[0], winner[0]):
@@ -754,11 +746,35 @@ class Model:
                     warnings.warn(
                         f"set_transformations: rules for {cand[2]!r} and "
                         f"{winner[2]!r} both match component "
-                        f"{component.id!r} with no subclass relationship; "
+                        f"{component_id!r} with no subclass relationship; "
                         f"keeping the first-declared rule ({winner[2]!r}).",
                         stacklevel=2,
                     )
-            setter(winner[1])
+            return winner
+
+        for component in self._simulation_model.components.values():
+            semantic_nodes = sim2sem.get(component)
+            if not semantic_nodes:
+                continue
+            typed_setter = getattr(component, "set_transformation_by_type", None)
+            if callable(typed_setter):
+                # Components that model several semantic nodes with
+                # different roles (an OutdoorEnvironmentSystem models an
+                # outdoor temperature sensor AND a solar irradiance sensor)
+                # get one rule per node, keyed by the class that won for
+                # that node, so a Temperature_Sensor rule and a
+                # Solar_Irradiance_Sensor rule reach their own feeds.
+                for node in semantic_nodes:
+                    winner = _winner([node], component.id)
+                    if winner is not None:
+                        typed_setter(winner[0], winner[1])
+                continue
+            setter = getattr(component, "set_transformation", None)
+            if not callable(setter):
+                continue
+            winner = _winner(semantic_nodes, component.id)
+            if winner is not None:
+                setter(winner[1])
 
         return self
 
@@ -962,15 +978,15 @@ class Model:
             # self._semantic_model.reason()
             LOGGER.ok("Parsing semantic model", change_status=True)
             if draw_semantic_model:
-                app_path = shutil.which("dot")
-                assert (
-                    app_path is not None
-                ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
-                LOGGER.task("Drawing semantic model")
-                LOGGER.add_level()
-                self._semantic_model.visualize()
-                LOGGER.remove_level()
-                LOGGER.ok("Drawing semantic model", change_status=True)
+                if not drawing_available():
+                    LOGGER.warning(DRAWING_UNAVAILABLE_HINT)
+                    warnings.warn(DRAWING_UNAVAILABLE_HINT, UserWarning)
+                else:
+                    LOGGER.task("Drawing semantic model")
+                    LOGGER.add_level()
+                    self._semantic_model.visualize()
+                    LOGGER.remove_level()
+                    LOGGER.ok("Drawing semantic model", change_status=True)
 
         else:
             apply_translator = False
@@ -994,17 +1010,15 @@ class Model:
         )
 
         if draw_simulation_model:
-            # Get all filenames generated in the folder dirname
-            app_path = shutil.which("dot")
-            assert (
-                app_path is not None
-            ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
-
-            LOGGER.task("Drawing simulation model")
-            LOGGER.add_level()
-            self._simulation_model.visualize()
-            LOGGER.remove_level()
-            LOGGER.ok("Drawing simulation model", change_status=True)
+            if not drawing_available():
+                LOGGER.warning(DRAWING_UNAVAILABLE_HINT)
+                warnings.warn(DRAWING_UNAVAILABLE_HINT, UserWarning)
+            else:
+                LOGGER.task("Drawing simulation model")
+                LOGGER.add_level()
+                self._simulation_model.visualize()
+                LOGGER.remove_level()
+                LOGGER.ok("Drawing simulation model", change_status=True)
 
         LOGGER.remove_level()
         LOGGER.ok("Loading model", change_status=True)
