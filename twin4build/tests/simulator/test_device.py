@@ -20,6 +20,7 @@ CUDA parity (auto-skipped without a GPU):
 # Standard library imports
 import datetime
 import unittest
+from unittest import mock
 
 # Third party imports
 import numpy as np
@@ -164,6 +165,38 @@ class TestModelToCUDA(unittest.TestCase):
             "functional single-shooting objective was not built on CUDA",
         )
         self.assertTrue(np.all(np.isfinite(result["result_x"])))
+
+
+class TestEnsureCudaAvailable(unittest.TestCase):
+    """``model.to("cuda")`` must name the CUDA install, not fail opaquely."""
+
+    def test_cpu_is_noop(self):
+        from twin4build.utils.device import ensure_cuda_available
+
+        ensure_cuda_available(None)
+        ensure_cuda_available("cpu")
+
+    def test_cpu_wheel_names_the_install_line(self):
+        from twin4build.utils.device import CUDA_INSTALL_HINT, ensure_cuda_available
+
+        with (
+            mock.patch("torch.cuda.is_available", return_value=False),
+            mock.patch("torch.backends.cuda.is_built", return_value=False),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                ensure_cuda_available("cuda")
+        self.assertIn(CUDA_INSTALL_HINT, str(ctx.exception))
+        self.assertIn("WSL", str(ctx.exception))
+
+    def test_cuda_build_without_a_device(self):
+        from twin4build.utils.device import ensure_cuda_available
+
+        with (
+            mock.patch("torch.cuda.is_available", return_value=False),
+            mock.patch("torch.backends.cuda.is_built", return_value=True),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "no GPU is visible"):
+                ensure_cuda_available("cuda")
 
 
 if __name__ == "__main__":

@@ -114,7 +114,9 @@ If you prefer to set up manually or need a different environment manager:
     conda activate t4bdev
 
     # Install in development mode with dependencies
-    pip install -e .[dev]
+    pip install -e ".[dev]"
+    # CUDA torch (optional; PyPI's default wheel is CPU-only on Windows):
+    pip install -e ".[dev,gpu]" --extra-index-url https://download.pytorch.org/whl/cu128
 
 **Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.10+ environment.
 
@@ -207,6 +209,7 @@ Git Workflow
    conda create -n t4bdev python=3.12
    conda activate t4bdev
    python -m pip install -e ".[dev]"
+   # GPU (optional): python -m pip install -e ".[dev,gpu]" --extra-index-url https://download.pytorch.org/whl/cu128
 
 With ``venv``, replace the first two commands with the platform-appropriate
 environment creation and activation commands. Keep the editable install so

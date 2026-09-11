@@ -21,6 +21,40 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+# CUDA wheels live on PyTorch's index, not PyPI (issue #167).
+CUDA_TORCH_INDEX = "https://download.pytorch.org/whl/cu128"
+CUDA_INSTALL_HINT = f"pip install twin4build[gpu] --extra-index-url {CUDA_TORCH_INDEX}"
+
+
+def ensure_cuda_available(device) -> None:
+    """Raise if ``device`` is CUDA but this process cannot use a GPU.
+
+    ``pip install twin4build`` follows PyPI's default torch wheel, which on
+    Windows is CPU-only, so ``model.to("cuda")`` would otherwise fail with
+    torch's ``Torch not compiled with CUDA enabled``.  Say that once, with
+    the install line, instead of looking like a silent CPU fallback.
+    """
+    if device is None:
+        return
+    if torch.device(device).type != "cuda":
+        return
+    if torch.cuda.is_available():
+        return
+    if torch.backends.cuda.is_built():
+        raise RuntimeError(
+            "CUDA was requested but no GPU is visible to this process "
+            "(torch.cuda.is_available() is False). Check the NVIDIA driver. "
+            f"GPU Twin4Build install: {CUDA_INSTALL_HINT}"
+        )
+    raise RuntimeError(
+        "CUDA was requested but this torch build has no CUDA "
+        "(the default PyPI wheel on Windows is CPU-only). Install a "
+        f"CUDA 12.8+ build with:\n  {CUDA_INSTALL_HINT}\n"
+        "Compiled / CUDA-graph paths also need Linux or WSL because "
+        "Triton ships no Windows wheels. See the README GPU / CUDA "
+        "installation section."
+    )
+
 
 def _move_tensor(
     t: torch.Tensor, device: torch.device, dtype: Optional[torch.dtype]
@@ -75,9 +109,7 @@ def _assign(container, key, value) -> None:
         setattr(container, key, value)
 
 
-def move_object_tensors(
-    root, device, dtype: Optional[torch.dtype] = None
-) -> None:
+def move_object_tensors(root, device, dtype: Optional[torch.dtype] = None) -> None:
     """Recursively move every tensor reachable from ``root`` to ``device``.
 
     Traverses attributes of twin4build objects and ``nn.Module``s plus plain
@@ -135,9 +167,11 @@ def move_object_tensors(
                             container,
                             key,
                             tuple(
-                                _move_tensor(v, device, dtype)
-                                if isinstance(v, torch.Tensor)
-                                else v
+                                (
+                                    _move_tensor(v, device, dtype)
+                                    if isinstance(v, torch.Tensor)
+                                    else v
+                                )
                                 for v in value
                             ),
                         )
