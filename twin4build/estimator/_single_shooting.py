@@ -272,6 +272,49 @@ class FunctionalEstimationObjective:
         residual = (raw / self._sd / torch.sqrt(self.loss_scale * self._denom)).reshape(-1)
         return torch.sum(residual.square())
 
+    # -- per-column (per residual signal) losses: sum over columns == loss ------
+    def _column_loss_from_meas(self, Ms) -> torch.Tensor:
+        raw = self._raw_residuals_from_meas(Ms)
+        scaled = raw / self._sd / torch.sqrt(self.loss_scale * self._denom)
+        return scaled.square().sum(dim=0)  # (n_meas,)
+
+    def column_loss(self, theta: torch.Tensor, *, transform_mode: bool = False) -> torch.Tensor:
+        """Squared-residual sum per residual column; ``column_loss(theta).sum() == loss(theta)``."""
+        Ms = self._rollout_meas(self._denorm(theta), transform_mode=transform_mode)
+        return self._column_loss_from_meas(Ms)
+
+    def batched_column_loss(self, theta_batch: torch.Tensor) -> torch.Tensor:
+        """``(B, n_meas)`` per-column losses for a batch of parameter vectors."""
+        if theta_batch.device.type == "cpu":
+            return torch.stack([self.column_loss(th) for th in theta_batch])
+        if theta_batch.shape[0] == 1:
+            return self.column_loss(theta_batch[0], transform_mode=True).unsqueeze(0)
+        Ms = self._rollout_meas_batched(self._denorm(theta_batch))
+        return torch.func.vmap(self._column_loss_from_meas)(Ms)
+
+    def batched_column_loss_and_grad(
+        self, theta_batch: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Per-column losses ``(B, n_meas)`` and the gradient of their sum ``(B, n_theta)``.
+
+        For block-separable problems (:meth:`parameter_structure`) block ``k``
+        of the gradient is the gradient of block ``k``'s own column sum, so one
+        backward pass serves every block.
+        """
+        z = theta_batch.detach().clone().requires_grad_(True)
+        cols = self.batched_column_loss(z)
+        (grad,) = torch.autograd.grad(cols.sum(), z)
+        return cols.detach(), grad.detach()
+
+    def parameter_structure(self):
+        """``(theta_block, column_block, n_blocks)`` from the composer's wiring
+        (:meth:`FunctionalModel.index_coupling`), cached."""
+        cached = self.__dict__.get("_parameter_structure")
+        if cached is None:
+            cached = self.composer.index_coupling()
+            self.__dict__["_parameter_structure"] = cached
+        return cached
+
     def batched_loss(self, theta_batch: torch.Tensor) -> torch.Tensor:
         if theta_batch.device.type == "cpu":
             return torch.stack([self.loss(th) for th in theta_batch])
