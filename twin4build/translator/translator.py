@@ -2344,6 +2344,20 @@ class Translator:
         whose ``measuredValue`` input is optional.
         """
         if len(getattr(component, "input", None) or {}) == 0:
+            # A source component with no inputs still needs something to
+            # emit.  A ScheduleSystem the translator instantiated from a
+            # semantic node alone has none of its source flags set and
+            # fails at simulation ("One of use_spreadsheet, use_database,
+            # or use_dict must be True"); before this change such a schedule
+            # was dropped for having no connection, so keeping it now would
+            # turn a translatable model into one that cannot simulate.
+            source_flags = [
+                getattr(component, name)
+                for name in ("use_spreadsheet", "use_database", "use_dict")
+                if hasattr(component, name)
+            ]
+            if source_flags and not any(source_flags):
+                return False
             return True
         return bool(
             getattr(component, "uuid", None)

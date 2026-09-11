@@ -77,6 +77,28 @@ class TestUnconnectedComponentsAreKept(unittest.TestCase):
         for comp in components.values():
             self.assertIn(comp, translator._sim2group_map)
 
+    def test_standalone_rule_requires_a_data_source(self):
+        """An input-free component is kept only if it can emit something.
+
+        A ScheduleSystem instantiated from a semantic node alone has none of
+        its source flags set and fails at simulation, so keeping it turns a
+        translatable model into one that cannot run (the full-workflow
+        example's consumer-less cooling setpoint).
+        """
+        import twin4build as tb
+        from twin4build.translator.translator import Translator
+
+        is_standalone = Translator._is_standalone_component
+        with_data = tb.ScheduleSystem(
+            weekday_ruleset={"ruleset_default_value": 21.0}, id="with_data"
+        )
+        self.assertTrue(is_standalone(with_data))
+        without_data = tb.ScheduleSystem(id="without_data")
+        self.assertFalse(is_standalone(without_data))
+        # Data-bound leaves stay standalone through their source binding.
+        self.assertTrue(is_standalone(SensorSystem(uuid="uuid-x", id="leaf")))
+        self.assertFalse(is_standalone(SensorSystem(id="virtual")))
+
 
 if __name__ == "__main__":
     unittest.main()
