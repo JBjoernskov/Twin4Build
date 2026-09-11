@@ -47,14 +47,12 @@ Development Environment Setup
 Prerequisites
 ~~~~~~~~~~~~~
 
-- Python 3.9 or higher (3.12 recommended)
+- Python 3.10 or higher (3.12 recommended)
 - Git
 - A code editor (VS Code, PyCharm, etc.)
 - **Conda** (recommended) or any Python environment manager
 
-Graph drawing uses the pygraphviz 2.0 wheel on Python 3.10+ (no system Graphviz
-install). Python 3.9 still needs Graphviz on ``PATH`` for those tests, or they
-are skipped.
+Graph drawing uses the pygraphviz 2.0 wheel (no system Graphviz install).
 
 **Quick Start**: Use the automated setup script ``python scripts/setup_dev.py`` after cloning the repository for the fastest setup experience.
 
@@ -86,7 +84,7 @@ The easiest way to set up your development environment is using the provided set
 
 **Script options:**
 
-- ``--python VERSION``: Specify Python version (e.g., 3.9, 3.10, 3.11, 3.12)
+- ``--python VERSION``: Specify Python version (e.g., 3.10, 3.11, 3.12)
 - ``--env NAME``: Specify conda environment name (default: t4bdev)
 - ``--help``: Show all available options
 
@@ -107,7 +105,7 @@ If you prefer to set up manually or need a different environment manager:
     # Install in development mode with dependencies
     pip install -e .[dev]
 
-**Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.9+ environment.
+**Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.10+ environment.
 
 Code Style and Conventions
 --------------------------

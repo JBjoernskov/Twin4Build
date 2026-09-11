@@ -16,9 +16,8 @@ in-process:
 * ``AGraph.draw()`` after layout uses ``nop2``, which is ``neato -n2``
   (use existing node and edge positions; do not re-layout).
 
-The system-binary path is kept as a fallback for Python 3.9 (no pygraphviz
-2.0 wheel) and for environments that already have a complete Graphviz
-install on ``PATH``.
+The system-binary path is kept as a fallback for environments that already
+have a complete Graphviz install on ``PATH``.
 """
 
 # Standard library imports
@@ -38,10 +37,10 @@ _PACKED_DRAW_ARGS = "-Gsize=10! -Grankdir=RL"
 _PACK_MODE = "array_3"
 
 DRAWING_UNAVAILABLE_HINT = (
-    "Graphviz drawing is unavailable. On Python 3.10+ it is provided by the "
-    "pygraphviz wheel. On Python 3.9 install Graphviz with dot, neato, "
-    "ccomps, and gvpack on PATH. Set draw_semantic_model=False or "
-    "draw_simulation_model=False to skip drawing."
+    "Graphviz drawing is unavailable. It is provided by the pygraphviz "
+    "wheel; reinstall twin4build or pip install 'pygraphviz>=2.0.1'. "
+    "Set draw_semantic_model=False or draw_simulation_model=False to skip "
+    "drawing."
 )
 
 

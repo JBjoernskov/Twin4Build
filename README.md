@@ -149,11 +149,10 @@ pip install twin4build[database]     # PostgreSQL connectivity
 pip install twin4build[all]          # Everything
 ```
 
-The following python versions are supported:
+The following python versions are supported (Twin4Build 2.0 requires Python 3.10+; 3.9 is no longer supported):
 
 | Python version  | Windows  | Ubuntu |
 | :------------ |---------------:| -----:|
-| 3.9 | [![windows-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml)        |    [![ubuntu-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml) |
 | 3.10 | [![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)        |    [![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml) |
 | 3.11 | [![windows-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml)        |    [![ubuntu-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml) |
 | 3.12 | [![windows-python3.12](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-12.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-12.yml)        |    [![ubuntu-python3.12](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-12.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-12.yml) |
@@ -161,26 +160,12 @@ The following python versions are supported:
 
 
 
-### Graphviz (included on Python 3.10+)
+### Graphviz (included)
 
-Graph drawing uses [Graphviz](https://graphviz.org) through [pygraphviz](https://pygraphviz.github.io) 2.0+. On Python 3.10 and newer the pygraphviz wheel bundles the Graphviz libraries, so `pip install twin4build` is enough — you do not need apt, winget, choco, or brew.
+Graph drawing uses [Graphviz](https://graphviz.org) through [pygraphviz](https://pygraphviz.github.io) 2.0+. The pygraphviz wheel bundles the Graphviz libraries, so `pip install twin4build` is enough — you do not need apt, winget, choco, or brew.
 
-The bundled Graphviz is licensed under EPL-2.0 (see pygraphviz's `LICENSE.graphviz`). Matplotlib's optional LaTeX text rendering is a separate system binary and is not included.
+The bundled Graphviz is licensed under EPL-2.0 (see pygraphviz's `LICENSE.graphviz`). Matplotlib's optional LaTeX text rendering is a separate system binary and is not included. Skip drawing with `draw_semantic_model=False` / `draw_simulation_model=False`.
 
-On Python 3.9 there is no pygraphviz 2.0 wheel. Install Graphviz yourself and put `dot`, `neato`, `ccomps`, and `gvpack` on `PATH`, or skip drawing with `draw_semantic_model=False` / `draw_simulation_model=False`.
-
-#### Python 3.9 only
-```bat
-# Ubuntu
-sudo apt install graphviz
-
-# Windows
-winget install graphviz
-choco install graphviz
-
-# macOS
-brew install graphviz
-```
 ### psycopg2 binaries (Linux-only)
 You might need to install the tools to build psycopg2 from source, here is an example for Ubuntu:
 
