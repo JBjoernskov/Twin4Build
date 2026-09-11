@@ -83,11 +83,7 @@ class ValveSystem(core.System, nn.Module):
 
     def __init__(
         self,
-        # A translator-instantiated valve gets this default; 1000 kg/s sat
-        # outside the estimable bounds below (5e-3 .. 1), so any auto-estimation
-        # started from an infeasible x0.  0.05 kg/s is a typical FCU / VAV
-        # reheat valve, inside the bounds, and still only a starting point.
-        waterFlowRateMax: Optional[float] = 0.05
+        waterFlowRateMax: Optional[float] = 1000
         / (
             (60 - 45) * 4180
         ),  # Provide 1000 W of heating power when cooling from 60 to 45 degrees
