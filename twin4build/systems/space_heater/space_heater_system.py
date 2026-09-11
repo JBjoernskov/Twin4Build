@@ -19,6 +19,7 @@ from twin4build.translator.translator import (
     StepRule,
     AnyPathRule,
     Node,
+    NoStepRule,
     Predicate,
     ModeledNode,
     OptionalRule,
@@ -788,6 +789,26 @@ def brick_signature_pattern_room_heating_command():
             subject=space, object=heating_cmd, predicate=core.namespace.BRICK.hasPoint
         )
     )
+    # Only when the radiator is *not* modelled as equipment.  Graphs that
+    # carry both (the room and an explicit space heater both point at the
+    # command) would otherwise match this pattern and
+    # ``brick_signature_pattern_space_heater_valve`` at once, and the two
+    # modeled identities (``[room, command]`` vs the equipment) do not
+    # exclude each other -- giving two radiators per real one.
+    sp.add_rule(
+        NoStepRule(
+            subject=Node(
+                cls=(
+                    core.namespace.BRICK.Space_Heater,
+                    core.namespace.BRICK.Radiator,
+                    core.namespace.BRICK.Radiant_Panel,
+                    core.namespace.BRICK.Baseboard_Radiator,
+                )
+            ),
+            object=heating_cmd,
+            predicate=core.namespace.BRICK.hasPoint,
+        )
+    )
     sp.add_connection(heating_cmd, "measuredValue", "waterFlowRate")
     sp.add_connection(space, "indoorTemperature", "indoorTemperature")
     ModeledNode([space, heating_cmd])
@@ -803,13 +824,28 @@ def brick_signature_pattern_space_heater_valve():
         Space_Heater  feeds         Room
         Space_Heater  hasPoint      Heating_Command
 
-    The command node is modelled by a :class:`ValveSystem` (see its
-    ``brick_signature_pattern_heating_command``), so the water side arrives
-    as a real mass flow and ``waterFlowRateMax`` carries the scale::
+    The water side comes from the command point::
 
-        Heating_Command.waterFlowRate -> SpaceHeaterSystem.waterFlowRate
-        Room.indoorTemperature        -> SpaceHeaterSystem.indoorTemperature
-        SpaceHeaterSystem.Power       -> BuildingSpaceSystem.heatGain
+        Heating_Command.inputSignal -> SpaceHeaterSystem.waterFlowRate
+        Room.indoorTemperature      -> SpaceHeaterSystem.indoorTemperature
+        SpaceHeaterSystem.Power     -> BuildingSpaceSystem.heatGain
+
+    ``inputSignal`` is the port a controller identified at that URI
+    produces (see ``ControllerIdentificationPISystem``'s
+    ``brick_signature_pattern_space_heater_room``), so the loop closes
+    during translation -- the same convention the AHU pattern uses for
+    ``Damper_Position_Command``.  Naming the controller's port explicitly
+    also makes the wiring deterministic: reading ``measuredValue`` would
+    resolve to either the historised command sensor or the
+    controller-driven one, whichever the MILP happened to pick.
+
+    The command carries a valve opening, so the caller's
+    ``Model.set_transformations`` converts it to kg/s (a
+    ``brick:Heating_Command`` rule); the controller is identified against
+    that same transformed series, so it produces the same units.  Without a
+    controller in the translation the water side stays unwired -- use
+    :func:`brick_signature_pattern_room_heating_command` (or supply the
+    flow through ``fill_missing_inputs``) for replay-only models.
 
     ``supplyWaterTemperature`` stays unwired for
     :meth:`Model.fill_missing_inputs`; ``UA`` and
@@ -848,7 +884,9 @@ def brick_signature_pattern_space_heater_valve():
             predicate=core.namespace.BRICK.hasPoint,
         )
     )
-    sp.add_connection(heating_cmd, "waterFlowRate", "waterFlowRate")
+    sp.add_connection(
+        heating_cmd, "inputSignal", "waterFlowRate", output_port_index=heating_cmd
+    )
     sp.add_connection(room, "indoorTemperature", "indoorTemperature")
     sp.add_modeled_node(space_heater)
     return sp

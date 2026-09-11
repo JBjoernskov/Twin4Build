@@ -8,8 +8,7 @@ A BMS graph with explicit radiator equipment::
 must translate into the same closed loop the dampers get::
 
     CITS(zone temperature vs setpoint, gated by the operating mode)
-        -> Heating_Command
-        -> ValveSystem.valvePosition -> waterFlowRate
+        -> Heating_Command (inputSignal)
         -> SpaceHeaterSystem.waterFlowRate
         -> Power -> BuildingSpaceSystem.heatGain
 """
@@ -38,7 +37,6 @@ from twin4build.systems.controller.controller_identification.controller_identifi
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.space_heater.space_heater_system import SpaceHeaterSystem
-from twin4build.systems.valve.valve_system import ValveSystem
 from twin4build.tests.translator.test_brick14_bms_patterns import EX, _point, build_graph
 from twin4build.translator.translator import Translator
 
@@ -51,7 +49,6 @@ SYSTEMS = [
     BuildingSpaceSystem,
     AirHandlingUnitSystem,
     SpaceHeaterSystem,
-    ValveSystem,
     ControllerIdentificationPISystem,
     OutdoorEnvironmentSystem,
     SensorSystem,
@@ -111,7 +108,7 @@ class TestSpaceHeaterControlLoop(unittest.TestCase):
         valve_loops = [c for c in cits if "MVV" in c.id]
         self.assertEqual(len(valve_loops), 1, [c.id for c in cits])
 
-    def test_valve_loop_reads_the_room(self):
+    def test_heating_loop_reads_the_room(self):
         cits = [
             c
             for c in self.model.get_components_by_class(ControllerIdentificationPISystem)
@@ -121,24 +118,22 @@ class TestSpaceHeaterControlLoop(unittest.TestCase):
             s.uuid for s in incoming(cits, port) if isinstance(s, SensorSystem)
         )
         self.assertEqual(uuids("sensorValue"), ["R01_TRU01"])
-        self.assertEqual(uuids("setpointValue"), ["R01_SpTRU01"])
+        # Every zone temperature setpoint on the room is offered to the
+        # tracked-setpoint bus; the gamma weights pick between them.
+        self.assertEqual(uuids("setpointValue"), ["R01_SpTRU01", "R01_SpTRU01_K"])
         # Gated by the room's operating mode, the heating counterpart of the
         # VAV's flow setpoint.
         self.assertEqual(uuids("onOffSignal"), ["R01_Drift"])
 
-    def test_valve_turns_the_command_into_a_water_flow(self):
-        valves = self.model.get_components_by_class(ValveSystem)
-        self.assertEqual(len(valves), 1, [v.id for v in valves])
-        (src,) = incoming(valves[0], "valvePosition")
-        self.assertIsInstance(src, SensorSystem)
-        self.assertEqual(src.uuid, "R01_MVV01")
-
-    def test_radiator_is_driven_by_the_valve_and_heats_the_room(self):
+    def test_radiator_is_driven_by_its_controller_and_heats_the_room(self):
         heaters = self.model.get_components_by_class(SpaceHeaterSystem)
         self.assertEqual(len(heaters), 1, [h.id for h in heaters])
         heater = heaters[0]
         (water,) = incoming(heater, "waterFlowRate")
-        self.assertIsInstance(water, ValveSystem)
+        # Straight from the controller identified at the command URI, the
+        # same convention the AHU uses for the damper command.
+        self.assertIsInstance(water, ControllerIdentificationPISystem)
+        self.assertIn("MVV", water.id)
         (room_in,) = incoming(heater, "indoorTemperature")
         self.assertIsInstance(room_in, BuildingSpaceSystem)
         rooms = self.model.get_components_by_class(BuildingSpaceSystem)
@@ -156,15 +151,29 @@ class TestSpaceHeaterControlLoop(unittest.TestCase):
     def test_command_sensor_is_driven_by_its_controller(self):
         """The historised command point becomes controller-driven, so the
         loop closes through it exactly as the damper command does."""
+        # A command point yields two sensors, as the damper commands do: a
+        # historised leaf and the controller-driven one the loop runs
+        # through.
         sensors = [
             s
             for s in self.model.get_components_by_class(SensorSystem)
             if s.uuid == "R01_MVV01"
         ]
-        self.assertEqual(len(sensors), 1)
-        driver = incoming(sensors[0], "measuredValue")
+        driven = [
+            s
+            for s in sensors
+            if [type(d).__name__ for d in incoming(s, "measuredValue")]
+            == ["ControllerIdentificationPISystem"]
+        ]
+        self.assertEqual(len(driven), 1, [s.id for s in sensors])
+        # It carries the identification residual (measured vs modelled
+        # command); the radiator itself takes the controller's output
+        # directly, so the loop does not depend on which sensor the MILP
+        # picked.
+        heater = self.model.get_components_by_class(SpaceHeaterSystem)[0]
         self.assertEqual(
-            [type(d).__name__ for d in driver], ["ControllerIdentificationPISystem"]
+            [type(x).__name__ for x in incoming(heater, "waterFlowRate")],
+            ["ControllerIdentificationPISystem"],
         )
 
 

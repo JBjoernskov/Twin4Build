@@ -14,8 +14,6 @@ from twin4build.translator.translator import (
     StepRule,
     AnyPathRule,
     Node,
-    Predicate,
-    ModeledNode,
     OptionalRule,
     SignaturePattern,
     PathRule,
@@ -310,53 +308,6 @@ def brick_signature_pattern():
     return sp
 
 
-def brick_signature_pattern_heating_command():
-    """BRICK pattern: a space heater's ``Heating_Command`` is a valve.
-
-    BMS graphs carry the radiator valve as a single command point in
-    percent, with no ``brick:Valve`` equipment, no water-flow sensor and no
-    position feedback (Hoeje-Taastrup Raadhus: 113 ``Heating_Command``
-    points on 144 rooms, no valve position sensor anywhere)::
-
-        Space_Heater  hasPoint  Heating_Command  -> valvePosition
-
-    The command carries a normalised opening (0-1; percent data is scaled by
-    the caller's ``Model.set_transformations``, and a controller modelled at
-    the same URI produces the same range), and :attr:`waterFlowRateMax`
-    turns it into kg/s -- so the water-side scale becomes an estimated
-    parameter instead of a hard-coded nominal.  This is the heating mirror
-    of the damper: ``Damper_Position_Command -> DamperSystem`` does the same
-    job on the air side.
-
-    The modeled identity is the command node alone, so the multi-member
-    groups that also bind it -- the space heater
-    (``[space_heater, heating_cmd]``), its controller and the historised
-    command sensor -- are unaffected (multi-member groups are exempt from
-    the per-node mutex).
-    """
-    space_heater = Node(
-        cls=(
-            core.namespace.BRICK.Space_Heater,
-            core.namespace.BRICK.Radiator,
-            core.namespace.BRICK.Radiant_Panel,
-            core.namespace.BRICK.Baseboard_Radiator,
-        )
-    )
-    heating_cmd = Node(cls=core.namespace.BRICK.Heating_Command)
-    sp = SignaturePattern(id="valve_signature_pattern_brick_heating_command")
-    sp.add_rule(
-        StepRule(
-            subject=space_heater,
-            object=heating_cmd,
-            predicate=core.namespace.BRICK.hasPoint,
-        )
-    )
-    sp.add_connection(heating_cmd, "measuredValue", "valvePosition")
-    sp.add_modeled_node(heating_cmd)
-    return sp
-
-
-ValveSystem.add_signature_pattern(brick_signature_pattern_heating_command())
 ValveSystem.add_signature_pattern(brick_signature_pattern())
 ValveSystem.add_signature_pattern(saref_signature_pattern())
 
