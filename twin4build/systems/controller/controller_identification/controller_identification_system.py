@@ -786,7 +786,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         self.input["onOffSignal"].initialize(
             n_t=max_timesteps,
             n_s=batch_size,
-            size=self.n_on_off_signals,
+            n_v=self.n_on_off_signals,
         )
 
         # Initialize output
