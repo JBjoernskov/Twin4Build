@@ -608,7 +608,17 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             matrices = cache[1]
             disc_cache = cache[3]
         A, B, C, D, E, F = matrices
-        u = torch.stack([inputs[name] for name in self._ext_names], dim=-1)
+        # A member's Vector input (a zone's per-branch air flows) enters the
+        # fused input vector as its total: the state-space units declare one
+        # column for it, and the zone itself sums the branches.
+        n_lead = x.dim() - 1
+        u = torch.stack(
+            [
+                inputs[name].sum(dim=-1) if inputs[name].dim() > n_lead else inputs[name]
+                for name in self._ext_names
+            ],
+            dim=-1,
+        )
         x_next, y = bilinear_onestep(
             A,
             B,
