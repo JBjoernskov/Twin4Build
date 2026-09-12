@@ -192,6 +192,13 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             "exhaustTemperature": tps.Vector(),
             "supplyAirTemperatureSetpoint": tps.Scalar(),
             "outdoorAirTemperature": tps.Scalar(),
+            # Fan state, 0-1 (a speed command or status), optional: unwired
+            # means the fans run.  A branch moves air only while its fan
+            # runs -- a VAV damper left open after the fan stops delivers
+            # nothing -- so the branch flows are gated by
+            # ``_fan_gate`` (fully on above FAN_ON_SPEED).
+            "supplyFanSpeed": tps.Scalar(1.0, optional=True),
+            "exhaustFanSpeed": tps.Scalar(1.0, optional=True),
         }
         self._output = {
             "supplyAirFlowRate": tps.Vector(),  # Vector: one per branch
@@ -320,6 +327,16 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         self.exhaust_fan.initialize(start_time, end_time, step_size)
         self.INITIALIZED = True
 
+    #: Fan speed (0-1) above which a fan is fully "on" for the branch flows.
+    FAN_ON_SPEED = 0.1
+
+    @classmethod
+    def _fan_gate(cls, speed):
+        """0 with the fan stopped, 1 once it runs (linear in between): the
+        VAV branches are pressure-controlled, so the damper sets the flow
+        while the fan runs, and nothing moves when it does not."""
+        return torch.clamp(speed / cls.FAN_ON_SPEED, 0.0, 1.0)
+
     def _exhaust_branch_map(self, n_v_exhaust: int):
         """``LongTensor`` mapping each exhaust branch to the slot of
         ``exhaustTemperature`` that carries its room's temperature, or
@@ -401,6 +418,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         ].get()  # (n_s, n_c*n_v)
         # Reshape back to (n_s, n_c, n_v) for Vector outputs
         supply_flow_vec = supply_flow_flat.reshape(supply_pos_vec.shape)
+        supply_flow_vec = supply_flow_vec * self._fan_gate(
+            self.input["supplyFanSpeed"].get()
+        ).unsqueeze(-1)
 
         # 2) Supply junction: sum branch flows
         self.supply_junction.input["airFlowRateOut"].set(supply_flow_vec, step_index)
@@ -419,6 +439,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         ].get()  # (n_s, n_c*n_v)
         # Reshape back to (n_s, n_c, n_v) for Vector outputs
         exhaust_flow_vec = exhaust_flow_flat.reshape(exhaust_pos_vec.shape)
+        exhaust_flow_vec = exhaust_flow_vec * self._fan_gate(
+            self.input["exhaustFanSpeed"].get()
+        ).unsqueeze(-1)
 
         # 4) Return junction: combine exhaust flows and temperatures
         exhaust_temp_vec = self._per_branch_exhaust_temperature(
@@ -555,6 +578,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             None, {"damperPosition": supply_pos_flat}, P["supply_damper"], sample_time
         )
         supply_flow_vec = d_sup["airFlowRate"].reshape(supply_pos_vec.shape)
+        if inputs.get("supplyFanSpeed") is not None:
+            supply_flow_vec = supply_flow_vec * self._fan_gate(
+                inputs["supplyFanSpeed"]
+            ).unsqueeze(-1)
 
         # 2) Supply junction: sum branch flows
         _, j_sup = self.supply_junction.forward(
@@ -571,6 +598,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             sample_time,
         )
         exhaust_flow_vec = d_exh["airFlowRate"].reshape(exhaust_pos_vec.shape)
+        if inputs.get("exhaustFanSpeed") is not None:
+            exhaust_flow_vec = exhaust_flow_vec * self._fan_gate(
+                inputs["exhaustFanSpeed"]
+            ).unsqueeze(-1)
 
         # 4) Return junction: combine exhaust flows and temperatures
         _, j_ret = self.return_junction.forward(
@@ -757,6 +788,28 @@ def brick_signature_pattern():
 #       binding when ``_optional_binding_compatible`` confirms it
 #       agrees with the complete map's structural context, and
 #       AHU01's SAT setpoint stays attached to AHU01.
+
+
+def _add_fan_speed_inputs(sp, ahu):
+    """Optional fan-state inputs: ``AHU hasPart Supply_Fan hasPoint
+    Fan_Speed_Command -> supplyFanSpeed`` and the return / exhaust fan's
+    command ``-> exhaustFanSpeed``.  Both optional: a graph without them
+    leaves the inputs unwired and the fans "on"."""
+    supply_fan = Node(cls=core.namespace.BRICK.Supply_Fan)
+    supply_speed = Node(cls=core.namespace.BRICK.Fan_Speed_Command)
+    return_fan = Node(cls=(core.namespace.BRICK.Return_Fan, core.namespace.BRICK.Exhaust_Fan))
+    return_speed = Node(cls=core.namespace.BRICK.Fan_Speed_Command)
+    sp.add_rule(OptionalRule(subject=ahu, object=supply_fan, predicate=core.namespace.BRICK.hasPart))
+    sp.add_rule(
+        OptionalRule(subject=supply_fan, object=supply_speed, predicate=core.namespace.BRICK.hasPoint)
+    )
+    sp.add_rule(OptionalRule(subject=ahu, object=return_fan, predicate=core.namespace.BRICK.hasPart))
+    sp.add_rule(
+        OptionalRule(subject=return_fan, object=return_speed, predicate=core.namespace.BRICK.hasPoint)
+    )
+    sp.add_connection(supply_speed, "measuredValue", "supplyFanSpeed")
+    sp.add_connection(return_speed, "measuredValue", "exhaustFanSpeed")
+
 
 def brick_signature_pattern_vav_dampers():
     """AHU pattern for VAV systems with per-zone dampers + AHU-level points.
@@ -950,6 +1003,7 @@ def brick_signature_pattern_vav_dampers():
     )
     sp.add_connection(sat_setpoint, "measuredValue", "supplyAirTemperatureSetpoint")
     sp.add_connection(oat_sensor, "outdoorTemperature", "outdoorAirTemperature")
+    _add_fan_speed_inputs(sp, ahu)
 
     ModeledNode([ahu, vavs, dampers, damper_cmds])
     return sp
@@ -1061,6 +1115,7 @@ def brick_signature_pattern_vav_damper_commands():
     )
     sp.add_connection(sat_setpoint, "measuredValue", "supplyAirTemperatureSetpoint")
     sp.add_connection(oat_sensor, "outdoorTemperature", "outdoorAirTemperature")
+    _add_fan_speed_inputs(sp, ahu)
 
     ModeledNode([ahu, vavs, damper_cmds])
     return sp

@@ -124,6 +124,7 @@ class OccupancySystem(core.System, nn.Module):
         supply_damper_nominalAirFlowRate: float = 0.001,
         exhaust_damper_a: float = 1.0,
         exhaust_damper_nominalAirFlowRate: float = 0.001,
+        smoothing: float = 0.0,
         co2_filename: Optional[str] = None,
         co2_date_column: int = 0,
         co2_value_column: int = 1,
@@ -206,6 +207,14 @@ class OccupancySystem(core.System, nn.Module):
         # outdoor level: the very first step then sees ``dC = 0`` from a
         # 400 ppm base, a single transient the warm-up discards.
         self._co2_lag = tps.State(n_v=1, init_value=400.0, names=[f"{_id}.co2_prev"])
+        # Optional first-order smoothing of the inverted occupancy BEFORE the
+        # clamp at zero: ``N_f = s * N_f_prev + (1 - s) * N``.  The inversion
+        # amplifies CO2 sensor noise by V / (dt * alpha) (a 1000 m3 zone and
+        # 5 ppm turn into +-10 people per step); clamping the raw estimate at
+        # zero keeps only the positive half and biases the zone's gains.
+        # ``smoothing = 0`` (default) is the unsmoothed original.
+        self.smoothing = float(smoothing)
+        self._occ_lag = tps.State(n_v=1, init_value=0.0, names=[f"{_id}.occ_prev"])
         self._co2_from_sensor = False
         self._damper_from_sensor = False
         self._output = {"scheduleValue": tps.Scalar()}
@@ -218,6 +227,7 @@ class OccupancySystem(core.System, nn.Module):
                 "supply_damper.nominalAirFlowRate",
                 "exhaust_damper.a",
                 "exhaust_damper.nominalAirFlowRate",
+                "smoothing",
                 "co2_filename",
                 "co2_date_column",
                 "co2_value_column",
@@ -263,6 +273,9 @@ class OccupancySystem(core.System, nn.Module):
             out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         # The lag state exists only on the sensor path (width 0 otherwise, so
         # a CSV-driven occupancy stays stateless for the composer).
+        self._occ_lag.initialize(
+            n_s=batch_size, n_c=self.n_c, n_v=1 if self.smoothing > 0 else 0, force=True
+        )
         self._co2_lag.initialize(
             n_s=batch_size, n_c=self.n_c, n_v=1 if self._co2_from_sensor else 0, force=True
         )
@@ -343,13 +356,12 @@ class OccupancySystem(core.System, nn.Module):
         """
         C_indoor = inputs["indoorCo2Measured"]
         C_outdoor = inputs["outdoorCo2Concentration"]
+        x_parts = []
         if self._co2_from_sensor:
-            # ``x`` is the one-step lag of the measured CO2, (..., 1).
             C_prev = x[..., 0]
-            x_next = C_indoor.unsqueeze(-1)
+            x_parts.append(C_indoor.unsqueeze(-1))
         else:
             C_prev = inputs["previousIndoorCo2Measured"]
-            x_next = x
         damper_pos = inputs["damperPositionMeasured"]
         if damper_pos.dim() > C_indoor.dim():
             # One slot per VAV serving the zone, one damper element per slot
@@ -394,7 +406,12 @@ class OccupancySystem(core.System, nn.Module):
             + (m_inf + m_exh) * C_prev
             - (m_inf + m_sup) * C_outdoor
         ) / alpha
+        if self.smoothing > 0:
+            j = 1 if self._co2_from_sensor else 0
+            N_occ = self.smoothing * x[..., j] + (1.0 - self.smoothing) * N_occ
+            x_parts.append(N_occ.unsqueeze(-1))
         N_occ = clamp(N_occ, lower=0.0, upper=1e6)
+        x_next = torch.cat(x_parts, dim=-1) if x_parts else x
         return x_next, {"scheduleValue": N_occ}
 
     def do_step(
@@ -407,7 +424,6 @@ class OccupancySystem(core.System, nn.Module):
         inputs = {"outdoorCo2Concentration": self.input["outdoorCo2Concentration"].get()}
         if self._co2_from_sensor:
             inputs["indoorCo2Measured"] = self.input["indoorCo2Measured"].get()
-            x = self._co2_lag.get()
         else:
             C_indoor = self._co2_ts.values[step_index]  # (n_s, 1) - measured
             C_prev = self._co2_ts.values[step_index - 1] if step_index > 0 else C_indoor
@@ -417,7 +433,7 @@ class OccupancySystem(core.System, nn.Module):
             self.input["previousIndoorCo2Measured"]._set(C_prev, i_t=step_index)
             inputs["indoorCo2Measured"] = C_indoor
             inputs["previousIndoorCo2Measured"] = C_prev
-            x = None
+        x = self.get_state() if self.state_size() > 0 else None
         if self._damper_from_sensor:
             inputs["damperPositionMeasured"] = self.input["damperPositionMeasured"].get()
         else:
@@ -429,8 +445,8 @@ class OccupancySystem(core.System, nn.Module):
         x_next, outs = self.forward(
             x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
-        if self._co2_from_sensor:
-            self._co2_lag.set(x_next)
+        if x_next is not None and self.state_size() > 0:
+            self.set_state(x_next)
         self.output["scheduleValue"]._set(outs["scheduleValue"], i_t=step_index)
 
 

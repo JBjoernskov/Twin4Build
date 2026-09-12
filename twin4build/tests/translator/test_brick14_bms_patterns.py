@@ -62,6 +62,9 @@ def build_graph(sm):
     _point(g, ahu, "AHU01_SAT", BRICK.Supply_Air_Temperature_Sensor)
     _point(g, ahu, "AHU01_SAT_SP", BRICK.Supply_Air_Temperature_Setpoint)
     _point(g, ahu, "AHU01_FCI01", BRICK.Supply_Air_Flow_Sensor)  # total supply flow
+    g.add((ahu, BRICK.hasPart, EX.AHU01_SF))
+    g.add((EX.AHU01_SF, RDF.type, BRICK.Supply_Fan))
+    _point(g, EX.AHU01_SF, "AHU01_SF_SPEED", BRICK.Fan_Speed_Command)
     _point(g, ahu, "AHU01_FCU01", BRICK.Return_Air_Flow_Sensor)  # total return flow
     g.add((ws, RDF.type, BRICK.Weather_Station))
     _point(g, ws, "WS01_TOUT", BRICK.Outside_Air_Temperature_Sensor)
@@ -176,6 +179,9 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             self.assertEqual(incoming(sensors[f"R0{i}_CO201"], "measuredValue"), [rooms[f"R0{i}"]])
             self.assertEqual(incoming(sensors[f"R0{i}_FCI01"], "measuredValue"), [ahu])
         self.assertEqual(incoming(sensors["AHU01_SAT"], "measuredValue"), [ahu])
+        # The supply fan's speed command gates the branch flows.
+        self.assertEqual([c.uuid for c in incoming(ahu, "supplyFanSpeed")], ["AHU01_SF_SPEED"])
+        self.assertEqual(incoming(ahu, "exhaustFanSpeed"), [])  # no return fan in the graph
         # The AHU's own flow meters read the totals over the branches.
         for uuid, port in (("AHU01_FCI01", "totalSupplyAirFlowRate"), ("AHU01_FCU01", "totalExhaustAirFlowRate")):
             self.assertEqual(incoming(sensors[uuid], "measuredValue"), [ahu])

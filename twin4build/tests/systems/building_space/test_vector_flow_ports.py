@@ -105,6 +105,20 @@ class TestVectorFlowPorts(unittest.TestCase):
         self.assertEqual(zones["B"].input["supplyAirFlowRate"].n_v, 2)
         self.assertEqual(ahu._branch_room_index.tolist(), [0, 1, 1])
 
+    def test_fan_speed_gates_the_branch_flows(self):
+        model, ahu, zones = build_model("vector_flow_ports_fan_gate")
+        tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
+        ungated = ahu.output["supplyAirFlowRate"]._history.detach().clone()
+        self.assertGreater(float(ungated.mean()), 0.0)
+        # Fan stopped: no branch moves air, whatever the dampers say.
+        model.add_connection(_schedule("fan_off", 0.0), ahu, "scheduleValue", "supplyFanSpeed")
+        model.load()
+        for mode in ("object", "functional"):
+            tb.Simulator(model, execution_mode=mode).simulate(**self._kwargs())
+            torch.testing.assert_close(
+                ahu.output["supplyAirFlowRate"]._history, torch.zeros_like(ungated), msg=mode
+            )
+
     def test_zone_sums_its_branches_and_engines_agree(self):
         model, ahu, zones = build_model("vector_flow_ports_parity")
         tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
