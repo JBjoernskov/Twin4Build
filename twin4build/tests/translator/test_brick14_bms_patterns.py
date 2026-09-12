@@ -191,16 +191,11 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             downstream = _outgoing_components(cits, "inputSignal")
             self.assertTrue(any(isinstance(c, SensorSystem) for c in downstream))
         self.assertEqual(sorted(gates), ["R01_SpFCI01_C", "R02_SpFCI01_C", "R02_SpFCI02_C"])
-        # ... and the AHU damper slot of each room is driven by exactly one
-        # of that room's controllers (one connection per Vector slot).
+        # ... and every controller drives its own AHU branch: one branch per
+        # VAV (issue #179), both damper ports of a branch driven by the SAME
+        # controller.
         drivers = [c for c in cits_list if ahu in _outgoing_components(c, "inputSignal")]
-        self.assertEqual(len(drivers), 2)
-        # ... and both damper ports of a zone slot are driven by the SAME
-        # controller.  Constraint 4 of the MILP bounds each port on its own,
-        # so R02's two VAVs could split that zone's ports between them, an
-        # equally optimal solution that solver tie-breaking picked on some
-        # platforms (three drivers instead of two); the slot-coherence
-        # constraint (4b) rules it out for every solver.
+        self.assertEqual(len(drivers), 3)
         driver_by_slot = {}
         for cp in ahu.connects_at:
             if cp.input_port not in ("supplyDamperPosition", "exhaustDamperPosition"):
@@ -208,12 +203,27 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             for conn in cp.connects_system_through:
                 slot = int(cp.input_port_index[conn])
                 driver_by_slot.setdefault(slot, {})[cp.input_port] = conn.connects_system
-        self.assertEqual(len(driver_by_slot), 2)  # one slot per room
+        self.assertEqual(len(driver_by_slot), 3)  # one branch per VAV
         for slot, ports in driver_by_slot.items():
             self.assertEqual(
                 set(ports), {"supplyDamperPosition", "exhaustDamperPosition"}, slot
             )
             self.assertIs(ports["supplyDamperPosition"], ports["exhaustDamperPosition"])
+        # The exhaust temperature stays one slot per room; the AHU maps
+        # branch -> room itself.
+        self.assertEqual(len(incoming(ahu, "exhaustTemperature")), 2)
+        # A two-VAV room reads both of its branches into its Vector flow
+        # port (one connection, two slot pairs) ...
+        (cp,) = [cp for cp in rooms["R02"].connects_at if cp.input_port == "supplyAirFlowRate"]
+        (conn,) = cp.connects_system_through
+        self.assertEqual(sorted(cp.input_port_index[conn].tolist()), [0, 1])
+        self.assertEqual(len(set(cp.output_port_index[conn].tolist())), 2)
+        # ... and its flow sensors read those same branches.
+        branch_of = dict(zip(cp.input_port_index[conn].tolist(), cp.output_port_index[conn].tolist()))
+        for uuid in ("R02_FCI01", "R02_FCI02"):
+            (scp,) = [scp for scp in sensors[uuid].connects_at if scp.input_port == "measuredValue"]
+            (sconn,) = scp.connects_system_through
+            self.assertIn(int(scp.output_port_index[sconn]), branch_of.values())
 
         outdoor = by_cls["OutdoorEnvironmentSystem"][0]
         self.assertEqual(outdoor.uuid_outdoorTemperature, "WS01_TOUT")

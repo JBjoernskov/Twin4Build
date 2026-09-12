@@ -1555,7 +1555,7 @@ class Translator:
                                         # - input_port_index=Node (Scalar→Vector, Vector→Vector): find
                                         #   which slot in groups_target matches the semantic instance
 
-                                        sm_for_index = sm_subject  # Default: sender's semantic instance
+                                        sm_for_index_list = [sm_subject]  # Default: sender's semantic instance
 
                                         # Only override ``sm_for_index`` from the
                                         # tuple binding when *neither* port-index
@@ -1598,7 +1598,7 @@ class Translator:
                                                             )
                                                         )
                                                         if elements:
-                                                            sm_for_index = elements[0]
+                                                            sm_for_index_list = list(elements)
                                                         break
                                             elif isinstance(input_port_index, Node):
                                                 for group in groups:
@@ -1610,53 +1610,57 @@ class Translator:
                                                             )
                                                         )
                                                         if elements:
-                                                            sm_for_index = elements[0]
+                                                            sm_for_index_list = list(elements)
                                                         break
 
-                                        resolved_output_idx, resolved_input_idx = (
-                                            resolve_port_indices(
-                                                p_groups,
-                                                groups,
-                                                output_port_index,
-                                                input_port_index,
-                                                sm_for_index,
-                                            )
-                                        )
-
-                                        # Add this potential connection with resolved indices
-                                        conn = (
-                                            provider_component,
-                                            component,
-                                            source_key,
-                                            key,
-                                            resolved_output_idx,
-                                            resolved_input_idx,
-                                        )
-                                        E_idx_to_conn, E_conn_to_idx, N_E = (
-                                            update_E_mappings(
-                                                conn, E_idx_to_conn, E_conn_to_idx, N_E
-                                            )
-                                        )
-                                        self.E_conn_to_sp_group[conn] = (
-                                            sp,
-                                            groups,
-                                            p_sp,
-                                            p_groups,
-                                        )
-                                        if (
-                                            provider_component,
-                                            source_key,
-                                            resolved_output_idx,
-                                            resolved_input_idx,
-                                        ) not in required_inputs[component][key]:
-                                            required_inputs[component][key].append(
-                                                (
-                                                    provider_component,
-                                                    source_key,
-                                                    resolved_output_idx,
-                                                    resolved_input_idx,
+                                        # A set-bound index node that is not the sender
+                                        # (a zone's VAVs indexing the AHU's branches)
+                                        # yields one candidate edge per element.
+                                        for sm_for_index in sm_for_index_list:
+                                            resolved_output_idx, resolved_input_idx = (
+                                                resolve_port_indices(
+                                                    p_groups,
+                                                    groups,
+                                                    output_port_index,
+                                                    input_port_index,
+                                                    sm_for_index,
                                                 )
                                             )
+
+                                            # Add this potential connection with resolved indices
+                                            conn = (
+                                                provider_component,
+                                                component,
+                                                source_key,
+                                                key,
+                                                resolved_output_idx,
+                                                resolved_input_idx,
+                                            )
+                                            E_idx_to_conn, E_conn_to_idx, N_E = (
+                                                update_E_mappings(
+                                                    conn, E_idx_to_conn, E_conn_to_idx, N_E
+                                                )
+                                            )
+                                            self.E_conn_to_sp_group[conn] = (
+                                                sp,
+                                                groups,
+                                                p_sp,
+                                                p_groups,
+                                            )
+                                            if (
+                                                provider_component,
+                                                source_key,
+                                                resolved_output_idx,
+                                                resolved_input_idx,
+                                            ) not in required_inputs[component][key]:
+                                                required_inputs[component][key].append(
+                                                    (
+                                                        provider_component,
+                                                        source_key,
+                                                        resolved_output_idx,
+                                                        resolved_input_idx,
+                                                    )
+                                                )
                                     # else: this provider candidate is not eligible --
                                     # either its modeled semantic node didn't match any
                                     # declared source_class, or it does not expose the

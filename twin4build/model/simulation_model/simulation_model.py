@@ -79,6 +79,15 @@ def _check_id(id: str, kind: str) -> None:
     )
 
 
+def _index_literal(idx):
+    """A port index as a literal: an int, a list for a multi-slot tensor."""
+    if isinstance(idx, torch.Tensor):
+        return idx.item() if idx.numel() == 1 else idx.reshape(-1).tolist()
+    if isinstance(idx, int):
+        return int(idx)
+    return idx
+
+
 def _convert_literal_value(value):
     """
     Convert an RDF literal value to its appropriate Python type.
@@ -776,6 +785,11 @@ class SimulationModel:
         else:
             if isinstance(other_port, tps.Vector) and isinstance(this_port, tps.Vector):
                 return torch.arange(this_port.size)  # Map directly
+            elif isinstance(this_port, tps.Vector) and isinstance(other_port, tps.Scalar):
+                # A scalar into a Vector port without an index takes slot 0:
+                # the single-branch case (one damper feeding one zone) needs
+                # no index, exactly as it did when the port was a Scalar.
+                return 0
             else:
                 assert isinstance(this_port, tps.Scalar), (
                     f"If {this_port_name} port index is not set, both output and input ports "
@@ -783,6 +797,42 @@ class SimulationModel:
                     f"and {this_port_name} port type {this_port.__class__.__name__}"
                 )
                 return None
+
+    def _merge_vector_connection(
+        self,
+        sender_component,
+        receiver_component,
+        connection,
+        connection_point,
+        output_port,
+        input_port,
+        output_port_index,
+        input_port_index,
+        message,
+    ) -> None:
+        """Append one more slot pair to an existing Vector -> Vector connection."""
+        this_out = sender_component.output[output_port]
+        this_in = receiver_component.input[input_port]
+        assert (
+            isinstance(this_out, tps.Vector)
+            and isinstance(this_in, tps.Vector)
+            and output_port_index is not None
+            and input_port_index is not None
+        ), message
+
+        def _as_1d(index):
+            return torch.as_tensor(index, dtype=torch.long).reshape(-1)
+
+        old_in = _as_1d(connection_point.input_port_index[connection])
+        old_out = _as_1d(connection_point.output_port_index[connection])
+        new_in = _as_1d(input_port_index)
+        new_out = _as_1d(output_port_index)
+        assert new_in.numel() == new_out.numel(), message
+        assert not bool(torch.isin(new_in, old_in).any()), (
+            f"{message} (slot {new_in.tolist()} of {input_port} is already wired)"
+        )
+        connection_point.set_input_port_index(connection, torch.cat([old_in, new_in]))
+        connection_point.set_output_port_index(connection, torch.cat([old_out, new_out]))
 
     def add_connection(
         self,
@@ -845,10 +895,28 @@ class SimulationModel:
 
         if found_connection_point and found_connection:
             message = f'core.Connection between "{sender_component.id}" and "{receiver_component.id}" with the properties "{output_port}" and "{input_port}" already exists.'
-            assert (
+            if (
                 receiver_component_connection_point
-                not in sender_obj_connection.connects_system_at
-            ), message
+                in sender_obj_connection.connects_system_at
+            ):
+                # The same output -> input pair again, on other slots: a
+                # zone served by several branches of one AHU reads
+                # ``ahu.supplyAirFlowRate[b] -> zone.supplyAirFlowRate[k]``
+                # once per branch.  One Connection carries all of them as
+                # tensor indices (the Vector -> Vector form the engines
+                # already route); anything else is a genuine duplicate.
+                self._merge_vector_connection(
+                    sender_component,
+                    receiver_component,
+                    sender_obj_connection,
+                    receiver_component_connection_point,
+                    output_port,
+                    input_port,
+                    output_port_index,
+                    input_port_index,
+                    message,
+                )
+                return
 
         if found_connection == False:
             sender_obj_connection = core.Connection(
@@ -3371,15 +3439,11 @@ class SimulationModel:
             literals_to_update = {
                 "input_port": connection_point.input_port,
                 "input_port_index": {
-                    str(hash(conn)): (
-                        int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
-                    )
+                    str(hash(conn)): _index_literal(idx)
                     for conn, idx in connection_point.input_port_index.items()
                 },
                 "output_port_index": {
-                    str(hash(conn)): (
-                        int(idx) if isinstance(idx, (int, torch.Tensor)) else idx
-                    )
+                    str(hash(conn)): _index_literal(idx)
                     for conn, idx in connection_point.output_port_index.items()
                 },
             }
@@ -3821,6 +3885,11 @@ class SimulationModel:
 
                     receiver_component_id = receiver_component.get_short_name()
                     receiver_component = self._components[receiver_component_id]
+                    # Multi-slot (tensor) indices are serialized as lists.
+                    if isinstance(input_port_index, list):
+                        input_port_index = torch.tensor(input_port_index, dtype=torch.long)
+                    if isinstance(output_port_index, list):
+                        output_port_index = torch.tensor(output_port_index, dtype=torch.long)
 
                     pending_connections.append(
                         {
