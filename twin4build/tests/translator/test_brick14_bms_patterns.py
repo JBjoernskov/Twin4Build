@@ -61,6 +61,8 @@ def build_graph(sm):
     g.add((ahu, RDF.type, BRICK.AHU))
     _point(g, ahu, "AHU01_SAT", BRICK.Supply_Air_Temperature_Sensor)
     _point(g, ahu, "AHU01_SAT_SP", BRICK.Supply_Air_Temperature_Setpoint)
+    _point(g, ahu, "AHU01_FCI01", BRICK.Supply_Air_Flow_Sensor)  # total supply flow
+    _point(g, ahu, "AHU01_FCU01", BRICK.Return_Air_Flow_Sensor)  # total return flow
     g.add((ws, RDF.type, BRICK.Weather_Station))
     _point(g, ws, "WS01_TOUT", BRICK.Outside_Air_Temperature_Sensor)
     _point(g, ws, "WS01_SOLAR", BRICK.Solar_Irradiance_Sensor)
@@ -172,6 +174,13 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             self.assertEqual(incoming(sensors[f"R0{i}_CO201"], "measuredValue"), [rooms[f"R0{i}"]])
             self.assertEqual(incoming(sensors[f"R0{i}_FCI01"], "measuredValue"), [ahu])
         self.assertEqual(incoming(sensors["AHU01_SAT"], "measuredValue"), [ahu])
+        # The AHU's own flow meters read the totals over the branches.
+        for uuid, port in (("AHU01_FCI01", "totalSupplyAirFlowRate"), ("AHU01_FCU01", "totalExhaustAirFlowRate")):
+            self.assertEqual(incoming(sensors[uuid], "measuredValue"), [ahu])
+            self.assertEqual(
+                {conn.output_port for cp in sensors[uuid].connects_at for conn in cp.connects_system_through},
+                {port},
+            )
 
         # One PI-CITS per VAV, with the loop variables taken from the room:
         # zone temperature sensor -> sensorValue, zone temperature setpoints

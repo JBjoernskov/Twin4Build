@@ -315,6 +315,11 @@ def _rewire_pi_loops(
     Returns:
         Mapping of PI-CITS id to its :class:`RewireReport`.
     """
+    # ``"playback"`` is ``"simulate"`` plus an open loop: every controller
+    # is then driven by its historised command (see :func:`_apply_playback`).
+    playback = mode == "playback"
+    if playback:
+        mode = "simulate"
     pi_cits_list = [
         c
         for c in model.components.values()
@@ -507,6 +512,8 @@ def _rewire_pi_loops(
     # subsequent call with the same ``mode`` produces the same final
     # state.
     _pin_frozen_cits_state(pi_cits_list, mode=mode)
+    if playback:
+        _apply_playback(model, pi_cits_list)
 
     return reports
 
@@ -2395,3 +2402,49 @@ def _pin_frozen_cits_state(
                 pol = getattr(gate, "polarity")
                 if hasattr(pol, "set"):
                     _set_scalar(pol, 1.0)
+
+
+def _apply_playback(model, cits_list) -> None:
+    """Open every identified loop: the controller outputs its measured command.
+
+    For each actuator slot ``a`` of a CITS whose ``inputSignal[a]`` feeds a
+    historised command sensor (a :class:`SensorSystem` with data), the
+    connection *controller -> sensor* is removed -- the sensor becomes the
+    plain data leaf it is -- and *sensor.measuredValue -> controller.
+    actuatorMeasured[a]* is added; ``cits.playback`` is set so ``forward``
+    returns that signal.  The plant (dampers, valves, AHU branches) keeps
+    reading ``inputSignal``, so it is driven by what the BMS commanded.
+    That is the open-loop configuration for physics calibration; closing the
+    loop afterwards (``mode="simulate"``) verifies controller and plant
+    together.
+    """
+    for cits in cits_list:
+        pending = []
+        for conn in list(cits.connected_through):
+            if conn.output_port != "inputSignal":
+                continue
+            for cp in list(conn.connects_system_at):
+                sensor = cp.connection_point_of
+                if not isinstance(sensor, SensorSystem) or cp.input_port != "measuredValue":
+                    continue
+                if not (sensor.uuid or sensor.filename or sensor.df is not None):
+                    continue
+                idx = cp.output_port_index.get(conn, 0)
+                idx = int(idx.item()) if hasattr(idx, "item") else int(idx or 0)
+                pending.append((sensor, idx))
+        for sensor, idx in pending:
+            model.remove_connection(
+                sender_component=cits, receiver_component=sensor,
+                output_port="inputSignal", input_port="measuredValue",
+            )
+            model.add_connection(
+                sender_component=sensor, receiver_component=cits,
+                output_port="measuredValue", input_port="actuatorMeasured",
+                input_port_index=idx,
+            )
+        if pending:
+            cits.playback = True
+            LOGGER.info(
+                "[REWIRE] %s: playback -- driven by %s",
+                cits.id, ", ".join(f"{s.uuid or s.id}[{i}]" for s, i in pending),
+            )

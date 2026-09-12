@@ -258,11 +258,20 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             # setpoint for the PI error term.  Sized by
             # ``n_on_off_signals``.
             "onOffSignal": tps.Vector(),
+            # Playback: the historised actuator command, one slot per
+            # actuator, wired by ``rewire(mode="playback")`` from the
+            # command's own data sensor.  When ``playback`` is set the
+            # controller outputs it unchanged -- the loop is open and the
+            # plant is driven by what the BMS actually commanded, which is
+            # how the physics is calibrated before the identified loop is
+            # closed for verification.
+            "actuatorMeasured": tps.Vector(optional=True),
         }
 
         # Output: one signal per actuator
         self._output = {"inputSignal": tps.Vector()}
 
+        self.playback = False
         self._built = False
         self._config = {
             "parameters": [
@@ -833,6 +842,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             n_s=batch_size,
             n_v=self.n_on_off_signals,
         )
+        self.input["actuatorMeasured"].initialize(
+            n_t=max_timesteps, n_s=batch_size, n_v=self.n_actuators
+        )
 
         # Initialize output
         self.output["inputSignal"].initialize(
@@ -910,6 +922,8 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             "setpointValue": self.input["setpointValue"].get(),
             "onOffSignal": self.input["onOffSignal"].get(),
         }
+        if self.playback:
+            inputs["actuatorMeasured"] = self.input["actuatorMeasured"].get()
         x = self.get_state() if self.state_size() > 0 else None
         x_next, outs = self.forward(
             x, inputs, self._forward_params(), self._sample_time
@@ -994,6 +1008,10 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         the actuator's gate.  Returns ``(x_next, {"inputSignal": (...,
         n_actuators)})``.
         """
+        if self.playback:
+            # Open loop: the measured command is the output, the candidate
+            # memories are left untouched.
+            return x, {"inputSignal": inputs["actuatorMeasured"]}
         if self._state_slices is None:
             self._state_slices = self._compute_state_slices()
         sub = self._resolve_forward_params(params, transform_mode)

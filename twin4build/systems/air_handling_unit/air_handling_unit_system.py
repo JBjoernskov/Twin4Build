@@ -196,6 +196,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             "supplyAirFlowRate": tps.Vector(),  # Vector: one per branch
             "supplyAirTemperature": tps.Scalar(),
             "exhaustAirFlowRate": tps.Vector(),  # Vector: one per branch
+            # Totals over the branches: what the AHU's own supply / return
+            # flow sensors measure.
+            "totalSupplyAirFlowRate": tps.Scalar(),
+            "totalExhaustAirFlowRate": tps.Scalar(),
             "exhaustAirTemperatureOut": tps.Scalar(),
             "heatingPower": tps.Scalar(),
             "coolingPower": tps.Scalar(),
@@ -411,6 +415,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         self.output["supplyAirFlowRate"]._set(supply_flow_vec, i_t=step_index)
         self.output["exhaustAirFlowRate"]._set(exhaust_flow_vec, i_t=step_index)
         # Scalar outputs
+        self.output["totalSupplyAirFlowRate"]._set(supply_flow_total, i_t=step_index)
+        self.output["totalExhaustAirFlowRate"]._set(
+            self.return_junction.output["airFlowRateOut"].get(), i_t=step_index
+        )
         self.output["supplyAirTemperature"]._set(supply_temp_out, i_t=step_index)
         self.output["exhaustAirTemperatureOut"]._set(exhaust_temp_out, i_t=step_index)
         self.output["heatingPower"]._set(
@@ -567,6 +575,8 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         return x, {
             "supplyAirFlowRate": supply_flow_vec,
             "exhaustAirFlowRate": exhaust_flow_vec,
+            "totalSupplyAirFlowRate": supply_flow_total,
+            "totalExhaustAirFlowRate": secondary_flow,
             "supplyAirTemperature": f_sup["outletAirTemperature"],
             "exhaustAirTemperatureOut": hr["secondaryTemperatureOut"],
             "heatingPower": coil["heatingPower"],

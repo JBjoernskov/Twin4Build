@@ -1066,6 +1066,71 @@ def get_brick_ahu_supply_air_temp_sensor_virtual_pattern():
     return sp
 
 
+
+def _brick_ahu_flow_sensor_pattern(sensor_cls, output_port: str, sp_id: str, with_ref: bool):
+    """An AHU-level air-flow sensor: the total over the AHU's branches.
+
+    Topology::
+
+        <Supply|Return>_Air_Flow_Sensor  isPointOf             AHU
+        <Supply|Return>_Air_Flow_Sensor  hasExternalReference  <ExternalRef/BNode>   (with_ref)
+                                                                   └─ hasTimeseriesId → <uuid>
+
+    Wires ``AHU.totalSupplyAirFlowRate`` (supply) or
+    ``AHU.totalExhaustAirFlowRate`` (return) to ``measuredValue``, so the
+    AHU's own flow meters calibrate the branch flows in sum, next to the
+    per-VAV sensors (:func:`get_brick_supply_air_flow_sensor_with_ref_pattern`)
+    that calibrate them one by one.  The with-ref / virtual pair follows
+    the module-level note above.
+    """
+    sensor = Node(cls=sensor_cls)
+    ahu = Node(cls=core.namespace.BRICK.AHU)
+    sp = SignaturePattern(id=sp_id)
+    sp.add_rule(StepRule(subject=sensor, object=ahu, predicate=core.namespace.BRICK.isPointOf))
+    if with_ref:
+        externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+        timeseries_id = Node(cls=core.namespace.XSD.string)
+        sp.add_rule(
+            StepRule(subject=sensor, object=externalref, predicate=core.namespace.BRICKREF.hasExternalReference)
+        )
+        sp.add_rule(
+            StepRule(subject=externalref, object=timeseries_id, predicate=core.namespace.BRICKREF.hasTimeseriesId)
+        )
+        sp.add_parameter("uuid", timeseries_id)
+        sp.add_modeled_node(externalref)
+    sp.add_connection(ahu, output_port, "measuredValue")
+    sp.add_modeled_node(sensor)
+    return sp
+
+
+def get_brick_ahu_supply_air_flow_sensor_with_ref_pattern():
+    return _brick_ahu_flow_sensor_pattern(
+        core.namespace.BRICK.Supply_Air_Flow_Sensor, "totalSupplyAirFlowRate",
+        "brick_ahu_supply_air_flow_sensor_with_ref_pattern", with_ref=True,
+    )
+
+
+def get_brick_ahu_supply_air_flow_sensor_virtual_pattern():
+    return _brick_ahu_flow_sensor_pattern(
+        core.namespace.BRICK.Supply_Air_Flow_Sensor, "totalSupplyAirFlowRate",
+        "brick_ahu_supply_air_flow_sensor_virtual_pattern", with_ref=False,
+    )
+
+
+def get_brick_ahu_return_air_flow_sensor_with_ref_pattern():
+    return _brick_ahu_flow_sensor_pattern(
+        core.namespace.BRICK.Return_Air_Flow_Sensor, "totalExhaustAirFlowRate",
+        "brick_ahu_return_air_flow_sensor_with_ref_pattern", with_ref=True,
+    )
+
+
+def get_brick_ahu_return_air_flow_sensor_virtual_pattern():
+    return _brick_ahu_flow_sensor_pattern(
+        core.namespace.BRICK.Return_Air_Flow_Sensor, "totalExhaustAirFlowRate",
+        "brick_ahu_return_air_flow_sensor_virtual_pattern", with_ref=False,
+    )
+
+
 @autoreset_print
 class SensorSystem(core.System):
     """A system representing a physical or virtual sensor in the building.
@@ -1134,6 +1199,10 @@ class SensorSystem(core.System):
         get_brick_ahu_supply_air_temp_sensor_virtual_pattern(),
         get_brick_supply_air_flow_sensor_with_ref_pattern(),
         get_brick_supply_air_flow_sensor_virtual_pattern(),
+        get_brick_ahu_supply_air_flow_sensor_with_ref_pattern(),
+        get_brick_ahu_supply_air_flow_sensor_virtual_pattern(),
+        get_brick_ahu_return_air_flow_sensor_with_ref_pattern(),
+        get_brick_ahu_return_air_flow_sensor_virtual_pattern(),
         get_brick_sensor_leaf_pattern(),
     ]
 
