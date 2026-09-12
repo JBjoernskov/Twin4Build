@@ -1052,9 +1052,13 @@ class FunctionalModel:
             comp = next((c for c in self.cone if c.id == cid), None)
             n_c = self._component_n_c(comp) if comp is not None else 1
             for _attr, idx in attrs.items():
-                if isinstance(idx, slice):
-                    entries = list(range(idx.start, idx.stop))
-                    n_theta = max(n_theta, idx.stop)
+                if isinstance(idx, (slice, list, tuple)):
+                    entries = (
+                        list(range(idx.start, idx.stop))
+                        if isinstance(idx, slice)
+                        else [int(t) for t in idx]
+                    )
+                    n_theta = max(n_theta, max(entries) + 1)
                     if len(entries) == n_c:
                         for i, t in enumerate(entries):
                             union(("theta", t), (cid, i))

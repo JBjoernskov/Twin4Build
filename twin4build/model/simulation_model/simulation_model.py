@@ -3154,11 +3154,13 @@ class SimulationModel:
         values = []
         min_values = []
         max_values = []
-        for param_idx in theta_mask:
+        theta_index = self._result.get("theta_index") or [None] * len(theta_mask)
+        for param_idx, idx in zip(theta_mask, theta_index):
             start, end = theta_slices[param_idx]
-            values.append(result_x[start:end])
-            min_values.append(lb[start:end])
-            max_values.append(ub[start:end])
+            sel = slice(None) if idx is None else list(idx)
+            values.append(result_x[start:end][sel])
+            min_values.append(lb[start:end][sel])
+            max_values.append(ub[start:end][sel])
 
         self.set_parameters(
             values,

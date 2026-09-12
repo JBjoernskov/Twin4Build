@@ -77,6 +77,7 @@ def build_graph(sm):
         g.add((vav, BRICK.feeds, room))
         _point(g, vav, f"R0{i}_VAV01_CMD", BRICK.Damper_Position_Command)
         _point(g, vav, f"R0{i}_FCI01", BRICK.Supply_Air_Flow_Sensor)
+        _point(g, vav, f"R0{i}_VAV01_POS", BRICK.Damper_Position_Sensor)
         _point(g, vav, f"R0{i}_SpFCI01_C", BRICK.Supply_Air_Flow_Setpoint)
         _point(g, room, f"R0{i}_TRU01", BRICK.Zone_Air_Temperature_Sensor)
         _point(g, room, f"R0{i}_SpTRU01", BRICK.Zone_Air_Temperature_Setpoint)
@@ -91,6 +92,7 @@ def build_graph(sm):
     g.add((vav2, BRICK.feeds, EX["R02"]))
     _point(g, vav2, "R02_VAV02_CMD", BRICK.Damper_Position_Command)
     _point(g, vav2, "R02_FCI02", BRICK.Supply_Air_Flow_Sensor)
+    _point(g, vav2, "R02_VAV02_POS", BRICK.Damper_Position_Sensor)
     _point(g, vav2, "R02_SpFCI02_C", BRICK.Supply_Air_Flow_Setpoint)
     # ``isPointOf`` is only materialised by the reasoner from ``hasPoint``
     # (owl:inverseOf) -- the patterns rely on that, as for real graphs.

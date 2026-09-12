@@ -74,22 +74,22 @@ class TestOccupancyFromCO2(unittest.TestCase):
             (co2,) = incoming(o, "indoorCo2Measured")
             self.assertIsInstance(co2, SensorSystem)
             self.assertTrue(co2.uuid.endswith("CO201"), co2.uuid)
-            flows = incoming(o, "supplyAirFlowRateMeasured")
-            self.assertTrue(flows and all(isinstance(f, SensorSystem) for f in flows))
-            self.assertTrue(all("FCI" in f.uuid for f in flows), [f.uuid for f in flows])
+            positions = incoming(o, "damperPositionMeasured")
+            self.assertTrue(positions and all(isinstance(f, SensorSystem) for f in positions))
+            self.assertTrue(all(f.uuid.endswith("_POS") for f in positions), [f.uuid for f in positions])
             # The MEASUREMENT, not the modelled value: the CO2 sensor is a
             # virtual sensor fed by the zone, and reading its measuredValue
             # would close a loop zone -> sensor -> occupancy -> zone.
             self.assertEqual(incoming_ports(o, "indoorCo2Measured"), {"measuredData"})
-            self.assertEqual(incoming_ports(o, "supplyAirFlowRateMeasured"), {"measuredData"})
+            self.assertEqual(incoming_ports(o, "damperPositionMeasured"), {"measuredData"})
             # outdoor CO2 is left for fill_missing_inputs
             self.assertEqual(incoming(o, "outdoorCo2Concentration"), [])
 
-    def test_room_with_two_vavs_gets_both_flows(self):
+    def test_room_with_two_vavs_gets_both_damper_positions(self):
         occ = [c for c in self.model.get_components_by_class(OccupancySystem) if "R02" in c.id]
         self.assertEqual(len(occ), 1)
-        flows = sorted(f.uuid for f in incoming(occ[0], "supplyAirFlowRateMeasured"))
-        self.assertEqual(flows, ["R02_FCI01", "R02_FCI02"])
+        positions = sorted(f.uuid for f in incoming(occ[0], "damperPositionMeasured"))
+        self.assertEqual(positions, ["R02_VAV01_POS", "R02_VAV02_POS"])
 
     def test_zone_takes_number_of_people_from_occupancy(self):
         rooms = self.model.get_components_by_class(BuildingSpaceSystem)

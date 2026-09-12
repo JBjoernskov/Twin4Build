@@ -1561,16 +1561,19 @@ class Estimator:
                     f"Each parameter must be a tuple. Got {type(param_tuple)} at index {i}"
                 )
 
-            # Handle both 5-element and 6-element tuples
+            # Handle 5-, 6- and 7-element tuples
+            member_index = None
             if len(param_tuple) == 5:
                 component_s, attr, x0, lb, ub = param_tuple
                 parameter_type = "private"  # default
             elif len(param_tuple) == 6:
                 component_s, attr, x0, lb, ub, parameter_type = param_tuple
+            elif len(param_tuple) == 7:
+                component_s, attr, x0, lb, ub, parameter_type, member_index = param_tuple
             else:
                 raise ValueError(
-                    f"Each parameter tuple must have either 5 or 6 elements: "
-                    f"(component(s), attr, x0, lb, ub[, parameter_type]). "
+                    f"Each parameter tuple must have 5, 6 or 7 elements: "
+                    f"(component(s), attr, x0, lb, ub[, parameter_type[, member_index]]). "
                     f"Got {len(param_tuple)} elements at index {i}: {param_tuple}"
                 )
 
@@ -1619,9 +1622,36 @@ class Estimator:
                     UserWarning,
                     stacklevel=3,
                 )
-
-            validated_params.append((components, attr, x0, lb, ub, parameter_type))
-
+            # member_index: per member, ``None`` (the member spans the whole
+            # group) or the group elements its own n_c elements map onto --
+            # an occupancy's per-VAV dampers onto the AHU's per-branch
+            # dampers ``[None, [1, 2, 3, 4]]``.  The first member defines the
+            # group's width and must span it.
+            if member_index is not None:
+                if parameter_type != "shared":
+                    raise ValueError(
+                        f"member_index is only meaningful for 'shared' parameters (index {i})"
+                    )
+                if not isinstance(member_index, (list, tuple)) or len(member_index) != len(
+                    components
+                ):
+                    raise ValueError(
+                        f"member_index at index {i} must list one entry per component "
+                        f"({len(components)}), got {member_index!r}"
+                    )
+                if member_index[0] is not None:
+                    raise ValueError(
+                        f"member_index at index {i}: the first member defines the group "
+                        "and must be None (span the whole group)"
+                    )
+                member_index = [
+                    None if m is None else [int(k) for k in m] for m in member_index
+                ]
+            else:
+                member_index = [None] * len(components)
+            validated_params.append(
+                (components, attr, x0, lb, ub, parameter_type, member_index)
+            )
         return validated_params
 
     def _process_parameters_list(self, parameters_list: List[Tuple]) -> None:
@@ -1645,6 +1675,7 @@ class Estimator:
             self._ub = np.array([])
             self._theta_mask = np.array([], dtype=int)
             self._theta_slices = []  # (start, end) for each unique param in theta
+            self._theta_index = []
             self._unique_param_n_c = []  # n_c for each unique param
             self._flat_components_private = []
             self._parameter_names_private = []
@@ -1656,8 +1687,9 @@ class Estimator:
         # Separate private and shared parameters
         private_params = []
         shared_params = []
+        shared_member_index = []
 
-        for components, attr, x0, lb, ub, parameter_type in parameters_list:
+        for components, attr, x0, lb, ub, parameter_type, member_index in parameters_list:
             if parameter_type == "private":
                 # For private parameters, each component gets its own parameter
                 for component in components:
@@ -1665,6 +1697,7 @@ class Estimator:
             elif parameter_type == "shared":
                 # For shared parameters, all components share one parameter
                 shared_params.append((components, attr, x0, lb, ub))
+                shared_member_index.append(member_index)
 
         LOGGER.config(
             "Parameters: %d private, %d shared", len(private_params), len(shared_params)
@@ -1688,11 +1721,17 @@ class Estimator:
         # Build flat lists for shared parameters
         self._flat_components_shared = []
         self._parameter_names_shared = []
+        # Per flat member: None, or the group elements the member's own
+        # elements map onto (element-mapped sharing).
+        self._theta_index = [None] * len(private_params)
 
-        for components, attr, x0, lb, ub in shared_params:
-            for component in components:
+        for (components, attr, x0, lb, ub), member_index in zip(
+            shared_params, shared_member_index
+        ):
+            for component, idx in zip(components, member_index):
                 self._flat_components_shared.append(component)
                 self._parameter_names_shared.append(attr)
+                self._theta_index.append(None if idx is None else np.asarray(idx, dtype=int))
 
         # Combine all components and parameters
         self._flat_components = (
@@ -1770,7 +1809,7 @@ class Estimator:
         shared_ub_flat = []
         n_private_unique = len(private_params)
 
-        for components, attr, x0, lb, ub in shared_params:
+        for shared_i, (components, attr, x0, lb, ub) in enumerate(shared_params):
             # All members of a shared group MUST use the same normalization
             # scaling: the objective denormalizes each member with its own
             # parameter's scaling, so a mismatch would silently assign
@@ -1786,9 +1825,31 @@ class Estimator:
                     "all members of a shared group must use the same "
                     "tps.Parameter scaling."
                 )
-            # Get n_c from first component (all shared components should have same n_c)
+            # The first member defines the group's width; every other member
+            # either spans it (same n_c) or maps its elements onto it.
             param = rgetattr(components[0], attr)
             n_c = param.n_c if hasattr(param, "n_c") else 1
+            for other, idx in zip(components[1:], shared_member_index[shared_i][1:]):
+                other_param = rgetattr(other, attr)
+                other_n_c = other_param.n_c if hasattr(other_param, "n_c") else 1
+                if idx is None:
+                    if other_n_c != n_c:
+                        raise ValueError(
+                            f"Shared parameter '{attr}': {other.id} has n_c={other_n_c} "
+                            f"but the group ({components[0].id}) has n_c={n_c}; give the "
+                            "member a member_index mapping its elements onto the group's."
+                        )
+                else:
+                    if len(idx) != other_n_c:
+                        raise ValueError(
+                            f"Shared parameter '{attr}': member_index for {other.id} has "
+                            f"{len(idx)} entries but the parameter has n_c={other_n_c}."
+                        )
+                    if any(k < 0 or k >= n_c for k in idx):
+                        raise ValueError(
+                            f"Shared parameter '{attr}': member_index for {other.id} "
+                            f"{list(idx)} is outside the group's {n_c} elements."
+                        )
             self._unique_param_n_c.append(n_c)
             self._theta_slices.append((theta_offset, theta_offset + n_c))
             theta_offset += n_c
@@ -1914,7 +1975,8 @@ class Estimator:
         values = []
         for i, param_idx in enumerate(self._theta_mask):
             start, end = self._theta_slices[param_idx]
-            values.append(theta[start:end])
+            idx = self._theta_index[i]
+            values.append(theta[start:end] if idx is None else theta[start:end][idx])
         return values
 
     def _composer_theta_spec(self) -> Tuple[List[Tuple], List]:
@@ -1939,7 +2001,13 @@ class Estimator:
         ):
             unique_idx = int(self._theta_mask[j])
             start, end = self._theta_slices[unique_idx]
-            selector = int(start) if end - start == 1 else slice(start, end)
+            idx = self._theta_index[j]
+            if idx is not None:
+                # Element-mapped member: its elements are a gather from the
+                # group's slice.
+                selector = [int(start + k) for k in idx]
+            else:
+                selector = int(start) if end - start == 1 else slice(start, end)
             owner, owner_attr = self._functional_owner(comp, attr)
             theta_spec.append((owner, owner_attr, selector))
             rep.setdefault(unique_idx, self._flat_parameters[j])
@@ -3141,6 +3209,7 @@ class Estimator:
             component_attr=[attr for attr in self._parameter_names],
             theta_mask=self._theta_mask,
             theta_slices=self._theta_slices,
+            theta_index=[None if i is None else [int(k) for k in i] for i in self._theta_index],
             unique_param_n_c=self._unique_param_n_c,
             start_time=self._start_time,
             end_time=self._end_time,
