@@ -73,6 +73,14 @@ class TestPlayback(unittest.TestCase):
         # ... and it now feeds the controller's actuatorMeasured slot 0.
         self.assertEqual(_outgoing(command, "measuredValue"), [(cits, "actuatorMeasured")])
 
+        # A second rewire (a model reloaded from its serialized graph carries
+        # the playback wiring but no flag) recognises the opened loop.
+        cits.playback = False
+        _apply_playback(model.simulation_model, [cits])
+        self.assertTrue(cits.playback)
+        self.assertEqual(_outgoing(command, "measuredValue"), [(cits, "actuatorMeasured")])
+        self.assertEqual(_outgoing(cits, "inputSignal"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

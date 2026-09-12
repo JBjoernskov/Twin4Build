@@ -2448,3 +2448,12 @@ def _apply_playback(model, cits_list) -> None:
                 "[REWIRE] %s: playback -- driven by %s",
                 cits.id, ", ".join(f"{s.uuid or s.id}[{i}]" for s, i in pending),
             )
+        elif any(
+            cp.input_port == "actuatorMeasured" and cp.connects_system_through
+            for cp in cits.connects_at
+        ):
+            # Already opened: a reloaded (serialized) or re-rewired model
+            # carries the playback wiring but not the flag -- the flag is
+            # derived from the wiring, not a literal.
+            cits.playback = True
+            LOGGER.info("[REWIRE] %s: playback (already wired)", cits.id)
