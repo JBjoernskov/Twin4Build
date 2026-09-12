@@ -82,6 +82,9 @@ class TestOccupancyFromCO2(unittest.TestCase):
             # would close a loop zone -> sensor -> occupancy -> zone.
             self.assertEqual(incoming_ports(o, "indoorCo2Measured"), {"measuredData"})
             self.assertEqual(incoming_ports(o, "damperPositionMeasured"), {"measuredData"})
+            # the fan state comes from the AHU's supply fan speed command
+            self.assertEqual([c.uuid for c in incoming(o, "fanSpeedMeasured")], ["AHU01_SF_SPEED"])
+            self.assertEqual(incoming_ports(o, "fanSpeedMeasured"), {"measuredData"})
             # outdoor CO2 is left for fill_missing_inputs
             self.assertEqual(incoming(o, "outdoorCo2Concentration"), [])
 

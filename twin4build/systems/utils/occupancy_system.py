@@ -201,6 +201,11 @@ class OccupancySystem(core.System, nn.Module):
             "indoorCo2Measured": tps.Scalar(optional=True),
             "previousIndoorCo2Measured": tps.Scalar(optional=True),
             "damperPositionMeasured": tps.Vector(optional=True),
+            # Fan state of the air handler serving the zone, 0-1, optional
+            # (unwired means the fan runs): a damper left at its minimum
+            # position with the fan off moves no air, and the inversion
+            # would otherwise read CO2 that nothing dilutes as people.
+            "fanSpeedMeasured": tps.Scalar(1.0, optional=True),
         }
         # One-step memory of the measured CO2 when it arrives through a
         # sensor port (unused, width 0, on the CSV path).  Initialised at the
@@ -261,6 +266,7 @@ class OccupancySystem(core.System, nn.Module):
 
         self._co2_from_sensor = _wired("indoorCo2Measured")
         self._damper_from_sensor = _wired("damperPositionMeasured")
+        self._fan_from_sensor = _wired("fanSpeedMeasured")
         for name, inp in self.input.items():
             if name == "damperPositionMeasured":
                 inp.initialize(
@@ -324,6 +330,9 @@ class OccupancySystem(core.System, nn.Module):
         self.exhaust_damper.expand_to_n_c(self.n_c * n_slots)
 
         self.INITIALIZED = True
+
+    #: Fan speed (0-1) above which the fan is fully "on" (as the AHU's).
+    FAN_ON_SPEED = 0.1
 
     PARAM_NAMES = (
         "mass.V",
@@ -396,6 +405,15 @@ class OccupancySystem(core.System, nn.Module):
                 damper_pos,
             )
 
+        fan = inputs.get("fanSpeedMeasured")
+        if fan is not None:
+            # Same gate as AirHandlingUnitSystem._fan_gate: nothing moves
+            # with the fan stopped, the damper sets the flow once it runs.
+            # A hard clamp: with the port unwired (value 1) the gate must be
+            # exactly 1 so both engines agree to the bit.
+            gate = torch.clamp(fan / self.FAN_ON_SPEED, 0.0, 1.0)
+            m_sup = m_sup * gate
+            m_exh = m_exh * gate
         air_mass = params["mass.V"] * constants.RHO_AIR
         alpha = params["mass.G_occ"] * (constants.M_AIR / constants.M_CO2) * 1e6
         m_inf = params["mass.m_inf"]
@@ -434,6 +452,8 @@ class OccupancySystem(core.System, nn.Module):
             inputs["indoorCo2Measured"] = C_indoor
             inputs["previousIndoorCo2Measured"] = C_prev
         x = self.get_state() if self.state_size() > 0 else None
+        # Always passed (1 when unwired), exactly as the composed path sees it.
+        inputs["fanSpeedMeasured"] = self.input["fanSpeedMeasured"].get()
         if self._damper_from_sensor:
             inputs["damperPositionMeasured"] = self.input["damperPositionMeasured"].get()
         else:
@@ -478,6 +498,7 @@ def brick_signature_pattern_room_co2():
     from twin4build.translator.translator import (
         ModeledNode,
         Node,
+        OptionalRule,
         SetStepRule,
         SignaturePattern,
         StepRule,
@@ -509,6 +530,14 @@ def brick_signature_pattern_room_co2():
             subject=vavs, object=damper_positions, predicate=core.namespace.BRICK.hasPoint
         )
     )
+    # The fan state of the air handler feeding those VAVs, optional.
+    ahu = Node(cls=core.namespace.BRICK.AHU)
+    supply_fan = Node(cls=core.namespace.BRICK.Supply_Fan)
+    fan_speed = Node(cls=core.namespace.BRICK.Fan_Speed_Command)
+    sp.add_rule(SetStepRule(subject=vavs, object=ahu, predicate=core.namespace.BRICK.isFedBy))
+    sp.add_rule(OptionalRule(subject=ahu, object=supply_fan, predicate=core.namespace.BRICK.hasPart))
+    sp.add_rule(OptionalRule(subject=supply_fan, object=fan_speed, predicate=core.namespace.BRICK.hasPoint))
+    sp.add_connection(fan_speed, "measuredData", "fanSpeedMeasured")
     sp.add_connection(co2_sensor, "measuredData", "indoorCo2Measured")
     sp.add_connection(
         damper_positions,
