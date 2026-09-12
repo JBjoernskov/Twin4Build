@@ -85,6 +85,10 @@ def parse_wrapper(graph, source=None, **kwargs):
     graph.parse(source, **kwargs)
 
 
+# Layout directions Graphviz accepts for the ``rankdir`` graph attribute.
+_VALID_RANKDIR = ("TB", "BT", "LR", "RL")
+
+
 def get_short_name(uri: Union[str, URIRef], namespaces: Dict[str, Namespace]):
     for namespace in namespaces.values():
         if namespace in str(uri):
@@ -2492,6 +2496,7 @@ class SemanticModel:
         instance_style=None,
         deduplicate_inverse=True,
         pydot_transform=None,
+        rankdir=None,
     ):
         """
         Visualize RDF graph with optional class and predicate filtering.
@@ -2539,7 +2544,17 @@ class SemanticModel:
                 (e.g. s4syst:connectedThrough / s4syst:connectsSystem).
             pydot_transform: Optional callable that receives the pydotplus graph
                 object after node styling and can modify it in place before rendering.
+            rankdir: Layout direction passed to Graphviz: ``"TB"`` (default
+                when None), ``"BT"``, ``"LR"`` or ``"RL"``. Wide, shallow
+                graphs are usually far more readable with ``"LR"``.
         """
+        # Validated up front: styling a large graph is slow, so an unusable
+        # value should fail before that work rather than after it.
+        if rankdir is not None and rankdir not in _VALID_RANKDIR:
+            raise ValueError(
+                f"rankdir must be one of {_VALID_RANKDIR}, got {rankdir!r}"
+            )
+
         # Omit rdf:type triples by default
         if query is None:
             query = """
@@ -2733,14 +2748,24 @@ class SemanticModel:
                 # Remove any existing width attribute that might conflict
                 if "width" in soup.table.attrs:
                     del soup.table.attrs["width"]
-                soup.table.attrs.update(
-                    {
-                        "BORDER": "2",
-                        "CELLSPACING": "0",
-                        "CELLPADDING": "2",
-                        "CELLBORDER": "0",
-                    }
-                )
+                # rdf2dot emits lowercase ``border``/``cellborder``/
+                # ``cellspacing`` and BeautifulSoup's html.parser keeps
+                # attribute names lowercased, so simply adding the uppercase
+                # spellings below would leave BOTH in the tag (e.g.
+                # ``BORDER="2" ... border="1"``).  Graphviz's HTML-like
+                # parser is case-insensitive and kept the rdf2dot value, so
+                # the intended 2pt border silently rendered at 1pt.  Drop any
+                # existing spelling first.
+                table_attrs = {
+                    "BORDER": "2",
+                    "CELLSPACING": "0",
+                    "CELLPADDING": "2",
+                    "CELLBORDER": "0",
+                }
+                for existing in list(soup.table.attrs):
+                    if existing.upper() in table_attrs:
+                        del soup.table.attrs[existing]
+                soup.table.attrs.update(table_attrs)
                 row = soup.find_all("tr")[1]
                 col = row.find_all("td")[0]
                 uri = col.string
@@ -2891,6 +2916,19 @@ class SemanticModel:
                         else:
                             s = col.get_text()
 
+                        # Row 1 is the instance name.  rdf2dot builds it with
+                        # ``compute_qname(uri)[2]`` and falls back to the FULL
+                        # URI whenever that raises -- which it does for any id
+                        # that is not a valid NCName.  Twin4Build's composite
+                        # component ids contain "[" and "]", so those nodes
+                        # showed the whole URI here, duplicating the URI row
+                        # (and still doing so with include_full_uri=False,
+                        # which only drops row 2).  Derive it from the
+                        # instance instead, which splits on the registered
+                        # namespaces without NCName validation.
+                        if i == 1 and len(cols_in_row) == 1:
+                            s = inst.get_short_name()
+
                         # Replace old cell with a clean new <td> (uppercase attrs)
                         new_col = soup.new_tag("td", attrs=td_attrs)
                         col.replace_with(new_col)
@@ -2902,10 +2940,12 @@ class SemanticModel:
                             s = s_
                         font.append(s)
 
-                # Remove the last row if include_full_uri is False
+                # Remove the full-URI row (row 2) if include_full_uri is False.
+                # The guard has to be > 2, not > 0: indexing [2] on a shorter
+                # table raises IndexError.
                 if not include_full_uri:
                     all_rows = soup.find_all("tr")
-                    if len(all_rows) > 0:
+                    if len(all_rows) > 2:
                         all_rows[2].decompose()
 
                 # Slice the URI string in row 1 if slice_uri is provided
@@ -2955,6 +2995,13 @@ class SemanticModel:
                 node.obj_dict["attributes"]["label"] = (
                     str(soup).replace("&lt;", "<").replace("&gt;", ">")
                 )
+
+        # ``rankdir`` has to be on the graph before layout: the renderer's
+        # final ``neato -n2`` pass only reuses existing positions, so setting
+        # it at render time does nothing.  Applied before ``pydot_transform``
+        # so a caller-supplied transform can still override it.
+        if rankdir is not None:
+            dg.set("rankdir", rankdir)
 
         if pydot_transform is not None:
             pydot_transform(dg)

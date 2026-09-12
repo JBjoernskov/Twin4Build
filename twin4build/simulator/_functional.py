@@ -640,20 +640,30 @@ class FunctionalModel:
             if cp.input_port != port:
                 continue
             for conn in cp.connects_system_through:
-                idx = cp.input_port_index.get(conn, 0)
-                idx = int(idx.item()) if hasattr(idx, "item") else int(idx)
+                in_idx = cp.input_port_index.get(conn, 0)
+                out_idx = cp.output_port_index.get(conn, slice(None))
+                if isinstance(in_idx, torch.Tensor) and in_idx.numel() > 1:
+                    # One connection, several slot pairs (a zone fed by
+                    # several branches of one AHU): each input slot has its
+                    # own output slot.
+                    pairs = list(zip(in_idx.reshape(-1).tolist(), out_idx.reshape(-1).tolist()))
+                else:
+                    idx = int(in_idx.item()) if hasattr(in_idx, "item") else int(in_idx)
+                    pairs = [(idx, out_idx)]
                 immediate = self._connection_sources(comp, port)
                 for src in immediate:
                     if src[0] is conn.connects_system and src[1] == conn.output_port:
                         followed = self._follow(src[0], src[1])
                         if followed is not None:
-                            slots.setdefault(idx, []).append(
-                                (
-                                    followed[0],
-                                    followed[1],
-                                    followed[2] + src[2],
+                            for idx, o in pairs:
+                                route = (o,) + tuple(src[2][0][1:])
+                                slots.setdefault(idx, []).append(
+                                    (
+                                        followed[0],
+                                        followed[1],
+                                        followed[2] + (route,),
+                                    )
                                 )
-                            )
                         break
         return sorted(slots.items())
 

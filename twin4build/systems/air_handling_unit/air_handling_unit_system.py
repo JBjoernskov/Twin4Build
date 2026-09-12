@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime
 
 # Third party imports
+import torch
 import torch.nn as nn  # noqa: F401 - torch needed for tensor ops
 
 # Local application imports
@@ -295,6 +296,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             else:
                 output_port.initialize(n_t=max_timesteps, n_s=batch_size)
 
+        # Exhaust branches read their room's exhaust temperature through the
+        # branch -> room map (None when the two are aligned one-to-one).
+        self._branch_room_index = self._exhaust_branch_map(n_v_exhaust)
+
         # Set n_c for damper subcomponents: n_c_ahu * n_v (flattened from Vector shape)
         # Supply and exhaust can have different n_v values
         self.supply_damper.n_c = self.n_c * n_v_supply
@@ -314,6 +319,61 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         self.supply_fan.initialize(start_time, end_time, step_size)
         self.exhaust_fan.initialize(start_time, end_time, step_size)
         self.INITIALIZED = True
+
+    def _exhaust_branch_map(self, n_v_exhaust: int):
+        """``LongTensor`` mapping each exhaust branch to the slot of
+        ``exhaustTemperature`` that carries its room's temperature, or
+        ``None`` when the two are aligned one-to-one (as many temperature
+        slots as branches -- the hand-built and single-VAV cases).
+
+        The map is read off the wiring: branch ``b`` belongs to the zone
+        that consumes ``supplyAirFlowRate[b]``, and that zone's slot on
+        ``exhaustTemperature`` is where it publishes ``indoorTemperature``.
+        """
+        n_v_temp = self.input["exhaustTemperature"].n_v
+        if n_v_temp == n_v_exhaust or n_v_temp is None:
+            return None
+        temp_slot_of = {}
+        for cp in self.connects_at:
+            if cp.input_port != "exhaustTemperature":
+                continue
+            for conn in cp.connects_system_through:
+                idx = cp.input_port_index.get(conn, 0)
+                temp_slot_of[id(conn.connects_system)] = int(
+                    idx.reshape(-1)[0].item() if hasattr(idx, "reshape") else idx
+                )
+        index = [None] * n_v_exhaust
+        for conn in self.connected_through:
+            if conn.output_port != "supplyAirFlowRate":
+                continue
+            for cp in conn.connects_system_at:
+                slot = temp_slot_of.get(id(cp.connection_point_of))
+                if slot is None:
+                    continue
+                branches = cp.output_port_index.get(conn, 0)
+                branches = (
+                    branches.reshape(-1).tolist()
+                    if hasattr(branches, "reshape")
+                    else [int(branches)]
+                )
+                for b in branches:
+                    if b < n_v_exhaust:
+                        index[b] = slot
+        if any(i is None for i in index):
+            missing = [b for b, i in enumerate(index) if i is None]
+            raise ValueError(
+                f"|{self.__class__.__name__}|{self.id}|: exhaustTemperature has "
+                f"{n_v_temp} slots for {n_v_exhaust} exhaust branches, and branches "
+                f"{missing} cannot be mapped to a room (no zone consumes their "
+                "supplyAirFlowRate and publishes its exhaust temperature)."
+            )
+        return torch.tensor(index, dtype=torch.long)
+
+    def _per_branch_exhaust_temperature(self, exhaust_temperature):
+        index = getattr(self, "_branch_room_index", None)
+        if index is None:
+            return exhaust_temperature
+        return exhaust_temperature[..., index.to(exhaust_temperature.device)]
 
     def do_step(
         self,
@@ -361,7 +421,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         exhaust_flow_vec = exhaust_flow_flat.reshape(exhaust_pos_vec.shape)
 
         # 4) Return junction: combine exhaust flows and temperatures
-        exhaust_temp_vec = self.input["exhaustTemperature"].get()
+        exhaust_temp_vec = self._per_branch_exhaust_temperature(
+            self.input["exhaustTemperature"].get()
+        )
         self.return_junction.input["airFlowRateIn"].set(exhaust_flow_vec, step_index)
         self.return_junction.input["airTemperatureIn"].set(exhaust_temp_vec, step_index)
         self.return_junction.do_step(second_time, date_time, step_size, step_index)
@@ -515,7 +577,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             None,
             {
                 "airFlowRateIn": exhaust_flow_vec,
-                "airTemperatureIn": inputs["exhaustTemperature"],
+                "airTemperatureIn": self._per_branch_exhaust_temperature(
+                    inputs["exhaustTemperature"]
+                ),
             },
             P["return_junction"],
             sample_time,
@@ -841,15 +905,13 @@ def brick_signature_pattern_vav_dampers():
         )
     )
 
-    # All Vector inputs are indexed by ``spaces`` so the BuildingSpace
-    # pattern (which uses ``output_port_index=space`` when reading from
-    # the AHU's ``supplyAirFlowRate`` Vector output) shares a common
-    # SP-side node identity with this pattern.  Mixing index keys
-    # (``vavs`` here, ``spaces`` over there) leaves the translator
-    # unable to map BuildingSpace.space to an AHU output slot, which
-    # surfaces as a ``Vector -> Scalar with no index`` assertion in
-    # ``add_connection`` for unrelated edges like
-    # ``ahu.supplyAirFlowRate -> RM107A.supplyAirFlowRate``.
+    # Branches are indexed by ``vavs`` -- one damper, one branch, one
+    # calibratable nominal flow per VAV (issue #179) -- and the zone reads
+    # its branches back with the same key (``output_port_index=vav`` in the
+    # BuildingSpace pattern, one slot per VAV of its Vector flow ports).
+    # ``exhaustTemperature`` stays indexed by ``spaces``: a room has one
+    # exhaust temperature however many branches serve it, and the AHU maps
+    # branch -> room itself (``_exhaust_branch_map``).
     sp.add_connection(
         spaces, "indoorTemperature", "exhaustTemperature", input_port_index=spaces
     )
@@ -877,14 +939,14 @@ def brick_signature_pattern_vav_dampers():
         "inputSignal",
         "supplyDamperPosition",
         output_port_index=damper_cmds,
-        input_port_index=spaces,
+        input_port_index=vavs,
     )
     sp.add_connection(
         damper_cmds,
         "inputSignal",
         "exhaustDamperPosition",
         output_port_index=damper_cmds,
-        input_port_index=spaces,
+        input_port_index=vavs,
     )
     sp.add_connection(sat_setpoint, "measuredValue", "supplyAirTemperatureSetpoint")
     sp.add_connection(oat_sensor, "outdoorTemperature", "outdoorAirTemperature")
@@ -988,14 +1050,14 @@ def brick_signature_pattern_vav_damper_commands():
         "inputSignal",
         "supplyDamperPosition",
         output_port_index=damper_cmds,
-        input_port_index=spaces,
+        input_port_index=vavs,
     )
     sp.add_connection(
         damper_cmds,
         "inputSignal",
         "exhaustDamperPosition",
         output_port_index=damper_cmds,
-        input_port_index=spaces,
+        input_port_index=vavs,
     )
     sp.add_connection(sat_setpoint, "measuredValue", "supplyAirTemperatureSetpoint")
     sp.add_connection(oat_sensor, "outdoorTemperature", "outdoorAirTemperature")
