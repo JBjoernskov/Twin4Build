@@ -886,6 +886,16 @@ class SimulationModel:
                 found_connection_point = True
                 break
 
+        # Vector -> Vector with a slot on one side only: the other side is a
+        # single-slot port (a one-branch zone reading one AHU branch), slot 0.
+        if isinstance(sender_component.output[output_port], tps.Vector) and isinstance(
+            receiver_component.input[input_port], tps.Vector
+        ):
+            if isinstance(output_port_index, int) and input_port_index is None:
+                input_port_index = 0
+            elif isinstance(input_port_index, int) and output_port_index is None:
+                output_port_index = 0
+
         found_connection = False
         # Check if there already is a connection with the same sender_property_name
         for sender_obj_connection in sender_component.connected_through:
