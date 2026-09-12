@@ -16,6 +16,7 @@ from twin4build.systems.building_space.building_space_thermal_system import (
     BuildingSpaceThermalSystem,
 )
 from twin4build.translator.translator import (
+    SetStepRule,
     StepRule,
     AnyPathRule,
     Node,
@@ -142,6 +143,13 @@ class BuildingSpaceSystem(core.System, nn.Module):
             shared = self._input[k]
             self.thermal.input[k] = shared
             self.mass.input[k] = shared
+        # The air-flow ports are Vectors on the composite -- one slot per
+        # branch (VAV) serving the zone -- and are summed into the submodels'
+        # shared scalar ports in ``do_step`` / ``forward``.  A lumped zone
+        # only sees the total, but every branch keeps its own damper and its
+        # own calibratable nominal flow (issue #179).
+        for k in self._FLOW_PORTS:
+            self._input[k] = tps.Vector()
         self._output = {**self.thermal.output, **self.mass.output}
         for k in set(self.thermal.output) & set(self.mass.output):
             shared = self._output[k]
@@ -224,6 +232,16 @@ class BuildingSpaceSystem(core.System, nn.Module):
             self.thermal.n_walls = n_walls
             self.thermal.n_boundary_temperature = n_boundary_temperature
 
+        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+            start_time, end_time, step_size
+        )
+        for k in self._FLOW_PORTS:
+            self.input[k].initialize(
+                n_t=max_timesteps,
+                n_s=len(start_time),
+                n_c=getattr(self, "n_c", 1) or 1,
+                n_v=self.get_n_v_from_connections(k) or 1,
+            )
         self.thermal.initialize(start_time, end_time, step_size)
         self.mass.initialize(start_time, end_time, step_size)
         # Drop the per-params routing cache (fresh graph per run, like the
@@ -235,6 +253,9 @@ class BuildingSpaceSystem(core.System, nn.Module):
     def config(self):
         """Get the system configuration."""
         return self._config
+
+    #: Vector input ports of the composite, summed into the submodels.
+    _FLOW_PORTS = ("supplyAirFlowRate", "exhaustAirFlowRate")
 
     def do_step(
         self,
@@ -263,6 +284,9 @@ class BuildingSpaceSystem(core.System, nn.Module):
         only correct *because* it bypassed the aliasing problem, and is
         redundant once the aliases are guaranteed.
         """
+        for k in self._FLOW_PORTS:
+            # The submodels share one scalar port per flow: the total.
+            self.thermal.input[k].set(self.input[k].get().sum(dim=-1), step_index)
         self.thermal.do_step(second_time, date_time, step_size, step_index=step_index)
         self.mass.do_step(second_time, date_time, step_size, step_index=step_index)
 
@@ -304,6 +328,14 @@ class BuildingSpaceSystem(core.System, nn.Module):
         """
         n_th = self.thermal.state_size()
         x_th, x_ma = x[..., :n_th], x[..., n_th:]
+        # Vector flow ports carry one trailing branch axis more than the
+        # scalar ports; sum it away for the submodels.
+        ref_dim = inputs["outdoorTemperature"].dim()
+        inputs = dict(inputs)
+        for k in self._FLOW_PORTS:
+            v = inputs.get(k)
+            if v is not None and v.dim() > ref_dim:
+                inputs[k] = v.sum(dim=-1)
         # Identity-keyed cache: a sequential rollout re-calls forward with the
         # SAME params dict every step (see OneStepComposer._params_for), so
         # the sub-param routing -- and, downstream, the submodels' state-space
@@ -626,12 +658,28 @@ def _brick_space_pattern(topology: str, with_volume: bool, heat_source: str = "c
         else:
             raise ValueError(topology)
 
-    sp.add_connection(
-        ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space
-    )
-    sp.add_connection(
-        ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space
-    )
+    # One AHU branch per VAV: the zone's Vector flow ports get one slot per
+    # VAV serving it (``input_port_index=vav``), read from that VAV's branch
+    # of the AHU (``output_port_index=vav``, the key the AHU damper pattern
+    # indexes its branches by).  The direct topology has no VAV: the AHU's
+    # single branch for the space lands in slot 0.
+    if topology == "direct":
+        sp.add_connection(ahu, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=space)
+        sp.add_connection(ahu, "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=space)
+    else:
+        # The room's VAVs as a set (one group per VAV, in lockstep with the
+        # AHU pattern's ``vavs``): each VAV is a distinct slot of the zone's
+        # Vector flow ports and a distinct branch of the AHU.
+        vavs = Node(cls=core.namespace.BRICK.VAV)
+        sp.add_rule(SetStepRule(subject=space, object=vavs, predicate=core.namespace.BRICK.isFedBy))
+        sp.add_connection(
+            ahu, "supplyAirFlowRate", "supplyAirFlowRate",
+            output_port_index=vavs, input_port_index=vavs,
+        )
+        sp.add_connection(
+            ahu, "exhaustAirFlowRate", "exhaustAirFlowRate",
+            output_port_index=vavs, input_port_index=vavs,
+        )
     sp.add_connection(solar_radiance_sensor, "globalIrradiation", "globalIrradiation")
     sp.add_connection(
         outside_air_temperature_sensor, "outdoorTemperature", "outdoorTemperature"

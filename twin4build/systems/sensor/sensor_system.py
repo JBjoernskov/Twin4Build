@@ -971,7 +971,7 @@ def get_brick_supply_air_flow_sensor_with_ref_pattern():
         ahu,
         "supplyAirFlowRate",
         "measuredValue",
-        output_port_index=room,
+        output_port_index=vav,
     )
     sp.add_modeled_node(sensor)
     sp.add_modeled_node(externalref)
@@ -1030,7 +1030,7 @@ def get_brick_supply_air_flow_sensor_virtual_pattern():
         ahu,
         "supplyAirFlowRate",
         "measuredValue",
-        output_port_index=room,
+        output_port_index=vav,
     )
     sp.add_modeled_node(sensor)
     return sp
