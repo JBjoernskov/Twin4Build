@@ -1,5 +1,7 @@
 # Standard library imports
 import datetime
+import warnings
+import importlib
 from typing import Any, Callable, Dict, List, Optional, Union
 
 # Third party imports
@@ -1147,6 +1149,7 @@ class SensorSystem(core.System):
         use_database: bool = False,
         use_df: bool = False,
         transformation: Optional[callable] = None,
+        transformation_ref: Optional[str] = None,
         **kwargs,
     ) -> None:
         """Initialize the sensor system.
@@ -1232,9 +1235,12 @@ class SensorSystem(core.System):
         self._is_leaf = None
         self._time_series_input = None
         self._transformation = transformation
+        if transformation is None and transformation_ref:
+            # A serialized model carries the transformation by import path.
+            self.transformation_ref = transformation_ref
 
         self._config = {
-            "parameters": ["use_spreadsheet", "use_database", "use_df"],
+            "parameters": ["use_spreadsheet", "use_database", "use_df", "transformation_ref"],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
             "database": ["uuid", "dbconfig"],
         }
@@ -1459,6 +1465,37 @@ class SensorSystem(core.System):
     @transformation.setter
     def transformation(self, fn: Optional[Callable]) -> None:
         self._transformation = fn
+
+    @property
+    def transformation_ref(self) -> Optional[str]:
+        """The transformation as an import path ``module:qualname`` -- the
+        form that survives ``Model.serialize()`` / ``Model.load(filename=...)``
+        (a callable is not a literal).  ``None`` when there is no
+        transformation, or when it cannot be named (a lambda or a closure):
+        such a model reloads without it, with a warning at serialize time."""
+        fn = self._transformation
+        if fn is None:
+            return None
+        qualname = getattr(fn, "__qualname__", "")
+        if not qualname or "<" in qualname or fn.__module__ is None:
+            warnings.warn(
+                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: the transformation "
+                f"{fn!r} is not importable by name and will not survive serialization; "
+                "use a module-level function.",
+                stacklevel=2,
+            )
+            return None
+        return f"{fn.__module__}:{qualname}"
+
+    @transformation_ref.setter
+    def transformation_ref(self, ref: Optional[str]) -> None:
+        if not ref:
+            return
+        module_name, _, qualname = ref.partition(":")
+        obj = importlib.import_module(module_name)
+        for part in qualname.split("."):
+            obj = getattr(obj, part)
+        self._transformation = obj
 
     def set_transformation(self, fn: Optional[Callable]) -> None:
         """Set the unit-conversion callable applied to loaded timeseries.
