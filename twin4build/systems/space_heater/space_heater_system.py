@@ -844,8 +844,15 @@ def brick_signature_pattern_space_heater_valve():
     same URI -- into kg/s through its estimable ``waterFlowRateMax``.  The
     chain is the water-side mirror of *controller -> damper -> AHU branch*.
 
-    ``supplyWaterTemperature`` stays unwired for
-    :meth:`Model.fill_missing_inputs`; ``UA`` and
+    The supply water temperature comes from the heating circuit when the
+    graph links it (optional)::
+
+        Space_Heater  isFedBy   Heat_Exchanger | Hot_Water_System | Boiler
+        Heat_Exchanger | Hot_Water_System  hasPoint  Leaving_Hot_Water_Temperature_Sensor
+                                                    -> supplyWaterTemperature
+
+    Without that link ``supplyWaterTemperature`` stays unwired for
+    :meth:`Model.fill_missing_inputs`.  ``UA`` and
     ``thermalMassHeatCapacity`` are estimated per radiator.  The modeled
     identity is the space heater itself.
     """
@@ -883,6 +890,27 @@ def brick_signature_pattern_space_heater_valve():
     )
     sp.add_connection(heating_cmd, "waterFlowRate", "waterFlowRate")
     sp.add_connection(room, "indoorTemperature", "indoorTemperature")
+    circuit = Node(
+        cls=(
+            core.namespace.BRICK.Heat_Exchanger,
+            core.namespace.BRICK.Hot_Water_System,
+            core.namespace.BRICK.Boiler,
+        )
+    )
+    # Brick 1.4.1 has no Primary_/Secondary_ qualified leaving-water
+    # classes; a graph that uses them must retype to this one.
+    supply_temp = Node(cls=core.namespace.BRICK.Leaving_Hot_Water_Temperature_Sensor)
+    sp.add_rule(
+        OptionalRule(
+            subject=space_heater, object=circuit, predicate=core.namespace.BRICK.isFedBy
+        )
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=circuit, object=supply_temp, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_connection(supply_temp, "measuredValue", "supplyWaterTemperature")
     sp.add_modeled_node(space_heater)
     return sp
 

@@ -69,6 +69,11 @@ def _graph(sm):
     g.add((EX.R01_RAD01, RDF.type, BRICK.Space_Heater))
     g.add((EX.R01_RAD01, BRICK.feeds, EX.R01))
     _point(g, EX.R01_RAD01, "R01_MVV01", BRICK.Heating_Command)
+    # The heating circuit (a heat exchanger) that feeds the radiator, with
+    # its secondary leaving-water temperature: the radiator's supply water.
+    g.add((EX.RAD_CIRCUIT, RDF.type, BRICK.Heat_Exchanger))
+    g.add((EX.RAD_CIRCUIT, BRICK.feeds, EX.R01_RAD01))
+    _point(g, EX.RAD_CIRCUIT, "RAD_CIRCUIT_TF01", BRICK.Leaving_Hot_Water_Temperature_Sensor)
 
 
 def incoming(component, port):
@@ -149,9 +154,11 @@ class TestSpaceHeaterControlLoop(unittest.TestCase):
         # fill_missing_inputs.
         other = [r for r in rooms if r is not room_in]
         self.assertEqual(incoming(other[0], "heatGain"), [])
-        # Supply water temperature is not in the graph: left for
-        # fill_missing_inputs.
-        self.assertEqual(incoming(heater, "supplyWaterTemperature"), [])
+        # Supply water temperature from the circuit feeding the radiator
+        # (Heat_Exchanger hasPoint Leaving_Hot_Water_Temperature_Sensor).
+        (supply,) = incoming(heater, "supplyWaterTemperature")
+        self.assertIsInstance(supply, SensorSystem)
+        self.assertEqual(supply.uuid, "RAD_CIRCUIT_TF01")
 
     def test_command_sensor_is_driven_by_its_controller(self):
         """The historised command point becomes controller-driven, so the
