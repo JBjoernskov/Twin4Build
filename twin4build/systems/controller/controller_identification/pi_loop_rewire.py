@@ -174,11 +174,15 @@ def _rewire_pi_loops(
         CITS has its ``alpha_gate_{a}`` pinned to ``1.0`` so the
         BandGate fully gates the actuator on the active regime.
       * ``mode="simulate"`` -- intended for Stage-2 closed-loop
-        physics simulation.  ``alpha_gate_{a}`` is pinned to ``0.0``
-        so the gate is bypassed (``gate_input = 1 - 0 + 0 * gate =
-        1``) and the PI passes through.  See
-        :file:`controller_identification_system.py:787-791` for
-        the gate-mixing formula.
+        physics simulation.  The gate stays active (``alpha_gate_{a}``
+        pinned to ``1.0`` as well): the controller was identified WITH
+        its gate, a schedule the BMS really applies (a VAV whose flow
+        setpoint is 0 keeps its damper shut all weekend), so simulating
+        it without the gate is a different controller.  A gate that is
+        a hypothesis rather than a fact is handled by estimating
+        ``alpha_gate_{a}`` in Stage 1, which the transferred result then
+        carries over.  See :file:`controller_identification_system.py`
+        for the gate-mixing formula.
 
     In both modes the function also pins the frozen selection weights
     (``alpha_0`` / ``beta_0`` / ``gamma_0`` / optional ``beta_b_0``)
@@ -2308,9 +2312,9 @@ def _pin_frozen_cits_state(
 
     Args:
         cits_list: Every PI-CITS that the rewire processed.
-        mode: ``"train"`` -> ``alpha_gate_{a} = 1.0`` (gate active);
-            ``"simulate"`` -> ``alpha_gate_{a} = 0.0`` (gate bypassed,
-            PI passthrough).  Any other value raises ``ValueError``.
+        mode: ``"train"`` or ``"simulate"``; both pin ``alpha_gate_{a}``
+            to ``1.0`` (gate active -- the identified controller includes
+            its gate).  Any other value raises ``ValueError``.
 
     The function never resizes parameters; it just writes one-hot or
     scalar values onto the post-rebuild tensors.  For CITS that the
@@ -2328,7 +2332,7 @@ def _pin_frozen_cits_state(
             f"_pin_frozen_cits_state: mode must be 'train' or 'simulate', "
             f"got {mode!r}."
         )
-    alpha_gate_value = 1.0 if mode == "train" else 0.0
+    alpha_gate_value = 1.0
 
     def _param_size(param) -> int:
         return param.data.shape[0] if param.data.ndim > 0 else 1
