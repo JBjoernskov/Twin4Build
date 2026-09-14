@@ -13,6 +13,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import (
     StepRule,
@@ -90,6 +91,8 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         a: Optional[float] = 1,
         b: Optional[float] = 0,
         apply_correction: Optional[bool] = False,
+        transformation_ref_outdoorTemperature: Optional[str] = None,
+        transformation_ref_globalIrradiation: Optional[str] = None,
         **kwargs,
     ):
         for legacy_key, new_key in (
@@ -216,6 +219,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         # this hook with feed-specific setters.
         self._transformation_outdoorTemperature = None
         self._transformation_globalIrradiation = None
+        # A serialized model carries the transformations by import path.
+        self.transformation_ref_outdoorTemperature = transformation_ref_outdoorTemperature
+        self.transformation_ref_globalIrradiation = transformation_ref_globalIrradiation
         self.cached_initialize_arguments = []
         self.cache_root = get_main_dir()
 
@@ -227,6 +233,10 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 "use_spreadsheet",
                 "use_database",
                 "use_df",
+                # The per-feed unit transformations, by import path: a
+                # callable is not a literal (see SensorSystem.transformation_ref).
+                "transformation_ref_outdoorTemperature",
+                "transformation_ref_globalIrradiation",
             ],
             "spreadsheet": [
                 "filename_outdoorTemperature",
@@ -699,6 +709,35 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             raise ValueError(
                 "No data source provided. Set use_spreadsheet=True, use_database=True, or use_df=True."
             )
+
+    @property
+    def transformation_ref_outdoorTemperature(self) -> Optional[str]:
+        """``module:qualname`` of the outdoor-temperature feed's transformation
+        (the serializable form; ``None`` without one)."""
+        return callable_to_ref(
+            self._transformation_outdoorTemperature,
+            f"|CLASS: {self.__class__.__name__}|ID: {self.id}|",
+        )
+
+    @transformation_ref_outdoorTemperature.setter
+    def transformation_ref_outdoorTemperature(self, ref: Optional[str]) -> None:
+        fn = ref_to_callable(ref)
+        if fn is not None:
+            self._transformation_outdoorTemperature = fn
+
+    @property
+    def transformation_ref_globalIrradiation(self) -> Optional[str]:
+        """``module:qualname`` of the irradiation feed's transformation."""
+        return callable_to_ref(
+            self._transformation_globalIrradiation,
+            f"|CLASS: {self.__class__.__name__}|ID: {self.id}|",
+        )
+
+    @transformation_ref_globalIrradiation.setter
+    def transformation_ref_globalIrradiation(self, ref: Optional[str]) -> None:
+        fn = ref_to_callable(ref)
+        if fn is not None:
+            self._transformation_globalIrradiation = fn
 
     def set_transformation(self, fn):
         """Set the unit-conversion callable for the outdoor-temperature feed.

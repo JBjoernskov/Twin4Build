@@ -10,6 +10,7 @@ import pandas as pd
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import (
@@ -1559,29 +1560,15 @@ class SensorSystem(core.System):
         (a callable is not a literal).  ``None`` when there is no
         transformation, or when it cannot be named (a lambda or a closure):
         such a model reloads without it, with a warning at serialize time."""
-        fn = self._transformation
-        if fn is None:
-            return None
-        qualname = getattr(fn, "__qualname__", "")
-        if not qualname or "<" in qualname or fn.__module__ is None:
-            warnings.warn(
-                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: the transformation "
-                f"{fn!r} is not importable by name and will not survive serialization; "
-                "use a module-level function.",
-                stacklevel=2,
-            )
-            return None
-        return f"{fn.__module__}:{qualname}"
+        return callable_to_ref(
+            self._transformation, f"|CLASS: {self.__class__.__name__}|ID: {self.id}|"
+        )
 
     @transformation_ref.setter
     def transformation_ref(self, ref: Optional[str]) -> None:
-        if not ref:
-            return
-        module_name, _, qualname = ref.partition(":")
-        obj = importlib.import_module(module_name)
-        for part in qualname.split("."):
-            obj = getattr(obj, part)
-        self._transformation = obj
+        fn = ref_to_callable(ref)
+        if fn is not None:
+            self._transformation = fn
 
     def set_transformation(self, fn: Optional[Callable]) -> None:
         """Set the unit-conversion callable applied to loaded timeseries.
