@@ -514,13 +514,20 @@ def brick_signature_pattern_room_co2():
 
         Room  hasPoint  Zone_CO2_Level_Sensor       -> indoorCo2Measured
         Room  isFedBy   VAV
-        VAV   hasPoint  Damper_Position_Sensor      -> damperPositionMeasured
+        VAV   hasPoint  Damper_Position_Command |
+                        Damper_Position_Setpoint    -> damperPositionMeasured
                                                        (one slot per VAV)
         OccupancySystem.scheduleValue -> BuildingSpaceSystem.numberOfPeople
 
-    The occupancy derives the air flow from the measured damper positions
-    through its own damper model, exactly as the CSV-driven construction:
-    that is the general case -- a flow meter on every VAV is a luxury.
+    The occupancy derives the air flow from the historised damper
+    COMMAND through its own damper model -- the same point, and the same
+    characteristic, that drive the branch flows of the AHU pattern
+    (``Damper_Position_Command`` -> ``supplyDamperPosition``), so the
+    inverse balance (occupancy from CO2) and the forward one (CO2 from
+    occupancy) see one and the same air flow.  A damper position SENSOR
+    is not that signal on a pressure-independent VAV: its local flow loop
+    moves the blade to hold the commanded flow against the duct pressure,
+    and the blade parks open when the fan stops.
 
     Both inputs are historised sensors, so the fast paths capture them as
     exogenous signals and no gradient feedback loop runs through the
@@ -553,7 +560,12 @@ def brick_signature_pattern_room_co2():
     )
     co2_sensor = Node(cls=core.namespace.BRICK.Zone_CO2_Level_Sensor)
     vavs = Node(cls=core.namespace.BRICK.VAV)
-    damper_positions = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
+    damper_positions = Node(
+        cls=(
+            core.namespace.BRICK.Damper_Position_Command,
+            core.namespace.BRICK.Damper_Position_Setpoint,
+        )
+    )
     sp = SignaturePattern(id="occupancy_signature_pattern_brick_room_co2")
     sp.add_rule(
         StepRule(subject=room, object=co2_sensor, predicate=core.namespace.BRICK.hasPoint)

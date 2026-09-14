@@ -521,8 +521,11 @@ def _rewire_pi_loops(
     # merely correlates with its schedule poisons the fit (a heating
     # valve gated on the ventilation setpoint that switches 1.5 h earlier
     # ended up as a constant at the command's mean).
+    # ``None`` (gate seeding could not run: no actuator data, e.g. a model
+    # reloaded from its serialized playback graph) leaves a previously
+    # pinned gate as it is.
     gate_active = {
-        cid: (gs is not None and gs.confidence != "low")
+        cid: (None if gs is None else gs.confidence != "low")
         for cid, (_kind, _bim, _on, gs) in gate_results.items()
     }
     _pin_frozen_cits_state(pi_cits_list, mode=mode, gate_active=gate_active)
@@ -1564,9 +1567,14 @@ def _apply_seeds(
             torch.tensor(default_out, dtype=torch.float64), normalized=False
         )
 
-    # --- isReverse ---------------------------------------------------------
+    # --- action (direct / reverse) ------------------------------------------
+    # ``PIDControllerSystem.forward`` reads ``is_reverse``; ``isReverse`` is a
+    # plain deprecated alias attribute, so writing only the alias left every
+    # candidate at the constructor's direct action (heating loops ran as
+    # cooling loops in Stage 2).
     if hasattr(cand, "is_reverse"):
-        cand.isReverse = is_reverse
+        cand.is_reverse = bool(is_reverse)
+        cand.isReverse = bool(is_reverse)
 
     return kp_x0, kp_lb, kp_ub, Ti_x0, Ti_lb, Ti_ub, is_reverse
 
@@ -2443,6 +2451,9 @@ def _pin_frozen_cits_state(
                 _set_one_hot(beta_b, zt_idx, default=0)
             if alpha_gate is not None:
                 active = gate_active.get(cits.id, True)
+                if active is None:
+                    current = float(alpha_gate.get().reshape(-1)[0])
+                    active = current > 0.5 if current in (0.0, 1.0) else True
                 _set_scalar(alpha_gate, 1.0 if active else 0.0)
                 if not active:
                     LOGGER.info(
