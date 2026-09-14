@@ -37,6 +37,14 @@ class TestGatePin(unittest.TestCase):
             _pin_frozen_cits_state([cits], mode=mode)
             self.assertAlmostEqual(float(cits._get_alpha_gate(0).reshape(-1)[0]), 1.0, msg=mode)
 
+    def test_gate_bypassed_when_no_slot_discriminates(self):
+        cits = self._cits()
+        _pin_frozen_cits_state([cits], mode="simulate", gate_active={"cits": False})
+        self.assertAlmostEqual(float(cits._get_alpha_gate(0).reshape(-1)[0]), 0.0)
+        cits = self._cits()
+        _pin_frozen_cits_state([cits], mode="train", gate_active={"other": False})
+        self.assertAlmostEqual(float(cits._get_alpha_gate(0).reshape(-1)[0]), 1.0)
+
     def test_unknown_mode_rejected(self):
         with self.assertRaises(ValueError):
             _pin_frozen_cits_state([self._cits()], mode="playback")

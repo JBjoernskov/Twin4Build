@@ -39,7 +39,7 @@ from __future__ import annotations
 
 # Standard library imports
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 # Third party imports
 import numpy as np
@@ -77,6 +77,14 @@ class LoopScore:
     r2: float
     n_active: int
     reason: Optional[str] = None
+    #: Fraction of ALL finite samples (saturated ones included) where the
+    #: actuator's side (above / below 0.5) is the one the setpoint LEVEL
+    #: calls for under the fitted action: reverse (heating) wants the
+    #: actuator high when ``sp > fb``, direct wants it low.  The increment
+    #: regression behind ``r2`` cannot see the level (``Δe = -Δfb`` for
+    #: every constant setpoint, so all candidates tie); this breaks the tie
+    #: with the level.  ``nan`` when the regression is degenerate.
+    level_agreement: float = float("nan")
 
 
 @dataclass
@@ -290,6 +298,7 @@ def score_pair(
 
     slope = float(beta[0])
     coef_e = float(beta[1])
+    level_agreement = _level_agreement(u, e, slope, sat_lo, sat_hi)
 
     pred = X @ beta
     ss_tot = float(np.sum((du - du.mean()) ** 2))
@@ -316,7 +325,31 @@ def score_pair(
         r2=float(r2),
         n_active=n_active,
         reason=None,
+        level_agreement=level_agreement,
     )
+
+
+def _level_agreement(
+    u: np.ndarray, e: np.ndarray, slope: float, sat_lo: float, sat_hi: float,
+    min_saturated_fraction: float = 0.2,
+) -> float:
+    """See :attr:`LoopScore.level_agreement`.
+
+    Scored on the SATURATED samples when there are enough of them (a
+    parked actuator is the clearest statement about the level: a heating
+    valve shut for hours says the room is above its setpoint), on every
+    sample otherwise.  Unsaturated samples of a PI carry the integrated
+    error, whose sign need not match the instantaneous one."""
+    fin = np.isfinite(u) & np.isfinite(e)
+    if not fin.any():
+        return float("nan")
+    u_f, e_f = u[fin], e[fin]
+    sat = (u_f <= sat_lo) | (u_f >= sat_hi)
+    if sat.mean() >= min_saturated_fraction:
+        u_f, e_f = u_f[sat], e_f[sat]
+    high = u_f > 0.5
+    wants_high = (e_f > 0.0) if slope >= 0.0 else (e_f < 0.0)
+    return float(np.mean(high == wants_high))
 
 
 # ---------------------------------------------------------------------------
@@ -723,6 +756,168 @@ class GateSeeds:
     winner_polarity: int
     confidence: str
     reason: Optional[str] = None
+
+
+@dataclass
+class ScheduleSeeds:
+    """A weekly on/off profile derived from the actuator's regime split.
+
+    Offered to the gate bus when no measured ``onOffSignal`` slot separates
+    the regimes (see ``pi_loop_rewire``): a BMS runs its loops on
+    schedules, and when the schedule point is missing, text-valued or
+    shifted from the loop's own schedule, the profile is identified from
+    the actuator data like every other seed.
+
+    Attributes:
+        rulesets: ``{"weekday_ruleset": {...}, "weekend_ruleset": {...}}``
+            in :class:`ScheduleSystem` form -- one active block per day
+            class (``ruleset_value=[1]``, default ``0``), or no block.
+        profile: The profile evaluated at every sample, ``0/1``, aligned
+            with ``on_mask``.
+        consistency: Sample-weighted mean of ``max(p, 1 - p)`` over the
+            (day class, time-of-day) bins: 1 when every day of a class
+            repeats the same pattern, 0.5 when the pattern is random.
+        auc: ROC AUC of ``profile`` against ``on_mask``.
+        n_days: Distinct calendar days per class ``{"weekday": n, "weekend": n}``.
+        reason: Why no schedule is offered (``None`` when it is).
+    """
+
+    rulesets: Dict[str, dict]
+    profile: np.ndarray
+    consistency: float
+    auc: float
+    n_days: Dict[str, int]
+    reason: Optional[str] = None
+
+
+def _day_class(ts) -> str:
+    return "weekend" if ts.weekday() >= 5 else "weekday"
+
+
+def _block_ruleset(start_bin: Optional[int], end_bin: Optional[int], bin_minutes: int) -> dict:
+    """One ``ScheduleSystem`` ruleset: the active block ``[start, end]``
+    (bin indices of the day, inclusive) at value 1, default 0."""
+    if start_bin is None:
+        return {
+            "ruleset_default_value": 0.0,
+            "ruleset_start_minute": [],
+            "ruleset_end_minute": [],
+            "ruleset_start_hour": [],
+            "ruleset_end_hour": [],
+            "ruleset_value": [],
+        }
+    start_min = start_bin * bin_minutes
+    end_min = min(end_bin * bin_minutes + bin_minutes - 1, 24 * 60 - 1)
+    return {
+        "ruleset_default_value": 0.0,
+        "ruleset_start_minute": [int(start_min % 60)],
+        "ruleset_end_minute": [int(end_min % 60)],
+        "ruleset_start_hour": [int(start_min // 60)],
+        "ruleset_end_hour": [int(end_min // 60)],
+        "ruleset_value": [1.0],
+    }
+
+
+def _evaluate_block(ts, ruleset: dict) -> float:
+    """``ScheduleSystem.get_schedule_value`` for a one-block ruleset."""
+    if not ruleset["ruleset_start_hour"]:
+        return float(ruleset["ruleset_default_value"])
+    sh, sm = ruleset["ruleset_start_hour"][0], ruleset["ruleset_start_minute"][0]
+    eh, em = ruleset["ruleset_end_hour"][0], ruleset["ruleset_end_minute"][0]
+    t = ts.hour * 60 + ts.minute
+    return float(ruleset["ruleset_value"][0]) if sh * 60 + sm <= t <= eh * 60 + em else float(ruleset["ruleset_default_value"])
+
+
+def derive_schedule_from_on_mask(
+    on_mask: np.ndarray,
+    timestamps,
+    *,
+    bin_minutes: int = 10,
+    min_consistency: float = 0.8,
+    min_days: int = 1,
+    min_on_fraction: float = 0.02,
+) -> ScheduleSeeds:
+    """Derive a weekly on/off schedule from a sample-level regime mask.
+
+    Per day class (weekday / weekend) the fraction of ``on_mask`` per
+    time-of-day bin is computed, thresholded at 0.5, and the longest
+    contiguous active block becomes the class's schedule.  The result is
+    rejected (``reason`` set) when the pattern does not repeat across the
+    days of a class (``consistency < min_consistency``), when a class has
+    fewer than ``min_days`` days, or when the mask is (nearly) constant.
+
+    Args:
+        on_mask: Boolean array, ``True`` where the loop is in its active
+            regime (``derive_actuator_seeds_gmm``).
+        timestamps: Sequence of ``datetime`` objects aligned with ``on_mask``.
+        bin_minutes: Resolution of the profile (the sample step, typically).
+    """
+    on_mask = np.asarray(on_mask, dtype=bool).reshape(-1)
+    n = min(on_mask.size, len(timestamps))
+    on_mask = on_mask[:n]
+    stamps = list(timestamps)[:n]
+    empty = ScheduleSeeds(rulesets={}, profile=np.zeros(n), consistency=float("nan"), auc=float("nan"), n_days={})
+    if n == 0:
+        return replace_reason(empty, "no_samples")
+    frac_on = float(on_mask.mean())
+    if frac_on < min_on_fraction or frac_on > 1.0 - min_on_fraction:
+        return replace_reason(empty, f"degenerate_on_mask (on fraction {frac_on:.2f})")
+    n_bins = (24 * 60) // bin_minutes
+    classes = ("weekday", "weekend")
+    counts = {c: np.zeros(n_bins) for c in classes}
+    ons = {c: np.zeros(n_bins) for c in classes}
+    days = {c: set() for c in classes}
+    for k, ts in enumerate(stamps):
+        c = _day_class(ts)
+        b = min((ts.hour * 60 + ts.minute) // bin_minutes, n_bins - 1)
+        counts[c][b] += 1
+        ons[c][b] += float(on_mask[k])
+        days[c].add(ts.date())
+    n_days = {c: len(days[c]) for c in classes}
+    rulesets: Dict[str, dict] = {}
+    weighted = 0.0
+    weight = 0.0
+    for c in classes:
+        seen = counts[c] > 0
+        if n_days[c] < min_days or not seen.any():
+            rulesets[f"{c}_ruleset"] = _block_ruleset(None, None, bin_minutes)
+            continue
+        p = np.where(seen, ons[c] / np.maximum(counts[c], 1), 0.0)
+        weighted += float(np.sum(np.maximum(p, 1 - p)[seen] * counts[c][seen]))
+        weight += float(counts[c][seen].sum())
+        active = (p > 0.5) & seen
+        # Longest contiguous active block (bins without data inherit
+        # their neighbours' state so a gap does not split a block).
+        best, cur_start, cur_len, best_start = 0, None, 0, None
+        for b in range(n_bins):
+            if active[b] or (not seen[b] and cur_start is not None):
+                if cur_start is None:
+                    cur_start = b
+                cur_len += 1
+                if cur_len > best:
+                    best, best_start = cur_len, cur_start
+            else:
+                cur_start, cur_len = None, 0
+        if best_start is None:
+            rulesets[f"{c}_ruleset"] = _block_ruleset(None, None, bin_minutes)
+        else:
+            rulesets[f"{c}_ruleset"] = _block_ruleset(best_start, best_start + best - 1, bin_minutes)
+    consistency = weighted / weight if weight > 0 else float("nan")
+    profile = np.array(
+        [_evaluate_block(ts, rulesets[f"{_day_class(ts)}_ruleset"]) for ts in stamps], dtype=np.float64
+    )
+    auc = _roc_auc(profile, on_mask)
+    seeds = ScheduleSeeds(rulesets=rulesets, profile=profile, consistency=consistency, auc=auc, n_days=n_days)
+    if not np.isfinite(consistency) or consistency < min_consistency:
+        return replace_reason(seeds, f"inconsistent_across_days (consistency {consistency:.2f})")
+    if profile.std() < 1e-9:
+        return replace_reason(seeds, "flat_profile")
+    return seeds
+
+
+def replace_reason(seeds: ScheduleSeeds, reason: str) -> ScheduleSeeds:
+    seeds.reason = reason
+    return seeds
 
 
 def _roc_auc(score: np.ndarray, label: np.ndarray) -> float:

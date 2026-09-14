@@ -201,6 +201,68 @@ class TestScorePair(unittest.TestCase):
         self.assertGreater(score.kp, 0.0)
         self.assertGreater(score.r2, 0.95)
 
+    def test_level_agreement_breaks_constant_setpoint_ties(self) -> None:
+        """A heating valve driven by a reverse-acting PI on the HEATING
+        setpoint (22 C).  The cooling setpoint (24 C) is a constant too, so
+        the increment regression scores both pairs identically (``de`` is
+        ``-d(fb)`` either way); the level agreement must prefer the heating
+        setpoint: the valve is open when the room is below 22 C and shut
+        when it is above, which 24 C cannot explain."""
+        n = 2000
+        t = np.arange(n)
+        fb = 21.5 + 2.0 * np.sin(2 * np.pi * t / 400) + 0.3 * np.sin(2 * np.pi * t / 37)
+        sp_heat = np.full(n, 22.0)
+        sp_cool = np.full(n, 24.0)
+        e = sp_heat - fb
+        # A high-gain reverse-acting P law: saturated most of the time
+        # (open below 22 C, shut above), modulating near the setpoint.
+        u = np.clip(0.5 + 2.0 * e, 0.0, 1.0)
+        heat = score_pair(u=u, sp=sp_heat, fb=fb, h=self.h)
+        cool = score_pair(u=u, sp=sp_cool, fb=fb, h=self.h)
+        self.assertIsNone(heat.reason)
+        self.assertIsNone(cool.reason)
+        self.assertAlmostEqual(heat.r2, cool.r2, places=9)
+        self.assertGreater(heat.slope, 0.0)
+        self.assertGreater(heat.level_agreement, cool.level_agreement + 0.2)
+        self.assertGreater(heat.level_agreement, 0.8)
+
+    def test_schedule_from_on_mask_recovers_a_weekly_block(self) -> None:
+        """Two weeks at 10-minute steps: active 08:00-18:00 on weekdays
+        (edges jittered by up to an hour), off at weekends -> one weekday
+        block, weekend off, high consistency and AUC; a random mask is
+        rejected."""
+        import datetime
+
+        from twin4build.systems.controller.controller_identification.loop_classifier import (
+            derive_schedule_from_on_mask,
+        )
+
+        start = datetime.datetime(2024, 3, 4, 0, 0)  # a Monday
+        n = 14 * 144
+        stamps = [start + datetime.timedelta(minutes=10 * k) for k in range(n)]
+        rng = np.random.default_rng(1)
+        mask = np.zeros(n, dtype=bool)
+        for k, ts in enumerate(stamps):
+            if ts.weekday() >= 5:
+                continue
+            day_seed = ts.timetuple().tm_yday
+            jitter_on = 8 * 60 + int((day_seed * 37) % 60)
+            jitter_off = 18 * 60 - int((day_seed * 53) % 60)
+            t = ts.hour * 60 + ts.minute
+            mask[k] = jitter_on <= t < jitter_off
+        seeds = derive_schedule_from_on_mask(mask, stamps)
+        self.assertIsNone(seeds.reason)
+        wd = seeds.rulesets["weekday_ruleset"]
+        self.assertEqual(wd["ruleset_value"], [1.0])
+        self.assertTrue(7 <= wd["ruleset_start_hour"][0] <= 9)
+        self.assertTrue(16 <= wd["ruleset_end_hour"][0] <= 18)
+        self.assertEqual(seeds.rulesets["weekend_ruleset"]["ruleset_start_hour"], [])
+        self.assertGreater(seeds.consistency, 0.85)
+        self.assertGreater(seeds.auc, 0.95)
+        self.assertEqual(seeds.n_days["weekday"], 10)
+        random_mask = rng.random(n) > 0.5
+        self.assertIsNotNone(derive_schedule_from_on_mask(random_mask, stamps).reason)
+
     def test_wrong_pair_low_r2(self) -> None:
         """Independent (random) actuator and sensor: R^2 close to zero."""
         n = 1500

@@ -54,6 +54,8 @@ from twin4build.systems.controller.controller_identification.controller_identifi
     ControllerIdentificationPISystem,
 )
 from twin4build.systems.controller.controller_identification.loop_classifier import (
+    ScheduleSeeds,
+    derive_schedule_from_on_mask,
     ActuatorSeeds,
     GateSeeds,
     LoopScore,
@@ -63,6 +65,7 @@ from twin4build.systems.controller.controller_identification.loop_classifier imp
     derive_gate_seeds_from_on_mask,
     score_pair,
 )
+from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.utils.logger import LOGGER
 
@@ -129,6 +132,10 @@ class RewireReport:
     # the on_mask was degenerate (all True / all False).  See
     # :class:`GateSeeds` for semantics.
     gate_seeds: Optional[GateSeeds] = None
+    # ----- Learned schedule gate (only when no measured slot separates the
+    # regimes): the weekly profile added to the gate bus, see
+    # :class:`ScheduleSeeds`.  ``None`` when no schedule was offered.
+    schedule_seeds: Optional["ScheduleSeeds"] = None
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +446,7 @@ def _rewire_pi_loops(
                 cits=cits,
                 model=model,
                 h=h,
+                window=(init_start, init_end, init_step),
                 confidence_high=confidence_high,
                 confidence_low=confidence_low,
                 Ti_default=Ti_default,
@@ -515,7 +523,17 @@ def _rewire_pi_loops(
     # ``alpha_gate_{a}`` according to ``mode``.  Idempotent: a
     # subsequent call with the same ``mode`` produces the same final
     # state.
-    _pin_frozen_cits_state(pi_cits_list, mode=mode)
+    # A gate that does not separate the loop's regimes (no slot on the
+    # gate bus with a discriminating AUC, and no consistent weekly
+    # schedule) is bypassed for that loop: gating a PI on a signal that
+    # merely correlates with its schedule poisons the fit (a heating
+    # valve gated on the ventilation setpoint that switches 1.5 h earlier
+    # ended up as a constant at the command's mean).
+    gate_active = {
+        cid: (gs is not None and gs.confidence != "low")
+        for cid, (_kind, _bim, _on, gs) in gate_results.items()
+    }
+    _pin_frozen_cits_state(pi_cits_list, mode=mode, gate_active=gate_active)
     if playback:
         _apply_playback(model, pi_cits_list)
 
@@ -566,6 +584,47 @@ def _collect_sensors(
                 if isinstance(receiver, SensorSystem):
                     seen[receiver.id] = receiver
     return list(seen.values())
+
+
+def _slot_signal(sender) -> Optional[np.ndarray]:
+    """The series a gate-bus producer carries over the rewire window: a
+    :class:`SensorSystem`'s loaded timeseries, or the evaluated profile
+    of a rule-based :class:`ScheduleSystem` (``_rewire_profile``, set by
+    :func:`_profile_schedule_slots`)."""
+    if isinstance(sender, SensorSystem):
+        return _sensor_timeseries(sender)
+    prof = getattr(sender, "_rewire_profile", None)
+    return None if prof is None else np.asarray(prof, dtype=np.float64).reshape(-1)
+
+
+def _window_timestamps(
+    start_time: List[datetime.datetime], end_time: List[datetime.datetime], step_size: List[int]
+) -> List[datetime.datetime]:
+    """Sample timestamps of the rewire window, batches concatenated the way
+    :func:`_sensor_timeseries` concatenates the loaded series."""
+    stamps: List[datetime.datetime] = []
+    for s, e, h in zip(start_time, end_time, step_size):
+        n = int(round((e - s).total_seconds() / float(h)))
+        stamps.extend(s + datetime.timedelta(seconds=float(h) * k) for k in range(n))
+    return stamps
+
+
+def _profile_schedule_slots(cits, timestamps: List[datetime.datetime]) -> None:
+    """Evaluate every rule-based ``ScheduleSystem`` on the CITS's gate bus
+    over the window so the AUC ranking can see it (a schedule created by an
+    earlier rewire and reloaded from a serialized model carries no data)."""
+    for cp in cits.connects_at:
+        if cp.input_port != "onOffSignal":
+            continue
+        for conn in cp.connects_system_through:
+            sender = conn.connects_system
+            if isinstance(sender, ScheduleSystem) and getattr(sender, "_rewire_profile", None) is None:
+                try:
+                    sender._rewire_profile = np.array(
+                        [float(sender.get_schedule_value(ts)) for ts in timestamps], dtype=np.float64
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
 
 def _sensor_timeseries(sensor: SensorSystem) -> Optional[np.ndarray]:
@@ -755,9 +814,7 @@ def _collect_on_off_slot_signals(
             if idx is None or idx < 0 or idx >= n_oo:
                 continue
             sender = conn.connects_system
-            if not isinstance(sender, SensorSystem):
-                continue
-            arr = _sensor_timeseries(sender)
+            arr = _slot_signal(sender)
             if arr is None or arr.size == 0:
                 continue
             finite_arr = arr[np.isfinite(arr)]
@@ -835,9 +892,7 @@ def _populate_on_off_signal_norm_bounds(
                 if idx is None or idx < 0 or idx >= n_oo:
                     continue
                 sender = conn.connects_system
-                if not isinstance(sender, SensorSystem):
-                    continue
-                arr = _sensor_timeseries(sender)
+                arr = _slot_signal(sender)
                 if arr is None or arr.size == 0:
                     continue
                 finite = arr[np.isfinite(arr)]
@@ -949,9 +1004,7 @@ def _populate_gate_seeds_from_on_mask(
                 if idx is None or idx < 0 or idx >= n_oo:
                     continue
                 sender = conn.connects_system
-                if not isinstance(sender, SensorSystem):
-                    continue
-                arr = _sensor_timeseries(sender)
+                arr = _slot_signal(sender)
                 if arr is None:
                     continue
                 slot_signals[idx] = arr
@@ -1598,6 +1651,59 @@ def _set_param(component: Any, attr: str, x0: float, lb: float, ub: float) -> No
         )
 
 
+
+def _add_schedule_gate(
+    cits,
+    model,
+    on_mask: np.ndarray,
+    timestamps: List[datetime.datetime],
+    n_oo: int,
+    *,
+    schedule_auc_min: float = 0.85,
+) -> Optional[ScheduleSeeds]:
+    """Derive the loop's weekly on/off schedule from ``on_mask`` and put it
+    on the gate bus as a :class:`ScheduleSystem` (slot ``n_oo``).  Returns
+    the seeds, or ``None`` when the profile is not offered (inconsistent
+    across days, uninformative, or already present)."""
+    seeds = derive_schedule_from_on_mask(on_mask, timestamps)
+    if seeds.reason is not None:
+        LOGGER.info(f"[REWIRE] {cits.id}: no schedule gate ({seeds.reason})")
+        return None
+    disc = max(seeds.auc, 1.0 - seeds.auc)
+    if not np.isfinite(disc) or disc < schedule_auc_min:
+        LOGGER.info(
+            f"[REWIRE] {cits.id}: schedule profile does not separate the regimes "
+            f"(AUC {seeds.auc:.2f} < {schedule_auc_min})"
+        )
+        return None
+    sched_id = f"{cits.id}_schedule_gate"
+    existing = model.components.get(sched_id) if hasattr(model, "components") else None
+    if existing is not None:
+        existing._rewire_profile = seeds.profile
+        return seeds
+    schedule = ScheduleSystem(id=sched_id, **seeds.rulesets)
+    schedule._rewire_profile = seeds.profile
+    model.add_connection(schedule, cits, "scheduleValue", "onOffSignal", input_port_index=n_oo)
+    # The rebuild below (``_build_components``) sizes ``gamma_gate`` and
+    # the gate-bus normalisation buffers from ``n_on_off_signals``.
+    cits.n_on_off_signals = n_oo + 1
+    wd, we = seeds.rulesets["weekday_ruleset"], seeds.rulesets["weekend_ruleset"]
+
+    def _fmt(r):
+        if not r["ruleset_start_hour"]:
+            return "off"
+        return (
+            f"{r['ruleset_start_hour'][0]:02d}:{r['ruleset_start_minute'][0]:02d}-"
+            f"{r['ruleset_end_hour'][0]:02d}:{r['ruleset_end_minute'][0]:02d}"
+        )
+
+    LOGGER.info(
+        f"[REWIRE] {cits.id}: schedule gate added as onOffSignal slot {n_oo} "
+        f"(weekdays {_fmt(wd)}, weekend {_fmt(we)}, consistency {seeds.consistency:.2f}, "
+        f"AUC {seeds.auc:.2f}; no measured slot separated the regimes)"
+    )
+    return seeds
+
 def _rewire_one(
     *,
     cits: ControllerIdentificationPISystem,
@@ -1619,8 +1725,24 @@ def _rewire_one(
     fb_actuator_corr_max: float = 0.95,
     fb_sp_scale_max_offset: float = 30.0,
     fb_sp_median_tracking_max: float = 1.5,
+    window: Optional[Tuple[list, list, list]] = None,
+    schedule_auc_min: float = 0.85,
 ) -> RewireReport:
-    """Rewire one PI-CITS.  See :func:`rewire_pi_loops` for arg semantics."""
+    """Rewire one PI-CITS.  See :func:`rewire_pi_loops` for arg semantics.
+
+    ``window`` is ``(start_time, end_time, step_size)`` lists of the
+    rewire window; with it, a loop whose regimes no measured gate-bus slot
+    separates gets a learned schedule gate (:func:`derive_schedule_from_on_mask`).
+    """
+    schedule_seeds: Optional[ScheduleSeeds] = None
+    timestamps: Optional[List[datetime.datetime]] = None
+    if window is not None:
+        try:
+            timestamps = _window_timestamps(*window)
+            _profile_schedule_slots(cits, timestamps)
+        except Exception as ex:  # noqa: BLE001
+            LOGGER.warning(f"[REWIRE] {cits.id}: window timestamps unavailable ({ex})")
+            timestamps = None
     sensors_dict, setpoints_dict = _collect_input_signals(cits)
     actuator_sensor = _resolve_actuator_measurement(cits)
 
@@ -1755,6 +1877,24 @@ def _rewire_one(
                 )
                 gate_seeds_for_mask = None
 
+            if timestamps is not None and (
+                gate_seeds_for_mask is None or gate_seeds_for_mask.confidence == "low"
+            ):
+                # No measured slot separates the regimes: offer the
+                # loop's own weekly schedule (learned from on_mask).
+                added = _add_schedule_gate(
+                    cits, model, active_mask, timestamps, n_oo, schedule_auc_min=schedule_auc_min
+                )
+                if added is not None:
+                    schedule_seeds = added
+                    slot_signals, oo_min, oo_max, n_oo = _collect_on_off_slot_signals(cits)
+                    try:
+                        gate_seeds_for_mask = derive_gate_seeds_from_on_mask(
+                            active_mask, slot_signals, oo_min, oo_max
+                        )
+                    except Exception as ex:  # noqa: BLE001
+                        LOGGER.warning(f"[REWIRE] {cits.id}: gate-mask derivation with the schedule slot failed ({ex})")
+                        gate_seeds_for_mask = None
             if (
                 gate_seeds_for_mask is not None
                 and gate_seeds_for_mask.confidence != "low"
@@ -2108,8 +2248,15 @@ def _rewire_one(
             actuator_id=actuator_sensor.id,
         )
 
-    # Pick the winner by R^2.
-    winner_pair, winner_score = max(scores.items(), key=lambda kv: kv[1].r2)
+    # Pick the winner by R^2; ties (every constant setpoint gives the same
+    # increment regression) go to the setpoint whose LEVEL explains which
+    # side the actuator sits on (LoopScore.level_agreement).
+    def _rank(kv):
+        s = kv[1]
+        agree = getattr(s, "level_agreement", float("nan"))
+        return (round(float(s.r2), 3), -1.0 if not np.isfinite(agree) else float(agree))
+
+    winner_pair, winner_score = max(scores.items(), key=_rank)
     candidate_scores = {pair: s.r2 for pair, s in scores.items()}
     confidence = confidence_label(
         winner_score.r2,
@@ -2229,8 +2376,26 @@ def _rewire_one(
     cits._built = False
     cits._build_components()
 
-    # Apply data-driven seeds.
+    # Apply data-driven seeds.  The park value (``default_output``, the
+    # actuator's output while the gate is OFF) must come from the gate-off
+    # samples: the GMM split of the actuator trajectory that also seeds
+    # the gate says which samples those are.  The idle-sample heuristic of
+    # ``derive_actuator_seeds`` takes the actuator's quietest samples
+    # instead, which for a valve parked open all night and modulating by
+    # day are the NIGHT samples -- the opposite regime.
     actuator_seeds = derive_actuator_seeds(actuator_ts)
+    try:
+        bimodal_park = derive_actuator_seeds_gmm(actuator_ts)
+    except Exception:  # noqa: BLE001
+        bimodal_park = None
+    if bimodal_park is not None and bimodal_park.reason is None:
+        off = ~np.asarray(bimodal_park.on_mask, dtype=bool)
+        finite = np.isfinite(actuator_ts[: off.size])
+        off = off[: finite.size] & finite
+        if off.sum() >= 10:
+            actuator_seeds.default_output_x0 = float(
+                np.clip(np.median(actuator_ts[: off.size][off]), 0.0, 1.0)
+            )
     kp_x0, kp_lb, kp_ub, Ti_x0, Ti_lb, Ti_ub, is_reverse = _apply_seeds(
         cits=cits,
         score=winner_score,
@@ -2257,6 +2422,7 @@ def _rewire_one(
         output_min_x0=actuator_seeds.output_min_x0,
         output_max_x0=actuator_seeds.output_max_x0,
         default_output_x0=actuator_seeds.default_output_x0,
+        schedule_seeds=schedule_seeds,
         is_reverse=is_reverse,
         kp_lb=kp_lb,
         kp_ub=kp_ub,
@@ -2307,6 +2473,7 @@ def _pin_frozen_cits_state(
     cits_list: List["ControllerIdentificationPISystem"],
     *,
     mode: str,
+    gate_active: Optional[Dict[str, bool]] = None,
 ) -> None:
     """Pin one-hot weights, gate polarity, and gate-activity per CITS.
 
@@ -2315,6 +2482,10 @@ def _pin_frozen_cits_state(
         mode: ``"train"`` or ``"simulate"``; both pin ``alpha_gate_{a}``
             to ``1.0`` (gate active -- the identified controller includes
             its gate).  Any other value raises ``ValueError``.
+        gate_active: Per CITS id, whether a gate-bus slot separates the
+            loop's regimes (``GateSeeds.confidence != "low"``).  A loop
+            marked ``False`` gets ``alpha_gate_{a} = 0.0``: no gate, the
+            PI passes through.  ``None`` keeps every gate active.
 
     The function never resizes parameters; it just writes one-hot or
     scalar values onto the post-rebuild tensors.  For CITS that the
@@ -2332,7 +2503,7 @@ def _pin_frozen_cits_state(
             f"_pin_frozen_cits_state: mode must be 'train' or 'simulate', "
             f"got {mode!r}."
         )
-    alpha_gate_value = 1.0
+    gate_active = gate_active or {}
 
     def _param_size(param) -> int:
         return param.data.shape[0] if param.data.ndim > 0 else 1
@@ -2401,7 +2572,13 @@ def _pin_frozen_cits_state(
             if beta_b is not None:
                 _set_one_hot(beta_b, zt_idx, default=0)
             if alpha_gate is not None:
-                _set_scalar(alpha_gate, alpha_gate_value)
+                active = gate_active.get(cits.id, True)
+                _set_scalar(alpha_gate, 1.0 if active else 0.0)
+                if not active:
+                    LOGGER.info(
+                        f"[REWIRE] {cits.id}: gate bypassed (no gate-bus slot "
+                        f"separates the loop's regimes)"
+                    )
             if gate is not None and hasattr(gate, "polarity"):
                 pol = getattr(gate, "polarity")
                 if hasattr(pol, "set"):
