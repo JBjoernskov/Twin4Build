@@ -531,6 +531,17 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         "exhaust_fan",
     )
 
+    def get_estimable_parameters(self):
+        """The submodels' estimable parameters; a damper's offset ``c`` only
+        once untied (see ``DamperSystem.set_c``)."""
+        out = []
+        for entry in super().get_estimable_parameters():
+            prefix, _, leaf = entry[1].rpartition(".")
+            if leaf == "c" and getattr(getattr(self, prefix, None), "c_tied", False):
+                continue
+            out.append(entry)
+        return out
+
     @staticmethod
     def _resolve_sub_params(sub, prefix, params):
         """Full physical-parameter dict for a submodel: estimated values from

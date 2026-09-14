@@ -41,9 +41,15 @@ class _DamperParams(core.System, nn.Module):
         ([model_supply_damper, occ.supply_damper], "a", 1, 1, 10, "shared")
     """
 
-    def __init__(self, id: str, a: float = 1.0, nominalAirFlowRate: float = 0.001):
+    def __init__(self, id: str, a: float = 1.0, nominalAirFlowRate: float = 0.001, c=None, c_tied=None):
         core.System.__init__(self, id=id)
         nn.Module.__init__(self)
+        # ``c`` as in ``DamperSystem``: tied to ``-a`` unless given / set_c.
+        self._c_tied = (c is None) if c_tied is None else bool(c_tied)
+        self.c = tps.Parameter(
+            torch.tensor(-a if c is None else c, dtype=tps.float_dtype()),
+            requires_grad=False,
+        )
         # Scalings MUST match ``DamperSystem`` (``a`` is log-scaled
         # there): the object-graph estimation path denormalizes each member
         # of a "shared" group with its OWN parameter scaling, so a scaling
@@ -57,9 +63,27 @@ class _DamperParams(core.System, nn.Module):
             requires_grad=False,
         )
 
+    @property
+    def c_tied(self) -> bool:
+        return self._c_tied
+
+    @c_tied.setter
+    def c_tied(self, value) -> None:
+        self._c_tied = bool(value)
+
+    def set_c(self, value) -> None:
+        """Untie ``c`` (see ``DamperSystem.set_c``)."""
+        self.c = tps.Parameter(
+            torch.as_tensor(value, dtype=tps.float_dtype()).clone(), requires_grad=False
+        )
+        self._c_tied = False
+
     def expand_to_n_c(self, n_c: int):
         self.a = self.a.expand_to_n_c(n_c)
         self.nominalAirFlowRate = self.nominalAirFlowRate.expand_to_n_c(n_c)
+        if self._c_tied:
+            self.c = tps.Parameter((-self.a.get()).detach().clone(), requires_grad=False)
+        self.c = self.c.expand_to_n_c(n_c)
 
     def compute_airflow(self, position: torch.Tensor) -> torch.Tensor:
         """Convert damper position (0-1) to airflow [kg/s].
@@ -72,7 +96,8 @@ class _DamperParams(core.System, nn.Module):
         with the pure ``forward``).
         """
         return OccupancySystem._airflow(
-            self.a.get(), self.nominalAirFlowRate.get(), position
+            self.a.get(), self.nominalAirFlowRate.get(), position,
+            None if self._c_tied else self.c.get(),
         )
 
 
@@ -230,8 +255,12 @@ class OccupancySystem(core.System, nn.Module):
                 "mass.m_inf",
                 "supply_damper.a",
                 "supply_damper.nominalAirFlowRate",
+                "supply_damper.c",
+                "supply_damper.c_tied",
                 "exhaust_damper.a",
                 "exhaust_damper.nominalAirFlowRate",
+                "exhaust_damper.c",
+                "exhaust_damper.c_tied",
                 "smoothing",
                 "co2_filename",
                 "co2_date_column",
@@ -340,20 +369,23 @@ class OccupancySystem(core.System, nn.Module):
         "mass.m_inf",
         "supply_damper.a",
         "supply_damper.nominalAirFlowRate",
+        "supply_damper.c",
         "exhaust_damper.a",
         "exhaust_damper.nominalAirFlowRate",
+        "exhaust_damper.c",
     )
 
     @staticmethod
     def _airflow(
-        a: torch.Tensor, nominal: torch.Tensor, position: torch.Tensor
+        a: torch.Tensor, nominal: torch.Tensor, position: torch.Tensor, c=None
     ) -> torch.Tensor:
-        """Damper position (0-1) -> airflow [kg/s]; same exponential
-        characteristic as ``DamperSystem`` (``_DamperParams.compute_airflow``
-        expressed on explicit parameter tensors so ``forward`` stays pure)."""
-        c = -a
-        b = torch.log((nominal - c) / a)
-        return a * torch.exp(b * position) + c
+        """Damper position (0-1) -> airflow [kg/s]; the characteristic of
+        ``DamperSystem`` (``c = -a`` unless given: ``a + c`` is then the
+        closed-damper flow) on explicit parameter tensors so ``forward``
+        stays pure."""
+        from twin4build.systems.damper.damper_system import DamperSystem
+
+        return DamperSystem.characteristic(a, nominal, position, c)
 
     def forward(self, x, inputs, params, sample_time):
         """Pure one-step occupancy estimate (functorch-safe, stateless).
@@ -387,22 +419,26 @@ class OccupancySystem(core.System, nn.Module):
                 _per_slot(params["supply_damper.a"]),
                 _per_slot(params["supply_damper.nominalAirFlowRate"]),
                 damper_pos,
+                None if self.supply_damper.c_tied else _per_slot(params["supply_damper.c"]),
             ).sum(dim=-1)
             m_exh = self._airflow(
                 _per_slot(params["exhaust_damper.a"]),
                 _per_slot(params["exhaust_damper.nominalAirFlowRate"]),
                 damper_pos,
+                None if self.exhaust_damper.c_tied else _per_slot(params["exhaust_damper.c"]),
             ).sum(dim=-1)
         else:
             m_sup = self._airflow(
                 params["supply_damper.a"],
                 params["supply_damper.nominalAirFlowRate"],
                 damper_pos,
+                None if self.supply_damper.c_tied else params["supply_damper.c"],
             )
             m_exh = self._airflow(
                 params["exhaust_damper.a"],
                 params["exhaust_damper.nominalAirFlowRate"],
                 damper_pos,
+                None if self.exhaust_damper.c_tied else params["exhaust_damper.c"],
             )
 
         fan = inputs.get("fanSpeedMeasured")

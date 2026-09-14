@@ -1,6 +1,6 @@
 # Standard library imports
 import datetime
-from typing import List
+from typing import List, Optional
 
 # Third party imports
 import torch
@@ -88,6 +88,8 @@ class DamperSystem(core.System, nn.Module):
         nominalAirFlowRate: float = 100
         * 1.225
         / 3600,  # 1 air-change per hour for 100 m³ space
+        c: Optional[float] = None,
+        c_tied: Optional[bool] = None,
         **kwargs,
     ):
         """
@@ -106,6 +108,16 @@ class DamperSystem(core.System, nn.Module):
         )
         self.nominalAirFlowRate = tps.Parameter(
             torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()),
+            requires_grad=False,
+        )
+        # Offset ``c`` of ``m = a exp(b u) + c``.  Tied (the default): ``c = -a``
+        # follows ``a`` so the closed damper passes nothing.  Given (or set
+        # later, see :meth:`set_c`): a free parameter, and ``a + c`` is the
+        # flow through the closed damper -- the minimum / leakage flow a
+        # pressure-independent VAV keeps while its fan runs.
+        self._c_tied = (c is None) if c_tied is None else bool(c_tied)
+        self.c = tps.Parameter(
+            torch.tensor(-a if c is None else c, dtype=tps.float_dtype()),
             requires_grad=False,
         )
 
@@ -135,10 +147,36 @@ class DamperSystem(core.System, nn.Module):
             # branch (~ 5 kg/s).  Below 0.01 kg/s the coil's
             # energy balance becomes singular.
             "nominalAirFlowRate": {"lb": 0.001, "ub": 5.0},
+            # Offset of the characteristic (kg/s); estimable once untied.
+            # ``a + c`` is the closed-damper flow: ``c < -a`` gives a dead
+            # band (the flow is clamped at zero), ``c > -a`` a leakage.
+            "c": {"lb": -5.0, "ub": 1.0},
         }
 
-        self._config = {"parameters": list(self.parameter.keys())}
+        self._config = {"parameters": ["a", "nominalAirFlowRate", "c", "c_tied"]}
         self.INITIALIZED = False
+
+    @property
+    def c_tied(self) -> bool:
+        """``True`` while ``c`` follows ``-a`` (zero flow when closed)."""
+        return self._c_tied
+
+    @c_tied.setter
+    def c_tied(self, value) -> None:
+        self._c_tied = bool(value)
+
+    def set_c(self, value) -> None:
+        """Untie ``c`` and set it: from now on ``c`` is its own (estimable)
+        parameter and ``a + c`` is the closed-damper flow."""
+        self.c = tps.Parameter(
+            torch.as_tensor(value, dtype=tps.float_dtype()).clone(), requires_grad=False
+        )
+        self._c_tied = False
+
+    def get_estimable_parameters(self):
+        """Own estimable parameters; ``c`` only once untied (tied, it is
+        derived from ``a`` and estimating it would change nothing)."""
+        return [e for e in super().get_estimable_parameters() if not (self._c_tied and e[1] == "c")]
 
     @property
     def config(self):
@@ -208,12 +246,17 @@ class DamperSystem(core.System, nn.Module):
         # Expand parameters to n_c dimension for vectorization
         self.a = self.a.expand_to_n_c(self.n_c)
         self.nominalAirFlowRate = self.nominalAirFlowRate.expand_to_n_c(self.n_c)
+        if self._c_tied:
+            # Re-tie: ``c`` mirrors the (possibly re-estimated) ``a``.
+            self.c = tps.Parameter(
+                (-self.a.get()).detach().clone(), requires_grad=False
+            )
+        self.c = self.c.expand_to_n_c(self.n_c)
 
-        # Calculate b and c parameters (vectorized for n_c)
-        self.c = -self.a.get()  # Ensures that m=0 at u=0
+        # ``b`` ensures m = nominalAirFlowRate at u = 1 (vectorized for n_c)
         self.b = torch.log(
-            (self.nominalAirFlowRate.get() - self.c) / self.a.get()
-        )  # Ensures that m=nominalAirFlowRate at u=1
+            (self.nominalAirFlowRate.get() - self.c.get()) / self.a.get()
+        )
 
         self.INITIALIZED = True
 
@@ -253,7 +296,7 @@ class DamperSystem(core.System, nn.Module):
         )
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    PARAM_NAMES = ("nominalAirFlowRate", "a")
+    PARAM_NAMES = ("nominalAirFlowRate", "a", "c")
 
     def forward(self, x, inputs, params, sample_time):
         """Pure algebraic map ``(inputs, params) -> outputs`` (stateless).
@@ -265,10 +308,19 @@ class DamperSystem(core.System, nn.Module):
         """
         dp = inputs["damperPosition"]
         a = params["a"]
-        c = -a
-        b = torch.log((params["nominalAirFlowRate"] - c) / a)
-        air_flow_rate = a * torch.exp(b * dp) + c
+        c = -a if self._c_tied else params["c"]
+        air_flow_rate = self.characteristic(a, params["nominalAirFlowRate"], dp, c)
         return x, {"damperPosition": dp, "airFlowRate": air_flow_rate}
+
+    @staticmethod
+    def characteristic(a, nominal, position, c=None):
+        """``m(u) = a exp(b u) + c`` with ``b`` such that ``m(1) = nominal``;
+        ``c = -a`` (zero flow when closed) unless given.  The flow is clamped
+        at zero (``c < -a`` is a dead band) and ``nominal > c`` is enforced
+        so ``b`` stays finite.  Shared with ``OccupancySystem``."""
+        c = -a if c is None else c
+        b = torch.log(torch.clamp(nominal - c, min=1e-9) / a)
+        return torch.clamp(a * torch.exp(b * position) + c, min=0.0)
 
 
 def saref_signature_pattern():

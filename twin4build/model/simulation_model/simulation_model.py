@@ -3839,7 +3839,8 @@ class SimulationModel:
             for key, value in attributes.items():
                 if value is None or not rhasattr(component, key):
                     continue
-                if isinstance(rgetattr(component, key), (tps.Parameter, tps.TensorParameter)):
+                current = rgetattr(component, key)
+                if isinstance(current, (tps.Parameter, tps.TensorParameter)):
                     # A per-branch (n_c > 1) literal replaces the freshly
                     # built scalar parameter with one of that width -- the
                     # owner's initialize then finds it already expanded.
@@ -3853,6 +3854,10 @@ class SimulationModel:
                             f"cannot restore parameter {key}={value!r} on "
                             f"{class_name} '{component.id}' from {rdf_file}: {exc}"
                         ) from exc
+                elif "." in key and isinstance(current, bool) and isinstance(value, bool):
+                    # A nested flag (``supply_damper.c_tied``): no constructor
+                    # takes the dotted key, so it is written to the owner.
+                    rsetattr(component, key, value)
             # Check if the component already exists
             self.add_component(component)
         LOGGER.remove_level()
