@@ -16,6 +16,7 @@ from twin4build.systems.controller.controller_identification.controller_identifi
 )
 from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
     _apply_playback,
+    _resolve_actuator_measurement,
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
 
@@ -74,10 +75,13 @@ class TestPlayback(unittest.TestCase):
         self.assertEqual(_outgoing(command, "measuredValue"), [(cits, "actuatorMeasured")])
 
         # A second rewire (a model reloaded from its serialized graph carries
-        # the playback wiring but no flag) recognises the opened loop.
+        # the playback wiring but no flag) recognises the opened loop, and
+        # still finds the command sensor as the loop's actuator measurement
+        # (the data-driven seeds -- action sign, gate -- need it).
         cits.playback = False
         _apply_playback(model.simulation_model, [cits])
         self.assertTrue(cits.playback)
+        self.assertIs(_resolve_actuator_measurement(cits), command)
         self.assertEqual(_outgoing(command, "measuredValue"), [(cits, "actuatorMeasured")])
         self.assertEqual(_outgoing(cits, "inputSignal"), [])
 

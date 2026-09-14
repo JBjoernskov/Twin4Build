@@ -563,8 +563,10 @@ def _collect_sensors(
         # need its upstream sensor data initialised so
         # :func:`_populate_on_off_signal_norm_bounds` can read finite
         # min/max for the per-slot normalisation.
+        # ``actuatorMeasured``: the command sensor of a loop opened by
+        # ``rewire(mode="playback")`` (see _resolve_actuator_measurement).
         for cp in cits.connects_at:
-            if cp.input_port not in ("sensorValue", "setpointValue", "onOffSignal"):
+            if cp.input_port not in ("sensorValue", "setpointValue", "onOffSignal", "actuatorMeasured"):
                 continue
             for conn in cp.connects_system_through:
                 sender = conn.connects_system
@@ -1071,8 +1073,13 @@ def _maybe_rescale_percent(arr: np.ndarray) -> Tuple[np.ndarray, bool]:
 def _resolve_actuator_measurement(
     cits: ControllerIdentificationPISystem,
 ) -> Optional[SensorSystem]:
-    """Return the first actuator-measurement :class:`SensorSystem` downstream
-    of ``cits.inputSignal``.  Returns ``None`` if none are wired.
+    """Return the actuator-measurement :class:`SensorSystem`: the first one
+    downstream of ``cits.inputSignal``, else the one feeding
+    ``cits.actuatorMeasured`` (a loop opened by ``rewire(mode="playback")``
+    and serialized that way carries the command sensor there -- without
+    this fallback a reloaded model's rewire found no actuator, seeded
+    nothing, and every loop ran with the constructor's direct action and
+    an unconditioned gate).  ``None`` if neither is wired.
     """
     for conn in cits.connected_through:
         if conn.output_port != "inputSignal":
@@ -1081,6 +1088,12 @@ def _resolve_actuator_measurement(
             recv = cp.connection_point_of
             if isinstance(recv, SensorSystem):
                 return recv
+    for cp in cits.connects_at:
+        if cp.input_port != "actuatorMeasured":
+            continue
+        for conn in cp.connects_system_through:
+            if isinstance(conn.connects_system, SensorSystem):
+                return conn.connects_system
     return None
 
 
