@@ -37,15 +37,6 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
-- `[gpu]` extra and a documented CUDA torch install. `pip install twin4build`
-  still follows PyPI's default `torch` wheel (CPU-only on Windows).
-  `pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128`
-  pulls a CUDA 12.8+ build and Triton on Linux. Compiled / CUDA-graph paths
-  need Linux or WSL (Triton has no Windows wheels). `model.to("cuda")`
-  raises with that install line when the process has no CUDA (issue #167).
-
-### Added
-
 - Post-fit identifiability report. `Estimator.estimate` now ends with a local
   identifiability analysis of the residual Jacobian at the optimum
   (`twin4build/estimator/_identifiability.py`): parameters no residual reacts
@@ -61,6 +52,13 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   it, `False` skips it.  A dead or flat parameter is left where the solver
   happened to stop, so its value carries no information -- the report says
   which ones.
+
+- `[gpu]` extra and a documented CUDA torch install. `pip install twin4build`
+  still follows PyPI's default `torch` wheel (CPU-only on Windows).
+  `pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128`
+  pulls a CUDA 12.8+ build and Triton on Linux. Compiled / CUDA-graph paths
+  need Linux or WSL (Triton has no Windows wheels). `model.to("cuda")`
+  raises with that install line when the process has no CUDA (issue #167).
 
 ### Changed
 
