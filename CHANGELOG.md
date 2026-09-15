@@ -37,6 +37,25 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- `AirHandlingUnitSystem(exhaust_follows_supply=True, exhaustFlowRatio=r)`:
+  every branch's exhaust flow is `r` times its supply flow and the exhaust
+  damper model is bypassed; `exhaustFlowRatio` is estimable (0.3-1.5) and the
+  exhaust damper parameters leave theta.  `OccupancySystem` takes the same
+  two arguments so its CO2 inversion uses the same flows (share the ratio
+  with the AHU's in the estimator).  With one exhaust meter per AHU the
+  per-branch exhaust dampers are not identifiable; the ratio is.
+- `AirHandlingUnitSystem` output `preheatSupplyAirTemperature`: the
+  heat-recovery outlet before the coil.  Sensor patterns for the AHU-side
+  measured points that make the AHU submodels identifiable:
+  `Preheat_Supply_Air_Temperature_Sensor` on the AHU (-> that output),
+  `Electric_Power_Sensor` on the AHU's `Supply_Fan` / `Return_Fan`
+  (-> `supplyFanPower` / `exhaustFanPower`) and `Heating_Thermal_Power_Sensor`
+  on its `Heating_Coil` (-> `heatingPower`), all with a timeseries reference.
+- Translator `Node(cls=..., exclude=...)`: classes an instance must not be
+  (subclasses included) to bind to a pattern node, so a pattern on a base
+  class can step aside for a more specific pattern on a subclass.  Used by
+  the AHU supply-air-temperature patterns, which now exclude the
+  `Preheat_` subclass.
 - `[gpu]` extra and a documented CUDA torch install. `pip install twin4build`
   still follows PyPI's default `torch` wheel (CPU-only on Windows).
   `pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128`
@@ -46,6 +65,8 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- `BuildingSpaceThermalSystem` `C_air` upper bound 1e6 -> 3e6 J/K: the air
+  node stands for air plus furniture, and 1e6 was binding on classrooms.
 - New batched shooting solver method `("custom", "batched-tr", "ad")`: a
   structure-aware trust-region step.  `FunctionalModel.index_coupling()`
   derives independent parameter blocks and their residual columns from the

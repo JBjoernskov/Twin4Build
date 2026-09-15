@@ -104,6 +104,10 @@ class OccupancySystem(core.System, nn.Module):
         supply_damper_nominalAirFlowRate: Nominal air flow [kg/s] for supply damper.
         exhaust_damper_a: Shape parameter for exhaust damper.
         exhaust_damper_nominalAirFlowRate: Nominal air flow [kg/s] for exhaust damper.
+        exhaust_follows_supply: Mirror of ``AirHandlingUnitSystem``'s option:
+            the exhaust flow is ``exhaustFlowRatio`` times the supply flow
+            (share the ratio with the AHU's so inverse and forward agree).
+        exhaustFlowRatio: Exhaust-to-supply flow ratio [-] (estimable).
         co2_filename: Path to CSV with indoor CO2 measurements.
         co2_date_column: Date column index in the CO2 CSV.
         co2_value_column: Value column index in the CO2 CSV.
@@ -124,6 +128,8 @@ class OccupancySystem(core.System, nn.Module):
         supply_damper_nominalAirFlowRate: float = 0.001,
         exhaust_damper_a: float = 1.0,
         exhaust_damper_nominalAirFlowRate: float = 0.001,
+        exhaust_follows_supply: bool = False,
+        exhaustFlowRatio: float = 1.0,
         co2_filename: Optional[str] = None,
         co2_date_column: int = 0,
         co2_value_column: int = 1,
@@ -170,6 +176,11 @@ class OccupancySystem(core.System, nn.Module):
             nominalAirFlowRate=exhaust_damper_nominalAirFlowRate,
         )
 
+        self.exhaust_follows_supply = bool(exhaust_follows_supply)
+        self.exhaustFlowRatio = tps.Parameter(
+            torch.tensor(exhaustFlowRatio, dtype=tps.float_dtype()), requires_grad=False
+        )
+        self.parameter = {"exhaustFlowRatio": {"lb": 0.3, "ub": 1.5}}
         self.co2_filename = co2_filename
         self.co2_date_column = co2_date_column
         self.co2_value_column = co2_value_column
@@ -203,6 +214,8 @@ class OccupancySystem(core.System, nn.Module):
                 "supply_damper.nominalAirFlowRate",
                 "exhaust_damper.a",
                 "exhaust_damper.nominalAirFlowRate",
+                "exhaust_follows_supply",
+                "exhaustFlowRatio",
                 "co2_filename",
                 "co2_date_column",
                 "co2_value_column",
@@ -263,6 +276,7 @@ class OccupancySystem(core.System, nn.Module):
         self.mass.m_inf = self.mass.m_inf.expand_to_n_c(self.n_c)
         self.supply_damper.expand_to_n_c(self.n_c)
         self.exhaust_damper.expand_to_n_c(self.n_c)
+        self.exhaustFlowRatio = self.exhaustFlowRatio.expand_to_n_c(self.n_c)
 
         self.INITIALIZED = True
 
@@ -274,7 +288,19 @@ class OccupancySystem(core.System, nn.Module):
         "supply_damper.nominalAirFlowRate",
         "exhaust_damper.a",
         "exhaust_damper.nominalAirFlowRate",
+        "exhaustFlowRatio",
     )
+
+    def _inactive_parameters(self):
+        return () if self.exhaust_follows_supply else ("exhaustFlowRatio",)
+
+    def get_estimable_parameters(self):
+        entries = super().get_estimable_parameters()
+        if self.exhaust_follows_supply:
+            entries = [e for e in entries if not str(e[1]).startswith("exhaust_damper.")]
+        else:
+            entries = [e for e in entries if str(e[1]) != "exhaustFlowRatio"]
+        return entries
 
     @staticmethod
     def _airflow(
@@ -305,11 +331,17 @@ class OccupancySystem(core.System, nn.Module):
             params["supply_damper.nominalAirFlowRate"],
             damper_pos,
         )
-        m_exh = self._airflow(
-            params["exhaust_damper.a"],
-            params["exhaust_damper.nominalAirFlowRate"],
-            damper_pos,
-        )
+        if self.exhaust_follows_supply:
+            ratio = params.get("exhaustFlowRatio", None)
+            if ratio is None:
+                ratio = self.exhaustFlowRatio.get()
+            m_exh = m_sup * ratio
+        else:
+            m_exh = self._airflow(
+                params["exhaust_damper.a"],
+                params["exhaust_damper.nominalAirFlowRate"],
+                damper_pos,
+            )
 
         air_mass = params["mass.V"] * constants.RHO_AIR
         alpha = params["mass.G_occ"] * (constants.M_AIR / constants.M_CO2) * 1e6

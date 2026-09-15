@@ -310,7 +310,9 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
         # Define parameters for calibration
         self.parameter = {
-            "C_air": {"lb": 1000.0, "ub": 1000000.0},
+            # Effective air-node capacity: air plus furniture / light
+            # internal mass, which is why 1e6 J/K binds on classrooms.
+            "C_air": {"lb": 1000.0, "ub": 3000000.0},
             "C_wall": {"lb": 10000.0, "ub": 10000000.0},
             "C_boundary": {"lb": 10000.0, "ub": 10000000.0},
             "R_out": {"lb": 0.001, "ub": 1.0},
