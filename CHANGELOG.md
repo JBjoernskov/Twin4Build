@@ -44,6 +44,24 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   need Linux or WSL (Triton has no Windows wheels). `model.to("cuda")`
   raises with that install line when the process has no CUDA (issue #167).
 
+### Added
+
+- Post-fit identifiability report. `Estimator.estimate` now ends with a local
+  identifiability analysis of the residual Jacobian at the optimum
+  (`twin4build/estimator/_identifiability.py`): parameters no residual reacts
+  to, flat directions (singular vectors of the unit-column Jacobian with a
+  relative singular value below 1e-3, listed as the parameter combination
+  that is the only thing the data determine), pairs whose Gauss-Newton
+  correlation exceeds 0.95 (trade-offs), parameters whose standard error
+  exceeds their whole admissible range, and parameters sitting on a bound.
+  Findings are logged as warnings and attached to the result as
+  `result["identifiability"]`.  `identifiability="auto"` (default) runs it
+  whenever the residual Jacobian is cheap (functional single-shooting
+  objective, or object-mode AD with at most 20 parameters); `True` forces
+  it, `False` skips it.  A dead or flat parameter is left where the solver
+  happened to stop, so its value carries no information -- the report says
+  which ones.
+
 ### Changed
 
 - New batched shooting solver method `("custom", "batched-tr", "ad")`: a
