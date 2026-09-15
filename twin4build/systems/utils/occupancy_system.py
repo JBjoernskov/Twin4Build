@@ -11,6 +11,7 @@ import twin4build.core as core
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.systems.utils.smooth_saturation import clamp
+from twin4build.systems.building_space.air_balance import make_up_air_flow
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.utils.deprecation import deprecate_args
 
@@ -316,10 +317,16 @@ class OccupancySystem(core.System, nn.Module):
         m_inf = params["mass.m_inf"]
 
         dC = C_indoor - C_prev
+        # Exact inverse of BuildingSpaceMassSystem's balanced ventilation
+        # (see building_space/air_balance.py): every entering stream --
+        # supply, the outdoor make-up flow max(m_exh - m_sup, 0) and the
+        # infiltration -- replaces room air at C_prev by outdoor air.  The
+        # forward model and this inversion must stay the same equation, or
+        # the people it books do not reproduce the measured CO2.
+        m_mu = make_up_air_flow(m_sup, m_exh)
         N_occ = (
             air_mass * dC / sample_time
-            + (m_inf + m_exh) * C_prev
-            - (m_inf + m_sup) * C_outdoor
+            + (m_inf + m_sup + m_mu) * (C_prev - C_outdoor)
         ) / alpha
         N_occ = clamp(N_occ, lower=0.0, upper=1e6)
         return x, {"scheduleValue": N_occ}

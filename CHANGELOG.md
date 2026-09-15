@@ -64,6 +64,9 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `FusedStateSpaceSystem` applies before stacking the joint input).  The
   constant infiltration parameter `m_inf` stays additive (EnergyPlus
   convention).
+  `OccupancySystem`'s CO2 inversion uses the same balanced equation, so
+  the people it books reproduce the measured CO2 through the forward model
+  for any supply/exhaust pair.
 - New batched shooting solver method `("custom", "batched-tr", "ad")`: a
   structure-aware trust-region step.  `FunctionalModel.index_coupling()`
   derives independent parameter blocks and their residual columns from the
