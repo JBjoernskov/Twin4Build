@@ -129,6 +129,10 @@ class RewireReport:
     # the on_mask was degenerate (all True / all False).  See
     # :class:`GateSeeds` for semantics.
     gate_seeds: Optional[GateSeeds] = None
+    # ``False`` when the actuator command hardly moved in the window (a
+    # radiator valve shut all week): nothing identifies such a loop, and
+    # in ``simulate`` mode it replays its measured command.
+    excited: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +163,7 @@ def _rewire_pi_loops(
     fb_actuator_corr_max: float = 0.95,
     fb_sp_scale_max_offset: float = 30.0,
     fb_sp_median_tracking_max: float = 1.5,
+    unexcited_std: float = 0.05,
 ) -> Dict[str, RewireReport]:
     """Run the data-driven rewire on every PI-CITS in ``model``.
 
@@ -529,8 +534,33 @@ def _rewire_pi_loops(
         for cid, (_kind, _bim, _on, gs) in gate_results.items()
     }
     _pin_frozen_cits_state(pi_cits_list, mode=mode, gate_active=gate_active)
+    # A loop whose command hardly moved (std below ``unexcited_std``) has
+    # no information for any controller law -- fitted on it, the PI lands
+    # wherever the optimizer wanders and, closed on a simulated room
+    # temperature, injects heat the real loop never delivered.  Its
+    # measured command is replayed instead, in every mode but ``train``.
+    unexcited = []
+    for cits in pi_cits_list:
+        actuator = _resolve_actuator_measurement(cits)
+        u = _sensor_timeseries(actuator) if actuator is not None else None
+        if u is None or not np.isfinite(u).any():
+            continue
+        u, _ = _maybe_rescale_percent(u)
+        excited = bool(np.nanstd(u) >= unexcited_std)
+        rep = reports.get(cits.id)
+        if rep is not None:
+            rep.excited = excited
+        if not excited:
+            unexcited.append(cits)
+            LOGGER.info(
+                f"[REWIRE] {cits.id}: actuator command std {np.nanstd(u):.3f} < "
+                f"{unexcited_std}: no excitation, measured command replayed"
+                + (" after Stage 1" if mode == "train" else "")
+            )
     if playback:
         _apply_playback(model, pi_cits_list)
+    elif unexcited and mode == "simulate":
+        _apply_playback(model, unexcited)
 
     return reports
 
