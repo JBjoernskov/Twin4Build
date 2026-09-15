@@ -80,7 +80,7 @@ exact.
 
 # Standard library imports
 import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # Third party imports
 import torch
@@ -348,6 +348,28 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                         cols.append(("ext", ext_index[name]))
             entry["cols"] = cols
 
+        # -- per-unit input transforms (e.g. the room models' balanced
+        # ventilation make-up flow): a pure function of the unit's ORIGINAL
+        # external inputs, applied once per namespaced port before the joint
+        # ``u`` is stacked.  Two units of one member sharing a port (thermal
+        # and mass ``exhaustAirFlowRate``) compute the same value, so the
+        # last write wins harmlessly.  The ports it reads must be external:
+        # an internal (substituted) column would bypass the transform.
+        self._input_transforms = []
+        for entry in self._units:
+            transform = getattr(entry["unit"], "_ss_transform_inputs", None)
+            if transform is None:
+                continue
+            m = entry["member"]
+            ports = tuple(getattr(entry["unit"], "SS_TRANSFORM_PORTS", ()))
+            for port in ports:
+                assert f"{m.id}.{port}" in ext_index, (
+                    f"{type(entry['unit']).__name__} transforms input port "
+                    f"{port!r}, which is not an external column of fused "
+                    f"member {m.id}"
+                )
+            self._input_transforms.append((m.id, transform, ports))
+
         # Bilinear inputs must be external.  Validate this structural rule once
         # from the declared support instead of asserting inside every traced
         # assembly.
@@ -608,6 +630,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             matrices = cache[1]
             disc_cache = cache[3]
         A, B, C, D, E, F = matrices
+        inputs = self._transform_inputs(inputs)
         u = torch.stack([inputs[name] for name in self._ext_names], dim=-1)
         x_next, y = bilinear_onestep(
             A,
@@ -624,6 +647,20 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         )
         outputs = {name: y[..., p] for p, name in enumerate(self._out_names)}
         return x_next, outputs
+
+    def _transform_inputs(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Apply the members' ``_ss_transform_inputs`` hooks (see
+        :meth:`initialize`) to the namespaced external inputs.  Every hook
+        sees the original values; the returned dict carries the replaced
+        slots.  Identity when no member declares a transform."""
+        if not self._input_transforms:
+            return inputs
+        out = dict(inputs)
+        for member_id, transform, ports in self._input_transforms:
+            local = {port: inputs[f"{member_id}.{port}"] for port in ports}
+            for port, value in transform(local).items():
+                out[f"{member_id}.{port}"] = value
+        return out
 
     def _forward_params(self) -> dict:
         """Params dict for the ``do_step`` path: every unit parameter under its
