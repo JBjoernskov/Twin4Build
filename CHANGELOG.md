@@ -37,6 +37,21 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Post-fit identifiability report. `Estimator.estimate` now ends with a local
+  identifiability analysis of the residual Jacobian at the optimum
+  (`twin4build/estimator/_identifiability.py`): parameters no residual reacts
+  to, flat directions (singular vectors of the unit-column Jacobian with a
+  relative singular value below 1e-3, listed as the parameter combination
+  that is the only thing the data determine), pairs whose Gauss-Newton
+  correlation exceeds 0.95 (trade-offs), parameters whose standard error
+  exceeds their whole admissible range, and parameters sitting on a bound.
+  Findings are logged as warnings and attached to the result as
+  `result["identifiability"]`.  `identifiability="auto"` (default) runs it
+  whenever the residual Jacobian is cheap (functional single-shooting
+  objective, or object-mode AD with at most 20 parameters); `True` forces
+  it, `False` skips it.  A dead or flat parameter is left where the solver
+  happened to stop, so its value carries no information -- the report says
+  which ones.
 - `AirHandlingUnitSystem(exhaust_follows_supply=True, exhaustFlowRatio=r)`:
   every branch's exhaust flow is `r` times its supply flow and the exhaust
   damper model is bypassed; `exhaustFlowRatio` is estimable (0.3-1.5) and the
@@ -82,6 +97,11 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `OccupancySystem`'s CO2 inversion uses the same balanced equation, so
   the people it books reproduce the measured CO2 through the forward model
   for any supply/exhaust pair.
+- `System.get_estimable_parameters` skips parameters the owner reports as
+  inactive (`_inactive_parameters()`); `BuildingSpaceThermalSystem` reports
+  `C_boundary` / `R_boundary` unless a `boundaryTemperature` is connected,
+  so rooms without the deprecated in-zone boundary wall no longer put two
+  dead entries per room into theta.
 - `BuildingSpaceThermalSystem` `C_air` upper bound 1e6 -> 3e6 J/K: the air
   node stands for air plus furniture, and 1e6 was binding on classrooms.
 - New batched shooting solver method `("custom", "batched-tr", "ad")`: a
