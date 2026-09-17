@@ -46,6 +46,27 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- Room air models balance their ventilation flows. `BuildingSpaceThermalSystem`
+  and `BuildingSpaceMassSystem` used to charge the supply at supply state and
+  the exhaust at room state independently, so a mismatch between the two
+  measured flows left a fictitious `(m_sup - m_exh) * cp * T_i` storage term
+  (an exhaust meter reading 20% low heated the room out of nothing).  The room
+  air mass is constant, so every stream entering is balanced by air leaving at
+  room state: the supply term is `m_sup * cp * (T_sup - T_i)`, and the exhaust
+  enters only as the outdoor **make-up flow** `max(m_exh - m_sup, 0)` drawn
+  through the envelope, `m_mu * cp * (T_out - T_i)` (same for CO2).  Supply in
+  excess of the exhaust leaves through the envelope and the exhaust flow drops
+  out; the CO2 balance can no longer be driven below outdoor by ventilation.
+  Ports are unchanged; the transform is applied to the `exhaustAirFlowRate`
+  slot at input assembly on the object, functional and fused paths
+  (`twin4build/systems/building_space/air_balance.py`; state-space units may
+  declare `_ss_transform_inputs` / `SS_TRANSFORM_PORTS`, which
+  `FusedStateSpaceSystem` applies before stacking the joint input).  The
+  constant infiltration parameter `m_inf` stays additive (EnergyPlus
+  convention).
+  `OccupancySystem`'s CO2 inversion uses the same balanced equation, so
+  the people it books reproduce the measured CO2 through the forward model
+  for any supply/exhaust pair.
 - `System.get_estimable_parameters` skips parameters the owner reports as
   inactive (`_inactive_parameters()`); `BuildingSpaceThermalSystem` reports
   `C_boundary` / `R_boundary` unless a `boundaryTemperature` is connected,

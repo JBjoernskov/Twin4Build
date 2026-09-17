@@ -2496,7 +2496,7 @@ class SemanticModel:
         instance_style=None,
         deduplicate_inverse=True,
         pydot_transform=None,
-        rankdir=None,
+        rankdir="LR",
     ):
         """
         Visualize RDF graph with optional class and predicate filtering.
@@ -2544,9 +2544,12 @@ class SemanticModel:
                 (e.g. s4syst:connectedThrough / s4syst:connectsSystem).
             pydot_transform: Optional callable that receives the pydotplus graph
                 object after node styling and can modify it in place before rendering.
-            rankdir: Layout direction passed to Graphviz: ``"TB"`` (default
-                when None), ``"BT"``, ``"LR"`` or ``"RL"``. Wide, shallow
-                graphs are usually far more readable with ``"LR"``.
+            rankdir: Layout direction passed to Graphviz: ``"LR"`` (default),
+                ``"RL"``, ``"TB"`` or ``"BT"``; ``None`` leaves Graphviz's
+                own default (top-to-bottom).  A model graph is a wide,
+                shallow fan-out (one AHU, many zones and sensors): laid out
+                top-to-bottom it becomes a single band thousands of points
+                wide, left-to-right it reads as a flow diagram.
         """
         # Validated up front: styling a large graph is slow, so an unusable
         # value should fail before that work rather than after it.
