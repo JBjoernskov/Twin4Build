@@ -51,10 +51,6 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
             and add_noise.
     """
 
-    # Override inherited ScheduleSystem.sp so the translator does NOT
-    # auto-match this class from semantic models.
-    sp = None
-
     # NOT functional: unlike the parent ``PiecewiseLinearSystem`` (fixed
     # interpolation table -> pure ``forward``), this schedule re-resolves its
     # (X, Y) table from the wall clock every step (``_resolve_xy(date_time)``)

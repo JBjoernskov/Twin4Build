@@ -306,31 +306,3 @@ class PIDControllerSystem(core.System, nn.Module):
         return torch.stack([u, err, err_prev], dim=-1), {"inputSignal": u}
 
 
-def saref_signature_pattern():
-    node0 = Node(cls=core.namespace.S4BLDG.SetpointController)
-    node1 = Node(cls=core.namespace.SAREF.Sensor)
-    node2 = Node(cls=core.namespace.SAREF.Property)
-    node3 = Node(cls=core.namespace.S4BLDG.Schedule)
-    node4 = Node(cls=core.namespace.XSD.boolean)
-    sp = SignaturePattern(id="pid_controller_signature_pattern")
-    sp.add_rule(
-        StepRule(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_rule(
-        StepRule(subject=node1, object=node2, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_rule(
-        StepRule(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile)
-    )
-    sp.add_rule(
-        StepRule(subject=node0, object=node4, predicate=core.namespace.S4BLDG.isReverse)
-    )
-
-    sp.add_input("actualValue", node1, "measuredValue")
-    sp.add_input("setpointValue", node3, "scheduleValue")
-    sp.add_parameter("is_reverse", node4)
-    sp.add_modeled_node(node0)
-    return sp
-
-
-PIDControllerSystem.add_signature_pattern(saref_signature_pattern())

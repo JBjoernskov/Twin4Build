@@ -286,6 +286,7 @@ class Translator:
     def translate(
         self,
         semantic_model: core.SemanticModel,
+        patterns: Optional[List["SignaturePattern"]] = None,
         systems: List[core.System] = None,
         *,
         id: Optional[str] = None,
@@ -308,8 +309,14 @@ class Translator:
 
         Args:
             semantic_model: The semantic model to translate.
-            systems: List of system types to match against. ``None`` selects
-                every ``core.System`` subclass with a ``.sp`` signature pattern.
+            patterns: The signature patterns to match, each bound to the
+                ``System`` class it models (``SignaturePattern(..., system=cls)``
+                or ``sp.bind(cls)``).  Patterns are user-defined: compose
+                :func:`twin4build.examples.patterns.default_patterns` (the public
+                example set) with your own.  ``None`` is deprecated and
+                falls back to the example set.
+            systems: Optional allow-list of ``System`` classes; patterns
+                bound to other classes are dropped.
             id: Optional id for the produced :class:`Model`. When ``None`` the
                 model inherits ``semantic_model.id``. Useful when one semantic
                 model is translated multiple times with different ``systems``
@@ -333,6 +340,15 @@ class Translator:
             if systems is None:
                 systems = systems_
         reject_unexpected_kwargs("Translator.translate", kwargs)
+        if patterns is None:
+            deprecate_name(
+                "translate(patterns=None)",
+                "translate(patterns=twin4build.examples.patterns.default_patterns() + your_patterns)",
+            )
+            from twin4build.examples import patterns as _patterns
+
+            patterns = _patterns.default_patterns()
+        pattern_groups = self._group_patterns(patterns, systems)
         LOGGER.task("Applying translator")
         LOGGER.add_level()
         if semantic_model.count_triples() == 0:
@@ -340,18 +356,9 @@ class Translator:
                 "Semantic model provided to translator appears to be empty."
             )
 
-        if systems is None:
-            systems_ = [
-                cls
-                for cls in systems_module._load_system_classes()
-                if issubclass(cls, core.System) and hasattr(cls, "sp")
-            ]
-        else:
-            systems_ = list(systems)
-
         # Match patterns
         complete_groups, incomplete_groups = self._match_patterns(
-            systems_=systems_,
+            pattern_groups=pattern_groups,
             semantic_model=semantic_model,
         )
 
@@ -459,8 +466,28 @@ class Translator:
         )
 
     @staticmethod
+    def _group_patterns(patterns, systems=None) -> Dict:
+        """``{System class: [pattern, ...]}`` from a flat list of bound
+        patterns; ``systems`` is an optional allow-list of classes."""
+        groups: Dict = {}
+        allowed = None if systems is None else set(systems)
+        for sp in patterns:
+            cls = getattr(sp, "system", None)
+            if cls is None:
+                raise ValueError(
+                    f"signature pattern {getattr(sp, 'id', sp)!r} is not bound to a System "
+                    "class: construct it with SignaturePattern(..., system=cls) or call sp.bind(cls)"
+                )
+            if allowed is not None and cls not in allowed:
+                continue
+            groups.setdefault(cls, []).append(sp)
+        return groups
+
+    @staticmethod
     def _match_patterns(
-        systems_: List[core.System], semantic_model: core.SemanticModel
+        systems_: Optional[List[core.System]] = None,
+        semantic_model: core.SemanticModel = None,
+        pattern_groups: Optional[Dict] = None,
     ) -> Tuple[Dict, Dict]:
         """
         Find all valid mappings from signature patterns to semantic model nodes.
@@ -786,18 +813,21 @@ class Translator:
         complete_groups = {}
         incomplete_groups = {}
 
-        # Filter to classes that have signature patterns defined
-        classes_with_patterns = [
-            cls for cls in systems_ if hasattr(cls, "sp") and cls.sp is not None
-        ]
+        if pattern_groups is None:
+            # Legacy entry (tests): classes carrying a plain ``sp`` list.
+            pattern_groups = {
+                cls: list(getattr(cls, "sp"))
+                for cls in (systems_ or [])
+                if getattr(cls, "sp", None)
+            }
 
-        for component_cls in classes_with_patterns:
+        for component_cls, sps in pattern_groups.items():
             LOGGER.task("Processing component class: %s", component_cls.__name__)
             LOGGER.add_level()
             complete_groups[component_cls] = {}
             incomplete_groups[component_cls] = {}
 
-            for signature_pattern in component_cls.sp:
+            for signature_pattern in sps:
                 LOGGER.task("Matching signature pattern: %s", signature_pattern.id)
                 LOGGER.add_level()
                 # Ensure semantic model has all namespaces from the pattern
@@ -5424,7 +5454,7 @@ class SignaturePattern:
     _signatures_reversed = {}
     _signature_instance_count = count()
 
-    def __init__(self, id: Optional[str] = None) -> None:
+    def __init__(self, id: Optional[str] = None, system=None) -> None:
         # if semantic_model_ is None:
         #     semantic_model_ = core.SemanticModel()
 
@@ -5433,6 +5463,9 @@ class SignaturePattern:
         # ), 'The "semantic_model_" argument must be an instance of SemanticModel.'
 
         self.semantic_model = core.SemanticModel()
+        # The ``System`` class this pattern models.  ``translate(patterns=...)``
+        # groups patterns by it; set here or with :meth:`bind`.
+        self.system = system
 
         if id is None:
             id = f"{str(__file__)}_{str(next(SignaturePattern._signature_instance_count))}"
@@ -5477,6 +5510,11 @@ class SignaturePattern:
         #     self.semantic_model.parse_namespaces(
         #         self.semantic_model.graph, namespaces=self.semantic_model.namespaces
         #     )
+
+    def bind(self, system) -> "SignaturePattern":
+        """Bind this pattern to the ``System`` class it models (chainable)."""
+        self.system = system
+        return self
 
     @property
     def has_equivalent(self):

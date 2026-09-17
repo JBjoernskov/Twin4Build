@@ -36,7 +36,6 @@ class System:
         id: The id of the system.
     """
 
-    sp = None
     #: Opt in only when ``forward`` accepts ``transform_mode`` and its complete
     #: call tree bypasses mutable caches and tensor-dependent Python behavior.
     #: See :doc:`/manual/differentiable_system_models`.
@@ -124,15 +123,6 @@ class System:
         self._output = output
         self._id = id
         self._n_c = 1  # Number of parallel components (for vectorization)
-
-    @classmethod
-    def add_signature_pattern(cls, signature_pattern: Any) -> None:
-        """
-        Add a signature pattern to the system.
-        """
-        if cls.sp is None:
-            cls.sp = []
-        cls.sp.append(signature_pattern)
 
     @property
     def connects_at(self) -> list:
