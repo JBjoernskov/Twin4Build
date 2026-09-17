@@ -11,6 +11,7 @@ import torch
 from prettytable import PrettyTable
 
 # Local application imports
+import twin4build.utils.types as tps
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.simulation_time import get_simulation_timesteps
@@ -534,7 +535,14 @@ class System:
         """
 
         def extract_value(value):
-            if hasattr(value, "detach") and hasattr(value, "numpy"):
+            # ``tps.Parameter`` (an nn.Parameter) and ``tps.TensorParameter``
+            # (what ``set_parameters(overwrite=True)`` -- the estimator's
+            # write path -- leaves behind) both publish their physical value
+            # through ``get()``; serializing anything else would write the
+            # object's repr into the graph.
+            if isinstance(value, (tps.Parameter, tps.TensorParameter)) or (
+                hasattr(value, "get") and hasattr(value, "detach")
+            ):
                 # Use .tolist() to convert numpy types to Python native types
                 # This ensures values like np.float64(1.0) become 1.0
                 return value.get().detach().cpu().numpy().flatten().tolist()
