@@ -578,6 +578,10 @@ class Translator:
 
             for sp_node in seed_sp_nodes:
                 candidate_sm_nodes = semantic_model.get_instances_of_type(sp_node.cls)
+                if getattr(sp_node, "exclude", ()):
+                    candidate_sm_nodes = [
+                        n for n in candidate_sm_nodes if not n.isinstance(sp_node.exclude)
+                    ]
 
                 for sm_node in candidate_sm_nodes:
 
@@ -4687,6 +4691,7 @@ class Node:
         cls: Union[Any, Tuple[Any, ...], List[Any], str],
         graph_name: Optional[str] = None,
         hash_: Optional[Any] = None,
+        exclude: Union[Any, Tuple[Any, ...], List[Any], None] = None,
     ) -> None:
         self._graph_name = graph_name
         if isinstance(cls, tuple) == False:
@@ -4695,6 +4700,16 @@ class Node:
             else:
                 cls = (cls,)
         self.cls = cls
+        # ``exclude``: classes an instance must NOT be (subclasses included)
+        # to bind to this node, on top of being one of ``cls``.  Lets a
+        # pattern on a base class step aside for a more specific pattern on
+        # a subclass (``Supply_Air_Temperature_Sensor`` minus its
+        # ``Preheat_...`` subclass), which the MILP otherwise ties on.
+        if exclude is None:
+            exclude = ()
+        elif not isinstance(exclude, tuple):
+            exclude = tuple(exclude) if isinstance(exclude, (list, set)) else (exclude,)
+        self.exclude = exclude
         # Outgoing-edge view of the SP graph: ``predicate -> [object Nodes]``
         # for every rule on which this Node is the subject.
         self.predicate_object_pairs = {}
@@ -4771,7 +4786,28 @@ class Node:
                 raise ValueError(f"Invalid class type: {type(c)}")
 
         self.cls = tuple(cls_)  # Make immutable
+        self.exclude = tuple(self._resolve_types(self.exclude))
         self._id = self.make_id()
+
+    def _resolve_types(self, classes):
+        out = []
+        for c in classes:
+            if isinstance(c, core.SemanticType):
+                out.append(c)
+            elif isinstance(c, URIRef):
+                out.append(core.SemanticType(c, self.signature_pattern.semantic_model))
+            elif isinstance(c, str):
+                out.append(core.SemanticType(URIRef(c), self.signature_pattern.semantic_model))
+            else:
+                raise ValueError(f"Invalid class type: {type(c)}")
+        return out
+
+    def accepts(self, sm_node) -> bool:
+        """Whether ``sm_node`` may bind to this node: one of ``cls`` and
+        none of ``exclude`` (both with inheritance)."""
+        if not sm_node.isinstance(self.cls):
+            return False
+        return not (self.exclude and sm_node.isinstance(self.exclude))
 
     def make_id(self):
         # Join class URIs with underscore separator to create a valid URI identifier
@@ -6919,7 +6955,7 @@ class StepRule(Rule):
             # Check each candidate SM far node.
             for i, sm_far in enumerate(sm_objects):
                 if (
-                    sm_far.isinstance(far_node.cls)
+                    far_node.accepts(sm_far)
                     and sm_subject not in excluded_sm_nears
                     and sm_far not in excluded_sm_fars
                 ):
@@ -7122,7 +7158,7 @@ class SetStepRule(StepRule):
             matched: List[Tuple[int, Any]] = []
             for i, sm_far in enumerate(sm_objects):
                 if (
-                    sm_far.isinstance(far_node.cls)
+                    far_node.accepts(sm_far)
                     and sm_subject not in excluded_sm_nears
                     and sm_far not in excluded_sm_fars
                 ):
@@ -7732,7 +7768,7 @@ class OptionalRule(Rule):
         far_node = direction.far(self)
 
         for i, sm_far in enumerate(sm_objects):
-            if sm_far.isinstance(far_node.cls):
+            if far_node.accepts(sm_far):
                 pairs.append((candidate_maps, sm_far, far_node, OptionalRule, i))
                 rule_applies_vec[i] = True
 

@@ -856,7 +856,11 @@ def get_brick_ahu_supply_air_temp_sensor_with_ref_pattern():
     Paired with :func:`get_brick_ahu_supply_air_temp_sensor_virtual_pattern`;
     see the module-level note above.
     """
-    sensor = Node(cls=core.namespace.BRICK.Supply_Air_Temperature_Sensor)
+    # The Preheat_ subclass (heat-recovery outlet) has its own pattern.
+    sensor = Node(
+        cls=core.namespace.BRICK.Supply_Air_Temperature_Sensor,
+        exclude=core.namespace.BRICK.Preheat_Supply_Air_Temperature_Sensor,
+    )
     ahu = Node(cls=core.namespace.BRICK.AHU)
     externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
     timeseries_id = Node(cls=core.namespace.XSD.string)
@@ -1050,7 +1054,11 @@ def get_brick_ahu_supply_air_temp_sensor_virtual_pattern():
     shared ``sensor`` modeled node; the with-ref variant wins whenever both
     match.
     """
-    sensor = Node(cls=core.namespace.BRICK.Supply_Air_Temperature_Sensor)
+    # The Preheat_ subclass (heat-recovery outlet) has its own pattern.
+    sensor = Node(
+        cls=core.namespace.BRICK.Supply_Air_Temperature_Sensor,
+        exclude=core.namespace.BRICK.Preheat_Supply_Air_Temperature_Sensor,
+    )
     ahu = Node(cls=core.namespace.BRICK.AHU)
 
     sp = SignaturePattern(id="brick_ahu_supply_air_temp_sensor_virtual_pattern")
@@ -1132,6 +1140,9 @@ class SensorSystem(core.System):
         get_brick_room_zone_co2_sensor_with_ref_pattern(),
         get_brick_ahu_supply_air_temp_sensor_with_ref_pattern(),
         get_brick_ahu_supply_air_temp_sensor_virtual_pattern(),
+        # Measured AHU-side points that make the AHU submodels
+        # identifiable: heat-recovery outlet temperature, fan powers,
+        # coil heating power (virtual sensors with data).
         get_brick_supply_air_flow_sensor_with_ref_pattern(),
         get_brick_supply_air_flow_sensor_virtual_pattern(),
         get_brick_sensor_leaf_pattern(),
