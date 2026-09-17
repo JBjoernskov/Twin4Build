@@ -2315,13 +2315,16 @@ class TestSemanticModel(unittest.TestCase):
         self.model.visualize(rankdir="LR")
         self.assertRegex(self._read_object_graph_dot(), r"rankdir\s*=\s*LR")
 
-    def test_visualize_rankdir_defaults_to_unset(self):
-        """Without rankdir the DOT stays as before (Graphviz default TB)."""
+    def test_visualize_rankdir_defaults_to_left_to_right(self):
+        """The default layout is left-to-right; ``None`` leaves Graphviz's
+        own default (top-to-bottom) by not writing rankdir at all."""
         if not self.graphviz_installed:
             self.skipTest("Graphviz drawing backend is not available")
 
         self._setup_visualize_data()
         self.model.visualize()
+        self.assertRegex(self._read_object_graph_dot(), r"rankdir\s*=\s*LR")
+        self.model.visualize(rankdir=None)
         self.assertNotRegex(self._read_object_graph_dot(), r"rankdir\s*=")
 
     def test_visualize_rankdir_rejects_invalid_value(self):
