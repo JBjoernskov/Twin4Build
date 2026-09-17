@@ -61,19 +61,6 @@ def build_graph(sm):
     g.add((ahu, RDF.type, BRICK.AHU))
     _point(g, ahu, "AHU01_SAT", BRICK.Supply_Air_Temperature_Sensor)
     _point(g, ahu, "AHU01_SAT_SP", BRICK.Supply_Air_Temperature_Setpoint)
-    # AHU-side measured points: preheat (heat-recovery outlet) temperature on
-    # the AHU, electric power on each fan, thermal power on the heating coil.
-    _point(g, ahu, "AHU01_PREHEAT_T", BRICK.Preheat_Supply_Air_Temperature_Sensor)
-    for part, cls, pname in (
-        ("AHU01_SUPPLY_FAN", BRICK.Supply_Fan, "AHU01_SF_P"),
-        ("AHU01_RETURN_FAN", BRICK.Return_Fan, "AHU01_RF_P"),
-        ("AHU01_HEATING_COIL", BRICK.Heating_Coil, "AHU01_HC_P"),
-    ):
-        node = EX[part]
-        g.add((node, RDF.type, cls))
-        g.add((ahu, BRICK.hasPart, node))
-        power_cls = BRICK.Heating_Thermal_Power_Sensor if cls == BRICK.Heating_Coil else BRICK.Electric_Power_Sensor
-        _point(g, node, pname, power_cls)
     g.add((ws, RDF.type, BRICK.Weather_Station))
     _point(g, ws, "WS01_TOUT", BRICK.Outside_Air_Temperature_Sensor)
     _point(g, ws, "WS01_SOLAR", BRICK.Solar_Irradiance_Sensor)
@@ -185,19 +172,6 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             self.assertEqual(incoming(sensors[f"R0{i}_CO201"], "measuredValue"), [rooms[f"R0{i}"]])
             self.assertEqual(incoming(sensors[f"R0{i}_FCI01"], "measuredValue"), [ahu])
         self.assertEqual(incoming(sensors["AHU01_SAT"], "measuredValue"), [ahu])
-        # AHU-side measured points are virtual sensors of the AHU's outputs.
-        for uuid, port in (
-            ("AHU01_PREHEAT_T", "preheatSupplyAirTemperature"),
-            ("AHU01_SF_P", "supplyFanPower"),
-            ("AHU01_RF_P", "exhaustFanPower"),
-            ("AHU01_HC_P", "heatingPower"),
-        ):
-            self.assertEqual(incoming(sensors[uuid], "measuredValue"), [ahu], uuid)
-            (conn,) = [
-                conn for cp in sensors[uuid].connects_at if cp.input_port == "measuredValue"
-                for conn in cp.connects_system_through
-            ]
-            self.assertEqual(conn.output_port, port, uuid)
 
         # One PI-CITS per VAV, with the loop variables taken from the room:
         # zone temperature sensor -> sensorValue, zone temperature setpoints

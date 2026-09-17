@@ -892,113 +892,6 @@ def get_brick_ahu_supply_air_temp_sensor_with_ref_pattern():
     return sp
 
 
-def _ahu_point_with_ref_pattern(pattern_id: str, sensor_cls, ahu_port: str):
-    """``<sensor_cls> isPointOf AHU`` with a timeseries reference, read from
-    the AHU's ``ahu_port`` output (virtual sensor with measured data)."""
-    sensor = Node(cls=sensor_cls)
-    ahu = Node(cls=core.namespace.BRICK.AHU)
-    externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
-    timeseries_id = Node(cls=core.namespace.XSD.string)
-    sp = SignaturePattern(id=pattern_id)
-    sp.add_rule(StepRule(subject=sensor, object=ahu, predicate=core.namespace.BRICK.isPointOf))
-    sp.add_rule(
-        StepRule(
-            subject=sensor,
-            object=externalref,
-            predicate=core.namespace.BRICKREF.hasExternalReference,
-        )
-    )
-    sp.add_rule(
-        StepRule(
-            subject=externalref,
-            object=timeseries_id,
-            predicate=core.namespace.BRICKREF.hasTimeseriesId,
-        )
-    )
-    sp.add_parameter("uuid", timeseries_id)
-    sp.add_connection(ahu, ahu_port, "measuredValue")
-    sp.add_modeled_node(sensor)
-    sp.add_modeled_node(externalref)
-    return sp
-
-
-def _ahu_part_point_with_ref_pattern(pattern_id: str, sensor_cls, part_cls, ahu_port: str):
-    """``<sensor_cls> isPointOf <part_cls> isPartOf AHU`` with a timeseries
-    reference, read from the AHU's ``ahu_port`` output.  The part (fan, coil)
-    is the AHU's submodel, so the sensor is a virtual sensor of the AHU."""
-    sensor = Node(cls=sensor_cls)
-    part = Node(cls=part_cls)
-    ahu = Node(cls=core.namespace.BRICK.AHU)
-    externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
-    timeseries_id = Node(cls=core.namespace.XSD.string)
-    sp = SignaturePattern(id=pattern_id)
-    sp.add_rule(StepRule(subject=sensor, object=part, predicate=core.namespace.BRICK.isPointOf))
-    sp.add_rule(StepRule(subject=part, object=ahu, predicate=core.namespace.BRICK.isPartOf))
-    sp.add_rule(
-        StepRule(
-            subject=sensor,
-            object=externalref,
-            predicate=core.namespace.BRICKREF.hasExternalReference,
-        )
-    )
-    sp.add_rule(
-        StepRule(
-            subject=externalref,
-            object=timeseries_id,
-            predicate=core.namespace.BRICKREF.hasTimeseriesId,
-        )
-    )
-    sp.add_parameter("uuid", timeseries_id)
-    sp.add_connection(ahu, ahu_port, "measuredValue")
-    sp.add_modeled_node(sensor)
-    sp.add_modeled_node(externalref)
-    return sp
-
-
-def get_brick_ahu_preheat_supply_air_temp_sensor_with_ref_pattern():
-    """BRICK ``Preheat_Supply_Air_Temperature_Sensor`` on an AHU: the
-    heat-recovery outlet before the coil (``AHU.preheatSupplyAirTemperature``).
-    Measured, it makes the heat-recovery effectivenesses identifiable."""
-    return _ahu_point_with_ref_pattern(
-        "brick_ahu_preheat_supply_air_temp_sensor_with_ref_pattern",
-        core.namespace.BRICK.Preheat_Supply_Air_Temperature_Sensor,
-        "preheatSupplyAirTemperature",
-    )
-
-
-def get_brick_ahu_supply_fan_power_sensor_with_ref_pattern():
-    """BRICK ``Electric_Power_Sensor`` on the AHU's ``Supply_Fan`` ->
-    ``AHU.supplyFanPower`` (fan model nominal power / curve)."""
-    return _ahu_part_point_with_ref_pattern(
-        "brick_ahu_supply_fan_power_sensor_with_ref_pattern",
-        core.namespace.BRICK.Electric_Power_Sensor,
-        core.namespace.BRICK.Supply_Fan,
-        "supplyFanPower",
-    )
-
-
-def get_brick_ahu_return_fan_power_sensor_with_ref_pattern():
-    """BRICK ``Electric_Power_Sensor`` on the AHU's ``Return_Fan`` ->
-    ``AHU.exhaustFanPower``."""
-    return _ahu_part_point_with_ref_pattern(
-        "brick_ahu_return_fan_power_sensor_with_ref_pattern",
-        core.namespace.BRICK.Electric_Power_Sensor,
-        core.namespace.BRICK.Return_Fan,
-        "exhaustFanPower",
-    )
-
-
-def get_brick_ahu_heating_coil_power_sensor_with_ref_pattern():
-    """BRICK ``Heating_Thermal_Power_Sensor`` on the AHU's ``Heating_Coil`` ->
-    ``AHU.heatingPower`` (the coil's delivered heat)."""
-    return _ahu_part_point_with_ref_pattern(
-        "brick_ahu_heating_coil_power_sensor_with_ref_pattern",
-        core.namespace.BRICK.Heating_Thermal_Power_Sensor,
-        core.namespace.BRICK.Heating_Coil,
-        "heatingPower",
-    )
-
-
 def get_brick_supply_air_flow_sensor_with_ref_pattern():
     """BRICK Supply_Air_Flow_Sensor at a VAV branch with timeseries reference.
 
@@ -1248,10 +1141,6 @@ class SensorSystem(core.System):
         # Measured AHU-side points that make the AHU submodels
         # identifiable: heat-recovery outlet temperature, fan powers,
         # coil heating power (virtual sensors with data).
-        get_brick_ahu_preheat_supply_air_temp_sensor_with_ref_pattern(),
-        get_brick_ahu_supply_fan_power_sensor_with_ref_pattern(),
-        get_brick_ahu_return_fan_power_sensor_with_ref_pattern(),
-        get_brick_ahu_heating_coil_power_sensor_with_ref_pattern(),
         get_brick_supply_air_flow_sensor_with_ref_pattern(),
         get_brick_supply_air_flow_sensor_virtual_pattern(),
         get_brick_sensor_leaf_pattern(),

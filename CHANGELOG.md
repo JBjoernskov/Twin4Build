@@ -45,12 +45,8 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   with the AHU's in the estimator).  With one exhaust meter per AHU the
   per-branch exhaust dampers are not identifiable; the ratio is.
 - `AirHandlingUnitSystem` output `preheatSupplyAirTemperature`: the
-  heat-recovery outlet before the coil.  Sensor patterns for the AHU-side
-  measured points that make the AHU submodels identifiable:
-  `Preheat_Supply_Air_Temperature_Sensor` on the AHU (-> that output),
-  `Electric_Power_Sensor` on the AHU's `Supply_Fan` / `Return_Fan`
-  (-> `supplyFanPower` / `exhaustFanPower`) and `Heating_Thermal_Power_Sensor`
-  on its `Heating_Coil` (-> `heatingPower`), all with a timeseries reference.
+  heat-recovery outlet before the coil.  Patterns for the AHU-side measured
+  points that read these outputs are left to the user's pattern set (#200).
 - Translator `Node(cls=..., exclude=...)`: classes an instance must not be
   (subclasses included) to bind to a pattern node, so a pattern on a base
   class can step aside for a more specific pattern on a subclass.  Used by
