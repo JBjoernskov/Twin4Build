@@ -7,6 +7,7 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
+from twin4build.examples import patterns as example_patterns
 import twin4build.examples.utils as utils
 
 
@@ -216,7 +217,7 @@ def damper_pattern():
 # library's schedule and damper examples; everything else comes from the
 # public example set.
 patterns = [
-    sp for sp in tb.patterns.default_patterns()
+    sp for sp in example_patterns.default_patterns()
     if sp.system not in (tb.ScheduleSystem, tb.DamperSystem)
 ] + [schedule_pattern(), damper_pattern()]
 

@@ -20,7 +20,7 @@ explicit input, ``Translator().translate(semantic_model, patterns=[...])``,
 each pattern bound to the ``System`` class it models. There is no pattern to
 rule them all: how a BMS names and links its points differs per vendor, per
 integrator and per building, so a real deployment writes its own patterns.
-``twin4build.patterns`` is the *public example set*: the translator example
+``twin4build.examples.patterns`` is the *public example set*: the translator example
 defines and explains a few patterns inline and imports the rest from it.
 Compose that set with your own, or replace it.
 

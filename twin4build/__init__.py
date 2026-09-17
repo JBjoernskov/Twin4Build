@@ -27,7 +27,6 @@ except PackageNotFoundError:
 
 # Local application imports
 import twin4build.systems as _systems
-import twin4build.patterns as patterns  # the public example pattern set (#200)
 from twin4build.utils.deprecation import deprecate_name
 
 _PUBLIC_MODULES = {

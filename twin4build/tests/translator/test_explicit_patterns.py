@@ -11,6 +11,7 @@ import unittest
 import warnings
 
 import twin4build as tb
+from twin4build.examples import patterns as example_patterns
 import twin4build.core as core
 from twin4build.tests.translator.test_brick14_bms_patterns import build_graph
 from twin4build.translator.translator import SignaturePattern, Translator
@@ -18,7 +19,7 @@ from twin4build.translator.translator import SignaturePattern, Translator
 
 class TestExplicitPatterns(unittest.TestCase):
     def test_example_set_is_bound_and_grouped(self):
-        ps = tb.patterns.default_patterns()
+        ps = example_patterns.default_patterns()
         self.assertGreater(len(ps), 30)
         self.assertTrue(all(sp.system is not None for sp in ps))
         groups = Translator._group_patterns(ps)
@@ -42,7 +43,7 @@ class TestExplicitPatterns(unittest.TestCase):
         self.assertIs(sp2.system, tb.DamperSystem)
 
     def test_systems_is_an_allow_list(self):
-        ps = tb.patterns.default_patterns()
+        ps = example_patterns.default_patterns()
         groups = Translator._group_patterns(ps, systems=[tb.SensorSystem])
         self.assertEqual(set(groups), {tb.SensorSystem})
 
@@ -50,7 +51,7 @@ class TestExplicitPatterns(unittest.TestCase):
         sm1 = core.SemanticModel(id="explicit_patterns_a")
         build_graph(sm1)
         explicit = Translator().translate(
-            sm1, patterns=tb.patterns.default_patterns(), id="explicit_patterns_a"
+            sm1, patterns=example_patterns.default_patterns(), id="explicit_patterns_a"
         )
         sm2 = core.SemanticModel(id="explicit_patterns_b")
         build_graph(sm2)

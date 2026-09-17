@@ -312,7 +312,7 @@ class Translator:
             patterns: The signature patterns to match, each bound to the
                 ``System`` class it models (``SignaturePattern(..., system=cls)``
                 or ``sp.bind(cls)``).  Patterns are user-defined: compose
-                :func:`twin4build.patterns.default_patterns` (the public
+                :func:`twin4build.examples.patterns.default_patterns` (the public
                 example set) with your own.  ``None`` is deprecated and
                 falls back to the example set.
             systems: Optional allow-list of ``System`` classes; patterns
@@ -343,9 +343,9 @@ class Translator:
         if patterns is None:
             deprecate_name(
                 "translate(patterns=None)",
-                "translate(patterns=twin4build.patterns.default_patterns() + your_patterns)",
+                "translate(patterns=twin4build.examples.patterns.default_patterns() + your_patterns)",
             )
-            from twin4build import patterns as _patterns
+            from twin4build.examples import patterns as _patterns
 
             patterns = _patterns.default_patterns()
         pattern_groups = self._group_patterns(patterns, systems)

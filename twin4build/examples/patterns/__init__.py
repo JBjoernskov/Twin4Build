@@ -1,4 +1,4 @@
-"""The public example set of signature patterns.
+"""The public example set of signature patterns (``twin4build.examples.patterns``).
 
 Signature patterns say how a graph shape maps onto a component; they are
 *examples of how to express a graph shape*, not a standard.  How a BMS
@@ -7,35 +7,35 @@ building, and a real deployment writes its own patterns and passes them::
 
     model = tb.Translator().translate(
         semantic_model,
-        patterns=tb.patterns.default_patterns() + my_patterns,
+        patterns=example_patterns.default_patterns() + my_patterns,
     )
 
 Every pattern is bound to the ``System`` class it models
 (``SignaturePattern(..., system=cls)`` or ``sp.bind(cls)``); the
-translator groups them by that binding.  The factories live next to the
-systems they describe; this module only assembles and binds them.
+translator groups them by that binding.  The factories live in the per-area modules of this package; this module
+assembles and binds them.
 """
 
 from typing import List
 
 import twin4build.systems as _s
 
-from twin4build.systems.air_handling_unit import air_handling_unit_system as _air_handling_unit_system
-from twin4build.systems.air_to_air_heat_recovery import air_to_air_heat_recovery_system as _air_to_air_heat_recovery_system
-from twin4build.systems.building_space import building_space_system as _building_space_system
-from twin4build.systems.building_space import building_space_thermal_system as _building_space_thermal_system
-from twin4build.systems.controller.controller_identification import controller_identification_pi_system as _controller_identification_pi_system
-from twin4build.systems.controller.rulebased_controller.on_off_controller import on_off_controller_system as _on_off_controller_system
-from twin4build.systems.controller.setpoint_controller.pid_controller import pid_controller_system as _pid_controller_system
-from twin4build.systems.damper import damper_system as _damper_system
-from twin4build.systems.fan_coil_unit import fan_coil_unit_system as _fan_coil_unit_system
-from twin4build.systems.junction import return_flow_junction_system as _return_flow_junction_system
-from twin4build.systems.junction import supply_flow_junction_system as _supply_flow_junction_system
-from twin4build.systems.outdoor_environment import outdoor_environment_system as _outdoor_environment_system
-from twin4build.systems.schedule import schedule_system as _schedule_system
-from twin4build.systems.sensor import sensor_system as _sensor_system
-from twin4build.systems.space_heater import space_heater_system as _space_heater_system
-from twin4build.systems.valve import valve_system as _valve_system
+from twin4build.examples.patterns import air_handling_unit as _air_handling_unit_system
+from twin4build.examples.patterns import air_to_air_heat_recovery as _air_to_air_heat_recovery_system
+from twin4build.examples.patterns import building_space as _building_space_system
+from twin4build.examples.patterns import building_space_thermal as _building_space_thermal_system
+from twin4build.examples.patterns import controller_identification_pi as _controller_identification_pi_system
+from twin4build.examples.patterns import on_off_controller as _on_off_controller_system
+from twin4build.examples.patterns import pid_controller as _pid_controller_system
+from twin4build.examples.patterns import damper as _damper_system
+from twin4build.examples.patterns import fan_coil_unit as _fan_coil_unit_system
+from twin4build.examples.patterns import return_flow_junction as _return_flow_junction_system
+from twin4build.examples.patterns import supply_flow_junction as _supply_flow_junction_system
+from twin4build.examples.patterns import outdoor_environment as _outdoor_environment_system
+from twin4build.examples.patterns import schedule as _schedule_system
+from twin4build.examples.patterns import sensor as _sensor_system
+from twin4build.examples.patterns import space_heater as _space_heater_system
+from twin4build.examples.patterns import valve as _valve_system
 
 
 def _bind(system, sp):

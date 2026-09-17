@@ -40,7 +40,7 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 - Signature patterns are user-defined and passed explicitly (#200):
   `Translator.translate(semantic_model, patterns=[...])`, each pattern bound
   to the `System` class it models (`SignaturePattern(id, system=cls)` or
-  `sp.bind(cls)`).  `twin4build.patterns` is the public *example* set
+  `sp.bind(cls)`).  `twin4build.examples.patterns` is the public *example* set
   (`default_patterns()` and one helper per class); it is not a standard, a
   deployment composes it with its own patterns.  `System.sp` and
   `System.add_signature_pattern` are gone, and no system module registers

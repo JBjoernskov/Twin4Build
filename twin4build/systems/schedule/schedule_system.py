@@ -800,29 +800,3 @@ class ScheduleSystem(core.System):
         self.output["scheduleValue"]._set(i_t=step_index)
 
 
-def saref_signature_pattern():
-    """
-    Get the SAREF signature pattern of the schedule component.
-
-    Returns:
-        SignaturePattern: The SAREF signature pattern of the schedule component.
-    """
-    node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
-    sp = SignaturePattern(id="schedule_signature_pattern")
-    sp.add_modeled_node(node0)
-    return sp
-
-
-def brick_signature_pattern():
-    """
-    Get the BRICK signature pattern of the schedule component.
-
-    Returns:
-        SignaturePattern: The BRICK signature pattern of the schedule component.
-    """
-    node0 = Node(cls=core.namespace.BRICK.Schedule)
-    sp = SignaturePattern(id="schedule_signature_pattern_brick")
-    sp.add_modeled_node(node0)
-    return sp
-
-
