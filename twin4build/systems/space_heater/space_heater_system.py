@@ -897,10 +897,6 @@ def brick_signature_pattern_space_heater_valve():
     return sp
 
 
-SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern_space_heater_valve())
-SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern_room_heating_command())
-SpaceHeaterSystem.add_signature_pattern(brick_signature_pattern())
-SpaceHeaterSystem.add_signature_pattern(saref_signature_pattern())
 
 # Deprecated aliases (removed in twin4build 2.1)
 SpaceHeaterTorchSystem = SpaceHeaterSystem

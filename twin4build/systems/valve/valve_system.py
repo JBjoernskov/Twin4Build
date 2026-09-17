@@ -308,8 +308,6 @@ def brick_signature_pattern():
     return sp
 
 
-ValveSystem.add_signature_pattern(brick_signature_pattern())
-ValveSystem.add_signature_pattern(saref_signature_pattern())
 
 # Deprecated aliases (removed in twin4build 2.1)
 ValveTorchSystem = ValveSystem

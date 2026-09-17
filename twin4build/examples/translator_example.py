@@ -147,24 +147,84 @@ def fcn(self):
 
 
 # Create a new model
-model = tb.Model(id="translator_example")
-
 # Local application imports
 from twin4build.utils.logger import LOGGER
+import twin4build.core as core
+from twin4build.translator.translator import Node, OptionalRule, SignaturePattern, StepRule
 
-# from twin4build.systems.building_space.building_space_system import saref_signature_pattern_sensor
 LOGGER.hide_status("debug")
-# Load the model from semantic file
 
+# ---------------------------------------------------------------------------
+# Signature patterns: how a graph shape maps onto a component.
+#
+# Patterns are user-defined.  There is no pattern to rule them all: how a
+# building is described differs per ontology, per BMS vendor and per site,
+# so a deployment writes the patterns that fit *its* graphs and passes them
+# to the translator explicitly.  ``twin4build.patterns`` is the public
+# example set.  Two of its patterns are spelled out here to show the idea;
+# the rest are imported below.
+# ---------------------------------------------------------------------------
+
+
+def schedule_pattern():
+    """The simplest pattern: one node, bound to one component class.
+
+    Every ``s4bldg:Schedule`` in the graph becomes a ``ScheduleSystem``.  The
+    modeled node is the graph node the component stands for; its identity
+    becomes the component id.
+    """
+    schedule = Node(cls=core.namespace.S4BLDG.Schedule)
+    sp = SignaturePattern(id="example_schedule", system=tb.ScheduleSystem)
+    sp.add_modeled_node(schedule)
+    return sp
+
+
+def damper_pattern():
+    """A pattern with structure and an optional parameter.
+
+    A damper is recognised by its controlled opening position: a controller
+    ``controls`` an ``OpeningPosition`` that ``isPropertyOf`` the damper, and
+    the controller ``observes`` some property.  ``StepRule`` edges must exist
+    for a match; ``OptionalRule`` edges are read when present -- here the
+    damper's nominal air flow rate, which ``add_parameter`` hands to the
+    component's ``nominalAirFlowRate``.  ``add_input`` wires the controller's
+    output to the damper's ``damperPosition``; ``add_modeled_node`` marks the
+    node the component stands for.
+    """
+    damper = Node(cls=core.namespace.S4BLDG.Damper)
+    controller = Node(cls=core.namespace.S4BLDG.Controller)
+    position = Node(cls=core.namespace.SAREF.OpeningPosition)
+    observed = Node(cls=core.namespace.SAREF.Property)
+    value = Node(cls=core.namespace.SAREF.PropertyValue)
+    number = Node(cls=core.namespace.XSD.float)
+    nominal_flow = Node(cls=core.namespace.S4BLDG.NominalAirFlowRate)
+    sp = SignaturePattern(id="example_damper", system=tb.DamperSystem)
+    sp.add_rule(StepRule(subject=controller, object=position, predicate=core.namespace.SAREF.controls))
+    sp.add_rule(StepRule(subject=position, object=damper, predicate=core.namespace.SAREF.isPropertyOf))
+    sp.add_rule(StepRule(subject=controller, object=observed, predicate=core.namespace.SAREF.observes))
+    sp.add_rule(OptionalRule(subject=value, object=number, predicate=core.namespace.SAREF.hasValue))
+    sp.add_rule(OptionalRule(subject=value, object=nominal_flow, predicate=core.namespace.SAREF.isValueOfProperty))
+    sp.add_rule(OptionalRule(subject=damper, object=value, predicate=core.namespace.SAREF.hasPropertyValue))
+    # The controller's output drives the damper: an input declared on the pattern
+    sp.add_input("damperPosition", controller, "inputSignal")
+    sp.add_parameter("nominalAirFlowRate", number)
+    sp.add_modeled_node(damper)
+    return sp
+
+
+# The pattern set for this example: the two patterns above replace the
+# library's schedule and damper examples; everything else comes from the
+# public example set.
+patterns = [
+    sp for sp in tb.patterns.default_patterns()
+    if sp.system not in (tb.ScheduleSystem, tb.DamperSystem)
+] + [schedule_pattern(), damper_pattern()]
+
+# Load the semantic model and translate it with those patterns
 filename = utils.get_path(["estimator_example", "one_room_example_model.xlsm"])
 sm = tb.SemanticModel(rdf_file=filename, id="translator_example")
-
-# translator = tb.Translator()
-
-# tb.BuildingSpaceSystem.sp = [saref_signature_pattern_sensor()]
-# translator.translate(semantic_model=sm, systems_=[tb.BuildingSpaceSystem], verbose=999999)
-
-model.load(semantic_model_filename=filename, fcn=fcn)
+model = tb.Translator().translate(sm, patterns=patterns, id="translator_example")
+model.load(fcn=fcn)
 
 
 forest_green = "#2D6A4F"

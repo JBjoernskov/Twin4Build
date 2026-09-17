@@ -957,6 +957,3 @@ def brick_signature_pattern_standalone():
     return sp
 
 
-OutdoorEnvironmentSystem.add_signature_pattern(brick_signature_pattern())
-OutdoorEnvironmentSystem.add_signature_pattern(brick_signature_pattern_standalone())
-OutdoorEnvironmentSystem.add_signature_pattern(saref_signature_pattern())

@@ -176,7 +176,6 @@ def brick_signature_pattern_vav():
     return sp
 
 
-ControllerIdentificationPISystem.add_signature_pattern(brick_signature_pattern_vav())
 
 
 def brick_signature_pattern_vav_room():
@@ -343,10 +342,6 @@ def brick_signature_pattern_space_heater_room():
     return sp
 
 
-ControllerIdentificationPISystem.add_signature_pattern(brick_signature_pattern_vav_room())
-ControllerIdentificationPISystem.add_signature_pattern(
-    brick_signature_pattern_space_heater_room()
-)
 
 
 def brick_signature_pattern_vav_damper():
@@ -387,9 +382,6 @@ def brick_signature_pattern_vav_damper():
     return sp
 
 
-ControllerIdentificationPISystem.add_signature_pattern(
-    brick_signature_pattern_vav_damper()
-)
 
 # Deprecated aliases (removed in twin4build 2.1)
 ControllerIdentificationPITorchSystem = ControllerIdentificationPISystem

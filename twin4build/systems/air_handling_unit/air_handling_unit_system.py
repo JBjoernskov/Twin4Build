@@ -1056,10 +1056,6 @@ def brick_signature_pattern_vav_damper_commands():
     return sp
 
 
-AirHandlingUnitSystem.add_signature_pattern(brick_signature_pattern_vav_dampers())
-AirHandlingUnitSystem.add_signature_pattern(
-    brick_signature_pattern_vav_damper_commands()
-)
 
 # Deprecated aliases (removed in twin4build 2.1)
 AirHandlingUnitTorchSystem = AirHandlingUnitSystem

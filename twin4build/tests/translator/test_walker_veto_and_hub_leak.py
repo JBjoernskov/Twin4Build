@@ -98,51 +98,40 @@ def _pattern(veto_part=False, veto_point=False, with_volume=False):
 
 class TestStandaloneNoStepRule(unittest.TestCase):
     def _complete(self, sp, sm):
-        complete, _ = Translator._match_patterns([BuildingSpaceSystem], sm)
+        # Patterns are an explicit input (#200): no class-level list to patch.
+        complete, _ = Translator._match_patterns(
+            pattern_groups={BuildingSpaceSystem: [sp]}, semantic_model=sm
+        )
         return complete[BuildingSpaceSystem].get(sp, [])
-
-    def setUp(self):
-        self._saved_sp = list(BuildingSpaceSystem.sp)
-
-    def tearDown(self):
-        BuildingSpaceSystem.sp = self._saved_sp
 
     def test_veto_passes_when_predicate_absent(self):
         sm = SemanticModel(id="veto_absent", namespaces={"ex": str(EX)})
         _graph(sm)
         sp, _ = _pattern(veto_part=True)  # no VAV has hasPart at all
-        BuildingSpaceSystem.sp = [sp]
         self.assertEqual(len(self._complete(sp, sm)), 2)
 
     def test_veto_passes_when_only_allowed_neighbours(self):
         sm = SemanticModel(id="veto_allowed", namespaces={"ex": str(EX)})
         _graph(sm)
         sp, _ = _pattern(veto_point=True)  # hasPoint exists, but no reheat cmd
-        BuildingSpaceSystem.sp = [sp]
         self.assertEqual(len(self._complete(sp, sm)), 2)
 
     def test_veto_prunes_forbidden_neighbour(self):
         sm = SemanticModel(id="veto_fires", namespaces={"ex": str(EX)})
         _graph(sm, reheat_room=2)
         sp, space = _pattern(veto_point=True)
-        BuildingSpaceSystem.sp = [sp]
         groups = self._complete(sp, sm)
         self.assertEqual([str(g[space].uri).split("#")[-1] for g in groups], ["R01"])
 
 
 class TestHubLeak(unittest.TestCase):
-    def setUp(self):
-        self._saved_sp = list(BuildingSpaceSystem.sp)
-
-    def tearDown(self):
-        BuildingSpaceSystem.sp = self._saved_sp
-
     def test_literal_stays_with_its_room(self):
         sm = SemanticModel(id="hub_leak", namespaces={"ex": str(EX)})
         _graph(sm)
         sp, space = _pattern(with_volume=True)
-        BuildingSpaceSystem.sp = [sp]
-        complete, _ = Translator._match_patterns([BuildingSpaceSystem], sm)
+        complete, _ = Translator._match_patterns(
+            pattern_groups={BuildingSpaceSystem: [sp]}, semantic_model=sm
+        )
         groups = complete[BuildingSpaceSystem][sp]
         # One match per room, each carrying its own volume literal.
         self.assertEqual(len(groups), 2)

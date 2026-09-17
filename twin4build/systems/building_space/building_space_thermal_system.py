@@ -914,7 +914,6 @@ def brick_signature_pattern():
     return sp
 
 
-BuildingSpaceThermalSystem.add_signature_pattern(brick_signature_pattern())
 
 # Deprecated aliases (removed in twin4build 2.1)
 BuildingSpaceThermalTorchSystem = BuildingSpaceThermalSystem

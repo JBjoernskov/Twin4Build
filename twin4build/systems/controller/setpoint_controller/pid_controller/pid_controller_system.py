@@ -333,4 +333,3 @@ def saref_signature_pattern():
     return sp
 
 
-PIDControllerSystem.add_signature_pattern(saref_signature_pattern())

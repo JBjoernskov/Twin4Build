@@ -197,5 +197,3 @@ def brick_signature_pattern():
     return sp
 
 
-OnOffControllerSystem.add_signature_pattern(brick_signature_pattern())
-OnOffControllerSystem.add_signature_pattern(saref_signature_pattern())

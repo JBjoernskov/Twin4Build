@@ -826,5 +826,3 @@ def brick_signature_pattern():
     return sp
 
 
-ScheduleSystem.add_signature_pattern(brick_signature_pattern())
-ScheduleSystem.add_signature_pattern(saref_signature_pattern())

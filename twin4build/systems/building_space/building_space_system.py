@@ -723,19 +723,6 @@ def brick_signature_pattern(with_volume: bool = False, heat_source: str = "comma
     return _brick_space_pattern("direct", with_volume, heat_source)
 
 
-for _with_volume in (True, False):
-    for _heat_source in ("command", "equipment"):
-        BuildingSpaceSystem.add_signature_pattern(
-            brick_signature_pattern_vav_no_reheat(_with_volume, _heat_source)
-        )
-        BuildingSpaceSystem.add_signature_pattern(
-            brick_signature_pattern_vav(_with_volume, _heat_source)
-        )
-        BuildingSpaceSystem.add_signature_pattern(
-            brick_signature_pattern(_with_volume, _heat_source)
-        )
-BuildingSpaceSystem.add_signature_pattern(saref_signature_pattern())
-BuildingSpaceSystem.add_signature_pattern(saref_signature_pattern_sensor())
 
 # Deprecated aliases (removed in twin4build 2.1)
 BuildingSpaceTorchSystem = BuildingSpaceSystem

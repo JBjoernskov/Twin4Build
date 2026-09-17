@@ -367,8 +367,6 @@ def brick_signature_pattern():
     return sp
 
 
-DamperSystem.add_signature_pattern(brick_signature_pattern())
-DamperSystem.add_signature_pattern(saref_signature_pattern())
 
 # Deprecated aliases (removed in twin4build 2.1)
 DamperTorchSystem = DamperSystem

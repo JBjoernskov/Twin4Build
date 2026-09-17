@@ -251,5 +251,3 @@ def brick_signature_pattern():
     return sp
 
 
-ReturnFlowJunctionSystem.add_signature_pattern(brick_signature_pattern())
-ReturnFlowJunctionSystem.add_signature_pattern(saref_signature_pattern())

@@ -1103,39 +1103,6 @@ class SensorSystem(core.System):
         auto-detected if only one data source is provided.
     """
 
-    sp = [
-        get_temperature_before_air_to_air_supply_side(),
-        get_temperature_before_air_to_air_exhaust_side(),
-        get_temperature_after_air_to_air_supply_side(),
-        get_temperature_after_air_to_air_exhaust_side(),
-        get_signature_pattern_input(),
-        get_flow_signature_pattern_after_coil_air_side(),
-        get_flow_signature_pattern_after_coil_water_side(),
-        get_flow_signature_pattern_before_coil_water_side(),
-        get_space_temperature_signature_pattern(),
-        get_space_co2_signature_pattern(),
-        get_position_signature_pattern(),
-        # BRICK-specific patterns (Mortar / BRICK-annotated datasets)
-        get_brick_command_sensor_pattern(),
-        get_brick_damper_command_sensor_pattern(),
-        # Each air-temperature virtual sensor has a mutually-exclusive pair of
-        # patterns: one that requires a Brick timeseries reference (preferred
-        # by the MILP when available) and one "virtual" fallback that still
-        # wires the modelled temperature to the SensorSystem when no
-        # timeseries is attached.  See the comment above
-        # ``get_brick_zone_air_temp_sensor_with_ref_pattern`` for why this
-        # split is required.
-        get_brick_zone_air_temp_sensor_with_ref_pattern(),
-        get_brick_zone_air_temp_sensor_virtual_pattern(),
-        get_brick_room_zone_air_temp_sensor_with_ref_pattern(),
-        get_brick_room_zone_air_temp_sensor_virtual_pattern(),
-        get_brick_room_zone_co2_sensor_with_ref_pattern(),
-        get_brick_ahu_supply_air_temp_sensor_with_ref_pattern(),
-        get_brick_ahu_supply_air_temp_sensor_virtual_pattern(),
-        get_brick_supply_air_flow_sensor_with_ref_pattern(),
-        get_brick_supply_air_flow_sensor_virtual_pattern(),
-        get_brick_sensor_leaf_pattern(),
-    ]
 
     def __init__(
         self,

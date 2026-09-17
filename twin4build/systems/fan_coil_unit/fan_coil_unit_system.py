@@ -797,8 +797,6 @@ def brick_signature_pattern_vav_ahu():
 # BRICK has a dedicated ``Fan_Coil_Unit`` class and the VAV/AHU
 # topology, both of which carry the air-side wiring that genuinely
 # distinguishes an FCU from a radiator.
-FanCoilUnitSystem.add_signature_pattern(brick_signature_pattern())
-FanCoilUnitSystem.add_signature_pattern(brick_signature_pattern_vav_ahu())
 
 # Deprecated aliases (removed in twin4build 2.1)
 FanCoilUnitTorchSystem = FanCoilUnitSystem
