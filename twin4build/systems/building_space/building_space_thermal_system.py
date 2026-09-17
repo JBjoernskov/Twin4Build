@@ -11,6 +11,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.constants as constants
+from twin4build.systems.building_space import air_balance
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import (
     DiscreteStatespaceSystem,
@@ -85,7 +86,10 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
          optional; produced by a ``WallSystem``, which owns the wall state
          so the interzonal energy balance holds by construction)
        - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
-       - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
+       - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input); enters
+         the dynamics only through the outdoor **make-up flow**
+         :math:`\dot{m}_{mu} = \max(\dot{m}_{exh} - \dot{m}_{sup}, 0)`,
+         see below
        - :math:`\Phi_{sol}`: Solar radiation [W/m²] (input)
        - :math:`N_{occ}`: Number of occupants (input)
        - :math:`Q_{sh}`: Space heater heat input [W] (input)
@@ -96,7 +100,12 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
     *State vector:* :math:`\mathbf{x} = \begin{bmatrix}T_i \\ T_w \\ T_{bw}\end{bmatrix}`
 
-    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_o \\ \dot{m}_{sup} \\ \dot{m}_{exh} \\ T_{sup} \\ \Phi_{sol} \\ N_{occ} \\ Q_{sh} \\ T_{bound} \\ \dot{Q}_{wall,1} \\ \vdots \\ \dot{Q}_{wall,n}\end{bmatrix}`
+    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_o \\ \dot{m}_{sup} \\ \dot{m}_{mu} \\ T_{sup} \\ \Phi_{sol} \\ N_{occ} \\ Q_{sh} \\ T_{bound} \\ \dot{Q}_{wall,1} \\ \vdots \\ \dot{Q}_{wall,n}\end{bmatrix}`
+
+    The third slot carries the make-up flow
+    :math:`\dot{m}_{mu} = \max(\dot{m}_{exh} - \dot{m}_{sup}, 0)`, not the
+    raw exhaust flow: the ``exhaustAirFlowRate`` port value is transformed at
+    input assembly (:func:`~twin4build.systems.building_space.air_balance.balanced_flow_inputs`).
 
     *Base System Matrices:*
 
@@ -130,29 +139,42 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
     *State-Input Coupling (E matrices):*
 
-    The only state-input coupling is the exhaust flow removing heat at the
-    indoor air temperature:
+    Every air stream entering the room is balanced by room air leaving at
+    :math:`T_i` (the room air mass is constant), so each flow input removes
+    heat at the indoor temperature:
 
     .. math::
 
-       \mathbf{E}[2, 0, 0] = -\frac{c_p}{C_{air}} \quad \text{(exhaust flow} \cdot T_i\text{)}
+       \mathbf{E}[1, 0, 0] = -\frac{c_p}{C_{air}} \quad \text{(supply flow} \cdot T_i\text{)}, \qquad
+       \mathbf{E}[2, 0, 0] = -\frac{c_p}{C_{air}} \quad \text{(make-up flow} \cdot T_i\text{)}
 
     *Input-Input Coupling (F matrices):*
 
-    The only input-input coupling is the supply flow bringing heat at the
-    supply air temperature:
+    The supply flow brings heat at the supply air temperature, the make-up
+    flow at the outdoor temperature:
 
     .. math::
 
-       \mathbf{F}[1, 0, 3] = \frac{c_p}{C_{air}} \quad \text{(supply flow} \cdot T_{sup}\text{)}
+       \mathbf{F}[1, 0, 3] = \frac{c_p}{C_{air}} \quad \text{(supply flow} \cdot T_{sup}\text{)}, \qquad
+       \mathbf{F}[2, 0, 0] = \frac{c_p}{C_{air}} \quad \text{(make-up flow} \cdot T_o\text{)}
 
-    Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, \dot{Q}_{wall,1}]^T`
+    Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{mu}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, \dot{Q}_{wall,1}]^T`
 
     *Bilinear Effects*
 
-    The bilinear terms handle specific flow-dependent heat transfer effects:
-       - :math:`\mathbf{E}[2,0,0] \cdot u_2 \cdot x_0 = -\frac{c_p}{C_{air}} \dot{m}_{exh} T_i`: Exhaust air removing heat
-       - :math:`\mathbf{F}[1,0,3] \cdot u_1 \cdot u_3 = \frac{c_p}{C_{air}} \dot{m}_{sup} T_{sup}`: Supply air bringing heat
+    Together the bilinear terms give the balanced ventilation heat flow
+
+    .. math::
+
+       \dot{Q}_{vent} = \dot{m}_{sup} c_p (T_{sup} - T_i) + \dot{m}_{mu} c_p (T_o - T_i)
+
+    With :math:`\dot{m}_{sup} \ge \dot{m}_{exh}` the surplus supply leaves
+    through the envelope at room state and the exhaust flow drops out; with
+    :math:`\dot{m}_{exh} > \dot{m}_{sup}` the deficit is made up by outdoor
+    air drawn through the envelope.  No fictitious
+    :math:`(\dot{m}_{sup} - \dot{m}_{exh}) c_p T_i` storage term survives an
+    imbalance between the two (mis)measured flows.  See
+    :mod:`twin4build.systems.building_space.air_balance`.
 
     Physical Interpretation
     -----------------------
@@ -172,8 +194,10 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
          other zone (energy-consistent by construction)
 
     **Flow-Dependent Effects:**
-       - Supply air flow brings heat at supply temperature (F matrix coupling)
-       - Exhaust air flow removes heat at indoor temperature (E matrix coupling)
+       - Supply air flow brings heat at supply temperature and displaces room
+         air at indoor temperature (F and E matrix coupling)
+       - Exhaust in excess of the supply draws outdoor air through the
+         envelope (make-up flow, F and E coupling on the third input slot)
        - These effects are critical for accurate HVAC modeling
 
     Computational Features
@@ -528,7 +552,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
         ``u = [outdoorTemperature, supplyAirFlowRate, exhaustAirFlowRate,
         supplyAirTemperature, globalIrradiation, numberOfPeople, heatGain,
-        (boundaryTemperature,) wallHeatGain x n_walls]``; output rows are the
+        (boundaryTemperature,) wallHeatGain x n_walls]`` (the exhaust slot
+        holds the make-up flow after :meth:`_ss_transform_inputs`); output rows are the
         observed states.  Valid after :meth:`initialize` (needs ``n_walls`` /
         ``n_boundary_temperature``).
         """
@@ -557,9 +582,21 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         """
         return {
             "D": frozenset(),
-            "E": frozenset({(2, 0, 0)}),
-            "F": frozenset({(1, 0, 3)}),
+            "E": frozenset({(1, 0, 0), (2, 0, 0)}),
+            "F": frozenset({(1, 0, 3), (2, 0, 0)}),
         }
+
+    #: Input ports whose values :meth:`_ss_transform_inputs` reads.
+    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS
+
+    @staticmethod
+    def _ss_transform_inputs(inputs):
+        """Balanced-ventilation input transform (see
+        :mod:`~twin4build.systems.building_space.air_balance`): the
+        ``exhaustAirFlowRate`` slot carries the outdoor make-up flow
+        ``max(m_exh - m_sup, 0)``.  Pure function of the original inputs;
+        applied by :meth:`forward` and by the fused block."""
+        return air_balance.balanced_flow_inputs(inputs)
 
     def _build_matrices(self, p=None):
         """Build the RC state-space matrices ``(A, B, C, D, E, F)`` from the
@@ -677,26 +714,34 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
         D = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
-        # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
+        # Balanced ventilation (see air_balance.py): slot 1 is the supply
+        # flow, slot 2 the outdoor make-up flow max(m_exh - m_sup, 0).  Each
+        # entering stream displaces room air at T_i (E) and brings heat at
+        # its own temperature (F): supply at T_sup (slot 3), make-up at T_o
+        # (slot 0).
         input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
         state_basis = torch.eye(n_states, dtype=dt, device=dev)
-        u_exhaust = input_basis[2]
+        u_outdoor_temperature = input_basis[0]
+        u_supply_flow = input_basis[1]
+        u_make_up_flow = input_basis[2]
+        u_supply_temperature = input_basis[3]
         state_air = state_basis[0]
+        gain = (constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
+
+        # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
         E = (
-            (-constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
-            * u_exhaust.reshape(1, n_inputs, 1, 1)
+            -gain
+            * (u_supply_flow + u_make_up_flow).reshape(1, n_inputs, 1, 1)
             * state_air.reshape(1, 1, n_states, 1)
             * state_air.reshape(1, 1, 1, n_states)
         )
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
-        u_supply_flow = input_basis[1]
-        u_supply_temperature = input_basis[3]
-        F = (
-            (constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
-            * u_supply_flow.reshape(1, n_inputs, 1, 1)
-            * state_air.reshape(1, 1, n_states, 1)
+        F = gain * state_air.reshape(1, 1, n_states, 1) * (
+            u_supply_flow.reshape(1, n_inputs, 1, 1)
             * u_supply_temperature.reshape(1, 1, 1, n_inputs)
+            + u_make_up_flow.reshape(1, n_inputs, 1, 1)
+            * u_outdoor_temperature.reshape(1, 1, 1, n_inputs)
         )
 
         return A, B, C_out, D, E, F
@@ -836,6 +881,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             matrices = cache[1]
             disc_cache = cache[3]
         A, B, C, D, E, F = matrices
+        inputs = {**inputs, **self._ss_transform_inputs(inputs)}
         cols = [
             inputs["outdoorTemperature"],
             inputs["supplyAirFlowRate"],
