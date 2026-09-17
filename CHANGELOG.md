@@ -37,6 +37,21 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Post-fit identifiability report. `Estimator.estimate` now ends with a local
+  identifiability analysis of the residual Jacobian at the optimum
+  (`twin4build/estimator/_identifiability.py`): parameters no residual reacts
+  to, flat directions (singular vectors of the unit-column Jacobian with a
+  relative singular value below 1e-3, listed as the parameter combination
+  that is the only thing the data determine), pairs whose Gauss-Newton
+  correlation exceeds 0.95 (trade-offs), parameters whose standard error
+  exceeds their whole admissible range, and parameters sitting on a bound.
+  Findings are logged as warnings and attached to the result as
+  `result["identifiability"]`.  `identifiability="auto"` (default) runs it
+  whenever the residual Jacobian is cheap (functional single-shooting
+  objective, or object-mode AD with at most 20 parameters); `True` forces
+  it, `False` skips it.  A dead or flat parameter is left where the solver
+  happened to stop, so its value carries no information -- the report says
+  which ones.
 - Signature patterns are user-defined and passed explicitly (#200):
   `Translator.translate(semantic_model, patterns=[...])`, each pattern bound
   to the `System` class it models (`SignaturePattern(id, system=cls)` or
@@ -55,6 +70,32 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- Room air models balance their ventilation flows. `BuildingSpaceThermalSystem`
+  and `BuildingSpaceMassSystem` used to charge the supply at supply state and
+  the exhaust at room state independently, so a mismatch between the two
+  measured flows left a fictitious `(m_sup - m_exh) * cp * T_i` storage term
+  (an exhaust meter reading 20% low heated the room out of nothing).  The room
+  air mass is constant, so every stream entering is balanced by air leaving at
+  room state: the supply term is `m_sup * cp * (T_sup - T_i)`, and the exhaust
+  enters only as the outdoor **make-up flow** `max(m_exh - m_sup, 0)` drawn
+  through the envelope, `m_mu * cp * (T_out - T_i)` (same for CO2).  Supply in
+  excess of the exhaust leaves through the envelope and the exhaust flow drops
+  out; the CO2 balance can no longer be driven below outdoor by ventilation.
+  Ports are unchanged; the transform is applied to the `exhaustAirFlowRate`
+  slot at input assembly on the object, functional and fused paths
+  (`twin4build/systems/building_space/air_balance.py`; state-space units may
+  declare `_ss_transform_inputs` / `SS_TRANSFORM_PORTS`, which
+  `FusedStateSpaceSystem` applies before stacking the joint input).  The
+  constant infiltration parameter `m_inf` stays additive (EnergyPlus
+  convention).
+  `OccupancySystem`'s CO2 inversion uses the same balanced equation, so
+  the people it books reproduce the measured CO2 through the forward model
+  for any supply/exhaust pair.
+- `System.get_estimable_parameters` skips parameters the owner reports as
+  inactive (`_inactive_parameters()`); `BuildingSpaceThermalSystem` reports
+  `C_boundary` / `R_boundary` unless a `boundaryTemperature` is connected,
+  so rooms without the deprecated in-zone boundary wall no longer put two
+  dead entries per room into theta.
 - New batched shooting solver method `("custom", "batched-tr", "ad")`: a
   structure-aware trust-region step.  `FunctionalModel.index_coupling()`
   derives independent parameter blocks and their residual columns from the

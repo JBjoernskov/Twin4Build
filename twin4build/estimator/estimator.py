@@ -828,6 +828,13 @@ class Estimator:
                 "docstring."
             )
         self._log_parameters = bool(kwargs.pop("log_parameters", False))
+        # ``identifiability``: "auto" (default) runs the post-fit local
+        # identifiability analysis whenever a residual Jacobian is cheap
+        # (functional objective, or a few parameters under object-mode AD),
+        # True forces it, False skips it.  See ``_log_identifiability``.
+        self._identifiability = kwargs.pop("identifiability", "auto")
+        if self._identifiability not in ("auto", True, False):
+            raise ValueError("identifiability must be 'auto', True or False")
         reject_unexpected_kwargs("Estimator.estimate", kwargs)
 
         # Input validation and preprocessing
@@ -3103,6 +3110,7 @@ class Estimator:
 
         # Store the normalised solution for warm-starting (used by lambda scheduling)
         self._last_x_norm = result.x.copy()
+        identifiability = self._log_identifiability(np.asarray(result.x, dtype=np.float64), method)
 
         # Denormalize result using parameter's denormalize method
         # result.x is flat array of all unique parameter values
@@ -3173,6 +3181,8 @@ class Estimator:
             result["curvature_block_sizes"] = curvature_block_sizes
         if solver_status is not None:
             result["solver_status"] = solver_status
+        if identifiability is not None:
+            result["identifiability"] = identifiability
 
         with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -3188,6 +3198,125 @@ class Estimator:
             ignore_no_match=True,
         )
         return result
+
+    #: Object-mode AD Jacobian costs one tangent rollout per theta entry;
+    #: ``identifiability="auto"`` accepts that only for small problems.
+    _IDENTIFIABILITY_AUTO_MAX_THETA = 20
+
+    def _theta_entry_names(self) -> List[str]:
+        """One label per flat theta entry: ``<component>.<attr>`` with a
+        ``[k]`` suffix for multi-slot (``n_c > 1``) parameters."""
+        n_theta = int(self._theta_slices[-1][1]) if self._theta_slices else 0
+        names = [""] * n_theta
+        seen: set = set()
+        for component, attr, param_idx in zip(
+            self._flat_components, self._parameter_names, self._theta_mask
+        ):
+            if param_idx in seen:
+                continue
+            seen.add(param_idx)
+            start, end = self._theta_slices[param_idx]
+            label = f"{self._short_component_label(component.id)}.{attr}"
+            for k in range(start, end):
+                names[k] = label if end - start == 1 else f"{label}[{k - start}]"
+        return names
+
+    def _residual_and_jacobian_at(self, theta_norm: np.ndarray):
+        """Scaled residual vector and its Jacobian (normalized theta) at
+        ``theta_norm`` from the functional objective when built, else from
+        the object-mode AD objective."""
+        theta = torch.tensor(theta_norm, dtype=tps.float_dtype(), device=self._device)
+        functional = getattr(self, "_functional_objective", None)
+        if functional is not None:
+            residual, jac = functional.batched_residual_and_jacobian(theta.unsqueeze(0))
+            return residual[0].detach().cpu().numpy(), jac[0].detach().cpu().numpy()
+        residual = self._obj(theta, "vector").detach().cpu().numpy()
+        jac = self._jac_ad(theta, "vector")
+        jac = jac.detach().cpu().numpy() if hasattr(jac, "detach") else np.asarray(jac)
+        return residual, jac
+
+    def _log_identifiability(self, theta_norm: np.ndarray, method) -> Optional[dict]:
+        """Post-fit local identifiability analysis (see
+        :mod:`twin4build.estimator._identifiability`), logged and returned as
+        a dict for the result.  Runs for ``identifiability=True``, and for
+        ``"auto"`` when the residual Jacobian is affordable: the functional
+        single-shooting objective is built, or object-mode AD with at most
+        ``_IDENTIFIABILITY_AUTO_MAX_THETA`` entries.  Never raises: a failed
+        analysis is logged and skipped."""
+        mode = getattr(self, "_identifiability", "auto")
+        if mode is False:
+            return None
+        if getattr(self, "_transcription", "single_shooting") != "single_shooting":
+            return None
+        has_ad = len(method) > 2 and method[2] == "ad"
+        functional = getattr(self, "_functional_objective", None) is not None
+        n_theta = int(theta_norm.size)
+        if not has_ad and not functional:
+            if mode is True:
+                LOGGER.warning(
+                    "identifiability=True needs an AD residual Jacobian (method[2] == 'ad'); skipped"
+                )
+            return None
+        if mode == "auto" and not functional and n_theta > self._IDENTIFIABILITY_AUTO_MAX_THETA:
+            LOGGER.iter(
+                "Identifiability analysis skipped (object-mode AD Jacobian over %d parameters); "
+                "pass identifiability=True to force it",
+                n_theta,
+            )
+            return None
+        from twin4build.estimator._identifiability import analyze
+
+        try:
+            LOGGER.task("Identifiability at the optimum")
+            LOGGER.add_level()
+            t0 = time_module.time()
+            residual, jac = self._residual_and_jacobian_at(theta_norm)
+            names = self._theta_entry_names()
+            report = analyze(jac, residual, names, theta_norm, self._lb_norm, self._ub_norm)
+            LOGGER.iter(
+                "n_theta=%d | n_residuals=%d | condition number %.3g | elapsed=%.1fs",
+                jac.shape[1],
+                jac.shape[0],
+                report.condition_number,
+                time_module.time() - t0,
+            )
+            lines = report.lines()
+            if report.clean:
+                LOGGER.ok("every parameter is pinned by the data (no dead, flat or traded-off parameter)")
+            for line in lines:
+                is_warning = (
+                    line.startswith("trade-off")
+                    or line.startswith("flat direction")
+                    or "not identifiable" in line
+                    or "not pinned" in line
+                )
+                if is_warning:
+                    LOGGER.warning(line)
+                else:
+                    LOGGER.iter(line)
+            LOGGER.remove_level()
+            return {
+                "names": report.names,
+                "rel_col_norm": report.rel_col_norm,
+                "dead": report.dead,
+                "weak": report.weak,
+                "at_lower": report.at_lower,
+                "at_upper": report.at_upper,
+                "singular_values": report.singular_values,
+                "flat_directions": report.flat_directions,
+                "tradeoffs": report.tradeoffs,
+                "std_err": report.std_err,
+                "unpinned": report.unpinned,
+                "condition_number": report.condition_number,
+                "lines": lines,
+            }
+        except Exception as exc:  # pragma: no cover -- diagnostic must never break the run
+            LOGGER.warning("Identifiability analysis failed: %s", exc)
+            try:
+                LOGGER.remove_level()
+            except Exception:
+                pass
+            return None
 
     def _setup_functional_objective(self, validate_functional: bool = False) -> None:
         """Build the functional single-shooting objective.
