@@ -83,6 +83,11 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `OccupancySystem`'s CO2 inversion uses the same balanced equation, so
   the people it books reproduce the measured CO2 through the forward model
   for any supply/exhaust pair.
+- `System.get_estimable_parameters` skips parameters the owner reports as
+  inactive (`_inactive_parameters()`); `BuildingSpaceThermalSystem` reports
+  `C_boundary` / `R_boundary` unless a `boundaryTemperature` is connected,
+  so rooms without the deprecated in-zone boundary wall no longer put two
+  dead entries per room into theta.
 - New batched shooting solver method `("custom", "batched-tr", "ad")`: a
   structure-aware trust-region step.  `FunctionalModel.index_coupling()`
   derives independent parameter blocks and their residual columns from the

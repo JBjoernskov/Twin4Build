@@ -463,6 +463,24 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         self._fwd_mat_cache = None
         self._forward_params_cache = None
 
+    def _has_boundary_temperature(self) -> bool:
+        """Whether the (deprecated) in-zone boundary-wall path is in use:
+        set up manually, or a connection on ``boundaryTemperature``."""
+        if self.manual_setup_n_boundary_temperature:
+            return self.n_boundary_temperature == 1
+        return any(
+            cp.input_port == "boundaryTemperature" and cp.connects_system_through
+            for cp in self.connects_at
+        )
+
+    def _inactive_parameters(self):
+        """Parameters the wiring leaves without effect (skipped by
+        :meth:`get_estimable_parameters`): ``C_boundary`` / ``R_boundary``
+        unless a boundary temperature is connected."""
+        if self._has_boundary_temperature():
+            return ()
+        return ("C_boundary", "R_boundary")
+
     def setup_variable_inputs(self):
         if self.manual_setup_n_boundary_temperature == False:
             # Find if boundary temperature is set as input

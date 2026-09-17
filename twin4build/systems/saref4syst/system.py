@@ -466,7 +466,9 @@ class System:
             :class:`twin4build.utils.types.Parameter`) -- skips plain
             Python floats stored as construction nominals, and
           * has both ``"lb"`` and ``"ub"`` in its owner's ``parameter``
-            map.
+            map, and
+          * is not named by the owner's optional ``_inactive_parameters()``
+            (parameters the current wiring leaves without effect).
 
         Owner resolution: ``"thermal.C_air"`` looks up
         ``self.thermal.parameter["C_air"]`` for bounds; an unprefixed
@@ -501,6 +503,13 @@ class System:
             # cycle that pulling :class:`tps.Parameter` in here would
             # create.
             if not isinstance(param, torch.nn.Parameter):
+                continue
+            # A component may declare parameters that its current wiring
+            # leaves without effect (e.g. the in-zone boundary wall of a
+            # room whose ``boundaryTemperature`` port is unconnected); the
+            # estimator would otherwise carry dead entries in theta.
+            inactive = getattr(owner, "_inactive_parameters", None)
+            if callable(inactive) and leaf in inactive():
                 continue
             spec = getattr(owner, "parameter", None)
             if not isinstance(spec, dict):
