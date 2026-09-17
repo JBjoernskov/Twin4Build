@@ -10,6 +10,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.constants as constants
+from twin4build.systems.building_space import air_balance
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import (
     DiscreteStatespaceSystem,
@@ -41,7 +42,15 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
     .. math::
 
-       m_{air}\frac{dC}{dt} = \dot{m}_{sup}C_{out} - \dot{m}_{exh}C + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ} \frac{M_{air}}{M_{CO2}} \cdot 10^6
+       m_{air}\frac{dC}{dt} = \dot{m}_{sup}(C_{out} - C) + \dot{m}_{mu}(C_{out} - C) + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ} \frac{M_{air}}{M_{CO2}} \cdot 10^6
+
+    with the outdoor **make-up flow** :math:`\dot{m}_{mu} = \max(\dot{m}_{exh}
+    - \dot{m}_{sup}, 0)`: the room air mass is constant, so every entering
+    stream (supply, make-up, infiltration) is balanced by room air leaving at
+    :math:`C`.  Supply in excess of the exhaust leaves through the envelope and
+    the exhaust flow drops out; exhaust in excess of the supply draws outdoor
+    air in through the envelope.  See
+    :mod:`twin4build.systems.building_space.air_balance`.
 
     where:
 
@@ -51,7 +60,8 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
        - :math:`V`: Volume of the space [m³] (parameter)
        - :math:`C`: Indoor CO2 concentration [ppmv] (state variable)
        - :math:`\dot{m}_{sup}`: Supply air mass flow rate [kg/s] (input)
-       - :math:`\dot{m}_{exh}`: Exhaust air mass flow rate [kg/s] (input)
+       - :math:`\dot{m}_{exh}`: Exhaust air mass flow rate [kg/s] (input; enters
+         only through :math:`\dot{m}_{mu}`)
        - :math:`\dot{m}_{inf}`: Infiltration mass flow rate [kg/s] (parameter)
        - :math:`C_{out}`: Outdoor CO2 concentration [ppmv] (input)
        - :math:`G_{occ}`: CO2 generation rate per occupant [kg_CO2/s] (parameter)
@@ -76,7 +86,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
     *State vector:* :math:`\mathbf{x} = \begin{bmatrix}C\end{bmatrix}`
 
-    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}\dot{m}_{sup} \\ \dot{m}_{exh} \\ C_{out} \\ N_{occ}\end{bmatrix}`
+    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}\dot{m}_{sup} \\ \dot{m}_{mu} \\ C_{out} \\ N_{occ}\end{bmatrix}`
+    (the ``exhaustAirFlowRate`` port is transformed to :math:`\dot{m}_{mu}` at
+    input assembly)
 
     *Base System Matrices:*
 
@@ -97,8 +109,8 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     .. math::
 
        \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \begin{bmatrix}
-       \begin{bmatrix} 0 \end{bmatrix} & \text{(supply flow)} \\
-       \begin{bmatrix} -\frac{1}{m_{air}} \end{bmatrix} & \text{(exhaust flow)} \\
+       \begin{bmatrix} -\frac{1}{m_{air}} \end{bmatrix} & \text{(supply flow)} \\
+       \begin{bmatrix} -\frac{1}{m_{air}} \end{bmatrix} & \text{(make-up flow)} \\
        \begin{bmatrix} 0 \end{bmatrix} & \text{(outdoor CO2)} \\
        \begin{bmatrix} 0 \end{bmatrix} & \text{(occupants)}
        \end{bmatrix}
@@ -109,7 +121,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
        \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \begin{bmatrix}
        \begin{bmatrix} 0 & 0 & \frac{1}{m_{air}} & 0 \end{bmatrix} & \text{(supply flow)} \\
-       \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(exhaust flow)} \\
+       \begin{bmatrix} 0 & 0 & \frac{1}{m_{air}} & 0 \end{bmatrix} & \text{(make-up flow)} \\
        \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(outdoor CO2)} \\
        \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(occupants)}
        \end{bmatrix}
@@ -118,8 +130,8 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     *Bilinear Effects*
 
     The bilinear terms handle specific flow-dependent mass transfer effects:
-       - :math:`\mathbf{E}[1,0,0] \cdot u_1 \cdot x_0 = -\frac{1}{m_{air}} \dot{m}_{exh} C`: Exhaust flow removing CO2
-       - :math:`\mathbf{F}[0,0,2] \cdot u_0 \cdot u_2 = \frac{1}{m_{air}} \dot{m}_{sup} C_{out}`: Supply flow bringing outdoor air
+       - :math:`\mathbf{F}[0,0,2] \cdot u_0 \cdot u_2 + \mathbf{E}[0,0,0] \cdot u_0 \cdot x_0 = \frac{1}{m_{air}} \dot{m}_{sup} (C_{out} - C)`: Supply flow replacing room air by outdoor air
+       - :math:`\mathbf{F}[1,0,2] \cdot u_1 \cdot u_2 + \mathbf{E}[1,0,0] \cdot u_1 \cdot x_0 = \frac{1}{m_{air}} \dot{m}_{mu} (C_{out} - C)`: Make-up flow doing the same for the exhaust deficit
 
     Physical Interpretation
     -----------------------
@@ -130,8 +142,12 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
        - Bilinear terms model flow-dependent mass transfer accurately
 
     **Flow-Dependent Effects:**
-       - Supply air flow brings outdoor CO2 at outdoor concentration (F matrix coupling)
-       - Exhaust air flow removes CO2 at indoor concentration (E matrix coupling)
+       - Supply air flow brings outdoor CO2 at outdoor concentration and
+         displaces room air at indoor concentration (F and E matrix coupling)
+       - Exhaust in excess of the supply draws outdoor air through the
+         envelope (make-up flow, same coupling on the second slot); the indoor
+         concentration can therefore never be driven below the outdoor one
+         by ventilation alone
 
     Computational Features
     ----------------------
@@ -288,7 +304,8 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     def _ss_layout(self):
         """Port <-> matrix index map, mirroring :meth:`forward` exactly:
         ``u = [supplyAirFlowRate, exhaustAirFlowRate, outdoorCO2,
-        numberOfPeople]``; single output row ``indoorCO2``."""
+        numberOfPeople]`` (the exhaust slot holds the make-up flow after
+        :meth:`_ss_transform_inputs`); single output row ``indoorCO2``."""
         return {
             "u": [
                 ("supplyAirFlowRate", 1),
@@ -303,9 +320,21 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         """Conservative structural support of the ``D``, ``E`` and ``F`` matrices."""
         return {
             "D": frozenset(),
-            "E": frozenset({(1, 0, 0)}),
-            "F": frozenset({(0, 0, 2)}),
+            "E": frozenset({(0, 0, 0), (1, 0, 0)}),
+            "F": frozenset({(0, 0, 2), (1, 0, 2)}),
         }
+
+    #: Input ports whose values :meth:`_ss_transform_inputs` reads.
+    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS
+
+    @staticmethod
+    def _ss_transform_inputs(inputs):
+        """Balanced-ventilation input transform (see
+        :mod:`~twin4build.systems.building_space.air_balance`): the
+        ``exhaustAirFlowRate`` slot carries the outdoor make-up flow
+        ``max(m_exh - m_sup, 0)``.  Pure function of the original inputs;
+        applied by :meth:`forward` and by the fused block."""
+        return air_balance.balanced_flow_inputs(inputs)
 
     def _build_matrices(self, p=None):
         """Build the CO2 mass-balance matrices ``(A, B, C, D, E, F)`` from the
@@ -352,14 +381,18 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         # Feedthrough matrix D (no direct feedthrough) - Shape: (n_c, n_states, n_inputs)
         D = torch.zeros((n_c, n_states, n_inputs), dtype=dt, device=dev)
 
+        # Balanced ventilation (see air_balance.py): slot 0 is the supply
+        # flow, slot 1 the outdoor make-up flow max(m_exh - m_sup, 0).  Each
+        # entering stream displaces room air at C (E) and brings outdoor air
+        # at C_out (F, slot 2).
         # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
-        E = torch.stack([zero, -1 / air_mass, zero, zero], dim=1).reshape(
+        E = torch.stack([-1 / air_mass, -1 / air_mass, zero, zero], dim=1).reshape(
             n_c, n_inputs, n_states, n_states
         )
 
         # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
         input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
-        u_multiplier = input_basis[0].reshape(1, n_inputs, 1, 1)
+        u_multiplier = (input_basis[0] + input_basis[1]).reshape(1, n_inputs, 1, 1)
         u_coefficient = input_basis[2].reshape(1, 1, 1, n_inputs)
         F = (1 / air_mass).reshape(n_c, 1, 1, 1) * u_multiplier * u_coefficient
 
@@ -410,6 +443,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             matrices = cache[1]
             disc_cache = cache[3]
         A, B, C, D, E, F = matrices
+        inputs = {**inputs, **self._ss_transform_inputs(inputs)}
         u = torch.stack(
             [
                 inputs["supplyAirFlowRate"],
