@@ -34,6 +34,11 @@ from twin4build.systems.space_heater.space_heater_system import SpaceHeaterSyste
 tb._IS_TESTING = True
 
 
+def clip_irradiance(x):
+    """A second module-level transformation, for the irradiation feed."""
+    return min(max(float(x), 0.0), 1500.0)
+
+
 def celsius_from_deci(x):
     """A module-level transformation: importable by name."""
     return x / 10.0
@@ -131,6 +136,42 @@ class TestSerializeRoundTrip(unittest.TestCase):
         self.assertEqual(outdoor2.transformation_ref, f"{__name__}:celsius_from_deci")
 
         torch.testing.assert_close(self._simulate(reloaded), reference)
+
+    def test_outdoor_environment_feed_transformations_survive(self):
+        from twin4build.systems.outdoor_environment.outdoor_environment_system import (
+            OutdoorEnvironmentSystem,
+        )
+
+        model = tb.Model(id=self.MODEL_ID + "_outdoor")
+        outdoor = OutdoorEnvironmentSystem(
+            id="outdoor",
+            filename_outdoorTemperature=os.path.join(self.tmp, "outdoor.csv"),
+            filename_globalIrradiation=os.path.join(self.tmp, "outdoor.csv"),
+            use_spreadsheet=True,
+        )
+        outdoor.set_transformation(celsius_from_deci)
+        outdoor._transformation_globalIrradiation = clip_irradiance
+        sink = _schedule("sink", 0.0)
+        room = BuildingSpaceSystem(id="room2", airVolume=100.0)
+        model.add_connection(outdoor, room, "outdoorTemperature", "outdoorTemperature")
+        model.add_connection(outdoor, room, "globalIrradiation", "globalIrradiation")
+        for port, value in (("numberOfPeople", 0.0), ("supplyAirFlowRate", 0.0), ("supplyAirTemperature", 18.0), ("heatGain", 0.0)):
+            model.add_connection(_schedule(f"s_{port}", value), room, "scheduleValue", port)
+        del sink
+        model.load()
+        self.assertEqual(outdoor.transformation_ref_outdoorTemperature, f"{__name__}:celsius_from_deci")
+        self.assertEqual(outdoor.transformation_ref_globalIrradiation, f"{__name__}:clip_irradiance")
+        model.serialize()
+        path, _ = model._simulation_model._semantic_model.get_dir(filename="instance_graph.ttl")
+        try:
+            reloaded = tb.Model(id=self.MODEL_ID + "_outdoor_reloaded")
+            reloaded.load(filename=path)
+            outdoor2 = reloaded.components["outdoor"]
+            self.assertIs(outdoor2._transformation_outdoorTemperature, celsius_from_deci)
+            self.assertIs(outdoor2._transformation_globalIrradiation, clip_irradiance)
+        finally:
+            for mid in (self.MODEL_ID + "_outdoor", self.MODEL_ID + "_outdoor_reloaded"):
+                shutil.rmtree(os.path.join("generated_files", "models", mid), ignore_errors=True)
 
 
 if __name__ == "__main__":

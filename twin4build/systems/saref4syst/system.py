@@ -7,6 +7,8 @@ from typing import Any, List, Tuple, Union
 # Third party imports
 import torch
 
+import twin4build.utils.types as tps
+
 # from twin4build.utils.plot.simulation_result import SimulationResult
 from prettytable import PrettyTable
 

@@ -138,6 +138,20 @@ def clamp(
 
     effective_min = lower + eps
     effective_max = upper - eps
+    # The transition region can be at most half the range on each side.
+    # With a fixed ``curve_start`` and a range narrower than
+    # ``2 * curve_start`` the two transition points cross, and the map is no
+    # longer a clamp: it overshoots the upper bound by up to ``curve_start``
+    # and undershoots the lower one, and stops being monotone.  Observed on
+    # a PI whose output range had been identified as [0, 0.036]: the
+    # "clamped" command swung between -0.026 and +0.100 inside a closed
+    # loop.
+    half_range = 0.5 * (effective_max - effective_min)
+    if torch.is_tensor(half_range):
+        curve_start = torch.clamp(half_range, max=curve_start)
+        curve_start = torch.clamp(curve_start, min=1e-12)
+    else:
+        curve_start = max(min(curve_start, float(half_range)), 1e-12)
     lower_curve_point = effective_min + curve_start
     upper_curve_point = effective_max - curve_start
 
