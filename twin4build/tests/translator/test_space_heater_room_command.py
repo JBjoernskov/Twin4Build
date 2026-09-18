@@ -1,4 +1,4 @@
-"""Room-level radiator from a BRICK ``Heating_Command``.
+"""Room-level radiator from a BRICK ``Heating_Command`` (no equipment node).
 
 BMS-derived graphs often carry no radiator equipment, no water-flow sensor
 and no supply-temperature point: the only heating information on a room is a
@@ -26,8 +26,12 @@ from twin4build.systems.air_handling_unit.air_handling_unit_system import (
 from twin4build.systems.building_space.building_space_system import (
     BuildingSpaceSystem,
 )
+from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
+    ControllerIdentificationPISystem,
+)
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.space_heater.space_heater_system import SpaceHeaterSystem
+from twin4build.systems.valve.valve_system import ValveSystem
 from twin4build.translator.translator import Translator
 
 twin4build._IS_TESTING = True
@@ -60,7 +64,9 @@ def _graph(sm):
         g.add((EX.AHU01, BRICK.feeds, vav))
         g.add((vav, BRICK.feeds, room))
         _point(g, vav, f"R0{i}_VAV01_CMD", BRICK.Damper_Position_Command)
+        _point(g, vav, f"R0{i}_SpFCI01", BRICK.Supply_Air_Flow_Setpoint)
         _point(g, room, f"R0{i}_TRU01", BRICK.Zone_Air_Temperature_Sensor)
+        _point(g, room, f"R0{i}_SpTRU01", BRICK.Zone_Air_Temperature_Setpoint)
     _point(g, EX["R01"], "R01_MVV01", BRICK.Heating_Command)
 
 
@@ -88,6 +94,8 @@ class TestSpaceHeaterFromRoomHeatingCommand(unittest.TestCase):
                 BuildingSpaceSystem,
                 AirHandlingUnitSystem,
                 SpaceHeaterSystem,
+                ValveSystem,
+                ControllerIdentificationPISystem,
                 SensorSystem,
             ],
             id=self.MODEL_ID,
@@ -99,11 +107,14 @@ class TestSpaceHeaterFromRoomHeatingCommand(unittest.TestCase):
         self.assertEqual(len(heaters), 1)
         heater = heaters[0]
 
-        # Water side: the valve command's historised sensor (percent ->
-        # kg/s is a caller-side transformation, see Model.set_transformations).
+        # Water side: a valve modelled on the command turns the 0-1 opening
+        # into kg/s (waterFlowRateMax is estimated).  The opening comes from
+        # the controller identified at the command URI, as the AHU's damper
+        # positions do -- a translated radiator needs its loop, like the AHU.
         flow_sources = _incoming(heater, "waterFlowRate")
-        self.assertEqual([type(c).__name__ for c in flow_sources], ["SensorSystem"])
-        self.assertEqual(flow_sources[0].uuid, "R01_MVV01")
+        self.assertEqual([type(c).__name__ for c in flow_sources], ["ValveSystem"])
+        (opening,) = _incoming(flow_sources[0], "valvePosition")
+        self.assertIsInstance(opening, ControllerIdentificationPISystem)
 
         # Air side: the room it heats, and the heat goes back into that room.
         (room_in,) = _incoming(heater, "indoorTemperature")

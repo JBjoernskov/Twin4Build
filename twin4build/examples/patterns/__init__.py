@@ -37,6 +37,8 @@ from twin4build.examples.patterns import sensor as _sensor_system
 from twin4build.examples.patterns import space_heater as _space_heater_system
 from twin4build.examples.patterns import valve as _valve_system
 
+from twin4build.examples.patterns import occupancy as _occupancy_system
+
 
 def _bind(system, sp):
     sp.bind(system)
@@ -87,7 +89,8 @@ def controller_identification_pi_patterns() -> List:
     out = [
         _bind(_s.ControllerIdentificationPISystem, _controller_identification_pi_system.brick_signature_pattern_vav()),
         _bind(_s.ControllerIdentificationPISystem, _controller_identification_pi_system.brick_signature_pattern_vav_room()),
-        _bind(_s.ControllerIdentificationPISystem, _controller_identification_pi_system.brick_signature_pattern_space_heater_room()),
+        _bind(_s.ControllerIdentificationPISystem, _controller_identification_pi_system.brick_signature_pattern_space_heater_room(explicit_equipment=True)),
+        _bind(_s.ControllerIdentificationPISystem, _controller_identification_pi_system.brick_signature_pattern_space_heater_room(explicit_equipment=False)),
         _bind(_s.ControllerIdentificationPISystem, _controller_identification_pi_system.brick_signature_pattern_vav_damper()),
     ]
     return out
@@ -181,6 +184,10 @@ def sensor_patterns() -> List:
         _bind(_s.SensorSystem, _sensor_system.get_brick_ahu_supply_air_temp_sensor_virtual_pattern()),
         _bind(_s.SensorSystem, _sensor_system.get_brick_supply_air_flow_sensor_with_ref_pattern()),
         _bind(_s.SensorSystem, _sensor_system.get_brick_supply_air_flow_sensor_virtual_pattern()),
+        _bind(_s.SensorSystem, _sensor_system.get_brick_ahu_supply_air_flow_sensor_with_ref_pattern()),
+        _bind(_s.SensorSystem, _sensor_system.get_brick_ahu_supply_air_flow_sensor_virtual_pattern()),
+        _bind(_s.SensorSystem, _sensor_system.get_brick_ahu_return_air_flow_sensor_with_ref_pattern()),
+        _bind(_s.SensorSystem, _sensor_system.get_brick_ahu_return_air_flow_sensor_virtual_pattern()),
         _bind(_s.SensorSystem, _sensor_system.get_brick_sensor_leaf_pattern()),
     ]
     return out
@@ -209,8 +216,18 @@ def supply_flow_junction_patterns() -> List:
 def valve_patterns() -> List:
     """Patterns bound to :class:`~twin4build.systems.ValveSystem`."""
     out = [
+        _bind(_s.ValveSystem, _valve_system.brick_signature_pattern_space_heater_command()),
+        _bind(_s.ValveSystem, _valve_system.brick_signature_pattern_room_heating_command()),
         _bind(_s.ValveSystem, _valve_system.brick_signature_pattern()),
         _bind(_s.ValveSystem, _valve_system.saref_signature_pattern()),
+    ]
+    return out
+
+
+def occupancy_patterns() -> List:
+    """Patterns bound to :class:`~twin4build.systems.OccupancySystem`."""
+    out = [
+        _bind(_s.OccupancySystem, _occupancy_system.brick_signature_pattern_room_co2()),
     ]
     return out
 
@@ -236,9 +253,10 @@ def default_patterns() -> List:
     out += space_heater_patterns()
     out += supply_flow_junction_patterns()
     out += valve_patterns()
+    out += occupancy_patterns()
     return out
 
 
-__all__ = ["default_patterns"] + [
+__all__ = ["default_patterns", "occupancy_patterns"] + [
     "air_handling_unit_patterns", "air_to_air_heat_recovery_patterns", "building_space_patterns", "building_space_thermal_patterns", "controller_identification_pi_patterns", "damper_patterns", "fan_coil_unit_patterns", "on_off_controller_patterns", "outdoor_environment_patterns", "pid_controller_patterns", "return_flow_junction_patterns", "schedule_patterns", "sensor_patterns", "space_heater_patterns", "supply_flow_junction_patterns", "valve_patterns"
 ]

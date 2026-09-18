@@ -1,7 +1,6 @@
 """Example signature patterns for :mod:`twin4build.systems.space_heater.space_heater_system`.
 
-Moved out of the system module (#200): patterns describe how one kind
-of graph maps onto the component, and are examples of that, not a
+Moved out of the system module (#200); examples of a graph shape, not a
 standard.  Bound to their classes by :mod:`twin4build.examples.patterns`.
 """
 
@@ -101,7 +100,7 @@ def brick_signature_pattern_room_heating_command():
     ``brick:Heating_Command`` in percent).  This pattern models one space
     heater per such command::
 
-        Room  hasPoint  Heating_Command   -> waterFlowRate  (valve command)
+        Room  hasPoint  Heating_Command   -> (ValveSystem) -> waterFlowRate
         Room                              -> indoorTemperature
 
     ``waterFlowRate`` is fed from the command's historised
@@ -162,7 +161,7 @@ def brick_signature_pattern_room_heating_command():
             predicate=core.namespace.BRICK.hasPoint,
         )
     )
-    sp.add_connection(heating_cmd, "measuredValue", "waterFlowRate")
+    sp.add_connection(heating_cmd, "waterFlowRate", "waterFlowRate")
     sp.add_connection(space, "indoorTemperature", "indoorTemperature")
     ModeledNode([space, heating_cmd])
     return sp
@@ -179,29 +178,25 @@ def brick_signature_pattern_space_heater_valve():
 
     The water side comes from the command point::
 
-        Heating_Command.inputSignal -> SpaceHeaterSystem.waterFlowRate
-        Room.indoorTemperature      -> SpaceHeaterSystem.indoorTemperature
-        SpaceHeaterSystem.Power     -> BuildingSpaceSystem.heatGain
+        Heating_Command.waterFlowRate -> SpaceHeaterSystem.waterFlowRate
+        Room.indoorTemperature        -> SpaceHeaterSystem.indoorTemperature
+        SpaceHeaterSystem.Power       -> BuildingSpaceSystem.heatGain
 
-    ``inputSignal`` is the port a controller identified at that URI
-    produces (see ``ControllerIdentificationPISystem``'s
-    ``brick_signature_pattern_space_heater_room``), so the loop closes
-    during translation -- the same convention the AHU pattern uses for
-    ``Damper_Position_Command``.  Naming the controller's port explicitly
-    also makes the wiring deterministic: reading ``measuredValue`` would
-    resolve to either the historised command sensor or the
-    controller-driven one, whichever the MILP happened to pick.
+    The command node is modelled by a :class:`ValveSystem` (its
+    ``brick_signature_pattern_space_heater_command``), which turns the 0-1
+    opening -- historised, or produced by a controller identified at the
+    same URI -- into kg/s through its estimable ``waterFlowRateMax``.  The
+    chain is the water-side mirror of *controller -> damper -> AHU branch*.
 
-    The command carries a valve opening, so the caller's
-    ``Model.set_transformations`` converts it to kg/s (a
-    ``brick:Heating_Command`` rule); the controller is identified against
-    that same transformed series, so it produces the same units.  Without a
-    controller in the translation the water side stays unwired -- use
-    :func:`brick_signature_pattern_room_heating_command` (or supply the
-    flow through ``fill_missing_inputs``) for replay-only models.
+    The supply water temperature comes from the heating circuit when the
+    graph links it (optional)::
 
-    ``supplyWaterTemperature`` stays unwired for
-    :meth:`Model.fill_missing_inputs`; ``UA`` and
+        Space_Heater  isFedBy   Heat_Exchanger | Hot_Water_System | Boiler
+        Heat_Exchanger | Hot_Water_System  hasPoint  Leaving_Hot_Water_Temperature_Sensor
+                                                    -> supplyWaterTemperature
+
+    Without that link ``supplyWaterTemperature`` stays unwired for
+    :meth:`Model.fill_missing_inputs`.  ``UA`` and
     ``thermalMassHeatCapacity`` are estimated per radiator.  The modeled
     identity is the space heater itself.
     """
@@ -237,9 +232,28 @@ def brick_signature_pattern_space_heater_valve():
             predicate=core.namespace.BRICK.hasPoint,
         )
     )
-    sp.add_connection(
-        heating_cmd, "inputSignal", "waterFlowRate", output_port_index=heating_cmd
-    )
+    sp.add_connection(heating_cmd, "waterFlowRate", "waterFlowRate")
     sp.add_connection(room, "indoorTemperature", "indoorTemperature")
+    circuit = Node(
+        cls=(
+            core.namespace.BRICK.Heat_Exchanger,
+            core.namespace.BRICK.Hot_Water_System,
+            core.namespace.BRICK.Boiler,
+        )
+    )
+    # Brick 1.4.1 has no Primary_/Secondary_ qualified leaving-water
+    # classes; a graph that uses them must retype to this one.
+    supply_temp = Node(cls=core.namespace.BRICK.Leaving_Hot_Water_Temperature_Sensor)
+    sp.add_rule(
+        OptionalRule(
+            subject=space_heater, object=circuit, predicate=core.namespace.BRICK.isFedBy
+        )
+    )
+    sp.add_rule(
+        OptionalRule(
+            subject=circuit, object=supply_temp, predicate=core.namespace.BRICK.hasPoint
+        )
+    )
+    sp.add_connection(supply_temp, "measuredValue", "supplyWaterTemperature")
     sp.add_modeled_node(space_heater)
     return sp

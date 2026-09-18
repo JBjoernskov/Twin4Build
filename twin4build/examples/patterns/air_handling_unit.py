@@ -1,7 +1,6 @@
 """Example signature patterns for :mod:`twin4build.systems.air_handling_unit.air_handling_unit_system`.
 
-Moved out of the system module (#200): patterns describe how one kind
-of graph maps onto the component, and are examples of that, not a
+Moved out of the system module (#200); examples of a graph shape, not a
 standard.  Bound to their classes by :mod:`twin4build.examples.patterns`.
 """
 
@@ -58,6 +57,27 @@ def brick_signature_pattern():
     sp.add_modeled_node(ahu)
 
     return sp
+
+
+def _add_fan_speed_inputs(sp, ahu):
+    """Optional fan-state inputs: ``AHU hasPart Supply_Fan hasPoint
+    Fan_Speed_Command -> supplyFanSpeed`` and the return / exhaust fan's
+    command ``-> exhaustFanSpeed``.  Both optional: a graph without them
+    leaves the inputs unwired and the fans "on"."""
+    supply_fan = Node(cls=core.namespace.BRICK.Supply_Fan)
+    supply_speed = Node(cls=core.namespace.BRICK.Fan_Speed_Command)
+    return_fan = Node(cls=(core.namespace.BRICK.Return_Fan, core.namespace.BRICK.Exhaust_Fan))
+    return_speed = Node(cls=core.namespace.BRICK.Fan_Speed_Command)
+    sp.add_rule(OptionalRule(subject=ahu, object=supply_fan, predicate=core.namespace.BRICK.hasPart))
+    sp.add_rule(
+        OptionalRule(subject=supply_fan, object=supply_speed, predicate=core.namespace.BRICK.hasPoint)
+    )
+    sp.add_rule(OptionalRule(subject=ahu, object=return_fan, predicate=core.namespace.BRICK.hasPart))
+    sp.add_rule(
+        OptionalRule(subject=return_fan, object=return_speed, predicate=core.namespace.BRICK.hasPoint)
+    )
+    sp.add_connection(supply_speed, "measuredValue", "supplyFanSpeed")
+    sp.add_connection(return_speed, "measuredValue", "exhaustFanSpeed")
 
 
 def brick_signature_pattern_vav_dampers():
@@ -252,6 +272,7 @@ def brick_signature_pattern_vav_dampers():
     )
     sp.add_connection(sat_setpoint, "measuredValue", "supplyAirTemperatureSetpoint")
     sp.add_connection(oat_sensor, "outdoorTemperature", "outdoorAirTemperature")
+    _add_fan_speed_inputs(sp, ahu)
 
     ModeledNode([ahu, vavs, dampers, damper_cmds])
     return sp
@@ -344,6 +365,7 @@ def brick_signature_pattern_vav_damper_commands():
     )
     sp.add_connection(sat_setpoint, "measuredValue", "supplyAirTemperatureSetpoint")
     sp.add_connection(oat_sensor, "outdoorTemperature", "outdoorAirTemperature")
+    _add_fan_speed_inputs(sp, ahu)
 
     ModeledNode([ahu, vavs, damper_cmds])
     return sp

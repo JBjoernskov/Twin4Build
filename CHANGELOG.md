@@ -37,6 +37,16 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Example patterns (`twin4build/examples/patterns`): the AHU pattern reads
+  the supply fan's speed command and the AHU-level flow meters; the space
+  heater pattern takes the supply water temperature from the heating
+  circuit that feeds the radiator (`isFedBy`) instead of a constant; valve
+  loop patterns for a room's heating command with and without an explicit
+  radiator node; a room-CO2 occupancy pattern (`occupancy_patterns()`)
+  feeding `OccupancySystem` from the room's CO2 sensor, its VAVs' damper
+  commands and the AHU's fan speed; radiator-loop controller patterns for
+  both graph shapes.
+
 - Controller identification, playback: `rewire(mode="playback")` opens the
   identified loops and replays each loop's measured command; an opened
   loop's command sensor (`actuatorMeasured`) is its actuator measurement;

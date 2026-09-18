@@ -1,7 +1,6 @@
 """Example signature patterns for :mod:`twin4build.systems.sensor.sensor_system`.
 
-Moved out of the system module (#200): patterns describe how one kind
-of graph maps onto the component, and are examples of that, not a
+Moved out of the system module (#200); examples of a graph shape, not a
 standard.  Bound to their classes by :mod:`twin4build.examples.patterns`.
 """
 
@@ -14,106 +13,6 @@ from twin4build.translator.translator import (
     StepRule,
 )
 import twin4build.core as core
-
-
-def get_temperature_before_air_to_air_supply_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery,))  # AirToAirPrimary
-    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-    sp = SignaturePattern(id="temperature_before_air_to_air_supply_side")
-
-    sp.add_rule(
-        StepRule(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_rule(
-        PathRule(
-            subject=node2, object=node0, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    sp.add_rule(
-        StepRule(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_input("measuredValue", node2, ("primaryTemperatureIn"))
-    sp.add_modeled_node(node0)
-
-    return sp
-
-
-def get_temperature_before_air_to_air_exhaust_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
-
-    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-
-    sp = SignaturePattern(id="temperature_before_air_to_air_exhaust_side")
-    sp.add_rule(
-        StepRule(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_rule(
-        PathRule(
-            subject=node0, object=node2, predicate=core.namespace.FSO.returnsFluidTo
-        )
-    )
-    sp.add_rule(
-        StepRule(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_input("measuredValue", node2, ("secondaryTemperatureIn"))
-    sp.add_modeled_node(node0)
-
-    return sp
-
-
-def get_temperature_after_air_to_air_supply_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
-    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-
-    sp = SignaturePattern(id="temperature_after_air_to_air_supply_side")
-    sp.add_rule(
-        StepRule(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_rule(
-        StepRule(
-            subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    sp.add_rule(
-        StepRule(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_input("measuredValue", node2, ("primaryTemperatureOut"))
-    sp.add_modeled_node(node0)
-
-    return sp
-
-
-def get_temperature_after_air_to_air_exhaust_side():
-    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
-    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
-    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
-
-    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-
-    sp = SignaturePattern(id="temperature_after_air_to_air_exhaust_side")
-    sp.add_rule(
-        StepRule(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_rule(
-        StepRule(subject=node2, object=node0, predicate=core.namespace.FSO.returnsFluidTo)
-    )
-    sp.add_rule(
-        StepRule(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
-    )
-
-    sp.add_input("measuredValue", node2, ("secondaryTemperatureOut"))
-    sp.add_modeled_node(node0)
-
-    return sp
 
 
 def get_signature_pattern_input():
@@ -330,6 +229,106 @@ def get_position_signature_pattern():
     )
     sp.add_input("measuredValue", node3, ("inputSignal", "inputSignal"))
     sp.add_modeled_node(node0)
+    return sp
+
+
+def get_temperature_before_air_to_air_supply_side():
+    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
+    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
+    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery,))  # AirToAirPrimary
+    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
+    sp = SignaturePattern(id="temperature_before_air_to_air_supply_side")
+
+    sp.add_rule(
+        StepRule(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_rule(
+        PathRule(
+            subject=node2, object=node0, predicate=core.namespace.FSO.hasFluidSuppliedBy
+        )
+    )
+    sp.add_rule(
+        StepRule(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
+    )
+
+    sp.add_input("measuredValue", node2, ("primaryTemperatureIn"))
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+def get_temperature_before_air_to_air_exhaust_side():
+    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
+    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
+    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
+
+    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
+
+    sp = SignaturePattern(id="temperature_before_air_to_air_exhaust_side")
+    sp.add_rule(
+        StepRule(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_rule(
+        PathRule(
+            subject=node0, object=node2, predicate=core.namespace.FSO.returnsFluidTo
+        )
+    )
+    sp.add_rule(
+        StepRule(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
+    )
+
+    sp.add_input("measuredValue", node2, ("secondaryTemperatureIn"))
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+def get_temperature_after_air_to_air_supply_side():
+    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
+    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
+    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
+    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
+
+    sp = SignaturePattern(id="temperature_after_air_to_air_supply_side")
+    sp.add_rule(
+        StepRule(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_rule(
+        StepRule(
+            subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
+        )
+    )
+    sp.add_rule(
+        StepRule(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
+    )
+
+    sp.add_input("measuredValue", node2, ("primaryTemperatureOut"))
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+def get_temperature_after_air_to_air_exhaust_side():
+    node0 = Node(cls=(core.namespace.SAREF.Sensor,))
+    node1 = Node(cls=(core.namespace.SAREF.Temperature,))
+    node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
+
+    node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
+
+    sp = SignaturePattern(id="temperature_after_air_to_air_exhaust_side")
+    sp.add_rule(
+        StepRule(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_rule(
+        StepRule(subject=node2, object=node0, predicate=core.namespace.FSO.returnsFluidTo)
+    )
+    sp.add_rule(
+        StepRule(subject=node2, object=node9, predicate=core.namespace.S4SYST.subSystemOf)
+    )
+
+    sp.add_input("measuredValue", node2, ("secondaryTemperatureOut"))
+    sp.add_modeled_node(node0)
+
     return sp
 
 
@@ -1014,3 +1013,67 @@ def get_brick_ahu_supply_air_temp_sensor_virtual_pattern():
     sp.add_connection(ahu, "supplyAirTemperature", "measuredValue")
     sp.add_modeled_node(sensor)
     return sp
+
+
+def _brick_ahu_flow_sensor_pattern(sensor_cls, output_port: str, sp_id: str, with_ref: bool):
+    """An AHU-level air-flow sensor: the total over the AHU's branches.
+
+    Topology::
+
+        <Supply|Return>_Air_Flow_Sensor  isPointOf             AHU
+        <Supply|Return>_Air_Flow_Sensor  hasExternalReference  <ExternalRef/BNode>   (with_ref)
+                                                                   └─ hasTimeseriesId → <uuid>
+
+    Wires ``AHU.totalSupplyAirFlowRate`` (supply) or
+    ``AHU.totalExhaustAirFlowRate`` (return) to ``measuredValue``, so the
+    AHU's own flow meters calibrate the branch flows in sum, next to the
+    per-VAV sensors (:func:`get_brick_supply_air_flow_sensor_with_ref_pattern`)
+    that calibrate them one by one.  The with-ref / virtual pair follows
+    the module-level note above.
+    """
+    sensor = Node(cls=sensor_cls)
+    ahu = Node(cls=core.namespace.BRICK.AHU)
+    sp = SignaturePattern(id=sp_id)
+    sp.add_rule(StepRule(subject=sensor, object=ahu, predicate=core.namespace.BRICK.isPointOf))
+    if with_ref:
+        externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+        timeseries_id = Node(cls=core.namespace.XSD.string)
+        sp.add_rule(
+            StepRule(subject=sensor, object=externalref, predicate=core.namespace.BRICKREF.hasExternalReference)
+        )
+        sp.add_rule(
+            StepRule(subject=externalref, object=timeseries_id, predicate=core.namespace.BRICKREF.hasTimeseriesId)
+        )
+        sp.add_parameter("uuid", timeseries_id)
+        sp.add_modeled_node(externalref)
+    sp.add_connection(ahu, output_port, "measuredValue")
+    sp.add_modeled_node(sensor)
+    return sp
+
+
+def get_brick_ahu_supply_air_flow_sensor_with_ref_pattern():
+    return _brick_ahu_flow_sensor_pattern(
+        core.namespace.BRICK.Supply_Air_Flow_Sensor, "totalSupplyAirFlowRate",
+        "brick_ahu_supply_air_flow_sensor_with_ref_pattern", with_ref=True,
+    )
+
+
+def get_brick_ahu_supply_air_flow_sensor_virtual_pattern():
+    return _brick_ahu_flow_sensor_pattern(
+        core.namespace.BRICK.Supply_Air_Flow_Sensor, "totalSupplyAirFlowRate",
+        "brick_ahu_supply_air_flow_sensor_virtual_pattern", with_ref=False,
+    )
+
+
+def get_brick_ahu_return_air_flow_sensor_with_ref_pattern():
+    return _brick_ahu_flow_sensor_pattern(
+        core.namespace.BRICK.Return_Air_Flow_Sensor, "totalExhaustAirFlowRate",
+        "brick_ahu_return_air_flow_sensor_with_ref_pattern", with_ref=True,
+    )
+
+
+def get_brick_ahu_return_air_flow_sensor_virtual_pattern():
+    return _brick_ahu_flow_sensor_pattern(
+        core.namespace.BRICK.Return_Air_Flow_Sensor, "totalExhaustAirFlowRate",
+        "brick_ahu_return_air_flow_sensor_virtual_pattern", with_ref=False,
+    )

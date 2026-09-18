@@ -61,6 +61,11 @@ def build_graph(sm):
     g.add((ahu, RDF.type, BRICK.AHU))
     _point(g, ahu, "AHU01_SAT", BRICK.Supply_Air_Temperature_Sensor)
     _point(g, ahu, "AHU01_SAT_SP", BRICK.Supply_Air_Temperature_Setpoint)
+    _point(g, ahu, "AHU01_FCI01", BRICK.Supply_Air_Flow_Sensor)  # total supply flow
+    g.add((ahu, BRICK.hasPart, EX.AHU01_SF))
+    g.add((EX.AHU01_SF, RDF.type, BRICK.Supply_Fan))
+    _point(g, EX.AHU01_SF, "AHU01_SF_SPEED", BRICK.Fan_Speed_Command)
+    _point(g, ahu, "AHU01_FCU01", BRICK.Return_Air_Flow_Sensor)  # total return flow
     g.add((ws, RDF.type, BRICK.Weather_Station))
     _point(g, ws, "WS01_TOUT", BRICK.Outside_Air_Temperature_Sensor)
     _point(g, ws, "WS01_SOLAR", BRICK.Solar_Irradiance_Sensor)
@@ -75,6 +80,7 @@ def build_graph(sm):
         g.add((vav, BRICK.feeds, room))
         _point(g, vav, f"R0{i}_VAV01_CMD", BRICK.Damper_Position_Command)
         _point(g, vav, f"R0{i}_FCI01", BRICK.Supply_Air_Flow_Sensor)
+        _point(g, vav, f"R0{i}_VAV01_POS", BRICK.Damper_Position_Sensor)
         _point(g, vav, f"R0{i}_SpFCI01_C", BRICK.Supply_Air_Flow_Setpoint)
         _point(g, room, f"R0{i}_TRU01", BRICK.Zone_Air_Temperature_Sensor)
         _point(g, room, f"R0{i}_SpTRU01", BRICK.Zone_Air_Temperature_Setpoint)
@@ -89,6 +95,7 @@ def build_graph(sm):
     g.add((vav2, BRICK.feeds, EX["R02"]))
     _point(g, vav2, "R02_VAV02_CMD", BRICK.Damper_Position_Command)
     _point(g, vav2, "R02_FCI02", BRICK.Supply_Air_Flow_Sensor)
+    _point(g, vav2, "R02_VAV02_POS", BRICK.Damper_Position_Sensor)
     _point(g, vav2, "R02_SpFCI02_C", BRICK.Supply_Air_Flow_Setpoint)
     # ``isPointOf`` is only materialised by the reasoner from ``hasPoint``
     # (owl:inverseOf) -- the patterns rely on that, as for real graphs.
@@ -172,6 +179,16 @@ class TestBrick14BmsPatterns(unittest.TestCase):
             self.assertEqual(incoming(sensors[f"R0{i}_CO201"], "measuredValue"), [rooms[f"R0{i}"]])
             self.assertEqual(incoming(sensors[f"R0{i}_FCI01"], "measuredValue"), [ahu])
         self.assertEqual(incoming(sensors["AHU01_SAT"], "measuredValue"), [ahu])
+        # The supply fan's speed command gates the branch flows.
+        self.assertEqual([c.uuid for c in incoming(ahu, "supplyFanSpeed")], ["AHU01_SF_SPEED"])
+        self.assertEqual(incoming(ahu, "exhaustFanSpeed"), [])  # no return fan in the graph
+        # The AHU's own flow meters read the totals over the branches.
+        for uuid, port in (("AHU01_FCI01", "totalSupplyAirFlowRate"), ("AHU01_FCU01", "totalExhaustAirFlowRate")):
+            self.assertEqual(incoming(sensors[uuid], "measuredValue"), [ahu])
+            self.assertEqual(
+                {conn.output_port for cp in sensors[uuid].connects_at for conn in cp.connects_system_through},
+                {port},
+            )
 
         # One PI-CITS per VAV, with the loop variables taken from the room:
         # zone temperature sensor -> sensorValue, zone temperature setpoints
