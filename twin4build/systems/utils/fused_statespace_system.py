@@ -635,6 +635,19 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         # column for it, and the zone itself sums the branches.  The members'
         # input transforms (a zone's balanced make-up flow) see those totals.
         n_lead = x.dim() - 1
+        # An OPTIONAL member input with no producer (a zone's make-up-air
+        # port without a transfer node) still owns a joint-u column, but the
+        # caller only passes connected inputs.  Its coefficients are zero in
+        # that case (the member routes the term to its default slot), so a
+        # zero column stands in.  A missing required input is an error.
+        missing = [name for name in self._ext_names if name not in inputs]
+        if missing:
+            required = [name for name in missing if not self._input[name].optional]
+            if required:
+                raise KeyError(f"fused cluster {self.id}: missing input(s) {required}")
+            ref = next(v for v in inputs.values() if v.dim() == n_lead)
+            inputs = dict(inputs)
+            inputs.update({name: torch.zeros_like(ref) for name in missing})
         summed = {
             name: (inputs[name].sum(dim=-1) if inputs[name].dim() > n_lead else inputs[name])
             for name in self._ext_names
