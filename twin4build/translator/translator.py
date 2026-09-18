@@ -682,7 +682,8 @@ class Translator:
                                         )
                                     )
                                     LOGGER.remove_level()
-                                    complete_matches.append(mapping)
+                                    if Translator._is_injective(mapping, signature_pattern):
+                                        complete_matches.append(mapping)
                                 else:
                                     if _diag_p1:
                                         _match_diag_write(
@@ -2830,6 +2831,28 @@ class Translator:
         return True
 
     @staticmethod
+    def _is_injective(mapping, signature_pattern) -> bool:
+        """A match binds each graph node to at most one scalar pattern node.
+
+        Two scalar pattern nodes standing for the same graph node is a
+        homomorphism, not a subgraph match: a pattern with two air handler
+        nodes would otherwise match a single unit twice over.  Only the
+        pattern's own nodes count: path intermediates may legitimately
+        coincide with a named node, and set-bound tuples are the set, not
+        a node the pattern names."""
+        named = set(signature_pattern.nodes)
+        seen = {}
+        for sp_node, sm_node in mapping.items():
+            if sp_node not in named or sm_node is None or isinstance(sm_node, (tuple, list)):
+                continue
+            if isinstance(sp_node, ModeledNode):
+                continue
+            owner = seen.setdefault(sm_node, sp_node)
+            if owner is not sp_node:
+                return False
+        return True
+
+    @staticmethod
     def _others(forbidden, rule, direction, signature_pattern, candidate_maps):
         """The neighbours a stand-alone ``NoStepRule`` really forbids.
 
@@ -4694,6 +4717,8 @@ class Translator:
             filtered_group = Translator._filter_set_bound_tuples(
                 merged_group, signature_pattern
             )
+            if filtered_group is not None and not Translator._is_injective(filtered_group, signature_pattern):
+                filtered_group = None
             if filtered_group is None:
                 if _diag:
                     _match_diag_write(
