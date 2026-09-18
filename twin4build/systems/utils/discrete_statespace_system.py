@@ -124,14 +124,28 @@ def _functorch_active() -> bool:
         return True
 
 
-def _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
-    """Effective-matrix ZOH discretization: ``(Ad, Bd)`` for the current ``u``."""
+def effective_matrices(A, B, E, F, u):
+    """``(A_eff, B_eff)``: the bilinear matrices evaluated at the current ``u``.
+
+    The first step of :func:`_discretize_onestep`, factored out so that a
+    caller which only needs *part* of the discretization can form the same
+    matrices rather than re-deriving them (see
+    :meth:`~twin4build.systems.utils.occupancy_system.OccupancySystem.invert_zoh_occupancy`,
+    which drops ``B_eff``'s structurally zero input columns before
+    exponentiating).
+    """
     # Broadcast-friendly bilinear terms (einsum would require the batch dims of
     # E/F and u to match exactly; the fast single-shooting rollout batches u
     # over periods while the matrices keep their (n_c=1, ...) leading dim).
     u_b = u.unsqueeze(-1).unsqueeze(-1)  # (..., m, 1, 1)
     A_eff = A if E is None else A + (E * u_b).sum(dim=-3)
     B_eff = B if F is None else B + (F * u_b).sum(dim=-3)
+    return A_eff, B_eff
+
+
+def _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
+    """Effective-matrix ZOH discretization: ``(Ad, Bd)`` for the current ``u``."""
+    A_eff, B_eff = effective_matrices(A, B, E, F, u)
 
     n = A.shape[-1]
     m = B.shape[-1]

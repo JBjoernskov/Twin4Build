@@ -231,6 +231,9 @@ class BuildingSpaceSystem(core.System, nn.Module):
 
             self.thermal.n_walls = n_walls
             self.thermal.n_boundary_temperature = n_boundary_temperature
+            # Openings to other zones (the mass zone's ``wallHeatGain``).
+            cps = [cp for cp in self.connects_at if cp.input_port == "exchangeCO2Gain"]
+            self.mass.n_exchanges = len(cps[0].connects_system_through) if cps else 0
 
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
@@ -295,8 +298,8 @@ class BuildingSpaceSystem(core.System, nn.Module):
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): delegated to the
     #: thermal submodel, which owns the wall coupling.
-    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain"})
-    FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeCO2Gain"})
+    FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature", "indoorCO2"})
 
     def _ss_units(self):
         """State-space leaf units in state order (``thermal`` then ``mass`` --

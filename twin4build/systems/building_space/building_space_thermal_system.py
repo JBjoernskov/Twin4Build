@@ -318,6 +318,10 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             "globalIrradiation": tps.Scalar(),  # Solar radiation [W/m²]
             "numberOfPeople": tps.Scalar(),  # Number of occupants
             "heatGain": tps.Scalar(),  # Space heater heat input [W]
+            # Temperature of the make-up air the exhaust deficit draws in.
+            # Unwired: outdoor air (the classic balance).  Wired from a
+            # transfer node: the corridor's temperature.
+            "makeUpAirTemperature": tps.Scalar(0.0, optional=True),
             "boundaryTemperature": tps.Scalar(
                 21, optional=True
             ),  # Boundary temperature [°C], optional (deprecated: use WallSystem)
@@ -348,6 +352,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         }
 
         self._config = {"parameters": list(self.parameter.keys())}
+        self._make_up_wired = False
         self.INITIALIZED = False
         self._n_walls = 0
         self._n_boundary_temperature = 0
@@ -404,6 +409,11 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             self.n_c = self._n_c_batched
         else:
             self.n_c = 1
+        # Structural: does a producer feed makeUpAirTemperature?  Fixed per model.
+        self._make_up_wired = any(
+            cp.input_port == "makeUpAirTemperature" and len(cp.connects_system_through) > 0
+            for cp in self.connects_at
+        )
 
         self.setup_variable_inputs()
         self.input["wallHeatGain"].initialize(
@@ -567,6 +577,11 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
     FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain"})
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
 
+    #: Base slot of ``makeUpAirTemperature`` in ``u`` (after ``heatGain``).
+    MAKE_UP_TEMPERATURE_SLOT = 7
+    #: Slot of ``boundaryTemperature`` when present (after the base slots).
+    BOUNDARY_SLOT = 8
+
     def _ss_layout(self):
         """Port <-> matrix index map, mirroring :meth:`forward` exactly.
 
@@ -585,6 +600,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             ("globalIrradiation", 1),
             ("numberOfPeople", 1),
             ("heatGain", 1),
+            ("makeUpAirTemperature", 1),
         ]
         if self.n_boundary_temperature == 1:
             u.append(("boundaryTemperature", 1))
@@ -603,7 +619,9 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         return {
             "D": frozenset(),
             "E": frozenset({(1, 0, 0), (2, 0, 0)}),
-            "F": frozenset({(1, 0, 3), (2, 0, 0)}),
+            # Superset: the make-up stream brings heat at slot 0 (outdoor) or
+            # at the makeUpAirTemperature slot (a wired transfer node).
+            "F": frozenset({(1, 0, 3), (2, 0, 0), (2, 0, self.MAKE_UP_TEMPERATURE_SLOT)}),
         }
 
     #: Input ports whose values :meth:`_ss_transform_inputs` reads.
@@ -689,6 +707,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
                 dim=1,
             )
 
+        # Base slots: [T_out, m_sup, m_mu, T_sup, irradiation, N, Q_heat, T_mu]
         air_inputs = [
             zero,
             zero,
@@ -697,6 +716,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             f_air / C_air,
             Q_occ_gain / C_air,
             1 / C_air,
+            zero,
         ]
         wall_inputs = [
             wall_outdoor,
@@ -704,6 +724,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             zero,
             zero,
             f_wall / C_wall,
+            zero,
             zero,
             zero,
         ]
@@ -718,7 +739,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         ]
         if self.n_boundary_temperature == 1:
             boundary_inputs = [zero] * n_inputs
-            boundary_inputs[7] = boundary_air
+            boundary_inputs[self.BOUNDARY_SLOT] = boundary_air
             b_rows.append(torch.stack(boundary_inputs, dim=-1))
         B = torch.stack(b_rows, dim=1)
 
@@ -745,6 +766,11 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         u_supply_flow = input_basis[1]
         u_make_up_flow = input_basis[2]
         u_supply_temperature = input_basis[3]
+        # The make-up stream's temperature: outdoor unless a transfer node
+        # feeds makeUpAirTemperature (structural, fixed at initialize).
+        u_make_up_temperature = (
+            input_basis[self.MAKE_UP_TEMPERATURE_SLOT] if self._make_up_wired else u_outdoor_temperature
+        )
         state_air = state_basis[0]
         gain = (constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
 
@@ -761,7 +787,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             u_supply_flow.reshape(1, n_inputs, 1, 1)
             * u_supply_temperature.reshape(1, 1, 1, n_inputs)
             + u_make_up_flow.reshape(1, n_inputs, 1, 1)
-            * u_outdoor_temperature.reshape(1, 1, 1, n_inputs)
+            * u_make_up_temperature.reshape(1, 1, 1, n_inputs)
         )
 
         return A, B, C_out, D, E, F
@@ -847,6 +873,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
                 "globalIrradiation",
                 "numberOfPeople",
                 "heatGain",
+                "makeUpAirTemperature",
             )
         }
         if self.n_boundary_temperature == 1:
@@ -910,6 +937,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             inputs["globalIrradiation"],
             inputs["numberOfPeople"],
             inputs["heatGain"],
+            inputs.get("makeUpAirTemperature", inputs["outdoorTemperature"]),
         ]
         if self.n_boundary_temperature == 1:
             cols.append(inputs["boundaryTemperature"])
