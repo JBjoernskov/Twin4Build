@@ -2618,6 +2618,9 @@ class Translator:
 
         self._sim2group_map = new_sim2group_map
 
+        # Two readings of one match (a ring's two units in either order)
+        # yield the same connections twice; the model takes each once.
+        added_connections = set()
         for conn in connections:
             (
                 source,
@@ -2627,6 +2630,13 @@ class Translator:
                 output_port_index,
                 input_port_index,
             ) = conn
+            key = (
+                source.id, target.id, source_key, target_key,
+                Translator._index_key(output_port_index), Translator._index_key(input_port_index),
+            )
+            if key in added_connections:
+                continue
+            added_connections.add(key)
             conn_str = f"({source.__class__.__name__}){source.id}.{source_key}[{output_port_index}] -> ({target.__class__.__name__}){target.id}.{target_key}[{input_port_index}]"
             LOGGER.info("Adding connection: %s", conn_str)
 
@@ -2880,6 +2890,16 @@ class Translator:
             if mapping.get(other) is sm_node:
                 return True
         return False
+
+    @staticmethod
+    def _index_key(index):
+        """A hashable form of a port index (None, int, or a tensor/array)."""
+        if index is None or isinstance(index, int):
+            return index
+        try:
+            return tuple(int(i) for i in torch.as_tensor(index).reshape(-1).tolist())
+        except Exception:  # noqa: BLE001 - leave exotic indices unhashed
+            return repr(index)
 
     @staticmethod
     def _is_injective(mapping, signature_pattern) -> bool:
