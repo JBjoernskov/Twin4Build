@@ -116,3 +116,11 @@ twin4build.systems.utils.time\_series\_input\_system module
    :show-inheritance:
    :undoc-members:
 
+twin4build.systems.utils.weighted\_sum\_system module
+-----------------------------------------------------
+
+.. automodule:: twin4build.systems.utils.weighted_sum_system
+   :members:
+   :show-inheritance:
+   :undoc-members:
+

@@ -14,6 +14,7 @@ from dateutil import tz
 import twin4build
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.systems.utils.max_system import MaxSystem
+from twin4build.systems.utils.weighted_sum_system import WeightedSumSystem
 from twin4build.systems.utils.on_off_system import OnOffSystem
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
@@ -147,6 +148,48 @@ class TestMaxSystem(unittest.TestCase):
         output = self.system.output["value"].get()
         self.assertIsNotNone(output)
         self.assertEqual(output.item(), 5.0)
+
+
+class TestWeightedSumSystem(unittest.TestCase):
+    def _step(self, system, values):
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
+        system.input["inputs"].initialize(n_t=1, n_s=1, n_v=len(values))
+        system.initialize(start_time=start_time, end_time=end_time, step_size=[600])
+        system.input["inputs"].set(torch.tensor([values]), i_t=0)
+        system.do_step(second_time=0, date_time=start_time[0], step_size=600, step_index=0)
+        return system.output["value"].get().item()
+
+    def test_plain_sum_without_weights(self):
+        self.assertAlmostEqual(self._step(WeightedSumSystem(id="sum"), [1.0, 5.0, 3.0]), 9.0)
+
+    def test_weighted_sum(self):
+        system = WeightedSumSystem(weights=[0.5, 0.25, 0.25], id="mean")
+        self.assertAlmostEqual(self._step(system, [1.0, 5.0, 3.0]), 2.5)
+
+    def test_one_weight_round_trips_as_a_scalar(self):
+        """A saved one-slot weight list comes back as a scalar literal."""
+        system = WeightedSumSystem(weights=2.0, id="single")
+        self.assertEqual(system.weights, [2.0])
+        self.assertAlmostEqual(self._step(system, [4.0]), 8.0)
+
+    def test_weight_count_must_match_the_slots(self):
+        system = WeightedSumSystem(weights=[1.0, 2.0], id="mismatch")
+        with self.assertRaises(ValueError):
+            self._step(system, [1.0, 2.0, 3.0])
+
+    def test_forward_keeps_batch_dims(self):
+        system = WeightedSumSystem(weights=[1.0, 2.0], id="batched")
+        system.input["inputs"].initialize(n_t=1, n_s=1, n_v=2)
+        system.initialize(
+            start_time=[datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)],
+            end_time=[datetime.datetime(2023, 1, 1, 1, tzinfo=tz.UTC)],
+            step_size=[600],
+        )
+        vals = torch.tensor([[[1.0, 1.0], [2.0, 3.0]]], dtype=torch.float64)  # (n_s=1, n_c=2, n_v=2)
+        _, outs = system.forward(None, {"inputs": vals}, {}, 600)
+        self.assertEqual(tuple(outs["value"].shape), (1, 2))
+        self.assertEqual(outs["value"].tolist(), [[3.0, 8.0]])
 
 
 class TestOnOffSystem(unittest.TestCase):
