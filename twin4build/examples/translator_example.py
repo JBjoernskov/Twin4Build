@@ -161,9 +161,10 @@ LOGGER.hide_status("debug")
 # Patterns are user-defined.  There is no pattern to rule them all: how a
 # building is described differs per ontology, per BMS vendor and per site,
 # so a deployment writes the patterns that fit *its* graphs and passes them
-# to the translator explicitly.  ``twin4build.patterns`` is the public
-# example set.  Two of its patterns are spelled out here to show the idea;
-# the rest are imported below.
+# to the translator explicitly.  ``twin4build.examples.patterns`` is the
+# public example set, and it is deliberately minimal: exactly the patterns
+# this one-room example needs.  Two of them are spelled out here to show
+# the idea; the rest are imported below.
 # ---------------------------------------------------------------------------
 
 

@@ -223,6 +223,18 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- `twin4build.examples.patterns` is trimmed to the patterns the library's
+  own translator example matches on its one-room model (16 patterns: the
+  SAREF-shaped zone, outdoor environment, PID controller, schedule, damper,
+  space heater and valve patterns and the example's sensor patterns).  The
+  Brick/BMS-shaped patterns (VAV zones, damper commands, room-attached
+  sensors, AHU flow meters, radiator loops, identified PI loops, room-CO2
+  occupancy, fan-coil units, flow junctions, on/off controllers, air-to-air
+  heat recovery) and their tests are gone from the library: patterns are a
+  deployment's own, written next to the graphs they describe and passed to
+  `Translator.translate(patterns=...)`.  The SAREF valve pattern now has an
+  explicit id (`valve_signature_pattern`).
+
 - The block trust-region step (`("custom", "batched-tr", "ad")`, on `dev`
   since September) and the batched trust-region Pareto route left the
   library; a solver of that shape now plugs in through
