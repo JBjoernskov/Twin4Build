@@ -37,6 +37,18 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- `AirHandlingUnitSystem`: optional `supplyFanSpeed` input gating the branch
+  flows (a stopped fan moves no air whatever the dampers say);
+  `totalSupplyAirFlowRate` / `totalExhaustAirFlowRate` outputs for the
+  AHU-level flow meters; `exhaust_ratio_per_branch=True` gives
+  `exhaustFlowRatio` one entry per branch (sized at `initialize`, like the
+  other per-branch parameters) instead of one per AHU.
+- `DamperSystem.set_c(...)` unties the damper characteristic's offset `c`
+  from `a` so a minimum flow at a closed damper is an estimable parameter;
+  the AHU lists a supply damper's untied `c` among its estimable parameters
+  and the offset survives serialization.
+- `FanSystem`: the temperature rise across the fan is bounded.
+
 - Make-up air on the zones: `BuildingSpaceMassSystem` takes `makeUpAirCO2`
   and `BuildingSpaceThermalSystem` `makeUpAirTemperature` for the air that
   replaces an exhaust surplus (default: outdoor), and `exchangeCO2Gain`

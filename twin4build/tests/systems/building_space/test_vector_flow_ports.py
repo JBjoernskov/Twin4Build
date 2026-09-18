@@ -9,6 +9,7 @@ single connection with tensor slot indices, which both engines route.
 
 # Standard library imports
 import datetime
+import os
 import unittest
 
 # Third party imports
@@ -104,6 +105,49 @@ class TestVectorFlowPorts(unittest.TestCase):
         tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
         self.assertEqual(zones["B"].input["supplyAirFlowRate"].n_v, 2)
         self.assertEqual(ahu._branch_room_index.tolist(), [0, 1, 1])
+
+    def test_fan_speed_gates_the_branch_flows(self):
+        model, ahu, zones = build_model("vector_flow_ports_fan_gate")
+        tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
+        ungated = ahu.output["supplyAirFlowRate"]._history.detach().clone()
+        self.assertGreater(float(ungated.mean()), 0.0)
+        # Fan stopped: no branch moves air, whatever the dampers say.
+        model.add_connection(_schedule("fan_off", 0.0), ahu, "scheduleValue", "supplyFanSpeed")
+        model.load()
+        for mode in ("object", "functional"):
+            tb.Simulator(model, execution_mode=mode).simulate(**self._kwargs())
+            torch.testing.assert_close(
+                ahu.output["supplyAirFlowRate"]._history, torch.zeros_like(ungated), msg=mode
+            )
+
+    def test_untied_damper_offset_survives_serialization(self):
+        """An AHU whose branch dampers keep a minimum flow (``set_c``)
+        reloads from its TTL with ``c`` free and the same flows, in both
+        engines."""
+        import shutil
+
+        model, ahu, zones = build_model("vector_flow_ports_offset")
+        ahu.supply_damper.set_c(0.02 - float(ahu.supply_damper.a.get().reshape(-1)[0]))
+        model.load()
+        tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
+        reference = ahu.output["supplyAirFlowRate"]._history.detach().clone()
+        self.assertGreater(float(reference.min()), 0.0)  # closed branches still pass the minimum
+        self.assertIn("supply_damper.c", [e[1] for e in ahu.get_estimable_parameters()])
+        self.assertNotIn("exhaust_damper.c", [e[1] for e in ahu.get_estimable_parameters()])
+        model.serialize()
+        path, _ = model._simulation_model._semantic_model.get_dir(filename="instance_graph.ttl")
+        try:
+            reloaded = tb.Model(id="vector_flow_ports_offset_reloaded")
+            reloaded.load(filename=path)
+            ahu2 = reloaded.components["ahu"]
+            self.assertFalse(ahu2.supply_damper.c_tied)
+            self.assertTrue(ahu2.exhaust_damper.c_tied)
+            for mode in ("object", "functional"):
+                tb.Simulator(reloaded, execution_mode=mode).simulate(**self._kwargs())
+                torch.testing.assert_close(ahu2.output["supplyAirFlowRate"]._history, reference, msg=mode)
+        finally:
+            for mid in ("vector_flow_ports_offset", "vector_flow_ports_offset_reloaded"):
+                shutil.rmtree(os.path.join("generated_files", "models", mid), ignore_errors=True)
 
     def test_zone_sums_its_branches_and_engines_agree(self):
         model, ahu, zones = build_model("vector_flow_ports_parity")

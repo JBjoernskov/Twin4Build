@@ -120,29 +120,33 @@ class TestOccupancyFollowsSupply(unittest.TestCase):
         return occ
 
     def _people(self, occ, ratio_param=None):
+        def t(v):
+            return torch.tensor([float(v)], dtype=torch.float64)
+
         params = {
-            "mass.V": torch.tensor([100.0]), "mass.G_occ": torch.tensor([5e-6]),
-            "mass.m_inf": torch.tensor([0.001]),
-            "supply_damper.a": torch.tensor([1.0]), "supply_damper.nominalAirFlowRate": torch.tensor([0.5]),
-            "exhaust_damper.a": torch.tensor([1.0]), "exhaust_damper.nominalAirFlowRate": torch.tensor([0.2]),
+            "mass.V": t(100.0), "mass.G_occ": t(5e-6),
+            "mass.m_inf": t(0.001),
+            "supply_damper.a": t(1.0), "supply_damper.nominalAirFlowRate": t(0.5),
+            "exhaust_damper.a": t(1.0), "exhaust_damper.nominalAirFlowRate": t(0.2),
         }
         if ratio_param is not None:
-            params["exhaustFlowRatio"] = torch.tensor([ratio_param])
+            params["exhaustFlowRatio"] = t(ratio_param)
         inputs = {
-            "indoorCo2Measured": torch.tensor([900.0]),
-            "previousIndoorCo2Measured": torch.tensor([880.0]),
-            "damperPositionMeasured": torch.tensor([1.0]),
-            "outdoorCo2Concentration": torch.tensor([400.0]),
+            "indoorCo2Measured": t(900.0),
+            "previousIndoorCo2Measured": t(880.0),
+            "damperPositionMeasured": t(1.0),
+            "outdoorCo2Concentration": t(400.0),
         }
         _, out = occ.forward(None, inputs, params, 600.0)
         return float(out["scheduleValue"])
 
     def test_ratio_changes_the_booked_people(self):
-        n_damper = self._people(self._occ(False))
-        n_ratio = self._people(self._occ(True))
-        self.assertNotAlmostEqual(n_damper, n_ratio)
-        # a param override wins over the constructor value
-        self.assertNotAlmostEqual(self._people(self._occ(True), ratio_param=0.5), n_ratio)
+        n_surplus = self._people(self._occ(True))
+        n_deficit = self._people(self._occ(True), ratio_param=1.2)
+        # Make-up flow is max(m_exh - m_sup, 0): a ratio below 1 does not
+        # change m_tot, a ratio above 1 does.
+        self.assertNotAlmostEqual(n_surplus, n_deficit)
+        self.assertAlmostEqual(n_surplus, self._people(self._occ(False)), places=5)
 
     def test_estimable_parameters_follow_the_mode(self):
         attrs_on = {attr for _, attr, *_ in self._occ(True).get_estimable_parameters()}

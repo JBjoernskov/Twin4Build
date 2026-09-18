@@ -239,6 +239,9 @@ class FanSystem(core.System, nn.Module):
         "f_total",
     )
 
+    #: Bound on the fan's air-temperature rise [K], see ``forward``.
+    MAX_DELTA_T = 30.0
+
     def forward(self, x, inputs, params, sample_time):
         """Pure one-step fan model (functorch-safe, stateless).
 
@@ -272,6 +275,10 @@ class FanSystem(core.System, nn.Module):
             / (torch.clamp(m_dot, min=tol) * constants.CP_AIR),
             torch.zeros_like(m_dot),
         )
+        # A trickle of air (the fan running against closed dampers) would
+        # otherwise take the whole fan power and leave at thousands of
+        # degrees; no fan heats its air stream by more than a few tens of K.
+        delta_T = torch.clamp(delta_T, -self.MAX_DELTA_T, self.MAX_DELTA_T)
         outlet_temp = inlet_temp + delta_T
         return x, {"outletAirTemperature": outlet_temp, "Power": power}
 
