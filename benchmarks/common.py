@@ -133,11 +133,6 @@ ESTIMATION_MATRIX = [
     ("cuda", "slsqp-single-shooting", 1),
     ("cuda", "custom-batched-sqp", 1),
     ("cuda", "custom-batched-sqp", 8),
-    # Block trust region (issue #142): same starts, per-zone blocks from the
-    # model structure, per-block acceptance/radius; kept alongside the batched
-    # SQP rows so its line-search failures at 50/100 zones stay as the reference.
-    ("cuda", "custom-batched-tr", 1),
-    ("cuda", "custom-batched-tr", 8),
     ("cuda", "ipopt-collocation", 1),
     # "slsqp5-ipopt-collocation" (5 SLSQP iterations, then collocation) was
     # dropped from the matrix: it was a workaround for the +/-6 boundary-state
@@ -162,14 +157,11 @@ RESULTS_TAG_ENV = "T4B_BENCHMARK_RESULTS_TAG"
 def _tagged(benchmark: str) -> str:
     tag = os.environ.get(RESULTS_TAG_ENV, "").strip()
     return f"{benchmark}_{tag}" if tag else benchmark
-BATCHED_TR_RADIUS = 0.25
-
 ESTIMATION_METHODS = {
     "slsqp-single-shooting": ("scipy", "SLSQP", "ad"),
     "ipopt-collocation": ("casadi", "ipopt", "ad", "collocation"),
     "slsqp5-ipopt-collocation": ("staged", "slsqp5-ipopt-collocation", "ad"),
     "custom-batched-sqp": ("custom", "batched-sqp", "ad"),
-    "custom-batched-tr": ("custom", "batched-tr", "ad"),
 }
 COLLOCATION_SOLVERS = frozenset(
     {"ipopt-collocation", "slsqp5-ipopt-collocation"}
@@ -180,16 +172,14 @@ ESTIMATION_BENCHMARK_IMPLEMENTATION_REVISION = 3
 OPTIMIZATION_MATRIX = [(device, "SLSQP") for device in DEVICES]
 # SLSQP is not run: on this problem it stops on SciPy's default absolute
 # ftol after one poor step (the same spurious stop the estimation matrix
-# showed), so its front recorded where it gave up.  "batched-tr" solves every
-# epsilon-subproblem at once on the device (issue #142 step, no host solver).
-PARETO_SOLVERS = ("ipopt", "batched-tr")
+# showed), so its front recorded where it gave up.
+PARETO_SOLVERS = ("ipopt",)
 # Bumped whenever a Pareto row's meaning changes, so resume drops stale rows.
 # 1: cost vs discomfort (Kelvin-hours) objectives, mandatory compiled step.
 PARETO_BENCHMARK_IMPLEMENTATION_REVISION = 1
 PARETO_METHODS = {
     "SLSQP": ("scipy", "SLSQP", "ad"),
     "ipopt": ("casadi", "ipopt", "ad", "collocation"),
-    "batched-tr": ("custom", "batched-tr", "ad"),
 }
 _TRANSLATED_TEMPLATE_DIRECTORIES: list[tempfile.TemporaryDirectory] = []
 ESTIMATION_SOLVER_BUDGET = 300
@@ -1980,11 +1970,6 @@ def _run_estimation(
                 [zone + group * n_zones for group in range(CANONICAL_THETA_PER_ZONE)]
                 for zone in range(n_zones)
             ]
-        elif method[1] == "batched-tr":
-            # Validated configuration (issue #142, 10 zones: noise-floor RMSE in
-            # a single smooth stage): initial scaled radius a quarter of the
-            # normalized range.  Blocks come from the wiring (tr_blocks="auto").
-            options["tr_radius"] = BATCHED_TR_RADIUS
     result, seconds = timed(
         device,
         lambda: estimator.estimate(
@@ -2103,13 +2088,11 @@ def _estimation_case_base(
         if solver in COLLOCATION_SOLVERS
         else {}
     )
-    if solver in ("custom-batched-sqp", "custom-batched-tr"):
+    if solver == "custom-batched-sqp":
         solver_variant = f"{n_starts}-start"
         budget_basis = (
             "run to native convergence with maxiter=300; fixed across scaling sizes"
         )
-        if solver == "custom-batched-tr":
-            budget_basis += f"; single smooth stage, tr_radius={BATCHED_TR_RADIUS}"
     elif solver == "slsqp5-ipopt-collocation":
         solver_variant = "slsqp5-then-collocation"
         budget_basis = (
@@ -2782,15 +2765,7 @@ def batched_pareto_problem(
 
 
 def _pareto_solver_options(config: BenchmarkConfig, solver: str) -> dict[str, Any]:
-    """Solver options per Pareto arm.
-
-    The batched trust region takes the trust-region options and rejects the
-    host-solver ones, so each arm is given exactly what it understands rather
-    than a union that one of them would silently ignore.  The radius is the
-    one validated on the estimation matrix (issue #142).
-    """
-    if solver == "batched-tr":
-        return {"maxiter": config.pareto_maxiter, "tr_radius": BATCHED_TR_RADIUS}
+    """Solver options per Pareto arm."""
     return {
         "maxiter": config.pareto_maxiter,
         "ftol": 1e-9,

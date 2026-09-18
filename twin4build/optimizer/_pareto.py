@@ -72,7 +72,7 @@ from twin4build.optimizer._pareto_common import (
     batched_prepass,
 )
 from twin4build.utils._cuda_graph import CudaGraphCallable
-from twin4build.optimizer import _pareto_trust_region as _tr
+from twin4build.solvers.registry import find_pareto_route
 from twin4build.utils.logger import LOGGER
 
 
@@ -406,7 +406,7 @@ def pareto_front(
     ``_objectives = [objective1, objective2]``, constraints, periods) --
     :meth:`Optimizer.pareto_front` does that before delegating here.
     """
-    use_batched_tr = tuple(method) == _tr.BATCHED_TR_METHOD
+    route = find_pareto_route(method)
     if tuple(method) == ("casadi", "ipopt", "ad", "collocation"):
         return pareto_front_collocation(
             opt,
@@ -446,11 +446,11 @@ def pareto_front(
     labels = tuple(f"{c.id}.{p} ({t})" for c, p, t in opt._objectives)
 
     # -- anchors (lexicographic payoff table) ---------------------------------
-    if use_batched_tr:
-        # Both anchors are one two-row batched solve; their values are read
+    if route is not None:
+        # A plug-in route solves both anchors at once; their values are read
         # back through the same _EpsSubproblem the host routes use, so the
         # payoff table is computed identically.
-        anchor_x, anchor_audit = _tr.anchors(opt, x0, bounds_obj, delta, solver_options)
+        anchor_x, anchor_audit = route.anchors(opt, x0, bounds_obj, delta, solver_options)
         anchor_values = []
         for index in (0, 1):
             anchor_sub = _EpsSubproblem(
@@ -531,10 +531,10 @@ def pareto_front(
         )
         sub.set_normalization(ideal2, nadir2)
 
-        if use_batched_tr:
-            # No prepass and no host polish: the batched second-order solve
-            # over all epsilon rows IS the sweep.
-            sweep_x, sweep_audit = _tr.sweep(
+        if route is not None:
+            # No prepass and no host polish: the plug-in route's sweep over
+            # all epsilon rows IS the sweep.
+            sweep_x, sweep_audit = route.sweep(
                 opt,
                 eps_grid,
                 x_a1,

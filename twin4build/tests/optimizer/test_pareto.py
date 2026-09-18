@@ -636,45 +636,60 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
             "weakly Pareto-optimal endpoint is back",
         )
 
-    def test_energy_vs_discomfort_front_batched_trust_region(self):
-        """The batched block trust-region route solves every epsilon-subproblem
-        at once on the device: no host solver, no projected-Adam prepass."""
-        optimizer = tb.Optimizer(tb.Simulator(self.model, execution_mode="functional"))
-        res = optimizer.pareto_front(
-            start_time=self.start,
-            end_time=self.end,
-            step_size=2400,
-            variables=[(self.waterflow, "scheduleValue", 0.0, self.mf)],
-            objective1=(self.heater, "Power", "min"),
-            objective2=(self.discomfort, "output", "min"),
-            n_points=4,
-            method=("custom", "batched-tr", "ad"),
-            options={"maxiter": 30, "tr_radius": 0.25},
+    def test_registered_route_replaces_anchors_and_sweep(self):
+        """A route registered on the optimizer solves both stages: the
+        payoff table is read back from its anchors and every epsilon row
+        from its sweep, with no host solver involved."""
+        from twin4build.solvers.registry import (
+            register_pareto_route,
+            unregister_pareto_route,
         )
 
-        # One point per epsilon value, every one inside the normalized box the
-        # solver works in (decision outputs carry do_normalization = True).
+        calls = []
+
+        class _Route:
+            method = ("plugin", "identity", "ad")
+
+            def anchors(self, opt, x0, bounds, delta, options):
+                calls.append(("anchors", dict(options)))
+                x0 = np.asarray(x0, dtype=np.float64)
+                lo, hi = np.asarray(bounds.lb), np.asarray(bounds.ub)
+                return np.stack([lo, hi]), [{"success": True, "nit": 1}] * 2
+
+            def sweep(self, opt, eps_grid, x_a1, x_a2, ideal2, range2, delta, bounds, mu=None, options=None):
+                calls.append(("sweep", dict(options or {})))
+                t = np.linspace(0.0, 1.0, len(eps_grid))[:, None]
+                X = (1.0 - t) * x_a1[None, :] + t * x_a2[None, :]
+                return X, [{"success": True, "nit": 1}] * len(eps_grid)
+
+        register_pareto_route(_Route())
+        try:
+            optimizer = tb.Optimizer(tb.Simulator(self.model, execution_mode="functional"))
+            res = optimizer.pareto_front(
+                start_time=self.start,
+                end_time=self.end,
+                step_size=2400,
+                variables=[(self.waterflow, "scheduleValue", 0.0, self.mf)],
+                objective1=(self.heater, "Power", "min"),
+                objective2=(self.discomfort, "output", "min"),
+                n_points=4,
+                method=_Route.method,
+                options={"maxiter": 3},
+            )
+        finally:
+            unregister_pareto_route(_Route.method)
+        self.assertEqual([c[0] for c in calls], ["anchors", "sweep"])
+        self.assertEqual(calls[1][1], {"maxiter": 3})
         self.assertEqual(len(res.f1), 4)
         self.assertEqual(res.theta.shape[0], 4)
-        self.assertTrue(np.all(res.theta >= -1e-9))
-        self.assertTrue(np.all(res.theta <= 1.0 + 1e-9))
+        # the route's rows are what the front reports: a straight line from
+        # the lower to the upper bound in normalized coordinates
+        np.testing.assert_allclose(res.theta[0], 0.0, atol=1e-9)
+        np.testing.assert_allclose(res.theta[-1], 1.0, atol=1e-9)
 
-        # Discomfort is a nonnegative residual, and buying comfort costs power:
-        # the front spans a real range in both objectives instead of collapsing.
-        self.assertTrue(np.all(res.f2 >= -1e-9))
-        self.assertGreater(res.f1.max() - res.f1.min(), 0.0)
-        self.assertGreater(res.f2.max() - res.f2.min(), 0.0)
-        self.assertGreater(int(res.pareto_mask.sum()), 1)
-
-        # Monotone trade-off across the epsilon grid: tightening the discomfort
-        # bound buys comfort with power, point by point.
-        self.assertTrue(np.all(np.diff(res.f1) > 0.0))
-        self.assertTrue(np.all(np.diff(res.f2) < 0.0))
-
-    def test_batched_trust_region_rejects_host_solver_options(self):
-        """A SciPy/IPOPT-only option must fail loudly rather than be ignored."""
+    def test_unregistered_method_is_rejected(self):
         optimizer = tb.Optimizer(tb.Simulator(self.model, execution_mode="functional"))
-        with self.assertRaises(TypeError):
+        with self.assertRaises(ValueError):
             optimizer.pareto_front(
                 start_time=self.start,
                 end_time=self.end,
@@ -683,10 +698,8 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
                 objective1=(self.heater, "Power", "min"),
                 objective2=(self.discomfort, "output", "min"),
                 n_points=3,
-                method=("custom", "batched-tr", "ad"),
-                options={"maxiter": 5, "hessian": "exact"},
+                method=("plugin", "nobody-registered-this", "ad"),
             )
-
 
 class TestBatchedParetoCollocation(unittest.TestCase):
     """The one-step sparse callbacks preserve a same-class ``n_c=2`` batch."""

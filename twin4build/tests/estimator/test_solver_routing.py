@@ -3,6 +3,7 @@ from unittest.mock import Mock
 import pytest
 
 from twin4build.estimator.estimator import Estimator
+from twin4build.solvers.registry import register_solver, unregister_solver
 
 
 @pytest.mark.parametrize(
@@ -57,3 +58,45 @@ def test_cross_backend_hessian_option_is_rejected(owner, method):
     )
     with pytest.raises(TypeError, match="hessian"):
         getattr(estimator, owner)(*args)
+
+
+class _PlugIn:
+    method = ("plugin", "step", "ad")
+
+    def __init__(self):
+        self.calls = []
+
+    def solve(self, problem, options):
+        self.calls.append((problem, options))
+        return "plugin"
+
+
+def _bare_estimator():
+    estimator = object.__new__(Estimator)
+    estimator._solve_scipy = Mock(return_value="scipy")
+    estimator._solve_ipopt = Mock(return_value="ipopt")
+    estimator._solve_custom = Mock(return_value="custom")
+    estimator.estimation_problem = Mock(return_value="problem")
+    return estimator
+
+
+def test_dispatch_prefers_a_solver_instance():
+    estimator = _bare_estimator()
+    estimator._solver_instance = _PlugIn()
+    assert estimator._dispatch_solve(("custom", "batched-sqp", "ad"), None, {"maxiter": 3}) == "plugin"
+    assert estimator._solver_instance.calls == [("problem", {"maxiter": 3})]
+    estimator._solve_custom.assert_not_called()
+
+
+def test_dispatch_finds_a_registered_solver_and_it_shadows_a_built_in():
+    estimator = _bare_estimator()
+    estimator._solver_instance = None
+    plugin = _PlugIn()
+    plugin.method = ("custom", "batched-sqp", "ad")
+    register_solver(plugin)
+    try:
+        assert estimator._dispatch_solve(plugin.method, None, {}) == "plugin"
+        estimator._solve_custom.assert_not_called()
+    finally:
+        unregister_solver(plugin.method)
+    assert estimator._dispatch_solve(plugin.method, None, {}) == "custom"

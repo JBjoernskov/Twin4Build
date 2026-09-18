@@ -35,6 +35,12 @@ from twin4build.estimator._batched_solvers import (
 from twin4build.estimator._collocation import solve_collocation
 from twin4build.estimator._single_shooting import FunctionalEstimationObjective
 from twin4build.solvers.ipopt import solve_ipopt
+from twin4build.solvers.registry import (
+    EstimationProblem,
+    find_solver,
+    is_solver,
+    registered_solvers,
+)
 from twin4build.utils._cuda_graph import is_cuda_graph_capture_invalidated
 from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
@@ -132,6 +138,10 @@ class Estimator:
     - **Custom torch** (``method=("custom", <optimizer>, "ad")``): experimental
       batched BFGS, Levenberg-Marquardt, and stabilized exact Newton solvers
       for functional single-shooting.
+    - **Plug-in** solvers: any object with a ``method`` tuple and a
+      ``solve(problem, options)`` method, registered through
+      :func:`twin4build.solvers.registry.register_solver` or passed as
+      ``method=`` directly (see :mod:`twin4build.solvers.registry`).
 
     Functional execution is selected on :class:`Simulator`, not through
     estimator options: ``Simulator(model, execution_mode="functional")``.
@@ -962,11 +972,23 @@ class Estimator:
             # objective as the SciPy backends, only the optimizer changes.
             ("casadi", "ipopt", "ad"),
             ("custom", "batched-sqp", "ad"),
-            ("custom", "batched-tr", "ad"),
             ("custom", "batched-bfgs", "ad"),
             ("custom", "batched-lm", "ad"),
             ("custom", "batched-newton", "ad"),
         ]
+        # Plug-in solvers (twin4build.solvers.registry): a registered method
+        # is accepted by name, and a solver instance may be passed directly
+        # as ``method``.  Either takes precedence over a built-in backend of
+        # the same name.
+        self._solver_instance = None
+        if is_solver(method):
+            self._solver_instance = method
+            method = tuple(method.method)
+        for registered in registered_solvers():
+            if registered not in allowed_methods:
+                allowed_methods.append(registered)
+        if self._solver_instance is not None and method not in allowed_methods:
+            allowed_methods.append(method)
         default_none_method = ("scipy", "SLSQP", "ad")
         default_methods = [("scipy", "SLSQP", "ad")]
         default_mode = (
@@ -1163,7 +1185,11 @@ class Estimator:
         self._set_bounds(normalize=True)
 
         # Run optimization based on method
-        if method[0] not in ("scipy", "casadi", "custom"):
+        if (
+            method[0] not in ("scipy", "casadi", "custom")
+            and self._solver_instance is None
+            and find_solver(method) is None
+        ):
             raise ValueError(f"Unsupported library: {method[0]}")
 
         if options is None:
@@ -2706,7 +2732,15 @@ class Estimator:
         return self._finalize_solve(result, method)
 
     def _dispatch_solve(self, method, n_cores, options):
-        """Route a prepared problem to exactly one backend owner."""
+        """Route a prepared problem to exactly one backend owner.
+
+        A solver instance passed as ``method`` or a solver registered for
+        ``method`` (see :mod:`twin4build.solvers.registry`) is tried first,
+        so a plug-in can replace a built-in backend of the same name.
+        """
+        solver = getattr(self, "_solver_instance", None) or find_solver(method)
+        if solver is not None:
+            return solver.solve(self.estimation_problem(), dict(options))
         if method[0] == "scipy":
             return self._solve_scipy(method, n_cores, options)
         if method == ("casadi", "ipopt", "ad"):
@@ -2735,6 +2769,21 @@ class Estimator:
         result.nfev = self._eval_count
         return result
 
+    def estimation_problem(self) -> EstimationProblem:
+        """The prepared problem in normalized coordinates, as handed to a
+        plug-in solver (:mod:`twin4build.solvers.registry`).  Valid once
+        :meth:`_solve` has set the bounds and the functional objective."""
+        return EstimationProblem(
+            x0=np.asarray(self._x0_norm, dtype=np.float64),
+            lb=np.asarray(self.bounds.lb, dtype=np.float64),
+            ub=np.asarray(self.bounds.ub, dtype=np.float64),
+            objective=self._functional_objective,
+            device=self._device,
+            dtype=tps.float_dtype(),
+            transcription=self._transcription,
+            estimator=self,
+        )
+
     def _solve_custom(self, method, options):
         """Solve functional single-shooting multistart methods."""
         if self._transcription != "single_shooting":
@@ -2747,41 +2796,7 @@ class Estimator:
         options = dict(options)
         if "hessian" in options:
             raise TypeError("hessian is not a custom batched-solver option")
-        normalized_starts = options.pop("normalized_starts", None)
-        n_starts = int(options.pop("n_starts", 1))
-        start_strategy = options.pop("start_strategy", "uniform_bounds")
-        start_spread = float(options.pop("start_spread", 0.15))
-        start_seed = options.pop("start_seed", 0)
-        if normalized_starts is None:
-            lb_norm = np.asarray(self.bounds.lb, dtype=np.float64)
-            ub_norm = np.asarray(self.bounds.ub, dtype=np.float64)
-            rng = np.random.default_rng(start_seed)
-            starts = np.repeat(
-                np.asarray(self._x0_norm, dtype=np.float64)[None, :],
-                n_starts,
-                axis=0,
-            )
-            if n_starts > 1:
-                if start_strategy == "uniform_bounds":
-                    starts[1:] = rng.uniform(lb_norm, ub_norm, size=starts[1:].shape)
-                elif start_strategy == "local":
-                    starts[1:] += rng.uniform(
-                        -start_spread, start_spread, size=starts[1:].shape
-                    )
-                    starts = np.clip(starts, lb_norm, ub_norm)
-                else:
-                    raise ValueError(
-                        "start_strategy must be 'uniform_bounds' or 'local'"
-                    )
-        else:
-            starts = np.asarray(normalized_starts, dtype=np.float64)
-            if starts.ndim == 1:
-                starts = starts[None, :]
-            if starts.shape[1] != len(self._x0_norm):
-                raise ValueError(
-                    f"normalized_starts must have shape (n_starts, "
-                    f"{len(self._x0_norm)})"
-                )
+        starts = self.estimation_problem().multistart(options)
         return solve_batched_multistart(
             self._functional_objective,
             method[1],
@@ -3088,7 +3103,7 @@ class Estimator:
         if opt_message:
             LOGGER.result("Solver message: %s", opt_message)
 
-        if method[0] in ("scipy", "casadi", "custom"):
+        if getattr(result, "x", None) is not None:
             # Leave the model at the OPTIMUM, not at the last objective
             # evaluation: the solver's final evaluation is a line-search probe
             # (and for the transcription/collocation backends the returned x
