@@ -669,7 +669,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             ratio = params.get("exhaustFlowRatio", None)
             if ratio is None:
                 ratio = self.exhaustFlowRatio.get()
-            exhaust_flow_vec = self._scale_by_ratio(supply_flow_vec, ratio)
+            exhaust_flow_vec = self._scale_by_ratio(
+                supply_flow_vec, ratio, per_branch=self.exhaust_ratio_per_branch
+            )
         else:
             exhaust_pos_vec = inputs["exhaustDamperPosition"]
             exhaust_pos_flat = exhaust_pos_vec.reshape(exhaust_pos_vec.shape[0], -1)

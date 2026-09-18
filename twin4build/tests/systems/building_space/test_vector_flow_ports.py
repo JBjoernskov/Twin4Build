@@ -131,6 +131,12 @@ class TestVectorFlowPorts(unittest.TestCase):
         tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
         self.assertEqual(tuple(ahu.exhaustFlowRatio.get().shape), (3,))
         self.assertEqual(tuple(ahu.supply_damper.a.get().shape), (3,))
+        reference = ahu.output["exhaustAirFlowRate"]._history.detach().clone()
+        # The functional engine applies the per-branch ratio on the branch
+        # axis too (it used to broadcast it as a batch axis and grow the
+        # state by n_branches^2 - n_branches entries).
+        tb.Simulator(model, execution_mode="functional").simulate(**self._kwargs())
+        torch.testing.assert_close(ahu.output["exhaustAirFlowRate"]._history, reference)
 
     def test_untied_damper_offset_survives_serialization(self):
         """An AHU whose branch dampers keep a minimum flow (``set_c``)
