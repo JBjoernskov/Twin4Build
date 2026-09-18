@@ -37,6 +37,19 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Controller identification, playback: `rewire(mode="playback")` opens the
+  identified loops and replays each loop's measured command; an opened
+  loop's command sensor (`actuatorMeasured`) is its actuator measurement;
+  an already opened loop is recognised on reload; a loop without
+  excitation replays its measured command in simulate mode.
+- Controller identification, rewire: the identified action sign (direct /
+  reverse) reaches the PI; the identified gate stays active in simulate
+  mode and a loop whose gate seeding could not run keeps its pinned gate;
+  level-based setpoint tie-break and the park value taken from the off
+  regime; the radiator loop is gated on the VAV flow setpoints.
+- `SpaceHeaterSystem`: `UA` and `thermalMassHeatCapacity` carry bounds and
+  are estimable through the base `get_estimable_parameters` contract.
+
 - `OccupancySystem` inverts the zone's CO2 step exactly. It now builds the
   same matrices (`mass_matrices`) and runs the same ZOH discretization
   (`_discretize_onestep`) on the same four-slot input vector as

@@ -129,6 +129,10 @@ class RewireReport:
     # the on_mask was degenerate (all True / all False).  See
     # :class:`GateSeeds` for semantics.
     gate_seeds: Optional[GateSeeds] = None
+    # ``False`` when the actuator command hardly moved in the window (a
+    # radiator valve shut all week): nothing identifies such a loop, and
+    # in ``simulate`` mode it replays its measured command.
+    excited: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +163,7 @@ def _rewire_pi_loops(
     fb_actuator_corr_max: float = 0.95,
     fb_sp_scale_max_offset: float = 30.0,
     fb_sp_median_tracking_max: float = 1.5,
+    unexcited_std: float = 0.05,
 ) -> Dict[str, RewireReport]:
     """Run the data-driven rewire on every PI-CITS in ``model``.
 
@@ -174,11 +179,15 @@ def _rewire_pi_loops(
         CITS has its ``alpha_gate_{a}`` pinned to ``1.0`` so the
         BandGate fully gates the actuator on the active regime.
       * ``mode="simulate"`` -- intended for Stage-2 closed-loop
-        physics simulation.  ``alpha_gate_{a}`` is pinned to ``0.0``
-        so the gate is bypassed (``gate_input = 1 - 0 + 0 * gate =
-        1``) and the PI passes through.  See
-        :file:`controller_identification_system.py:787-791` for
-        the gate-mixing formula.
+        physics simulation.  The gate stays active (``alpha_gate_{a}``
+        pinned to ``1.0`` as well): the controller was identified WITH
+        its gate, a schedule the BMS really applies (a VAV whose flow
+        setpoint is 0 keeps its damper shut all weekend), so simulating
+        it without the gate is a different controller.  A gate that is
+        a hypothesis rather than a fact is handled by estimating
+        ``alpha_gate_{a}`` in Stage 1, which the transferred result then
+        carries over.  See :file:`controller_identification_system.py`
+        for the gate-mixing formula.
 
     In both modes the function also pins the frozen selection weights
     (``alpha_0`` / ``beta_0`` / ``gamma_0`` / optional ``beta_b_0``)
@@ -315,6 +324,11 @@ def _rewire_pi_loops(
     Returns:
         Mapping of PI-CITS id to its :class:`RewireReport`.
     """
+    # ``"playback"`` is ``"simulate"`` plus an open loop: every controller
+    # is then driven by its historised command (see :func:`_apply_playback`).
+    playback = mode == "playback"
+    if playback:
+        mode = "simulate"
     pi_cits_list = [
         c
         for c in model.components.values()
@@ -506,7 +520,47 @@ def _rewire_pi_loops(
     # ``alpha_gate_{a}`` according to ``mode``.  Idempotent: a
     # subsequent call with the same ``mode`` produces the same final
     # state.
-    _pin_frozen_cits_state(pi_cits_list, mode=mode)
+    # A gate that does not separate the loop's regimes (no slot on the
+    # gate bus with a discriminating AUC) is bypassed for that loop:
+    # gating a PI on a signal that
+    # merely correlates with its schedule poisons the fit (a heating
+    # valve gated on the ventilation setpoint that switches 1.5 h earlier
+    # ended up as a constant at the command's mean).
+    # ``None`` (gate seeding could not run: no actuator data, e.g. a model
+    # reloaded from its serialized playback graph) leaves a previously
+    # pinned gate as it is.
+    gate_active = {
+        cid: (None if gs is None else gs.confidence != "low")
+        for cid, (_kind, _bim, _on, gs) in gate_results.items()
+    }
+    _pin_frozen_cits_state(pi_cits_list, mode=mode, gate_active=gate_active)
+    # A loop whose command hardly moved (std below ``unexcited_std``) has
+    # no information for any controller law -- fitted on it, the PI lands
+    # wherever the optimizer wanders and, closed on a simulated room
+    # temperature, injects heat the real loop never delivered.  Its
+    # measured command is replayed instead, in every mode but ``train``.
+    unexcited = []
+    for cits in pi_cits_list:
+        actuator = _resolve_actuator_measurement(cits)
+        u = _sensor_timeseries(actuator) if actuator is not None else None
+        if u is None or not np.isfinite(u).any():
+            continue
+        u, _ = _maybe_rescale_percent(u)
+        excited = bool(np.nanstd(u) >= unexcited_std)
+        rep = reports.get(cits.id)
+        if rep is not None:
+            rep.excited = excited
+        if not excited:
+            unexcited.append(cits)
+            LOGGER.info(
+                f"[REWIRE] {cits.id}: actuator command std {np.nanstd(u):.3f} < "
+                f"{unexcited_std}: no excitation, measured command replayed"
+                + (" after Stage 1" if mode == "train" else "")
+            )
+    if playback:
+        _apply_playback(model, pi_cits_list)
+    elif unexcited and mode == "simulate":
+        _apply_playback(model, unexcited)
 
     return reports
 
@@ -539,8 +593,10 @@ def _collect_sensors(
         # need its upstream sensor data initialised so
         # :func:`_populate_on_off_signal_norm_bounds` can read finite
         # min/max for the per-slot normalisation.
+        # ``actuatorMeasured``: the command sensor of a loop opened by
+        # ``rewire(mode="playback")`` (see _resolve_actuator_measurement).
         for cp in cits.connects_at:
-            if cp.input_port not in ("sensorValue", "setpointValue", "onOffSignal"):
+            if cp.input_port not in ("sensorValue", "setpointValue", "onOffSignal", "actuatorMeasured"):
                 continue
             for conn in cp.connects_system_through:
                 sender = conn.connects_system
@@ -1047,8 +1103,13 @@ def _maybe_rescale_percent(arr: np.ndarray) -> Tuple[np.ndarray, bool]:
 def _resolve_actuator_measurement(
     cits: ControllerIdentificationPISystem,
 ) -> Optional[SensorSystem]:
-    """Return the first actuator-measurement :class:`SensorSystem` downstream
-    of ``cits.inputSignal``.  Returns ``None`` if none are wired.
+    """Return the actuator-measurement :class:`SensorSystem`: the first one
+    downstream of ``cits.inputSignal``, else the one feeding
+    ``cits.actuatorMeasured`` (a loop opened by ``rewire(mode="playback")``
+    and serialized that way carries the command sensor there -- without
+    this fallback a reloaded model's rewire found no actuator, seeded
+    nothing, and every loop ran with the constructor's direct action and
+    an unconditioned gate).  ``None`` if neither is wired.
     """
     for conn in cits.connected_through:
         if conn.output_port != "inputSignal":
@@ -1057,6 +1118,12 @@ def _resolve_actuator_measurement(
             recv = cp.connection_point_of
             if isinstance(recv, SensorSystem):
                 return recv
+    for cp in cits.connects_at:
+        if cp.input_port != "actuatorMeasured":
+            continue
+        for conn in cp.connects_system_through:
+            if isinstance(conn.connects_system, SensorSystem):
+                return conn.connects_system
     return None
 
 
@@ -1543,9 +1610,14 @@ def _apply_seeds(
             torch.tensor(default_out, dtype=torch.float64), normalized=False
         )
 
-    # --- isReverse ---------------------------------------------------------
+    # --- action (direct / reverse) ------------------------------------------
+    # ``PIDControllerSystem.forward`` reads ``is_reverse``; ``isReverse`` is a
+    # plain deprecated alias attribute, so writing only the alias left every
+    # candidate at the constructor's direct action (heating loops ran as
+    # cooling loops in Stage 2).
     if hasattr(cand, "is_reverse"):
-        cand.isReverse = is_reverse
+        cand.is_reverse = bool(is_reverse)
+        cand.isReverse = bool(is_reverse)
 
     return kp_x0, kp_lb, kp_ub, Ti_x0, Ti_lb, Ti_ub, is_reverse
 
@@ -1561,6 +1633,16 @@ def _set_param(component: Any, attr: str, x0: float, lb: float, ub: float) -> No
     p = getattr(component, attr, None)
     if p is None:
         return
+    # Keep the seed strictly inside the bounds.  The callers guarantee
+    # ``lb <= x0 <= ub`` but allow equality (e.g. ``Ti_lb = Ti_x0`` when the
+    # seed sits at the sample-step floor); a log-scaled parameter written at
+    # its bound reads back one ulp outside it after the normalise /
+    # denormalise round trip, and the Estimator's strict ``x0 >= lb`` check
+    # then rejects the whole run.  A relative margin of 1e-6 is invisible to
+    # the identification and removes the edge.
+    margin = 1e-6 * max(abs(float(x0)), 1e-12)
+    lb = min(float(lb), float(x0) - margin)
+    ub = max(float(ub), float(x0) + margin)
     # Order matters: set bounds first, then write the physical value, so
     # the renormalization inside Parameter.set sees the new bounds.
     try:
@@ -1575,6 +1657,7 @@ def _set_param(component: Any, attr: str, x0: float, lb: float, ub: float) -> No
             f"[REWIRE] Failed to set {component.__class__.__name__}.{attr} "
             f"(x0={x0}, lb={lb}, ub={ub}): {ex}"
         )
+
 
 
 def _rewire_one(
@@ -2087,8 +2170,15 @@ def _rewire_one(
             actuator_id=actuator_sensor.id,
         )
 
-    # Pick the winner by R^2.
-    winner_pair, winner_score = max(scores.items(), key=lambda kv: kv[1].r2)
+    # Pick the winner by R^2; ties (every constant setpoint gives the same
+    # increment regression) go to the setpoint whose LEVEL explains which
+    # side the actuator sits on (LoopScore.level_agreement).
+    def _rank(kv):
+        s = kv[1]
+        agree = getattr(s, "level_agreement", float("nan"))
+        return (round(float(s.r2), 3), -1.0 if not np.isfinite(agree) else float(agree))
+
+    winner_pair, winner_score = max(scores.items(), key=_rank)
     candidate_scores = {pair: s.r2 for pair, s in scores.items()}
     confidence = confidence_label(
         winner_score.r2,
@@ -2208,8 +2298,26 @@ def _rewire_one(
     cits._built = False
     cits._build_components()
 
-    # Apply data-driven seeds.
+    # Apply data-driven seeds.  The park value (``default_output``, the
+    # actuator's output while the gate is OFF) must come from the gate-off
+    # samples: the GMM split of the actuator trajectory that also seeds
+    # the gate says which samples those are.  The idle-sample heuristic of
+    # ``derive_actuator_seeds`` takes the actuator's quietest samples
+    # instead, which for a valve parked open all night and modulating by
+    # day are the NIGHT samples -- the opposite regime.
     actuator_seeds = derive_actuator_seeds(actuator_ts)
+    try:
+        bimodal_park = derive_actuator_seeds_gmm(actuator_ts)
+    except Exception:  # noqa: BLE001
+        bimodal_park = None
+    if bimodal_park is not None and bimodal_park.reason is None:
+        off = ~np.asarray(bimodal_park.on_mask, dtype=bool)
+        finite = np.isfinite(actuator_ts[: off.size])
+        off = off[: finite.size] & finite
+        if off.sum() >= 10:
+            actuator_seeds.default_output_x0 = float(
+                np.clip(np.median(actuator_ts[: off.size][off]), 0.0, 1.0)
+            )
     kp_x0, kp_lb, kp_ub, Ti_x0, Ti_lb, Ti_ub, is_reverse = _apply_seeds(
         cits=cits,
         score=winner_score,
@@ -2286,14 +2394,19 @@ def _pin_frozen_cits_state(
     cits_list: List["ControllerIdentificationPISystem"],
     *,
     mode: str,
+    gate_active: Optional[Dict[str, bool]] = None,
 ) -> None:
     """Pin one-hot weights, gate polarity, and gate-activity per CITS.
 
     Args:
         cits_list: Every PI-CITS that the rewire processed.
-        mode: ``"train"`` -> ``alpha_gate_{a} = 1.0`` (gate active);
-            ``"simulate"`` -> ``alpha_gate_{a} = 0.0`` (gate bypassed,
-            PI passthrough).  Any other value raises ``ValueError``.
+        mode: ``"train"`` or ``"simulate"``; both pin ``alpha_gate_{a}``
+            to ``1.0`` (gate active -- the identified controller includes
+            its gate).  Any other value raises ``ValueError``.
+        gate_active: Per CITS id, whether a gate-bus slot separates the
+            loop's regimes (``GateSeeds.confidence != "low"``).  A loop
+            marked ``False`` gets ``alpha_gate_{a} = 0.0``: no gate, the
+            PI passes through.  ``None`` keeps every gate active.
 
     The function never resizes parameters; it just writes one-hot or
     scalar values onto the post-rebuild tensors.  For CITS that the
@@ -2311,7 +2424,7 @@ def _pin_frozen_cits_state(
             f"_pin_frozen_cits_state: mode must be 'train' or 'simulate', "
             f"got {mode!r}."
         )
-    alpha_gate_value = 1.0 if mode == "train" else 0.0
+    gate_active = gate_active or {}
 
     def _param_size(param) -> int:
         return param.data.shape[0] if param.data.ndim > 0 else 1
@@ -2380,8 +2493,72 @@ def _pin_frozen_cits_state(
             if beta_b is not None:
                 _set_one_hot(beta_b, zt_idx, default=0)
             if alpha_gate is not None:
-                _set_scalar(alpha_gate, alpha_gate_value)
+                active = gate_active.get(cits.id, True)
+                if active is None:
+                    current = float(alpha_gate.get().reshape(-1)[0])
+                    active = current > 0.5 if current in (0.0, 1.0) else True
+                _set_scalar(alpha_gate, 1.0 if active else 0.0)
+                if not active:
+                    LOGGER.info(
+                        f"[REWIRE] {cits.id}: gate bypassed (no gate-bus slot "
+                        f"separates the loop's regimes)"
+                    )
             if gate is not None and hasattr(gate, "polarity"):
                 pol = getattr(gate, "polarity")
                 if hasattr(pol, "set"):
                     _set_scalar(pol, 1.0)
+
+
+def _apply_playback(model, cits_list) -> None:
+    """Open every identified loop: the controller outputs its measured command.
+
+    For each actuator slot ``a`` of a CITS whose ``inputSignal[a]`` feeds a
+    historised command sensor (a :class:`SensorSystem` with data), the
+    connection *controller -> sensor* is removed -- the sensor becomes the
+    plain data leaf it is -- and *sensor.measuredValue -> controller.
+    actuatorMeasured[a]* is added; ``cits.playback`` is set so ``forward``
+    returns that signal.  The plant (dampers, valves, AHU branches) keeps
+    reading ``inputSignal``, so it is driven by what the BMS commanded.
+    That is the open-loop configuration for physics calibration; closing the
+    loop afterwards (``mode="simulate"``) verifies controller and plant
+    together.
+    """
+    for cits in cits_list:
+        pending = []
+        for conn in list(cits.connected_through):
+            if conn.output_port != "inputSignal":
+                continue
+            for cp in list(conn.connects_system_at):
+                sensor = cp.connection_point_of
+                if not isinstance(sensor, SensorSystem) or cp.input_port != "measuredValue":
+                    continue
+                if not (sensor.uuid or sensor.filename or sensor.df is not None):
+                    continue
+                idx = cp.output_port_index.get(conn, 0)
+                idx = int(idx.item()) if hasattr(idx, "item") else int(idx or 0)
+                pending.append((sensor, idx))
+        for sensor, idx in pending:
+            model.remove_connection(
+                sender_component=cits, receiver_component=sensor,
+                output_port="inputSignal", input_port="measuredValue",
+            )
+            model.add_connection(
+                sender_component=sensor, receiver_component=cits,
+                output_port="measuredValue", input_port="actuatorMeasured",
+                input_port_index=idx,
+            )
+        if pending:
+            cits.playback = True
+            LOGGER.info(
+                "[REWIRE] %s: playback -- driven by %s",
+                cits.id, ", ".join(f"{s.uuid or s.id}[{i}]" for s, i in pending),
+            )
+        elif any(
+            cp.input_port == "actuatorMeasured" and cp.connects_system_through
+            for cp in cits.connects_at
+        ):
+            # Already opened: a reloaded (serialized) or re-rewired model
+            # carries the playback wiring but not the flag -- the flag is
+            # derived from the wiring, not a literal.
+            cits.playback = True
+            LOGGER.info("[REWIRE] %s: playback (already wired)", cits.id)
