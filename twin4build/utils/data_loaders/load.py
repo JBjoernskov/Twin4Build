@@ -160,6 +160,19 @@ def sample_from_df(
 
         df = df.dropna(how="all")
 
+        if len(df.index) == 0:
+            # Every row was empty -- a text-valued BMS point (alarms, notes,
+            # override flags) whose numeric column is NULL for the whole
+            # window, or a window with no samples.  Returning the empty frame
+            # lets the caller report which sensor it was; indexing ``df.index[0]``
+            # below would raise a bare IndexError with no such context.
+            LOGGER.warning(
+                "No non-empty samples in the requested window; returning an "
+                "empty frame."
+            )
+            LOGGER.remove_level()
+            return df
+
         LOGGER.task("Enforcing timezone awareness")
         LOGGER.add_level()
 

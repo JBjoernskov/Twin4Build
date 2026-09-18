@@ -10,6 +10,7 @@ import torch
 import twin4build.utils.types as tps
 from twin4build.utils._cuda_graph import CudaGraphCallable
 from twin4build.simulator._functional import (
+    _is_passthrough_sensor,
     FunctionalModel,
     StateLayout,
     collect_stateful,
@@ -118,6 +119,14 @@ class FunctionalSimulationSession:
             (component, name)
             for component in self.model.components.values()
             for name in component.output
+            # A pass-through sensor publishes its producer's value on
+            # ``measuredValue``; its other outputs are data ports, present
+            # only when the sensor holds data (``SensorSystem.measuredData``).
+            if not (
+                _is_passthrough_sensor(component)
+                and name != "measuredValue"
+                and not component.output[name].is_leaf
+            )
         ]
         stateful = collect_stateful(self.model)
         if not stateful:
@@ -215,23 +224,23 @@ class FunctionalSimulationSession:
             return None
         return port._history[step, period]
 
-    def _unconnected_value(self, component, port_name, step, period):
+    def _unconnected_value(self, component, key, step, period):
+        port_name = key[1]
         port = component.input[port_name]
         value = self._history_value(port, step, period)
         if value is not None:
             return value
         # Occupancy's measured data are initialized into private time-series
         # publishers. Reading them is the minimal producer closure; its
-        # state-dependent forward/do_step is never called.
+        # state-dependent forward/do_step is never called.  An occupancy
+        # wired to sensors instead (``brick_signature_pattern_room_co2``)
+        # has no publishers: its unwired ports are plain unconnected inputs
+        # and take the generic path below.
         if port_name in (
             "indoorCo2Measured",
             "previousIndoorCo2Measured",
             "damperPositionMeasured",
-        ):
-            if not hasattr(component, "_co2_ts"):
-                raise RuntimeError(
-                    f"cannot isolate exogenous input {component.id}.{port_name}"
-                )
+        ) and getattr(component, "_co2_ts", None) is not None:
             if port_name == "damperPositionMeasured":
                 values = component._damper_ts.values
             elif port_name == "previousIndoorCo2Measured":
@@ -243,8 +252,12 @@ class FunctionalSimulationSession:
         # A genuinely unconnected, non-leaf port has no producer capable of
         # changing it during object-graph execution. Its initialized value is
         # therefore a static exogenous constant. Components with private
-        # time-varying publishers must be handled explicitly above.
-        if not self._exogenous_sources(component, (component.id, port_name)):
+        # time-varying publishers must be handled explicitly above.  The
+        # check is per KEY: a vector port with some slots wired and others
+        # not (an AHU branch whose damper has no controller) is asked about
+        # the unconnected SLOT, not about the port as a whole -- the caller
+        # slices the slot out of the full vector value.
+        if not self._exogenous_sources(component, key):
             return port.get()[period]
         raise RuntimeError(
             f"cannot safely isolate exogenous input {component.id}.{port_name}; "
@@ -334,19 +347,25 @@ class FunctionalSimulationSession:
                                     step, period
                                 ]
                             if value is None:
-                                self._step_external(
-                                    producer,
-                                    step,
-                                    external_done[step],
-                                    set(),
-                                )
+                                try:
+                                    self._step_external(
+                                        producer,
+                                        step,
+                                        external_done[step],
+                                        set(),
+                                    )
+                                except RuntimeError as exc:
+                                    raise RuntimeError(
+                                        f"{exc} (while recording exogenous input "
+                                        f"{key} from {producer.id}.{output_name})"
+                                    ) from exc
                                 value = producer.output[output_name].get()[period]
                             pieces.append(functional_model._apply_routes(value, routes))
                         value = pieces[0]
                         for piece in pieces[1:]:
                             value = value + piece
                     else:
-                        value = self._unconnected_value(component, key[1], step, period)
+                        value = self._unconnected_value(component, key, step, period)
                         if len(key) >= 3 and isinstance(
                             component.input[key[1]], tps.Vector
                         ):
@@ -414,8 +433,18 @@ class FunctionalSimulationSession:
                         feedback[period, slc] = merged.reshape(-1) * mask.to(device)
         # External requested outputs are materialized by the same minimal
         # producer closure used for exogenous tape. This never steps a cone component.
-        for index, (component, _) in enumerate(self.outputs):
+        for index, (component, port_name) in enumerate(self.outputs):
             if self.functional_model.meas_sources[index][0] != "external":
+                continue
+            port = component.output[port_name]
+            if _is_passthrough_sensor(component):
+                # A pass-through sensor's ``measuredValue`` resolves to its
+                # producer (``_follow``) and is never external; any other
+                # output of it is a data port (``measuredData``, history
+                # filled at initialize) or empty.  Stepping the sensor would
+                # walk into the cone component that feeds it.
+                if port.is_leaf and port._history is not None:
+                    port._tensor.copy_(port._history[-1])
                 continue
             for step in range(self.max_t):
                 self._step_external(component, step, external_done[step], set())
