@@ -81,6 +81,23 @@ class TestFanTorchSystem(unittest.TestCase):
         self.assertAlmostEqual(outlet, 20.0)
         self.assertAlmostEqual(self.fan.output["Power"].get().item(), 0.0)
 
+    def test_trickle_flow_bounds_the_temperature_rise(self):
+        """A fan running against closed dampers moves a trickle of air; the
+        ``P * f / (m * cp)`` rise must stay physical (bounded by
+        ``MAX_DELTA_T``), not thousands of K (regression: an AHU supply
+        temperature of 1450 C at 1e-4 kg/s)."""
+        start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
+        end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
+        self.fan.initialize(start_time=start_time, end_time=end_time, step_size=[600])
+        self.fan.input["airFlowRate"].set(torch.tensor([1e-4]), i_t=0)
+        self.fan.input["inletAirTemperature"].set(torch.tensor([20.0]), i_t=0)
+        datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        self.fan.do_step(second_time=0, date_time=datetime_val, step_size=600, step_index=0)
+        outlet = self.fan.output["outletAirTemperature"].get().item()
+        self.assertTrue(math.isfinite(outlet))
+        self.assertLessEqual(outlet, 20.0 + FanSystem.MAX_DELTA_T + 1e-9)
+        self.assertGreater(outlet, 20.0)
+
     def test_do_step_batch(self):
         """Test fan system do_step method with batch size > 1."""
         fan_batch = FanSystem(

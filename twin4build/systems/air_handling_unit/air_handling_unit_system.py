@@ -108,6 +108,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         n_branches: int | None = None,
         exhaust_follows_supply: bool = False,
         exhaustFlowRatio: float = 1.0,
+        exhaust_ratio_per_branch: bool = False,
         **kwargs,
     ):
         """
@@ -196,6 +197,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         self.supply_fan = FanSystem(**supply_fan_kwargs)
         self.exhaust_fan = FanSystem(**exhaust_fan_kwargs)
         self.exhaust_follows_supply = bool(exhaust_follows_supply)
+        # One ratio per branch (zone-level imbalance is real: a BMS snapshot
+        # showed 500 m3/h in / 250 out in one room with the floor balanced).
+        self.exhaust_ratio_per_branch = bool(exhaust_ratio_per_branch)
         self.exhaustFlowRatio = tps.Parameter(
             torch.tensor(exhaustFlowRatio, dtype=tps.float_dtype()),
             requires_grad=False,
@@ -208,6 +212,13 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             "exhaustTemperature": tps.Vector(),
             "supplyAirTemperatureSetpoint": tps.Scalar(),
             "outdoorAirTemperature": tps.Scalar(),
+            # Fan state, 0-1 (a speed command or status), optional: unwired
+            # means the fans run.  A branch moves air only while its fan
+            # runs -- a VAV damper left open after the fan stops delivers
+            # nothing -- so the branch flows are gated by
+            # ``_fan_gate`` (fully on above FAN_ON_SPEED).
+            "supplyFanSpeed": tps.Scalar(1.0, optional=True),
+            "exhaustFanSpeed": tps.Scalar(1.0, optional=True),
         }
         self._output = {
             "supplyAirFlowRate": tps.Vector(),  # Vector: one per branch
@@ -216,6 +227,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             # (Brick ``Preheat_Supply_Air_Temperature_Sensor``).
             "preheatSupplyAirTemperature": tps.Scalar(),
             "exhaustAirFlowRate": tps.Vector(),  # Vector: one per branch
+            # Totals over the branches: what the AHU's own supply / return
+            # flow sensors measure.
+            "totalSupplyAirFlowRate": tps.Scalar(),
+            "totalExhaustAirFlowRate": tps.Scalar(),
             "exhaustAirTemperatureOut": tps.Scalar(),
             "heatingPower": tps.Scalar(),
             "coolingPower": tps.Scalar(),
@@ -243,7 +258,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             + hr_params
             + junction_params
             + fan_params
-            + ["exhaust_follows_supply", "exhaustFlowRatio"]
+            + ["exhaust_follows_supply", "exhaustFlowRatio", "exhaust_ratio_per_branch"]
         }
         self.PARAM_NAMES = tuple(
             f"{sub_name}.{param_name}"
@@ -318,7 +333,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
 
         # Set n_c for damper subcomponents: n_c_ahu * n_v (flattened from Vector shape)
         # Supply and exhaust can have different n_v values
-        self.exhaustFlowRatio = self.exhaustFlowRatio.expand_to_n_c(self.n_c)
+        self.exhaustFlowRatio = self.exhaustFlowRatio.expand_to_n_c(
+            self.n_branches if self.exhaust_ratio_per_branch else self.n_c
+        )
         self.supply_damper.n_c = self.n_c * n_v_supply
         self.exhaust_damper.n_c = self.n_c * n_v_exhaust
         self.supply_damper.initialize(start_time, end_time, step_size)
@@ -336,6 +353,16 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         self.supply_fan.initialize(start_time, end_time, step_size)
         self.exhaust_fan.initialize(start_time, end_time, step_size)
         self.INITIALIZED = True
+
+    #: Fan speed (0-1) above which a fan is fully "on" for the branch flows.
+    FAN_ON_SPEED = 0.1
+
+    @classmethod
+    def _fan_gate(cls, speed):
+        """0 with the fan stopped, 1 once it runs (linear in between): the
+        VAV branches are pressure-controlled, so the damper sets the flow
+        while the fan runs, and nothing moves when it does not."""
+        return torch.clamp(speed / cls.FAN_ON_SPEED, 0.0, 1.0)
 
     def _exhaust_branch_map(self, n_v_exhaust: int):
         """``LongTensor`` mapping each exhaust branch to the slot of
@@ -418,17 +445,22 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         ].get()  # (n_s, n_c*n_v)
         # Reshape back to (n_s, n_c, n_v) for Vector outputs
         supply_flow_vec = supply_flow_flat.reshape(supply_pos_vec.shape)
+        supply_flow_vec = supply_flow_vec * self._fan_gate(
+            self.input["supplyFanSpeed"].get()
+        ).unsqueeze(-1)
 
         # 2) Supply junction: sum branch flows
         self.supply_junction.input["airFlowRateOut"].set(supply_flow_vec, step_index)
         self.supply_junction.do_step(second_time, date_time, step_size, step_index)
         supply_flow_total = self.supply_junction.output["airFlowRateIn"].get()
 
-        # 3) Exhaust flows: the exhaust damper model, or the supply flows
-        #    scaled by the exhaust-to-supply ratio (exhaust_follows_supply)
+        # 3) Exhaust flows: the exhaust damper model (gated by the
+        #    exhaust fan), or the supply flows scaled by the exhaust-to-
+        #    supply ratio (exhaust_follows_supply; the supply flows already
+        #    carry the supply fan gate)
         if self.exhaust_follows_supply:
             exhaust_flow_vec = self._scale_by_ratio(
-                supply_flow_vec, self.exhaustFlowRatio.get()
+                supply_flow_vec, self.exhaustFlowRatio.get(), per_branch=self.exhaust_ratio_per_branch
             )
         else:
             exhaust_pos_vec = self.input["exhaustDamperPosition"].get()
@@ -442,6 +474,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             ].get()  # (n_s, n_c*n_v)
             # Reshape back to (n_s, n_c, n_v) for Vector outputs
             exhaust_flow_vec = exhaust_flow_flat.reshape(exhaust_pos_vec.shape)
+            exhaust_flow_vec = exhaust_flow_vec * self._fan_gate(
+                self.input["exhaustFanSpeed"].get()
+            ).unsqueeze(-1)
 
         # 4) Return junction: combine exhaust flows and temperatures
         exhaust_temp_vec = self._per_branch_exhaust_temperature(
@@ -500,6 +535,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         self.output["supplyAirFlowRate"]._set(supply_flow_vec, i_t=step_index)
         self.output["exhaustAirFlowRate"]._set(exhaust_flow_vec, i_t=step_index)
         # Scalar outputs
+        self.output["totalSupplyAirFlowRate"]._set(supply_flow_total, i_t=step_index)
+        self.output["totalExhaustAirFlowRate"]._set(
+            self.return_junction.output["airFlowRateOut"].get(), i_t=step_index
+        )
         self.output["supplyAirTemperature"]._set(supply_temp_out, i_t=step_index)
         self.output["preheatSupplyAirTemperature"]._set(precoil_temp, i_t=step_index)
         self.output["exhaustAirTemperatureOut"]._set(exhaust_temp_out, i_t=step_index)
@@ -528,29 +567,40 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         "exhaust_fan",
     )
 
+    def get_estimable_parameters(self):
+        """The submodels' estimable parameters: a damper's offset ``c`` only
+        once untied (see ``DamperSystem.set_c``); the exhaust damper's not at
+        all when the exhaust follows the supply, and the ratio only then."""
+        out = []
+        for entry in super().get_estimable_parameters():
+            attr = str(entry[1])
+            prefix, _, leaf = attr.rpartition(".")
+            if leaf == "c" and getattr(getattr(self, prefix, None), "c_tied", False):
+                continue
+            if self.exhaust_follows_supply and attr.startswith("exhaust_damper."):
+                continue
+            if not self.exhaust_follows_supply and attr == "exhaustFlowRatio":
+                continue
+            out.append(entry)
+        return out
+
     @staticmethod
-    def _scale_by_ratio(flow_vec: torch.Tensor, ratio: torch.Tensor) -> torch.Tensor:
-        """``ratio`` (``(n_c,)`` or scalar) times the per-branch flows
-        (``(n_s, n_c, n_v)`` in ``do_step``, ``(n_c, n_v)`` in ``forward``)."""
+    def _scale_by_ratio(flow_vec: torch.Tensor, ratio: torch.Tensor, per_branch: bool = False) -> torch.Tensor:
+        """``ratio`` times the per-branch flows (``(n_s, n_c, n_v)`` in
+        ``do_step``, ``(n_c, n_v)`` in ``forward``).  ``ratio`` is scalar,
+        ``(n_c,)`` (one per parallel component) or, with ``per_branch``,
+        ``(n_v,)`` (one per branch, on the last axis)."""
         ratio = torch.as_tensor(ratio, dtype=flow_vec.dtype, device=flow_vec.device)
         if ratio.dim() == 0 or ratio.numel() == 1:
             return flow_vec * ratio.reshape(())
         shape = [1] * flow_vec.dim()
-        shape[-2] = ratio.numel()
+        shape[-1 if per_branch else -2] = ratio.numel()
         return flow_vec * ratio.reshape(shape)
 
     def _inactive_parameters(self):
         """Parameters the exhaust mode leaves without effect: the exhaust
         damper's when the exhaust follows the supply, the ratio otherwise."""
         return () if self.exhaust_follows_supply else ("exhaustFlowRatio",)
-
-    def get_estimable_parameters(self):
-        entries = super().get_estimable_parameters()
-        if self.exhaust_follows_supply:
-            entries = [e for e in entries if not str(e[1]).startswith("exhaust_damper.")]
-        else:
-            entries = [e for e in entries if str(e[1]) != "exhaustFlowRatio"]
-        return entries
 
     @staticmethod
     def _resolve_sub_params(sub, prefix, params):
@@ -599,6 +649,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             None, {"damperPosition": supply_pos_flat}, P["supply_damper"], sample_time
         )
         supply_flow_vec = d_sup["airFlowRate"].reshape(supply_pos_vec.shape)
+        if inputs.get("supplyFanSpeed") is not None:
+            supply_flow_vec = supply_flow_vec * self._fan_gate(
+                inputs["supplyFanSpeed"]
+            ).unsqueeze(-1)
 
         # 2) Supply junction: sum branch flows
         _, j_sup = self.supply_junction.forward(
@@ -607,7 +661,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         )
         supply_flow_total = j_sup["airFlowRateIn"]
 
-        # 3) Exhaust flows: damper model, or supply flows times the ratio
+        # 3) Exhaust flows: damper model (fan-gated), or supply flows times the ratio
         if self.exhaust_follows_supply:
             ratio = params.get("exhaustFlowRatio", None)
             if ratio is None:
@@ -621,6 +675,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
                 sample_time,
             )
             exhaust_flow_vec = d_exh["airFlowRate"].reshape(exhaust_pos_vec.shape)
+            if inputs.get("exhaustFanSpeed") is not None:
+                exhaust_flow_vec = exhaust_flow_vec * self._fan_gate(
+                    inputs["exhaustFanSpeed"]
+                ).unsqueeze(-1)
 
         # 4) Return junction: combine exhaust flows and temperatures
         _, j_ret = self.return_junction.forward(
@@ -689,6 +747,8 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         return x, {
             "supplyAirFlowRate": supply_flow_vec,
             "exhaustAirFlowRate": exhaust_flow_vec,
+            "totalSupplyAirFlowRate": supply_flow_total,
+            "totalExhaustAirFlowRate": secondary_flow,
             "supplyAirTemperature": f_sup["outletAirTemperature"],
             "preheatSupplyAirTemperature": hr["primaryTemperatureOut"],
             "exhaustAirTemperatureOut": hr["secondaryTemperatureOut"],

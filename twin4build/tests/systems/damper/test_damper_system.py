@@ -68,6 +68,45 @@ class TestDamperTorchSystem(unittest.TestCase):
         airflow = self.damper.output["airFlowRate"].get().item()
         self.assertAlmostEqual(airflow, 0.5, places=2)
 
+    def test_offset_c_is_the_closed_damper_flow(self):
+        """``c`` tied (default): zero flow when closed, ``c`` not estimable,
+        and it follows a re-estimated ``a``.  Given / ``set_c``: ``a + c``
+        is the closed-damper flow (a VAV's minimum flow), ``c`` is
+        estimable, the flow never goes negative and full opening still
+        gives the nominal flow."""
+        kw = dict(
+            start_time=[datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)],
+            end_time=[datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)],
+            step_size=[600],
+        )
+        when = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+
+        def flow(damper, position):
+            damper.initialize(**kw)
+            damper.input["damperPosition"].set(torch.tensor([position]), i_t=0)
+            damper.do_step(second_time=0, date_time=when, step_size=600, step_index=0)
+            return damper.output["airFlowRate"].get().item()
+
+        tied = DamperSystem(id="tied", a=1.0, nominalAirFlowRate=0.5)
+        self.assertTrue(tied.c_tied)
+        self.assertNotIn("c", [e[1] for e in tied.get_estimable_parameters()])
+        self.assertAlmostEqual(flow(tied, 0.0), 0.0)
+        tied.a = twin4build.utils.types.Parameter(torch.tensor(2.0), requires_grad=False, scaling="log")
+        self.assertAlmostEqual(flow(tied, 0.0), 0.0)  # c followed a
+        self.assertAlmostEqual(flow(tied, 1.0), 0.5, places=6)
+
+        free = DamperSystem(id="free", a=1.0, nominalAirFlowRate=0.5, c=-0.9)
+        self.assertFalse(free.c_tied)
+        self.assertIn("c", [e[1] for e in free.get_estimable_parameters()])
+        self.assertAlmostEqual(flow(free, 0.0), 0.1, places=6)   # minimum flow a + c
+        self.assertAlmostEqual(flow(free, 1.0), 0.5, places=6)   # still the nominal flow
+
+        untied = DamperSystem(id="untied", a=1.0, nominalAirFlowRate=0.5)
+        untied.set_c(-1.2)  # below -a: a dead band, never a negative flow
+        self.assertFalse(untied.c_tied)
+        self.assertAlmostEqual(flow(untied, 0.0), 0.0)
+        self.assertAlmostEqual(flow(untied, 1.0), 0.5, places=6)
+
     def test_do_step_batch(self):
         """Test damper system do_step method with batch size > 1."""
         damper_batch = DamperSystem(
