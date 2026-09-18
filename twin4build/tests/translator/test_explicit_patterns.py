@@ -13,14 +13,14 @@ import warnings
 import twin4build as tb
 from twin4build.examples import patterns as example_patterns
 import twin4build.core as core
-from twin4build.tests.translator.test_brick14_bms_patterns import build_graph
+import twin4build.examples.utils as example_utils
 from twin4build.translator.translator import SignaturePattern, Translator
 
 
 class TestExplicitPatterns(unittest.TestCase):
     def test_example_set_is_bound_and_grouped(self):
         ps = example_patterns.default_patterns()
-        self.assertGreater(len(ps), 30)
+        self.assertGreater(len(ps), 10)
         self.assertTrue(all(sp.system is not None for sp in ps))
         groups = Translator._group_patterns(ps)
         self.assertIn(tb.SensorSystem, groups)
@@ -48,13 +48,12 @@ class TestExplicitPatterns(unittest.TestCase):
         self.assertEqual(set(groups), {tb.SensorSystem})
 
     def test_explicit_equals_implicit_translation(self):
-        sm1 = core.SemanticModel(id="explicit_patterns_a")
-        build_graph(sm1)
+        filename = example_utils.get_path(["estimator_example", "one_room_example_model.xlsm"])
+        sm1 = core.SemanticModel(rdf_file=filename, id="explicit_patterns_a")
         explicit = Translator().translate(
             sm1, patterns=example_patterns.default_patterns(), id="explicit_patterns_a"
         )
-        sm2 = core.SemanticModel(id="explicit_patterns_b")
-        build_graph(sm2)
+        sm2 = core.SemanticModel(rdf_file=filename, id="explicit_patterns_b")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             implicit = Translator().translate(sm2, id="explicit_patterns_b")

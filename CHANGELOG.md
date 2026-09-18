@@ -37,6 +37,16 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Example patterns (`twin4build/examples/patterns`): the AHU pattern reads
+  the supply fan's speed command and the AHU-level flow meters; the space
+  heater pattern takes the supply water temperature from the heating
+  circuit that feeds the radiator (`isFedBy`) instead of a constant; valve
+  loop patterns for a room's heating command with and without an explicit
+  radiator node; a room-CO2 occupancy pattern (`occupancy_patterns()`)
+  feeding `OccupancySystem` from the room's CO2 sensor, its VAVs' damper
+  commands and the AHU's fan speed; radiator-loop controller patterns for
+  both graph shapes.
+
 - Controller identification, playback: `rewire(mode="playback")` opens the
   identified loops and replays each loop's measured command; an opened
   loop's command sensor (`actuatorMeasured`) is its actuator measurement;
@@ -212,6 +222,18 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   raises with that install line when the process has no CUDA (issue #167).
 
 ### Changed
+
+- `twin4build.examples.patterns` is trimmed to the patterns the library's
+  own translator example matches on its one-room model (16 patterns: the
+  SAREF-shaped zone, outdoor environment, PID controller, schedule, damper,
+  space heater and valve patterns and the example's sensor patterns).  The
+  Brick/BMS-shaped patterns (VAV zones, damper commands, room-attached
+  sensors, AHU flow meters, radiator loops, identified PI loops, room-CO2
+  occupancy, fan-coil units, flow junctions, on/off controllers, air-to-air
+  heat recovery) and their tests are gone from the library: patterns are a
+  deployment's own, written next to the graphs they describe and passed to
+  `Translator.translate(patterns=...)`.  The SAREF valve pattern now has an
+  explicit id (`valve_signature_pattern`).
 
 - The block trust-region step (`("custom", "batched-tr", "ad")`, on `dev`
   since September) and the batched trust-region Pareto route left the

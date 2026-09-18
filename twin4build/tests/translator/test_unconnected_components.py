@@ -22,9 +22,30 @@ import twin4build
 import twin4build.core as core
 from twin4build.model.semantic_model.semantic_model import SemanticModel
 from twin4build.systems.sensor.sensor_system import SensorSystem
-from twin4build.translator.translator import Translator
+from twin4build.translator.translator import (
+    Node,
+    SignaturePattern,
+    StepRule,
+    Translator,
+)
 
 twin4build._IS_TESTING = True
+
+
+def leaf_sensor_pattern():
+    """A data-bound leaf: any Brick point with a timeseries reference
+    (``ref:hasExternalReference`` -> ``ref:hasTimeseriesId``) becomes a
+    SensorSystem reading that id.  Defined here: the test is about the
+    translator keeping unconnected components, not about any example set."""
+    sensor = Node(cls=core.namespace.BRICK.Point)
+    externalref = Node(cls=(core.namespace.BRICKREF.ExternalReference, core.BlankNode))
+    timeseries_id = Node(cls=core.namespace.XSD.string)
+    sp = SignaturePattern(id="test_leaf_sensor", system=SensorSystem)
+    sp.add_rule(StepRule(subject=sensor, object=externalref, predicate=core.namespace.BRICKREF.hasExternalReference))
+    sp.add_rule(StepRule(subject=externalref, object=timeseries_id, predicate=core.namespace.BRICKREF.hasTimeseriesId))
+    sp.add_parameter("uuid", timeseries_id)
+    sp.add_modeled_node(sensor)
+    return sp
 
 
 class TestUnconnectedComponentsAreKept(unittest.TestCase):
@@ -58,7 +79,7 @@ class TestUnconnectedComponentsAreKept(unittest.TestCase):
         g.add((EX["dangling_virtual"], RDF.type, BRICK.Zone_Air_Temperature_Sensor))
 
         translator = Translator()
-        model = translator.translate(sm, systems=[SensorSystem], id=self.MODEL_ID)
+        model = translator.translate(sm, patterns=[leaf_sensor_pattern()], id=self.MODEL_ID)
 
         components = model.components
         self.assertEqual(len(components), 3, components)
