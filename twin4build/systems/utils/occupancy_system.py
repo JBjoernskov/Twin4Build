@@ -8,10 +8,19 @@ import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build.systems.utils.smooth_saturation import clamp
-from twin4build.systems.building_space.air_balance import make_up_air_flow
+from twin4build.systems.building_space import air_balance
+from twin4build.systems.building_space.building_space_mass_system import (
+    ACTIVE_INPUT_SLICE,
+    OCCUPANCY_SLOT,
+    OCCUPANCY_SLOT_ACTIVE,
+    mass_matrices,
+)
+from twin4build.systems.utils.discrete_statespace_system import (
+    _discretize_onestep,
+    effective_matrices,
+)
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.utils.deprecation import deprecate_args
 
@@ -42,9 +51,15 @@ class _DamperParams(core.System, nn.Module):
         ([model_supply_damper, occ.supply_damper], "a", 1, 1, 10, "shared")
     """
 
-    def __init__(self, id: str, a: float = 1.0, nominalAirFlowRate: float = 0.001):
+    def __init__(self, id: str, a: float = 1.0, nominalAirFlowRate: float = 0.001, c=None, c_tied=None):
         core.System.__init__(self, id=id)
         nn.Module.__init__(self)
+        # ``c`` as in ``DamperSystem``: tied to ``-a`` unless given / set_c.
+        self._c_tied = (c is None) if c_tied is None else bool(c_tied)
+        self.c = tps.Parameter(
+            torch.tensor(-a if c is None else c, dtype=tps.float_dtype()),
+            requires_grad=False,
+        )
         # Scalings MUST match ``DamperSystem`` (``a`` is log-scaled
         # there): the object-graph estimation path denormalizes each member
         # of a "shared" group with its OWN parameter scaling, so a scaling
@@ -58,9 +73,27 @@ class _DamperParams(core.System, nn.Module):
             requires_grad=False,
         )
 
+    @property
+    def c_tied(self) -> bool:
+        return self._c_tied
+
+    @c_tied.setter
+    def c_tied(self, value) -> None:
+        self._c_tied = bool(value)
+
+    def set_c(self, value) -> None:
+        """Untie ``c`` (see ``DamperSystem.set_c``)."""
+        self.c = tps.Parameter(
+            torch.as_tensor(value, dtype=tps.float_dtype()).clone(), requires_grad=False
+        )
+        self._c_tied = False
+
     def expand_to_n_c(self, n_c: int):
         self.a = self.a.expand_to_n_c(n_c)
         self.nominalAirFlowRate = self.nominalAirFlowRate.expand_to_n_c(n_c)
+        if self._c_tied:
+            self.c = tps.Parameter((-self.a.get()).detach().clone(), requires_grad=False)
+        self.c = self.c.expand_to_n_c(n_c)
 
     def compute_airflow(self, position: torch.Tensor) -> torch.Tensor:
         """Convert damper position (0-1) to airflow [kg/s].
@@ -73,7 +106,8 @@ class _DamperParams(core.System, nn.Module):
         with the pure ``forward``).
         """
         return OccupancySystem._airflow(
-            self.a.get(), self.nominalAirFlowRate.get(), position
+            self.a.get(), self.nominalAirFlowRate.get(), position,
+            None if self._c_tied else self.c.get(),
         )
 
 
@@ -90,6 +124,21 @@ class OccupancySystem(core.System, nn.Module):
     ``damperPositionMeasured``) that the fast paths capture per step.  At the
     first step the previous CO2 sample equals the current one (``dC = 0``), so
     the initial occupancy comes from the static balance.
+
+    Occupancy is the exact inverse of ``BuildingSpaceMassSystem``'s ZOH
+    step, through the zone's *own* matrices: see
+    :meth:`invert_zoh_occupancy`.  An Euler rearrangement, an analytic
+    ``expm1`` inverse, or a separately derived reduced system are all
+    different maps than the zone step (and the last two also put an
+    untested matrix exponential on the compiled / CUDA-graph rollout).
+
+    .. note::
+       Because the inverse is exact, measured-vs-predicted CO2 is
+       tautological up to sensor noise, the occupancy clamp and the
+       initial state: it cannot identify ``V``, ``G_occ`` or ``m_inf``.
+       Those act on the fit only through the occupancy the zone's heat
+       balance then sees, and there only as the product
+       ``Q_occ V / G_occ`` unless one factor is pinned.
 
     Internal ``supply_damper`` and ``exhaust_damper`` convert measured damper
     positions to airflows.  Their parameters (``a``, ``nominalAirFlowRate``)
@@ -120,6 +169,8 @@ class OccupancySystem(core.System, nn.Module):
             ``damper_datecolumn`` / ``damper_valuecolumn`` until 2.1.
     """
 
+    SUPPORTS_TRANSFORM_MODE = True
+
     def __init__(
         self,
         V: float = 100,
@@ -129,6 +180,7 @@ class OccupancySystem(core.System, nn.Module):
         supply_damper_nominalAirFlowRate: float = 0.001,
         exhaust_damper_a: float = 1.0,
         exhaust_damper_nominalAirFlowRate: float = 0.001,
+        smoothing: float = 0.0,
         exhaust_follows_supply: bool = False,
         exhaustFlowRatio: float = 1.0,
         co2_filename: Optional[str] = None,
@@ -196,15 +248,43 @@ class OccupancySystem(core.System, nn.Module):
 
         self._input = {
             "outdoorCo2Concentration": tps.Scalar(),
-            # Measured-data ports: NOT connected to any producer.  ``do_step``
-            # publishes the CSV samples here each step so that the composed
-            # fast paths (Simulator.compose) can capture them per step like
-            # any exogenous signal -- freezing them is exact because they are
-            # measured data, independent of any estimated parameter.
-            "indoorCo2Measured": tps.Scalar(),
-            "previousIndoorCo2Measured": tps.Scalar(),
-            "damperPositionMeasured": tps.Scalar(),
+            # Measured-data ports.  Two ways to feed them:
+            #  * CSV files (``co2_filename`` / ``damper_filename``): NOT
+            #    connected to any producer; ``do_step`` publishes the samples
+            #    here each step so the composed fast paths capture them like
+            #    any exogenous signal -- exact, because measured data is
+            #    independent of every estimated parameter;
+            #  * historised sensors wired by the translator
+            #    (``indoorCo2Measured`` from the room's CO2 sensor,
+            #    ``damperPositionMeasured`` from the damper position sensors
+            #    of the VAVs serving the room, one slot each).  The previous
+            #    CO2 sample is then a one-step lag state, and the supply /
+            #    exhaust flows are the damper model applied to every slot and
+            #    summed -- a lumped zone only sees the total.
+            "indoorCo2Measured": tps.Scalar(optional=True),
+            "previousIndoorCo2Measured": tps.Scalar(optional=True),
+            "damperPositionMeasured": tps.Vector(optional=True),
+            # Fan state of the air handler serving the zone, 0-1, optional
+            # (unwired means the fan runs): a damper left at its minimum
+            # position with the fan off moves no air, and the inversion
+            # would otherwise read CO2 that nothing dilutes as people.
+            "fanSpeedMeasured": tps.Scalar(1.0, optional=True),
         }
+        # One-step memory of the measured CO2 when it arrives through a
+        # sensor port (unused, width 0, on the CSV path).  Initialised at the
+        # outdoor level: the very first step then sees ``dC = 0`` from a
+        # 400 ppm base, a single transient the warm-up discards.
+        self._co2_lag = tps.State(n_v=1, init_value=400.0, names=[f"{_id}.co2_prev"])
+        # Optional first-order smoothing of the inverted occupancy BEFORE the
+        # clamp at zero: ``N_f = s * N_f_prev + (1 - s) * N``.  The inversion
+        # amplifies CO2 sensor noise by V / (dt * alpha) (a 1000 m3 zone and
+        # 5 ppm turn into +-10 people per step); clamping the raw estimate at
+        # zero keeps only the positive half and biases the zone's gains.
+        # ``smoothing = 0`` (default) is the unsmoothed original.
+        self.smoothing = float(smoothing)
+        self._occ_lag = tps.State(n_v=1, init_value=0.0, names=[f"{_id}.occ_prev"])
+        self._co2_from_sensor = False
+        self._damper_from_sensor = False
         self._output = {"scheduleValue": tps.Scalar()}
         self._config = {
             "parameters": [
@@ -213,8 +293,13 @@ class OccupancySystem(core.System, nn.Module):
                 "mass.m_inf",
                 "supply_damper.a",
                 "supply_damper.nominalAirFlowRate",
+                "supply_damper.c",
+                "supply_damper.c_tied",
                 "exhaust_damper.a",
                 "exhaust_damper.nominalAirFlowRate",
+                "exhaust_damper.c",
+                "exhaust_damper.c_tied",
+                "smoothing",
                 "exhaust_follows_supply",
                 "exhaustFlowRatio",
                 "co2_filename",
@@ -242,44 +327,82 @@ class OccupancySystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        for inp in self.input.values():
-            inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
+        def _wired(port: str) -> bool:
+            return any(
+                cp.input_port == port and len(cp.connects_system_through) > 0
+                for cp in self.connects_at
+            )
+
+        self._co2_from_sensor = _wired("indoorCo2Measured")
+        self._damper_from_sensor = _wired("damperPositionMeasured")
+        self._fan_from_sensor = _wired("fanSpeedMeasured")
+        for name, inp in self.input.items():
+            if name == "damperPositionMeasured":
+                inp.initialize(
+                    n_t=max_timesteps, n_s=batch_size, n_c=self.n_c,
+                    n_v=self.get_n_v_from_connections(name) or 1,
+                )
+            else:
+                inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for out in self.output.values():
             out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-
-        assert self.co2_filename is not None, (
-            f"|{self.__class__.__name__}|{self.id}|: " "co2_filename must be set."
+        # The lag state exists only on the sensor path (width 0 otherwise, so
+        # a CSV-driven occupancy stays stateless for the composer).
+        self._occ_lag.initialize(
+            n_s=batch_size, n_c=self.n_c, n_v=1 if self.smoothing > 0 else 0, force=True
         )
-        assert self.damper_filename is not None, (
-            f"|{self.__class__.__name__}|{self.id}|: " "damper_filename must be set."
+        self._co2_lag.initialize(
+            n_s=batch_size, n_c=self.n_c, n_v=1 if self._co2_from_sensor else 0, force=True
         )
-
-        self._co2_ts = TimeSeriesInputSystem(
-            id=f"co2_ts_{self.id}",
-            filename=self.co2_filename,
-            date_column=self.co2_date_column,
-            value_column=self.co2_value_column,
-            use_spreadsheet=True,
-        )
-        self._co2_ts.initialize(start_time, end_time, step_size)
-
-        self._damper_ts = TimeSeriesInputSystem(
-            id=f"damper_ts_{self.id}",
-            filename=self.damper_filename,
-            date_column=self.damper_date_column,
-            value_column=self.damper_value_column,
-            use_spreadsheet=True,
-        )
-        self._damper_ts.initialize(start_time, end_time, step_size)
+        self._co2_ts = None
+        self._damper_ts = None
+        if not self._co2_from_sensor:
+            assert self.co2_filename is not None, (
+                f"|{self.__class__.__name__}|{self.id}|: wire indoorCo2Measured "
+                "to a CO2 sensor or set co2_filename."
+            )
+            self._co2_ts = TimeSeriesInputSystem(
+                id=f"co2_ts_{self.id}",
+                filename=self.co2_filename,
+                date_column=self.co2_date_column,
+                value_column=self.co2_value_column,
+                use_spreadsheet=True,
+            )
+            self._co2_ts.initialize(start_time, end_time, step_size)
+        if not self._damper_from_sensor:
+            assert self.damper_filename is not None, (
+                f"|{self.__class__.__name__}|{self.id}|: wire "
+                "damperPositionMeasured to the damper position sensors or set "
+                "damper_filename."
+            )
+            self._damper_ts = TimeSeriesInputSystem(
+                id=f"damper_ts_{self.id}",
+                filename=self.damper_filename,
+                date_column=self.damper_date_column,
+                value_column=self.damper_value_column,
+                use_spreadsheet=True,
+            )
+            self._damper_ts.initialize(start_time, end_time, step_size)
 
         self.mass.V = self.mass.V.expand_to_n_c(self.n_c)
         self.mass.G_occ = self.mass.G_occ.expand_to_n_c(self.n_c)
         self.mass.m_inf = self.mass.m_inf.expand_to_n_c(self.n_c)
-        self.supply_damper.expand_to_n_c(self.n_c)
-        self.exhaust_damper.expand_to_n_c(self.n_c)
+        # One damper element per VAV slot: the position sensors of a room
+        # with several VAVs land in several slots, each with its own damper
+        # (shareable element-wise with the AHU's per-branch dampers).
+        n_slots = self.input["damperPositionMeasured"].n_v or 1
+        assert self.n_c == 1 or n_slots == 1, (
+            f"|{self.__class__.__name__}|{self.id}|: a batched occupancy cannot "
+            "have several damper slots per instance."
+        )
+        self.supply_damper.expand_to_n_c(self.n_c * n_slots)
+        self.exhaust_damper.expand_to_n_c(self.n_c * n_slots)
         self.exhaustFlowRatio = self.exhaustFlowRatio.expand_to_n_c(self.n_c)
 
         self.INITIALIZED = True
+
+    #: Fan speed (0-1) above which the fan is fully "on" (as the AHU's).
+    FAN_ON_SPEED = 0.1
 
     PARAM_NAMES = (
         "mass.V",
@@ -287,8 +410,10 @@ class OccupancySystem(core.System, nn.Module):
         "mass.m_inf",
         "supply_damper.a",
         "supply_damper.nominalAirFlowRate",
+        "supply_damper.c",
         "exhaust_damper.a",
         "exhaust_damper.nominalAirFlowRate",
+        "exhaust_damper.c",
         "exhaustFlowRatio",
     )
 
@@ -305,16 +430,124 @@ class OccupancySystem(core.System, nn.Module):
 
     @staticmethod
     def _airflow(
-        a: torch.Tensor, nominal: torch.Tensor, position: torch.Tensor
+        a: torch.Tensor, nominal: torch.Tensor, position: torch.Tensor, c=None
     ) -> torch.Tensor:
-        """Damper position (0-1) -> airflow [kg/s]; same exponential
-        characteristic as ``DamperSystem`` (``_DamperParams.compute_airflow``
-        expressed on explicit parameter tensors so ``forward`` stays pure)."""
-        c = -a
-        b = torch.log((nominal - c) / a)
-        return a * torch.exp(b * position) + c
+        """Damper position (0-1) -> airflow [kg/s]; the characteristic of
+        ``DamperSystem`` (``c = -a`` unless given: ``a + c`` is then the
+        closed-damper flow) on explicit parameter tensors so ``forward``
+        stays pure."""
+        from twin4build.systems.damper.damper_system import DamperSystem
 
-    def forward(self, x, inputs, params, sample_time):
+        return DamperSystem.characteristic(a, nominal, position, c)
+
+    def _ratio(self, params):
+        """Exhaust-to-supply ratio: the estimated value when in ``params``,
+        else the component's own."""
+        ratio = params.get("exhaustFlowRatio", None)
+        return self.exhaustFlowRatio.get() if ratio is None else ratio
+
+    @staticmethod
+    def invert_zoh_occupancy(
+        mass_params,
+        inputs,
+        C_prev,
+        C_now,
+        sample_time,
+        n_c=1,
+        transform_mode=None,
+    ):
+        r"""People count that takes ``C_prev`` to ``C_now`` under the zone's own ZOH step.
+
+        This is the algebraic inverse of
+        :meth:`BuildingSpaceMassSystem.forward` -- not of a separately
+        derived reduced system.  It calls the *same*
+        :func:`~twin4build.systems.building_space.building_space_mass_system.mass_matrices`
+        and the *same*
+        :func:`~twin4build.systems.utils.discrete_statespace_system._discretize_onestep`
+        on the *same* four-slot input vector, so there is one matrix
+        contract, one matrix exponential and one set of shapes on the
+        captured graph.  A second, hand-rolled 1-state/2-input system
+        agrees numerically but drifts from the zone whenever the zone's
+        matrices change, and adds an untested ``expm`` to the compiled /
+        CUDA-graph rollout.
+
+        Occupant count is slot :data:`OCCUPANCY_SLOT` of ``u`` and enters
+        neither ``A_eff`` nor ``B_eff`` (``E`` and ``F`` are zero there),
+        so with ``u_occ = 0``
+
+        .. math::
+
+           n = \frac{C_k - A_d C_{k-1} - B_d u\big|_{n=0}}{B_d[\,0, 3\,]}
+
+        Only :data:`ACTIVE_INPUT_SLOTS` of ``B_eff`` are ever nonzero, and
+        ``B_d`` is linear in ``B_eff`` column by column, so the dropped
+        columns contribute exact zeros.  Discretizing the reduced system
+        therefore gives bit-identical ``A_d`` and ``B_d`` entries while
+        exponentiating a 3x3 block rather than a 5x5 -- nine saved
+        activations per product instead of twenty-five, on a captured
+        reverse-mode rollout that runs the device out of memory.
+
+        Args:
+            mass_params: ``{"V", "G_occ", "m_inf"}`` -- the zone's
+                :attr:`BuildingSpaceMassSystem.PARAM_NAMES`, each ``(n_c,)``.
+            inputs: the zone's ``supplyAirFlowRate`` / ``exhaustAirFlowRate``
+                / ``outdoorCO2`` ports, *untransformed*: the balanced-flow
+                transform is applied here exactly as the zone applies it.
+            C_prev: CO2 at the start of the step [ppmv].
+            C_now: measured CO2 at the end of the step [ppmv].
+            sample_time: step length [s].
+            n_c: parallel-component count of the matrices.
+            transform_mode: passed through to the discretization (``True``
+                selects ``_expm_ss`` / ``_expm_ss_fused``, as under vmap and
+                ``torch.compile``).
+
+        Tensor construction follows
+        ``docs/source/manual/differentiable_system_models.rst``: no
+        tensor-to-Python (no ``result_type``, no ``.to(dtype=...)``), and
+        ``transform_mode`` is passed explicitly rather than queried.
+        """
+        A, B, _, _, E, F = mass_matrices(
+            mass_params["V"], mass_params["G_occ"], mass_params["m_inf"], n_c
+        )
+        # Same transform, same slot order as BuildingSpaceMassSystem.forward.
+        inputs = {**inputs, **air_balance.balanced_flow_inputs(inputs)}
+        C_out = inputs["outdoorCO2"]
+        # Slot order of BuildingSpaceMassSystem.forward; the make-up stream is
+        # outdoor air here (the inverse has no transfer-node port).
+        u = torch.stack(
+            [
+                inputs["supplyAirFlowRate"],
+                inputs["exhaustAirFlowRate"],
+                C_out,
+                torch.zeros_like(C_out),
+                inputs.get("makeUpAirCO2", C_out),
+            ],
+            dim=-1,
+        )
+        # The zone's own effective matrices (the bilinear flow terms read the
+        # FULL u), then only the columns that are ever nonzero.
+        A_eff, B_eff = effective_matrices(A, B, E, F, u)
+        # A slice, never a list of indices: see ACTIVE_INPUT_SLICE.
+        u_r = u[..., ACTIVE_INPUT_SLICE]
+        Ad, Bd = _discretize_onestep(
+            A_eff,
+            B_eff[..., ACTIVE_INPUT_SLICE],
+            None,
+            None,
+            u_r,
+            sample_time,
+            transform_mode=transform_mode,
+        )
+        # bilinear_onestep's x_next, with the occupancy slot zeroed out.
+        x = C_prev.unsqueeze(-1)
+        x_no_occ = (Ad @ x.unsqueeze(-1)).squeeze(-1) + (
+            Bd @ u_r.unsqueeze(-1)
+        ).squeeze(-1)
+        return (C_now.unsqueeze(-1) - x_no_occ).squeeze(-1) / Bd[
+            ..., 0, OCCUPANCY_SLOT_ACTIVE
+        ]
+
+    def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step occupancy estimate (functorch-safe, stateless).
 
         Inverts the zone CO2 balance: all data enters through ``inputs``
@@ -323,45 +556,92 @@ class OccupancySystem(core.System, nn.Module):
         thread theta gradients exactly.
         """
         C_indoor = inputs["indoorCo2Measured"]
-        C_prev = inputs["previousIndoorCo2Measured"]
-        damper_pos = inputs["damperPositionMeasured"]
         C_outdoor = inputs["outdoorCo2Concentration"]
-
-        m_sup = self._airflow(
-            params["supply_damper.a"],
-            params["supply_damper.nominalAirFlowRate"],
-            damper_pos,
-        )
-        if self.exhaust_follows_supply:
-            ratio = params.get("exhaustFlowRatio", None)
-            if ratio is None:
-                ratio = self.exhaustFlowRatio.get()
-            m_exh = m_sup * ratio
+        x_parts = []
+        if self._co2_from_sensor:
+            C_prev = x[..., 0]
+            x_parts.append(C_indoor.unsqueeze(-1))
         else:
+            C_prev = inputs["previousIndoorCo2Measured"]
+        damper_pos = inputs["damperPositionMeasured"]
+        if damper_pos.dim() > C_indoor.dim():
+            # One slot per VAV serving the zone, one damper element per slot
+            # (a scalar damper parameter broadcasts over the slots): the
+            # damper model on every slot, summed -- a lumped zone only sees
+            # the total.
+            def _per_slot(value):
+                value = torch.as_tensor(value)
+                if value.dim() >= 1 and value.shape[-1] == damper_pos.shape[-1]:
+                    return value
+                return value.unsqueeze(-1)
+
+            m_sup = self._airflow(
+                _per_slot(params["supply_damper.a"]),
+                _per_slot(params["supply_damper.nominalAirFlowRate"]),
+                damper_pos,
+                None if self.supply_damper.c_tied else _per_slot(params["supply_damper.c"]),
+            ).sum(dim=-1)
+            if self.exhaust_follows_supply:
+                m_exh = m_sup * self._ratio(params)
+            else:
+                m_exh = self._airflow(
+                    _per_slot(params["exhaust_damper.a"]),
+                    _per_slot(params["exhaust_damper.nominalAirFlowRate"]),
+                    damper_pos,
+                    None if self.exhaust_damper.c_tied else _per_slot(params["exhaust_damper.c"]),
+                ).sum(dim=-1)
+        else:
+            m_sup = self._airflow(
+                params["supply_damper.a"],
+                params["supply_damper.nominalAirFlowRate"],
+                damper_pos,
+                None if self.supply_damper.c_tied else params["supply_damper.c"],
+            )
+        if self.exhaust_follows_supply and damper_pos.dim() <= C_indoor.dim():
+            m_exh = m_sup * self._ratio(params)
+        elif damper_pos.dim() <= C_indoor.dim():
             m_exh = self._airflow(
                 params["exhaust_damper.a"],
                 params["exhaust_damper.nominalAirFlowRate"],
                 damper_pos,
+                None if self.exhaust_damper.c_tied else params["exhaust_damper.c"],
             )
 
-        air_mass = params["mass.V"] * constants.RHO_AIR
-        alpha = params["mass.G_occ"] * (constants.M_AIR / constants.M_CO2) * 1e6
-        m_inf = params["mass.m_inf"]
-
-        dC = C_indoor - C_prev
-        # Exact inverse of BuildingSpaceMassSystem's balanced ventilation
-        # (see building_space/air_balance.py): every entering stream --
-        # supply, the outdoor make-up flow max(m_exh - m_sup, 0) and the
-        # infiltration -- replaces room air at C_prev by outdoor air.  The
-        # forward model and this inversion must stay the same equation, or
-        # the people it books do not reproduce the measured CO2.
-        m_mu = make_up_air_flow(m_sup, m_exh)
-        N_occ = (
-            air_mass * dC / sample_time
-            + (m_inf + m_sup + m_mu) * (C_prev - C_outdoor)
-        ) / alpha
+        fan = inputs.get("fanSpeedMeasured")
+        if fan is not None:
+            # Same gate as AirHandlingUnitSystem._fan_gate: nothing moves
+            # with the fan stopped, the damper sets the flow once it runs.
+            # A hard clamp: with the port unwired (value 1) the gate must be
+            # exactly 1 so both engines agree to the bit.
+            gate = torch.clamp(fan / self.FAN_ON_SPEED, 0.0, 1.0)
+            m_sup = m_sup * gate
+            m_exh = m_exh * gate
+        # Exact inverse of BuildingSpaceMassSystem's ZOH step, through the
+        # zone's own matrices and discretization.
+        N_occ = self.invert_zoh_occupancy(
+            {
+                "V": params["mass.V"],
+                "G_occ": params["mass.G_occ"],
+                "m_inf": params["mass.m_inf"],
+            },
+            {
+                "supplyAirFlowRate": m_sup,
+                "exhaustAirFlowRate": m_exh,
+                "outdoorCO2": C_outdoor,
+            },
+            C_prev,
+            C_indoor,
+            sample_time,
+            n_c=self.n_c,
+            transform_mode=transform_mode,
+        )
+        if self.smoothing > 0:
+            j = 1 if self._co2_from_sensor else 0
+            N_occ = self.smoothing * x[..., j] + (1.0 - self.smoothing) * N_occ
+            x_parts.append(N_occ.unsqueeze(-1))
         N_occ = clamp(N_occ, lower=0.0, upper=1e6)
-        return x, {"scheduleValue": N_occ}
+        x_next = torch.cat(x_parts, dim=-1) if x_parts else x
+        return x_next, {"scheduleValue": N_occ}
 
     def do_step(
         self,
@@ -370,24 +650,34 @@ class OccupancySystem(core.System, nn.Module):
         step_size: int,
         step_index: int,
     ) -> None:
-        C_indoor = self._co2_ts.values[step_index]  # (n_s, 1) - measured
-        C_prev = self._co2_ts.values[step_index - 1] if step_index > 0 else C_indoor
-        damper_pos = self._damper_ts.values[step_index]  # (n_s, 1) - measured
-
-        # Publish the data samples on the (unconnected) measured-data input
-        # ports: the composed fast paths capture input-port histories per
-        # step, so this makes the data visible to Simulator.compose.
-        self.input["indoorCo2Measured"]._set(C_indoor, i_t=step_index)
-        self.input["previousIndoorCo2Measured"]._set(C_prev, i_t=step_index)
-        self.input["damperPositionMeasured"]._set(damper_pos, i_t=step_index)
-
-        inputs = {
-            "indoorCo2Measured": C_indoor,
-            "previousIndoorCo2Measured": C_prev,
-            "damperPositionMeasured": damper_pos,
-            "outdoorCo2Concentration": self.input["outdoorCo2Concentration"].get(),
-        }
-        _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+        inputs = {"outdoorCo2Concentration": self.input["outdoorCo2Concentration"].get()}
+        if self._co2_from_sensor:
+            inputs["indoorCo2Measured"] = self.input["indoorCo2Measured"].get()
+        else:
+            C_indoor = self._co2_ts.values[step_index]  # (n_s, 1) - measured
+            C_prev = self._co2_ts.values[step_index - 1] if step_index > 0 else C_indoor
+            # Publish the data samples on the (unconnected) measured-data
+            # input ports so the composed fast paths capture them per step.
+            self.input["indoorCo2Measured"]._set(C_indoor, i_t=step_index)
+            self.input["previousIndoorCo2Measured"]._set(C_prev, i_t=step_index)
+            inputs["indoorCo2Measured"] = C_indoor
+            inputs["previousIndoorCo2Measured"] = C_prev
+        x = self.get_state() if self.state_size() > 0 else None
+        # Always passed (1 when unwired), exactly as the composed path sees it.
+        inputs["fanSpeedMeasured"] = self.input["fanSpeedMeasured"].get()
+        if self._damper_from_sensor:
+            inputs["damperPositionMeasured"] = self.input["damperPositionMeasured"].get()
+        else:
+            damper_pos = self._damper_ts.values[step_index]  # (n_s, 1) - measured
+            self.input["damperPositionMeasured"]._set(
+                damper_pos.unsqueeze(-1), i_t=step_index
+            )
+            inputs["damperPositionMeasured"] = damper_pos
+        x_next, outs = self.forward(
+            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
+        if x_next is not None and self.state_size() > 0:
+            self.set_state(x_next)
         self.output["scheduleValue"]._set(outs["scheduleValue"], i_t=step_index)
+
+

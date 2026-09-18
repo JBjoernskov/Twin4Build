@@ -37,6 +37,80 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- `OccupancySystem` inverts the zone's CO2 step exactly. It now builds the
+  same matrices (`mass_matrices`) and runs the same ZOH discretization
+  (`_discretize_onestep`) on the same four-slot input vector as
+  `BuildingSpaceMassSystem.forward`, with the occupancy slot zeroed, and
+  divides by that slot's column of `Bd`.  Only `ACTIVE_INPUT_SLOTS` of
+  `B_eff` are ever nonzero and `Bd` is linear in `B_eff` column by column,
+  so the inversion drops the other columns first and exponentiates a 3x3
+  block instead of a 5x5; the dropped columns enter the Taylor/squaring
+  recursion as exact zeros, so `Ad` and the kept `Bd` entries are bit
+  identical (pinned by tests).  This matters because the captured
+  reverse-mode rollout, not the model, is what exhausts device memory:
+  one capture of a 3-window 288-step rollout measured 5.2 GB on an 8 GB
+  card, and a replay with no headroom left aborts as a segfault or an
+  illegal memory access rather than a clean out-of-memory error.  The previous explicit-Euler
+  rearrangement is a different map at AHU sample times (`λ Δt ~ O(1)` at
+  600 s), so the people it booked did not reproduce the measured CO2 when
+  pushed back through the zone.  `SUPPORTS_TRANSFORM_MODE = True`, so the
+  composed and compiled paths get the `torch.matrix_exp` / `_expm_ss` /
+  `_expm_ss_fused` switch the zone gets.  Note that an exact inverse makes
+  measured-vs-predicted CO2 uninformative about `V`, `G_occ` and `m_inf`
+  (only their effect through `N_occ -> Q_occ N_occ -> T` identifies them,
+  and only the product `Q_occ V / G_occ` unless one factor is pinned).
+- Room air models balance their ventilation flows. `BuildingSpaceThermalSystem`
+  and `BuildingSpaceMassSystem` used to charge the supply at supply state and
+  the exhaust at room state independently, so a mismatch between the two
+  measured flows left a fictitious `(m_sup - m_exh) * cp * T_i` storage term
+  (an exhaust meter reading 20% low heated the room out of nothing).  The room
+  air mass is constant, so every stream entering is balanced by air leaving at
+  room state: the supply term is `m_sup * cp * (T_sup - T_i)`, and the exhaust
+  enters only as the outdoor **make-up flow** `max(m_exh - m_sup, 0)` drawn
+  through the envelope, `m_mu * cp * (T_out - T_i)` (same for CO2).  Supply in
+  excess of the exhaust leaves through the envelope and the exhaust flow drops
+  out; the CO2 balance can no longer be driven below outdoor by ventilation.
+  Ports are unchanged; the transform is applied to the `exhaustAirFlowRate`
+  slot at input assembly on the object, functional and fused paths
+  (`twin4build/systems/building_space/air_balance.py`; state-space units may
+  declare `_ss_transform_inputs` / `SS_TRANSFORM_PORTS`, which
+  `FusedStateSpaceSystem` applies before stacking the joint input).  The
+  constant infiltration parameter `m_inf` stays additive (EnergyPlus
+  convention).
+  `OccupancySystem`'s CO2 inversion uses the same balanced equation, so
+  the people it books reproduce the measured CO2 through the forward model
+  for any supply/exhaust pair.
+- `System.get_estimable_parameters` skips parameters the owner reports as
+  inactive (`_inactive_parameters()`); `BuildingSpaceThermalSystem` reports
+  `C_boundary` / `R_boundary` unless a `boundaryTemperature` is connected,
+  so rooms without the deprecated in-zone boundary wall no longer put two
+  dead entries per room into theta.
+- `BuildingSpaceThermalSystem` `C_air` upper bound 1e6 -> 3e6 J/K: the air
+  node stands for air plus furniture, and 1e6 was binding on classrooms.
+- `Simulator(compile_step=...)`: the functional transform-mode step can be
+  compiled with `torch.compile` (Inductor) before it is captured or run
+  eagerly.  `"auto"` (default) enables it on CUDA when the torch build has
+  Triton (Linux wheels; Windows wheels have none and keep the eager step),
+  `True` requires it, `False` disables it.  Inside `torch.compile` the
+  state-space matrix exponential uses pointwise products (`_expm_ss_fused`)
+  so Inductor fuses them; eager keeps the cuBLAS form.  On the one-zone
+  shooting benchmark the captured graph replays in 0.35 s instead of 1.41 s,
+  its driver-side executable shrinks from 1.9 GiB to 0.36 GiB, and values
+  and gradients match eager to 1e-15 (issue #134); the first call pays a
+  one-time compile of about 45 s.  `System.state_size()` is cached after the
+  first call (Dynamo cannot trace the `vars()` walk it used every step).
+  The batched single-shooting bundles (multi-start SQP, its line search)
+  roll the batch out with a compiled `vmap` of the step
+  (`FunctionalModel.compiled_batched_step`, `Simulator.rollout_functional_batched`)
+  because `vmap` applied from eager code to a compiled function is not
+  supported; functorch transforms over a compiled step fall back to the
+  eager step automatically.
+- `OccupancySystem`: optional `fanSpeedMeasured` input gating its damper
+  flows (the inverse balance sees no air when the fan is off), optional
+  smoothing of the inverted occupancy, and the damper flows derived from
+  the historised damper COMMAND through the same characteristic the AHU
+  uses, so the inverse and the forward balance see one and the same flow.
+
 - `AirHandlingUnitSystem`: optional `supplyFanSpeed` input gating the branch
   flows (a stopped fan moves no air whatever the dampers say);
   `totalSupplyAirFlowRate` / `totalExhaustAirFlowRate` outputs for the
