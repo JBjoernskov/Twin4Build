@@ -37,6 +37,20 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Plug-in solvers (`twin4build.solvers.registry`): an object with a
+  `method` tuple and `solve(problem, options)` can be registered
+  (`register_solver`) and used by name, or passed as `method=` to
+  `Estimator.estimate` directly.  The estimator hands it an
+  `EstimationProblem` (normalized start and bounds, the composed objective
+  with its batched bundles, device, dtype, transcription) and records its
+  SciPy-like result exactly as for the built-in backends; a registered
+  method shadows a built-in one of the same name.  `Estimator.estimation_problem()`
+  exposes the prepared problem; `solve_batched_multistart(...,
+  chunk_solver=)` lets a plug-in step reuse the multistart chunking and
+  result assembly.  `Optimizer.pareto_front` accepts a registered Pareto
+  route (`register_pareto_route`: `anchors` + `sweep`) under its own method
+  tuple in place of the host-solver anchors and epsilon sweep.
+
 - Post-fit identifiability report. `Estimator.estimate` now ends with a local
   identifiability analysis of the residual Jacobian at the optimum
   (`twin4build/estimator/_identifiability.py`): parameters no residual reacts
@@ -85,6 +99,11 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- The block trust-region step (`("custom", "batched-tr", "ad")`, on `dev`
+  since September) and the batched trust-region Pareto route left the
+  library; a solver of that shape now plugs in through
+  `twin4build.solvers.registry`.  The benchmark matrices drop their rows.
+
 - Room air models balance their ventilation flows. `BuildingSpaceThermalSystem`
   and `BuildingSpaceMassSystem` used to charge the supply at supply state and
   the exhaust at room state independently, so a mismatch between the two
@@ -113,22 +132,6 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   dead entries per room into theta.
 - `BuildingSpaceThermalSystem` `C_air` upper bound 1e6 -> 3e6 J/K: the air
   node stands for air plus furniture, and 1e6 was binding on classrooms.
-- New batched shooting solver method `("custom", "batched-tr", "ad")`: a
-  structure-aware trust-region step.  `FunctionalModel.index_coupling()`
-  derives independent parameter blocks and their residual columns from the
-  wiring (independent zones of a batched layout become separate blocks; a
-  fully coupled model is one block), the objective exposes per-column losses
-  (`batched_column_loss`, `batched_column_loss_and_grad`), and each block
-  minimises its own damped-BFGS model inside its own scaled trust box, is
-  accepted on the ratio of its own actual to predicted decrease, and grows or
-  shrinks its own radius.  A block on a rough loss surface (the exploding
-  per-zone gradients behind the batched SQP's line-search failures at 50 and
-  100 zones, issue #141) collapses its radius without stalling the others.
-  Options: `tr_blocks` (`"auto"`, `None`, or explicit index lists, merged to
-  unions of structure components), `tr_radius`, `tr_max_radius`,
-  `tr_min_radius`, `tr_accept`, `tr_expand`, `tr_shrink`, `tr_retries`,
-  `tr_scale_floor`, `tr_validate` (issue #142).
-
 - `Simulator(compile_step=...)`: the functional transform-mode step can be
   compiled with `torch.compile` (Inductor) before it is captured or run
   eagerly.  `"auto"` (default) enables it on CUDA when the torch build has

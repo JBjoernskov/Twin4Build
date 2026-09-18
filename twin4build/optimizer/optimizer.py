@@ -18,6 +18,7 @@ import twin4build.systems as systems
 import twin4build.utils.types as tps
 from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
+from twin4build.solvers.registry import find_pareto_route
 from twin4build.utils.method_spec import parse_method
 from twin4build.utils.result import ResultDict
 from twin4build.utils.validate_period import validate_period
@@ -827,22 +828,21 @@ class Optimizer:
         sparse Hessian of the collocation Lagrangian. The old three-element
         IPOPT spelling is rejected because it ambiguously implied direct shooting.
 
-        ``("custom", "batched-tr", "ad")`` instead solves every
-        epsilon-subproblem at once on the device with the block trust-region
-        step: no host solver and no separate prepass.  It needs
-        ``execution_mode="functional"`` and takes the trust-region options
-        (``tr_radius``, ``tr_retries``, ...) rather than the SciPy/IPOPT ones.
+        A Pareto route registered through
+        :func:`twin4build.solvers.registry.register_pareto_route` is accepted
+        under its own method tuple; it replaces both the anchor solves and
+        the epsilon sweep and receives ``options`` unchanged.
         """
-        if tuple(method) not in (
+        built_in = (
             ("scipy", "SLSQP", "ad"),
             ("casadi", "ipopt", "ad", "collocation"),
-            ("custom", "batched-tr", "ad"),
-        ):
+        )
+        if tuple(method) not in built_in and find_pareto_route(method) is None:
             raise ValueError(
                 "pareto_front requires exact AD derivatives with "
                 '("scipy", "SLSQP", "ad"), '
-                '("casadi", "ipopt", "ad", "collocation") or '
-                f'("custom", "batched-tr", "ad"); got {method}.'
+                '("casadi", "ipopt", "ad", "collocation") or a registered '
+                f"Pareto route; got {method}."
             )
         for name, obj in (("objective1", objective1), ("objective2", objective2)):
             if obj is None or len(obj) != 3:

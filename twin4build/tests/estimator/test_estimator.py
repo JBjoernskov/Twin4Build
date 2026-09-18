@@ -635,22 +635,26 @@ class TestEstimator(unittest.TestCase):
             )
 
             # Step 15: Verify that the parameters are the same for the loaded model
+            def _value(parameter):
+                # zone and heater parameters are TensorParameters
+                return float(parameter.get()) if hasattr(parameter, "get") else float(parameter)
+
             self.assertAlmostEqual(
-                space.thermal.C_air,
-                space_loaded.thermal.C_air,
-                delta=0.1 * space.thermal.C_air,
+                _value(space.thermal.C_air),
+                _value(space_loaded.thermal.C_air),
+                delta=0.1 * _value(space.thermal.C_air),
             )
             self.assertAlmostEqual(
-                space.thermal.C_wall,
-                space_loaded.thermal.C_wall,
-                delta=0.1 * space.thermal.C_wall,
+                _value(space.thermal.C_wall),
+                _value(space_loaded.thermal.C_wall),
+                delta=0.1 * _value(space.thermal.C_wall),
             )
 
             heater_loaded = model2.components["office_space_heater"]
             self.assertAlmostEqual(
-                heater_loaded.thermalMassHeatCapacity,
-                space_heater.thermalMassHeatCapacity,
-                delta=0.1 * heater_loaded.thermalMassHeatCapacity,
+                _value(heater_loaded.thermalMassHeatCapacity),
+                _value(space_heater.thermalMassHeatCapacity),
+                delta=0.1 * _value(heater_loaded.thermalMassHeatCapacity),
             )
 
             # Test passed if we got here without exceptions
