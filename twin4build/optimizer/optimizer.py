@@ -20,6 +20,7 @@ from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
 from twin4build.solvers.registry import find_pareto_route
 from twin4build.utils.method_spec import parse_method
+from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.result import ResultDict
 from twin4build.utils.validate_period import validate_period
 from twin4build.optimizer._pareto import pareto_front as _pareto_front
@@ -619,9 +620,16 @@ class Optimizer:
             assert hasattr(
                 component, "output"
             ), f"Component {component} at index {i} does not have 'output' attribute"
-            assert (
-                output_name in component.output
-            ), f"Output '{output_name}' not found in component {component.id}"
+            if output_name not in component.output:
+                # A parameter decision variable: any ``tps.Parameter`` of the
+                # component (e.g. the points of a compensation curve).
+                parameter = rgetattr(component, output_name, None)
+                assert parameter is not None and hasattr(parameter, "get") and hasattr(parameter, "set"), (
+                    f"'{output_name}' is neither an output port nor a parameter of component {component.id}"
+                )
+                assert len(bounds) >= 2, (
+                    f"Parameter decision variable {component.id}.{output_name} needs bounds (lb, ub)"
+                )
             if len(bounds) >= 2:
                 lower, upper = bounds[0], bounds[1]
                 assert (
@@ -637,9 +645,16 @@ class Optimizer:
             assert hasattr(
                 component, "output"
             ), f"Component {component} at index {i} does not have 'output' attribute"
-            assert (
-                output_name in component.output
-            ), f"Output '{output_name}' not found in component {component.id}"
+            if output_name not in component.output:
+                # A parameter decision variable: any ``tps.Parameter`` of the
+                # component (e.g. the points of a compensation curve).
+                parameter = rgetattr(component, output_name, None)
+                assert parameter is not None and hasattr(parameter, "get") and hasattr(parameter, "set"), (
+                    f"'{output_name}' is neither an output port nor a parameter of component {component.id}"
+                )
+                assert len(bounds) >= 2, (
+                    f"Parameter decision variable {component.id}.{output_name} needs bounds (lb, ub)"
+                )
 
         # Validate format of equality constraints
         for i, eq_constraint in enumerate(self._eq_cons):
@@ -650,9 +665,16 @@ class Optimizer:
             assert hasattr(
                 component, "output"
             ), f"Component {component} at index {i} does not have 'output' attribute"
-            assert (
-                output_name in component.output
-            ), f"Output '{output_name}' not found in component {component.id}"
+            if output_name not in component.output:
+                # A parameter decision variable: any ``tps.Parameter`` of the
+                # component (e.g. the points of a compensation curve).
+                parameter = rgetattr(component, output_name, None)
+                assert parameter is not None and hasattr(parameter, "get") and hasattr(parameter, "set"), (
+                    f"'{output_name}' is neither an output port nor a parameter of component {component.id}"
+                )
+                assert len(bounds) >= 2, (
+                    f"Parameter decision variable {component.id}.{output_name} needs bounds (lb, ub)"
+                )
 
         # Validate format of inequality constraints
         for i, ineq_constraint in enumerate(self._ineq_cons):
@@ -663,9 +685,16 @@ class Optimizer:
             assert hasattr(
                 component, "output"
             ), f"Component {component} at index {i} does not have 'output' attribute"
-            assert (
-                output_name in component.output
-            ), f"Output '{output_name}' not found in component {component.id}"
+            if output_name not in component.output:
+                # A parameter decision variable: any ``tps.Parameter`` of the
+                # component (e.g. the points of a compensation curve).
+                parameter = rgetattr(component, output_name, None)
+                assert parameter is not None and hasattr(parameter, "get") and hasattr(parameter, "set"), (
+                    f"'{output_name}' is neither an output port nor a parameter of component {component.id}"
+                )
+                assert len(bounds) >= 2, (
+                    f"Parameter decision variable {component.id}.{output_name} needs bounds (lb, ub)"
+                )
             assert constraint_type in [
                 "upper",
                 "lower",
@@ -1363,7 +1392,8 @@ class Optimizer:
                 for parameter in component.parameters():
                     parameter.requires_grad_(False)
 
-        for component, output_name, *bounds in self._variables:
+        self._trajectory_variables, self._parameter_variables = self._split_variables()
+        for component, output_name, *bounds in self._trajectory_variables:
             component.output[output_name].do_normalization = True
 
         LOGGER.task("Initializing model")
@@ -1376,7 +1406,7 @@ class Optimizer:
         bounds_list = []
         x0_tensors = []
         n_periods = len(self._start_time)
-        for component, output_name, *bounds in self._variables:
+        for component, output_name, *bounds in self._trajectory_variables:
             port = component.output[output_name]
             active_history = (
                 port.normalized_history if port.do_normalization else port.history()
@@ -1428,6 +1458,13 @@ class Optimizer:
         else:
             x0 = np.array([], dtype=np.float64)
 
+        # Parameter decision variables follow the trajectories in theta, one
+        # entry per element, normalized to [0, 1] by their bounds.
+        self._n_trajectory_theta = int(len(x0))
+        for component, name, lower, upper, n in self._parameter_variables:
+            value = rgetattr(component, name).get().detach().reshape(-1).cpu().numpy().astype(np.float64)
+            x0 = np.concatenate([x0, np.clip((value - lower) / (upper - lower), 0.0, 1.0)])
+            bounds_list.extend([(0.0, 1.0)] * n)
         bounds_obj = None
         if bounds_list and all(
             lower is not None and upper is not None for lower, upper in bounds_list
@@ -1501,8 +1538,26 @@ class Optimizer:
             )
         if self.simulator.execution_mode == "functional" and method[2] == "ad":
             self._setup_functional_objective(x0)
-
+        if self._parameter_variables and self._functional_objective is None:
+            raise RuntimeError(
+                "Parameter decision variables need the functional objective: construct "
+                "Simulator(model, execution_mode='functional') and use an 'ad' method."
+            )
         return x0, bounds_obj
+
+    def _split_variables(self):
+        """``(trajectories, parameters)``: a decision variable naming an output
+        port is a trajectory (one value per timestep, as before); one naming a
+        ``tps.Parameter`` of the component is a parameter, entered once per
+        element as ``(component, name, lb, ub, n_elements)``."""
+        trajectories, parameters = [], []
+        for component, name, *bounds in self._variables:
+            if name in component.output:
+                trajectories.append((component, name, *bounds))
+            else:
+                n = int(rgetattr(component, name).get().reshape(-1).numel())
+                parameters.append((component, name, float(bounds[0]), float(bounds[1]), n))
+        return trajectories, parameters
 
     def _setup_functional_objective(self, x0) -> None:
         """Build the functional single-shooting objective.
@@ -1530,13 +1585,24 @@ class Optimizer:
         )
 
     def _write_variables(self, theta: torch.Tensor) -> None:
-        """Write an interleaved normalized decision vector to output ports."""
-        n_actuators = len(self._variables)
+        """Write a normalized decision vector into the model: the interleaved
+        trajectories to their output ports, the parameters to their
+        ``tps.Parameter``s."""
+        offset = self._n_trajectory_theta
+        with torch.no_grad():
+            for component, name, lower, upper, n in self._parameter_variables:
+                values = theta[offset : offset + n] * (upper - lower) + lower
+                rgetattr(component, name).set(values.detach(), normalized=False)
+                offset += n
+        n_actuators = len(self._trajectory_variables)
+        if n_actuators == 0:
+            return
+        theta = theta[: self._n_trajectory_theta]
         n_periods = len(self._start_time)
         total_actual_timesteps = int(len(theta) / n_actuators)
         theta_matrix = theta.reshape(total_actual_timesteps, n_actuators)
 
-        for i, (component, output_name, *bounds) in enumerate(self._variables):
+        for i, (component, output_name, *bounds) in enumerate(self._trajectory_variables):
             actuator_values = theta_matrix[:, i]
             n_c = component.output[output_name].n_c
             reconstructed_tensor = torch.full(

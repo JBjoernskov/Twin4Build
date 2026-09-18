@@ -37,6 +37,20 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- `Optimizer`: a decision variable may name a component's ``tps.Parameter``
+  instead of an output port (`(component, "Y", lb, ub)`), so a handful of
+  numbers (the points of a compensation curve, a gain, a setpoint) can be
+  optimized next to, or instead of, actuator trajectories.  The decision
+  vector is the trajectories followed by the parameters (normalized to
+  [0, 1] by their bounds); the functional objective hands the parameter
+  partition to the composed map as its theta, exactly as the Estimator does
+  with estimated parameters, and `pareto_front` sweeps over it unchanged.
+  Parameter decision variables need the functional objective.
+- `PiecewiseLinearSystem`: the Y points are a `tps.Parameter` (with
+  optional `Y_bounds` making them estimable) and the interpolation is a
+  pure, differentiable function of them, so an outdoor-temperature
+  compensation curve can be estimated or optimized.
+
 - Example patterns (`twin4build/examples/patterns`): the AHU pattern reads
   the supply fan's speed command and the AHU-level flow meters; the space
   heater pattern takes the supply water temperature from the heating
