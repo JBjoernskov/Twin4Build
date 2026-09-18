@@ -201,6 +201,31 @@ class TestScorePair(unittest.TestCase):
         self.assertGreater(score.kp, 0.0)
         self.assertGreater(score.r2, 0.95)
 
+    def test_level_agreement_breaks_constant_setpoint_ties(self) -> None:
+        """A heating valve driven by a reverse-acting PI on the HEATING
+        setpoint (22 C).  The cooling setpoint (24 C) is a constant too, so
+        the increment regression scores both pairs identically (``de`` is
+        ``-d(fb)`` either way); the level agreement must prefer the heating
+        setpoint: the valve is open when the room is below 22 C and shut
+        when it is above, which 24 C cannot explain."""
+        n = 2000
+        t = np.arange(n)
+        fb = 21.5 + 2.0 * np.sin(2 * np.pi * t / 400) + 0.3 * np.sin(2 * np.pi * t / 37)
+        sp_heat = np.full(n, 22.0)
+        sp_cool = np.full(n, 24.0)
+        e = sp_heat - fb
+        # A high-gain reverse-acting P law: saturated most of the time
+        # (open below 22 C, shut above), modulating near the setpoint.
+        u = np.clip(0.5 + 2.0 * e, 0.0, 1.0)
+        heat = score_pair(u=u, sp=sp_heat, fb=fb, h=self.h)
+        cool = score_pair(u=u, sp=sp_cool, fb=fb, h=self.h)
+        self.assertIsNone(heat.reason)
+        self.assertIsNone(cool.reason)
+        self.assertAlmostEqual(heat.r2, cool.r2, places=9)
+        self.assertGreater(heat.slope, 0.0)
+        self.assertGreater(heat.level_agreement, cool.level_agreement + 0.2)
+        self.assertGreater(heat.level_agreement, 0.8)
+
     def test_wrong_pair_low_r2(self) -> None:
         """Independent (random) actuator and sensor: R^2 close to zero."""
         n = 1500

@@ -77,6 +77,14 @@ class LoopScore:
     r2: float
     n_active: int
     reason: Optional[str] = None
+    #: Fraction of ALL finite samples (saturated ones included) where the
+    #: actuator's side (above / below 0.5) is the one the setpoint LEVEL
+    #: calls for under the fitted action: reverse (heating) wants the
+    #: actuator high when ``sp > fb``, direct wants it low.  The increment
+    #: regression behind ``r2`` cannot see the level (``Δe = -Δfb`` for
+    #: every constant setpoint, so all candidates tie); this breaks the tie
+    #: with the level.  ``nan`` when the regression is degenerate.
+    level_agreement: float = float("nan")
 
 
 @dataclass
@@ -290,6 +298,7 @@ def score_pair(
 
     slope = float(beta[0])
     coef_e = float(beta[1])
+    level_agreement = _level_agreement(u, e, slope, sat_lo, sat_hi)
 
     pred = X @ beta
     ss_tot = float(np.sum((du - du.mean()) ** 2))
@@ -316,7 +325,31 @@ def score_pair(
         r2=float(r2),
         n_active=n_active,
         reason=None,
+        level_agreement=level_agreement,
     )
+
+
+def _level_agreement(
+    u: np.ndarray, e: np.ndarray, slope: float, sat_lo: float, sat_hi: float,
+    min_saturated_fraction: float = 0.2,
+) -> float:
+    """See :attr:`LoopScore.level_agreement`.
+
+    Scored on the SATURATED samples when there are enough of them (a
+    parked actuator is the clearest statement about the level: a heating
+    valve shut for hours says the room is above its setpoint), on every
+    sample otherwise.  Unsaturated samples of a PI carry the integrated
+    error, whose sign need not match the instantaneous one."""
+    fin = np.isfinite(u) & np.isfinite(e)
+    if not fin.any():
+        return float("nan")
+    u_f, e_f = u[fin], e[fin]
+    sat = (u_f <= sat_lo) | (u_f >= sat_hi)
+    if sat.mean() >= min_saturated_fraction:
+        u_f, e_f = u_f[sat], e_f[sat]
+    high = u_f > 0.5
+    wants_high = (e_f > 0.0) if slope >= 0.0 else (e_f < 0.0)
+    return float(np.mean(high == wants_high))
 
 
 # ---------------------------------------------------------------------------
