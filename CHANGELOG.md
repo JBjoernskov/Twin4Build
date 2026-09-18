@@ -37,6 +37,21 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Make-up air on the zones: `BuildingSpaceMassSystem` takes `makeUpAirCO2`
+  and `BuildingSpaceThermalSystem` `makeUpAirTemperature` for the air that
+  replaces an exhaust surplus (default: outdoor), and `exchangeCO2Gain`
+  (fusable, one slot per connected opening) for interzonal exchange, so a
+  zone's CO2 balance can be closed against a neighbouring space instead of
+  outdoor air.
+- `discrete_statespace_system.effective_matrices(A, B, E, F, u)`: the
+  bilinear matrices evaluated at the current input, factored out of
+  `_discretize_onestep` so a caller that needs only part of the
+  discretization can form the same matrices instead of re-deriving them.
+- `BuildingSpaceMassSystem.mass_matrices`: the CO2 mass balance's
+  `(A, B, C, D, E, F)` as a module-level pure function of `(V, G_occ, m_inf,
+  n_c)`, with `N_STATES` / `N_INPUTS` / `OCCUPANCY_SLOT` naming the matrix
+  contract.  `_build_matrices` is now a thin wrapper around it.
+
 - Plug-in solvers (`twin4build.solvers.registry`): an object with a
   `method` tuple and `solve(problem, options)` can be registered
   (`register_solver`) and used by name, or passed as `method=` to
