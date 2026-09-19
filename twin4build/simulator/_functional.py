@@ -807,24 +807,73 @@ class FunctionalModel:
     # the single continuous-rollout source of truth; a per-segment capture
     # would evaluate stateful/data-indexed signals like the OccupancySystem's
     # ``previousIndoorCo2Measured`` at the wrong step.)
-    def _as_index(self, index, device):
-        """An index tensor on ``device``, converted once: the routes keep the
-        wiring's index objects, and a per-step host-to-device copy would be
-        both a sync and a copy a CUDA-graph capture cannot record."""
+    @staticmethod
+    def _as_index(index, device):
+        """An index tensor on ``device``.  :meth:`prepare_routes` moves the
+        routes' tensors there once, so this is a no-op on the rollout path;
+        a host-to-device copy per step would be a sync the CUDA-graph
+        capture cannot record."""
         if isinstance(index, slice):
             return index
-        cache = self.__dict__.setdefault("_index_cache", {})
-        key = (id(index), str(device))
-        hit = cache.get(key)
-        if hit is None or hit[0] is not index:
-            hit = (index, torch.as_tensor(index, dtype=torch.long, device=device).reshape(-1))
-            cache[key] = hit
-        return hit[1]
+        if isinstance(index, torch.Tensor):
+            return index.reshape(-1).to(device)
+        return torch.as_tensor(index, dtype=torch.long, device=device).reshape(-1)
+
+    @staticmethod
+    def _target_order_of(target_i_c, target_n_c, device):
+        """How a route's pairs land on the target instances: ``None`` when
+        they are exactly ``0..n_c-1`` in order, the inverse permutation when
+        they cover every instance once in some other order, ``False`` when
+        they do not (a scatter is needed)."""
+        if isinstance(target_i_c, slice):
+            return None
+        index = torch.as_tensor(target_i_c, dtype=torch.long).reshape(-1).cpu()
+        if index.numel() != target_n_c or index.numel() != int(torch.unique(index).numel()):
+            return False
+        if bool(torch.equal(index, torch.arange(target_n_c))):
+            return None
+        return torch.argsort(index).to(device)
+
+    def prepare_routes(self, device) -> None:
+        """Resolve every route for ``device`` once: index tensors moved there,
+        the target order decided, the exogenous key table built.  Called at
+        the start of a rollout, outside the traced/captured step, so the
+        step does no caching and no host-to-device copies."""
+        device = torch.device(device)
+        if getattr(self, "_routes_device", None) == device:
+            return
+
+        def idx(value):
+            return value.reshape(-1).to(device) if isinstance(value, torch.Tensor) else value
+
+        def route(r):
+            out_v, s_ic, r_ic, n_c, is_vector = r[:5]
+            return (idx(out_v), idx(s_ic), idx(r_ic), n_c, is_vector, self._target_order_of(r_ic, n_c, device))
+
+        def sources(srcs):
+            return [(p, port, tuple(route(r) for r in routes)) for p, port, routes in srcs]
+
+        def spec(sp):
+            if sp[0] == "fresh":
+                return ("fresh", sources(sp[1]))
+            if sp[0] in ("vector", "mixed"):
+                return (sp[0], [spec(x) for x in sp[1]])
+            return sp
+
+        self.wiring = {cid: [(port, spec(sp)) for port, sp in ports] for cid, ports in self.wiring.items()}
+        self.meas_sources = [
+            ("fresh", m[1], m[2], tuple(route(r) for r in m[3])) if m[0] == "fresh" else m
+            for m in self.meas_sources
+        ]
+        self._fb_producer = [sources(srcs) for srcs in self._fb_producer]
+        self._exo_key_of = {(sl.start, sl.stop): key for key, sl in self._exogenous_index.items()}
+        self._routes_device = device
 
     def _apply_routes(self, value, routes):
         """Apply object-graph output/input branch mappings without mutation."""
         result = value
-        for out_v, source_i_c, target_i_c, target_n_c, output_is_vector in routes:
+        for r in routes:
+            out_v, source_i_c, target_i_c, target_n_c, output_is_vector = r[:5]
             paired = (
                 output_is_vector
                 and isinstance(out_v, torch.Tensor)
@@ -857,7 +906,7 @@ class FunctionalModel:
                 else:
                     result = selected
             else:
-                order = self._target_order(target_i_c, target_n_c, result.device)
+                order = r[5] if len(r) > 5 else self._target_order_of(target_i_c, target_n_c, result.device)
                 if order is None:
                     # The pairs cover every target instance exactly once, in
                     # order: the selection already is the target.
@@ -871,26 +920,6 @@ class FunctionalModel:
                     base = torch.zeros(shape, dtype=selected.dtype, device=selected.device)
                     result = torch.index_copy(base, 0, target_i_c, selected)
         return result
-
-    def _target_order(self, target_i_c, target_n_c, device):
-        """How the pairs land on the target instances, decided once per
-        route: ``None`` when they are exactly ``0..n_c-1`` in order, the
-        inverse permutation when they cover every instance once in some
-        other order, ``False`` when they do not (a scatter is needed)."""
-        cache = self.__dict__.setdefault("_target_order_cache", {})
-        key = (id(target_i_c), int(target_n_c), str(device))
-        hit = cache.get(key)
-        if hit is not None and hit[0] is target_i_c:
-            return hit[1]
-        index = torch.as_tensor(target_i_c, dtype=torch.long).reshape(-1)
-        if index.numel() != target_n_c or index.numel() != int(torch.unique(index).numel()):
-            order = False
-        elif bool(torch.equal(index, torch.arange(target_n_c))):
-            order = None
-        else:
-            order = torch.argsort(index).to(device)
-        cache[key] = (target_i_c, order)
-        return order
 
     def _route_width(self, routes, producer, out_port):
         value = producer.output[out_port].get()
@@ -985,12 +1014,12 @@ class FunctionalModel:
         # Exogenous slots: one split into the registered widths (the keys'
         # slices are contiguous in registration order), one dict lookup per
         # port instead of one slice op each.
-        exo_pieces = dict(zip(self._exogenous_keys, torch.split(exogenous, self._exogenous_widths))) if self._exogenous_widths else {}
-        exo_slice_of = self._exogenous_index
-        exo_key_of = self.__dict__.get("_exo_key_of")
-        if exo_key_of is None:
-            exo_key_of = {(sl.start, sl.stop): key for key, sl in exo_slice_of.items()}
-            self.__dict__["_exo_key_of"] = exo_key_of
+        exo_key_of = getattr(self, "_exo_key_of", None)
+        exo_pieces = (
+            dict(zip(self._exogenous_keys, torch.split(exogenous, self._exogenous_widths)))
+            if exo_key_of is not None and self._exogenous_widths
+            else None
+        )
         for c in self.cone:
 
             def _input_value(spec):
@@ -1000,9 +1029,10 @@ class FunctionalModel:
                     return feedback[spec[1]]
                 if spec[0] == "exogenous":
                     sl = spec[1]
-                    key = exo_key_of.get((sl.start, sl.stop)) if isinstance(sl, slice) else None
-                    if key is not None:
-                        return exo_pieces[key]
+                    if exo_pieces is not None and isinstance(sl, slice):
+                        key = exo_key_of.get((sl.start, sl.stop))
+                        if key is not None:
+                            return exo_pieces[key]
                     return exogenous[sl]
                 if spec[0] == "mixed":
                     values = [_input_value(part) for part in spec[1]]
@@ -1481,6 +1511,7 @@ def functional_rollout(
         theta: ``(n_theta,)`` physical parameters (theta_spec order).
         exogenous_tape: ``(n_t, n_exogenous)`` exogenous inputs for the period.
     """
+    functional_model.prepare_routes(theta.device)
     y = y0
     rows = []
     if step is None:
@@ -1510,6 +1541,7 @@ def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, s
     over the whole batch; without it the scalar transform-mode rollout is
     ``vmap``-ed, which is what the batched bundles always did.
     """
+    functional_model.prepare_routes(Theta.device)
     if step is None:
         return torch.func.vmap(
             lambda y0, th: functional_rollout(
