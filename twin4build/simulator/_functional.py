@@ -781,11 +781,19 @@ class FunctionalModel:
     # the single continuous-rollout source of truth; a per-segment capture
     # would evaluate stateful/data-indexed signals like the OccupancySystem's
     # ``previousIndoorCo2Measured`` at the wrong step.)
-    @staticmethod
-    def _as_index(index, device):
+    def _as_index(self, index, device):
+        """An index tensor on ``device``, converted once: the routes keep the
+        wiring's index objects, and a per-step host-to-device copy would be
+        both a sync and a copy a CUDA-graph capture cannot record."""
         if isinstance(index, slice):
             return index
-        return torch.as_tensor(index, dtype=torch.long, device=device).reshape(-1)
+        cache = self.__dict__.setdefault("_index_cache", {})
+        key = (id(index), str(device))
+        hit = cache.get(key)
+        if hit is None or hit[0] is not index:
+            hit = (index, torch.as_tensor(index, dtype=torch.long, device=device).reshape(-1))
+            cache[key] = hit
+        return hit[1]
 
     def _apply_routes(self, value, routes):
         """Apply object-graph output/input branch mappings without mutation."""
