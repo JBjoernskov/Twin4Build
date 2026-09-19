@@ -882,14 +882,135 @@ class FunctionalModel:
                 return (sp[0], [spec(x) for x in sp[1]])
             return sp
 
-        self.wiring = {cid: [(port, spec(sp)) for port, sp in ports] for cid, ports in self.wiring.items()}
+        by_id = {c.id: c for c in self.cone}
+        self.wiring = {
+            cid: [(port, self._group_vector_spec(by_id[cid], port, spec(sp), device)) for port, sp in ports]
+            for cid, ports in self.wiring.items()
+        }
         self.meas_sources = [
             ("fresh", m[1], m[2], tuple(route(r) for r in m[3])) if m[0] == "fresh" else m
             for m in self.meas_sources
         ]
+        self._meas_groups = self._group_measurements(device)
         self._fb_producer = [sources(srcs) for srcs in self._fb_producer]
         self._exo_key_of = {(sl.start, sl.stop): key for key, sl in self._exogenous_index.items()}
         self._routes_device = device
+
+    def _group_vector_spec(self, comp, port, sp, device):
+        """A ``("vector", slot_specs)`` spec regrouped as
+        ``("vector_grouped", n_c, n_v, groups, exo, leftovers)``:
+
+        * ``groups``: per (producer id, output port), the pairs of every slot
+          it feeds as aligned tensors ``(s_ic, out_v, r_ic, in_v)`` -- one
+          gather and one accumulating scatter per producer instead of one
+          gather, one zeros and one scatter per slot;
+        * ``exo``: the exogenous slots as one ``(n_c, n_slots)`` index into
+          the tape plus their slot indices -- one gather for all of them;
+        * ``leftovers``: ``(slot, spec)`` for slots that stay per slot
+          (feedback, mixed, multi-hop routes), scattered into the port.
+        """
+        if sp[0] != "vector":
+            return sp
+        n_c = self._component_n_c(comp)
+        n_v = len(sp[1])
+        rows = torch.arange(n_c, dtype=torch.long, device=device)
+        groups, exo_rows, exo_slots, leftovers = {}, [], [], []
+        for slot, slot_spec in enumerate(sp[1]):
+            kind = slot_spec[0]
+            if kind == "exogenous" and isinstance(slot_spec[1], slice):
+                sl = slot_spec[1]
+                if sl.stop - sl.start == n_c:
+                    exo_rows.append(torch.arange(sl.start, sl.stop))
+                    exo_slots.append(slot)
+                    continue
+            if kind == "fresh":
+                simple = True
+                for producer, out_port, routes in slot_spec[1]:
+                    if len(routes) != 1:
+                        simple = False
+                        break
+                    out_v, s_ic, r_ic = routes[0][:3]
+                    if not (isinstance(s_ic, torch.Tensor) and isinstance(r_ic, torch.Tensor)):
+                        simple = False
+                        break
+                    n_pairs = int(r_ic.numel())
+                    if isinstance(out_v, torch.Tensor) and out_v.numel() != n_pairs:
+                        simple = False
+                        break
+                    if s_ic.numel() != n_pairs:
+                        simple = False
+                        break
+                if not simple:
+                    leftovers.append((rows, torch.full((n_c,), slot, dtype=torch.long, device=device), slot_spec))
+                    continue
+                for producer, out_port, routes in slot_spec[1]:
+                    out_v, s_ic, r_ic, _, is_vector = routes[0][:5]
+                    n_pairs = int(r_ic.numel())
+                    if isinstance(out_v, torch.Tensor):
+                        out_t = out_v.reshape(-1)
+                    elif isinstance(out_v, int):
+                        out_t = torch.full((n_pairs,), int(out_v), dtype=torch.long, device=device)
+                    else:  # a slice: the whole vector output, one pair per element
+                        out_t = torch.arange(n_pairs, device=device)
+                    g = groups.setdefault((producer.id, out_port), {"producer": producer, "port": out_port, "is_vector": is_vector, "s_ic": [], "out_v": [], "r_ic": [], "in_v": []})
+                    g["s_ic"].append(s_ic.reshape(-1))
+                    g["out_v"].append(out_t)
+                    g["r_ic"].append(r_ic.reshape(-1))
+                    g["in_v"].append(torch.full((n_pairs,), slot, dtype=torch.long, device=device))
+                continue
+            leftovers.append((rows, torch.full((n_c,), slot, dtype=torch.long, device=device), slot_spec))
+        group_list = [
+            (g["producer"].id, g["port"], g["is_vector"],
+             torch.cat(g["s_ic"]), torch.cat(g["out_v"]), torch.cat(g["r_ic"]), torch.cat(g["in_v"]))
+            for g in groups.values()
+        ]
+        exo = None
+        if exo_rows:
+            n_slots = len(exo_slots)
+            slots = torch.tensor(exo_slots, dtype=torch.long, device=device)
+            exo = (
+                torch.stack(exo_rows, dim=1).to(device),  # (n_c, n_slots) into the tape
+                rows[:, None].expand(n_c, n_slots).contiguous(),
+                slots[None, :].expand(n_c, n_slots).contiguous(),
+            )
+        return ("vector_grouped", n_c, n_v, group_list, exo, leftovers)
+
+    def _group_measurements(self, device):
+        """The "fresh" measurements with a single-hop route, grouped per
+        (producer, port) into one paired gather; the rest stay as they are.
+        Returns ``(groups, perm)`` where ``perm`` restores the measurement
+        order, or ``None`` when nothing groups."""
+        order, groups, singles = [], {}, []
+        offset = 0
+        for i, m in enumerate(self.meas_sources):
+            if m[0] == "fresh" and len(m[3]) == 1:
+                out_v, s_ic, r_ic, n_c, is_vector = m[3][0][:5]
+                if isinstance(s_ic, torch.Tensor) and s_ic.numel() == 1 and (not isinstance(out_v, torch.Tensor) or out_v.numel() == 1) and not isinstance(out_v, slice):
+                    g = groups.setdefault((m[1], m[2]), {"cid": m[1], "port": m[2], "is_vector": is_vector, "s_ic": [], "out_v": [], "meas": []})
+                    g["s_ic"].append(s_ic.reshape(-1))
+                    g["out_v"].append(out_v.reshape(-1) if isinstance(out_v, torch.Tensor) else torch.tensor([int(out_v)], dtype=torch.long, device=device))
+                    g["meas"].append(i)
+                    continue
+            singles.append(i)
+        if not groups:
+            return None
+        blocks, positions = [], []
+        for g in groups.values():
+            blocks.append(("group", g["cid"], g["port"], g["is_vector"], torch.cat(g["s_ic"]), torch.cat(g["out_v"])))
+            positions.extend(g["meas"])
+        for i in singles:
+            blocks.append(("single", i))
+            positions.append(i)
+        # Every grouped measurement is one value wide; singles keep their width.
+        widths = [self.meas_slices[i].stop - self.meas_slices[i].start for i in positions]
+        assert all(w == 1 for w, i in zip(widths, positions) if i not in singles)
+        perm = torch.empty(sum(widths), dtype=torch.long)
+        pos = 0
+        for i, w in zip(positions, widths):
+            sl = self.meas_slices[i]
+            perm[sl.start:sl.stop] = torch.arange(pos, pos + w)
+            pos += w
+        return blocks, perm.to(device)
 
     def _apply_routes(self, value, routes):
         """Apply object-graph output/input branch mappings without mutation."""
@@ -1066,7 +1187,27 @@ class FunctionalModel:
 
             inputs = {}
             for port, spec in self.wiring[c.id]:
-                if spec[0] == "vector":
+                if spec[0] == "vector_grouped":
+                    _, n_c, n_v, groups, exo, leftovers = spec
+                    if exo is not None and not groups and not leftovers:
+                        value = exogenous[exo[0]]
+                    else:
+                        value = torch.zeros((n_c, n_v), dtype=states_flat.dtype, device=states_flat.device)
+                        if exo is not None:
+                            value = value.index_put((exo[1], exo[2]), exogenous[exo[0]])
+                        for pid, pport, is_vector, s_ic, out_v, r_ic, in_v in groups:
+                            out = produced[pid][pport]
+                            if is_vector and out.ndim >= 2:
+                                gathered = out[s_ic, out_v]
+                            elif is_vector:
+                                gathered = out[out_v]
+                            else:
+                                gathered = out.reshape(-1)[s_ic]
+                            value = value.index_put((r_ic, in_v), gathered, accumulate=True)
+                        for rows_t, slot_full, slot_spec in leftovers:
+                            value = value.index_put((rows_t, slot_full), _input_value(slot_spec).reshape(-1), accumulate=True)
+                    inputs[port] = value
+                elif spec[0] == "vector":
                     vals = []
                     for s in spec[1]:
                         vals.append(_input_value(s))
@@ -1099,25 +1240,42 @@ class FunctionalModel:
             )
         else:
             fb_out = torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
-        meas = []
-        for spec in self.meas_sources:
+        def _meas_value(spec):
             if spec[0] == "fresh":
-                meas.append(
-                    self._apply_routes(produced[spec[1]][spec[2]], spec[3]).reshape(-1)
-                )
-            elif spec[0] == "external":
+                return self._apply_routes(produced[spec[1]][spec[2]], spec[3]).reshape(-1)
+            if spec[0] == "external":
                 # Not producible by the functional map; the caller supplies the
                 # signal (e.g. a decision-variable trajectory) or rejects.
-                meas.append(
-                    torch.zeros(spec[3], dtype=x_next.dtype, device=x_next.device)
-                )
-            else:
-                meas.append(exogenous[spec[1]].reshape(-1))
-        meas = (
-            torch.cat(meas)
-            if meas
-            else torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
-        )
+                return torch.zeros(spec[3], dtype=x_next.dtype, device=x_next.device)
+            return exogenous[spec[1]].reshape(-1)
+
+        meas = []
+        grouped = getattr(self, "_meas_groups", None)
+        if grouped is not None:
+            # Measurements of one producer port gathered together, then put
+            # back in measurement order by one permutation.
+            blocks, perm = grouped
+            for block in blocks:
+                if block[0] == "group":
+                    _, cid, port, is_vector, s_ic, out_v = block
+                    out = produced[cid][port]
+                    if is_vector and out.ndim >= 2:
+                        meas.append(out[s_ic, out_v])
+                    elif is_vector:
+                        meas.append(out.reshape(-1)[out_v])
+                    else:
+                        meas.append(out.reshape(-1)[s_ic])
+                else:
+                    meas.append(_meas_value(self.meas_sources[block[1]]))
+            meas = torch.cat(meas)[perm]
+        else:
+            for spec in self.meas_sources:
+                meas.append(_meas_value(spec))
+            meas = (
+                torch.cat(meas)
+                if meas
+                else torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
+            )
         return x_next, meas, fb_out
 
     @property
