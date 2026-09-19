@@ -129,9 +129,21 @@ class PiecewiseLinearSystem(core.System):
         y = torch.where(x <= X[0], Y[0].expand_as(x), torch.where(x >= X[-1], Y[-1].expand_as(x), y))
         return y.reshape(shape)
 
+    def _points_Y(self) -> torch.Tensor:
+        """The current Y points as a tensor: a ``tps.Parameter`` when the
+        table was given at construction, a plain tensor when a subclass
+        sets the table itself (the schedule resolves its points per step)."""
+        return self._Y.get() if hasattr(self._Y, "get") else self._Y
+
+    def _get_a_b_vectors(self) -> None:
+        """Kept for subclasses that set ``_X`` / ``_Y`` directly and call
+        this to refresh the table: the interpolation reads the points as
+        they are, so there is nothing to derive."""
+        return None
+
     def _get_Y(self, X: torch.Tensor) -> torch.Tensor:
         """Interpolated Y at ``X`` with the component's current points."""
-        return self.interpolate(X, self._X, self._Y.get())
+        return self.interpolate(X, self._X, self._points_Y())
 
     PARAM_NAMES = ("Y",)  # the X coordinates are structural, the Y points a parameter
 
@@ -139,7 +151,8 @@ class PiecewiseLinearSystem(core.System):
         """Pure one-step piecewise-linear interpolation (functorch-safe,
         stateless).  The interpolation table is fixed (structural) data, so
         :meth:`_get_Y` is a pure function of the input."""
-        return x, {"y": self.interpolate(inputs["x"], self._X, params["Y"])}
+        Y = params["Y"] if "Y" in params else self._points_Y()
+        return x, {"y": self.interpolate(inputs["x"], self._X, Y)}
 
     def do_step(
         self,
