@@ -668,7 +668,22 @@ class FunctionalModel:
                     if src[0] is conn.connects_system and src[1] == conn.output_port:
                         followed = self._follow(src[0], src[1])
                         if followed is not None:
+                            # The pairs of one connection landing on one
+                            # input slot (a batched receiver's instances
+                            # reading the same branch slot, or a batched
+                            # sender's instances feeding one slot) are one
+                            # route with tensor indices: one gather and one
+                            # scatter per slot instead of one per pair.
+                            by_slot = {}
                             for idx, o, s_i, r_i in pairs:
+                                by_slot.setdefault(idx, []).append((o, s_i, r_i))
+                            for idx, group in by_slot.items():
+                                if len(group) == 1:
+                                    o, s_i, r_i = group[0]
+                                else:
+                                    o, s_i, r_i = (
+                                        self._index_tensor([g[k] for g in group]) for k in range(3)
+                                    )
                                 route = (o, s_i, r_i) + tuple(src[2][0][3:])
                                 slots.setdefault(idx, []).append(
                                     (
@@ -679,6 +694,17 @@ class FunctionalModel:
                                 )
                         break
         return sorted(slots.items())
+
+    @staticmethod
+    def _index_tensor(values):
+        """The pairs' indices as one tensor; a slice (an unbatched side) stays
+        a slice when every pair agrees on it, and ``None`` (a scalar side)
+        stays ``None``."""
+        if all(v is None for v in values):
+            return None
+        if all(isinstance(v, slice) for v in values):
+            return values[0]
+        return torch.tensor([int(v) if not isinstance(v, slice) else 0 for v in values], dtype=torch.long)
 
     def _register_exogenous(self, key, width):
         start = self._n_exogenous
@@ -804,9 +830,12 @@ class FunctionalModel:
                 and isinstance(out_v, torch.Tensor)
                 and isinstance(source_i_c, torch.Tensor)
                 and out_v.numel() == source_i_c.numel()
-                and result.ndim >= 2
             )
-            if paired:
+            if paired and result.ndim == 1:
+                # A single-instance sender publishes its vector without an
+                # instance axis: the pairs pick slots only.
+                selected = result[self._as_index(out_v, result.device)]
+            elif paired:
                 # A batched receiver reading one slot per instance: pair k
                 # takes slot out_v[k] of sender instance source_i_c[k].
                 selected = result[
