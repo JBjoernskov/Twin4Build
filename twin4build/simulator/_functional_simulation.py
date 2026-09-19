@@ -665,6 +665,10 @@ class FunctionalSimulationSession:
                                 component_index=input_component_index,
                                 vector_index=input_port_index,
                             )
+                        if input_port._tensor is None or output_port._tensor is None:
+                            # A port nothing initialised (an unwired optional
+                            # vector of width 0): nothing to materialise.
+                            continue
                         current = self._route_tensor(
                             output_port,
                             output_port_index,
