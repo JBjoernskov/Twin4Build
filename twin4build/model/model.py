@@ -1503,6 +1503,7 @@ class Model:
                         max_value=maxs,
                         requires_grad=first.requires_grad,
                         n_c=n_c,
+                        scaling=getattr(first, "scaling", "linear"),
                     ),
                 )
 
@@ -1526,6 +1527,7 @@ class Model:
                         min_value=mins,
                         max_value=maxs,
                         normalized=False,
+                        scaling=getattr(first, "scaling", "linear"),
                         n_c=n_c,
                     ),
                 )
