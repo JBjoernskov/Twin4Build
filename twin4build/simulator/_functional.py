@@ -846,9 +846,18 @@ class FunctionalModel:
         def idx(value):
             return value.reshape(-1).to(device) if isinstance(value, torch.Tensor) else value
 
+        def instance(value):
+            """A component index as a device tensor: an int would be turned
+            into one at every step (a host tensor copied to the device, which
+            a CUDA-graph capture cannot record and torch.compile lifts as a
+            fresh constant)."""
+            if isinstance(value, int):
+                return torch.tensor([value], dtype=torch.long, device=device)
+            return idx(value)
+
         def route(r):
             out_v, s_ic, r_ic, n_c, is_vector = r[:5]
-            return (idx(out_v), idx(s_ic), idx(r_ic), n_c, is_vector, self._target_order_of(r_ic, n_c, device))
+            return (idx(out_v), instance(s_ic), instance(r_ic), n_c, is_vector, self._target_order_of(r_ic, n_c, device))
 
         def sources(srcs):
             return [(p, port, tuple(route(r) for r in routes)) for p, port, routes in srcs]
