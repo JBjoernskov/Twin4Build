@@ -642,21 +642,34 @@ class FunctionalModel:
             for conn in cp.connects_system_through:
                 in_idx = cp.input_port_index.get(conn, 0)
                 out_idx = cp.output_port_index.get(conn, slice(None))
+                s_ic = cp.output_component_index.get(conn, slice(None))
+                r_ic = cp.input_component_index.get(conn, slice(None))
                 if isinstance(in_idx, torch.Tensor) and in_idx.numel() > 1:
                     # One connection, several slot pairs (a zone fed by
-                    # several branches of one AHU): each input slot has its
-                    # own output slot.
-                    pairs = list(zip(in_idx.reshape(-1).tolist(), out_idx.reshape(-1).tolist()))
+                    # several branches of one AHU, or a batched meta whose
+                    # instances each own slots): each input slot has its
+                    # own output slot and, when batched, its own instance
+                    # on both sides.
+                    n_pairs = int(in_idx.numel())
+
+                    def _per_pair(value):
+                        if isinstance(value, torch.Tensor) and value.numel() == n_pairs:
+                            return value.reshape(-1).tolist()
+                        return [value] * n_pairs
+
+                    pairs = list(zip(
+                        in_idx.reshape(-1).tolist(), _per_pair(out_idx), _per_pair(s_ic), _per_pair(r_ic)
+                    ))
                 else:
                     idx = int(in_idx.item()) if hasattr(in_idx, "item") else int(in_idx)
-                    pairs = [(idx, out_idx)]
+                    pairs = [(idx, out_idx, s_ic, r_ic)]
                 immediate = self._connection_sources(comp, port)
                 for src in immediate:
                     if src[0] is conn.connects_system and src[1] == conn.output_port:
                         followed = self._follow(src[0], src[1])
                         if followed is not None:
-                            for idx, o in pairs:
-                                route = (o,) + tuple(src[2][0][1:])
+                            for idx, o, s_i, r_i in pairs:
+                                route = (o, s_i, r_i) + tuple(src[2][0][3:])
                                 slots.setdefault(idx, []).append(
                                     (
                                         followed[0],
@@ -778,12 +791,27 @@ class FunctionalModel:
         """Apply object-graph output/input branch mappings without mutation."""
         result = value
         for out_v, source_i_c, target_i_c, target_n_c, output_is_vector in routes:
-            if output_is_vector:
-                result = result[..., out_v]
-            if result.ndim == 0:
-                result = result.reshape(1)
-            source_i_c = self._as_index(source_i_c, result.device)
-            selected = result[source_i_c]
+            paired = (
+                output_is_vector
+                and isinstance(out_v, torch.Tensor)
+                and isinstance(source_i_c, torch.Tensor)
+                and out_v.numel() == source_i_c.numel()
+                and result.ndim >= 2
+            )
+            if paired:
+                # A batched receiver reading one slot per instance: pair k
+                # takes slot out_v[k] of sender instance source_i_c[k].
+                selected = result[
+                    self._as_index(source_i_c, result.device),
+                    self._as_index(out_v, result.device),
+                ]
+            else:
+                if output_is_vector:
+                    result = result[..., out_v]
+                if result.ndim == 0:
+                    result = result.reshape(1)
+                source_i_c = self._as_index(source_i_c, result.device)
+                selected = result[source_i_c]
             if isinstance(target_i_c, slice):
                 if selected.shape[0] == target_n_c:
                     result = selected

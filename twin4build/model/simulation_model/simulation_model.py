@@ -748,12 +748,16 @@ class SimulationModel:
         other_port: Union[tps.Scalar, tps.Vector],
         this_port_name: str,
         other_port_name: str,
+        paired: bool = False,
     ) -> Optional[Union[int, torch.Tensor]]:
         """
         Validate and resolve a port index for connections.
 
         Returns the appropriate index value: the provided index if valid,
         a generated range for vector-to-vector mappings, or None for scalars.
+        ``paired`` marks a batched connection whose tensor indices are
+        aligned with component indices: a tensor of slots may then face a
+        scalar port on the other side (one slot per instance).
         """
         if port_index is not None:
             assert isinstance(
@@ -763,7 +767,7 @@ class SimulationModel:
                 port_index, (torch.Tensor, int)
             ), f"If {this_port_name} port index is set, it must either be an integer or a torch.Tensor"
             if isinstance(port_index, torch.Tensor):
-                assert isinstance(other_port, tps.Vector), (
+                assert paired or isinstance(other_port, tps.Vector), (
                     f"If {this_port_name} port index is set and is a torch.Tensor, "
                     f"{other_port_name} port must be a vector"
                 )
@@ -843,6 +847,8 @@ class SimulationModel:
         output_port_index: [int, torch.Tensor] = None,
         input_port_index: [int, torch.Tensor] = None,
         components: Dict[str, core.System] = None,
+        output_component_index: [int, torch.Tensor] = None,
+        input_component_index: [int, torch.Tensor] = None,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -947,12 +953,14 @@ class SimulationModel:
             sender_obj_connection
         )  # if sender_obj_connection not in receiver_component_connection_point.connects_system_through else None
 
+        paired = output_component_index is not None or input_component_index is not None
         input_idx = self._resolve_port_index(
             input_port_index,
             receiver_component.input[input_port],
             sender_component.output[output_port],
             "input",
             "output",
+            paired=paired,
         )
         receiver_component_connection_point.set_input_port_index(
             sender_obj_connection, input_idx
@@ -964,10 +972,21 @@ class SimulationModel:
             receiver_component.input[input_port],
             "output",
             "input",
+            paired=paired,
         )
         receiver_component_connection_point.set_output_port_index(
             sender_obj_connection, output_idx
         )
+        # Batched meta components: which sender / receiver instance each
+        # pair of the connection joins (aligned with tensor port indices).
+        if output_component_index is not None:
+            receiver_component_connection_point.set_output_component_index(
+                sender_obj_connection, output_component_index
+            )
+        if input_component_index is not None:
+            receiver_component_connection_point.set_input_component_index(
+                sender_obj_connection, input_component_index
+            )
 
         if components == self._components:
             sender_component_uri = self._semantic_model.T4B.__getitem__(
@@ -2814,6 +2833,8 @@ class SimulationModel:
                         ],
                         input_port_index=connection_point.input_port_index[connection],
                         components=_new_components,
+                        output_component_index=connection_point.output_component_index.get(connection),
+                        input_component_index=connection_point.input_component_index.get(connection),
                     )
 
         # _new_components = {k: old_to_new_mapping[v] for k, v in self._components.items()}

@@ -13,6 +13,7 @@ import twin4build.core as core
 import twin4build.utils.constants as constants
 from twin4build.systems.building_space import air_balance
 import twin4build.utils.types as tps
+from twin4build.utils.slots import wired_width
 from twin4build.systems.utils.discrete_statespace_system import (
     DiscreteStatespaceSystem,
     bilinear_onestep,
@@ -521,16 +522,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             # Count logical vector slots, not connection objects. A compiled
             # meta-component can have several connections targeting the same
             # slot, each covering a different subset of its n_c branches.
-            connection_points = [
-                cp for cp in self.connects_at if cp.input_port == "wallHeatGain"
-            ]
-            indices = [
-                int(cp.input_port_index[conn])
-                for cp in connection_points
-                for conn in cp.connects_system_through
-            ]
-            n_walls = max(indices, default=-1) + 1
-            self.n_walls = n_walls
+            self.n_walls = wired_width(self, "wallHeatGain")
 
     def _get_initial_state_tensor(self):
         # Get dimensions from indoorTemperature
