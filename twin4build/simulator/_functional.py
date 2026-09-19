@@ -857,11 +857,40 @@ class FunctionalModel:
                 else:
                     result = selected
             else:
-                target_i_c = self._as_index(target_i_c, result.device)
-                shape = (target_n_c,) + selected.shape[1:]
-                base = torch.zeros(shape, dtype=selected.dtype, device=selected.device)
-                result = torch.index_copy(base, 0, target_i_c, selected)
+                order = self._target_order(target_i_c, target_n_c, result.device)
+                if order is None:
+                    # The pairs cover every target instance exactly once, in
+                    # order: the selection already is the target.
+                    result = selected
+                elif isinstance(order, torch.Tensor):
+                    # ... in some other order: one gather.
+                    result = selected[order]
+                else:
+                    target_i_c = self._as_index(target_i_c, result.device)
+                    shape = (target_n_c,) + selected.shape[1:]
+                    base = torch.zeros(shape, dtype=selected.dtype, device=selected.device)
+                    result = torch.index_copy(base, 0, target_i_c, selected)
         return result
+
+    def _target_order(self, target_i_c, target_n_c, device):
+        """How the pairs land on the target instances, decided once per
+        route: ``None`` when they are exactly ``0..n_c-1`` in order, the
+        inverse permutation when they cover every instance once in some
+        other order, ``False`` when they do not (a scatter is needed)."""
+        cache = self.__dict__.setdefault("_target_order_cache", {})
+        key = (id(target_i_c), int(target_n_c), str(device))
+        hit = cache.get(key)
+        if hit is not None and hit[0] is target_i_c:
+            return hit[1]
+        index = torch.as_tensor(target_i_c, dtype=torch.long).reshape(-1)
+        if index.numel() != target_n_c or index.numel() != int(torch.unique(index).numel()):
+            order = False
+        elif bool(torch.equal(index, torch.arange(target_n_c))):
+            order = None
+        else:
+            order = torch.argsort(index).to(device)
+        cache[key] = (target_i_c, order)
+        return order
 
     def _route_width(self, routes, producer, out_port):
         value = producer.output[out_port].get()
@@ -943,15 +972,25 @@ class FunctionalModel:
                 dtype=states_flat.dtype,
                 device=states_flat.device,
             )
-        # Unpack per-component states.
+        # Unpack per-component states: one split, then a view per component.
         states = {}
-        for i, c in enumerate(self.stateful):
-            a, b = self.state_offsets[i], self.state_offsets[i + 1]
-            n_c, state_size = self.state_shapes[i]
-            states[c.id] = states_flat[a:b].reshape(n_c, state_size)
+        if self.stateful:
+            pieces = torch.split(states_flat, self.state_widths)
+            for i, c in enumerate(self.stateful):
+                n_c, state_size = self.state_shapes[i]
+                states[c.id] = pieces[i].reshape(n_c, state_size)
 
         produced: Dict[str, Dict[str, torch.Tensor]] = {}
         x_next_parts = [None] * len(self.stateful)
+        # Exogenous slots: one split into the registered widths (the keys'
+        # slices are contiguous in registration order), one dict lookup per
+        # port instead of one slice op each.
+        exo_pieces = dict(zip(self._exogenous_keys, torch.split(exogenous, self._exogenous_widths))) if self._exogenous_widths else {}
+        exo_slice_of = self._exogenous_index
+        exo_key_of = self.__dict__.get("_exo_key_of")
+        if exo_key_of is None:
+            exo_key_of = {(sl.start, sl.stop): key for key, sl in exo_slice_of.items()}
+            self.__dict__["_exo_key_of"] = exo_key_of
         for c in self.cone:
 
             def _input_value(spec):
@@ -960,7 +999,11 @@ class FunctionalModel:
                 if spec[0] == "feedback":
                     return feedback[spec[1]]
                 if spec[0] == "exogenous":
-                    return exogenous[spec[1]]
+                    sl = spec[1]
+                    key = exo_key_of.get((sl.start, sl.stop)) if isinstance(sl, slice) else None
+                    if key is not None:
+                        return exo_pieces[key]
+                    return exogenous[sl]
                 if spec[0] == "mixed":
                     values = [_input_value(part) for part in spec[1]]
                     result = values[0]
