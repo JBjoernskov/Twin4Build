@@ -195,6 +195,11 @@ class TestBatchingVectorSlots(unittest.TestCase):
         self.assertEqual(len({id(model._component_to_meta[f"sink{k}"][0]) for k in range(1, N_LEAVES)}), 1)
         self.assertEqual(len({id(model._component_to_meta[f"leaf{i}"][0]) for i in range(N_LEAVES + 1)}), 1)
         batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        # The leaf meta reports its parameter once, one start value per instance.
+        leaf_meta = model._component_to_meta["leaf0"][0]
+        (entry,) = leaf_meta.get_estimable_parameters()
+        self.assertEqual(entry[1], "p")
+        self.assertEqual(list(entry[2]), [1.0, 2.0, 3.0, 4.0, 5.0])
 
         for execution_mode in ("object", "functional"):
             with self.subTest(execution_mode=execution_mode):

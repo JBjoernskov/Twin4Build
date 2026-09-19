@@ -521,7 +521,11 @@ class System:
             if getattr(param, "scaling", None) == "log" and lb <= 0.0:
                 continue
             try:
-                x0 = float(param.get().detach().reshape(-1)[0].item())
+                values = param.get().detach().reshape(-1)
+                # A batched meta component holds one value per instance
+                # (``n_c`` wide): the estimator takes the whole vector as
+                # the start, with the shared bounds.
+                x0 = values.cpu().numpy().astype(float) if values.numel() > 1 else float(values[0].item())
             except Exception:  # noqa: BLE001
                 continue
             out.append((self, path, x0, lb, ub))

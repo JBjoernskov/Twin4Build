@@ -453,9 +453,27 @@ class SimulationModel:
         move_dtype = tps.float_dtype() if dtype is not None else None
         for component in self._components.values():
             move_object_tensors(component, self.device, move_dtype)
+            self._move_connection_indices(component, self.device)
         for component in (self._fused_components or {}).values():
             move_object_tensors(component, self.device, move_dtype)
+            self._move_connection_indices(component, self.device)
         return self
+
+    @staticmethod
+    def _move_connection_indices(component, device) -> None:
+        """Slot and instance index tensors of the wiring into ``component``
+        follow the model's device: the functional engine gathers with them
+        every step, and a CUDA-graph capture cannot copy them from the host."""
+        for cp in getattr(component, "connects_at", ()):
+            for table in (
+                cp.output_port_index,
+                cp.input_port_index,
+                cp.output_component_index,
+                cp.input_component_index,
+            ):
+                for conn, index in list(table.items()):
+                    if isinstance(index, torch.Tensor) and index.device != torch.device(device):
+                        table[conn] = index.to(device)
 
     @property
     def is_loaded(self) -> bool:
