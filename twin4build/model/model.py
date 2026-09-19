@@ -1347,6 +1347,35 @@ class Model:
 
         return batched
 
+    def unbatch_histories(self, batched: "Model") -> None:
+        """Write the batched model's port histories back into this model's
+        components, one instance slice each.
+
+        After a simulation or estimate on ``batched = self.batch_components()``
+        the results sit on the meta components' ports, indexed by instance.
+        Copying each instance's slice back lets everything that reads a
+        component's ports (plots, error tables, virtual-sensor frames) work
+        on the original components unchanged.  Ports shared with a copied
+        singleton are the same objects already and are left alone.
+        """
+        for cid, (meta, i_c) in self._component_to_meta.items():
+            component = self.components.get(cid)
+            if component is None or component is meta:
+                continue
+            for direction in ("input", "output"):
+                for name, port in getattr(component, direction).items():
+                    source = getattr(meta, direction).get(name)
+                    if source is None or source is port:
+                        continue
+                    history = getattr(source, "_history", None)
+                    if history is None or history.ndim < 3:
+                        continue
+                    port._history = history[:, :, i_c : i_c + 1].detach().clone()
+                    port._history_is_populated = bool(getattr(source, "_history_is_populated", True))
+                    tensor = getattr(source, "_tensor", None)
+                    if tensor is not None and tensor.ndim >= 2:
+                        port._tensor = tensor[:, i_c : i_c + 1].detach().clone()
+
     # -- batched-model look-ups -------------------------------------------
 
     def get_batch_id_for_component(self, component_id: str) -> Optional[str]:

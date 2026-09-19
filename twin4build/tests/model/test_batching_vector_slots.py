@@ -208,6 +208,13 @@ class TestBatchingVectorSlots(unittest.TestCase):
                 got = sink_histories(model, batched)
                 for cid in reference:
                     torch.testing.assert_close(got[cid], reference[cid], msg=cid)
+        # Written back, the original sinks carry their own instance's history
+        # (a copied singleton shares its ports with its copy already).
+        for k in range(1, N_LEAVES):
+            model.components[f"sink{k}"].output["w"]._history.zero_()
+        model.unbatch_histories(batched)
+        for cid, hist in sink_histories(model).items():
+            torch.testing.assert_close(hist, reference[cid], msg=cid)
 
 
 if __name__ == "__main__":
