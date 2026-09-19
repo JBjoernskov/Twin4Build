@@ -527,6 +527,10 @@ class FunctionalModel:
             if c is None or c.id in visited:
                 continue
             visited.add(c.id)
+            if _replays_data(c):
+                # Recorded data: its outputs do not depend on its inputs, so
+                # nothing upstream of it reaches the constant.
+                continue
             if c.id in self.theta_by_comp:
                 return c.id
             # A fused-cluster member carries its theta under the fused id.
