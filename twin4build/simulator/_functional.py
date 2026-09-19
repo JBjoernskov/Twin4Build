@@ -173,6 +173,15 @@ def _has_real_forward(comp) -> bool:
     return f is not None and f is not nn.Module.forward
 
 
+def _replays_data(comp) -> bool:
+    """A component that, in its current configuration, only replays recorded
+    data (a controller in playback mode outputs its historised command): its
+    outputs are exogenous like a data sensor's, so it stays out of the
+    traced cone and its inputs are never assembled per step."""
+    replays = getattr(comp, "replays_data", None)
+    return bool(replays()) if callable(replays) else False
+
+
 def _is_passthrough_sensor(comp) -> bool:
     """A SensorSystem whose ``measuredValue`` is driven by another component
     (not by its own data source) just forwards that value."""
@@ -213,7 +222,7 @@ def collect_stateful(model) -> List:
         order = getattr(model, "flat_execution_order", None)
     if order is None:
         order = list(model.components.values())
-    return [c for c in order if c.is_stateful()]
+    return [c for c in order if c.is_stateful() and not _replays_data(c)]
 
 
 class StateLayout:
@@ -324,7 +333,7 @@ class FunctionalModel:
         order = list(order)
         self.pos = {c.id: i for i, c in enumerate(order)}
         self.order = order
-        self.forward_ids = {c.id for c in order if _has_real_forward(c)}
+        self.forward_ids = {c.id for c in order if _has_real_forward(c) and not _replays_data(c)}
         # Fused-cluster members are not executing nodes; their produced
         # signals resolve to the fused block's namespaced outputs (_follow)
         # and their theta associations to the fused block's id.
