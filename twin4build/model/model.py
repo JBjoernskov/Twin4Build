@@ -1,4 +1,5 @@
 # Standard library imports
+import copy
 import datetime
 import warnings
 from collections import OrderedDict
@@ -1155,20 +1156,31 @@ class Model:
         -----
         * The mapping from original component ids to ``(meta, i_c)`` is
           stored in ``self._component_to_meta`` for later look-up.
-        * Components with ``n_c == 1`` (singletons) are still wrapped in a
-          fresh meta instance for uniformity.
+        * Components with ``n_c == 1`` (singletons) join the batched model
+          as they are, with the mapping metadata set on them.
         * Constructor defaults are used when instantiating meta components;
           all component classes must therefore accept ``id`` as their only
           required keyword argument.
         * A class whose instances cannot be rebuilt that way (sub-models
           created after construction, e.g. at rewire) is left unbatched:
-          its original components join the batched model as they are, so
-          the source model must not be simulated afterwards.
+          its components join the batched model as shallow copies with
+          fresh wiring, sharing ports, parameters and sub-models with the
+          source components.
         """
         batched = Model(id=f"{self.id}_batched")
         self._component_to_meta = {}
         unbatchable: set = set()
-        kept: list = []  # components of unbatchable classes, joined as they are
+
+        def _as_is(component, group_idx):
+            """A shallow copy with empty wiring, joined to the batched model."""
+            clone = copy.copy(component)
+            clone.connected_through = []
+            clone.connects_at = []
+            clone._n_c_batched = 1
+            clone._source_component_ids = (component.id,)
+            clone._batched_execution_priority = group_idx
+            batched.add_component(clone)
+            return clone
 
         # -- Phase 1: create one meta component per signature group --------
         # Classes that must never be lumped together even when they share a
@@ -1198,16 +1210,21 @@ class Model:
                 # Components sharing a batch share those values;
                 # _component_signature keeps differing ones apart.
                 init_kwargs = dict(getattr(comps[0], "_batch_init_kwargs", None) or {})
+                if n_c == 1:
+                    # A singleton joins as a shallow copy with fresh wiring
+                    # (the cycle-free load copies components the same way):
+                    # rebuilding it from its constructor would have to
+                    # reproduce every attribute set after construction (a
+                    # transfer node's branch map, a sensor's data source),
+                    # which nothing guarantees.  Ports, parameters and
+                    # sub-models are shared with the source component.
+                    self._component_to_meta[comps[0].id] = (_as_is(comps[0], group_idx), 0)
+                    continue
                 try:
-                    if n_c == 1:
-                        meta = cls(id=comps[0].id, **init_kwargs)
-                        meta._n_c_batched = 1
-                        meta._source_component_ids = (meta.id,)
-                    else:
-                        meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
-                        meta = cls(id=meta_id, **init_kwargs)
-                        meta._n_c_batched = n_c
-                        meta._source_component_ids = tuple(c.id for c in comps)
+                    meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
+                    meta = cls(id=meta_id, **init_kwargs)
+                    meta._n_c_batched = n_c
+                    meta._source_component_ids = tuple(c.id for c in comps)
                     # Component.initialize() sizes every I/O port from ``n_c``.
                     # Keeping only the mapping metadata at ``_n_c_batched`` left
                     # non-stateful batched components with scalar ports.
@@ -1229,12 +1246,7 @@ class Model:
                             cls.__name__, type(exc).__name__, exc, n_c,
                         )
                     for c in comps:
-                        c._n_c_batched = 1
-                        c._source_component_ids = (c.id,)
-                        c._batched_execution_priority = group_idx
-                        kept.append(c)
-                        self._component_to_meta[c.id] = (c, 0)
-                        batched.add_component(c)
+                        self._component_to_meta[c.id] = (_as_is(c, group_idx), 0)
                     continue
 
                 for i_c, c in enumerate(comps):
@@ -1291,12 +1303,6 @@ class Model:
                         )
                         for out_v, in_v in zip(outs, ins):
                             connection_map[key]["pairs"].append((s_ic, r_ic, out_v, in_v))
-
-        # A kept component is rewired below from the source wiring just read;
-        # its own lists still point at components the metas replaced.
-        for c in kept:
-            c.connected_through = []
-            c.connects_at = []
 
         def _index(values):
             """One int when every pair agrees on one value, else a tensor."""

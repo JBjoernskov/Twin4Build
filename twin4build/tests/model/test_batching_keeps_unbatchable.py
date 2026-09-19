@@ -3,8 +3,9 @@
 A component whose parameters live on sub-models that only exist after
 construction (built at rewire, say) cannot be rebuilt from its constructor
 and stacked; before, one such class aborted the batching of the whole
-model.  Now its instances join the batched model unbatched and every other
-class is still batched.
+model.  Now its instances join the batched model as shallow copies with
+fresh wiring, sharing their sub-models, and every other class is still
+batched.
 """
 
 import datetime
@@ -71,7 +72,11 @@ class TestBatchingKeepsUnbatchableClass(unittest.TestCase):
         metas = [c for c in batched.components.values() if isinstance(c, tb.ScalarProductSystem)]
         self.assertEqual(len(metas), 1)
         self.assertEqual(metas[0]._n_c_batched, 3)
-        self.assertIs(model._component_to_meta["late0"][0], late[0])
+        # A copy with fresh wiring that shares the source's sub-models.
+        kept0 = model._component_to_meta["late0"][0]
+        self.assertIsNot(kept0, late[0])
+        self.assertIs(kept0.sub, late[0].sub)
+        self.assertEqual(kept0.id, "late0")
 
         batched.load(draw_semantic_model=False, draw_simulation_model=False)
         start = datetime.datetime(2024, 1, 1, tzinfo=tz.UTC)
