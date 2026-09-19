@@ -950,8 +950,10 @@ class FunctionalModel:
                         out_t = out_v.reshape(-1)
                     elif isinstance(out_v, int):
                         out_t = torch.full((n_pairs,), int(out_v), dtype=torch.long, device=device)
-                    else:  # a slice: the whole vector output, one pair per element
+                    elif isinstance(out_v, slice):  # the whole vector output, one pair per element
                         out_t = torch.arange(n_pairs, device=device)
+                    else:  # a scalar output: no slot (unused when not is_vector)
+                        out_t = torch.zeros(n_pairs, dtype=torch.long, device=device)
                     g = groups.setdefault((producer.id, out_port), {"producer": producer, "port": out_port, "is_vector": is_vector, "s_ic": [], "out_v": [], "r_ic": [], "in_v": []})
                     g["s_ic"].append(s_ic.reshape(-1))
                     g["out_v"].append(out_t)
@@ -988,7 +990,10 @@ class FunctionalModel:
                 if isinstance(s_ic, torch.Tensor) and s_ic.numel() == 1 and (not isinstance(out_v, torch.Tensor) or out_v.numel() == 1) and not isinstance(out_v, slice):
                     g = groups.setdefault((m[1], m[2]), {"cid": m[1], "port": m[2], "is_vector": is_vector, "s_ic": [], "out_v": [], "meas": []})
                     g["s_ic"].append(s_ic.reshape(-1))
-                    g["out_v"].append(out_v.reshape(-1) if isinstance(out_v, torch.Tensor) else torch.tensor([int(out_v)], dtype=torch.long, device=device))
+                    g["out_v"].append(
+                        out_v.reshape(-1) if isinstance(out_v, torch.Tensor)
+                        else torch.tensor([int(out_v) if isinstance(out_v, int) else 0], dtype=torch.long, device=device)
+                    )
                     g["meas"].append(i)
                     continue
             singles.append(i)
