@@ -171,11 +171,11 @@ def sink_histories(model, batched=None):
         cid = f"sink{k}"
         if batched is None:
             hist = model.components[cid].output["w"].history()
-            out[cid] = hist.reshape(hist.shape[0], -1)[:, 0].detach().cpu()
+            out[cid] = hist.reshape(hist.shape[0], -1)[:, 0].detach().cpu().clone()
         else:
             meta, i_c = model._component_to_meta[cid]
             hist = meta.output["w"].history()
-            out[cid] = hist.reshape(hist.shape[0], -1)[:, i_c].detach().cpu()
+            out[cid] = hist.reshape(hist.shape[0], -1)[:, i_c].detach().cpu().clone()
     return out
 
 
