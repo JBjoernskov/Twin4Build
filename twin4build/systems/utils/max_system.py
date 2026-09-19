@@ -8,6 +8,7 @@ import torch
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.slots import wired_width
 
 
 class MaxSystem(core.System):
@@ -53,13 +54,7 @@ class MaxSystem(core.System):
         batch_size = len(start_time)
         self.n_c = int(getattr(self, "_n_c_batched", 1))
 
-        indices = [
-            int(cp.input_port_index[conn])
-            for cp in self.connects_at
-            if cp.input_port == "inputs"
-            for conn in cp.connects_system_through
-        ]
-        n_v = max(indices, default=-1) + 1
+        n_v = wired_width(self, "inputs")
         if n_v == 0 and self.input["inputs"].n_v:
             # Preserve an explicitly configured standalone vector. Compiled
             # graph instances infer the width from their connections above.

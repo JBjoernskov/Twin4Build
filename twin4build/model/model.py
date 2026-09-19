@@ -1,4 +1,5 @@
 # Standard library imports
+import copy
 import datetime
 import warnings
 from collections import OrderedDict
@@ -430,6 +431,8 @@ class Model:
         input_port: str,
         output_port_index: [int, torch.Tensor] = None,
         input_port_index: [int, torch.Tensor] = None,
+        output_component_index: [int, torch.Tensor] = None,
+        input_component_index: [int, torch.Tensor] = None,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -443,6 +446,10 @@ class Model:
                 output port when it is a vector port. Defaults to None (scalar ports).
             input_port_index (Optional[Union[int, torch.Tensor]]): Index into the receiver's
                 input port when it is a vector port. Defaults to None (scalar ports).
+            output_component_index, input_component_index: For batched meta
+                components, the sender / receiver instance (``i_c``) of each
+                pair the connection carries, aligned element-wise with the
+                port indices when those are tensors.
 
         Raises:
             AssertionError: If property names are invalid for the components.
@@ -455,6 +462,8 @@ class Model:
             input_port=input_port,
             output_port_index=output_port_index,
             input_port_index=input_port_index,
+            output_component_index=output_component_index,
+            input_component_index=input_component_index,
         )
 
     def remove_connection(
@@ -1147,20 +1156,31 @@ class Model:
         -----
         * The mapping from original component ids to ``(meta, i_c)`` is
           stored in ``self._component_to_meta`` for later look-up.
-        * Components with ``n_c == 1`` (singletons) are still wrapped in a
-          fresh meta instance for uniformity.
+        * Components with ``n_c == 1`` (singletons) join the batched model
+          as they are, with the mapping metadata set on them.
         * Constructor defaults are used when instantiating meta components;
           all component classes must therefore accept ``id`` as their only
           required keyword argument.
         * A class whose instances cannot be rebuilt that way (sub-models
           created after construction, e.g. at rewire) is left unbatched:
-          its original components join the batched model as they are, so
-          the source model must not be simulated afterwards.
+          its components join the batched model as shallow copies with
+          fresh wiring, sharing ports, parameters and sub-models with the
+          source components.
         """
         batched = Model(id=f"{self.id}_batched")
         self._component_to_meta = {}
         unbatchable: set = set()
-        kept: list = []  # components of unbatchable classes, joined as they are
+
+        def _as_is(component, group_idx):
+            """A shallow copy with empty wiring, joined to the batched model."""
+            clone = copy.copy(component)
+            clone.connected_through = []
+            clone.connects_at = []
+            clone._n_c_batched = 1
+            clone._source_component_ids = (component.id,)
+            clone._batched_execution_priority = group_idx
+            batched.add_component(clone)
+            return clone
 
         # -- Phase 1: create one meta component per signature group --------
         # Classes that must never be lumped together even when they share a
@@ -1190,16 +1210,21 @@ class Model:
                 # Components sharing a batch share those values;
                 # _component_signature keeps differing ones apart.
                 init_kwargs = dict(getattr(comps[0], "_batch_init_kwargs", None) or {})
+                if n_c == 1:
+                    # A singleton joins as a shallow copy with fresh wiring
+                    # (the cycle-free load copies components the same way):
+                    # rebuilding it from its constructor would have to
+                    # reproduce every attribute set after construction (a
+                    # transfer node's branch map, a sensor's data source),
+                    # which nothing guarantees.  Ports, parameters and
+                    # sub-models are shared with the source component.
+                    self._component_to_meta[comps[0].id] = (_as_is(comps[0], group_idx), 0)
+                    continue
                 try:
-                    if n_c == 1:
-                        meta = cls(id=comps[0].id, **init_kwargs)
-                        meta._n_c_batched = 1
-                        meta._source_component_ids = (meta.id,)
-                    else:
-                        meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
-                        meta = cls(id=meta_id, **init_kwargs)
-                        meta._n_c_batched = n_c
-                        meta._source_component_ids = tuple(c.id for c in comps)
+                    meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
+                    meta = cls(id=meta_id, **init_kwargs)
+                    meta._n_c_batched = n_c
+                    meta._source_component_ids = tuple(c.id for c in comps)
                     # Component.initialize() sizes every I/O port from ``n_c``.
                     # Keeping only the mapping metadata at ``_n_c_batched`` left
                     # non-stateful batched components with scalar ports.
@@ -1221,12 +1246,7 @@ class Model:
                             cls.__name__, type(exc).__name__, exc, n_c,
                         )
                     for c in comps:
-                        c._n_c_batched = 1
-                        c._source_component_ids = (c.id,)
-                        c._batched_execution_priority = group_idx
-                        kept.append(c)
-                        self._component_to_meta[c.id] = (c, 0)
-                        batched.add_component(c)
+                        self._component_to_meta[c.id] = (_as_is(c, group_idx), 0)
                     continue
 
                 for i_c, c in enumerate(comps):
@@ -1235,8 +1255,19 @@ class Model:
                 batched.add_component(meta)
 
         # -- Phase 2: wire connections between meta components -------------
-        # Collect all (sender_ic, receiver_ic) pairs per unique connection
-        # key so we can build the i_c mapping tensors.
+        # Every original connection is a set of (sender instance, receiver
+        # instance, output slot, input slot) pairs -- one pair for a scalar
+        # link, several for a zone reading several branches of one unit.
+        # All pairs of one (meta, port, meta, port) key go into one batched
+        # connection whose port and component indices are aligned tensors,
+        # so each instance keeps its own slots.
+        def _slots(index):
+            if index is None:
+                return [None]
+            if isinstance(index, torch.Tensor):
+                return [int(v) for v in index.reshape(-1).tolist()]
+            return [int(index)]
+
         connection_map: Dict[tuple, dict] = {}
         for group in self.simulation_model.execution_order:
             for comp in group:
@@ -1258,61 +1289,61 @@ class Model:
                                 "r_meta": r_meta,
                                 "output_port": conn.output_port,
                                 "input_port": cp.input_port,
-                                "out_v_idx": cp.output_port_index.get(conn),
-                                "in_v_idx": cp.input_port_index.get(conn),
-                                "ic_pairs": [],
+                                "pairs": [],
                             }
-                        connection_map[key]["ic_pairs"].append((s_ic, r_ic))
+                        outs = _slots(cp.output_port_index.get(conn))
+                        ins = _slots(cp.input_port_index.get(conn))
+                        if len(outs) == 1 and len(ins) > 1:
+                            outs = outs * len(ins)
+                        elif len(ins) == 1 and len(outs) > 1:
+                            ins = ins * len(outs)
+                        assert len(outs) == len(ins), (
+                            f"{comp.id}.{conn.output_port} -> {receiver.id}.{cp.input_port}: "
+                            f"{len(outs)} output slots against {len(ins)} input slots"
+                        )
+                        for out_v, in_v in zip(outs, ins):
+                            connection_map[key]["pairs"].append((s_ic, r_ic, out_v, in_v))
 
-        # A kept component is rewired below from the source wiring just read;
-        # its own lists still point at components the metas replaced.
-        for c in kept:
-            c.connected_through = []
-            c.connects_at = []
+        def _index(values):
+            """One int when every pair agrees on one value, else a tensor."""
+            if all(v is None for v in values):
+                return None
+            if len(values) == 1:
+                return values[0]
+            return torch.tensor(values, dtype=torch.long)
 
         for info in connection_map.values():
-            batched.add_connection(
-                info["s_meta"],
-                info["r_meta"],
-                info["output_port"],
-                info["input_port"],
-                output_port_index=info["out_v_idx"],
-                input_port_index=info["in_v_idx"],
-            )
-
-            pairs = info["ic_pairs"]
+            pairs = info["pairs"]
             s_n_c = getattr(info["s_meta"], "_n_c_batched", 1)
             r_n_c = getattr(info["r_meta"], "_n_c_batched", 1)
-
-            if s_n_c == 1 and r_n_c == 1:
-                continue
-
-            sorted_pairs = sorted(pairs)
-            is_aligned = (
-                len(sorted_pairs) == s_n_c == r_n_c
-                and all(s == r for s, r in sorted_pairs)
-                and [p[0] for p in sorted_pairs] == list(range(s_n_c))
+            out_v = _index([p[2] for p in pairs])
+            in_v = _index([p[3] for p in pairs])
+            s_ics = [p[0] for p in pairs]
+            r_ics = [p[1] for p in pairs]
+            # Instances aligned pairwise with no vector slots to carry:
+            # plain broadcasting over n_c, as before.
+            aligned = (
+                s_n_c == r_n_c
+                and len(pairs) == s_n_c
+                and sorted(s_ics) == list(range(s_n_c))
+                and all(a == b for a, b in zip(s_ics, r_ics))
+                and not isinstance(out_v, torch.Tensor)
+                and not isinstance(in_v, torch.Tensor)
             )
-            if is_aligned:
+            singleton = s_n_c == 1 and r_n_c == 1 and len(pairs) == 1
+            if aligned or singleton:
+                batched.add_connection(
+                    info["s_meta"], info["r_meta"], info["output_port"], info["input_port"],
+                    output_port_index=out_v, input_port_index=in_v,
+                )
                 continue
-
-            s_ics = torch.tensor([p[0] for p in pairs], dtype=torch.long)
-            r_ics = torch.tensor([p[1] for p in pairs], dtype=torch.long)
-
-            # Walk the batched model's connection graph to find the
-            # ConnectionPoint + Connection objects we just created.
-            for cp in info["r_meta"].connects_at:
-                if cp.input_port != info["input_port"]:
-                    continue
-                for conn_obj in cp.connects_system_through:
-                    if (
-                        conn_obj.connects_system is info["s_meta"]
-                        and conn_obj.output_port == info["output_port"]
-                    ):
-                        cp.set_output_component_index(conn_obj, s_ics)
-                        cp.set_input_component_index(conn_obj, r_ics)
-                        break
-                break
+            batched.add_connection(
+                info["s_meta"], info["r_meta"], info["output_port"], info["input_port"],
+                output_port_index=out_v,
+                input_port_index=in_v,
+                output_component_index=torch.tensor(s_ics, dtype=torch.long),
+                input_component_index=torch.tensor(r_ics, dtype=torch.long),
+            )
 
         return batched
 

@@ -12,6 +12,7 @@ import twin4build.core as core
 import twin4build.utils.constants as constants
 from twin4build.systems.building_space import air_balance
 import twin4build.utils.types as tps
+from twin4build.utils.slots import wired_width
 from twin4build.systems.utils.discrete_statespace_system import (
     DiscreteStatespaceSystem,
     bilinear_onestep,
@@ -374,13 +375,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         )
         # Openings: count logical exchangeCO2Gain slots (mirrors wallHeatGain).
         if not self._manual_setup_n_exchanges:
-            indices = [
-                int(cp.input_port_index[conn])
-                for cp in self.connects_at
-                if cp.input_port == "exchangeCO2Gain"
-                for conn in cp.connects_system_through
-            ]
-            self._n_exchanges = max(indices, default=-1) + 1
+            self._n_exchanges = wired_width(self, "exchangeCO2Gain")
 
         # Initialize I/O
         for name, input in self.input.items():
