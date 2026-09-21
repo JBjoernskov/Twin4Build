@@ -1323,7 +1323,10 @@ class FunctionalModel:
             """(producer index or -1) per routed slot, via the real route code."""
             n = self._component_n_c(producer)
             width = max(1, int(self._output_width(producer, out_port)))
-            tags = torch.arange(1, n + 1, dtype=torch.float64)[:, None].expand(n, width)
+            # The routes' index tensors live on the device the rollout was
+            # prepared for (``prepare_routes``); the tags must sit there too.
+            device = getattr(self, "_routes_device", None) or "cpu"
+            tags = torch.arange(1, n + 1, dtype=torch.float64, device=device)[:, None].expand(n, width)
             mapped = self._apply_routes(tags, routes)
             if mapped.ndim == 1:
                 mapped = mapped[:, None]
