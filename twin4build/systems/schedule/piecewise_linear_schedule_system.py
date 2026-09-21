@@ -24,6 +24,10 @@ _EMPTY_RULESET = {
 
 
 class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
+    #: The table is resolved from the schedule at every step, so there is no
+    #: Y parameter for the estimator or the functional engine to read.
+    PARAM_NAMES = ()
+
     """A schedule system using piecewise linear interpolation.
 
     Combines PiecewiseLinearSystem and ScheduleSystem to create a scheduling

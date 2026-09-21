@@ -116,14 +116,23 @@ class FunctionalControlObjective:
             if not isinstance(comp.output[port], tps.Scalar):
                 raise RuntimeError(f"loss output {comp.id}.{port} is not a Scalar port")
 
-        self.vars = [(comp, port) for comp, port, *_ in opt._variables]
+        self.vars = [(comp, port) for comp, port, *_ in opt._trajectory_variables]
         var_index = {(c.id, p): v for v, (c, p) in enumerate(self.vars)}
+        # Parameter decision variables enter the composed map as its theta
+        # (physical values, one slice per parameter), exactly as estimated
+        # parameters do for the Estimator.
+        self.param_vars = list(opt._parameter_variables)
+        self.n_traj = int(opt._n_trajectory_theta)
+        theta_spec, offset = [], 0
+        for comp, name, lower, upper, n in self.param_vars:
+            theta_spec.append((comp, name, slice(offset, offset + n) if n > 1 else offset))
+            offset += n
 
         # -- compose ----------------------------------------------------------
         # Structural checks (stateful components exist, uniform step size,
         # state-width match) live in Simulator.compose.
         layout, composer = opt.simulator.build_functional_model(
-            outputs=self.loss_ports, step_size=opt._stepSize
+            theta_spec=theta_spec, outputs=self.loss_ports, step_size=opt._stepSize
         )
 
         # Every loss output must be producible by the composed map, or BE a
@@ -353,7 +362,14 @@ class FunctionalControlObjective:
         units, matching each object-graph port history including branches."""
         opt = self.opt
         n_vars = len(self.vars)
-        theta_m = theta.reshape(-1, n_vars)  # (sum n_t, n_vars)
+        theta_traj, theta_par = theta[: self.n_traj], theta[self.n_traj :]
+        # Parameters: normalized [0, 1] -> physical, in theta_spec order.
+        pieces, offset = [], 0
+        for comp, name, lower, upper, n in self.param_vars:
+            pieces.append(theta_par[offset : offset + n] * (upper - lower) + lower)
+            offset += n
+        theta_params = torch.cat(pieces) if pieces else self._theta_empty
+        theta_m = theta_traj.reshape(-1, max(n_vars, 1))  # (sum n_t, n_vars)
 
         # Per-period physical trajectories per variable: theta rows are
         # period-0 timesteps, then period-1, ... (the solver's layout).
@@ -366,7 +382,7 @@ class FunctionalControlObjective:
             for v in range(n_vars):
                 mn, mx = self._var_denorm[v]
                 cols.append(block[:, v] * (mx - mn) + mn)
-            theta_phys.append(torch.stack(cols, dim=1))
+            theta_phys.append(torch.stack(cols, dim=1) if cols else block[:, :0])
 
         # Rollout: per period, override the theta-driven captured slots
         # (functionally -- see __init__) and step the composed map (the shared
@@ -381,7 +397,7 @@ class FunctionalControlObjective:
             M = sim.rollout_functional(
                 self.composer,
                 self.Y0[p],
-                self._theta_empty,
+                theta_params,
                 cap,
                 transform_mode=transform_mode,
             )  # (n_t_p, n_meas)
