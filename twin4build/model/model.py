@@ -1152,9 +1152,15 @@ class Model:
         * Constructor defaults are used when instantiating meta components;
           all component classes must therefore accept ``id`` as their only
           required keyword argument.
+        * A class whose instances cannot be rebuilt that way (sub-models
+          created after construction, e.g. at rewire) is left unbatched:
+          its original components join the batched model as they are, so
+          the source model must not be simulated afterwards.
         """
         batched = Model(id=f"{self.id}_batched")
         self._component_to_meta = {}
+        unbatchable: set = set()
+        kept: list = []  # components of unbatchable classes, joined as they are
 
         # -- Phase 1: create one meta component per signature group --------
         # Classes that must never be lumped together even when they share a
@@ -1184,23 +1190,44 @@ class Model:
                 # Components sharing a batch share those values;
                 # _component_signature keeps differing ones apart.
                 init_kwargs = dict(getattr(comps[0], "_batch_init_kwargs", None) or {})
-                if n_c == 1:
-                    meta = cls(id=comps[0].id, **init_kwargs)
-                    meta._n_c_batched = 1
-                    meta._source_component_ids = (meta.id,)
-                else:
-                    meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
-                    meta = cls(id=meta_id, **init_kwargs)
-                    meta._n_c_batched = n_c
-                    meta._source_component_ids = tuple(c.id for c in comps)
-                # Component.initialize() sizes every I/O port from ``n_c``.
-                # Keeping only the mapping metadata at ``_n_c_batched`` left
-                # non-stateful batched components with scalar ports.
-                meta.n_c = n_c
-                self._copy_data_source_attrs(comps[0], meta)
-                meta._batched_execution_priority = group_idx
-                self._batch_parameters(meta, comps, n_c)
-                self._copy_init_attrs(meta, comps[0])
+                try:
+                    if n_c == 1:
+                        meta = cls(id=comps[0].id, **init_kwargs)
+                        meta._n_c_batched = 1
+                        meta._source_component_ids = (meta.id,)
+                    else:
+                        meta_id = f"g{group_idx}_b{blk_idx}_{cls.__name__}"
+                        meta = cls(id=meta_id, **init_kwargs)
+                        meta._n_c_batched = n_c
+                        meta._source_component_ids = tuple(c.id for c in comps)
+                    # Component.initialize() sizes every I/O port from ``n_c``.
+                    # Keeping only the mapping metadata at ``_n_c_batched`` left
+                    # non-stateful batched components with scalar ports.
+                    meta.n_c = n_c
+                    self._copy_data_source_attrs(comps[0], meta)
+                    meta._batched_execution_priority = group_idx
+                    self._batch_parameters(meta, comps, n_c)
+                    self._copy_init_attrs(meta, comps[0])
+                except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
+                    # A class whose instances cannot be rebuilt from their
+                    # constructor and stacked parameters (sub-models created
+                    # later, e.g. at rewire) is not batched: its components
+                    # stay as they are, one per instance.  Batching is an
+                    # optimisation, so the model must still run.
+                    if cls.__name__ not in unbatchable:
+                        unbatchable.add(cls.__name__)
+                        LOGGER.warning(
+                            "%s is not batched (%s: %s); its %d instance(s) stay separate",
+                            cls.__name__, type(exc).__name__, exc, n_c,
+                        )
+                    for c in comps:
+                        c._n_c_batched = 1
+                        c._source_component_ids = (c.id,)
+                        c._batched_execution_priority = group_idx
+                        kept.append(c)
+                        self._component_to_meta[c.id] = (c, 0)
+                        batched.add_component(c)
+                    continue
 
                 for i_c, c in enumerate(comps):
                     self._component_to_meta[c.id] = (meta, i_c)
@@ -1236,6 +1263,12 @@ class Model:
                                 "ic_pairs": [],
                             }
                         connection_map[key]["ic_pairs"].append((s_ic, r_ic))
+
+        # A kept component is rewired below from the source wiring just read;
+        # its own lists still point at components the metas replaced.
+        for c in kept:
+            c.connected_through = []
+            c.connects_at = []
 
         for info in connection_map.values():
             batched.add_connection(
