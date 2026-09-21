@@ -173,6 +173,15 @@ def _has_real_forward(comp) -> bool:
     return f is not None and f is not nn.Module.forward
 
 
+def _replays_data(comp) -> bool:
+    """A component that, in its current configuration, only replays recorded
+    data (a controller in playback mode outputs its historised command): its
+    outputs are exogenous like a data sensor's, so it stays out of the
+    traced cone and its inputs are never assembled per step."""
+    replays = getattr(comp, "replays_data", None)
+    return bool(replays()) if callable(replays) else False
+
+
 def _is_passthrough_sensor(comp) -> bool:
     """A SensorSystem whose ``measuredValue`` is driven by another component
     (not by its own data source) just forwards that value."""
@@ -213,7 +222,7 @@ def collect_stateful(model) -> List:
         order = getattr(model, "flat_execution_order", None)
     if order is None:
         order = list(model.components.values())
-    return [c for c in order if c.is_stateful()]
+    return [c for c in order if c.is_stateful() and not _replays_data(c)]
 
 
 class StateLayout:
@@ -324,7 +333,7 @@ class FunctionalModel:
         order = list(order)
         self.pos = {c.id: i for i, c in enumerate(order)}
         self.order = order
-        self.forward_ids = {c.id for c in order if _has_real_forward(c)}
+        self.forward_ids = {c.id for c in order if _has_real_forward(c) and not _replays_data(c)}
         # Fused-cluster members are not executing nodes; their produced
         # signals resolve to the fused block's namespaced outputs (_follow)
         # and their theta associations to the fused block's id.
@@ -518,6 +527,10 @@ class FunctionalModel:
             if c is None or c.id in visited:
                 continue
             visited.add(c.id)
+            if _replays_data(c):
+                # Recorded data: its outputs do not depend on its inputs, so
+                # nothing upstream of it reaches the constant.
+                continue
             if c.id in self.theta_by_comp:
                 return c.id
             # A fused-cluster member carries its theta under the fused id.
@@ -642,21 +655,49 @@ class FunctionalModel:
             for conn in cp.connects_system_through:
                 in_idx = cp.input_port_index.get(conn, 0)
                 out_idx = cp.output_port_index.get(conn, slice(None))
+                s_ic = cp.output_component_index.get(conn, slice(None))
+                r_ic = cp.input_component_index.get(conn, slice(None))
                 if isinstance(in_idx, torch.Tensor) and in_idx.numel() > 1:
                     # One connection, several slot pairs (a zone fed by
-                    # several branches of one AHU): each input slot has its
-                    # own output slot.
-                    pairs = list(zip(in_idx.reshape(-1).tolist(), out_idx.reshape(-1).tolist()))
+                    # several branches of one AHU, or a batched meta whose
+                    # instances each own slots): each input slot has its
+                    # own output slot and, when batched, its own instance
+                    # on both sides.
+                    n_pairs = int(in_idx.numel())
+
+                    def _per_pair(value):
+                        if isinstance(value, torch.Tensor) and value.numel() == n_pairs:
+                            return value.reshape(-1).tolist()
+                        return [value] * n_pairs
+
+                    pairs = list(zip(
+                        in_idx.reshape(-1).tolist(), _per_pair(out_idx), _per_pair(s_ic), _per_pair(r_ic)
+                    ))
                 else:
                     idx = int(in_idx.item()) if hasattr(in_idx, "item") else int(in_idx)
-                    pairs = [(idx, out_idx)]
+                    pairs = [(idx, out_idx, s_ic, r_ic)]
                 immediate = self._connection_sources(comp, port)
                 for src in immediate:
                     if src[0] is conn.connects_system and src[1] == conn.output_port:
                         followed = self._follow(src[0], src[1])
                         if followed is not None:
-                            for idx, o in pairs:
-                                route = (o,) + tuple(src[2][0][1:])
+                            # The pairs of one connection landing on one
+                            # input slot (a batched receiver's instances
+                            # reading the same branch slot, or a batched
+                            # sender's instances feeding one slot) are one
+                            # route with tensor indices: one gather and one
+                            # scatter per slot instead of one per pair.
+                            by_slot = {}
+                            for idx, o, s_i, r_i in pairs:
+                                by_slot.setdefault(idx, []).append((o, s_i, r_i))
+                            for idx, group in by_slot.items():
+                                if len(group) == 1:
+                                    o, s_i, r_i = group[0]
+                                else:
+                                    o, s_i, r_i = (
+                                        self._index_tensor([g[k] for g in group]) for k in range(3)
+                                    )
+                                route = (o, s_i, r_i) + tuple(src[2][0][3:])
                                 slots.setdefault(idx, []).append(
                                     (
                                         followed[0],
@@ -666,6 +707,17 @@ class FunctionalModel:
                                 )
                         break
         return sorted(slots.items())
+
+    @staticmethod
+    def _index_tensor(values):
+        """The pairs' indices as one tensor; a slice (an unbatched side) stays
+        a slice when every pair agrees on it, and ``None`` (a scalar side)
+        stays ``None``."""
+        if all(v is None for v in values):
+            return None
+        if all(isinstance(v, slice) for v in values):
+            return values[0]
+        return torch.tensor([int(v) if not isinstance(v, slice) else 0 for v in values], dtype=torch.long)
 
     def _register_exogenous(self, key, width):
         start = self._n_exogenous
@@ -770,20 +822,230 @@ class FunctionalModel:
     # ``previousIndoorCo2Measured`` at the wrong step.)
     @staticmethod
     def _as_index(index, device):
+        """An index tensor on ``device``.  :meth:`prepare_routes` moves the
+        routes' tensors there once, so this is a no-op on the rollout path;
+        a host-to-device copy per step would be a sync the CUDA-graph
+        capture cannot record."""
         if isinstance(index, slice):
             return index
+        if isinstance(index, torch.Tensor):
+            return index.reshape(-1).to(device)
         return torch.as_tensor(index, dtype=torch.long, device=device).reshape(-1)
+
+    @staticmethod
+    def _target_order_of(target_i_c, target_n_c, device):
+        """How a route's pairs land on the target instances: ``None`` when
+        they are exactly ``0..n_c-1`` in order, the inverse permutation when
+        they cover every instance once in some other order, ``False`` when
+        they do not (a scatter is needed)."""
+        if isinstance(target_i_c, slice):
+            return None
+        index = torch.as_tensor(target_i_c, dtype=torch.long).reshape(-1).cpu()
+        if index.numel() != target_n_c or index.numel() != int(torch.unique(index).numel()):
+            return False
+        if bool(torch.equal(index, torch.arange(target_n_c))):
+            return None
+        return torch.argsort(index).to(device)
+
+    def prepare_routes(self, device) -> None:
+        """Resolve every route for ``device`` once: index tensors moved there,
+        the target order decided, the exogenous key table built.  Called at
+        the start of a rollout, outside the traced/captured step, so the
+        step does no caching and no host-to-device copies."""
+        device = torch.device(device)
+        if getattr(self, "_routes_device", None) == device:
+            return
+
+        def idx(value):
+            return value.reshape(-1).to(device) if isinstance(value, torch.Tensor) else value
+
+        def instance(value):
+            """A component index as a device tensor: an int would be turned
+            into one at every step (a host tensor copied to the device, which
+            a CUDA-graph capture cannot record and torch.compile lifts as a
+            fresh constant)."""
+            if isinstance(value, int):
+                return torch.tensor([value], dtype=torch.long, device=device)
+            return idx(value)
+
+        def route(r):
+            out_v, s_ic, r_ic, n_c, is_vector = r[:5]
+            return (idx(out_v), instance(s_ic), instance(r_ic), n_c, is_vector, self._target_order_of(r_ic, n_c, device))
+
+        def sources(srcs):
+            return [(p, port, tuple(route(r) for r in routes)) for p, port, routes in srcs]
+
+        def spec(sp):
+            if sp[0] == "fresh":
+                return ("fresh", sources(sp[1]))
+            if sp[0] in ("vector", "mixed"):
+                return (sp[0], [spec(x) for x in sp[1]])
+            return sp
+
+        by_id = {c.id: c for c in self.cone}
+        self.wiring = {
+            cid: [(port, self._group_vector_spec(by_id[cid], port, spec(sp), device)) for port, sp in ports]
+            for cid, ports in self.wiring.items()
+        }
+        self.meas_sources = [
+            ("fresh", m[1], m[2], tuple(route(r) for r in m[3])) if m[0] == "fresh" else m
+            for m in self.meas_sources
+        ]
+        self._meas_groups = self._group_measurements(device)
+        self._fb_producer = [sources(srcs) for srcs in self._fb_producer]
+        self._exo_key_of = {(sl.start, sl.stop): key for key, sl in self._exogenous_index.items()}
+        self._routes_device = device
+
+    def _group_vector_spec(self, comp, port, sp, device):
+        """A ``("vector", slot_specs)`` spec regrouped as
+        ``("vector_grouped", n_c, n_v, groups, exo, leftovers)``:
+
+        * ``groups``: per (producer id, output port), the pairs of every slot
+          it feeds as aligned tensors ``(s_ic, out_v, r_ic, in_v)`` -- one
+          gather and one accumulating scatter per producer instead of one
+          gather, one zeros and one scatter per slot;
+        * ``exo``: the exogenous slots as one ``(n_c, n_slots)`` index into
+          the tape plus their slot indices -- one gather for all of them;
+        * ``leftovers``: ``(slot, spec)`` for slots that stay per slot
+          (feedback, mixed, multi-hop routes), scattered into the port.
+        """
+        if sp[0] != "vector":
+            return sp
+        n_c = self._component_n_c(comp)
+        n_v = len(sp[1])
+        rows = torch.arange(n_c, dtype=torch.long, device=device)
+        groups, exo_rows, exo_slots, leftovers = {}, [], [], []
+        for slot, slot_spec in enumerate(sp[1]):
+            kind = slot_spec[0]
+            if kind == "exogenous" and isinstance(slot_spec[1], slice):
+                sl = slot_spec[1]
+                if sl.stop - sl.start == n_c:
+                    exo_rows.append(torch.arange(sl.start, sl.stop))
+                    exo_slots.append(slot)
+                    continue
+            if kind == "fresh":
+                simple = True
+                for producer, out_port, routes in slot_spec[1]:
+                    if len(routes) != 1:
+                        simple = False
+                        break
+                    out_v, s_ic, r_ic = routes[0][:3]
+                    if not (isinstance(s_ic, torch.Tensor) and isinstance(r_ic, torch.Tensor)):
+                        simple = False
+                        break
+                    n_pairs = int(r_ic.numel())
+                    if isinstance(out_v, torch.Tensor) and out_v.numel() != n_pairs:
+                        simple = False
+                        break
+                    if s_ic.numel() != n_pairs:
+                        simple = False
+                        break
+                if not simple:
+                    leftovers.append((rows, torch.full((n_c,), slot, dtype=torch.long, device=device), slot_spec))
+                    continue
+                for producer, out_port, routes in slot_spec[1]:
+                    out_v, s_ic, r_ic, _, is_vector = routes[0][:5]
+                    n_pairs = int(r_ic.numel())
+                    if isinstance(out_v, torch.Tensor):
+                        out_t = out_v.reshape(-1)
+                    elif isinstance(out_v, int):
+                        out_t = torch.full((n_pairs,), int(out_v), dtype=torch.long, device=device)
+                    elif isinstance(out_v, slice):  # the whole vector output, one pair per element
+                        out_t = torch.arange(n_pairs, device=device)
+                    else:  # a scalar output: no slot (unused when not is_vector)
+                        out_t = torch.zeros(n_pairs, dtype=torch.long, device=device)
+                    g = groups.setdefault((producer.id, out_port), {"producer": producer, "port": out_port, "is_vector": is_vector, "s_ic": [], "out_v": [], "r_ic": [], "in_v": []})
+                    g["s_ic"].append(s_ic.reshape(-1))
+                    g["out_v"].append(out_t)
+                    g["r_ic"].append(r_ic.reshape(-1))
+                    g["in_v"].append(torch.full((n_pairs,), slot, dtype=torch.long, device=device))
+                continue
+            leftovers.append((rows, torch.full((n_c,), slot, dtype=torch.long, device=device), slot_spec))
+        group_list = [
+            (g["producer"].id, g["port"], g["is_vector"],
+             torch.cat(g["s_ic"]), torch.cat(g["out_v"]), torch.cat(g["r_ic"]), torch.cat(g["in_v"]))
+            for g in groups.values()
+        ]
+        exo = None
+        if exo_rows:
+            n_slots = len(exo_slots)
+            slots = torch.tensor(exo_slots, dtype=torch.long, device=device)
+            exo = (
+                torch.stack(exo_rows, dim=1).to(device),  # (n_c, n_slots) into the tape
+                rows[:, None].expand(n_c, n_slots).contiguous(),
+                slots[None, :].expand(n_c, n_slots).contiguous(),
+            )
+        return ("vector_grouped", n_c, n_v, group_list, exo, leftovers)
+
+    def _group_measurements(self, device):
+        """The "fresh" measurements with a single-hop route, grouped per
+        (producer, port) into one paired gather; the rest stay as they are.
+        Returns ``(groups, perm)`` where ``perm`` restores the measurement
+        order, or ``None`` when nothing groups."""
+        order, groups, singles = [], {}, []
+        offset = 0
+        for i, m in enumerate(self.meas_sources):
+            if m[0] == "fresh" and len(m[3]) == 1:
+                out_v, s_ic, r_ic, n_c, is_vector = m[3][0][:5]
+                if isinstance(s_ic, torch.Tensor) and s_ic.numel() == 1 and (not isinstance(out_v, torch.Tensor) or out_v.numel() == 1) and not isinstance(out_v, slice):
+                    g = groups.setdefault((m[1], m[2]), {"cid": m[1], "port": m[2], "is_vector": is_vector, "s_ic": [], "out_v": [], "meas": []})
+                    g["s_ic"].append(s_ic.reshape(-1))
+                    g["out_v"].append(
+                        out_v.reshape(-1) if isinstance(out_v, torch.Tensor)
+                        else torch.tensor([int(out_v) if isinstance(out_v, int) else 0], dtype=torch.long, device=device)
+                    )
+                    g["meas"].append(i)
+                    continue
+            singles.append(i)
+        if not groups:
+            return None
+        blocks, positions = [], []
+        for g in groups.values():
+            blocks.append(("group", g["cid"], g["port"], g["is_vector"], torch.cat(g["s_ic"]), torch.cat(g["out_v"])))
+            positions.extend(g["meas"])
+        for i in singles:
+            blocks.append(("single", i))
+            positions.append(i)
+        # Every grouped measurement is one value wide; singles keep their width.
+        widths = [self.meas_slices[i].stop - self.meas_slices[i].start for i in positions]
+        assert all(w == 1 for w, i in zip(widths, positions) if i not in singles)
+        perm = torch.empty(sum(widths), dtype=torch.long)
+        pos = 0
+        for i, w in zip(positions, widths):
+            sl = self.meas_slices[i]
+            perm[sl.start:sl.stop] = torch.arange(pos, pos + w)
+            pos += w
+        return blocks, perm.to(device)
 
     def _apply_routes(self, value, routes):
         """Apply object-graph output/input branch mappings without mutation."""
         result = value
-        for out_v, source_i_c, target_i_c, target_n_c, output_is_vector in routes:
-            if output_is_vector:
-                result = result[..., out_v]
-            if result.ndim == 0:
-                result = result.reshape(1)
-            source_i_c = self._as_index(source_i_c, result.device)
-            selected = result[source_i_c]
+        for r in routes:
+            out_v, source_i_c, target_i_c, target_n_c, output_is_vector = r[:5]
+            paired = (
+                output_is_vector
+                and isinstance(out_v, torch.Tensor)
+                and isinstance(source_i_c, torch.Tensor)
+                and out_v.numel() == source_i_c.numel()
+            )
+            if paired and result.ndim == 1:
+                # A single-instance sender publishes its vector without an
+                # instance axis: the pairs pick slots only.
+                selected = result[self._as_index(out_v, result.device)]
+            elif paired:
+                # A batched receiver reading one slot per instance: pair k
+                # takes slot out_v[k] of sender instance source_i_c[k].
+                selected = result[
+                    self._as_index(source_i_c, result.device),
+                    self._as_index(out_v, result.device),
+                ]
+            else:
+                if output_is_vector:
+                    result = result[..., out_v]
+                if result.ndim == 0:
+                    result = result.reshape(1)
+                source_i_c = self._as_index(source_i_c, result.device)
+                selected = result[source_i_c]
             if isinstance(target_i_c, slice):
                 if selected.shape[0] == target_n_c:
                     result = selected
@@ -792,10 +1054,21 @@ class FunctionalModel:
                 else:
                     result = selected
             else:
-                target_i_c = self._as_index(target_i_c, result.device)
-                shape = (target_n_c,) + selected.shape[1:]
-                base = torch.zeros(shape, dtype=selected.dtype, device=selected.device)
-                result = torch.index_copy(base, 0, target_i_c, selected)
+                order = r[5] if len(r) > 5 else self._target_order_of(target_i_c, target_n_c, result.device)
+                if order is None:
+                    # The pairs cover every target instance exactly once, in
+                    # order: the selection already is the target.
+                    result = selected
+                elif isinstance(order, torch.Tensor):
+                    # ... in some other order: one gather.  The order was
+                    # prepared for the rollout's device; a walk over the
+                    # routes with CPU tags (``index_coupling``) reads it too.
+                    result = selected[order.to(selected.device)]
+                else:
+                    target_i_c = self._as_index(target_i_c, result.device)
+                    shape = (target_n_c,) + selected.shape[1:]
+                    base = torch.zeros(shape, dtype=selected.dtype, device=selected.device)
+                    result = torch.index_copy(base, 0, target_i_c, selected)
         return result
 
     def _route_width(self, routes, producer, out_port):
@@ -878,15 +1151,25 @@ class FunctionalModel:
                 dtype=states_flat.dtype,
                 device=states_flat.device,
             )
-        # Unpack per-component states.
+        # Unpack per-component states: one split, then a view per component.
         states = {}
-        for i, c in enumerate(self.stateful):
-            a, b = self.state_offsets[i], self.state_offsets[i + 1]
-            n_c, state_size = self.state_shapes[i]
-            states[c.id] = states_flat[a:b].reshape(n_c, state_size)
+        if self.stateful:
+            pieces = torch.split(states_flat, self.state_widths)
+            for i, c in enumerate(self.stateful):
+                n_c, state_size = self.state_shapes[i]
+                states[c.id] = pieces[i].reshape(n_c, state_size)
 
         produced: Dict[str, Dict[str, torch.Tensor]] = {}
         x_next_parts = [None] * len(self.stateful)
+        # Exogenous slots: one split into the registered widths (the keys'
+        # slices are contiguous in registration order), one dict lookup per
+        # port instead of one slice op each.
+        exo_key_of = getattr(self, "_exo_key_of", None)
+        exo_pieces = (
+            dict(zip(self._exogenous_keys, torch.split(exogenous, self._exogenous_widths)))
+            if exo_key_of is not None and self._exogenous_widths
+            else None
+        )
         for c in self.cone:
 
             def _input_value(spec):
@@ -895,7 +1178,12 @@ class FunctionalModel:
                 if spec[0] == "feedback":
                     return feedback[spec[1]]
                 if spec[0] == "exogenous":
-                    return exogenous[spec[1]]
+                    sl = spec[1]
+                    if exo_pieces is not None and isinstance(sl, slice):
+                        key = exo_key_of.get((sl.start, sl.stop))
+                        if key is not None:
+                            return exo_pieces[key]
+                    return exogenous[sl]
                 if spec[0] == "mixed":
                     values = [_input_value(part) for part in spec[1]]
                     result = values[0]
@@ -906,7 +1194,27 @@ class FunctionalModel:
 
             inputs = {}
             for port, spec in self.wiring[c.id]:
-                if spec[0] == "vector":
+                if spec[0] == "vector_grouped":
+                    _, n_c, n_v, groups, exo, leftovers = spec
+                    if exo is not None and not groups and not leftovers:
+                        value = exogenous[exo[0]]
+                    else:
+                        value = torch.zeros((n_c, n_v), dtype=states_flat.dtype, device=states_flat.device)
+                        if exo is not None:
+                            value = value.index_put((exo[1], exo[2]), exogenous[exo[0]])
+                        for pid, pport, is_vector, s_ic, out_v, r_ic, in_v in groups:
+                            out = produced[pid][pport]
+                            if is_vector and out.ndim >= 2:
+                                gathered = out[s_ic, out_v]
+                            elif is_vector:
+                                gathered = out[out_v]
+                            else:
+                                gathered = out.reshape(-1)[s_ic]
+                            value = value.index_put((r_ic, in_v), gathered, accumulate=True)
+                        for rows_t, slot_full, slot_spec in leftovers:
+                            value = value.index_put((rows_t, slot_full), _input_value(slot_spec).reshape(-1), accumulate=True)
+                    inputs[port] = value
+                elif spec[0] == "vector":
                     vals = []
                     for s in spec[1]:
                         vals.append(_input_value(s))
@@ -939,25 +1247,42 @@ class FunctionalModel:
             )
         else:
             fb_out = torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
-        meas = []
-        for spec in self.meas_sources:
+        def _meas_value(spec):
             if spec[0] == "fresh":
-                meas.append(
-                    self._apply_routes(produced[spec[1]][spec[2]], spec[3]).reshape(-1)
-                )
-            elif spec[0] == "external":
+                return self._apply_routes(produced[spec[1]][spec[2]], spec[3]).reshape(-1)
+            if spec[0] == "external":
                 # Not producible by the functional map; the caller supplies the
                 # signal (e.g. a decision-variable trajectory) or rejects.
-                meas.append(
-                    torch.zeros(spec[3], dtype=x_next.dtype, device=x_next.device)
-                )
-            else:
-                meas.append(exogenous[spec[1]].reshape(-1))
-        meas = (
-            torch.cat(meas)
-            if meas
-            else torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
-        )
+                return torch.zeros(spec[3], dtype=x_next.dtype, device=x_next.device)
+            return exogenous[spec[1]].reshape(-1)
+
+        meas = []
+        grouped = getattr(self, "_meas_groups", None)
+        if grouped is not None:
+            # Measurements of one producer port gathered together, then put
+            # back in measurement order by one permutation.
+            blocks, perm = grouped
+            for block in blocks:
+                if block[0] == "group":
+                    _, cid, port, is_vector, s_ic, out_v = block
+                    out = produced[cid][port]
+                    if is_vector and out.ndim >= 2:
+                        meas.append(out[s_ic, out_v])
+                    elif is_vector:
+                        meas.append(out.reshape(-1)[out_v])
+                    else:
+                        meas.append(out.reshape(-1)[s_ic])
+                else:
+                    meas.append(_meas_value(self.meas_sources[block[1]]))
+            meas = torch.cat(meas)[perm]
+        else:
+            for spec in self.meas_sources:
+                meas.append(_meas_value(spec))
+            meas = (
+                torch.cat(meas)
+                if meas
+                else torch.zeros(0, dtype=x_next.dtype, device=x_next.device)
+            )
         return x_next, meas, fb_out
 
     @property
@@ -1000,7 +1325,10 @@ class FunctionalModel:
             """(producer index or -1) per routed slot, via the real route code."""
             n = self._component_n_c(producer)
             width = max(1, int(self._output_width(producer, out_port)))
-            tags = torch.arange(1, n + 1, dtype=torch.float64)[:, None].expand(n, width)
+            # The routes' index tensors live on the device the rollout was
+            # prepared for (``prepare_routes``); the tags must sit there too.
+            device = getattr(self, "_routes_device", None) or "cpu"
+            tags = torch.arange(1, n + 1, dtype=torch.float64, device=device)[:, None].expand(n, width)
             mapped = self._apply_routes(tags, routes)
             if mapped.ndim == 1:
                 mapped = mapped[:, None]
@@ -1373,6 +1701,7 @@ def functional_rollout(
         theta: ``(n_theta,)`` physical parameters (theta_spec order).
         exogenous_tape: ``(n_t, n_exogenous)`` exogenous inputs for the period.
     """
+    functional_model.prepare_routes(theta.device)
     y = y0
     rows = []
     if step is None:
@@ -1402,6 +1731,7 @@ def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, s
     over the whole batch; without it the scalar transform-mode rollout is
     ``vmap``-ed, which is what the batched bundles always did.
     """
+    functional_model.prepare_routes(Theta.device)
     if step is None:
         return torch.func.vmap(
             lambda y0, th: functional_rollout(

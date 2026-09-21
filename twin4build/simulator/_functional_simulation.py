@@ -549,23 +549,44 @@ class FunctionalSimulationSession:
             return value[tuple(slices)]
         return torch.index_select(value, dimension, index)
 
-    @classmethod
-    def _route_history(cls, source_port, output_port_index, output_component_index):
-        value = cls._select_components(
-            source_port._history, output_component_index, dimension=2
+    @staticmethod
+    def _paired(component_index, vector_index):
+        """A batched connection lists one (instance, slot) pair per element:
+        both indices are tensors of the same length and are read together,
+        not as an outer product."""
+        return (
+            isinstance(component_index, torch.Tensor)
+            and isinstance(vector_index, torch.Tensor)
+            and component_index.ndim > 0
+            and vector_index.ndim > 0
+            and component_index.numel() == vector_index.numel()
         )
-        if isinstance(source_port, tps.Vector):
+
+    @classmethod
+    def _route_value(cls, value, output_port_index, output_component_index, dimension, is_vector):
+        if is_vector and cls._paired(output_component_index, output_port_index):
+            slices = [slice(None)] * value.ndim
+            slices[dimension] = cls._index(output_component_index, value.device)
+            slices[dimension + 1] = cls._index(output_port_index, value.device)
+            return value[tuple(slices)]
+        value = cls._select_components(value, output_component_index, dimension)
+        if is_vector:
             value = value[..., cls._vector_index(output_port_index, value.device)]
         return value
 
     @classmethod
-    def _route_tensor(cls, source_port, output_port_index, output_component_index):
-        value = cls._select_components(
-            source_port._tensor, output_component_index, dimension=1
+    def _route_history(cls, source_port, output_port_index, output_component_index):
+        return cls._route_value(
+            source_port._history, output_port_index, output_component_index,
+            dimension=2, is_vector=isinstance(source_port, tps.Vector),
         )
-        if isinstance(source_port, tps.Vector):
-            value = value[..., cls._vector_index(output_port_index, value.device)]
-        return value
+
+    @classmethod
+    def _route_tensor(cls, source_port, output_port_index, output_component_index):
+        return cls._route_value(
+            source_port._tensor, output_port_index, output_component_index,
+            dimension=1, is_vector=isinstance(source_port, tps.Vector),
+        )
 
     @classmethod
     def _assign_routed(
@@ -579,6 +600,12 @@ class FunctionalSimulationSession:
     ):
         component_index = cls._index(component_index, target.device)
         vector_index = cls._vector_index(vector_index, target.device)
+        if target.ndim == component_dimension + 2 and cls._paired(component_index, vector_index):
+            slices = [slice(None)] * target.ndim
+            slices[component_dimension] = component_index
+            slices[component_dimension + 1] = vector_index
+            target[tuple(slices)] = value
+            return
         if isinstance(component_index, slice):
             slices = [slice(None)] * target.ndim
             slices[component_dimension] = component_index
@@ -638,6 +665,10 @@ class FunctionalSimulationSession:
                                 component_index=input_component_index,
                                 vector_index=input_port_index,
                             )
+                        if input_port._tensor is None or output_port._tensor is None:
+                            # A port nothing initialised (an unwired optional
+                            # vector of width 0): nothing to materialise.
+                            continue
                         current = self._route_tensor(
                             output_port,
                             output_port_index,

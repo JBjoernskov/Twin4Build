@@ -784,6 +784,12 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             if hasattr(target, attr):
                 scales.append(1.0)
 
+    def replays_data(self) -> bool:
+        """In playback mode the controller outputs its historised command:
+        recorded data, not a dynamic system, so the functional engine keeps
+        it out of the traced cone (see ``_replays_data``)."""
+        return bool(getattr(self, "playback", False))
+
     def initialize(
         self,
         start_time: List[datetime.datetime],

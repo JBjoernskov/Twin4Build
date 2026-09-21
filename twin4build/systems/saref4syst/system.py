@@ -5,6 +5,7 @@ import datetime
 from typing import Any, List, Tuple, Union
 
 # Third party imports
+import numpy as np
 import torch
 
 import twin4build.utils.types as tps
@@ -509,8 +510,12 @@ class System:
             bounds = spec.get(leaf)
             if not isinstance(bounds, dict) or "lb" not in bounds or "ub" not in bounds:
                 continue
-            lb = float(bounds["lb"])
-            ub = float(bounds["ub"])
+            # A batched meta's spec may hold one bound per instance
+            # (``Model._stack_parameter_spec``); a scalar stays a float.
+            lb = np.asarray(bounds["lb"], dtype=float).reshape(-1)
+            ub = np.asarray(bounds["ub"], dtype=float).reshape(-1)
+            lb = float(lb[0]) if lb.size == 1 else lb
+            ub = float(ub[0]) if ub.size == 1 else ub
             # Log-scaled ``tps.Parameter`` instances assert ``lb > 0``
             # inside ``TensorParameter.__init__``.  Skip rather than
             # surface that assertion inside the estimator's
@@ -518,10 +523,15 @@ class System:
             # this is recoverable by either widening the bound on the
             # owning component or by leaving the parameter out of
             # estimation entirely.
-            if getattr(param, "scaling", None) == "log" and lb <= 0.0:
+            if getattr(param, "scaling", None) == "log" and float(np.min(lb)) <= 0.0:
                 continue
             try:
-                x0 = float(param.get().detach().reshape(-1)[0].item())
+                values = param.get().detach().reshape(-1)
+                # A batched meta component holds one value per instance
+                # (``n_c`` wide): the estimator takes the whole vector as
+                # the start, with the spec's bounds (one per instance when
+                # the batcher stacked differing specs).
+                x0 = values.cpu().numpy().astype(float) if values.numel() > 1 else float(values[0].item())
             except Exception:  # noqa: BLE001
                 continue
             out.append((self, path, x0, lb, ub))

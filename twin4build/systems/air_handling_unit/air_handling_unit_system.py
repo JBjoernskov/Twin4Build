@@ -19,6 +19,7 @@ import torch.nn as nn  # noqa: F401 - torch needed for tensor ops
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.slots import slot_pairs
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
     AirToAirHeatRecoverySystem,
 )
@@ -380,30 +381,30 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         n_v_temp = self.input["exhaustTemperature"].n_v
         if n_v_temp == n_v_exhaust or n_v_temp is None:
             return None
+        # (zone component, zone instance) -> its slot on exhaustTemperature.
+        # A batched zone meta publishes one temperature per instance, each
+        # on its own slot, so the instance is part of the key.
         temp_slot_of = {}
         for cp in self.connects_at:
             if cp.input_port != "exhaustTemperature":
                 continue
             for conn in cp.connects_system_through:
-                idx = cp.input_port_index.get(conn, 0)
-                temp_slot_of[id(conn.connects_system)] = int(
-                    idx.reshape(-1)[0].item() if hasattr(idx, "reshape") else idx
-                )
+                for s_ic, _, _, in_v in slot_pairs(cp, conn):
+                    instance = s_ic if isinstance(s_ic, int) else 0
+                    temp_slot_of[(id(conn.connects_system), instance)] = int(
+                        0 if in_v is None or isinstance(in_v, slice) else in_v
+                    )
         index = [None] * n_v_exhaust
         for conn in self.connected_through:
             if conn.output_port != "supplyAirFlowRate":
                 continue
             for cp in conn.connects_system_at:
-                slot = temp_slot_of.get(id(cp.connection_point_of))
-                if slot is None:
-                    continue
-                branches = cp.output_port_index.get(conn, 0)
-                branches = (
-                    branches.reshape(-1).tolist()
-                    if hasattr(branches, "reshape")
-                    else [int(branches)]
-                )
-                for b in branches:
+                for _, r_ic, out_v, _ in slot_pairs(cp, conn):
+                    instance = r_ic if isinstance(r_ic, int) else 0
+                    slot = temp_slot_of.get((id(cp.connection_point_of), instance))
+                    if slot is None or out_v is None or isinstance(out_v, slice):
+                        continue
+                    b = int(out_v)
                     if b < n_v_exhaust:
                         index[b] = slot
         if any(i is None for i in index):
