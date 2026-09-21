@@ -524,8 +524,24 @@ class System:
                 values = param.get().detach().reshape(-1)
                 # A batched meta component holds one value per instance
                 # (``n_c`` wide): the estimator takes the whole vector as
-                # the start, with the shared bounds.
-                x0 = values.cpu().numpy().astype(float) if values.numel() > 1 else float(values[0].item())
+                # the start.  The ``parameter`` spec is the first
+                # instance's; the bounds the batcher stacked on the
+                # parameter itself are per instance, so they win when they
+                # are as wide as the value (a room's occupancy cap).
+                if values.numel() > 1:
+                    x0 = values.cpu().numpy().astype(float)
+                    lo = getattr(param, "min_value", None)
+                    hi = getattr(param, "max_value", None)
+                    if (
+                        isinstance(lo, torch.Tensor)
+                        and isinstance(hi, torch.Tensor)
+                        and lo.numel() == values.numel()
+                        and hi.numel() == values.numel()
+                    ):
+                        lb = lo.detach().reshape(-1).cpu().numpy().astype(float)
+                        ub = hi.detach().reshape(-1).cpu().numpy().astype(float)
+                else:
+                    x0 = float(values[0].item())
             except Exception:  # noqa: BLE001
                 continue
             out.append((self, path, x0, lb, ub))

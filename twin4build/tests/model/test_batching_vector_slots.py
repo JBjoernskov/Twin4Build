@@ -29,12 +29,14 @@ def _n_t(start_time, end_time, step_size):
 class Leaf(core.System):
     """``v = p`` (a parameter per instance)."""
 
-    def __init__(self, p=1.0, **kwargs):
+    def __init__(self, p=1.0, p_max=100.0, **kwargs):
         super().__init__(**kwargs)
         self.input = {}
         self.output = {"v": tps.Scalar()}
-        self.p = tps.Parameter(torch.tensor(float(p)), min_value=0.0, max_value=100.0)
-        self.parameter = {"p": {"lb": 0.0, "ub": 100.0}}
+        # Each instance has its own cap (a room's occupancy bound from its
+        # floor area, say): the batched meta must report them per instance.
+        self.p = tps.Parameter(torch.tensor(float(p)), min_value=0.0, max_value=float(p_max))
+        self.parameter = {"p": {"lb": 0.0, "ub": float(p_max)}}
         self._config = {"parameters": ["p"]}
 
     @property
@@ -143,7 +145,7 @@ def build():
     connection (two terminals), sinks 1..N-1 read slot k."""
     model = tb.Model(id="batching_vector_slots")
     hub = Hub(id="hub")
-    leaves = [Leaf(p=float(i + 1), id=f"leaf{i}") for i in range(N_LEAVES + 1)]
+    leaves = [Leaf(p=float(i + 1), p_max=10.0 * (i + 1), id=f"leaf{i}") for i in range(N_LEAVES + 1)]
     sinks = [Sink(id=f"sink{k}") for k in range(N_LEAVES)]
     for i, leaf in enumerate(leaves):
         model.add_connection(leaf, hub, "v", "x", input_port_index=i)
@@ -200,6 +202,10 @@ class TestBatchingVectorSlots(unittest.TestCase):
         (entry,) = leaf_meta.get_estimable_parameters()
         self.assertEqual(entry[1], "p")
         self.assertEqual(list(entry[2]), [1.0, 2.0, 3.0, 4.0, 5.0])
+        # ... and one bound per instance, not the first instance's for all
+        # (a start above the first room's cap was rejected before).
+        self.assertEqual(list(entry[3]), [0.0] * 5)
+        self.assertEqual(list(entry[4]), [10.0, 20.0, 30.0, 40.0, 50.0])
 
         for execution_mode in ("object", "functional"):
             with self.subTest(execution_mode=execution_mode):
