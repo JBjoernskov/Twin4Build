@@ -33,9 +33,11 @@ class Leaf(core.System):
         super().__init__(**kwargs)
         self.input = {}
         self.output = {"v": tps.Scalar()}
-        # Each instance has its own cap (a room's occupancy bound from its
-        # floor area, say): the batched meta must report them per instance.
-        self.p = tps.Parameter(torch.tensor(float(p)), min_value=0.0, max_value=float(p_max))
+        # Each instance has its own cap in its ``parameter`` spec (a room's
+        # occupancy bound from its floor area, say) while the tensor's own
+        # bounds are the class defaults: the batched meta must report the
+        # spec's caps per instance.
+        self.p = tps.Parameter(torch.tensor(float(p)), min_value=0.0, max_value=100.0)
         self.parameter = {"p": {"lb": 0.0, "ub": float(p_max)}}
         self._config = {"parameters": ["p"]}
 
@@ -202,9 +204,10 @@ class TestBatchingVectorSlots(unittest.TestCase):
         (entry,) = leaf_meta.get_estimable_parameters()
         self.assertEqual(entry[1], "p")
         self.assertEqual(list(entry[2]), [1.0, 2.0, 3.0, 4.0, 5.0])
-        # ... and one bound per instance, not the first instance's for all
-        # (a start above the first room's cap was rejected before).
-        self.assertEqual(list(entry[3]), [0.0] * 5)
+        # ... and one upper bound per instance, not the first instance's
+        # for all (a start above the first room's cap was rejected before);
+        # a bound the instances share stays scalar.
+        self.assertEqual(entry[3], 0.0)
         self.assertEqual(list(entry[4]), [10.0, 20.0, 30.0, 40.0, 50.0])
 
         for execution_mode in ("object", "functional"):

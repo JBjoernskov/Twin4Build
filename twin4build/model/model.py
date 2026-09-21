@@ -9,6 +9,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 import numpy as np
 import pandas as pd
 import torch
+
+from twin4build.utils.rgetattr import rgetattr
 from prettytable import PrettyTable
 
 # Local application imports
@@ -1518,6 +1520,7 @@ class Model:
                 originals.append(p)
 
             first = originals[0]
+            self._stack_parameter_spec(meta, components, param_name)
 
             if isinstance(first, tps.Parameter):
                 vals = torch.stack([p.get().squeeze() for p in originals])
@@ -1560,6 +1563,46 @@ class Model:
                         n_c=n_c,
                     ),
                 )
+
+    @staticmethod
+    def _stack_parameter_spec(meta, components, param_name) -> None:
+        """The meta's ``parameter[leaf]`` bounds, one per instance.
+
+        A component's ``parameter`` spec (``{"lb": .., "ub": ..}``) is what
+        :meth:`System.get_estimable_parameters` reports; the meta is built
+        from the first instance's constructor arguments and would carry
+        that instance's bounds for every slice (a room's occupancy cap
+        from its floor area, say).  When the instances' bounds differ, the
+        meta's spec holds one value per instance; equal bounds stay
+        scalar.
+        """
+        *prefix, leaf = param_name.split(".")
+        path = ".".join(prefix)
+
+        def owner_of(component):
+            try:
+                return rgetattr(component, path) if path else component
+            except AttributeError:
+                return None
+
+        specs = []
+        for component in components:
+            owner = owner_of(component)
+            spec = getattr(owner, "parameter", None) if owner is not None else None
+            bounds = spec.get(leaf) if isinstance(spec, dict) else None
+            if not isinstance(bounds, dict) or "lb" not in bounds or "ub" not in bounds:
+                return
+            specs.append(bounds)
+        meta_owner = owner_of(meta)
+        meta_spec = getattr(meta_owner, "parameter", None) if meta_owner is not None else None
+        if not isinstance(meta_spec, dict):
+            return
+        stacked = {}
+        for key in ("lb", "ub"):
+            values = [float(np.asarray(b[key], dtype=float).reshape(-1)[0]) for b in specs]
+            stacked[key] = values[0] if len(set(values)) == 1 else values
+        meta_owner.parameter = dict(meta_spec)
+        meta_owner.parameter[leaf] = {**specs[0], **stacked}
 
     # -- non-parameter attribute copying -----------------------------------
 
