@@ -3193,7 +3193,7 @@ class Estimator:
 
         # Store the normalised solution for warm-starting (used by lambda scheduling)
         self._last_x_norm = result.x.copy()
-        identifiability = self._log_identifiability(np.asarray(result.x, dtype=np.float64), method)
+        theta_norm_at_optimum = np.asarray(result.x, dtype=np.float64)
 
         # Denormalize result using parameter's denormalize method
         # result.x is flat array of all unique parameter values
@@ -3265,13 +3265,20 @@ class Estimator:
             result["curvature_block_sizes"] = curvature_block_sizes
         if solver_status is not None:
             result["solver_status"] = solver_status
-        if identifiability is not None:
-            result["identifiability"] = identifiability
 
+        # The fit is saved before the identifiability report: the report is
+        # optional and can be slow (a residual Jacobian), and a fit must not
+        # be lost to it.  The report is added and the file re-written when
+        # it completes.
         with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         LOGGER.ok("Results saved to %s", self.result_savedir_pickle)
+        identifiability = self._log_identifiability(theta_norm_at_optimum, method)
+        if identifiability is not None:
+            result["identifiability"] = identifiability
+            with open(self.result_savedir_pickle, "wb") as handle:
+                pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         LOGGER.remove_level()
         LOGGER.ok(
             "Running %s solver: %s (%s mode)",
@@ -3286,6 +3293,11 @@ class Estimator:
     #: Object-mode AD Jacobian costs one tangent rollout per theta entry;
     #: ``identifiability="auto"`` accepts that only for small problems.
     _IDENTIFIABILITY_AUTO_MAX_THETA = 20
+    #: The functional Jacobian (forward-mode over the rollout) costs about
+    #: one tangent step per theta entry and time step; ``"auto"`` accepts
+    #: it up to this many tangent-steps (a 500-parameter, 864-step fit is
+    #: 4e5; a 12 832-parameter one is 1e7 and ran for hours, eagerly).
+    _IDENTIFIABILITY_AUTO_MAX_TANGENT_STEPS = 2_000_000
 
     def _theta_entry_names(self) -> List[str]:
         """One label per flat theta entry: ``<component>.<attr>`` with a
@@ -3346,6 +3358,15 @@ class Estimator:
                 "Identifiability analysis skipped (object-mode AD Jacobian over %d parameters); "
                 "pass identifiability=True to force it",
                 n_theta,
+            )
+            return None
+        n_steps = int(getattr(self, "_n_timesteps", 0) or 0)
+        if mode == "auto" and functional and n_theta * max(n_steps, 1) > self._IDENTIFIABILITY_AUTO_MAX_TANGENT_STEPS:
+            LOGGER.iter(
+                "Identifiability analysis skipped (functional Jacobian over %d parameters x %d steps); "
+                "pass identifiability=True to force it",
+                n_theta,
+                n_steps,
             )
             return None
         from twin4build.estimator._identifiability import analyze
