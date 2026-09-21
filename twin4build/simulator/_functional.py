@@ -1060,8 +1060,10 @@ class FunctionalModel:
                     # order: the selection already is the target.
                     result = selected
                 elif isinstance(order, torch.Tensor):
-                    # ... in some other order: one gather.
-                    result = selected[order]
+                    # ... in some other order: one gather.  The order was
+                    # prepared for the rollout's device; a walk over the
+                    # routes with CPU tags (``index_coupling``) reads it too.
+                    result = selected[order.to(selected.device)]
                 else:
                     target_i_c = self._as_index(target_i_c, result.device)
                     shape = (target_n_c,) + selected.shape[1:]
