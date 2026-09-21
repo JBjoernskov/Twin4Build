@@ -69,6 +69,9 @@ dependencies = [
     "xlrd",
     "rdflib_sqlalchemy",
     "pydotplus",
+    # pyparsing 3.3.3 (2026-09-20) breaks pydotplus' HTML-label parser
+    # (TypeError: sequence item 0: expected str instance, ParseResults found)
+    "pyparsing<3.3.3",
     "typer",
     "openpyxl",
     "psycopg2",

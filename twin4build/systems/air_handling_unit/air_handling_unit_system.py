@@ -334,8 +334,11 @@ class AirHandlingUnitSystem(core.System, nn.Module):
 
         # Set n_c for damper subcomponents: n_c_ahu * n_v (flattened from Vector shape)
         # Supply and exhaust can have different n_v values
+        # Per-branch ratios take the WIRED branch count (as the dampers do
+        # above), not ``n_branches``: a reloaded model has the constructor's
+        # default there, and the ratio would stay one value for every branch.
         self.exhaustFlowRatio = self.exhaustFlowRatio.expand_to_n_c(
-            self.n_branches if self.exhaust_ratio_per_branch else self.n_c
+            self.n_c * n_v_supply if self.exhaust_ratio_per_branch else self.n_c
         )
         self.supply_damper.n_c = self.n_c * n_v_supply
         self.exhaust_damper.n_c = self.n_c * n_v_exhaust
@@ -667,7 +670,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             ratio = params.get("exhaustFlowRatio", None)
             if ratio is None:
                 ratio = self.exhaustFlowRatio.get()
-            exhaust_flow_vec = self._scale_by_ratio(supply_flow_vec, ratio)
+            exhaust_flow_vec = self._scale_by_ratio(
+                supply_flow_vec, ratio, per_branch=self.exhaust_ratio_per_branch
+            )
         else:
             exhaust_pos_vec = inputs["exhaustDamperPosition"]
             exhaust_pos_flat = exhaust_pos_vec.reshape(exhaust_pos_vec.shape[0], -1)
