@@ -52,6 +52,7 @@ Key Components:
         - PiecewiseLinearSystem: Piecewise linear interpolation
         - TimeSeriesInputSystem: Time series data input
         - MaxSystem: Maximum value selection
+        - WeightedSumSystem: Weighted sum of a vector input
         - OnOffSystem: Binary state system
         - DiscreteStatespaceSystem: General-purpose discrete state-space model
         - ScalarProductSystem: Elementwise scalar product
@@ -126,6 +127,7 @@ __all__ = [
     "PiecewiseLinearSystem",
     "TimeSeriesInputSystem",
     "MaxSystem",
+    "WeightedSumSystem",
     "OnOffSystem",
     "DiscreteStatespaceSystem",
     "ScalarProductSystem",
@@ -173,6 +175,7 @@ _MODULES = {
     "DiscreteStatespaceSystem": "utils.discrete_statespace_system",
     "FmuSystem": "utils.fmu_system",
     "MaxSystem": "utils.max_system",
+    "WeightedSumSystem": "utils.weighted_sum_system",
     "OccupancyDetectorSystem": "utils.occupancy_detector_system",
     "SigmoidGate": "utils.sigmoid_gate",
     "OccupancySystem": "utils.occupancy_system",
