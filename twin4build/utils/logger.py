@@ -123,7 +123,10 @@ class Logger:
         self.logfile = None
         self._last_file_content = ""  # Cache for atomic file updates
         self._is_active = False
-        self._log_flush_size = 5  # Flush to file every N lines
+        # Flush to file every line: ``atexit`` does not run when a process
+        # is killed (SIGTERM, a supervisor's timeout), which is exactly when
+        # the last lines matter (#138).
+        self._log_flush_size = 1
         self._log_buffer = []  # Pending formatted lines not yet written
         self._flushed_line_count = 0  # Number of _curses_lines already written to disk
         # File mode is buffered; ensure we flush on exit/crash

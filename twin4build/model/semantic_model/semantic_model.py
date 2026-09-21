@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import warnings
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 from urllib.error import HTTPError
@@ -87,6 +88,22 @@ def parse_wrapper(graph, source=None, **kwargs):
 
 # Layout directions Graphviz accepts for the ``rankdir`` graph attribute.
 _VALID_RANKDIR = ("TB", "BT", "LR", "RL")
+
+
+@contextmanager
+def _quiet_loggers(*names, level=logging.ERROR):
+    """Raise the level of the named loggers for the block and restore it.
+
+    Scoped to those loggers: the application's own logging is untouched.
+    """
+    saved = [(logging.getLogger(n), logging.getLogger(n).level) for n in names]
+    for logger, _ in saved:
+        logger.setLevel(level)
+    try:
+        yield
+    finally:
+        for logger, previous in saved:
+            logger.setLevel(previous)
 
 
 def get_short_name(uri: Union[str, URIRef], namespaces: Dict[str, Namespace]):
@@ -1520,17 +1537,16 @@ class SemanticModel:
                 self._instance_graph, self._ontology_graph = self.get_graphs(
                     self.rdf_file, self.format
                 )
-                # self._ontology_graph = Graph()
             else:
-                logging.disable(
-                    sys.maxsize
-                )  # https://stackoverflow.com/questions/2266646/how-to-disable-logging-on-the-standard-error-stream
-                with warnings.catch_warnings():
+                # Quiet the RDF libraries for the parse only.  This used to
+                # be ``logging.disable(sys.maxsize)``, a process-wide floor
+                # that silenced every logger of the embedding application
+                # for good (#138).
+                with _quiet_loggers("rdflib", "owlrl", "pyshacl"), warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     self._instance_graph, self._ontology_graph = self.get_graphs(
                         self.rdf_file, self.format
                     )
-                    # self._ontology_graph = Graph()
             filename_instance_graph = "raw_instance_graph.ttl"
             filename_ontology_graph = "raw_ontology_graph.ttl"
             self.serialize(
@@ -1544,7 +1560,6 @@ class SemanticModel:
             self._ontology_graph = Graph()
 
         self.add_namespaces(namespaces)
-        # logging.disable(logging.NOTSET)
 
     @property
     def namespaces(self):
