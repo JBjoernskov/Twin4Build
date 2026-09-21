@@ -682,7 +682,8 @@ class Translator:
                                         )
                                     )
                                     LOGGER.remove_level()
-                                    complete_matches.append(mapping)
+                                    if Translator._is_injective(mapping, signature_pattern):
+                                        complete_matches.append(mapping)
                                 else:
                                     if _diag_p1:
                                         _match_diag_write(
@@ -2617,6 +2618,9 @@ class Translator:
 
         self._sim2group_map = new_sim2group_map
 
+        # Two readings of one match (a ring's two units in either order)
+        # yield the same connections twice; the model takes each once.
+        added_connections = set()
         for conn in connections:
             (
                 source,
@@ -2626,6 +2630,13 @@ class Translator:
                 output_port_index,
                 input_port_index,
             ) = conn
+            key = (
+                source.id, target.id, source_key, target_key,
+                Translator._index_key(output_port_index), Translator._index_key(input_port_index),
+            )
+            if key in added_connections:
+                continue
+            added_connections.add(key)
             conn_str = f"({source.__class__.__name__}){source.id}.{source_key}[{output_port_index}] -> ({target.__class__.__name__}){target.id}.{target_key}[{input_port_index}]"
             LOGGER.info("Adding connection: %s", conn_str)
 
@@ -2828,6 +2839,136 @@ class Translator:
                 if not has_edge:
                     return False  # required edge missing ⇒ reject
         return True
+
+    #: Set nodes whose per-element broadcast is running (a stack).
+    _broadcasting: list = []
+
+    @staticmethod
+    def _unify_set_binding(maps_for_pair, sp_node, sm_tuple):
+        """Split candidate maps by whether ``sp_node`` already carries a bundle.
+
+        A set rule landing on a node that another set rule has already bound
+        is a second claim about the same bundle ("A feeds all of these, and
+        C feeds all of these too"), not a new bundle.  Maps whose bundle (or,
+        during the first broadcast's per-element walk, whose element) lies
+        within this rule's bundle are satisfied as they stand (returned as
+        ``unified``); maps that do not are dropped; maps without a binding
+        on the node are returned for the ordinary binding and broadcast.
+        """
+        fresh, unified = [], []
+        wanted = set(sm_tuple)
+        for m in maps_for_pair:
+            bound = m.get(sp_node) if m is not None else None
+            if isinstance(bound, tuple):
+                # "C feeds all of these": the bundle bound so far is within
+                # this rule's bundle.
+                if set(bound) <= wanted:
+                    unified.append(m)
+            elif bound is not None and sp_node in Translator._broadcasting:
+                # Inside the per-element walk of the first broadcast the map
+                # holds one element of the bundle; this rule holds for the
+                # element when it is in this rule's bundle.  (A scalar seed
+                # outside a broadcast is not that case: the rule then binds
+                # the bundle as usual.)
+                if bound in wanted:
+                    unified.append(m)
+            else:
+                fresh.append(m)
+        return fresh, unified
+
+    @staticmethod
+    def _bound_elsewhere(mapping, sp_node, sm_node, signature_pattern) -> bool:
+        """True when ``sm_node`` already stands for another named scalar
+        pattern node in ``mapping`` (walk-time injectivity: the same graph
+        node cannot be bound to two pattern nodes, so the branch that would
+        do so is pruned before it is explored)."""
+        if mapping is None or sm_node is None or isinstance(sm_node, tuple):
+            return False
+        for other in signature_pattern.nodes:
+            if other is sp_node or isinstance(other, ModeledNode):
+                continue
+            if mapping.get(other) is sm_node:
+                return True
+        return False
+
+    @staticmethod
+    def _index_key(index):
+        """A hashable form of a port index (None, int, or a tensor/array)."""
+        if index is None or isinstance(index, int):
+            return index
+        try:
+            return tuple(int(i) for i in torch.as_tensor(index).reshape(-1).tolist())
+        except Exception:  # noqa: BLE001 - leave exotic indices unhashed
+            return repr(index)
+
+    @staticmethod
+    def _is_injective(mapping, signature_pattern) -> bool:
+        """A match binds each graph node to at most one scalar pattern node.
+
+        Two scalar pattern nodes standing for the same graph node is a
+        homomorphism, not a subgraph match: a pattern with two air handler
+        nodes would otherwise match a single unit twice over.  Only the
+        pattern's own nodes count: path intermediates may legitimately
+        coincide with a named node, and set-bound tuples are the set, not
+        a node the pattern names."""
+        named = set(signature_pattern.nodes)
+        seen = {}
+        for sp_node, sm_node in mapping.items():
+            if sp_node not in named or sm_node is None or isinstance(sm_node, (tuple, list)):
+                continue
+            if isinstance(sp_node, ModeledNode):
+                continue
+            owner = seen.setdefault(sm_node, sp_node)
+            if owner is not sp_node:
+                return False
+        return True
+
+    @staticmethod
+    def _others(forbidden, rule, direction, signature_pattern, candidate_maps):
+        """The neighbours a stand-alone ``NoStepRule`` really forbids.
+
+        The rule's far node is unbound, and a pattern node never stands for
+        a graph node another pattern node already stands for.  So a
+        neighbour that a *positive* rule on the same near node and
+        predicate binds (in any candidate map) is not "other" and is
+        dropped; and for each such positive node still unbound, one
+        forbidden neighbour is spared, since it may become that binding
+        (a set-bound positive node spares them all).  What is left is the
+        list of neighbours the veto applies to.  A negation without a
+        positive counterpart on its edge keeps its plain meaning: every
+        neighbour of the forbidden class trips it.
+        """
+        if not forbidden:
+            return forbidden
+        near, far = direction.near(rule), direction.far(rule)
+        far_cls = far.cls if isinstance(far.cls, (tuple, list, set)) else (far.cls,)
+        bound = set()
+        spare = 0
+        unlimited = False
+        for other in signature_pattern.ruleset.values():
+            if isinstance(other, NoStepRule) or other.predicate is None or other.predicate != rule.predicate:
+                continue
+            try:
+                other_near, other_far = direction.near(other), direction.far(other)
+            except Exception:  # noqa: BLE001 - rule shapes without a near/far
+                continue
+            if other_near is not near or other_far is far:
+                continue
+            other_cls = other_far.cls if isinstance(other_far.cls, (tuple, list, set)) else (other_far.cls,)
+            if not set(map(str, other_cls)) & set(map(str, far_cls)):
+                continue
+            bindings = [m[other_far] for m in (candidate_maps or []) if m is not None and other_far in m]
+            if bindings:
+                for binding in bindings:
+                    bound.update(Translator._iter_binding(binding))
+            elif isinstance(other, (SetStepRule, SetAnyPathRule)):
+                unlimited = True
+            else:
+                spare += 1
+        others = [x for x in forbidden if x not in bound]
+        if unlimited:
+            return []
+        return others[spare:] if spare else others
 
     @staticmethod
     def _filter_set_bound_tuples(
@@ -3070,6 +3211,15 @@ class Translator:
         (which see edges in ``(near=object, far=subject)`` order)
         reorder before lookup.
         """
+        # Walk-time injectivity: prune the candidate maps in which this
+        # graph node already stands for another named pattern node.
+        if candidate_maps:
+            candidate_maps = [
+                m for m in candidate_maps
+                if not Translator._bound_elsewhere(m, sp_subject, sm_subject, signature_pattern)
+            ]
+            if not candidate_maps:
+                return [], feasible, comparison_table, True
         if descendant_cache is None:
             descendant_cache = {}
         if visited_sp_edges is None:
@@ -3244,6 +3394,13 @@ class Translator:
                         forbidden = [
                             x for x in sm_neighbors if x.isinstance(far_node.cls)
                         ]
+                        # "No OTHER": the negation's far node is unbound and
+                        # ranges over nodes the match does not already bind.
+                        # Neighbours bound (or bindable) to a positive rule on
+                        # the same near node and predicate are not "other".
+                        forbidden = Translator._others(
+                            forbidden, rule, direction, signature_pattern, candidate_maps
+                        )
                         if forbidden:
                             feasible[sp_subject].discard(sm_subject)
                             LOGGER.debug(
@@ -3296,6 +3453,18 @@ class Translator:
                             # is preserved as visited and per-element
                             # walks are independent.
                             if isinstance(matched_sm_object, tuple):
+                                # A bundle bound already (by another set rule on the
+                                # same node) must be the same bundle: then this rule is
+                                # satisfied as it stands and the downstream rules are
+                                # not broadcast again.
+                                maps_for_pair, unified = Translator._unify_set_binding(
+                                    maps_for_pair, matched_sp_object, matched_sm_object
+                                )
+                                if unified:
+                                    valid_maps.extend(unified)
+                                    match_found = True
+                                if not maps_for_pair:
+                                    continue
                                 feasible.setdefault(matched_sp_object, set())
                                 comparison_table.setdefault(matched_sp_object, set())
                                 for elem in matched_sm_object:
@@ -3379,6 +3548,10 @@ class Translator:
                                 cached = descendant_cache.get(
                                     (matched_sp_object, matched_sm_object), {}
                                 )
+                                maps_for_pair = [
+                                    m for m in maps_for_pair
+                                    if not Translator._bound_elsewhere(m, matched_sp_object, matched_sm_object, signature_pattern)
+                                ]
                                 for m in maps_for_pair:
                                     m[matched_sp_object] = matched_sm_object
                                     # Cached descendants were derived under
@@ -3526,6 +3699,15 @@ class Translator:
         Returns:
             (candidate_maps, feasible, comparison_table, is_pruned)
         """
+        # Walk-time injectivity: prune the candidate maps in which this
+        # graph node already stands for another named pattern node.
+        if candidate_maps:
+            candidate_maps = [
+                m for m in candidate_maps
+                if not Translator._bound_elsewhere(m, sp_subject, sm_subject, signature_pattern)
+            ]
+            if not candidate_maps:
+                return [], feasible, comparison_table, True
         LOGGER.debug("Entering prune_recursive")
         LOGGER.add_level()
         LOGGER.debug(lambda: Translator._get_node_string(sp_subject, sm_subject))
@@ -3617,6 +3799,18 @@ class Translator:
                         # single branch with tuple binding and broadcast
                         # downstream per element.
                         if isinstance(matched_sm_object, tuple):
+                            # A bundle bound already (by another set rule on the
+                            # same node) must be the same bundle: then this rule is
+                            # satisfied as it stands and the downstream rules are
+                            # not broadcast again.
+                            maps_for_pair, unified = Translator._unify_set_binding(
+                                maps_for_pair, matched_sp_object, matched_sm_object
+                            )
+                            if unified:
+                                valid_maps.extend(unified)
+                                match_found = True
+                            if not maps_for_pair:
+                                continue
                             feasible.setdefault(matched_sp_object, set())
                             comparison_table.setdefault(matched_sp_object, set())
                             for elem in matched_sm_object:
@@ -3703,6 +3897,10 @@ class Translator:
                             cached = descendant_cache.get(
                                 (matched_sp_object, matched_sm_object), {}
                             )
+                            maps_for_pair = [
+                                m for m in maps_for_pair
+                                if not Translator._bound_elsewhere(m, matched_sp_object, matched_sm_object, signature_pattern)
+                            ]
                             for m in maps_for_pair:
                                 m[matched_sp_object] = matched_sm_object
                                 # See the matching guard in __prune_recursive.
@@ -3761,7 +3959,18 @@ class Translator:
         return candidate_maps, feasible, comparison_table, False
 
     @staticmethod
-    def __broadcast_recurse_legacy(
+    def __broadcast_recurse_legacy(sm_tuple, sp_subject, candidate_maps, feasible, comparison_table, signature_pattern, verbose, descendant_cache):
+        """Per-element broadcast of ``sp_subject`` over ``sm_tuple``; while it
+        runs the set node is "under broadcast", which a second set rule on
+        the same node needs to know (see :meth:`_unify_set_binding`)."""
+        Translator._broadcasting.append(sp_subject)
+        try:
+            return Translator._broadcast_recurse_legacy_body(sm_tuple, sp_subject, candidate_maps, feasible, comparison_table, signature_pattern, verbose, descendant_cache)
+        finally:
+            Translator._broadcasting.pop()
+
+    @staticmethod
+    def _broadcast_recurse_legacy_body(
         sm_tuple,
         sp_subject,
         candidate_maps,
@@ -3941,7 +4150,18 @@ class Translator:
         return aggregated_maps, feasible, comparison_table, False
 
     @staticmethod
-    def __broadcast_recurse(
+    def __broadcast_recurse(sm_tuple, sp_subject, candidate_maps, feasible, comparison_table, signature_pattern, verbose, descendant_cache, visited_sp_edges):
+        """Per-element broadcast of ``sp_subject`` over ``sm_tuple``; while it
+        runs the set node is "under broadcast", which a second set rule on
+        the same node needs to know (see :meth:`_unify_set_binding`)."""
+        Translator._broadcasting.append(sp_subject)
+        try:
+            return Translator._broadcast_recurse_body(sm_tuple, sp_subject, candidate_maps, feasible, comparison_table, signature_pattern, verbose, descendant_cache, visited_sp_edges)
+        finally:
+            Translator._broadcasting.pop()
+
+    @staticmethod
+    def _broadcast_recurse_body(
         sm_tuple,
         sp_subject,
         candidate_maps,
@@ -4636,6 +4856,8 @@ class Translator:
             filtered_group = Translator._filter_set_bound_tuples(
                 merged_group, signature_pattern
             )
+            if filtered_group is not None and not Translator._is_injective(filtered_group, signature_pattern):
+                filtered_group = None
             if filtered_group is None:
                 if _diag:
                     _match_diag_write(
@@ -5120,6 +5342,21 @@ class Predicate:
 
     def eq(self, other):
         return self._hash == other._hash
+
+    # Value equality: two Predicates naming the same predicate URIs are the
+    # same edge.  (The instance-level ``__eq__`` assignment above never
+    # affects ``==``, which Python resolves on the type; without this every
+    # "same predicate" comparison in the matcher compared object identity.)
+    def _key(self):
+        if getattr(self, "_hash", None) is not None:
+            return ("hash", self._hash)
+        return ("preds", frozenset(str(getattr(p, "uri", p)) for p in self.preds))
+
+    def __eq__(self, other):
+        return isinstance(other, Predicate) and self._key() == other._key()
+
+    def __hash__(self):
+        return hash(self._key())
 
     @property
     def signature_pattern(self):
