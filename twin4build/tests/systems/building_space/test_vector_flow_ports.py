@@ -120,6 +120,24 @@ class TestVectorFlowPorts(unittest.TestCase):
                 ahu.output["supplyAirFlowRate"]._history, torch.zeros_like(ungated), msg=mode
             )
 
+    def test_per_branch_exhaust_ratio_takes_the_wired_branch_count(self):
+        """A reloaded model carries the constructor's ``n_branches`` (1); the
+        per-branch ratio must still get one entry per WIRED branch, like the
+        dampers."""
+        model, ahu, zones = build_model("vector_flow_ports_ratio_width")
+        ahu.exhaust_follows_supply = True
+        ahu.exhaust_ratio_per_branch = True
+        ahu.n_branches = 1
+        tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
+        self.assertEqual(tuple(ahu.exhaustFlowRatio.get().shape), (3,))
+        self.assertEqual(tuple(ahu.supply_damper.a.get().shape), (3,))
+        reference = ahu.output["exhaustAirFlowRate"]._history.detach().clone()
+        # The functional engine applies the per-branch ratio on the branch
+        # axis too (it used to broadcast it as a batch axis and grow the
+        # state by n_branches^2 - n_branches entries).
+        tb.Simulator(model, execution_mode="functional").simulate(**self._kwargs())
+        torch.testing.assert_close(ahu.output["exhaustAirFlowRate"]._history, reference)
+
     def test_untied_damper_offset_survives_serialization(self):
         """An AHU whose branch dampers keep a minimum flow (``set_c``)
         reloads from its TTL with ``c`` free and the same flows, in both
