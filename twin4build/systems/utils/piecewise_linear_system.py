@@ -1,6 +1,6 @@
 # Standard library imports
 import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Third party imports
 import torch
@@ -8,7 +8,6 @@ import torch
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.utils.types import _convert_to_1D_scalar_tensor
 
 
 class PiecewiseLinearSystem(core.System):
@@ -32,6 +31,7 @@ class PiecewiseLinearSystem(core.System):
         self,
         X: Optional[torch.Tensor] = None,
         Y: Optional[torch.Tensor] = None,
+        Y_bounds: Optional[Tuple[float, float]] = None,
         **kwargs,
     ) -> None:
         """Initialize the piecewise linear system.
@@ -50,27 +50,29 @@ class PiecewiseLinearSystem(core.System):
             "y": tps.Scalar(),
         }
 
-        # Store attributes as private variables
-        self._X = X
-        self._Y = Y
-        self._XY = None
-        self._a_vec = None
-        self._b_vec = None
-
+        # The X coordinates are structural data (sorted, fixed); the Y
+        # coordinates are a ``tps.Parameter`` so they can be estimated or
+        # optimized (e.g. the supply-temperature points of an outdoor
+        # temperature compensation curve).  ``Y_bounds`` makes them
+        # estimable through ``get_estimable_parameters``.
+        self._X = None
+        self._Y = None
         if X is not None and Y is not None:
-            # Stack X and Y coordinates
-            self._XY = torch.stack([X, Y]).T
-
-            # Sort by X coordinates to ensure proper ordering for searchsorted
-            sorted_indices = torch.argsort(self._XY[:, 0])
-            self._XY = self._XY[sorted_indices]
-
-            # Update X and Y to reflect sorted order
-            self._X = self._XY[:, 0]
-            self._Y = self._XY[:, 1]
-
-            self._get_a_b_vectors()
-        self._config = {"parameters": []}
+            X = torch.as_tensor(X, dtype=tps.float_dtype())
+            Y = torch.as_tensor(Y, dtype=tps.float_dtype())
+            order = torch.argsort(X)
+            self._X = X[order].detach().clone()
+            Y = Y[order].detach().clone()
+            if Y_bounds:
+                lo, hi = float(Y_bounds[0]), float(Y_bounds[1])
+            else:  # a generous range around the points, for normalization only
+                span = max(1.0, float(Y.max() - Y.min()))
+                lo, hi = float(Y.min()) - span, float(Y.max()) + span
+            self._Y = tps.Parameter(
+                Y, min_value=torch.full_like(Y, lo), max_value=torch.full_like(Y, hi), requires_grad=False
+            )
+        self.parameter = {"Y": {"lb": float(Y_bounds[0]), "ub": float(Y_bounds[1])}} if Y_bounds else {}
+        self._config = {"parameters": ["Y"]}
 
     @property
     def config(self) -> Dict[str, List[str]]:
@@ -96,7 +98,7 @@ class PiecewiseLinearSystem(core.System):
         self._X = value
 
     @property
-    def Y(self) -> Optional[torch.Tensor]:
+    def Y(self) -> Optional[tps.Parameter]:
         """
         Get the Y coordinates of the interpolation points.
         """
@@ -109,81 +111,48 @@ class PiecewiseLinearSystem(core.System):
         """
         self._Y = value
 
-    def _get_a_b_vectors(self) -> None:
-        """Calculate slope and intercept vectors for all linear segments.
+    @staticmethod
+    def interpolate(x: torch.Tensor, X: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
+        """Piecewise-linear ``y(x)`` through the points ``(X, Y)``, ``X``
+        sorted; constant beyond the first and last point.  Differentiable
+        in ``Y`` (and in ``x``), which is what estimation and optimization
+        of the points need."""
+        x = torch.as_tensor(x)
+        shape = x.shape
+        x = x.reshape(-1)
+        X = X.to(dtype=x.dtype, device=x.device)
+        Y = Y.to(dtype=x.dtype, device=x.device).reshape(-1)
+        slope = (Y[1:] - Y[:-1]) / (X[1:] - X[:-1])
+        intercept = Y[:-1] - slope * X[:-1]
+        segment = torch.clamp(torch.searchsorted(X.contiguous(), x) - 1, 0, slope.numel() - 1)
+        y = slope[segment] * x + intercept[segment]
+        y = torch.where(x <= X[0], Y[0].expand_as(x), torch.where(x >= X[-1], Y[-1].expand_as(x), y))
+        return y.reshape(shape)
 
-        For each segment between consecutive points, calculates:
-        - Slope (a): (y2-y1)/(x2-x1)
-        - Intercept (b): y1 - a*x1
-        """
-        self._a_vec = (self._XY[1:, 1] - self._XY[0:-1, 1]) / (
-            self._XY[1:, 0] - self._XY[0:-1, 0]
-        )
-        self._b_vec = self._XY[0:-1, 1] - self._a_vec * self._XY[0:-1, 0]
+    def _points_Y(self) -> torch.Tensor:
+        """The current Y points as a tensor: a ``tps.Parameter`` when the
+        table was given at construction, a plain tensor when a subclass
+        sets the table itself (the schedule resolves its points per step)."""
+        return self._Y.get() if hasattr(self._Y, "get") else self._Y
+
+    def _get_a_b_vectors(self) -> None:
+        """Kept for subclasses that set ``_X`` / ``_Y`` directly and call
+        this to refresh the table: the interpolation reads the points as
+        they are, so there is nothing to derive."""
+        return None
 
     def _get_Y(self, X: torch.Tensor) -> torch.Tensor:
-        """Get interpolated Y value for given X.
+        """Interpolated Y at ``X`` with the component's current points."""
+        return self.interpolate(X, self._X, self._points_Y())
 
-        Performs piecewise linear interpolation:
-        - If X is below range, returns first Y value
-        - If X is above range, returns last Y value
-        - Otherwise finds appropriate segment and calculates Y = ax + b
-
-        Args:
-            X (torch.Tensor): X values to interpolate at, shape (batch_size,).
-
-        Returns:
-            torch.Tensor: Interpolated Y values, shape (batch_size,).
-        """
-
-        # if X <= self._XY[0, 0].item():
-        #     Y = self._XY[0, 1].item()
-        # elif X >= self._XY[-1, 0].item():
-        #     Y = self._XY[-1, 1].item()
-        # else:
-        #     cond = X < self._XY[:, 0]
-        #     idx = torch.where(cond)[0][0].item() - 1
-        #     a = self._a_vec[idx].item()
-        #     b = self._b_vec[idx].item()
-        #     Y = a * X + b
-
-        # Convert X to tensor if it's a scalar (float or int) using the safe converter
-        X = _convert_to_1D_scalar_tensor(X)
-
-        # Use searchsorted to find the segment index for each X value
-        # searchsorted returns indices where X would be inserted to maintain sorted order
-        indices = torch.searchsorted(self._XY[:, 0].contiguous(), X)
-
-        # Clamp indices to valid segment range [0, len(a_vec)-1]
-        # indices is where X would be inserted, so segment_idx = indices - 1
-        segment_idx = torch.clamp(indices - 1, 0, len(self._a_vec) - 1)
-
-        # Get the slope and intercept for each segment
-        a = self._a_vec[segment_idx]  # shape: (batch_size,)
-        b = self._b_vec[segment_idx]  # shape: (batch_size,)
-
-        # Calculate interpolated values
-        Y_interp = a * X + b
-
-        # Handle boundary conditions using torch.where
-        # If X <= first X value, use first Y value
-        # If X >= last X value, use last Y value
-        # Otherwise use interpolated value
-        Y = torch.where(
-            X <= self._XY[0, 0],
-            self._XY[0, 1].expand_as(X),
-            torch.where(X >= self._XY[-1, 0], self._XY[-1, 1].expand_as(X), Y_interp),
-        )
-
-        return Y
-
-    PARAM_NAMES = ()  # the (X, Y) interpolation table is structural data
+    PARAM_NAMES = ("Y",)  # the X coordinates are structural, the Y points a parameter
 
     def forward(self, x, inputs, params, sample_time):
         """Pure one-step piecewise-linear interpolation (functorch-safe,
         stateless).  The interpolation table is fixed (structural) data, so
         :meth:`_get_Y` is a pure function of the input."""
-        return x, {"y": self._get_Y(inputs["x"])}
+        Y = params["Y"] if "Y" in params else self._points_Y()
+        return x, {"y": self.interpolate(inputs["x"], self._X, Y)}
 
     def do_step(
         self,
