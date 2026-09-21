@@ -54,7 +54,7 @@ import torch
 # import twin4build.model.simulation_model as simulation_model
 # import twin4build.model.semantic_model.semantic_model as semantic_model
 import torch.nn as nn
-from rdflib import Literal, URIRef
+from rdflib import BNode, Literal, URIRef
 from scipy.optimize import Bounds, LinearConstraint, milp
 from sympy import I
 
@@ -2290,12 +2290,20 @@ class Translator:
                         modeled_match_nodes_sorted = sorted(
                             modeled_match_nodes, key=lambda x: x.uri
                         )
+                        # A blank node's label is regenerated on every
+                        # parse (#186): it carries no identity of its own,
+                        # so it stays out of the id.  The members it hangs
+                        # off name the component; a group of blank nodes
+                        # only keeps its labels.
+                        named_nodes = [
+                            n for n in modeled_match_nodes_sorted if not _is_blank(n)
+                        ] or modeled_match_nodes_sorted
                         if component_fingerprint is not None:
                             # Composite identity from a ModeledNode group:
                             # human-readable member slices + fingerprint
                             # suffix; see ``_composite_component_id``.
                             id_ = Translator._composite_component_id(
-                                [n.get_short_name() for n in modeled_match_nodes_sorted],
+                                [n.get_short_name() for n in named_nodes],
                                 component_fingerprint,
                             )
                         else:
@@ -2303,7 +2311,7 @@ class Translator:
                             # fall back to the bracketed-members form.
                             id_ = "".join(
                                 "[%s]" % core.sanitize_id(n.get_short_name())
-                                for n in modeled_match_nodes_sorted
+                                for n in named_nodes
                             )
                         base_kwargs = {}
                         extension_kwargs = {
@@ -5205,6 +5213,18 @@ class ModeledNode(Node):
         return f"ModeledNode([{member_ids}])"
 
 
+def _is_blank(entity) -> bool:
+    """Whether a matched semantic-model entity is a blank node."""
+    return isinstance(getattr(entity, "uri", None), BNode)
+
+
+def _stable_iri(entity) -> str:
+    """An identity string for a matched entity that survives a re-parse:
+    the IRI, or ``"_:"`` for a blank node (whose label rdflib regenerates
+    on every parse, see #186)."""
+    return "_:" if _is_blank(entity) else str(entity.uri)
+
+
 def resolve_fingerprint(modeled_node: "Node", sm_bindings: Dict["Node", Any]) -> str:
     """Compute a stable hex-digest fingerprint for a match of ``modeled_node``
     against the given ``sm_bindings`` (the MILP group / subgraph isomorphism).
@@ -5224,12 +5244,17 @@ def resolve_fingerprint(modeled_node: "Node", sm_bindings: Dict["Node", Any]) ->
     h = hashlib.blake2b(digest_size=16)
 
     def _iris_of(binding) -> List[str]:
-        """Return sorted list of IRI strings from a scalar or tuple binding."""
+        """Return sorted list of IRI strings from a scalar or tuple binding.
+
+        A blank node has no identity of its own -- rdflib labels it afresh
+        on every parse -- so it contributes a constant stand-in; what
+        identifies it is the ``(subject, predicate)`` that reaches it,
+        which the triple keys below still carry."""
         if binding is None:
             return []
         if isinstance(binding, tuple):
-            return sorted(str(s.uri) for s in binding)
-        return [str(binding.uri)]
+            return sorted(_stable_iri(s) for s in binding)
+        return [_stable_iri(binding)]
 
     if isinstance(modeled_node, ModeledNode) and len(modeled_node.members) > 1:
         # Flatten each (possibly set-bound) member into its sorted IRIs,
