@@ -5375,13 +5375,28 @@ class Predicate:
     def _key(self):
         if getattr(self, "_hash", None) is not None:
             return ("hash", self._hash)
-        return ("preds", frozenset(str(getattr(p, "uri", p)) for p in self.preds))
+        preds = self.__dict__.get("preds")
+        if preds is None:
+            # Not initialised yet: an instance being rebuilt by the copy
+            # protocol inside a cyclic structure is hashed before its state
+            # is set.  Identity is the only stable key it has.
+            return ("id", id(self))
+        return ("preds", frozenset(str(getattr(p, "uri", p)) for p in preds))
 
     def __eq__(self, other):
         return isinstance(other, Predicate) and self._key() == other._key()
 
     def __hash__(self):
         return hash(self._key())
+
+    def __deepcopy__(self, memo):
+        # A Predicate is an immutable value (the predicate URIs it names):
+        # a deep copy of a pattern shares it.  Rebuilding it through the
+        # copy protocol hashed the half-built instance as a dict key (a
+        # deepcopy of a translated template, benchmarks/common.py) and
+        # failed on the missing ``preds``.
+        memo[id(self)] = self
+        return self
 
     @property
     def signature_pattern(self):
