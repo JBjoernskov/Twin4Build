@@ -1763,6 +1763,9 @@ def functional_rollout_tape(
     This deliberately contains no dictionaries so the complete fixed-shape
     rollout can be captured by :class:`torch.cuda.CUDAGraph`.
     """
+    # Routes resolved for the device once, outside the captured step
+    # (the public functional simulation captures this rollout whole).
+    functional_model.prepare_routes(exogenous_tape.device)
     y = y0
     states = [y]
     outputs = []
