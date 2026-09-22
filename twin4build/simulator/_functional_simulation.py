@@ -10,6 +10,7 @@ import torch
 import twin4build.utils.types as tps
 from twin4build.utils._cuda_graph import CudaGraphCallable
 from twin4build.simulator._functional import (
+    _replays_data,
     _is_passthrough_sensor,
     FunctionalModel,
     StateLayout,
@@ -278,16 +279,21 @@ class FunctionalSimulationSession:
                 f"exogenous producer closure contains a cycle at {component.id}"
             )
         visiting.add(component.id)
-        for point in component.connects_at:
-            for connection in point.connects_system_through:
-                producer = connection.connects_system
-                output = producer.output[connection.output_port]
-                value = self._history_value(output, step, 0)
-                if value is not None:
-                    output._tensor.copy_(output._history[step])
-                else:
-                    self._step_external(producer, step, done, visiting)
-        self.simulator._assign_component_inputs(component, step)
+        # A component that replays recorded data (a controller in playback
+        # mode) outputs its history whatever its inputs say, so its
+        # producers are not part of the closure: they may well be
+        # functional components (the zone whose temperature it reads).
+        if not _replays_data(component):
+            for point in component.connects_at:
+                for connection in point.connects_system_through:
+                    producer = connection.connects_system
+                    output = producer.output[connection.output_port]
+                    value = self._history_value(output, step, 0)
+                    if value is not None:
+                        output._tensor.copy_(output._history[step])
+                    else:
+                        self._step_external(producer, step, done, visiting)
+            self.simulator._assign_component_inputs(component, step)
         component.do_step(
             self.simulator.second_time_steps[:, step],
             self.simulator.date_time_steps[:, step],
