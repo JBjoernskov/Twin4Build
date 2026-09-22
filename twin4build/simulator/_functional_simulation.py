@@ -492,7 +492,27 @@ class FunctionalSimulationSession:
         # capture, while retaining the same fixed-shape tensor equations.
         return self._full_rollout(y0, theta, exogenous_tape, transform_mode=True)
 
+    def _warm_step_caches(self, y0, exogenous_tape):
+        """One eager step before the compiled step's first trace.
+
+        Forwards fill lazy caches on their first call (``state_size`` walks
+        ``vars(self)`` once and keeps the int); ``torch.compile`` cannot
+        trace that walk, and on this path the compiled step would otherwise
+        be the first call.  The estimator's rollouts get the same warm-up
+        from their eager evaluations.
+        """
+        if getattr(self, "_step_caches_warm", False):
+            return
+        if not self.simulator.step_compilation_active(self.theta.device):
+            return
+        with torch.no_grad():
+            self.functional_model.F_aug(
+                y0[0], self.theta, exogenous_tape[0, 0], transform_mode=True
+            )
+        self._step_caches_warm = True
+
     def rollout(self, backend, y0, exogenous_tape):
+        self._warm_step_caches(y0, exogenous_tape)
         if backend == "eager":
             states, outputs = self._full_rollout(y0, self.theta, exogenous_tape)
             return RolloutResult(states, outputs)

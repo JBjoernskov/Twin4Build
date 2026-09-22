@@ -49,9 +49,25 @@ class TestFunctionalSimulationCudaGraph(unittest.TestCase):
         batched = model.batch_components()
         batched.load(draw_semantic_model=False, draw_simulation_model=False)
         batched.to(device="cuda", dtype=torch.float64)
+        # A forward that reads a lazily cached width (the zone reads its
+        # thermal sub-model's state_size, which walks vars() once): on this
+        # path the compiled step used to be the first call and Dynamo cannot
+        # trace that walk.  Clear the caches so the compiled step meets them cold.
+        for component in batched.components.values():
+            component.__dict__.pop("_state_size_cache", None)
+            if hasattr(component, "forward") and component.output.get("w") is not None:
+                original = component.forward
+
+                def forward(x, inputs, params, sample_time, _c=component, _f=original):
+                    _c.state_size()
+                    return _f(x, inputs, params, sample_time)
+
+                component.forward = forward
         kwargs = dict(start_time=START, end_time=END, step_size=STEP, show_progress_bar=False)
         tb.Simulator(batched, execution_mode="functional", execution_backend="eager", compile_step=False).simulate(**kwargs)
         reference = sink_histories(model, batched)
+        for component in batched.components.values():
+            component.__dict__.pop("_state_size_cache", None)
         for backend in ("eager", "cuda_graph"):
             tb.Simulator(batched, execution_mode="functional", execution_backend=backend, compile_step=True).simulate(**kwargs)
             got = sink_histories(model, batched)
