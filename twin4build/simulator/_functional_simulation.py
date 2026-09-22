@@ -461,6 +461,15 @@ class FunctionalSimulationSession:
         return y0, exogenous_tape
 
     def _full_rollout(self, y0, theta, exogenous_tape, *, transform_mode=False):
+        # The compiled step when the simulator compiles it (``compile_step``),
+        # as the estimator's rollouts do: a few hundred Triton kernels per
+        # step instead of the eager step's thousands, so a captured rollout
+        # is small (13 MB a step on a 2000-component model against 50 MB)
+        # and an uncaptured one is fast.  The compiled step is the
+        # transform-mode step.
+        step = None
+        if self.simulator.step_compilation_active(theta.device):
+            step = self.functional_model.compiled_step
         state_rows = []
         output_rows = []
         for period in range(self.n_periods):
@@ -470,6 +479,7 @@ class FunctionalSimulationSession:
                 theta,
                 exogenous_tape[:, period],
                 transform_mode=transform_mode,
+                step=step,
             )
             state_rows.append(states)
             output_rows.append(outputs)

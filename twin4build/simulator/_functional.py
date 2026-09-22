@@ -1753,7 +1753,7 @@ def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, s
 
 
 def functional_rollout_tape(
-    functional_model, y0, theta, exogenous_tape, *, transform_mode=False
+    functional_model, y0, theta, exogenous_tape, *, transform_mode=False, step=None
 ):
     """Roll out ``F_aug`` and return tensor-only state and output tapes.
 
@@ -1762,6 +1762,10 @@ def functional_rollout_tape(
     when constructing ``FunctionalModel`` and has shape ``(n_t, n_meas)``.
     This deliberately contains no dictionaries so the complete fixed-shape
     rollout can be captured by :class:`torch.cuda.CUDAGraph`.
+
+    ``step`` is the compiled transform-mode step
+    (:attr:`FunctionalModel.compiled_step`) when the simulator compiles it;
+    every time step is then one call of it, as in :func:`functional_rollout`.
     """
     # Routes resolved for the device once, outside the captured step
     # (the public functional simulation captures this rollout whole).
@@ -1770,9 +1774,12 @@ def functional_rollout_tape(
     states = [y]
     outputs = []
     for t in range(exogenous_tape.shape[0]):
-        y, row = functional_model.F_aug(
-            y, theta, exogenous_tape[t], transform_mode=transform_mode
-        )
+        if step is not None:
+            y, row = step(y, theta, exogenous_tape[t])
+        else:
+            y, row = functional_model.F_aug(
+                y, theta, exogenous_tape[t], transform_mode=transform_mode
+            )
         states.append(y)
         outputs.append(row)
     if outputs:
