@@ -49,6 +49,15 @@ class BatchedObjectiveEvaluator:
     _NONFINITE_PENALTY = 1e20
 
     def __init__(self, objective):
+        simulator = objective.est.simulator
+        if getattr(simulator, "execution_backend", None) == "cuda_graph":
+            active = getattr(simulator, "step_compilation_active", None)
+            compiled = bool(active(objective.est._device)) if callable(active) else False
+            _cuda_graph.warn_if_large_eager_capture(
+                len(getattr(getattr(objective, "composer", None), "cone", ())),
+                int(sum(int(n) for n in getattr(objective, "n_t", ()))),
+                compiled,
+            )
         self.objective = objective
         self.capture = objective.est.simulator.execution_backend == "cuda_graph"
         self._graphs = {}

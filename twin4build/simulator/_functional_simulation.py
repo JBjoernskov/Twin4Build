@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import torch
 
 import twin4build.utils.types as tps
+from twin4build.utils import _cuda_graph
 from twin4build.utils._cuda_graph import CudaGraphCallable
 from twin4build.simulator._functional import (
     _replays_data,
@@ -501,6 +502,11 @@ class FunctionalSimulationSession:
                 "call model.to('cuda') first"
             )
         if self.graph is None:
+            _cuda_graph.warn_if_large_eager_capture(
+                len(self.functional_model.cone),
+                int(exogenous_tape.shape[0]) * int(self.n_periods),
+                self.simulator.step_compilation_active(self.theta.device),
+            )
             started = time.perf_counter()
             self.graph = CudaGraphCallable(self._full_rollout_graph)
             states, outputs = self.graph(y0, self.theta, exogenous_tape)
