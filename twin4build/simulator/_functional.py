@@ -982,9 +982,17 @@ class FunctionalModel:
         (producer, port) into one paired gather; the rest stay as they are.
         Returns ``(groups, perm)`` where ``perm`` restores the measurement
         order, or ``None`` when nothing groups."""
-        order, groups, singles = [], {}, []
+        order, groups, singles, externals = [], {}, [], []
         offset = 0
         for i, m in enumerate(self.meas_sources):
+            if m[0] == "external":
+                # Not producible by the functional map: the step returns
+                # zeros there and the caller fills them in.  All of them
+                # are one zeros tensor per step, not one kernel each (a
+                # public simulation requests every output of every
+                # component, thousands of them outside the cone).
+                externals.append(i)
+                continue
             if m[0] == "fresh" and len(m[3]) == 1:
                 out_v, s_ic, r_ic, n_c, is_vector = m[3][0][:5]
                 if isinstance(s_ic, torch.Tensor) and s_ic.numel() == 1 and (not isinstance(out_v, torch.Tensor) or out_v.numel() == 1) and not isinstance(out_v, slice):
@@ -997,9 +1005,13 @@ class FunctionalModel:
                     g["meas"].append(i)
                     continue
             singles.append(i)
-        if not groups:
+        if not groups and not externals:
             return None
         blocks, positions = [], []
+        if externals:
+            width = sum(self.meas_slices[i].stop - self.meas_slices[i].start for i in externals)
+            blocks.append(("external_all", width))
+            positions.extend(externals)
         by_id = {c.id: c for c in self.cone}
         for g in groups.values():
             s_ic, out_v = torch.cat(g["s_ic"]), torch.cat(g["out_v"])
@@ -1023,9 +1035,9 @@ class FunctionalModel:
         for i in singles:
             blocks.append(("single", i))
             positions.append(i)
-        # Every grouped measurement is one value wide; singles keep their width.
+        # Every grouped measurement is one value wide; singles and externals keep their width.
         widths = [self.meas_slices[i].stop - self.meas_slices[i].start for i in positions]
-        assert all(w == 1 for w, i in zip(widths, positions) if i not in singles)
+        assert all(w == 1 for w, i in zip(widths, positions) if i not in singles and i not in externals)
         perm = torch.empty(sum(widths), dtype=torch.long)
         pos = 0
         for i, w in zip(positions, widths):
@@ -1280,7 +1292,9 @@ class FunctionalModel:
             # back in measurement order by one permutation.
             blocks, perm = grouped
             for block in blocks:
-                if block[0] == "group":
+                if block[0] == "external_all":
+                    meas.append(torch.zeros(block[1], dtype=x_next.dtype, device=x_next.device))
+                elif block[0] == "group":
                     _, cid, port, is_vector, s_ic, out_v, whole = block
                     out = produced[cid][port]
                     if whole:
