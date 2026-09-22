@@ -1000,8 +1000,25 @@ class FunctionalModel:
         if not groups:
             return None
         blocks, positions = [], []
+        by_id = {c.id: c for c in self.cone}
         for g in groups.values():
-            blocks.append(("group", g["cid"], g["port"], g["is_vector"], torch.cat(g["s_ic"]), torch.cat(g["out_v"])))
+            s_ic, out_v = torch.cat(g["s_ic"]), torch.cat(g["out_v"])
+            # The whole port, in row-major order (a public simulation asks
+            # for every output of every component): the port's tensor is
+            # the answer, no gather.  That is one view instead of one
+            # kernel per port and step.
+            whole = False
+            comp = by_id.get(g["cid"])
+            if comp is not None:
+                n_c = int(self._component_n_c(comp))
+                n_v = int(self._output_width(comp, g["port"])) if g["is_vector"] else 1
+                if s_ic.numel() == n_c * n_v:
+                    want_s = torch.arange(n_c, device=s_ic.device).repeat_interleave(n_v)
+                    want_v = torch.arange(n_v, device=out_v.device).repeat(n_c)
+                    whole = bool(torch.equal(s_ic.reshape(-1), want_s)) and (
+                        not g["is_vector"] or bool(torch.equal(out_v.reshape(-1), want_v))
+                    )
+            blocks.append(("group", g["cid"], g["port"], g["is_vector"], s_ic, out_v, whole))
             positions.extend(g["meas"])
         for i in singles:
             blocks.append(("single", i))
@@ -1264,9 +1281,11 @@ class FunctionalModel:
             blocks, perm = grouped
             for block in blocks:
                 if block[0] == "group":
-                    _, cid, port, is_vector, s_ic, out_v = block
+                    _, cid, port, is_vector, s_ic, out_v, whole = block
                     out = produced[cid][port]
-                    if is_vector and out.ndim >= 2:
+                    if whole:
+                        meas.append(out.reshape(-1))
+                    elif is_vector and out.ndim >= 2:
                         meas.append(out[s_ic, out_v])
                     elif is_vector:
                         meas.append(out.reshape(-1)[out_v])
