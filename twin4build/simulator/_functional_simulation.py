@@ -218,6 +218,38 @@ class FunctionalSimulationSession:
             ).get(key[2], [])
         return self.functional_model._trace_sources(component, key[1])
 
+    def _source_history(self, producer, output_name):
+        """A producer output's history over the window, ``(n_t, n_s, ...)``,
+        or ``None`` when it has to be stepped: a data sensor's or a
+        schedule's logged history, or the history a replaying component
+        hands over (``replayed_output_history``: a controller in playback
+        replays its measured command).  The whole tape column then comes
+        from one routed tensor instead of one stepped call per time step,
+        which on a translated building was 270 000 calls and minutes."""
+        port = producer.output[output_name]
+        history = port._history
+        if history is not None and (port._history_is_populated or port.is_leaf):
+            return history[: self.max_t]
+        if history is not None and not producer.connects_at:
+            # Schedules/weather: initialized data publishers even in legacy
+            # translated models where the output lost its ``is_leaf`` flag.
+            return history[: self.max_t]
+        if _replays_data(producer):
+            replayed = getattr(producer, "replayed_output_history", None)
+            if callable(replayed):
+                history = replayed(output_name, self.max_t)
+                if history is not None:
+                    return history
+        return None
+
+    def _routed_column(self, history, period, routes):
+        """The routes applied to every time step of ``history[:, period]``
+        at once (the routes gather along the instance and slot axes, so the
+        time axis is vmapped)."""
+        column = history[:, period]
+        apply = self.functional_model._apply_routes
+        return torch.func.vmap(lambda value: apply(value, routes))(column)
+
     @staticmethod
     def _history_value(port, step, period):
         if port._history is None or (
@@ -334,6 +366,18 @@ class FunctionalSimulationSession:
             component = components[key[0]]
             sources = self._exogenous_sources(component, key)
             target = functional_model._exogenous_index[key]
+            if sources:
+                histories = [self._source_history(p, name) for p, name, _ in sources]
+                if all(h is not None for h in histories):
+                    # Every source has the window on hand: one routed
+                    # tensor per period fills the whole column.
+                    for period in range(self.n_periods):
+                        column = None
+                        for (producer, output_name, routes), history in zip(sources, histories):
+                            routed = self._routed_column(history, period, routes)
+                            column = routed if column is None else column + routed
+                        exogenous_tape[:, period, target] = column.reshape(self.max_t, -1).to(device)
+                    continue
             for step in range(self.max_t):
                 for period in range(self.n_periods):
                     if sources:
@@ -453,6 +497,15 @@ class FunctionalSimulationSession:
                 if port.is_leaf and port._history is not None:
                     port._tensor.copy_(port._history[-1])
                 continue
+            if _replays_data(component) and port._history is not None:
+                # A replaying component that hands its history over needs
+                # no stepping: the history is its output.
+                handed = self._source_history(component, port_name)
+                if handed is not None:
+                    port._history[: self.max_t].copy_(handed.reshape(port._history[: self.max_t].shape))
+                    port._history_is_populated = True
+                    port._tensor.copy_(port._history[self.max_t - 1])
+                    continue
             for step in range(self.max_t):
                 self._step_external(component, step, external_done[step], set())
         y0 = torch.stack([self.layout.gather(p) for p in range(self.n_periods)])
