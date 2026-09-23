@@ -90,14 +90,17 @@ class DamperSystem(core.System, nn.Module):
         / 3600,  # 1 air-change per hour for 100 m³ space
         c: Optional[float] = None,
         c_tied: Optional[bool] = None,
+        exhaustFlowRatio: float = 1.0,
         **kwargs,
     ):
         """
         Initialize the damper system model.
-
         Args:
             a: Shape parameter for the air flow curve.
             nominalAirFlowRate: Nominal air flow rate [kg/s].
+            exhaustFlowRatio: The terminal's exhaust flow as a ratio of its
+                supply flow [-] (``exhaustAirFlowRate`` output); estimable.
+
         """
         super().__init__(**kwargs)
         nn.Module.__init__(self)
@@ -121,12 +124,25 @@ class DamperSystem(core.System, nn.Module):
             requires_grad=False,
         )
 
-        # Define inputs and outputs using Scalar (n_c handles vectorization)
-        self._input = {"damperPosition": tps.Scalar()}
+        # A terminal's exhaust: its supply flow times a ratio (the exhaust
+        # side of a VAV box is rarely metered per branch).
+        self.exhaustFlowRatio = tps.Parameter(
+            torch.tensor(exhaustFlowRatio, dtype=tps.float_dtype()),
+            requires_grad=False,
+        )
+        # Define inputs and outputs using Scalar (n_c handles vectorization).
+        # ``fanSpeed`` gates the flow: a pressure-controlled branch passes
+        # nothing while the unit's fan is stopped (1.0 when unwired).
+        self._input = {
+            "damperPosition": tps.Scalar(),
+            "fanSpeed": tps.Scalar(1.0, optional=True),
+        }
         self._output = {
             "damperPosition": tps.Scalar(),
             "airFlowRate": tps.Scalar(),
+            "exhaustAirFlowRate": tps.Scalar(),
         }
+
 
         # Define parameters for calibration.  Tightened to the
         # physically-realistic VAV-branch / AHU-damper range so the
@@ -151,9 +167,14 @@ class DamperSystem(core.System, nn.Module):
             # ``a + c`` is the closed-damper flow: ``c < -a`` gives a dead
             # band (the flow is clamped at zero), ``c > -a`` a leakage.
             "c": {"lb": -5.0, "ub": 1.0},
+            # Exhaust-to-supply ratio of the terminal.
+            "exhaustFlowRatio": {"lb": 0.3, "ub": 1.5},
         }
 
-        self._config = {"parameters": ["a", "nominalAirFlowRate", "c", "c_tied"]}
+        self._config = {
+            "parameters": ["a", "nominalAirFlowRate", "c", "c_tied", "exhaustFlowRatio"]
+        }
+
         self.INITIALIZED = False
 
     @property
@@ -252,8 +273,10 @@ class DamperSystem(core.System, nn.Module):
                 (-self.a.get()).detach().clone(), requires_grad=False
             )
         self.c = self.c.expand_to_n_c(self.n_c)
+        self.exhaustFlowRatio = self.exhaustFlowRatio.expand_to_n_c(self.n_c)
 
         # ``b`` ensures m = nominalAirFlowRate at u = 1 (vectorized for n_c)
+
         self.b = torch.log(
             (self.nominalAirFlowRate.get() - self.c.get()) / self.a.get()
         )
@@ -286,7 +309,10 @@ class DamperSystem(core.System, nn.Module):
         Thin port-I/O wrapper around :meth:`forward` (the single source of
         truth for the math).
         """
-        inputs = {"damperPosition": self.input["damperPosition"].get()}
+        inputs = {
+            "damperPosition": self.input["damperPosition"].get(),
+            "fanSpeed": self.input["fanSpeed"].get(),
+        }
         _, outs = self.forward(None, inputs, self._forward_params(), step_size)
         self.output["damperPosition"]._set(
             outs["damperPosition"], i_t=step_index, ic=self.n_c
@@ -294,23 +320,49 @@ class DamperSystem(core.System, nn.Module):
         self.output["airFlowRate"]._set(
             outs["airFlowRate"], i_t=step_index, ic=self.n_c
         )
+        self.output["exhaustAirFlowRate"]._set(
+            outs["exhaustAirFlowRate"], i_t=step_index, ic=self.n_c
+        )
+
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    PARAM_NAMES = ("nominalAirFlowRate", "a", "c")
+    PARAM_NAMES = ("nominalAirFlowRate", "a", "c", "exhaustFlowRatio")
+
+    #: Fan speed (0-1) above which the fan is fully "on" for the branch flow.
+    FAN_ON_SPEED = 0.1
+
+    @classmethod
+    def fan_gate(cls, speed):
+        """0 with the fan stopped, 1 once it runs (linear in between): the
+        branch is pressure-controlled, so the damper sets the flow while the
+        fan runs, and nothing moves when it does not."""
+        return torch.clamp(speed / cls.FAN_ON_SPEED, 0.0, 1.0)
 
     def forward(self, x, inputs, params, sample_time):
         """Pure algebraic map ``(inputs, params) -> outputs`` (stateless).
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` provides
-        ``damperPosition``; ``params`` a dict for :attr:`PARAM_NAMES`.  ``x`` (an
-        empty state) is passed through.  Returns
-        ``(x, {"damperPosition", "airFlowRate"})``.
+        ``damperPosition`` and, optionally, ``fanSpeed`` (no gating without
+        it); ``params`` a dict for :attr:`PARAM_NAMES`.  ``x`` (an empty
+        state) is passed through.  Returns
+        ``(x, {"damperPosition", "airFlowRate", "exhaustAirFlowRate"})``.
         """
         dp = inputs["damperPosition"]
         a = params["a"]
         c = -a if self._c_tied else params["c"]
         air_flow_rate = self.characteristic(a, params["nominalAirFlowRate"], dp, c)
-        return x, {"damperPosition": dp, "airFlowRate": air_flow_rate}
+        fan_speed = inputs.get("fanSpeed")
+        if fan_speed is not None:
+            air_flow_rate = air_flow_rate * self.fan_gate(fan_speed)
+        ratio = params.get("exhaustFlowRatio")
+        if ratio is None:
+            ratio = self.exhaustFlowRatio.get()
+        return x, {
+            "damperPosition": dp,
+            "airFlowRate": air_flow_rate,
+            "exhaustAirFlowRate": air_flow_rate * ratio,
+        }
+
 
     @staticmethod
     def characteristic(a, nominal, position, c=None):

@@ -367,6 +367,15 @@ class FunctionalModel:
         # requested-output producers) plus every forward-component
         # reverse-reachable from them over fresh edges.
         seed_extra = {comp.id for comp, _ in (outputs or []) if _has_real_forward(comp)}
+        # A measured producer is a requested output too: an algebraic chain
+        # that ends in a measurement (a terminal's damper read by its flow
+        # sensor, a unit read by its temperature and power sensors) must be
+        # computed by F, or its parameters would be frozen out of the fit.
+        for device in measurements or []:
+            if isinstance(device, systems.SensorSystem):
+                src = _single_source(device, "measuredValue")
+                if src is not None and _has_real_forward(src[0]):
+                    seed_extra.add(src[0].id)
         self.cone = self._influence_cone(seed_extra)
         self._default_params = {
             comp.id: {
@@ -1367,6 +1376,16 @@ class FunctionalModel:
             elif spec[0] == "vector":
                 for part in spec[1]:
                     bind(consumer_id, part)
+            elif spec[0] == "vector_grouped":
+                # the grouped form of a vector port (``_group_vector_spec``):
+                # per producer the aligned pairs (s_ic, out_v, r_ic, in_v),
+                # the exogenous slots (no coupling), and per-slot leftovers
+                _, _n_c, _n_v, groups, _exo, leftovers = spec
+                for pid, _pport, _is_vector, s_ic, _out_v, r_ic, _in_v in groups:
+                    for s_i, r_i in zip(s_ic.reshape(-1).tolist(), r_ic.reshape(-1).tolist()):
+                        union((consumer_id, int(r_i)), (pid, int(s_i)))
+                for _rows, _slot, slot_spec in leftovers:
+                    bind(consumer_id, slot_spec)
             # "exogenous": data, no coupling
 
         for cid, ports in self.wiring.items():

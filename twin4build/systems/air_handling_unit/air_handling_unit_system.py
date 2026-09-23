@@ -20,6 +20,10 @@ import torch.nn as nn  # noqa: F401 - torch needed for tensor ops
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.utils.slots import slot_pairs
+from twin4build.systems.air_handling_unit.air_handling_unit_core_system import (
+    resolve_sub_params,
+    unit_chain,
+)
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
     AirToAirHeatRecoverySystem,
 )
@@ -240,9 +244,18 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         }
 
         # Parameter configuration for calibration
+        # The internal dampers' exhaust ratio is the unit's own
+        # ``exhaustFlowRatio`` here (one per unit, or per branch); the
+        # terminal-level one stays out of the unit's parameters.
         damper_params = [
-            f"supply_damper.{p}" for p in self.supply_damper._config["parameters"]
-        ] + [f"exhaust_damper.{p}" for p in self.exhaust_damper._config["parameters"]]
+            f"supply_damper.{p}"
+            for p in self.supply_damper._config["parameters"]
+            if p != "exhaustFlowRatio"
+        ] + [
+            f"exhaust_damper.{p}"
+            for p in self.exhaust_damper._config["parameters"]
+            if p != "exhaustFlowRatio"
+        ]
         coil_params = [f"coil.{p}" for p in self.coil._config["parameters"]]
         hr_params = [
             f"heat_recovery.{p}" for p in self.heat_recovery._config["parameters"]
@@ -581,6 +594,8 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             prefix, _, leaf = attr.rpartition(".")
             if leaf == "c" and getattr(getattr(self, prefix, None), "c_tied", False):
                 continue
+            if leaf == "exhaustFlowRatio" and prefix.endswith("damper"):
+                continue
             if self.exhaust_follows_supply and attr.startswith("exhaust_damper."):
                 continue
             if not self.exhaust_follows_supply and attr == "exhaustFlowRatio":
@@ -606,16 +621,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         damper's when the exhaust follows the supply, the ratio otherwise."""
         return () if self.exhaust_follows_supply else ("exhaustFlowRatio",)
 
-    @staticmethod
-    def _resolve_sub_params(sub, prefix, params):
-        """Full physical-parameter dict for a submodel: estimated values from
-        ``params`` (keyed ``"<prefix>.<name>"``), the rest from the submodel's
-        own ``tps.Parameter`` defaults."""
-        out = {}
-        for name in sub.PARAM_NAMES:
-            key = f"{prefix}.{name}"
-            out[name] = params[key] if key in params else getattr(sub, name).get()
-        return out
+    _resolve_sub_params = staticmethod(resolve_sub_params)
 
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step of the composite AHU (functorch-safe, stateless).
@@ -700,69 +706,23 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         )
         secondary_flow = j_ret["airFlowRateOut"]
         return_temp = j_ret["airTemperatureOut"]
-
-        # 5) Exhaust fan (on return stream before heat recovery)
-        _, f_exh = self.exhaust_fan.forward(
-            None,
-            {"airFlowRate": secondary_flow, "inletAirTemperature": return_temp},
-            P["exhaust_fan"],
+        # 5-8) The device on the totals: exhaust fan, heat recovery, coil,
+        # supply fan -- shared with ``AirHandlingUnitCoreSystem``.
+        subs = {n: getattr(self, n) for n in ("coil", "heat_recovery", "supply_fan", "exhaust_fan")}
+        outs = unit_chain(
+            subs,
+            P,
+            supply_flow_total,
+            secondary_flow,
+            return_temp,
+            inputs["outdoorAirTemperature"],
+            inputs["supplyAirTemperatureSetpoint"],
             sample_time,
         )
+        outs["supplyAirFlowRate"] = supply_flow_vec
+        outs["exhaustAirFlowRate"] = exhaust_flow_vec
+        return x, outs
 
-        # 6) Heat recovery
-        _, hr = self.heat_recovery.forward(
-            None,
-            {
-                "primaryAirFlowRate": supply_flow_total,
-                "secondaryAirFlowRate": secondary_flow,
-                "primaryTemperatureIn": inputs["outdoorAirTemperature"],
-                "secondaryTemperatureIn": f_exh["outletAirTemperature"],
-                "primaryTemperatureOutSetpoint": inputs[
-                    "supplyAirTemperatureSetpoint"
-                ],
-            },
-            P["heat_recovery"],
-            sample_time,
-        )
-
-        # 7) Coil: trim to setpoint & report power
-        _, coil = self.coil.forward(
-            None,
-            {
-                "inletAirTemperature": hr["primaryTemperatureOut"],
-                "outletAirTemperatureSetpoint": inputs[
-                    "supplyAirTemperatureSetpoint"
-                ],
-                "airFlowRate": supply_flow_total,
-            },
-            P["coil"],
-            sample_time,
-        )
-
-        # 8) Supply fan after coil to add temperature rise and power
-        _, f_sup = self.supply_fan.forward(
-            None,
-            {
-                "airFlowRate": supply_flow_total,
-                "inletAirTemperature": coil["outletAirTemperature"],
-            },
-            P["supply_fan"],
-            sample_time,
-        )
-
-        return x, {
-            "supplyAirFlowRate": supply_flow_vec,
-            "exhaustAirFlowRate": exhaust_flow_vec,
-            "totalSupplyAirFlowRate": supply_flow_total,
-            "totalExhaustAirFlowRate": secondary_flow,
-            "supplyAirTemperature": f_sup["outletAirTemperature"],
-            "preheatSupplyAirTemperature": hr["primaryTemperatureOut"],
-            "exhaustAirTemperatureOut": hr["secondaryTemperatureOut"],
-            "heatingPower": coil["heatingPower"],
-            "coolingPower": coil["coolingPower"],
-            "supplyFanPower": f_sup["Power"],
-            "exhaustFanPower": f_exh["Power"],
-        }
 
 
 # NOTE: ``brick_signature_pattern_vav_dampers`` below absorbs the per-VAV

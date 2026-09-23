@@ -113,7 +113,12 @@ class ReturnFlowJunctionSystem(core.System):
             ]
             if len(connection_point) == 0:
                 raise ValueError("No input port found for airFlowRateIn")
-            n_input_ports = len(connection_point[0].connects_system_through)
+            # The width is the highest wired slot plus one (one connection
+            # from a batched meta carries many slots); without slot indices,
+            # one slot per connection as before.
+            n_input_ports = self.get_n_v_from_connections("airFlowRateIn") or len(
+                connection_point[0].connects_system_through
+            )
             self.n_input_ports = n_input_ports
 
     def initialize(

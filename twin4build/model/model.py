@@ -1125,6 +1125,17 @@ class Model:
             self._semantic_model.visualize()
         self._simulation_model.visualize(**kwargs)
 
+    def factor_air_handling_units(self) -> List[Dict[str, Any]]:
+        """Factor every composite :class:`AirHandlingUnitSystem` into one
+        :class:`DamperSystem` per terminal, a supply and a return junction and
+        an :class:`AirHandlingUnitCoreSystem` on the totals, in place (see
+        :mod:`twin4build.model.factor_units`).  The model simulates exactly as
+        before; the estimator then sees one block per room instead of one
+        block joined through the unit.  Call :meth:`load` afterwards."""
+        from twin4build.model.factor_units import factor_air_handling_units
+
+        return factor_air_handling_units(self)
+
     def batch_components(self) -> "Model":
         """Build a Model with batched meta components.
 
