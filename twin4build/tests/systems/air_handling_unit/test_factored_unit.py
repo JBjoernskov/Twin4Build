@@ -341,5 +341,80 @@ class TestFactoringTheComposite(unittest.TestCase):
             )
 
 
+class TestFactoringSharedRoom(unittest.TestCase):
+    """A room with two terminals publishes one temperature for both branches:
+    the composite maps branches to room slots internally, the factored form
+    through the return junction's ``branch_temperature_slots``."""
+
+    def build(self):
+        model = tb.Model(id="shared_room_unit")
+        pos = [Series([p[k % 2] for p in POSITIONS], id=f"pos{k}") for k in range(3)]
+        fan = Series(FAN_SPEED, id="fan")
+        outdoor = Series(OUTDOOR, id="outdoor")
+        setpoint = Series([SETPOINT] * len(POSITIONS), id="setpoint")
+        unit = AirHandlingUnitSystem(
+            id="unit",
+            supply_damper_kwargs=dict(DAMPER_KWARGS),
+            heat_recovery_kwargs=dict(HR_KWARGS),
+            supply_fan_kwargs=dict(FAN_KWARGS),
+            exhaust_fan_kwargs=dict(FAN_KWARGS),
+            n_branches=3,
+            exhaust_follows_supply=True,
+            exhaustFlowRatio=RATIO,
+        )
+        for k in range(3):
+            model.add_connection(pos[k], unit, "measuredValue", "supplyDamperPosition", input_port_index=k)
+        model.add_connection(fan, unit, "measuredValue", "supplyFanSpeed")
+        model.add_connection(outdoor, unit, "measuredValue", "outdoorAirTemperature")
+        model.add_connection(setpoint, unit, "measuredValue", "supplyAirTemperatureSetpoint")
+        # room 0 owns branches 0 and 1 and publishes its state as its temperature (slot 0);
+        # room 1 owns branch 2 on slot 1
+        room0, room1 = Sink(id="room0"), Sink(id="room1")
+        model.add_connection(
+            unit, room0, "supplyAirFlowRate", "u",
+            output_port_index=torch.tensor([0, 1]), input_port_index=torch.tensor([0, 1]),
+        )
+        model.add_connection(unit, room1, "supplyAirFlowRate", "u", output_port_index=2, input_port_index=0)
+        model.add_connection(room0, unit, "w", "exhaustTemperature", input_port_index=0)
+        model.add_connection(room1, unit, "w", "exhaustTemperature", input_port_index=1)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model
+
+    #: The outputs that do not depend on the return temperature.  The rooms
+    #: read the unit's flows and the unit reads the rooms' temperatures: the
+    #: composite's object-mode step cuts that cycle at the unit, so it reads
+    #: the previous step's room temperature, while the factored form has no
+    #: cycle and reads the current one.  The temperature side is checked
+    #: against the mix computed by hand from the current room states.
+    FLOW_SIDE = ("totalSupplyAirFlowRate", "totalExhaustAirFlowRate", "supplyFanPower", "exhaustFanPower", "supplyAirTemperature")
+
+    def _check(self, model, reference):
+        for port in self.FLOW_SIDE:
+            torch.testing.assert_close(_history(model, "unit", port), reference[port], msg=port)
+        for cid in ("room0", "room1"):
+            torch.testing.assert_close(_history(model, cid, "w"), reference[cid], msg=cid)
+        # branches 0 and 1 mix at room 0's temperature, branch 2 at room 1's
+        flows = torch.cat([_history(model, f"unit_terminal{k}", "exhaustAirFlowRate") for k in range(3)], dim=1)
+        w0, w1 = _history(model, "room0", "w")[:, 0], _history(model, "room1", "w")[:, 0]
+        expected = (flows[:, 0] * w0 + flows[:, 1] * w0 + flows[:, 2] * w1) / flows.sum(dim=1).clamp_min(1e-5)
+        mixed = _history(model, "unit_return_junction", "airTemperatureOut")[:, 0]
+        has_flow = flows.sum(dim=1) > 1e-5
+        torch.testing.assert_close(mixed[has_flow], expected[has_flow])
+
+    def test_factored_matches_composite(self):
+        model = self.build()
+        _simulate(model)
+        reference = _device_histories(model)
+        reference["room0"] = _history(model, "room0", "w")
+        reference["room1"] = _history(model, "room1", "w")
+        (parts,) = model.factor_air_handling_units()
+        self.assertEqual(parts["return_junction"].branch_temperature_slots, [0, 0, 1])
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        _simulate(model)
+        self._check(model, reference)
+        _simulate(model, execution_mode="functional", execution_backend="eager")
+        self._check(model, reference)
+
+
 if __name__ == "__main__":
     unittest.main()

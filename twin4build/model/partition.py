@@ -32,7 +32,6 @@ import logging
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
-import torch
 
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.utils.slots import slot_pairs
@@ -269,22 +268,26 @@ def cut_measured_edges(model, partition: Partition, suffix: str = "__replay") ->
         # one connection per leaf into the receiver's port, carrying every
         # slot that leaf replays (a scalar into several slots is one
         # connection with a slot tensor)
+        # one leaf per (sensor, transform); a scalar output reaches one slot
+        # of a port per connection, so a pairing with several slots gets one
+        # leaf per slot
         per_leaf: Dict[Tuple[str, int], List[Edge]] = {}
         for e in edges:
             per_leaf.setdefault((e.sensor.id, id(e.transform)), []).append(e)
         for key, group in per_leaf.items():
-            leaf = leaves.get(key)
-            if leaf is None:
-                e = group[0]
-                n = sum(1 for k in leaves if k[0] == e.sensor.id)
-                leaf = replay_leaf(e.sensor, f"{e.sensor.id}{suffix}{n if n else ''}", e.transform)
-                leaves[key] = leaf
-                model.add_component(leaf)
-                added.append(leaf)
-            slots = [e.input_slot for e in group]
-            kwargs = {}
-            if all(v is not None for v in slots):
-                kwargs["input_port_index"] = slots[0] if len(slots) == 1 else torch.tensor(slots, dtype=torch.long)
-            model.add_connection(leaf, receiver, "measuredValue", pairing[3], **kwargs)
+            for k, e in enumerate(group):
+                leaf_key = key if k == 0 else (key[0], key[1], k)
+                leaf = leaves.get(leaf_key)
+                if leaf is None:
+                    n = sum(1 for lk in leaves if lk[0] == e.sensor.id)
+                    leaf = replay_leaf(e.sensor, f"{e.sensor.id}{suffix}{n if n else ''}", e.transform)
+                    leaves[leaf_key] = leaf
+                    model.add_component(leaf)
+                    added.append(leaf)
+                kwargs = {}
+                if e.input_slot is not None:
+                    kwargs["input_port_index"] = e.input_slot
+                model.add_connection(leaf, receiver, "measuredValue", pairing[3], **kwargs)
+
     LOGGER.info("partition: %d pairings cut, %d replay leaves added", len(by_pairing), len(added))
     return added

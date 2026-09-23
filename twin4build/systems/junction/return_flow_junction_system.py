@@ -58,7 +58,18 @@ class ReturnFlowJunctionSystem(core.System):
        - :math:`\dot{m}_{out}` is the total output flow rate [kg/s]
     """
 
-    def __init__(self, airFlowRateBias=None, **kwargs):
+    def __init__(self, airFlowRateBias=None, branch_temperature_slots=None, **kwargs):
+        """
+        Args:
+            airFlowRateBias: Bias added to the total flow rate [kg/s].
+            branch_temperature_slots: For flow slot ``b`` (a branch), the
+                slot of ``airTemperatureIn`` that carries its temperature.
+                A room with several terminals publishes one temperature,
+                on one slot, for all of its branches (a scalar output
+                cannot be wired to several slots of one port), so the
+                temperature port is one slot per room and this map joins
+                the two.  ``None``: the slots are aligned one to one.
+        """
         super().__init__(**kwargs)
         if airFlowRateBias is not None:
             self.airFlowRateBias = airFlowRateBias
@@ -66,6 +77,10 @@ class ReturnFlowJunctionSystem(core.System):
             self.airFlowRateBias = 0
         self.n_input_ports = 2
         self._manual_setup_n_input_ports = False
+        self.branch_temperature_slots = (
+            None if branch_temperature_slots is None else [int(i) for i in branch_temperature_slots]
+        )
+
 
         self.input = {
             "airFlowRateIn": tps.Vector(),
@@ -75,7 +90,8 @@ class ReturnFlowJunctionSystem(core.System):
             "airFlowRateOut": tps.Scalar(),
             "airTemperatureOut": tps.Scalar(),
         }
-        self._config = {"parameters": ["airFlowRateBias"]}
+        self._config = {"parameters": ["airFlowRateBias", "branch_temperature_slots"]}
+
 
     @property
     def n_input_ports(self):
@@ -132,13 +148,21 @@ class ReturnFlowJunctionSystem(core.System):
         )
         batch_size = len(start_time)
         self.setup_variable_inputs()
-
-        for input in self.input.values():
-            input.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-                n_v=self.n_input_ports,  # both inputs must have the same number of input ports
+        # The temperature port may be narrower than the flow port (one slot
+        # per room against one per branch, see ``branch_temperature_slots``).
+        n_temperature = self.n_input_ports
+        if self.branch_temperature_slots is not None:
+            n_temperature = self.get_n_v_from_connections("airTemperatureIn") or (
+                max(self.branch_temperature_slots) + 1
             )
+        self.input["airFlowRateIn"].initialize(n_t=max_timesteps, n_s=batch_size, n_v=self.n_input_ports)
+        self.input["airTemperatureIn"].initialize(n_t=max_timesteps, n_s=batch_size, n_v=n_temperature)
+        self._temperature_index = (
+            None
+            if self.branch_temperature_slots is None
+            else torch.tensor(self.branch_temperature_slots, dtype=torch.long)
+        )
+
         for output in self.output.values():
             output.initialize(
                 n_t=max_timesteps,
@@ -156,8 +180,13 @@ class ReturnFlowJunctionSystem(core.System):
         read from ``self`` as a structural constant.
         """
         # Sum over last dimension (input flows dimension) to preserve batch dimension
+        temperature = inputs["airTemperatureIn"]
+        index = getattr(self, "_temperature_index", None)
+        if index is not None:
+            temperature = temperature[..., index.to(temperature.device)]
         m_dot_in = inputs["airFlowRateIn"].sum(dim=-1)
-        Q_dot_in = (inputs["airTemperatureIn"] * inputs["airFlowRateIn"]).sum(dim=-1)
+        Q_dot_in = (temperature * inputs["airFlowRateIn"]).sum(dim=-1)
+
 
         tol = 1e-5
         has_flow = m_dot_in > tol
