@@ -157,10 +157,13 @@ class ReturnFlowJunctionSystem(core.System):
             )
         self.input["airFlowRateIn"].initialize(n_t=max_timesteps, n_s=batch_size, n_v=self.n_input_ports)
         self.input["airTemperatureIn"].initialize(n_t=max_timesteps, n_s=batch_size, n_v=n_temperature)
+        # On the ports' device: a CUDA-graph capture must not record a
+        # host-to-device copy of the index inside ``forward``.
+        device = self.input["airFlowRateIn"].get().device
         self._temperature_index = (
             None
             if self.branch_temperature_slots is None
-            else torch.tensor(self.branch_temperature_slots, dtype=torch.long)
+            else torch.tensor(self.branch_temperature_slots, dtype=torch.long, device=device)
         )
 
         for output in self.output.values():
@@ -183,7 +186,10 @@ class ReturnFlowJunctionSystem(core.System):
         temperature = inputs["airTemperatureIn"]
         index = getattr(self, "_temperature_index", None)
         if index is not None:
-            temperature = temperature[..., index.to(temperature.device)]
+            if index.device != temperature.device:
+                index = index.to(temperature.device)
+                self._temperature_index = index
+            temperature = temperature[..., index]
         m_dot_in = inputs["airFlowRateIn"].sum(dim=-1)
         Q_dot_in = (temperature * inputs["airFlowRateIn"]).sum(dim=-1)
 

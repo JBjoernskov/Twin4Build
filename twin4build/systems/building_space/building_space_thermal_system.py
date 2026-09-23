@@ -566,7 +566,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
     #: Fusable coupling ports (see FusedStateSpaceSystem): connected
     #: WallSystem heat flows enter the linear B matrix, and
     #: ``indoorTemperature`` is a pure state observation.
-    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain"})
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "heatGain"})
+
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
 
     #: Base slot of ``makeUpAirTemperature`` in ``u`` (after ``heatGain``).

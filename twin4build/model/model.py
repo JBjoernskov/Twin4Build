@@ -27,6 +27,19 @@ from twin4build.utils.validate_period import validate_period
 
 
 @autoreset_print
+def _batch_members(group):
+    """The components of an execution group that batch: a fused state-space
+    block executes for its members, and it is the members that are batched
+    (the batched model fuses the metas again)."""
+    for executing in group:
+        members = getattr(executing, "members", None)
+        if members is not None and hasattr(executing, "_internal_arcs"):
+            for m in members:
+                yield m
+        else:
+            yield executing
+
+
 class Model:
     r"""
     A unified interface for building digital twin models.
@@ -1183,6 +1196,13 @@ class Model:
         batched = Model(id=f"{self.id}_batched")
         self._component_to_meta = {}
         unbatchable: set = set()
+        # Fusable clusters (a zone with its radiator, a pair of zones with
+        # their wall) batch as clusters: the cluster's shape is part of every
+        # member's signature and every meta of one cluster type orders its
+        # instances by the same cluster order, so the arcs between the metas
+        # pair instance i with instance i and the batched model fuses them.
+        cluster_role, cluster_rank = self._cluster_batching_keys()
+
 
         def _as_is(component, group_idx):
             """A shallow copy with empty wiring, joined to the batched model."""
@@ -1205,16 +1225,20 @@ class Model:
 
         for group_idx, group in enumerate(self.simulation_model.execution_order):
             by_sig: "OrderedDict[Tuple[Any, ...], List[Any]]" = OrderedDict()
-            for comp in group:
+            for comp in _batch_members(group):
                 sig = self._component_signature(comp)
                 if comp.__class__.__name__ in no_batch_classes or (
                     comp.__class__.__name__ == "ScheduleSystem"
                     and not getattr(comp, "_allow_component_batching", False)
                 ):
                     sig = (*sig, id(comp))
+                if comp.id in cluster_role:
+                    sig = (*sig, ("cluster",) + cluster_role[comp.id])
                 by_sig.setdefault(sig, []).append(comp)
-
             for blk_idx, (sig, comps) in enumerate(by_sig.items()):
+                if comps[0].id in cluster_rank:
+                    comps = sorted(comps, key=lambda c: cluster_rank[c.id])
+
                 n_c = len(comps)
                 cls = comps[0].__class__
                 # A component whose constructor takes required arguments
@@ -1283,8 +1307,9 @@ class Model:
 
         connection_map: Dict[tuple, dict] = {}
         for group in self.simulation_model.execution_order:
-            for comp in group:
+            for comp in _batch_members(group):
                 for conn in comp.connected_through:
+
                     for cp in conn.connects_system_at:
                         receiver = cp.connection_point_of
                         s_meta, s_ic = self._component_to_meta[comp.id]
@@ -1503,7 +1528,50 @@ class Model:
             obj = getattr(obj, part)
         setattr(obj, parts[-1], value)
 
+    def _cluster_batching_keys(self):
+        """``(role, rank)`` for the members of fusable clusters: ``role[cid] =
+        (cluster type, role index)`` names the member's place in its cluster's
+        shape (class and fusable arcs), ``rank[cid]`` orders the clusters of
+        one type canonically (by their members' ids), so that the metas of a
+        cluster type line up instance to instance."""
+        clusters, arcs = self.simulation_model._fusable_clusters()
+        role: Dict[str, tuple] = {}
+        by_type: Dict[tuple, list] = {}
+        for members in clusters:
+            if len(members) < 2:
+                continue
+            ids = {m.id for m in members}
+            touching: Dict[str, list] = {m.id: [] for m in members}
+            for sender, s_port, receiver, r_port, pairs in arcs:
+                if sender.id in ids and receiver.id in ids:
+                    slot = pairs[0][3] if pairs else None
+                    slot = 0 if slot is None or isinstance(slot, slice) else int(slot)
+                    touching[sender.id].append(("out", s_port, type(receiver).__name__, r_port, slot))
+                    touching[receiver.id].append(("in", r_port, type(sender).__name__, s_port, slot))
+            role_key = {
+                m.id: (type(m).__module__, type(m).__name__, tuple(sorted(touching[m.id])))
+                for m in members
+            }
+            ordered = sorted(members, key=lambda m: (role_key[m.id], m.id))
+            index = {m.id: k for k, m in enumerate(ordered)}
+            cluster_arcs = tuple(sorted(
+                (index[sender.id], s_port, index[receiver.id], r_port)
+                for sender, s_port, receiver, r_port, _ in arcs
+                if sender.id in ids and receiver.id in ids
+            ))
+            type_key = (tuple(role_key[m.id] for m in ordered), cluster_arcs)
+            for m in ordered:
+                role[m.id] = (type_key, index[m.id])
+            by_type.setdefault(type_key, []).append(tuple(m.id for m in ordered))
+        rank: Dict[str, int] = {}
+        for type_key, cluster_ids in by_type.items():
+            for k, member_ids in enumerate(sorted(cluster_ids)):
+                for cid in member_ids:
+                    rank[cid] = k
+        return role, rank
+
     def _batch_parameters(self, meta: Any, components: List, n_c: int) -> None:
+
         """Stack calibration parameters along the ``n_c`` dimension.
 
         Only ``tps.Parameter`` and ``tps.TensorParameter`` attributes whose

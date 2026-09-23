@@ -298,7 +298,8 @@ class BuildingSpaceSystem(core.System, nn.Module):
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): delegated to the
     #: thermal submodel, which owns the wall coupling.
-    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeCO2Gain"})
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeCO2Gain", "heatGain"})
+
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature", "indoorCO2"})
 
     def _ss_units(self):

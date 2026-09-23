@@ -416,5 +416,24 @@ class TestFactoringSharedRoom(unittest.TestCase):
         self._check(model, reference)
 
 
+@unittest.skipUnless(torch.cuda.is_available(), "needs CUDA")
+class TestFactoredUnitCudaGraph(unittest.TestCase):
+    """The factored wiring captured as a CUDA graph: the return junction's
+    branch-to-room index must live on the device (a capture cannot record a
+    host-to-device copy) and the replayed rollout must match the CPU run."""
+
+    def test_shared_room_captured_matches_cpu(self):
+        model = TestFactoringSharedRoom().build()
+        model.factor_air_handling_units()
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        _simulate(model, execution_mode="functional", execution_backend="eager")
+        reference = {p: _history(model, "unit", p) for p in DEVICE_OUTPUTS}
+        model.to(device="cuda", dtype=torch.float64)
+        _simulate(model, execution_mode="functional", execution_backend="cuda_graph")
+        for port in DEVICE_OUTPUTS:
+            torch.testing.assert_close(_history(model, "unit", port), reference[port], msg=port)
+        model.to(device="cpu", dtype=torch.float64)
+
+
 if __name__ == "__main__":
     unittest.main()
