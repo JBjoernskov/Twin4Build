@@ -165,6 +165,37 @@ class TestBatchedFusion(unittest.TestCase):
         for cid in ("Wall0", "Wall1"):
             torch.testing.assert_close(history(model, cid, "wallTemperature", batched), history(reference, cid, "wallTemperature"), msg=cid)
 
+    def test_members_with_different_signatures_split_the_cluster_type(self):
+        """Two radiators fed from a sensor instead of a schedule batch apart
+        from the others; their zones must batch apart too, or the room meta
+        would face two radiator metas with no aligned pairing."""
+        model = build(n_pairs=4, model_id="split")
+        sensor = tb.SensorSystem(id="water_sensor", df=__import__("pandas").DataFrame(
+            {"value": [55.0] * 40},
+            index=__import__("pandas").DatetimeIndex([START + datetime.timedelta(seconds=STEP * k) for k in range(40)], name="time"),
+        ), use_df=True)
+        for k in (2, 3):
+            r = model.components[f"Radiator{k}"]
+            model.remove_connection(model.components["WaterTemp"], r, "scheduleValue", "supplyWaterTemperature")
+            model.add_connection(sensor, r, "measuredValue", "supplyWaterTemperature")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        reference = build(n_pairs=4, model_id="split_ref")
+        s2 = tb.SensorSystem(id="water_sensor", df=sensor.df, use_df=True)
+        for k in (2, 3):
+            r = reference.components[f"Radiator{k}"]
+            reference.remove_connection(reference.components["WaterTemp"], r, "scheduleValue", "supplyWaterTemperature")
+            reference.add_connection(s2, r, "measuredValue", "supplyWaterTemperature")
+        reference.load(draw_semantic_model=False, draw_simulation_model=False)
+        simulate(reference)
+        batched = model.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        fused = list(batched.simulation_model._fused_components.values())
+        self.assertEqual(sorted(f.n_c for f in fused), [2, 2])
+        self.assertIsNot(model._component_to_meta["Zone0"][0], model._component_to_meta["Zone2"][0])
+        simulate(batched)
+        for k in range(4):
+            torch.testing.assert_close(history(model, f"Zone{k}", "indoorTemperature", batched), history(reference, f"Zone{k}", "indoorTemperature"), msg=f"Zone{k}")
+
     def test_structure_walk_sees_one_block_per_instance(self):
         model = build(n_pairs=3, model_id="blocks")
         for k in range(3):

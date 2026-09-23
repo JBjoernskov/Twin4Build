@@ -1548,8 +1548,17 @@ class Model:
                     slot = 0 if slot is None or isinstance(slot, slice) else int(slot)
                     touching[sender.id].append(("out", s_port, type(receiver).__name__, r_port, slot))
                     touching[receiver.id].append(("in", r_port, type(sender).__name__, s_port, slot))
+            # A member's place in the cluster: its class, its fusable arcs
+            # inside the cluster, and its own batching signature -- two
+            # clusters batch together only when every member pair would, so
+            # the metas of one cluster type pair off one to one.
             role_key = {
-                m.id: (type(m).__module__, type(m).__name__, tuple(sorted(touching[m.id])))
+                m.id: (
+                    type(m).__module__,
+                    type(m).__name__,
+                    tuple(sorted(touching[m.id])),
+                    self._component_signature(m),
+                )
                 for m in members
             }
             ordered = sorted(members, key=lambda m: (role_key[m.id], m.id))
