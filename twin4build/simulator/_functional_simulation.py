@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import torch
 
 import twin4build.utils.types as tps
+from twin4build.utils.slots import slot_pairs
 from twin4build.utils import _cuda_graph
 from twin4build.utils._cuda_graph import CudaGraphCallable
 from twin4build.simulator._functional import (
@@ -168,6 +169,11 @@ class FunctionalSimulationSession:
             dtype=tps.float_dtype(),
             device=self.layout.gather(0).device,
         )
+        # Every route's index tensors on the rollout's device once, here: a
+        # meta whose instances are ordered against a neighbour's (a cluster
+        # batched by its shape) routes with instance-index tensors, and a
+        # CUDA-graph capture cannot record their host-to-device copy per step.
+        self.functional_model.prepare_routes(self.theta.device)
         self.graph = None
         self.setup_seconds = 0.0
         self.capture_seconds = 0.0
@@ -336,6 +342,45 @@ class FunctionalSimulationSession:
         visiting.remove(component.id)
         done.add(component.id)
 
+    def _lagged_passthrough_sensors(self):
+        """Output indices of pass-through sensors that execute before their
+        producer in the model's execution order.  Object mode copies such a
+        sensor's value before the producer steps, so its history is the
+        producer's, one step late, starting at the producer's initial value;
+        the functional rollout reproduces that history."""
+        cached = getattr(self, "_lagged_passthrough", None)
+        if cached is not None:
+            return cached
+        position = {c.id: i for i, c in enumerate(self.model.flat_execution_order)}
+        lagged = {}
+        for index, (component, output_name) in enumerate(self.outputs):
+            if not (_is_passthrough_sensor(component) and output_name == "measuredValue"):
+                continue
+            producer, port_name, _ = self.functional_model._follow(component, "measuredValue")
+            if position.get(producer.id, -1) > position.get(component.id, -1):
+                # the instance and slot of the producer's port the sensor reads
+                s_ic, out_v = None, None
+                for cp in component.connects_at:
+                    if cp.input_port != "measuredValue":
+                        continue
+                    for conn in cp.connects_system_through:
+                        pairs = slot_pairs(cp, conn)
+                        if pairs:
+                            s_ic, _, out_v, _ = pairs[0]
+                lagged[index] = (producer.output[port_name], s_ic, out_v)
+        self._lagged_passthrough = lagged
+        return lagged
+
+    @staticmethod
+    def _initial_value(port, s_ic, out_v):
+        """A port's initial value for one instance and slot, ``(n_s,)``."""
+        t = port._tensor.detach()
+        if t.dim() >= 2:
+            t = t[:, 0 if s_ic is None or isinstance(s_ic, slice) else int(s_ic)]
+        if t.dim() >= 2:
+            t = t[..., 0 if out_v is None or isinstance(out_v, slice) else int(out_v)]
+        return t.reshape(-1)
+
     def record_exogenous_inputs(self):
         """Build exogenous tape and initial feedback without an object-graph timestep."""
         if self.cached_recording is not None:
@@ -350,6 +395,13 @@ class FunctionalSimulationSession:
         self.recording_cache_hit = False
         self.recording_cache_misses += 1
         functional_model = self.functional_model
+        # the producers' initial values (set by the model's initialize) for
+        # the pass-through sensors that read them one step late
+        self._passthrough_initial = {
+            index: self._initial_value(port, s_ic, out_v).clone()
+            for index, (port, s_ic, out_v) in self._lagged_passthrough_sensors().items()
+            if port._tensor is not None
+        }
         components = dict(self.model.components)
         sim_model = getattr(self.model, "_simulation_model", None) or self.model
         components.update(getattr(sim_model, "_fused_components", None) or {})
@@ -613,6 +665,12 @@ class FunctionalSimulationSession:
                 values = flat.reshape(self.max_t, self.n_periods, port.n_c, port.n_v)
             else:
                 values = flat.reshape(self.max_t, self.n_periods, port.n_c)
+            initial = getattr(self, "_passthrough_initial", {}).get(index)
+            if initial is not None:
+                # a pass-through sensor that executes before its producer
+                # publishes the producer's previous value (object mode's order)
+                first = initial.reshape(1, self.n_periods, *([1] * (values.dim() - 2))).expand(1, *values.shape[1:]).to(values.dtype)
+                values = torch.cat([first, values[:-1]], dim=0)
             port._history.copy_(values)
             port._history_is_populated = True
             port._tensor.copy_(values[-1])

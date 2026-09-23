@@ -1572,9 +1572,14 @@ class Model:
             for m in ordered:
                 role[m.id] = (type_key, index[m.id])
             by_type.setdefault(type_key, []).append(tuple(m.id for m in ordered))
+        # Clusters of one type in their natural order (the first member's
+        # place in the model), so a meta's instances keep the order its
+        # neighbours outside the cluster have wherever possible.
+        position = {cid: i for i, cid in enumerate(self.simulation_model.components)}
         rank: Dict[str, int] = {}
         for type_key, cluster_ids in by_type.items():
-            for k, member_ids in enumerate(sorted(cluster_ids)):
+            ordered_clusters = sorted(cluster_ids, key=lambda ids: min(position.get(c, 0) for c in ids))
+            for k, member_ids in enumerate(ordered_clusters):
                 for cid in member_ids:
                     rank[cid] = k
         return role, rank
