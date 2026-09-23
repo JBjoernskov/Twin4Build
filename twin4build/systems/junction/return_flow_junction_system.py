@@ -77,9 +77,9 @@ class ReturnFlowJunctionSystem(core.System):
             self.airFlowRateBias = 0
         self.n_input_ports = 2
         self._manual_setup_n_input_ports = False
-        self.branch_temperature_slots = (
-            None if branch_temperature_slots is None else [int(i) for i in branch_temperature_slots]
-        )
+        # an empty list means aligned one to one (None would read as a
+        # missing parameter value to the model's validation)
+        self.branch_temperature_slots = [int(i) for i in (branch_temperature_slots or [])]
 
 
         self.input = {
@@ -151,7 +151,7 @@ class ReturnFlowJunctionSystem(core.System):
         # The temperature port may be narrower than the flow port (one slot
         # per room against one per branch, see ``branch_temperature_slots``).
         n_temperature = self.n_input_ports
-        if self.branch_temperature_slots is not None:
+        if self.branch_temperature_slots:
             n_temperature = self.get_n_v_from_connections("airTemperatureIn") or (
                 max(self.branch_temperature_slots) + 1
             )
@@ -161,9 +161,9 @@ class ReturnFlowJunctionSystem(core.System):
         # host-to-device copy of the index inside ``forward``.
         device = self.input["airFlowRateIn"].get().device
         self._temperature_index = (
-            None
-            if self.branch_temperature_slots is None
-            else torch.tensor(self.branch_temperature_slots, dtype=torch.long, device=device)
+            torch.tensor(self.branch_temperature_slots, dtype=torch.long, device=device)
+            if self.branch_temperature_slots
+            else None
         )
 
         for output in self.output.values():
