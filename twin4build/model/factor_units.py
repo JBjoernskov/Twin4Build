@@ -142,9 +142,9 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
         exhaust_readers.setdefault(out_v if out_v is not None else 0, []).append((r, ip, in_v))
     missing = [b for b in range(n) if b not in commands]
     if missing:
-        raise ValueError(f"|{unit.id}|: branches {missing} carry no damper command")
-    if not follows and any(b not in exhaust_commands for b in range(n)):
-        raise ValueError(f"|{unit.id}|: exhaust dampers without a command on every branch")
+        # The composite fed such a slot its initial value (a closed damper):
+        # the terminal keeps that, with its position unwired.
+        LOGGER.warning("%s: branches %s carry no damper command; their terminals stay closed", unit.id, missing)
 
     # The room of branch b: what reads its supply flow and also publishes its
     # temperature into the unit; else the aligned temperature slot.
@@ -164,7 +164,6 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
     dampers: List[DamperSystem] = []
     exhaust_dampers: List[DamperSystem] = []
     for b in range(n):
-        cmd, _, _ = commands[b]
         ratio = (
             _per_branch(unit.exhaustFlowRatio, b, n) if (follows and per_branch_ratio)
             else float(torch.as_tensor(unit.exhaustFlowRatio.get()).reshape(-1)[0])
@@ -203,8 +202,9 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
     for c in dampers + exhaust_dampers + [supply_junction, return_junction, core]:
         model.add_component(c)
     for b, d in enumerate(dampers):
-        s, p, out_v = commands[b]
-        _connect(model, s, p, d, "damperPosition", out_v=out_v)
+        if b in commands:
+            s, p, out_v = commands[b]
+            _connect(model, s, p, d, "damperPosition", out_v=out_v)
         for s, p, out_v in supply_fan:
             _connect(model, s, p, d, "fanSpeed", out_v=out_v)
         _connect(model, d, "airFlowRate", supply_junction, "airFlowRateOut", in_v=b)
@@ -213,8 +213,9 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
         exhaust_source = (d, "exhaustAirFlowRate")
         if not follows:
             e = exhaust_dampers[b]
-            s, p, out_v = exhaust_commands[b]
-            _connect(model, s, p, e, "damperPosition", out_v=out_v)
+            if b in exhaust_commands:
+                s, p, out_v = exhaust_commands[b]
+                _connect(model, s, p, e, "damperPosition", out_v=out_v)
             for s, p, out_v in exhaust_fan:
                 _connect(model, s, p, e, "fanSpeed", out_v=out_v)
             exhaust_source = (e, "airFlowRate")
