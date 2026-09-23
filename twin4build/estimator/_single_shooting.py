@@ -306,6 +306,23 @@ class FunctionalEstimationObjective:
         (grad,) = torch.autograd.grad(cols.sum(), z)
         return cols.detach(), grad.detach()
 
+    def batched_column_gradients(
+        self, theta_batch: torch.Tensor, selector: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Per-column losses ``(B, n_meas)`` and, per row, the gradient of
+        ``selector[b] . cols[b]`` ``(B, n_theta)``.
+
+        With ``theta_batch`` the same parameters on every row and
+        ``selector`` one-hot rows, this is one chunk of the Jacobian of the
+        column losses, ``d c_j / d theta`` for ``B`` columns, from a single
+        batched backward pass: the residual-side curvature a Gauss-Newton
+        model needs, computed exactly rather than from gradient differences.
+        """
+        z = theta_batch.detach().clone().requires_grad_(True)
+        cols = self.batched_column_loss(z)
+        (grad,) = torch.autograd.grad((cols * selector).sum(), z)
+        return cols.detach(), grad.detach()
+
     def parameter_structure(self):
         """``(theta_block, column_block, n_blocks)`` from the composer's wiring
         (:meth:`FunctionalModel.index_coupling`), cached."""

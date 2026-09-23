@@ -991,9 +991,17 @@ class FunctionalModel:
         (producer, port) into one paired gather; the rest stay as they are.
         Returns ``(groups, perm)`` where ``perm`` restores the measurement
         order, or ``None`` when nothing groups."""
-        order, groups, singles = [], {}, []
+        order, groups, singles, externals = [], {}, [], []
         offset = 0
         for i, m in enumerate(self.meas_sources):
+            if m[0] == "external":
+                # Not producible by the functional map: the step returns
+                # zeros there and the caller fills them in.  All of them
+                # are one zeros tensor per step, not one kernel each (a
+                # public simulation requests every output of every
+                # component, thousands of them outside the cone).
+                externals.append(i)
+                continue
             if m[0] == "fresh" and len(m[3]) == 1:
                 out_v, s_ic, r_ic, n_c, is_vector = m[3][0][:5]
                 if isinstance(s_ic, torch.Tensor) and s_ic.numel() == 1 and (not isinstance(out_v, torch.Tensor) or out_v.numel() == 1) and not isinstance(out_v, slice):
@@ -1006,18 +1014,39 @@ class FunctionalModel:
                     g["meas"].append(i)
                     continue
             singles.append(i)
-        if not groups:
+        if not groups and not externals:
             return None
         blocks, positions = [], []
+        if externals:
+            width = sum(self.meas_slices[i].stop - self.meas_slices[i].start for i in externals)
+            blocks.append(("external_all", width))
+            positions.extend(externals)
+        by_id = {c.id: c for c in self.cone}
         for g in groups.values():
-            blocks.append(("group", g["cid"], g["port"], g["is_vector"], torch.cat(g["s_ic"]), torch.cat(g["out_v"])))
+            s_ic, out_v = torch.cat(g["s_ic"]), torch.cat(g["out_v"])
+            # The whole port, in row-major order (a public simulation asks
+            # for every output of every component): the port's tensor is
+            # the answer, no gather.  That is one view instead of one
+            # kernel per port and step.
+            whole = False
+            comp = by_id.get(g["cid"])
+            if comp is not None:
+                n_c = int(self._component_n_c(comp))
+                n_v = int(self._output_width(comp, g["port"])) if g["is_vector"] else 1
+                if s_ic.numel() == n_c * n_v:
+                    want_s = torch.arange(n_c, device=s_ic.device).repeat_interleave(n_v)
+                    want_v = torch.arange(n_v, device=out_v.device).repeat(n_c)
+                    whole = bool(torch.equal(s_ic.reshape(-1), want_s)) and (
+                        not g["is_vector"] or bool(torch.equal(out_v.reshape(-1), want_v))
+                    )
+            blocks.append(("group", g["cid"], g["port"], g["is_vector"], s_ic, out_v, whole))
             positions.extend(g["meas"])
         for i in singles:
             blocks.append(("single", i))
             positions.append(i)
-        # Every grouped measurement is one value wide; singles keep their width.
+        # Every grouped measurement is one value wide; singles and externals keep their width.
         widths = [self.meas_slices[i].stop - self.meas_slices[i].start for i in positions]
-        assert all(w == 1 for w, i in zip(widths, positions) if i not in singles)
+        assert all(w == 1 for w, i in zip(widths, positions) if i not in singles and i not in externals)
         perm = torch.empty(sum(widths), dtype=torch.long)
         pos = 0
         for i, w in zip(positions, widths):
@@ -1272,10 +1301,14 @@ class FunctionalModel:
             # back in measurement order by one permutation.
             blocks, perm = grouped
             for block in blocks:
-                if block[0] == "group":
-                    _, cid, port, is_vector, s_ic, out_v = block
+                if block[0] == "external_all":
+                    meas.append(torch.zeros(block[1], dtype=x_next.dtype, device=x_next.device))
+                elif block[0] == "group":
+                    _, cid, port, is_vector, s_ic, out_v, whole = block
                     out = produced[cid][port]
-                    if is_vector and out.ndim >= 2:
+                    if whole:
+                        meas.append(out.reshape(-1))
+                    elif is_vector and out.ndim >= 2:
                         meas.append(out[s_ic, out_v])
                     elif is_vector:
                         meas.append(out.reshape(-1)[out_v])
@@ -1772,7 +1805,7 @@ def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, s
 
 
 def functional_rollout_tape(
-    functional_model, y0, theta, exogenous_tape, *, transform_mode=False
+    functional_model, y0, theta, exogenous_tape, *, transform_mode=False, step=None
 ):
     """Roll out ``F_aug`` and return tensor-only state and output tapes.
 
@@ -1781,14 +1814,24 @@ def functional_rollout_tape(
     when constructing ``FunctionalModel`` and has shape ``(n_t, n_meas)``.
     This deliberately contains no dictionaries so the complete fixed-shape
     rollout can be captured by :class:`torch.cuda.CUDAGraph`.
+
+    ``step`` is the compiled transform-mode step
+    (:attr:`FunctionalModel.compiled_step`) when the simulator compiles it;
+    every time step is then one call of it, as in :func:`functional_rollout`.
     """
+    # Routes resolved for the device once, outside the captured step
+    # (the public functional simulation captures this rollout whole).
+    functional_model.prepare_routes(exogenous_tape.device)
     y = y0
     states = [y]
     outputs = []
     for t in range(exogenous_tape.shape[0]):
-        y, row = functional_model.F_aug(
-            y, theta, exogenous_tape[t], transform_mode=transform_mode
-        )
+        if step is not None:
+            y, row = step(y, theta, exogenous_tape[t])
+        else:
+            y, row = functional_model.F_aug(
+                y, theta, exogenous_tape[t], transform_mode=transform_mode
+            )
         states.append(y)
         outputs.append(row)
     if outputs:
