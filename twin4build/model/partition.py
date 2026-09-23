@@ -32,6 +32,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+import torch
+
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.utils.slots import slot_pairs
 
@@ -264,18 +266,25 @@ def cut_measured_edges(model, partition: Partition, suffix: str = "__replay") ->
             continue
         sender, receiver = edges[0].sender, edges[0].receiver
         model.remove_connection(sender, receiver, pairing[1], pairing[3])
+        # one connection per leaf into the receiver's port, carrying every
+        # slot that leaf replays (a scalar into several slots is one
+        # connection with a slot tensor)
+        per_leaf: Dict[Tuple[str, int], List[Edge]] = {}
         for e in edges:
-            key = (e.sensor.id, id(e.transform))
+            per_leaf.setdefault((e.sensor.id, id(e.transform)), []).append(e)
+        for key, group in per_leaf.items():
             leaf = leaves.get(key)
             if leaf is None:
+                e = group[0]
                 n = sum(1 for k in leaves if k[0] == e.sensor.id)
                 leaf = replay_leaf(e.sensor, f"{e.sensor.id}{suffix}{n if n else ''}", e.transform)
                 leaves[key] = leaf
                 model.add_component(leaf)
                 added.append(leaf)
+            slots = [e.input_slot for e in group]
             kwargs = {}
-            if e.input_slot is not None:
-                kwargs["input_port_index"] = e.input_slot
+            if all(v is not None for v in slots):
+                kwargs["input_port_index"] = slots[0] if len(slots) == 1 else torch.tensor(slots, dtype=torch.long)
             model.add_connection(leaf, receiver, "measuredValue", pairing[3], **kwargs)
     LOGGER.info("partition: %d pairings cut, %d replay leaves added", len(by_pairing), len(added))
     return added

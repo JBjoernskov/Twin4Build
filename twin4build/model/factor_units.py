@@ -199,6 +199,7 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
 
     # --- rewire -------------------------------------------------------------------------
     model.remove_component(unit)
+    temperature_slots: Dict[Tuple[int, str], Tuple[object, str, list, list]] = {}
     for c in dampers + exhaust_dampers + [supply_junction, return_junction, core]:
         model.add_component(c)
     for b, d in enumerate(dampers):
@@ -224,12 +225,21 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
         if b in room_temperature:
             _connect(model, exhaust_source[0], exhaust_source[1], return_junction, "airFlowRateIn", in_v=b)
             s, p, out_v = room_temperature[b]
-            _connect(model, s, p, return_junction, "airTemperatureIn", out_v=out_v, in_v=b)
+            temperature_slots.setdefault((id(s), p), (s, p, [], []))[2].append(b)
+            temperature_slots[(id(s), p)][3].append(out_v)
         else:
             LOGGER.warning(
                 "%s: branch %d has no room temperature; its exhaust is left out of the return junction",
                 unit_id, b,
             )
+    # a room with several terminals publishes its temperature on several
+    # slots: one connection per room, carrying its slots
+    for s, p, slots, out_vs in temperature_slots.values():
+        in_v = slots[0] if len(slots) == 1 else torch.tensor(slots, dtype=torch.long)
+        out_v = None
+        if all(v is not None for v in out_vs):
+            out_v = out_vs[0] if len(out_vs) == 1 else torch.tensor(out_vs, dtype=torch.long)
+        _connect(model, s, p, return_junction, "airTemperatureIn", out_v=out_v, in_v=in_v)
     _connect(model, supply_junction, "airFlowRateIn", core, "totalSupplyAirFlowRate")
     _connect(model, return_junction, "airFlowRateOut", core, "totalExhaustAirFlowRate")
     _connect(model, return_junction, "airTemperatureOut", core, "returnAirTemperature")
