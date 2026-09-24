@@ -233,6 +233,34 @@ class TestMeasuredPartition(unittest.TestCase):
         self.assertTrue(torch.isfinite(hist).all())
         self.assertGreater(float(hist[-1]), float(hist[0]))
 
+    def test_fusable_arcs_bind_even_when_measured(self):
+        """Two zones joined by a wall, both temperatures measured: the wall's
+        arcs are fusable, so the pair stays one group and the cut leaves the
+        wall's edges alone (replayed, the explicit exchange would diverge)."""
+        model = tb.Model(id="partition_wall")
+        zones = [
+            tb.BuildingSpaceThermalSystem(C_air=1e6, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0, Q_occ_gain=100.0, id=f"zone{k}")
+            for k in range(2)
+        ]
+        wall = tb.WallSystem(C=2e5, R_a=0.02, R_b=0.02, id="wall")
+        outdoor = series([5.0] * 8, id="outdoor")
+        zero = series([0.0] * 8, id="zero")
+        for z in zones:
+            for port in ("outdoorTemperature", "supplyAirFlowRate", "exhaustAirFlowRate", "supplyAirTemperature", "globalIrradiation", "numberOfPeople", "heatGain"):
+                model.add_connection(outdoor if port == "outdoorTemperature" else zero, z, "measuredValue", port)
+            model.add_connection(z, data_sensor(f"{z.id}_T"), "indoorTemperature", "measuredValue")
+        model.add_connection(zones[0], wall, "indoorTemperature", "temperatureA")
+        model.add_connection(zones[1], wall, "indoorTemperature", "temperatureB")
+        model.add_connection(wall, zones[0], "heatFlowRateA", "wallHeatGain", input_port_index=0)
+        model.add_connection(wall, zones[1], "heatFlowRateB", "wallHeatGain", input_port_index=0)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        p = measured_partition(model)
+        self.assertEqual(_group(p, "zone0"), {"zone0", "zone1", "wall", "zone0_T", "zone1_T"})
+        self.assertEqual(p.crossing, [])
+        self.assertTrue(any(e.sender.id == "zone0" and e.receiver.id == "wall" for e in p.binding))
+        cut_measured_edges(model, p)
+        self.assertEqual(len(model.get_components_by_class(tb.SensorSystem)), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

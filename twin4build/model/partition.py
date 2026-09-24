@@ -112,6 +112,15 @@ def _is_data_sensor(comp, allowed: Optional[Set[str]]) -> bool:
     return allowed is None or comp.id in allowed
 
 
+def _is_fusable(e: "Edge") -> bool:
+    """Whether the edge is a fusable arc: its output port in the sender's
+    ``FUSABLE_OUTPUT_PORTS`` and its input port in the receiver's
+    ``FUSABLE_INPUT_PORTS`` (see ``FusedStateSpaceSystem``)."""
+    outs = getattr(type(e.sender), "FUSABLE_OUTPUT_PORTS", frozenset())
+    ins = getattr(type(e.receiver), "FUSABLE_INPUT_PORTS", frozenset())
+    return e.output_port in outs and e.input_port in ins
+
+
 def _has_inputs(comp) -> bool:
     return any(cp.connects_system_through for cp in comp.connects_at)
 
@@ -187,6 +196,15 @@ def measured_partition(
             continue
         if not _has_inputs(e.sender) and e.sender.id not in free_ids:
             continue  # a leaf without parameters (data, a schedule, the weather): exogenous
+        if _is_fusable(e):
+            # A fusable arc (a zone and its wall, opening or radiator) is a
+            # stiff algebraic coupling that the fused block eliminates
+            # exactly; replayed, the receiver would step explicitly against
+            # a lagged signal and diverge.  It binds whether or not a sensor
+            # reads the signal.
+            binding.append(e)
+            union(e.sender.id, r.id)
+            continue
         sensors = readers.get(e.signal) or readers.get((e.sender.id, e.output_port, None))
         if sensors:
             e.sensor = sensors[0]
