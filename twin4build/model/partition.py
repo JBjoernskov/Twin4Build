@@ -13,13 +13,18 @@ together.
 connected components of the graph over the unmeasured ones: those are the
 minimal groups the measurements allow.  A data-bearing sensor that reads a
 port is a sink and stays with its source (it carries that group's residual
-columns); a leaf with no inputs (weather, schedules, replayed commands) is
-exogenous and joins nothing.  :func:`cut_measured_edges` then replaces the
-measured connections that cross between groups by replay leaves, one per
-sensor, and leaves the connections inside a group as they are, so the
-physics inside a group is untouched.  Afterwards the estimator's own
-structure walk (``FunctionalModel.index_coupling``) finds one block per
-group that carries parameters.
+columns); what the sensor itself sends on (a controller reading it) is
+measured too, by its own series.  A leaf with no inputs (weather,
+schedules, replayed commands) is exogenous and joins nothing.
+:func:`cut_measured_edges` then replaces every measured connection by a
+replay leaf, one per sensor.  The connections that cross between groups
+make the groups separable; the measured connections inside a group leave
+the groups as they are but open the loops inside them: a controller fed
+the measured temperature instead of the simulated one turns the closed
+loop into an open-loop fit, which is what makes a group's surface
+well-conditioned.  Afterwards the estimator's own structure walk
+(``FunctionalModel.index_coupling``) finds one block per group that
+carries parameters.
 
 Signals that are a known function of a measurement (a terminal's exhaust
 flow as a fixed ratio times its measured supply flow) count as measured
@@ -69,9 +74,9 @@ class Edge:
 class Partition:
     groups: List[List[str]]
     group_of: Dict[str, int]
-    #: Measured edges between two groups: what :func:`cut_measured_edges` replaces.
+    #: Measured edges between two groups: what separates the groups.
     crossing: List[Edge]
-    #: Measured edges inside a group: left alone.
+    #: Measured edges inside a group: cut too (loops opened), groups unchanged.
     internal: List[Edge]
     #: Unmeasured edges, all inside groups by construction.
     binding: List[Edge]
@@ -205,6 +210,12 @@ def measured_partition(
             binding.append(e)
             union(e.sender.id, r.id)
             continue
+        if _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue":
+            # the sender is a data sensor passing its reading on: its own
+            # series stands for the signal (the sensor stays with its source)
+            e.sensor = e.sender
+            crossing_candidates.append(e)
+            continue
         sensors = readers.get(e.signal) or readers.get((e.sender.id, e.output_port, None))
         if sensors:
             e.sensor = sensors[0]
@@ -261,14 +272,17 @@ def replay_leaf(sensor: SensorSystem, leaf_id: str, transform: Optional[Callable
     )
 
 
-def cut_measured_edges(model, partition: Partition, suffix: str = "__replay") -> List[SensorSystem]:
-    """Replace every crossing measured edge of ``partition`` by a replay leaf
-    of its sensor (one leaf per sensor and transform), in place.  A pairing
-    (sender port, receiver port) whose slots are not all measured is left
-    whole and reported.  Returns the leaves added; call ``model.load``
-    afterwards."""
+def cut_measured_edges(
+    model, partition: Partition, suffix: str = "__replay", internal: bool = True
+) -> List[SensorSystem]:
+    """Replace every measured edge of ``partition`` by a replay leaf of its
+    sensor (one leaf per sensor and transform), in place: the crossing edges
+    and, with ``internal`` (the default), the measured edges inside a group
+    as well (module docstring).  A pairing (sender port, receiver port)
+    whose slots are not all measured is left whole and reported.  Returns
+    the leaves added; call ``model.load`` afterwards."""
     by_pairing: Dict[Tuple[str, str, str, str], List[Edge]] = {}
-    for e in partition.crossing:
+    for e in partition.crossing + (partition.internal if internal else []):
         by_pairing.setdefault(e.pairing, []).append(e)
     all_slots: Dict[Tuple[str, str, str, str], int] = {}
     for e in _edges(model):

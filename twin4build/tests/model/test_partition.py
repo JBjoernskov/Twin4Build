@@ -106,6 +106,38 @@ class Room(core.System):
         self.output["T"]._set(outs["T"], i_t=step_index)
 
 
+class Gain(core.System):
+    """``u = g (setpoint - T)``: a proportional controller, one parameter."""
+
+    def __init__(self, g=0.1, **kwargs):
+        super().__init__(**kwargs)
+        self.input = {"T": tps.Scalar()}
+        self.output = {"u": tps.Scalar()}
+        self.g = tps.Parameter(torch.tensor(float(g)), min_value=0.0, max_value=10.0)
+        self.parameter = {"g": {"lb": 0.0, "ub": 10.0}}
+        self._config = {"parameters": ["g"]}
+
+    @property
+    def config(self):
+        return self._config
+
+    def initialize(self, start_time, end_time, step_size):
+        n_t = _n_t(start_time, end_time, step_size)
+        self.g = self.g.expand_to_n_c(self.n_c)
+        self.input["T"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
+        self.output["u"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
+
+    PARAM_NAMES = ("g",)
+
+    def forward(self, x, inputs, params, sample_time):
+        u = params["g"].reshape(-1) * (21.0 - inputs["T"].reshape(-1))
+        return x, {"u": u}
+
+    def do_step(self, second_time, date_time, step_size, step_index):
+        _, outs = self.forward(None, {"T": self.input["T"].get()}, self._forward_params(), step_size)
+        self.output["u"]._set(outs["u"], i_t=step_index)
+
+
 def build():
     model = tb.Model(id="partition_toy")
     pos = [series([1.0, 0.5, 0.3, 0.7, 1.0, 0.6, 0.2, 0.9], id=f"pos{k}") for k in range(2)]
@@ -260,6 +292,43 @@ class TestMeasuredPartition(unittest.TestCase):
         self.assertTrue(any(e.sender.id == "zone0" and e.receiver.id == "wall" for e in p.binding))
         cut_measured_edges(model, p)
         self.assertEqual(len(model.get_components_by_class(tb.SensorSystem)), 4)
+
+    def test_a_sensor_feeding_a_controller_opens_the_loop(self):
+        """A room whose measured temperature feeds a controller that drives
+        the room: the sensor's outgoing edge is measured by the sensor's own
+        series, so the cut hands the controller the replayed measurement.
+        The group is unchanged (the controller still drives the room), but
+        the loop is open."""
+        model = tb.Model(id="partition_loop")
+        room = Room(k=0.5, id="room")
+        gain = Gain(g=0.1, id="gain")
+        supply = series([18.0] * 8, id="supplyT")
+        sensor = data_sensor("T_sensor")
+        model.add_connection(supply, room, "measuredValue", "supplyT")
+        model.add_connection(room, sensor, "T", "measuredValue")
+        model.add_connection(sensor, gain, "measuredValue", "T")
+        model.add_connection(gain, room, "u", "flow", input_port_index=0)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        p = measured_partition(model)
+        self.assertEqual(_group(p, "room"), {"room", "T_sensor", "gain"})
+        self.assertEqual(p.crossing, [])
+        internal = {(e.sender.id, e.receiver.id) for e in p.internal}
+        self.assertEqual(internal, {("T_sensor", "gain")})
+        self.assertTrue(any(e.sender.id == "gain" and e.receiver.id == "room" for e in p.binding))
+        leaves = cut_measured_edges(model, p)
+        self.assertEqual([leaf.id for leaf in leaves], ["T_sensor__replay"])
+        senders = {conn.connects_system.id for cp in gain.connects_at for conn in cp.connects_system_through}
+        self.assertEqual(senders, {"T_sensor__replay"})
+        self.assertTrue(any(conn.connects_system.id == "gain" for cp in room.connects_at for conn in cp.connects_system_through))
+        # left alone when asked
+        model2 = tb.Model(id="partition_loop2")
+        room2, gain2, sensor2 = Room(k=0.5, id="room"), Gain(g=0.1, id="gain"), data_sensor("T_sensor")
+        model2.add_connection(series([18.0] * 8, id="supplyT"), room2, "measuredValue", "supplyT")
+        model2.add_connection(room2, sensor2, "T", "measuredValue")
+        model2.add_connection(sensor2, gain2, "measuredValue", "T")
+        model2.add_connection(gain2, room2, "u", "flow", input_port_index=0)
+        model2.load(draw_semantic_model=False, draw_simulation_model=False)
+        self.assertEqual(cut_measured_edges(model2, measured_partition(model2), internal=False), [])
 
 
 if __name__ == "__main__":
