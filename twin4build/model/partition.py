@@ -19,10 +19,13 @@ schedules, replayed commands) is exogenous and joins nothing.
 :func:`cut_measured_edges` then replaces every measured connection by a
 replay leaf, one per sensor.  The connections that cross between groups
 make the groups separable; the measured connections inside a group leave
-the groups as they are but open the loops inside them: a controller fed
-the measured temperature instead of the simulated one turns the closed
-loop into an open-loop fit, which is what makes a group's surface
-well-conditioned.  Afterwards the estimator's own structure walk
+the groups as they are and hand the receiver the measurement instead of
+the simulated signal.  Classing what a sensor sends on as measured is
+what keeps a controller chain from gluing a room to its terminals: a
+controller in playback (its recorded command replayed) does not read the
+sensor at all, so the cut is exact, and the terminal's measured flow into
+the room then crosses between groups instead of staying inside one.
+Afterwards the estimator's own structure walk
 (``FunctionalModel.index_coupling``) finds one block per group that
 carries parameters.
 
@@ -76,7 +79,7 @@ class Partition:
     group_of: Dict[str, int]
     #: Measured edges between two groups: what separates the groups.
     crossing: List[Edge]
-    #: Measured edges inside a group: cut too (loops opened), groups unchanged.
+    #: Measured edges inside a group: cut too, groups unchanged.
     internal: List[Edge]
     #: Unmeasured edges, all inside groups by construction.
     binding: List[Edge]

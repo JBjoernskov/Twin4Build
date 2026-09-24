@@ -293,12 +293,11 @@ class TestMeasuredPartition(unittest.TestCase):
         cut_measured_edges(model, p)
         self.assertEqual(len(model.get_components_by_class(tb.SensorSystem)), 4)
 
-    def test_a_sensor_feeding_a_controller_opens_the_loop(self):
+    def test_a_sensor_feeding_a_controller_is_cut(self):
         """A room whose measured temperature feeds a controller that drives
         the room: the sensor's outgoing edge is measured by the sensor's own
         series, so the cut hands the controller the replayed measurement.
-        The group is unchanged (the controller still drives the room), but
-        the loop is open."""
+        The group is unchanged (the controller still drives the room)."""
         model = tb.Model(id="partition_loop")
         room = Room(k=0.5, id="room")
         gain = Gain(g=0.1, id="gain")
