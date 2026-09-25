@@ -496,6 +496,35 @@ class SpaceHeaterSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("thermalMassHeatCapacity", "UA")
+    #: Fusable coupling ports (see FusedStateSpaceSystem): the zone's
+    #: temperature in, the delivered power out.  The power is linear in the
+    #: element temperatures and the zone temperature (an output row), so a
+    #: radiator and its zone fuse into one exact block instead of stepping
+    #: against each other's previous values.
+    FUSABLE_INPUT_PORTS = frozenset({"indoorTemperature"})
+    FUSABLE_OUTPUT_PORTS = frozenset({"Power"})
+
+    def _ss_layout(self):
+        """Port <-> matrix index map, mirroring :meth:`forward` exactly:
+        ``u = [supplyWaterTemperature, waterFlowRate, indoorTemperature]``;
+        output rows ``[outletWaterTemperature, Power]``."""
+        return {
+            "u": [("supplyWaterTemperature", 1), ("waterFlowRate", 1), ("indoorTemperature", 1)],
+            "y": {"outletWaterTemperature": 0, "Power": 1},
+        }
+
+    def _ss_support(self):
+        """Conservative structural support of the ``D``, ``E`` and ``F``
+        matrices: the power row feeds through the zone temperature; the water
+        flow (input 1) scales the element chain (``E``) and, with the supply
+        temperature (input 0), the first element's inflow (``F``)."""
+        n = self.nelements
+        return {
+            "D": frozenset({(1, 2)}),
+            "E": frozenset({(1, i, i) for i in range(n)} | {(1, i, i - 1) for i in range(1, n)}),
+            "F": frozenset({(0, 0, 1)}),
+        }
+
 
     def _build_matrices(self, p=None):
         """Build the radiator state-space matrices ``(A, B, C, D, E, F)`` from the
@@ -552,10 +581,27 @@ class SpaceHeaterSystem(core.System, nn.Module):
             * input_flow.reshape(1, 1, 1, n_inputs)
         )
 
-        C_out = last_state.reshape(1, 1, n).expand(n_c, -1, -1)
-        D = torch.zeros((n_c, 1, n_inputs), dtype=dt, device=dev)
-
+        # Output rows: the outlet water temperature (the last element) and the
+        # delivered power ``UA/n * sum_i (T_i - T_zone)``, linear in the
+        # states and the zone temperature (the fusable coupling row).
+        # Built on the device (a Python list would be a host-to-device copy,
+        # illegal while a CUDA graph records the rollout that builds these
+        # matrices once per rollout).
+        power_row = torch.eye(2, dtype=dt, device=dev)[1]
+        C_out = torch.stack(
+            [
+                last_state.reshape(1, n).expand(n_c, -1),
+                UA_elem.reshape(n_c, 1) * ones_n.reshape(1, n),
+            ],
+            dim=1,
+        )  # (n_c, 2, n)
+        D = (
+            -(UA_elem * n).reshape(n_c, 1, 1)
+            * power_row.reshape(1, 2, 1)
+            * input_indoor.reshape(1, 1, n_inputs)
+        )  # (n_c, 2, n_inputs)
         return A, B, C_out, D, E, F
+
 
     def _create_state_space_model(self):
         """Create the internal :class:`DiscreteStatespaceSystem` used by
@@ -580,6 +626,11 @@ class SpaceHeaterSystem(core.System, nn.Module):
             id=f"ss_model_{self.id}",
         )
 
+    def step_constants(self, params):
+        """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
+        :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
+        return self._build_matrices(params)
+
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step radiator dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
@@ -595,7 +646,9 @@ class SpaceHeaterSystem(core.System, nn.Module):
         # is part of the key: the attached disc_cache holds (Ad, Bd)
         # discretized at a specific T.
         if transform_mode:
-            matrices = self._build_matrices(params)
+            matrices = getattr(params, "matrices", None)
+            if matrices is None:
+                matrices = self._build_matrices(params)
             disc_cache = None
         else:
             cache = getattr(self, "_fwd_mat_cache", None)
@@ -627,10 +680,10 @@ class SpaceHeaterSystem(core.System, nn.Module):
             transform_mode=transform_mode,
         )
         outlet = y[..., 0]
-        UA_elem = params["UA"] / self.nelements
-        T_zone = inputs["indoorTemperature"]
-        Power = UA_elem * torch.sum(x_next - T_zone.unsqueeze(-1), dim=-1)
+        # the power row: UA/n * sum_i (T_i - T_zone) at the end-of-step state
+        Power = y[..., 1]
         return x_next, {"outletWaterTemperature": outlet, "Power": Power}
+
 
     def do_step(
         self,

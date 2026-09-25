@@ -1249,6 +1249,12 @@ class Logger:
             self._block_count -= 1
             return
 
+        if not self.level_stack:
+            # An unbalanced remove (a message path that already popped): the
+            # indentation counter must never raise out of a model load.
+            self._pending_levels = 0
+            return
+
         # Pending levels (added but no message printed yet) — pop without visual changes
         if self._pending_levels > 0:
             self._current_level_indent = (

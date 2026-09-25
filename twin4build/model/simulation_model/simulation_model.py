@@ -20,6 +20,7 @@ import pydotplus as pdp
 
 # Local application imports
 import twin4build.core as core
+from twin4build.utils.slots import slot_pairs
 import twin4build.estimator.estimator as estimator
 import twin4build.systems as systems
 import twin4build.utils.types as tps
@@ -157,6 +158,13 @@ def _convert_literal_value(value):
 
 
 @autoreset_print
+def _slot_or_zero(index) -> int:
+    """An input slot index as an int; a scalar port (no index) is slot 0."""
+    if index is None or isinstance(index, slice):
+        return 0
+    return int(index.item()) if hasattr(index, "item") else int(index)
+
+
 class SimulationModel:
     r"""
     A simulation model for building digital twins.
@@ -451,11 +459,15 @@ class SimulationModel:
         if dtype is not None:
             tps.set_float_dtype(dtype)
         move_dtype = tps.float_dtype() if dtype is not None else None
+        # One walk over the whole model: the walk from a component reaches
+        # the others through the wiring, so a per-component walk visited
+        # every object once per component (minutes on 2000 components).
+        seen: set = set()
         for component in self._components.values():
-            move_object_tensors(component, self.device, move_dtype)
+            move_object_tensors(component, self.device, move_dtype, seen=seen)
             self._move_connection_indices(component, self.device)
         for component in (self._fused_components or {}).values():
-            move_object_tensors(component, self.device, move_dtype)
+            move_object_tensors(component, self.device, move_dtype, seen=seen)
             self._move_connection_indices(component, self.device)
         return self
 
@@ -2688,7 +2700,74 @@ class SimulationModel:
         self._fusion_member_to_fused = {}
         if not getattr(self, "enable_fusion", True):
             return
+        clusters, arcs = self._fusable_clusters()
+        for members in clusters:
+            if len(members) < 2:
+                continue
+            n_cs = {int(getattr(m, "n_c", 1) or 1) for m in members}
+            member_id_set = {m.id for m in members}
+            cluster_arcs = [
+                a for a in arcs if a[0].id in member_id_set and a[2].id in member_id_set
+            ]
+            internal_arcs = []
+            aligned = True
+            if n_cs == {1}:
+                for sender, s_port, receiver, r_port, pairs in cluster_arcs:
+                    in_v = pairs[0][3] if pairs else None
+                    internal_arcs.append((sender, s_port, receiver, r_port, _slot_or_zero(in_v)))
+            elif len(n_cs) == 1:
+                # Batched metas fuse when every arc pairs instance i of the
+                # sender with instance i of the receiver on one slot: the
+                # cluster-aware batching orders the metas' instances so.
+                (n_c,) = n_cs
+                for sender, s_port, receiver, r_port, pairs in cluster_arcs:
+                    s_ics = [p[0] for p in pairs]
+                    r_ics = [p[1] for p in pairs]
+                    slots = {_slot_or_zero(p[3]) for p in pairs}
+                    # the batcher writes an identity-aligned connection without
+                    # instance indices (plain broadcasting over n_c)
+                    broadcast = len(pairs) == 1 and s_ics[0] is None and r_ics[0] is None
+                    explicit = (
+                        len(pairs) == n_c
+                        and sorted(int(i) for i in s_ics) == list(range(n_c))
+                        and all(int(a) == int(b) for a, b in zip(s_ics, r_ics))
+                    )
+                    if not (broadcast or explicit) or len(slots) != 1:
+                        aligned = False
+                        break
+                    internal_arcs.append((sender, s_port, receiver, r_port, slots.pop()))
+            else:
+                aligned = False
+            if not aligned:
+                LOGGER.info(
+                    "Skipping fusion of cluster %s (batched members not aligned instance to instance)",
+                    [m.id for m in members],
+                )
+                continue
+            fused = FusedStateSpaceSystem(
+                members=members,
+                internal_arcs=internal_arcs,
+                id="fused[" + "][".join(m.id for m in members) + "]",
+            )
+            n_c = max(n_cs)
+            if n_c > 1:
+                fused.n_c = n_c
+                fused._n_c_batched = n_c
+            self._fused_components[fused.id] = fused
+            for m in members:
+                self._fusion_member_to_fused[m.id] = fused
+            LOGGER.info(
+                "Fused state-space cluster %s <- %s",
+                fused.id,
+                [m.id for m in members],
+            )
 
+    def _fusable_arcs(self):
+        """Every connection whose output port is in the sender's
+        ``FUSABLE_OUTPUT_PORTS`` and whose input port is in the receiver's
+        ``FUSABLE_INPUT_PORTS``, as ``(sender, output port, receiver, input
+        port, pairs)`` with ``pairs`` the connection's ``(s_ic, r_ic, out_v,
+        in_v)`` instance and slot pairs (one pair for a singleton scalar link)."""
         arcs = []
         for comp in self._components.values():
             outs = getattr(type(comp), "FUSABLE_OUTPUT_PORTS", frozenset())
@@ -2704,15 +2783,16 @@ class SimulationModel:
                         continue
                     if self._components.get(recv.id) is not recv:
                         continue
-                    slot = cp.input_port_index.get(conn)
-                    if slot is None:
-                        slot = 0  # scalar port
-                    slot = int(slot.item()) if hasattr(slot, "item") else int(slot)
-                    arcs.append((comp, conn.output_port, recv, cp.input_port, slot))
-        if not arcs:
-            return
+                    arcs.append((comp, conn.output_port, recv, cp.input_port, slot_pairs(cp, conn)))
+        return arcs
 
-        # Union-find over member ids.
+    def _fusable_clusters(self):
+        """``(clusters, arcs)``: the components joined by fusable arcs, as
+        lists of members in ``components`` order, and the arcs
+        (:meth:`_fusable_arcs`)."""
+        arcs = self._fusable_arcs()
+        if not arcs:
+            return [], arcs
         parent = {}
 
         def find(cid):
@@ -2726,40 +2806,14 @@ class SimulationModel:
             ra, rb = find(sender.id), find(receiver.id)
             if ra != rb:
                 parent[ra] = rb
-
-        clusters = {}
+        by_root = {}
         for cid in parent:
-            clusters.setdefault(find(cid), []).append(cid)
-
-        for root, member_ids in clusters.items():
-            # Deterministic member order: model insertion order.
-            members = [c for c in self._components.values() if c.id in set(member_ids)]
-            if len(members) < 2:
-                continue
-            # Batched (compiled) components are outside fusion's v1 scope.
-            if any(int(getattr(m, "n_c", 1) or 1) != 1 for m in members):
-                LOGGER.info(
-                    "Skipping fusion of cluster %s (batched members)",
-                    [m.id for m in members],
-                )
-                continue
-            member_id_set = {m.id for m in members}
-            internal_arcs = [
-                a for a in arcs if a[0].id in member_id_set and a[2].id in member_id_set
-            ]
-            fused = FusedStateSpaceSystem(
-                members=members,
-                internal_arcs=internal_arcs,
-                id="fused[" + "][".join(m.id for m in members) + "]",
-            )
-            self._fused_components[fused.id] = fused
-            for m in members:
-                self._fusion_member_to_fused[m.id] = fused
-            LOGGER.info(
-                "Fused state-space cluster %s <- %s",
-                fused.id,
-                [m.id for m in members],
-            )
+            by_root.setdefault(find(cid), set()).add(cid)
+        clusters = [
+            [c for c in self._components.values() if c.id in member_ids]
+            for member_ids in by_root.values()
+        ]
+        return clusters, arcs
 
     def _resolve_execution_component(self, component_id: str) -> core.System:
         """The executing component for an id: a regular component, or the
