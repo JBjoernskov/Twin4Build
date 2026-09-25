@@ -4,6 +4,8 @@ from typing import Optional
 
 # Third party imports
 import torch
+
+from twin4build.systems.utils.discrete_statespace_system import StepParams
 import torch.nn as nn
 
 # Local application imports
@@ -318,6 +320,13 @@ class BuildingSpaceSystem(core.System, nn.Module):
             out[name] = params[key] if key in params else getattr(sub, name).get()
         return out
 
+    def step_constants(self, params):
+        """The two units' theta-only matrices for one rollout, by unit."""
+        return {
+            "thermal": self.thermal._build_matrices(self._resolve_sub_params(self.thermal, "thermal", params)),
+            "mass": self.mass._build_matrices(self._resolve_sub_params(self.mass, "mass", params)),
+        }
+
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step of the composite = thermal ++ mass.
 
@@ -347,6 +356,10 @@ class BuildingSpaceSystem(core.System, nn.Module):
         if transform_mode:
             p_th = self._resolve_sub_params(self.thermal, "thermal", params)
             p_ma = self._resolve_sub_params(self.mass, "mass", params)
+            mats = getattr(params, "matrices", None)
+            if mats is not None:
+                p_th, p_ma = StepParams(p_th), StepParams(p_ma)
+                p_th.matrices, p_ma.matrices = mats["thermal"], mats["mass"]
         else:
             cache = getattr(self, "_fwd_param_cache", None)
             if cache is None or cache[0] is not params:

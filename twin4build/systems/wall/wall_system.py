@@ -373,6 +373,11 @@ class WallSystem(core.System, nn.Module):
             id=f"ss_model_{self.id}",
         )
 
+    def step_constants(self, params):
+        """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
+        :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
+        return self._build_matrices(params)
+
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step wall dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
@@ -387,7 +392,9 @@ class WallSystem(core.System, nn.Module):
         # is part of the key: the attached disc_cache holds (Ad, Bd)
         # discretized at a specific T.
         if transform_mode:
-            matrices = self._build_matrices(params)
+            matrices = getattr(params, "matrices", None)
+            if matrices is None:
+                matrices = self._build_matrices(params)
             disc_cache = None
         else:
             cache = getattr(self, "_fwd_mat_cache", None)

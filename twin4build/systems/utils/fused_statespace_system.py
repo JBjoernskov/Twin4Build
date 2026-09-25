@@ -610,6 +610,10 @@ class FusedStateSpaceSystem(core.System, nn.Module):
     # forward / do_step
     # ------------------------------------------------------------------
 
+    def step_constants(self, params):
+        """The joint theta-only ``(A, B, C, D, E, F)`` for one rollout."""
+        return self._assemble(params)
+
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step of the fused cluster: ``(state, inputs, params) ->
         (new_state, outputs)``.
@@ -620,7 +624,9 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         namespaced.  Matrices are cached per params-dict identity (theta-only
         work, done once per theta in a sequential rollout)."""
         if transform_mode:
-            matrices = self._assemble(params)
+            matrices = getattr(params, "matrices", None)
+            if matrices is None:
+                matrices = self._assemble(params)
             disc_cache = None
         else:
             cache = getattr(self, "_fwd_mat_cache", None)
