@@ -165,6 +165,15 @@ class ReturnFlowJunctionSystem(core.System):
             if self.branch_temperature_slots
             else None
         )
+        # The same map as a constant 0/1 matrix (branches x temperature
+        # slots): the branch temperatures are then one small matmul instead
+        # of an index gather inside the branch reduction, which Triton's
+        # backend refused to compile on the ring (PassManager::run failed).
+        self._temperature_select = (
+            torch.nn.functional.one_hot(self._temperature_index, n_temperature).to(tps.float_dtype())
+            if self._temperature_index is not None
+            else None
+        )
 
         for output in self.output.values():
             output.initialize(
@@ -184,8 +193,15 @@ class ReturnFlowJunctionSystem(core.System):
         """
         # Sum over last dimension (input flows dimension) to preserve batch dimension
         temperature = inputs["airTemperatureIn"]
+        select = getattr(self, "_temperature_select", None)
         index = getattr(self, "_temperature_index", None)
-        if index is not None:
+        if select is not None:
+            if select.device != temperature.device or select.dtype != temperature.dtype:
+                select = select.to(device=temperature.device, dtype=temperature.dtype)
+                self._temperature_select = select
+            # (..., n_temperature) @ (n_temperature, n_branches) -> (..., n_branches)
+            temperature = temperature @ select.transpose(-1, -2)
+        elif index is not None:
             if index.device != temperature.device:
                 index = index.to(temperature.device)
                 self._temperature_index = index
