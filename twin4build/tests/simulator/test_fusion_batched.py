@@ -222,5 +222,29 @@ class TestBatchedFusion(unittest.TestCase):
         self.assertTrue((column_block >= 0).all())
 
 
+@unittest.skipUnless(torch.cuda.is_available(), "needs CUDA")
+class TestBatchedFusionCaptured(unittest.TestCase):
+    def test_batched_fused_captures_on_cuda(self):
+        """The captured functional rollout builds every state-space meta's
+        theta-only matrices once, inside the recording: their builders must
+        not copy from the host (a radiator's output row once did)."""
+        reference = build(n_pairs=3, model_id="cap_ref")
+        simulate(reference, execution_mode="functional", execution_backend="eager")
+        model = build(n_pairs=3, model_id="cap_src")
+        batched = model.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched.to(device="cuda", dtype=torch.float64)
+        simulate(batched, execution_mode="functional", execution_backend="cuda_graph")
+        for k in range(3):
+            torch.testing.assert_close(
+                history(model, f"Zone{k}", "indoorTemperature", batched),
+                history(reference, f"Zone{k}", "indoorTemperature"), rtol=1e-6, atol=1e-6,
+            )
+            torch.testing.assert_close(
+                history(model, f"Radiator{k}", "Power", batched),
+                history(reference, f"Radiator{k}", "Power"), rtol=1e-6, atol=1e-4,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

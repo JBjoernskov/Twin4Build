@@ -584,7 +584,10 @@ class SpaceHeaterSystem(core.System, nn.Module):
         # Output rows: the outlet water temperature (the last element) and the
         # delivered power ``UA/n * sum_i (T_i - T_zone)``, linear in the
         # states and the zone temperature (the fusable coupling row).
-        power_row = torch.tensor([0.0, 1.0], dtype=dt, device=dev)
+        # Built on the device (a Python list would be a host-to-device copy,
+        # illegal while a CUDA graph records the rollout that builds these
+        # matrices once per rollout).
+        power_row = torch.eye(2, dtype=dt, device=dev)[1]
         C_out = torch.stack(
             [
                 last_state.reshape(1, n).expand(n_c, -1),
