@@ -1249,10 +1249,16 @@ class Logger:
             self._block_count -= 1
             return
 
-        if not self.level_stack:
-            # An unbalanced remove (a message path that already popped): the
-            # indentation counter must never raise out of a model load.
+        if len(self.level_stack) <= 1:
+            # Nothing above the base level: an unbalanced remove.  A wrapped
+            # call (``@reset_print``, applied to every component method)
+            # resets the logger when its call depth returns to zero, which
+            # wipes the levels an enclosing task (``Estimator.estimate``)
+            # still holds; that task's closing removes then arrive at the
+            # base.  The base entry is never popped, so the indentation
+            # counters stay consistent and later removes cannot raise.
             self._pending_levels = 0
+            self.added_level = False
             return
 
         # Pending levels (added but no message printed yet) — pop without visual changes
