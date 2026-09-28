@@ -124,6 +124,7 @@ class TestDamperTorchSystem(unittest.TestCase):
         damper_batch.input["damperPosition"].initialize(n_t=1, n_s=batch_size)
         damper_batch.output["damperPosition"].initialize(n_t=1, n_s=batch_size)
         damper_batch.output["airFlowRate"].initialize(n_t=1, n_s=batch_size)
+        damper_batch.output["exhaustAirFlowRate"].initialize(n_t=1, n_s=batch_size)
 
         # Set input with batch size 3
         damper_batch.input["damperPosition"].set(torch.tensor([0.5, 0.7, 0.3]), i_t=0)

@@ -115,6 +115,8 @@ __all__ = [
     "AirToAirHeatRecoverySystem",
     # Air Handling Unit
     "AirHandlingUnitSystem",
+    "AirHandlingUnitCoreSystem",
+
     # Damper
     "DamperSystem",
     # Fan
@@ -139,6 +141,8 @@ __all__ = [
 
 _MODULES = {
     "AirHandlingUnitSystem": "air_handling_unit.air_handling_unit_system",
+    "AirHandlingUnitCoreSystem": "air_handling_unit.air_handling_unit_core_system",
+
     "AirToAirHeatRecoverySystem": "air_to_air_heat_recovery.air_to_air_heat_recovery_system",
     "BuildingSpaceMassSystem": "building_space.building_space_mass_system",
     "BuildingSpaceThermalSystem": "building_space.building_space_thermal_system",

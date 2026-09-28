@@ -55,7 +55,12 @@ from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import os
+
 import torch
+import torch.utils.checkpoint
+
+from twin4build.systems.utils.discrete_statespace_system import StepParams
 import torch.nn as nn
 
 import twin4build.systems as systems
@@ -367,6 +372,15 @@ class FunctionalModel:
         # requested-output producers) plus every forward-component
         # reverse-reachable from them over fresh edges.
         seed_extra = {comp.id for comp, _ in (outputs or []) if _has_real_forward(comp)}
+        # A measured producer is a requested output too: an algebraic chain
+        # that ends in a measurement (a terminal's damper read by its flow
+        # sensor, a unit read by its temperature and power sensors) must be
+        # computed by F, or its parameters would be frozen out of the fit.
+        for device in measurements or []:
+            if isinstance(device, systems.SensorSystem):
+                src = _single_source(device, "measuredValue")
+                if src is not None and _has_real_forward(src[0]):
+                    seed_extra.add(src[0].id)
         self.cone = self._influence_cone(seed_extra)
         self._default_params = {
             comp.id: {
@@ -1159,7 +1173,21 @@ class FunctionalModel:
             cache[1][comp.id] = p
         return p
 
-    def F(self, states_flat, theta, exogenous, feedback=None, transform_mode=None):
+    def step_constants(self, theta):
+        """Every state-space meta's theta-only matrices, built once per
+        rollout (``{meta id: what its step_constants returns}``): the
+        rollouts pass this into the step and :meth:`F` hands each meta its
+        entry, so the matrices are one tensor for the whole rollout instead
+        of one per step on the autograd tape."""
+        out = {}
+        for c in self.cone:
+            build = getattr(c, "step_constants", None)
+            if build is None or not getattr(c, "SUPPORTS_TRANSFORM_MODE", False):
+                continue
+            out[c.id] = build(self._params_for(c, theta, use_cache=False))
+        return out
+
+    def F(self, states_flat, theta, exogenous, feedback=None, transform_mode=None, constants=None):
         """One pure step for a single segment.
 
         Args:
@@ -1251,6 +1279,11 @@ class FunctionalModel:
                 else:
                     inputs[port] = _input_value(spec)
             params = self._params_for(c, theta, use_cache=not transform_mode)
+            if constants:
+                mats = constants.get(c.id)
+                if mats is not None:
+                    params = StepParams(params)
+                    params.matrices = mats
             st = states.get(c.id, None)
             if getattr(c, "SUPPORTS_TRANSFORM_MODE", False):
                 x_next_c, outs = c.forward(
@@ -1400,6 +1433,16 @@ class FunctionalModel:
             elif spec[0] == "vector":
                 for part in spec[1]:
                     bind(consumer_id, part)
+            elif spec[0] == "vector_grouped":
+                # the grouped form of a vector port (``_group_vector_spec``):
+                # per producer the aligned pairs (s_ic, out_v, r_ic, in_v),
+                # the exogenous slots (no coupling), and per-slot leftovers
+                _, _n_c, _n_v, groups, _exo, leftovers = spec
+                for pid, _pport, _is_vector, s_ic, _out_v, r_ic, _in_v in groups:
+                    for s_i, r_i in zip(s_ic.reshape(-1).tolist(), r_ic.reshape(-1).tolist()):
+                        union((consumer_id, int(r_i)), (pid, int(s_i)))
+                for _rows, _slot, slot_spec in leftovers:
+                    bind(consumer_id, slot_spec)
             # "exogenous": data, no coupling
 
         for cid, ports in self.wiring.items():
@@ -1498,8 +1541,8 @@ class FunctionalModel:
         if step is None:
             model = self
 
-            def _step(y, theta, u):
-                return model.F_aug(y, theta, u, transform_mode=True)
+            def _step(y, theta, u, constants=None):
+                return model.F_aug(y, theta, u, transform_mode=True, constants=constants)
 
             step = torch.compile(_step, fullgraph=True, dynamic=False)
             self.__dict__["_compiled_step"] = step
@@ -1510,7 +1553,7 @@ class FunctionalModel:
         """Augmented-state width: component states + cut-feedback lag variables."""
         return self.D + self._n_feedback
 
-    def F_aug(self, y_flat, theta, exogenous, transform_mode=None):
+    def F_aug(self, y_flat, theta, exogenous, transform_mode=None, constants=None):
         """Augmented one-step map over ``y = [state | feedback]``.
 
         The cut-feedback signals are one-step *lag variables* -- i.e. state in a
@@ -1526,7 +1569,7 @@ class FunctionalModel:
         s = y_flat[: self.D]
         w = y_flat[self.D :] if n_fb else None
         x_next, meas, fb_out = self.F(
-            s, theta, exogenous, w, transform_mode=transform_mode
+            s, theta, exogenous, w, transform_mode=transform_mode, constants=constants
         )
         y_next = torch.cat([x_next, fb_out]) if n_fb else x_next
         return y_next, meas
@@ -1737,16 +1780,13 @@ def functional_rollout(
     functional_model.prepare_routes(theta.device)
     y = y0
     rows = []
+    constants = functional_model.step_constants(theta) if (transform_mode or step is not None) else None
     if step is None:
-        for t in range(exogenous_tape.shape[0]):
-            y, meas = functional_model.F_aug(
-                y, theta, exogenous_tape[t], transform_mode=transform_mode
-            )
-            rows.append(meas)
-    else:
-        for t in range(exogenous_tape.shape[0]):
-            y, meas = step(y, theta, exogenous_tape[t])
-            rows.append(meas)
+        def step(y_, theta_, u_, constants_, _fm=functional_model, _tm=transform_mode):
+            return _fm.F_aug(y_, theta_, u_, transform_mode=_tm, constants=constants_)
+    for t in range(exogenous_tape.shape[0]):
+        y, meas = _step_call(step, y, theta, exogenous_tape[t], constants)
+        rows.append(meas)
     if not rows:
         return torch.zeros(
             (0, functional_model.n_meas),
@@ -1785,6 +1825,21 @@ def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, s
     return torch.stack(rows, dim=1)
 
 
+#: Recompute every time step in the backward pass instead of saving its
+#: intermediates (``torch.utils.checkpoint`` around each step call): the
+#: rollout's autograd tape then holds the state and exogenous rows per step
+#: and nothing of what the step computed from them.  The backward pass runs
+#: each step's forward a second time.  ``T4B_ROLLOUT_CHECKPOINT=1``.
+ROLLOUT_CHECKPOINT = os.environ.get("T4B_ROLLOUT_CHECKPOINT", "0").strip().lower() in {"1", "true", "yes"}
+
+
+def _step_call(step, y, theta, u_t, constants):
+    """One step call, recomputed in the backward when :data:`ROLLOUT_CHECKPOINT`."""
+    if ROLLOUT_CHECKPOINT and torch.is_grad_enabled():
+        return torch.utils.checkpoint.checkpoint(step, y, theta, u_t, constants, use_reentrant=False)
+    return step(y, theta, u_t, constants)
+
+
 def functional_rollout_tape(
     functional_model, y0, theta, exogenous_tape, *, transform_mode=False, step=None
 ):
@@ -1806,13 +1861,13 @@ def functional_rollout_tape(
     y = y0
     states = [y]
     outputs = []
+    compiled = step is not None
+    if step is None:
+        def step(y_, theta_, u_, constants_, _fm=functional_model, _tm=transform_mode):
+            return _fm.F_aug(y_, theta_, u_, transform_mode=_tm, constants=constants_)
+    constants = functional_model.step_constants(theta) if (transform_mode or compiled) else None
     for t in range(exogenous_tape.shape[0]):
-        if step is not None:
-            y, row = step(y, theta, exogenous_tape[t])
-        else:
-            y, row = functional_model.F_aug(
-                y, theta, exogenous_tape[t], transform_mode=transform_mode
-            )
+        y, row = _step_call(step, y, theta, exogenous_tape[t], constants)
         states.append(y)
         outputs.append(row)
     if outputs:

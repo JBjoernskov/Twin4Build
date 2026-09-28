@@ -1,15 +1,42 @@
 # Standard library imports
 import datetime
+import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
 import torch
+import torch.utils.checkpoint
 import torch.nn as nn
 from scipy import signal
 
 # Local application imports
 import twin4build.utils.types as tps
 from twin4build import core
+
+
+#: How the transform-mode step (compiled, captured, vmapped) discretises:
+#: ``"phi1"`` exponentiates the n x n matrix ``A T`` and carries
+#: ``phi1(A T) = sum (A T)^k / (k+1)!`` through the same scaling and
+#: squaring, ``Bd = phi1(A T) B T``; ``"block"`` exponentiates the
+#: (n+m) x (n+m) block ``[[A T, B T], [0, 0]]``.  Same ZOH result to rounding;
+#: the block form works on a matrix as wide as the inputs are many (a zone: 6
+#: states, 11 inputs, 17 x 17), and its ~26 saved products per instance per
+#: step were the tape of an unrolled rollout.  ``T4B_ZOH_EXPM`` overrides.
+ZOH_EXPM = os.environ.get("T4B_ZOH_EXPM", "phi1").strip().lower()
+#: Recompute the exponential's chain in the backward pass instead of saving
+#: it (``torch.utils.checkpoint``): keeps one matrix per instance per step.
+#: ``T4B_EXPM_CHECKPOINT=1`` switches it on.
+EXPM_CHECKPOINT = os.environ.get("T4B_EXPM_CHECKPOINT", "0").strip().lower() in {"1", "true", "yes"}
+
+
+class StepParams(dict):
+    """A component's params dict for one functional step, carrying the
+    theta-only state-space matrices the rollout built once
+    (:meth:`FunctionalModel.step_constants`) in ``matrices``; a unit's
+    transform-mode ``forward`` uses them instead of rebuilding per step, so
+    an unrolled rollout's autograd tape holds one copy of them."""
+
+    matrices = None
 
 
 def _functorch_transform_active() -> bool:
@@ -110,6 +137,57 @@ def _expm_ss(M, order=8, squarings=18):
     return (I + delta).reshape(*lead, N, N)
 
 
+def _expm_phi1_ss_fused(X, order=8, squarings=18):
+    """:func:`_expm_phi1_ss` with every product through :func:`_small_matmul`
+    (Inductor fuses them; see :func:`_expm_ss_fused`)."""
+    N = X.shape[-1]
+    Xs = X / (2.0**squarings)
+    I = torch.eye(N, dtype=X.dtype, device=X.device)
+    q = I.expand_as(Xs)
+    p = I.expand_as(Xs)
+    for k in range(order, 1, -1):
+        q = I + _small_matmul(Xs, q) / k
+        p = I + _small_matmul(Xs, p) / (k + 1)
+    delta = _small_matmul(Xs, q)  # exp(Xs) - I
+    phi = I + _small_matmul(Xs, p) / 2.0  # phi1(Xs)
+    for _ in range(squarings):
+        phi = phi + 0.5 * _small_matmul(delta, phi)  # phi1(2Y) = (I + exp(Y)) phi1(Y) / 2
+        delta = 2.0 * delta + _small_matmul(delta, delta)
+    return I + delta, phi
+
+
+def _expm_phi1_ss(X, order=8, squarings=18):
+    """``(exp(X), phi1(X))`` with ``phi1(X) = sum_k X^k / (k+1)!``, by the
+    scaling and squaring of :func:`_expm_ss` carried on the pair:
+    ``exp(2Y) = exp(Y)^2`` and ``phi1(2Y) = (I + exp(Y)) phi1(Y) / 2``.
+
+    The ZOH discretisation is ``Ad = exp(A T)``, ``Bd = phi1(A T) B T``,
+    which needs no inverse of ``A`` (a zero-flow mass balance is singular)
+    and no augmented block: the matrices stay n x n.  Same fixed order and
+    squarings as :func:`_expm_ss` (``vmap``-safe, sized for the stiffest
+    ``A T`` over the bounds; the input matrix, which the block form folds
+    into the scaled norm, enters here linearly).
+    """
+    if torch.compiler.is_compiling():
+        return _expm_phi1_ss_fused(X, order=order, squarings=squarings)
+    N = X.shape[-1]
+    lead = X.shape[:-2]
+    Xs = (X / (2.0**squarings)).reshape(-1, N, N)
+    I = torch.eye(N, dtype=X.dtype, device=X.device)
+    I_b = I.expand(Xs.shape[0], N, N)
+    q = I_b
+    p = I_b
+    for k in range(order, 1, -1):
+        q = torch.baddbmm(I, Xs, q, alpha=1.0 / k)
+        p = torch.baddbmm(I, Xs, p, alpha=1.0 / (k + 1))
+    delta = torch.bmm(Xs, q)
+    phi = torch.baddbmm(I, Xs, p, alpha=0.5)
+    for _ in range(squarings):
+        phi = torch.baddbmm(phi, delta, phi, alpha=0.5)
+        delta = torch.baddbmm(delta, delta, delta, beta=2.0)
+    return (I + delta).reshape(*lead, N, N), phi.reshape(*lead, N, N)
+
+
 def _functorch_active() -> bool:
     """True when running under a torch.func transform (vmap/jacrev/grad).
 
@@ -150,6 +228,15 @@ def _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
     n = A.shape[-1]
     m = B.shape[-1]
     T = sample_time
+    if transform_mode is None:
+        transform_mode = _functorch_active()
+    if transform_mode and ZOH_EXPM == "phi1":
+        X = A_eff * T
+        if EXPM_CHECKPOINT:
+            expX, phi = torch.utils.checkpoint.checkpoint(_expm_phi1_ss, X, use_reentrant=False)
+        else:
+            expX, phi = _expm_phi1_ss(X)
+        return expX, phi @ (B_eff * T)
     # Block matrix M = [[A*T, B*T], [0, 0]]; expm(M) = [[Ad, Bd], [0, I]].
     # Built out-of-place (cat + zero-row pad) so it is ``vmap``-safe -- an
     # in-place ``M[..., :n, :n] = ...`` fails when A_eff/B_eff carry a vmap batch
@@ -160,10 +247,11 @@ def _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
     # the mode explicitly.  ``None`` preserves compatibility for direct calls,
     # while the explicit bool keeps the private functorch-state query out of
     # captured production graphs.
-    if transform_mode is None:
-        transform_mode = _functorch_active()
     if transform_mode:
-        expM = _expm_ss(M)
+        if EXPM_CHECKPOINT:
+            expM = torch.utils.checkpoint.checkpoint(_expm_ss, M, use_reentrant=False)
+        else:
+            expM = _expm_ss(M)
     else:
         expM = torch.matrix_exp(M)
     return expM[..., :n, :n], expM[..., :n, n:]
