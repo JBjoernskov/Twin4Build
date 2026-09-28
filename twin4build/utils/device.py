@@ -65,9 +65,15 @@ def _move_tensor(
     return t.to(device=device)
 
 
+#: Objects the walk does not enter: the semantic model's entities hold no
+#: tensors, and a component reaches thousands of them through
+#: ``base_components`` and the translator maps.
+_SKIP_MODULE_PREFIXES = ("twin4build.model.semantic_model",)
+
+
 def _is_twin4build_object(obj) -> bool:
     module = getattr(type(obj), "__module__", "") or ""
-    return module.startswith("twin4build")
+    return module.startswith("twin4build") and not module.startswith(_SKIP_MODULE_PREFIXES)
 
 
 def _move_parameter_inplace(
@@ -109,7 +115,9 @@ def _assign(container, key, value) -> None:
         setattr(container, key, value)
 
 
-def move_object_tensors(root, device, dtype: Optional[torch.dtype] = None) -> None:
+def move_object_tensors(
+    root, device, dtype: Optional[torch.dtype] = None, seen: Optional[set] = None
+) -> None:
     """Recursively move every tensor reachable from ``root`` to ``device``.
 
     Traverses attributes of twin4build objects and ``nn.Module``s plus plain
@@ -117,9 +125,16 @@ def move_object_tensors(root, device, dtype: Optional[torch.dtype] = None) -> No
     identity must survive, they are registered in module ``_parameters``
     dicts and may be shared); plain tensors are replaced by moved copies.
     Non-floating tensors (masks, index tensors) keep their dtype.
+
+    ``seen`` (object ids already visited) may be shared between calls: the
+    walk from one component reaches the others through the wiring, so a
+    caller moving every component of a model passes one set and each
+    object is visited once instead of once per component.  The semantic
+    model's entities are not entered (they hold no tensors).
     """
     device = torch.device(device)
-    seen: set = set()
+    if seen is None:
+        seen = set()
     stack = [root]
     while stack:
         obj = stack.pop()

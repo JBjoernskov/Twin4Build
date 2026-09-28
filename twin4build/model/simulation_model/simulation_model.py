@@ -451,11 +451,15 @@ class SimulationModel:
         if dtype is not None:
             tps.set_float_dtype(dtype)
         move_dtype = tps.float_dtype() if dtype is not None else None
+        # One walk over the whole model: the walk from a component reaches
+        # the others through the wiring, so a per-component walk visited
+        # every object once per component (minutes on 2000 components).
+        seen: set = set()
         for component in self._components.values():
-            move_object_tensors(component, self.device, move_dtype)
+            move_object_tensors(component, self.device, move_dtype, seen=seen)
             self._move_connection_indices(component, self.device)
         for component in (self._fused_components or {}).values():
-            move_object_tensors(component, self.device, move_dtype)
+            move_object_tensors(component, self.device, move_dtype, seen=seen)
             self._move_connection_indices(component, self.device)
         return self
 
