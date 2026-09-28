@@ -64,7 +64,10 @@ dependencies = [
     "jupyter",
     "nbformat",
     "rdflib",
-    "brickschema[persistence]",
+    # brickschema 0.8.0 (2026-09) dropped its importlib-resources dependency but
+    # still imports it in brickify (ModuleNotFoundError on every import of
+    # the semantic model); stay on 0.7 until that is fixed upstream
+    "brickschema[persistence]<0.8",
     "click_spinner",
     "xlrd",
     "rdflib_sqlalchemy",
