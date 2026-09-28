@@ -722,9 +722,12 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         ports, advance the joint state, write every member output port.
 
         Thin port-I/O wrapper around :meth:`forward` (single source of truth).
-        The members' ``do_step`` is never called; their internal input ports
-        (eliminated arcs) are not updated -- the coupling happens inside the
-        joint matrices."""
+        The members' ``do_step`` is never called; the coupling of the
+        eliminated arcs happens inside the joint matrices.  Their receiving
+        ports are still written from the senders' outputs afterwards, so a
+        member's internal input (a zone's ``heatGain`` from its radiator, its
+        ``wallHeatGain`` from a wall) keeps the value and history it had
+        before fusion."""
         inputs = {name: self._input[name].get() for name in self._ext_names}
         x = self.get_state()  # (n_s, n_c, N) via the members' own states
         x_next, outs = self.forward(
@@ -733,3 +736,10 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         self.set_state(x_next)
         for name, value in outs.items():
             self._output[name]._set(value, i_t=step_index)
+        for (s, s_port, r, r_port, slot) in self._internal_arcs:
+            port = r.input[r_port]
+            value = s.output[s_port].get()
+            if isinstance(port, tps.Vector):
+                port._set(value, i_t=step_index, i_v=int(slot))
+            else:
+                port._set(value, i_t=step_index)

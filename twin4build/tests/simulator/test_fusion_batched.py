@@ -113,6 +113,22 @@ class TestBatchedFusion(unittest.TestCase):
         self.assertTrue(torch.isfinite(power).all())
         self.assertGreater(float(power[-1]), 0.0)
 
+    def test_internal_input_ports_keep_their_history(self):
+        """The eliminated arc's receiving port (the zone's ``heatGain`` from
+        its radiator) is written every step, so its history reads as before
+        fusion and equals the sender's output."""
+        model = build(n_pairs=2)
+        simulate(model)
+        for k in range(2):
+            gain = model.components[f"Zone{k}"].input["heatGain"].history()
+            power = model.components[f"Radiator{k}"].output["Power"].history()
+            torch.testing.assert_close(gain.reshape(gain.shape[0], -1), power.reshape(power.shape[0], -1))
+        walls = build(n_pairs=1, walls=True, model_id="fusion_walls")
+        simulate(walls)
+        gain = walls.components["Zone0"].input["wallHeatGain"].history()
+        flow = walls.components["Wall0"].output["heatFlowRateA"].history()
+        torch.testing.assert_close(gain.reshape(gain.shape[0], -1)[:, 0], flow.reshape(flow.shape[0], -1)[:, 0])
+
     def test_power_row_matches_the_direct_formula(self):
         r = tb.SpaceHeaterSystem(thermalMassHeatCapacity=5e4, UA=40.0, nelements=3, id="r")
         r.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=STEP)
