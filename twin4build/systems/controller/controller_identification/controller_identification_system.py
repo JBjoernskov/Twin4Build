@@ -790,6 +790,26 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         it out of the traced cone (see ``_replays_data``)."""
         return bool(getattr(self, "playback", False))
 
+    def replayed_output_history(self, output_name: str, n_t: int):
+        """The history this controller replays on ``output_name`` over the
+        first ``n_t`` steps, or ``None``.  In playback the command is the
+        measured actuator position, wired from the command's own data sensor
+        (``rewire(mode="playback")``): its logged history is the answer,
+        and a functional simulation records it in one shot instead of
+        stepping this controller once per time step."""
+        if not self.replays_data() or output_name != "inputSignal":
+            return None
+        for point in self.connects_at:
+            if point.input_port != "actuatorMeasured":
+                continue
+            for connection in point.connects_system_through:
+                port = connection.connects_system.output[connection.output_port]
+                history = port._history
+                if history is None or not (port._history_is_populated or port.is_leaf):
+                    return None
+                return history[:n_t]
+        return None
+
     def initialize(
         self,
         start_time: List[datetime.datetime],

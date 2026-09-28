@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import os
 import time
+import warnings
 import weakref
 
 import torch
@@ -26,6 +27,41 @@ def _sync_phases_enabled() -> bool:
 # faulting kernel (with SYNC_PHASES_ENV on, the preceding phases completed
 # without a device error).
 LAST_PHASE: str | None = None
+
+
+#: Above this many component-steps (functional components x time steps) a
+#: capture of the *eager* step is warned about: it records every kernel of
+#: the rollout (thousands per time step for the eager step, a few hundred
+#: for the compiled one) at roughly 8 kB of host memory each; a six-day pass
+#: of a 2000-component model recorded about three million nodes, 43 GB.
+LARGE_EAGER_CAPTURE_COMPONENT_STEPS = 500_000
+
+
+def warn_if_large_eager_capture(n_components: int, n_steps: int, compiled: bool) -> bool:
+    """Warn when a CUDA-graph capture of the eager step is large.
+
+    Capturing the eager step is legitimate where nothing can compile it (a
+    Windows torch without Triton) and cheap on small models; on a large one
+    the record runs to tens of gigabytes of host memory.  Returns whether a
+    warning was issued.
+    """
+    if compiled:
+        return False
+    size = int(n_components) * int(n_steps)
+    if size <= LARGE_EAGER_CAPTURE_COMPONENT_STEPS:
+        return False
+    warnings.warn(
+        "Capturing the eager functional step of a large model (%d functional "
+        "components x %d time steps): the CUDA graph records every kernel of "
+        "the rollout and its host memory grows with them (about 8 kB per "
+        "kernel; a 2000-component, 864-step pass recorded 43 GB). On a "
+        "Triton-capable torch set compile_step='auto' or True so the capture "
+        "records the compiled step instead; otherwise consider "
+        "execution_backend='eager' or a shorter window." % (n_components, n_steps),
+        RuntimeWarning,
+        stacklevel=3,
+    )
+    return True
 
 
 def mark_phase(name: str) -> None:

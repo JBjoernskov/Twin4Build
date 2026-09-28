@@ -44,11 +44,20 @@ class BatchedObjectiveEvaluator:
     # evaluations are valid.  Keep those bundles eager; objective-only line
     # searches remain captured for every method.
     _CAPTURE_SAFE_BUNDLES = frozenset(
-        {"values", "value_grad", "column_values", "column_value_grad"}
+        {"values", "value_grad", "column_values", "column_value_grad", "column_gradients"}
     )
     _NONFINITE_PENALTY = 1e20
 
     def __init__(self, objective):
+        simulator = objective.est.simulator
+        if getattr(simulator, "execution_backend", None) == "cuda_graph":
+            active = getattr(simulator, "step_compilation_active", None)
+            compiled = bool(active(objective.est._device)) if callable(active) else False
+            _cuda_graph.warn_if_large_eager_capture(
+                len(getattr(getattr(objective, "composer", None), "cone", ())),
+                int(sum(int(n) for n in getattr(objective, "n_t", ()))),
+                compiled,
+            )
         self.objective = objective
         self.capture = objective.est.simulator.execution_backend == "cuda_graph"
         self._graphs = {}
@@ -77,6 +86,13 @@ class BatchedObjectiveEvaluator:
         fn = self.objective.batched_residual_and_jacobian
         return self._call("residual_jacobian", fn, x)
 
+    def column_gradients(self, x, selector):
+        """Per-column losses and, per row, the gradient of ``selector[b] . cols[b]``:
+        one chunk of the column-loss Jacobian (``x`` repeated per row,
+        ``selector`` one-hot) in one batched backward pass."""
+        fn = self.objective.batched_column_gradients
+        return self._call("column_gradients", fn, x, selector)
+
     def value_grad_hessian(self, x):
         loss = lambda th: self.objective.loss(th, transform_mode=True)
         grad_value = torch.func.grad_and_value(loss)
@@ -88,15 +104,15 @@ class BatchedObjectiveEvaluator:
 
         return self._call("value_grad_hessian", fn, x)
 
-    def _call(self, name, fn, x):
+    def _call(self, name, fn, x, *aux):
         try:
-            return self._call_inner(name, fn, x)
+            return self._call_inner(name, fn, x, *aux)
         except Exception as exc:
             if x.device.type == "cuda" and hasattr(exc, "add_note"):
                 exc.add_note(_cuda_graph.phase_note())
             raise
 
-    def _call_inner(self, name, fn, x):
+    def _call_inner(self, name, fn, x, *aux):
         if x.device.type == "cuda":
             torch.cuda.synchronize(x.device)
         started = time.perf_counter()
@@ -108,10 +124,10 @@ class BatchedObjectiveEvaluator:
         if not capture_bundle:
             if x.device.type == "cuda":
                 _cuda_graph.mark_phase(f"{name}:eager")
-            output = fn(x)
+            output = fn(x, *aux)
             graph_event = None
         else:
-            graph_key = (name, tuple(x.shape))
+            graph_key = (name, tuple(x.shape), tuple(tuple(a.shape) for a in aux))
             graph = self._graphs.get(graph_key)
             if graph is None:
                 graph = CudaGraphCallable(fn)
@@ -119,7 +135,7 @@ class BatchedObjectiveEvaluator:
                 graph_event = "capture"
             else:
                 graph_event = "replay"
-            output = graph(x)
+            output = graph(x, *aux)
             # CUDAGraph reuses static output buffers. Solver iterates retain
             # previous values across later replays, so return owned snapshots.
             _cuda_graph.mark_phase(f"{name}:{graph_event}:clone-outputs")
@@ -156,6 +172,8 @@ class BatchedObjectiveEvaluator:
         return output
 
     def _finite_bundle(self, name, output):
+        if name == "column_gradients":
+            name = "column_value_grad"  # the same (columns, gradient) shape and checks
         """Return finite solver inputs while preserving a rejection mask."""
         if name == "values":
             invalid = ~torch.isfinite(output)
