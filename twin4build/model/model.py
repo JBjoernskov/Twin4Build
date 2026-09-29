@@ -897,7 +897,8 @@ class Model:
             draw_simulation_model: Whether to draw the simulation model graph.
             validate_model: Whether to perform model validation.
             force_config_overwrite: If True, all parameters are read from config.
-            logfile: Path to the plain LOGGER file.
+            logfile: Path to the plain LOGGER file. None (default) leaves
+                ``LOGGER.logfile`` as it is.
             enable_fusion: Whether to fuse connected state-space clusters at load.
             semantic_model_filename: Deprecated (removed in 2.1). Use
                 ``SemanticModel`` + ``Translator.translate`` instead.
@@ -973,7 +974,7 @@ class Model:
             draw_simulation_model: Whether to create and save the system graph.
             validate_model: Whether to perform model validation.
             force_config_overwrite: Whether to force the configuration file to be overwritten.
-            logfile: Path to the log file.
+            logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
         """
         assert (
             semantic_model_filename is None or simulation_model_filename is None
@@ -985,7 +986,9 @@ class Model:
 
         # if verbose is not None:
         #     LOGGER.verbose = verbose
-        LOGGER.logfile = logfile
+        # ``None`` is "not given": a logfile configured on LOGGER stays.
+        if logfile is not None:
+            LOGGER.logfile = logfile
 
         LOGGER.task("Loading model")
         LOGGER.add_level()

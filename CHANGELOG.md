@@ -368,7 +368,8 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   terminal), or appended as plain text to `LOGGER.logfile` when one is set.
   `logfile=None` means no file: the implicit `progress.log` in the working
   directory is gone (#138). A logfile that cannot be written gives a
-  `RuntimeWarning` once instead of failing silently.
+  `RuntimeWarning` once instead of failing silently. `load(logfile=None)`
+  leaves a configured `LOGGER.logfile` as it is.
 - `LOGGER.use_stdlib_logging()`: opt-in forwarding of every line as a
   `logging.LogRecord` on `logging.getLogger("twin4build")` (level from the
   badge; badge, nesting depth and line number in `t4b_*` attributes;
