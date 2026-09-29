@@ -452,15 +452,16 @@ class TestCitsStructureLiterals(unittest.TestCase):
     """The candidate structure and the normalisation bounds as literals."""
 
     def test_generic_candidate_structure_survives(self):
-        """A generic controller with its own candidate list reloads with
-        that list, not with the class default (two PIDs and a cascade)."""
+        """A generic controller with its own candidate list and two
+        actuators reloads with that list, not with the class default (two
+        PIDs and a cascade), and steps like the original."""
         model_ids = ["test_cits_structure", "test_cits_structure_reloaded"]
         for model_id in model_ids:
             remove_model_folder(model_id)
         try:
             model = tb.Model(id=model_ids[0])
             cits = ControllerIdentificationSystem(
-                id="cits", n_sensors=2, n_setpoints=1, n_on_off_signals=2, n_actuators=1,
+                id="cits", n_sensors=2, n_setpoints=1, n_on_off_signals=2, n_actuators=2,
                 setpoint_controllers=[PIDControllerSystem],
                 setpoint_controller_kwargs=[{"kp": 0.4, "Ti": 600.0, "is_reverse": True}],
                 cascade_controllers=[CascadeControllerSystem],
@@ -470,11 +471,21 @@ class TestCitsStructureLiterals(unittest.TestCase):
             cits.beta_0.set(torch.tensor([1.0, 0.0], dtype=tps.float_dtype()), normalized=False)
             cits.on_off_signal_norm_min = [0.0, 15.0]
             cits.on_off_signal_norm_max = [300.0, 25.0]
+            # The second actuator differs from the first in every group.
+            model.simulation_model.set_parameters(
+                [0.9, 0.25, 0.2, 0.3, [0.2, 0.8]],
+                [cits] * 5,
+                ["candidate_1_0.kp", "alpha_gate_1", "default_output_1", "gate_1.threshold", "alpha_1"],
+            )
+            cits.candidate_1_1.ctrl_b.is_reverse = False
             for k in range(2):
                 model.add_connection(_schedule(f"s{k}", 21.0), cits, "scheduleValue", "sensorValue", input_port_index=k)
                 model.add_connection(_schedule(f"o{k}", 1.0), cits, "scheduleValue", "onOffSignal", input_port_index=k)
             model.add_connection(_schedule("sp", 22.0), cits, "scheduleValue", "setpointValue", input_port_index=0)
-            model.add_connection(cits, SensorSystem(id="out"), "inputSignal", "measuredValue", output_port_index=0)
+            for a in range(2):
+                model.add_connection(
+                    cits, SensorSystem(id=f"out{a}"), "inputSignal", "measuredValue", output_port_index=a
+                )
             model.load(draw_semantic_model=False, draw_simulation_model=False)
             model.serialize()
 
@@ -497,6 +508,38 @@ class TestCitsStructureLiterals(unittest.TestCase):
             self.assertEqual(_values(cits2.beta_b_0), _values(cits.beta_b_0))
             self.assertEqual(cits2.on_off_signal_norm_min.tolist(), [0.0, 15.0])
             self.assertEqual(cits2.on_off_signal_norm_max.tolist(), [300.0, 25.0])
+            self.assertEqual(cits2.n_actuators, 2)
+            self.assertAlmostEqual(_values(cits2.candidate_1_0.kp)[0], 0.9, places=12)
+            self.assertEqual(_values(cits2.alpha_gate_1), [0.25])
+            self.assertEqual(_values(cits2.alpha_1), [0.2, 0.8])
+            self.assertTrue(cits2.candidate_0_1.ctrl_b.is_reverse)
+            self.assertFalse(cits2.candidate_1_1.ctrl_b.is_reverse)
+            self.assertEqual(cits2.populate_config(), cits.populate_config())
+
+            # Same inputs, same outputs, step by step.
+            n_steps = 24
+            end = START + datetime.timedelta(seconds=STEP * n_steps)
+            rng = np.random.default_rng(0)
+            for c in (cits, cits2):
+                c.initialize(start_time=[START], end_time=[end], step_size=[STEP])
+            outputs = {id(cits): [], id(cits2): []}
+            for k in range(n_steps):
+                inputs = {
+                    "sensorValue": torch.tensor(rng.uniform(18, 26, size=(1, 1, 2)), dtype=tps.float_dtype()),
+                    "setpointValue": torch.tensor(rng.uniform(20, 24, size=(1, 1, 1)), dtype=tps.float_dtype()),
+                    "onOffSignal": torch.tensor(
+                        [[[rng.uniform(0, 300), rng.uniform(15, 25)]]], dtype=tps.float_dtype()
+                    ),
+                }
+                for c in (cits, cits2):
+                    for port, value in inputs.items():
+                        c.input[port].set(value.clone(), k)
+                    c.do_step(k * STEP, START, STEP, k)
+                    outputs[id(c)].append(c.output["inputSignal"].get().detach().clone())
+            original, restored = (torch.stack(outputs[id(c)]) for c in (cits, cits2))
+            self.assertGreater(float(original[..., 0].std()), 1e-3)
+            self.assertGreater(float((original[..., 0] - original[..., 1]).abs().max()), 1e-3)
+            torch.testing.assert_close(restored, original, rtol=1e-12, atol=1e-12)
         finally:
             for model_id in model_ids:
                 remove_model_folder(model_id)
