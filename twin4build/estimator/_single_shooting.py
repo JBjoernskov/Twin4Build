@@ -384,6 +384,48 @@ class FunctionalEstimationObjective:
             out[comp.id] = Y[:, start:stop].reshape(Y.shape[0], n_c, ss).detach().cpu().clone()
         return out
 
+    def continuity_jumps(self, x) -> dict:
+        """The jumps at the window boundaries at a solver vector, per
+        executing component: ``{component id: (P-1, n_c, state_size)}``, the
+        start of window ``p + 1`` minus the end of window ``p`` in physical
+        units (``NaN`` for a state that is not a variable).  A jump is the
+        part of a state the fit sets anew at a boundary instead of carrying
+        it over; the defect the objective scores is its negative over the
+        tolerance.  Empty without multiple shooting."""
+        x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
+        windows = self._windows()
+        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext:
+            return {}
+        theta_phys, init_phys = self._physical(x)
+        Y0, tape = windows
+        Y = self._Y0_with(Y0, init_phys)
+        with torch.no_grad():
+            _out, end = self.est.simulator.rollout_functional_windows(self.composer, Y, theta_phys, tape, return_end=True)
+        jumps = torch.full_like(Y[1:], float("nan"))
+        idx = self.init_index
+        jumps[:, idx] = Y[1:, idx] - end[:-1, idx]
+        return self._per_component(jumps)
+
+    def continuity_tolerance(self) -> dict:
+        """The continuity tolerance of every state that is a variable, per
+        executing component: ``{component id: (1, n_c, state_size)}``
+        (``NaN`` elsewhere); a jump over its tolerance is the defect column
+        the objective scores.  Empty without multiple shooting."""
+        windows = self._windows()
+        if self.n_init == 0 or windows is None:
+            return {}
+        Y0 = windows[0]
+        sd = torch.full_like(Y0[:1], float("nan"))
+        sd[:, self.init_index] = self.init_sd.to(sd.dtype)
+        return self._per_component(sd)
+
+    def _per_component(self, flat: torch.Tensor) -> dict:
+        """``(rows, D_aug)`` split into ``{component id: (rows, n_c, state_size)}``."""
+        out = {}
+        for comp, (start, stop), (n_c, ss) in zip(self.layout.components, self.layout.slices, self.layout.shapes):
+            out[comp.id] = flat[:, start:stop].reshape(flat.shape[0], n_c, ss).detach().cpu().clone()
+        return out
+
     def init_values(self, x) -> dict:
         """The optimised initial states per window and state label from a
         solver vector (``{window p: {label: value}}``), empty without them."""

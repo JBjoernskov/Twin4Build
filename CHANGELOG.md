@@ -46,7 +46,12 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   residuals alone.  The result carries the estimated states:
   `estimated_initial_state` (per executing component),
   `estimated_initial_state_instances` (per original component, one row per
-  period) and `estimated_initial_state_labels`.
+  period) and `estimated_initial_state_labels`.  It also carries the jumps
+  the fit made at the window boundaries (`continuity_jumps_instances`, the
+  start of window p + 1 minus the end of window p, and
+  `continuity_tolerance_instances`); the fit logs the largest, and
+  `twin4build.estimator._continuity.continuity_summary` ranks them and marks
+  the states re-set to one side at every boundary.
 - Model state.  `Model.get_state()`, `Model.set_state(values,
   period_starts=None)` and `Model.clear_state()` read and set the initial
   state by component id; with `period_starts` a row is matched to the

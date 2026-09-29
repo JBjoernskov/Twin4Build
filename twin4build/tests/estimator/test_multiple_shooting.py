@@ -189,6 +189,69 @@ class TestMultipleShooting(unittest.TestCase):
         cols = obj.column_loss(x_ext)
         self.assertLess(float(cols[len(est._measurements) :].abs().max()), 1e-16)
 
+    def test_jumps_are_the_scored_defects_in_physical_units(self):
+        """``continuity_jumps`` is the start of window p+1 minus the end of
+        window p: the negative of the defect the objective scores, times the
+        tolerance; it vanishes where window 1 continues window 0."""
+        est = _estimator("cpu", multiple_shooting=MS)
+        obj = est._functional_objective
+        theta = torch.tensor(np.asarray(est._last_x_norm, dtype=np.float64), dtype=torch.float64)
+        x_ext = torch.cat([theta, obj.init_x0_norm.cpu()])
+        jumps = obj.continuity_jumps(x_ext)
+        tolerance = obj.continuity_tolerance()
+        self.assertEqual(set(jumps), {c.id for c in obj.layout.components})
+        _Ms, defects = obj._rollout(*obj._physical(x_ext))
+        flat = torch.cat([jumps[c.id].reshape(1, -1) for c in obj.layout.components], dim=1)[0]
+        flat_sd = torch.cat([tolerance[c.id].reshape(1, -1) for c in obj.layout.components], dim=1)[0]
+        idx = obj.init_index.cpu()
+        torch.testing.assert_close(flat[idx], -(defects[0].cpu() * obj.init_sd.cpu()), rtol=1e-10, atol=1e-12)
+        torch.testing.assert_close(flat_sd[idx], obj.init_sd.cpu(), rtol=0, atol=0)
+        self.assertGreater(float(flat[idx].abs().max()), 0.0)  # the recorded states do not continue the rollout
+        # the end state of window 0 as window 1's start: no jump
+        theta_phys = obj._denorm(theta)
+        Y0, tape = obj._windows()
+        _out, end = est.simulator.rollout_functional_windows(obj.composer, Y0, theta_phys, tape, return_end=True)
+        init_norm = ((end[:-1][:, obj.init_index] - obj.init_lb) / (obj.init_ub - obj.init_lb)).reshape(-1)
+        zero = obj.continuity_jumps(torch.cat([theta, init_norm]))
+        flat_zero = torch.cat([zero[c.id].reshape(1, -1) for c in obj.layout.components], dim=1)[0]
+        self.assertLess(float(flat_zero[idx].abs().max()), 1e-9)
+
+    def test_result_carries_the_jumps_and_the_summary_ranks_them(self):
+        import pickle
+
+        from twin4build.estimator._continuity import COLUMNS, continuity_summary
+
+        est = _estimator("cpu", multiple_shooting=MS)
+        with open(est.result_savedir_pickle, "rb") as handle:
+            result = pickle.load(handle)
+        jumps, tolerance = result["continuity_jumps_instances"], result["continuity_tolerance_instances"]
+        self.assertEqual(set(jumps), set(result["estimated_initial_state_instances"]))
+        for cid, block in jumps.items():
+            self.assertEqual(int(block.shape[0]), 1)  # two windows: one boundary
+            self.assertEqual(tuple(tolerance[cid].shape[1:]), tuple(block.shape[1:]))
+        table = continuity_summary(jumps, tolerance)
+        self.assertEqual(list(table.columns), COLUMNS)
+        self.assertEqual(len(table), int(sum(np.isfinite(np.asarray(b)).sum() for b in jumps.values())))
+        ratio = table["mean |jump| / tolerance"].to_numpy()
+        self.assertTrue(np.all(np.diff(ratio[np.isfinite(ratio)]) <= 0))  # the largest first
+
+    def test_the_summary_tells_a_one_sided_state_from_noise(self):
+        from twin4build.estimator._continuity import continuity_summary
+
+        jumps = {
+            "node": np.array([[-0.8], [-0.9], [-0.1], [-0.3], [-0.5], [-0.9], [-0.4]]),  # re-set downward every time
+            "wall": np.array([[0.3, np.nan], [-0.2, np.nan], [0.25, np.nan], [-0.3, np.nan], [0.2, np.nan], [-0.25, np.nan], [0.3, np.nan]]),
+        }
+        tolerance = {"node": np.array([[0.05]]), "wall": np.array([[0.05, np.nan]])}
+        table = continuity_summary(jumps, tolerance).set_index(["component", "state"])
+        self.assertEqual(len(table), 2)  # the wall's second state was no variable
+        node, wall = table.loc[("node", 0)], table.loc[("wall", 0)]
+        self.assertAlmostEqual(node["mean jump"], -3.9 / 7)
+        self.assertEqual(node["one-sided"], 1.0)
+        self.assertAlmostEqual(node["mean |jump| / tolerance"], 3.9 / 7 / 0.05)
+        self.assertLess(wall["one-sided"], 0.75)
+        self.assertEqual(list(continuity_summary(jumps, tolerance)["component"])[0], "node")
+
     def test_gradient_reaches_the_initial_state_variables(self):
         est = _estimator("cpu", multiple_shooting=MS)
         obj = est._functional_objective

@@ -3211,6 +3211,14 @@ class Estimator:
             # variables by label for diagnostics
             result.estimated_initial_state = objective.initial_state(x_full)
             result.estimated_initial_state_labels = objective.init_values(x_full)
+            # what the fit set anew at every window boundary instead of
+            # carrying it over: a one-sided jump in a slow state is physics
+            # the model lacks (see _log_continuity_jumps)
+            try:
+                result.continuity_jumps = objective.continuity_jumps(x_full)
+                result.continuity_tolerance = objective.continuity_tolerance()
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Continuity jumps not derived: %r", exc)
             result.x = x_full[: objective.n_theta]
             self._x0_norm = np.asarray(self._x0_norm, dtype=np.float64)[: objective.n_theta]
             self._lb_norm = np.asarray(self._lb_norm, dtype=np.float64)[: objective.n_theta]
@@ -3257,6 +3265,18 @@ class Estimator:
                 estimated_initial_state_instances = model._instance_state(estimated_initial_state) or None
             except Exception as exc:  # the result is saved either way
                 LOGGER.warning("Initial states per component not derived: %r", exc)
+        continuity_jumps = getattr(result, "continuity_jumps", None)
+        continuity_tolerance = getattr(result, "continuity_tolerance", None)
+        continuity_jumps_instances = continuity_tolerance_instances = None
+        if continuity_jumps:
+            try:
+                model = self.simulator.model
+                model = getattr(model, "simulation_model", model)
+                continuity_jumps_instances = model._instance_state(continuity_jumps) or None
+                continuity_tolerance_instances = model._instance_state(continuity_tolerance) or None
+                self._log_continuity_jumps(continuity_jumps_instances, continuity_tolerance_instances)
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Continuity jumps per component not derived: %r", exc)
         collocation_audit = getattr(result, "collocation_audit", None)
         collocation_timing = getattr(result, "collocation_timing", None)
         multistart_audit = getattr(result, "multistart_audit", None)
@@ -3293,6 +3313,13 @@ class Estimator:
             result["estimated_initial_state_instances"] = estimated_initial_state_instances
         if estimated_initial_state_labels is not None:
             result["estimated_initial_state_labels"] = estimated_initial_state_labels
+        if continuity_jumps:
+            result["continuity_jumps"] = continuity_jumps
+            result["continuity_tolerance"] = continuity_tolerance
+        if continuity_jumps_instances is not None:
+            result["continuity_jumps_instances"] = continuity_jumps_instances
+        if continuity_tolerance_instances is not None:
+            result["continuity_tolerance_instances"] = continuity_tolerance_instances
         if collocation_audit is not None:
             result["collocation_audit"] = collocation_audit
         if collocation_timing is not None:
@@ -3378,6 +3405,28 @@ class Estimator:
         jac = self._jac_ad(theta, "vector")
         jac = jac.detach().cpu().numpy() if hasattr(jac, "detach") else np.asarray(jac)
         return residual, jac
+
+    @staticmethod
+    def _log_continuity_jumps(jumps, tolerance, n: int = 10) -> None:
+        """The states the fit re-set most at its window boundaries (see
+        :mod:`twin4build.estimator._continuity`)."""
+        from twin4build.estimator._continuity import continuity_summary
+
+        table = continuity_summary(jumps or {}, tolerance)
+        if table.empty:
+            return
+        LOGGER.info(
+            "Continuity jumps at the window boundaries: %d states; mean |jump| / tolerance median %.3g, "
+            "%d states re-set to one side at every boundary",
+            len(table),
+            float(table["mean |jump| / tolerance"].median()),
+            int(((table["one-sided"] >= 1.0) & (table["boundaries"] > 1)).sum()),
+        )
+        for row in table.head(n).itertuples(index=False):
+            LOGGER.info(
+                "  %s x%d: mean jump %+.4g, max |jump| %.4g, %.3g x tolerance, %.0f %% one-sided",
+                row[0], row[1], row[3], row[5], row[7], 100.0 * row[8],
+            )
 
     def _log_identifiability(self, theta_norm: np.ndarray, method) -> Optional[dict]:
         """Post-fit local identifiability analysis (see
