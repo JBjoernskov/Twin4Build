@@ -42,6 +42,8 @@ _PUBLIC_MODULES = {
     "Translator": "twin4build.translator.translator",
     "Optimizer": "twin4build.optimizer.optimizer",
     "OptimizationResult": "twin4build.optimizer.optimizer",
+    "SystemRegistry": "twin4build.systems.registry",
+    "system_registry": "twin4build.systems.registry",
 }
 
 _DEPRECATED_TOP_LEVEL = {
@@ -86,6 +88,8 @@ __all__ = [
     "Translator",
     "Optimizer",
     "OptimizationResult",
+    "SystemRegistry",
+    "system_registry",
     "plot",
     "types",
     "Vector",

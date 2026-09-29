@@ -431,6 +431,97 @@ family. Before adding functional support, follow
 device, and dtype tests as applicable. ``do_step`` must delegate its
 mathematics to the pure implementation so execution paths cannot drift.
 
+External component packages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A component does not have to live in Twin4Build. A separate, versioned package
+can provide ordinary ``System`` subclasses and the signature patterns that
+bind them, and an application makes them known by registering each class on a
+:class:`~twin4build.systems.registry.SystemRegistry` under a stable type id.
+Built-in systems need no registration.
+
+A minimal provider package:
+
+.. code-block:: python
+
+   # acme_components/__init__.py
+   from .coil import CustomCoilSystem, coil_pattern
+
+   __version__ = "1.4.2"
+   PROVIDER = "acme-t4b-components"
+
+
+   def register(registry):
+       registry.register(
+           CustomCoilSystem,
+           type_id="acme:CoilSystem@1",
+           provider=PROVIDER,
+           version=__version__,
+       )
+
+
+   def patterns():
+       return [coil_pattern()]  # SignaturePattern(..., system=CustomCoilSystem)
+
+The application registers the provider once and then translates, serializes,
+and loads as usual:
+
+.. code-block:: python
+
+   import acme_components
+   import twin4build as tb
+   from twin4build.examples.patterns import default_patterns
+
+   acme_components.register(tb.system_registry)
+
+   model = tb.Translator().translate(
+       semantic_model, patterns=default_patterns() + acme_components.patterns()
+   )
+   model.load()
+   model.serialize()
+
+   # In another process, after the same registration:
+   restored = tb.Model(id="restored")
+   restored.load(filename="path/to/instance_graph.ttl")
+
+``tb.system_registry`` is the default registry. An application that wants an
+explicit whitelist creates its own registry and passes it on:
+
+.. code-block:: python
+
+   registry = tb.SystemRegistry()
+   acme_components.register(registry)
+
+   model = tb.Translator(system_registry=registry).translate(
+       semantic_model, patterns=default_patterns() + acme_components.patterns()
+   )
+   restored = tb.Model(id="restored", system_registry=registry)
+
+The contract:
+
+* A serialized component of a registered class records ``system_type_id``,
+  ``system_provider``, and ``system_provider_version``. Built-in components
+  are serialized as before.
+* Loading resolves the class from the type id through the registry of the
+  model. Nothing is imported from the model file, and a type that is not
+  registered raises
+  :class:`~twin4build.systems.registry.UnknownSystemTypeError` naming the
+  component, the type id, and the provider and version the model was written
+  with.
+* The type id is ``<namespace>:<name>`` with an optional ``@<revision>``. Keep
+  it when the class is renamed or moved; change the revision when models
+  written by the old class can no longer be loaded by the new one. The
+  provider version is recorded for diagnostics and does not take part in the
+  resolution.
+* Type ids are unique in a registry and a class has one type id. Registering
+  the same class again with the same type id, provider, and version does
+  nothing; anything else raises unless ``replace=True`` is passed.
+* ``Translator(system_registry=registry)`` rejects a pattern bound to a class
+  that is neither built in nor registered. ``translate(systems=[...])`` stays
+  an allow-list that drops the patterns of other classes.
+* A model that records only class names loads as before: a built-in class by
+  its name, then the registered class of that name.
+
 Documentation
 -------------
 

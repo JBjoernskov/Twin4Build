@@ -62,6 +62,7 @@ from sympy import I
 import twin4build.core as core
 import twin4build.systems as systems_module
 import twin4build.utils.types as tps
+from twin4build.systems.registry import SystemRegistry
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
@@ -169,8 +170,16 @@ class Translator:
     r"""
     Class for ontology-driven automated model generation and calibration in building energy systems.
 
-    The constructor takes no arguments; the mapping attributes below are
-    populated by :meth:`translate`.
+    The mapping attributes below are populated by :meth:`translate`.
+
+    Args:
+        system_registry: Registry of the external ``System`` classes the
+            application accepts (see :mod:`twin4build.systems.registry`).
+            When given, a pattern bound to a class that is neither built in
+            nor registered there is rejected, and the translated model
+            serializes and loads through this registry. ``None`` accepts
+            every class and leaves the model on the default registry,
+            ``twin4build.system_registry``.
 
     Attributes:
         sim2sem_map: Dictionary mapping simulation model components to semantic model instances.
@@ -278,10 +287,16 @@ class Translator:
     def sem2sim_map(self):
         return self._sem2sim_map
 
-    def __init__(self):
+    def __init__(self, system_registry: Optional[SystemRegistry] = None):
         self._sim2sem_map = {}
         self._sem2sim_map = {}
         self._instance_to_group_map = {}
+        self._system_registry = system_registry
+
+    @property
+    def system_registry(self) -> Optional[SystemRegistry]:
+        """The registry given at construction, or ``None``."""
+        return self._system_registry
 
     def translate(
         self,
@@ -348,7 +363,9 @@ class Translator:
             from twin4build.examples import patterns as _patterns
 
             patterns = _patterns.default_patterns()
-        pattern_groups = self._group_patterns(patterns, systems)
+        pattern_groups = self._group_patterns(
+            patterns, systems, registry=self._system_registry
+        )
         LOGGER.task("Applying translator")
         LOGGER.add_level()
         if semantic_model.count_triples() == 0:
@@ -440,7 +457,9 @@ class Translator:
         if result["success"]:
             model_id = id if id is not None else semantic_model.id
             # Initialize simulation model
-            sim_model = core.SimulationModel(id=model_id)
+            sim_model = core.SimulationModel(
+                id=model_id, system_registry=self._system_registry
+            )
 
             # Register every MILP-active component and wire the active
             # connections.  Components must be passed explicitly: a
@@ -466,9 +485,12 @@ class Translator:
         )
 
     @staticmethod
-    def _group_patterns(patterns, systems=None) -> Dict:
+    def _group_patterns(patterns, systems=None, registry=None) -> Dict:
         """``{System class: [pattern, ...]}`` from a flat list of bound
-        patterns; ``systems`` is an optional allow-list of classes."""
+        patterns; ``systems`` is an optional allow-list of classes.  With a
+        ``registry`` (a :class:`~twin4build.systems.registry.SystemRegistry`),
+        a pattern that passes the allow-list must be bound to a built-in or
+        registered class."""
         groups: Dict = {}
         allowed = None if systems is None else set(systems)
         for sp in patterns:
@@ -480,6 +502,14 @@ class Translator:
                 )
             if allowed is not None and cls not in allowed:
                 continue
+            if registry is not None and not registry.is_known(cls):
+                raise ValueError(
+                    f"signature pattern {getattr(sp, 'id', sp)!r} is bound to "
+                    f"{cls.__name__}, which is not a built-in twin4build system "
+                    "and is not registered on the system registry of the "
+                    "translator: register the class with "
+                    "registry.register(cls, type_id=...) first"
+                )
             groups.setdefault(cls, []).append(sp)
         return groups
 

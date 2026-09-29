@@ -16,6 +16,7 @@ from prettytable import PrettyTable
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.systems.registry import SystemRegistry
 from twin4build.utils.deprecation import deprecate_name
 from twin4build.utils.graphviz_render import (
     DRAWING_UNAVAILABLE_HINT,
@@ -209,12 +210,18 @@ class Model:
 
         return t.get_string()
 
-    def __init__(self, id: str) -> None:
+    def __init__(
+        self, id: str, system_registry: Optional[SystemRegistry] = None
+    ) -> None:
         """
         Initialize the Model instance.
 
         Args:
             id: Unique identifier for the model.
+            system_registry: Registry of the external ``System`` classes the
+                model serializes and loads (see
+                :mod:`twin4build.systems.registry`). ``None`` uses the default
+                registry, ``twin4build.system_registry``.
 
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
@@ -245,6 +252,7 @@ class Model:
         self._simulation_model = core.SimulationModel(
             dir_conf=self.dir_conf + ["simulation_model"],
             id=f"{self._id}_simulation_model",
+            system_registry=system_registry,
         )
         self._translator = None
         self._component_to_meta: Dict[str, Tuple[Any, int]] = {}
@@ -303,6 +311,11 @@ class Model:
     @property
     def semantic_model(self) -> "core.SemanticModel":
         return self._semantic_model
+
+    @property
+    def system_registry(self) -> SystemRegistry:
+        """Registry that resolves the external ``System`` classes of the model."""
+        return self._simulation_model.system_registry
 
     @property
     def is_loaded(self) -> bool:
@@ -1196,7 +1209,10 @@ class Model:
           fresh wiring, sharing ports, parameters and sub-models with the
           source components.
         """
-        batched = Model(id=f"{self.id}_batched")
+        batched = Model(
+            id=f"{self.id}_batched",
+            system_registry=getattr(self._simulation_model, "_system_registry", None),
+        )
         self._component_to_meta = {}
         unbatchable: set = set()
         # Fusable clusters (a zone with its radiator, a pair of zones with

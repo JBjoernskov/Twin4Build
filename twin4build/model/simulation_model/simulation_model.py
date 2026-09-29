@@ -42,6 +42,10 @@ from twin4build.utils.validate_period import validate_period
 from twin4build.systems.controller.controller_identification.pi_loop_rewire import (
     _rewire_pi_loops,
 )
+from twin4build.systems.registry import SERIALIZED_KEYS as SYSTEM_TYPE_KEYS
+from twin4build.systems.registry import PROVIDER_KEY, PROVIDER_VERSION_KEY, TYPE_ID_KEY
+from twin4build.systems.registry import SystemRegistry
+from twin4build.systems.registry import system_registry as default_system_registry
 from twin4build.systems.utils.fused_statespace_system import FusedStateSpaceSystem
 from twin4build.utils.deprecation import deprecate_name
 from twin4build.utils.device import ensure_cuda_available, move_object_tensors
@@ -345,6 +349,7 @@ class SimulationModel:
         "_semantic_model",
         "_translator",
         "_rewire_reports",
+        "_system_registry",
     )
 
     def __str__(self):
@@ -377,13 +382,23 @@ class SimulationModel:
 
         return t.get_string()
 
-    def __init__(self, id: str, dir_conf: List[str] = None) -> None:
+    def __init__(
+        self,
+        id: str,
+        dir_conf: List[str] = None,
+        system_registry: Optional[SystemRegistry] = None,
+    ) -> None:
         """
         Initialize the SimulationModel instance.
 
         Args:
             id: Unique identifier for the model.
             dir_conf: List of directories to store model-related files.
+            system_registry: Registry of the external ``System`` classes the
+                model serializes and loads (see
+                :mod:`twin4build.systems.registry`). ``None`` uses the default
+                registry, ``twin4build.system_registry``.
+
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
         """
@@ -408,6 +423,7 @@ class SimulationModel:
         self._is_loaded = False
         self._is_validated = False
         self._rewire_reports = {}
+        self._system_registry = system_registry
 
         self._semantic_model = core.SemanticModel(
             id=self._id,
@@ -425,6 +441,15 @@ class SimulationModel:
     @property
     def components(self) -> dict:
         return self._components
+
+    @property
+    def system_registry(self) -> SystemRegistry:
+        """Registry that resolves the external ``System`` classes of the model."""
+        # getattr: models unpickled from before the attribute existed
+        registry = getattr(self, "_system_registry", None)
+        if registry is None:
+            return default_system_registry
+        return registry
 
     @property
     def device(self) -> torch.device:
@@ -3415,6 +3440,21 @@ class SimulationModel:
             connection_point: core.ConnectionPoint = None,
         ) -> None:
             component_uri = self._semantic_model.T4B.__getitem__(component.id)
+            # A component of a registered (external) class records the
+            # stable type id, the provider and the provider version it is
+            # resolved from at load.  Built-in and unregistered classes
+            # record nothing: they are resolved by class name, as before.
+            registration = self.system_registry.registration_of(type(component))
+            recorded = {} if registration is None else registration.literals()
+            for key in SYSTEM_TYPE_KEYS:
+                predicate = core.namespace.T4B.__getitem__(key)
+                self._semantic_model.instance_graph.remove(
+                    (component_uri, predicate, None)
+                )
+                if recorded.get(key) is not None:
+                    self._semantic_model.instance_graph.add(
+                        (component_uri, predicate, Literal(recorded[key]))
+                    )
             for key, value in flatten_dict(component.populate_config(), component):
                 if isinstance(value, (dict, list)):
                     # Serialize dicts and lists as JSON with datatype
@@ -3900,22 +3940,45 @@ class SimulationModel:
         # print(triple)
 
         # Instantiate components with their attributes
+        renamed = []
         for sm_instance in self._semantic_model.get_instances_of_type(
             core.namespace.S4SYST.System
         ):
             t = sm_instance.get_most_specific_type()
-            class_name = t.get_short_name()
-            cls = getattr(systems, class_name)
+            class_name = None if t is None else t.get_short_name()
             attributes = {}
+            # What the model records about the type of a component of a
+            # registered class (``twin4build.systems.registry``); these
+            # literals are not constructor arguments.
+            recorded_type = {}
             for pred, obj in sm_instance.get_predicate_object_pairs().items():
                 for obj_ in obj:
                     if isinstance(obj_, core.SemanticLiteral):
+                        key = get_short_name(pred, self._semantic_model.namespaces)
+                        if key in SYSTEM_TYPE_KEYS:
+                            recorded_type[key] = str(obj_.uri)
+                            continue
                         literal_value = obj_.uri.value
                         # Convert string literals to appropriate Python types
                         literal_value = _convert_literal_value(literal_value)
-                        attributes[
-                            get_short_name(pred, self._semantic_model.namespaces)
-                        ] = literal_value
+                        attributes[key] = literal_value
+
+            # The class comes from the registry of the model: by type id for
+            # a registered class, by class name for a built-in class and for
+            # a model that was serialized before type ids were recorded.
+            # Nothing is imported from what the file names.
+            cls = self.system_registry.resolve(
+                recorded_type.get(TYPE_ID_KEY),
+                class_name=class_name,
+                provider=recorded_type.get(PROVIDER_KEY),
+                version=recorded_type.get(PROVIDER_VERSION_KEY),
+                component_id=sm_instance.get_short_name(),
+            )
+            if TYPE_ID_KEY in recorded_type and class_name != cls.__name__:
+                # The class registered under the type id was renamed since
+                # the model was serialized; the graph is retyped below.
+                renamed.append((sm_instance, t, cls))
+                class_name = cls.__name__
 
             LOGGER.info(
                 "Component: %s, type: %s",
@@ -4070,6 +4133,27 @@ class SimulationModel:
                 input_port_index=data["input_port_index"],
                 output_port_index=data["output_port_index"],
             )
+
+        # Step 4: Forget the instances that were cached while the file was
+        # read.  They hold the triples of the file -- the connections that
+        # were rebuilt above, the literals as they were parsed -- and
+        # ``SemanticModel.serialize`` writes what its cached instances hold
+        # back into the graph: a model loaded from a file would serialize
+        # the old connections next to the new ones, to a file that does not
+        # load again.
+        self._semantic_model._instances = {}
+
+        # Step 5: A component whose class was renamed under its type id
+        # takes the type of its class, so the graph does not keep the old
+        # class name next to the one ``add_connection`` writes.
+        for sm_instance, old_type, cls in renamed:
+            class_uri = core.namespace.T4B.__getitem__(cls.__name__)
+            if old_type is not None:
+                ig.remove((sm_instance.uri, RDF.type, old_type.uri))
+                if not any(ig.subjects(RDF.type, old_type.uri)):
+                    ig.remove((old_type.uri, RDFS.subClassOf, None))
+            ig.add((sm_instance.uri, RDF.type, class_uri))
+            ig.add((class_uri, RDFS.subClassOf, core.namespace.S4SYST.System))
 
         LOGGER.remove_level()
         LOGGER.ok("Making connections", change_status=True)

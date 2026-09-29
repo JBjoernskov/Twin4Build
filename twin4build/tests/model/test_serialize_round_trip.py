@@ -9,7 +9,10 @@ Regressions covered:
   reloaded as the placeholder (and ``initialize`` then re-solved it);
 * a sensor's unit transformation is a callable, not a literal, and was
   dropped -- a saved calibrated model replayed in raw units (#190).  It now
-  travels as an import path (``transformation_ref``).
+  travels as an import path (``transformation_ref``);
+* a model that was loaded from a file serialized the triples of that file
+  next to its own (every connection twice, JSON literals as Python reprs),
+  to a file that did not load again.
 """
 
 # Standard library imports
@@ -23,9 +26,11 @@ import unittest
 import pandas as pd
 import torch
 from dateutil import tz
+from rdflib import RDF, Graph
 
 # Local application imports
 import twin4build as tb
+import twin4build.core as core
 from twin4build.systems.building_space.building_space_system import BuildingSpaceSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
@@ -136,6 +141,38 @@ class TestSerializeRoundTrip(unittest.TestCase):
         self.assertEqual(outdoor2.transformation_ref, f"{__name__}:celsius_from_deci")
 
         torch.testing.assert_close(self._simulate(reloaded), reference)
+
+    def test_reloaded_model_serializes_to_a_file_that_loads(self):
+        model, room, heater, outdoor = self._build()
+        reference = self._simulate(model)
+        model.serialize()
+        path, _ = model._simulation_model._semantic_model.get_dir(filename="instance_graph.ttl")
+        connections = lambda m: sorted(
+            (c.id, connection.output_port, point.connection_point_of.id, point.input_port)
+            for c in m.components.values()
+            for connection in c.connected_through
+            for point in connection.connects_system_at
+        )
+        ids = [self.MODEL_ID + "_second", self.MODEL_ID + "_third"]
+        try:
+            for model_id in ids:
+                reloaded = tb.Model(id=model_id)
+                reloaded.load(filename=path)
+                self.assertEqual(set(reloaded.components), set(model.components))
+                self.assertEqual(connections(reloaded), connections(model))
+                reloaded.serialize()
+                path, _ = reloaded._simulation_model._semantic_model.get_dir(filename="instance_graph.ttl")
+                graph = Graph()
+                graph.parse(path, format="turtle")
+                for kind, expected in (
+                    (core.namespace.S4SYST.Connection, sum(len(c.connected_through) for c in model.components.values())),
+                    (core.namespace.S4SYST.ConnectionPoint, sum(len(c.connects_at) for c in model.components.values())),
+                ):
+                    self.assertEqual(len(set(graph.subjects(RDF.type, kind))), expected)
+            torch.testing.assert_close(self._simulate(reloaded), reference)
+        finally:
+            for model_id in ids:
+                shutil.rmtree(os.path.join("generated_files", "models", model_id), ignore_errors=True)
 
     def test_outdoor_environment_feed_transformations_survive(self):
         from twin4build.systems.outdoor_environment.outdoor_environment_system import (
