@@ -12,6 +12,7 @@ Key Components:
 
     Building Envelope:
         - WallSystem: 2R1C wall between two zones (or zone and boundary)
+        - ThermalMassNodeSystem: 1C node shared by a star of walls (a building's interior mass)
 
     HVAC Components:
         - SpaceHeaterSystem: Space heating system
@@ -75,6 +76,7 @@ __all__ = [
     "BuildingSpaceThermalSystem",
     # Wall
     "WallSystem",
+    "ThermalMassNodeSystem",
     # Space Heater
     "SpaceHeaterSystem",
     # Valves
@@ -190,6 +192,7 @@ _MODULES = {
     "TimeSeriesInputSystem": "utils.time_series_input_system",
     "ValveSystem": "valve.valve_system",
     "WallSystem": "wall.wall_system",
+    "ThermalMassNodeSystem": "thermal_mass.thermal_mass_node_system",
 }
 
 _ALIASES = {

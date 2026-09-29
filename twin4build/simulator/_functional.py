@@ -1497,7 +1497,26 @@ class FunctionalModel:
                 r = find(("col", c))
                 if r in roots:
                     column_block[c] = roots[r]
+        # kept for :meth:`state_blocks` (the union-find with the roots' ids)
+        self.__dict__["_coupling"] = (parent, find, dict(roots))
         return theta_block, column_block, len(roots)
+
+    def state_blocks(self, layout) -> np.ndarray:
+        """The block id (:meth:`index_coupling`) of every entry of the flat
+        state vector of ``layout`` (``(D,)``), ``-1`` where the state's
+        component instance is joined to no estimated parameter.  Multiple
+        shooting attaches a window's initial-state variables and continuity
+        defects to these blocks."""
+        if "_coupling" not in self.__dict__:
+            self.index_coupling()
+        parent, find, roots = self.__dict__["_coupling"]
+        out = np.full(int(layout.width), -1, dtype=np.int64)
+        for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
+            for i_c in range(n_c):
+                node = (comp.id, i_c)
+                block = roots.get(find(node), -1) if node in parent else -1
+                out[start + i_c * ss : start + (i_c + 1) * ss] = block
+        return out
 
     @property
     def compiled_batched_step(self):
@@ -1521,6 +1540,71 @@ class FunctionalModel:
             batched = torch.func.vmap(_step, in_dims=(0, 0, None))
             step = torch.compile(batched, fullgraph=True, dynamic=False)
             self.__dict__["_compiled_batched_step"] = step
+        return step
+
+    @property
+    def window_step(self):
+        """``vmap`` of the transform-mode ``F_aug`` over a batch of WINDOWS:
+        ``step(Y, theta, U, constants) -> (Y_next, meas)`` with ``Y (P,
+        D_aug)`` and ``U (P, n_exogenous)`` per window, ``theta (n_theta,)``
+        and the hoisted matrices (:meth:`step_constants`) shared.  One
+        rollout then advances every shooting window of one parameter vector
+        at once (:func:`functional_rollout_windows`).
+
+        Deliberately NOT ``torch.compile``-d: on torch 2.11 ``compile`` over
+        ``vmap`` of this step is numerically wrong (a measurement off by 23 %
+        after one step in the probe of 26 Sep 2026, while the eager vmap and
+        the compiled scalar step agree to 1e-15).  Under
+        ``cuda_graph_scope="step"`` the eager vmapped step is captured once
+        per step kind, so its kernel count costs nothing at replay."""
+        step = self.__dict__.get("_window_step")
+        if step is None:
+            model = self
+
+            def _step(y, theta, u, constants):
+                return model.F_aug(y, theta, u, transform_mode=True, constants=constants)
+
+            step = torch.func.vmap(_step, in_dims=(0, None, 0, None))
+            self.__dict__["_window_step"] = step
+        return step
+
+    @property
+    def batched_step(self):
+        """``vmap`` of the transform-mode ``F_aug`` over a batch of parameter
+        starts sharing one exogenous row: ``step(Y, Theta, u)`` with ``Y (B,
+        D_aug)``, ``Theta (B, n_theta)``, ``u (n_exogenous,)``: the eager
+        counterpart of :attr:`compiled_batched_step`, captured per step under
+        ``cuda_graph_scope="step"``.  Eager for the reason given on
+        :attr:`window_step` (``compile`` over this ``vmap`` is numerically
+        wrong on torch 2.11)."""
+        step = self.__dict__.get("_batched_step")
+        if step is None:
+            model = self
+
+            def _step(y, theta, u):
+                return model.F_aug(y, theta, u, transform_mode=True)
+
+            step = torch.func.vmap(_step, in_dims=(0, 0, None))
+            self.__dict__["_batched_step"] = step
+        return step
+
+    @property
+    def rows_step(self):
+        """``vmap`` of the transform-mode ``F_aug`` over rows that each carry
+        their own state, parameters AND exogenous row: ``step(Y, Theta, U)``
+        with ``Y (N, D_aug)``, ``Theta (N, n_theta)``, ``U (N, n_exogenous)``:
+        a batch of parameter starts times a batch of windows, flattened
+        (:func:`functional_rollout_rows`).  Eager for the reason given on
+        :attr:`window_step`."""
+        step = self.__dict__.get("_rows_step")
+        if step is None:
+            model = self
+
+            def _step(y, theta, u):
+                return model.F_aug(y, theta, u, transform_mode=True)
+
+            step = torch.func.vmap(_step, in_dims=(0, 0, 0))
+            self.__dict__["_rows_step"] = step
         return step
 
     @property
@@ -1823,6 +1907,63 @@ def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, s
             device=exogenous_tape.device,
         )
     return torch.stack(rows, dim=1)
+
+
+def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, step=None, return_end=False):
+    """Roll ONE parameter vector over a batch of windows at once.
+
+    ``Y0 (P, D_aug)`` per-window initial states, ``theta (n_theta,)``,
+    ``exogenous_tape (n_t, P, n_exogenous)`` per-window inputs (every window
+    the same length); returns ``(P, n_t, n_meas)``, or with ``return_end``
+    ``(outputs, Y_end (P, D_aug))``: the state after the last step of every
+    window (the continuity defects of multiple shooting read it).  The
+    theta-only matrices are hoisted once (:meth:`FunctionalModel.step_constants`)
+    and shared by the windows.  ``step`` defaults to
+    :attr:`FunctionalModel.window_step` (the eager vmap of the transform-mode
+    ``F_aug`` over the windows).  Differentiable w.r.t. ``theta`` and ``Y0``.
+    """
+    functional_model.prepare_routes(theta.device)
+    constants = functional_model.step_constants(theta)
+    if step is None:
+        def base(y_, theta_, u_, constants_, _fm=functional_model):
+            return _fm.F_aug(y_, theta_, u_, transform_mode=True, constants=constants_)
+
+        step = torch.func.vmap(base, in_dims=(0, None, 0, None))
+    Y = Y0
+    rows = []
+    for t in range(exogenous_tape.shape[0]):
+        Y, meas = step(Y, theta, exogenous_tape[t], constants)
+        rows.append(meas)
+    if not rows:
+        out = torch.zeros((Y0.shape[0], 0, functional_model.n_meas), dtype=exogenous_tape.dtype, device=exogenous_tape.device)
+    else:
+        out = torch.stack(rows, dim=1)
+    return (out, Y) if return_end else out
+
+
+def functional_rollout_rows(functional_model, Y0, Theta, exogenous_tape, *, step=None, return_end=False):
+    """Roll a batch of rows that each carry their own state, parameters and
+    exogenous inputs: ``Y0 (N, D_aug)``, ``Theta (N, n_theta)``,
+    ``exogenous_tape (n_t, N, n_exogenous)``; returns ``(N, n_t, n_meas)``,
+    or with ``return_end`` ``(outputs, Y_end (N, D_aug))``.  A batch of
+    parameter starts over a batch of windows, flattened.  ``step`` defaults
+    to :attr:`FunctionalModel.rows_step` (an eager vmap)."""
+    functional_model.prepare_routes(Theta.device)
+    if step is None:
+        def base(y_, theta_, u_, _fm=functional_model):
+            return _fm.F_aug(y_, theta_, u_, transform_mode=True)
+
+        step = torch.func.vmap(base, in_dims=(0, 0, 0))
+    Y = Y0
+    rows = []
+    for t in range(exogenous_tape.shape[0]):
+        Y, meas = step(Y, Theta, exogenous_tape[t])
+        rows.append(meas)
+    if not rows:
+        out = torch.zeros((Y0.shape[0], 0, functional_model.n_meas), dtype=exogenous_tape.dtype, device=exogenous_tape.device)
+    else:
+        out = torch.stack(rows, dim=1)
+    return (out, Y) if return_end else out
 
 
 #: Recompute every time step in the backward pass instead of saving its

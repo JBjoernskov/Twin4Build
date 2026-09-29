@@ -37,6 +37,35 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Multiple shooting (#91).  `Estimator.estimate(..., options={"multiple_shooting":
+  {...}})` makes the initial state of every period a decision variable,
+  boxed around its recorded value (`bound_rel`, `bound_abs`) and tied to the
+  end of the period before it by a continuity defect (`sd_rel`, `sd_abs`).
+  `first_window` (default `True`) frees the first period's state as well, so
+  a fit needs no warm-up.  The loss scale is set from the measurement
+  residuals alone.  The result carries the estimated states:
+  `estimated_initial_state` (per executing component),
+  `estimated_initial_state_instances` (per original component, one row per
+  period) and `estimated_initial_state_labels`.
+- Model state.  `Model.get_state()`, `Model.set_state(values,
+  period_starts=None)` and `Model.clear_state()` read and set the initial
+  state by component id; with `period_starts` a row is matched to the
+  simulated period that starts at that time.
+  `Model.load_estimation_result(filename, parameters=True,
+  initial_state=True)` sets the estimated initial state with the parameters,
+  so a simulation of a fit starts where the fit started.
+- Window batching.  Several periods are rolled out as one batch
+  (`Simulator.rollout_functional_windows`,
+  `rollout_functional_batched_windows`), one initial state per period.
+- `Simulator(cuda_graph_scope="step")`: one CUDA graph per step, replayed along
+  the rollout, for models whose whole rollout does not fit in one captured
+  graph.
+- `ThermalMassNodeSystem`: one hidden thermal mass that many walls share.  A
+  component declares the outputs that are read one step late (the class
+  attribute `LAGGED_OUTPUT_PORTS`, or a method `lagged_output_ports()`), and
+  the loader cuts the algebraic loop there.
+- `FunctionSystem` and `WeightedSumSystem` batch.  A `SensorSystem` with
+  `allow_missing` keeps NaN samples as unscored gaps.
 - System registry (`twin4build.systems.registry`, #132): a `System` class
   that lives in another package is registered under a stable type id,
   `tb.system_registry.register(cls, type_id="acme:CoilSystem@1",

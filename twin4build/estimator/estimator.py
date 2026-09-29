@@ -458,6 +458,7 @@ class Estimator:
         n_cores: Optional[int] = None,
         options: Optional[Dict] = None,
         schedule: Optional[List[Dict[str, Any]]] = None,
+        multiple_shooting: Optional[Dict] = None,
         **kwargs: Dict,
     ) -> EstimationResult:
         """
@@ -1009,6 +1010,14 @@ class Estimator:
         self._transcription = transcription or "single_shooting"
 
         LOGGER.config("Method: %s", method)
+
+        # Multiple shooting over equal-length periods (functional single
+        # shooting only): the windows' initial states become decision
+        # variables with continuity defects between consecutive windows as
+        # residual columns.  See
+        # ``FunctionalEstimationObjective._setup_multiple_shooting`` for the
+        # keys (``states``, ``sd_rel``, ``sd_abs``, ``bound_rel``, ``bound_abs``).
+        self._multiple_shooting = dict(multiple_shooting) if multiple_shooting else None
 
         # Set up time periods
         self._n_warmup = n_warmup
@@ -2793,6 +2802,7 @@ class Estimator:
             and method[2] == "ad"
         ):
             self._setup_functional_objective(validate_functional=False)
+        self._extend_for_multiple_shooting()
 
         # Run optimization based on method
         LOGGER.task("Running optimization")
@@ -3191,9 +3201,28 @@ class Estimator:
             )
             self.simulator.model.restore_parameters(keep_values=True)
 
+        # Multiple shooting: the solver's vector carries the windows' initial
+        # states after theta; report them and cut the vector back to theta.
+        objective = getattr(self, "_functional_objective", None)
+        n_init = int(getattr(objective, "n_init", 0) or 0)
+        x_full = np.asarray(result.x, dtype=np.float64)
+        if n_init and x_full.shape[0] == objective.n_theta_ext:
+            # per executing component (the collocation's format), and the
+            # variables by label for diagnostics
+            result.estimated_initial_state = objective.initial_state(x_full)
+            result.estimated_initial_state_labels = objective.init_values(x_full)
+            result.x = x_full[: objective.n_theta]
+            self._x0_norm = np.asarray(self._x0_norm, dtype=np.float64)[: objective.n_theta]
+            self._lb_norm = np.asarray(self._lb_norm, dtype=np.float64)[: objective.n_theta]
+            self._ub_norm = np.asarray(self._ub_norm, dtype=np.float64)[: objective.n_theta]
+            self.bounds = Bounds(lb=self._lb_norm, ub=self._ub_norm)
+            objective.last_x_full = x_full
+
         # Store the normalised solution for warm-starting (used by lambda scheduling)
         self._last_x_norm = result.x.copy()
-        theta_norm_at_optimum = np.asarray(result.x, dtype=np.float64)
+        # the solver's whole vector (the multiple-shooting variables included):
+        # the identifiability report runs on it after the result is saved
+        theta_norm_at_optimum = x_full
 
         # Denormalize result using parameter's denormalize method
         # result.x is flat array of all unique parameter values
@@ -3216,6 +3245,18 @@ class Estimator:
         # carry the optimised initial state through so callers can seed a
         # continuous prediction from it (see EstimationResult).
         estimated_initial_state = getattr(result, "estimated_initial_state", None)
+        estimated_initial_state_labels = getattr(result, "estimated_initial_state_labels", None)
+        # The same states by the ids of the components the model was built
+        # from (a batched meta's instances, a fused block's members): the
+        # form that loads onto another batching of the model.
+        estimated_initial_state_instances = None
+        if estimated_initial_state:
+            try:
+                model = self.simulator.model
+                model = getattr(model, "simulation_model", model)
+                estimated_initial_state_instances = model._instance_state(estimated_initial_state) or None
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Initial states per component not derived: %r", exc)
         collocation_audit = getattr(result, "collocation_audit", None)
         collocation_timing = getattr(result, "collocation_timing", None)
         multistart_audit = getattr(result, "multistart_audit", None)
@@ -3248,6 +3289,10 @@ class Estimator:
         )
         if estimated_initial_state is not None:
             result["estimated_initial_state"] = estimated_initial_state
+        if estimated_initial_state_instances is not None:
+            result["estimated_initial_state_instances"] = estimated_initial_state_instances
+        if estimated_initial_state_labels is not None:
+            result["estimated_initial_state_labels"] = estimated_initial_state_labels
         if collocation_audit is not None:
             result["collocation_audit"] = collocation_audit
         if collocation_timing is not None:
@@ -3315,6 +3360,9 @@ class Estimator:
             label = f"{self._short_component_label(component.id)}.{attr}"
             for k in range(start, end):
                 names[k] = label if end - start == 1 else f"{label}[{k - start}]"
+        objective = getattr(self, "_functional_objective", None)
+        if objective is not None and int(getattr(objective, "n_init", 0) or 0):
+            names = names + list(objective.init_entry_names())
         return names
 
     def _residual_and_jacobian_at(self, theta_norm: np.ndarray):
@@ -3377,7 +3425,14 @@ class Estimator:
             t0 = time_module.time()
             residual, jac = self._residual_and_jacobian_at(theta_norm)
             names = self._theta_entry_names()
-            report = analyze(jac, residual, names, theta_norm, self._lb_norm, self._ub_norm)
+            lb_norm, ub_norm = np.asarray(self._lb_norm, dtype=np.float64), np.asarray(self._ub_norm, dtype=np.float64)
+            extra = int(theta_norm.size) - int(lb_norm.size)
+            if extra > 0:
+                # the multiple-shooting variables after theta: normalised on their boxes
+                lb_norm = np.concatenate([lb_norm, np.zeros(extra)])
+                ub_norm = np.concatenate([ub_norm, np.ones(extra)])
+                names = list(names)[: int(theta_norm.size)]
+            report = analyze(jac, residual, names, theta_norm, lb_norm, ub_norm)
             LOGGER.iter(
                 "n_theta=%d | n_residuals=%d | condition number %.3g | elapsed=%.1fs",
                 jac.shape[1],
@@ -3422,6 +3477,33 @@ class Estimator:
             except Exception:
                 pass
             return None
+
+    def _extend_for_multiple_shooting(self) -> None:
+        """Append the functional objective's initial-state variables to the
+        normalised start, bounds and caches the solvers read (``_x0_norm``,
+        ``_lb_norm``, ``_ub_norm``, ``bounds``); the results are cut back to
+        theta in :meth:`_finalize_solve`."""
+        objective = getattr(self, "_functional_objective", None)
+        n_init = int(getattr(objective, "n_init", 0) or 0)
+        self._n_theta_base = int(len(self._x0_norm))
+        if not n_init:
+            return
+        if self._multiple_shooting and objective is None:
+            LOGGER.warning("multiple shooting needs the functional objective; the initial states stay fixed")
+            return
+        x0 = objective.init_x0_norm.detach().cpu().numpy().astype(np.float64)
+        self._x0_norm = np.concatenate([np.asarray(self._x0_norm, dtype=np.float64), x0])
+        self._lb_norm = np.concatenate([np.asarray(self._lb_norm, dtype=np.float64), np.zeros(n_init)])
+        self._ub_norm = np.concatenate([np.asarray(self._ub_norm, dtype=np.float64), np.ones(n_init)])
+        self.bounds = Bounds(lb=self._lb_norm, ub=self._ub_norm)
+        for name in ("_theta_obj", "_theta_jac", "_theta_hes"):
+            self.__dict__[name] = torch.nan * torch.ones(
+                len(self._x0_norm), dtype=tps.float_dtype(), device=self._device
+            )
+        LOGGER.config(
+            "multiple shooting: %d initial-state variables appended to %d parameters",
+            n_init, self._n_theta_base,
+        )
 
     def _setup_functional_objective(self, validate_functional: bool = False) -> None:
         """Build the functional single-shooting objective.
