@@ -11,6 +11,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.systems.controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system import (
     SATCompensatedControllerSystem,
@@ -83,6 +84,19 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             If None, uses default PIDControllerSystem with different configurations.
         candidate_controller_kwargs: List of kwargs dicts for each candidate controller.
             If None, uses default configurations.
+        candidate_structure: The ordered candidate list as literals, one
+            dict with the keys ``type`` and ``ref`` per candidate (see
+            :attr:`candidate_structure`).  This is the form a serialized
+            model carries; when given it decides the candidates.
+        playback: Whether the controller outputs its measured command
+            (``actuatorMeasured``) instead of the identified law.
+        rewire_mode: Mode of the last :meth:`SimulationModel.rewire` applied
+            to the controller (``"train"``, ``"simulate"``, ``"playback"``),
+            ``None`` when it was never rewired.
+        on_off_signal_norm_min: Lower normalisation bound of each
+            ``onOffSignal`` slot (requires the sizes to be given).
+        on_off_signal_norm_max: Upper normalisation bound of each
+            ``onOffSignal`` slot (requires the sizes to be given).
         **kwargs: Additional keyword arguments passed to parent classes
 
     Example:
@@ -115,6 +129,14 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         always uses the exact object-graph objective;
         ``OneStepComposer._validate_theta_influence`` guarantees the
         fallback instead of silently freezing theta-dependent signals.
+
+    Note:
+        :attr:`config` lists everything that defines the controller, so that
+        ``Model.serialize()`` / ``Model.load(filename=...)`` gives the same
+        controller back without another ``rewire``: the sizes, the candidate
+        structure, the playback flag and the rewire mode, the ``onOffSignal``
+        normalisation bounds, the selection weights, the gate parameters and
+        every candidate's parameters with their bounds.
     """
 
     # Controller type constants -- each defines a signal routing strategy
@@ -161,6 +183,12 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         setpoint_controller_kwargs: Optional[List[dict]] = None,
         cascade_controllers: Optional[List[Type[core.System]]] = None,
         cascade_controller_kwargs: Optional[List[dict]] = None,
+        # --- Serialized state (see ``config``) ---
+        candidate_structure: Optional[Union[dict, List[dict]]] = None,
+        playback: bool = False,
+        rewire_mode: Optional[str] = None,
+        on_off_signal_norm_min: Optional[Union[float, List[float]]] = None,
+        on_off_signal_norm_max: Optional[Union[float, List[float]]] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -238,11 +266,14 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             len(self._candidate_entries) > 0
         ), "At least one candidate controller must be provided"
 
-        self.n_candidates = len(self._candidate_entries)
-        self._candidate_types = [e[2] for e in self._candidate_entries]
-        self.candidate_controller_classes = [e[0] for e in self._candidate_entries]
-        self._candidate_controller_kwargs = [e[1] for e in self._candidate_entries]
-        self._has_cascade = self.CTRL_CASCADE in self._candidate_types
+        # A serialized model names its candidates; they replace the list
+        # declared above unless they are the same candidates (the declared
+        # constructor arguments are then kept as the starting values).
+        if candidate_structure is not None:
+            self._candidate_entries = self._resolve_candidate_structure(
+                candidate_structure
+            )
+        self._set_candidate_entries(self._candidate_entries)
 
         # Build input dictionary
         self._input = {
@@ -271,16 +302,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         # Output: one signal per actuator
         self._output = {"inputSignal": tps.Vector()}
 
-        self.playback = False
+        self.playback = bool(playback)
+        self.rewire_mode = rewire_mode
         self._built = False
-        self._config = {
-            "parameters": [
-                "n_sensors",
-                "n_setpoints",
-                "n_on_off_signals",
-                "n_actuators",
-            ]
-        }
         self.INITIALIZED = False
 
         # Build immediately if all sizes are explicitly provided.
@@ -290,6 +314,136 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             and n_on_off_signals is not None
         ):
             self._build_components()
+            if on_off_signal_norm_min is not None:
+                self.on_off_signal_norm_min = on_off_signal_norm_min
+            if on_off_signal_norm_max is not None:
+                self.on_off_signal_norm_max = on_off_signal_norm_max
+
+    # -- candidate structure ---------------------------------------------------
+    def _set_candidate_entries(
+        self, entries: List[Tuple[Type[core.System], dict, str]]
+    ) -> None:
+        """Store the ordered candidate list and what is derived from it."""
+        self._candidate_entries = list(entries)
+        self.n_candidates = len(self._candidate_entries)
+        self._candidate_types = [e[2] for e in self._candidate_entries]
+        self.candidate_controller_classes = [e[0] for e in self._candidate_entries]
+        self._candidate_controller_kwargs = [e[1] for e in self._candidate_entries]
+        self._has_cascade = self.CTRL_CASCADE in self._candidate_types
+
+    def _resolve_candidate_structure(
+        self, structure: Union[dict, List[dict]]
+    ) -> List[Tuple[Type[core.System], dict, str]]:
+        """Candidate entries for a :attr:`candidate_structure` literal.
+
+        A candidate that is already at the same position with the same class
+        and type keeps its constructor arguments; any other is built with its
+        class defaults (its parameters are written afterwards, from the
+        serialized ``candidate_{a}_{c}.*`` values).  An entry without a
+        ``ref`` (a class that cannot be imported by name) stands for the
+        candidate already at that position.
+        """
+        if isinstance(structure, dict):
+            # A one-element list is unwrapped when a literal is read back.
+            structure = [structure]
+        current = list(getattr(self, "_candidate_entries", []))
+        entries = []
+        for c, item in enumerate(structure):
+            ctype = item["type"]
+            assert ctype in (self.CTRL_SETPOINT, self.CTRL_CASCADE), (
+                f"ControllerIdentificationSystem '{self.id}': unknown candidate "
+                f"type {ctype!r} in candidate_structure."
+            )
+            declared = current[c] if c < len(current) else None
+            cls = ref_to_callable(item["ref"])
+            if cls is None:
+                if declared is None or declared[2] != ctype:
+                    raise ValueError(
+                        f"ControllerIdentificationSystem '{self.id}': candidate "
+                        f"{c} of candidate_structure names no class and the "
+                        f"controller declares no '{ctype}' candidate at that "
+                        "position."
+                    )
+                cls = declared[0]
+            kw = {}
+            if declared is not None and declared[0] is cls and declared[2] == ctype:
+                kw = declared[1]
+            entries.append((cls, kw, ctype))
+        assert (
+            len(entries) > 0
+        ), "At least one candidate controller must be provided"
+        return entries
+
+    @property
+    def candidate_structure(self) -> List[dict]:
+        """The ordered candidate list as literals.
+
+        One dict per candidate with the keys ``type``, the signal routing
+        (``"setpoint"`` or ``"cascade"``), and ``ref``, the import path
+        ``module:qualname`` of the candidate's class.  This is the form that
+        survives ``Model.serialize()`` / ``Model.load(filename=...)`` (a
+        class is not a literal).  Assigning a different structure to a built
+        controller rebuilds its candidates, selection weights and gates at
+        their defaults; assigning the structure it has changes nothing.
+        """
+        owner = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|"
+        return [
+            {"type": ctype, "ref": callable_to_ref(cls, owner)}
+            for cls, _, ctype in self._candidate_entries
+        ]
+
+    @candidate_structure.setter
+    def candidate_structure(self, structure: Union[dict, List[dict]]) -> None:
+        entries = self._resolve_candidate_structure(structure)
+        unchanged = [(e[0], e[2]) for e in entries] == [
+            (e[0], e[2]) for e in self._candidate_entries
+        ]
+        if unchanged:
+            return
+        self._set_candidate_entries(entries)
+        if self._built:
+            self._built = False
+            self._build_components()
+
+    # -- onOffSignal normalisation bounds ---------------------------------------
+    def _on_off_norm_tensor(self, value) -> torch.Tensor:
+        """``value`` (tensor, list or number) as one bound per ``onOffSignal``
+        slot."""
+        if isinstance(value, torch.Tensor):
+            value = value.detach().reshape(-1)
+        else:
+            value = torch.as_tensor(value, dtype=tps.float_dtype()).reshape(-1)
+        n = self.n_on_off_signals
+        if n is not None and value.numel() == 1 and n > 1:
+            value = value.expand(n).clone()
+        return value
+
+    @property
+    def on_off_signal_norm_min(self) -> torch.Tensor:
+        """Lower normalisation bound of each ``onOffSignal`` slot (the gate
+        input is ``(signal - min) / (max - min)``).  Exists once the
+        controller is built; populated by the rewire."""
+        try:
+            return self.__dict__["_on_off_signal_norm_min"]
+        except KeyError:
+            raise AttributeError("on_off_signal_norm_min") from None
+
+    @on_off_signal_norm_min.setter
+    def on_off_signal_norm_min(self, value) -> None:
+        self.__dict__["_on_off_signal_norm_min"] = self._on_off_norm_tensor(value)
+
+    @property
+    def on_off_signal_norm_max(self) -> torch.Tensor:
+        """Upper normalisation bound of each ``onOffSignal`` slot (see
+        :attr:`on_off_signal_norm_min`)."""
+        try:
+            return self.__dict__["_on_off_signal_norm_max"]
+        except KeyError:
+            raise AttributeError("on_off_signal_norm_max") from None
+
+    @on_off_signal_norm_max.setter
+    def on_off_signal_norm_max(self, value) -> None:
+        self.__dict__["_on_off_signal_norm_max"] = self._on_off_norm_tensor(value)
 
     def _get_n_actuators_from_connections(self) -> int:
         """Detect n_actuators by counting unique output slots used on inputSignal.
@@ -487,19 +641,6 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             n_on_off_signals, dtype=tps.float_dtype()
         )
 
-        # Build config - include parameters from all candidate controllers
-        config_params = [
-            "n_sensors",
-            "n_setpoints",
-            "n_actuators",
-        ]
-        for a in range(n_actuators):
-            for c in range(self.n_candidates):
-                ctrl = getattr(self, f"candidate_{a}_{c}")
-                if hasattr(ctrl, "_config") and "parameters" in ctrl._config:
-                    for param in ctrl._config["parameters"]:
-                        config_params.append(f"candidate_{a}_{c}.{param}")
-        self._config = {"parameters": config_params}
         # ``forward`` theta contract: every tunable the pure step reads, keyed
         # by the attribute path ``_forward_params`` / the composer resolve via
         # ``rgetattr`` (selection weights, gate parameters, candidate gains).
@@ -520,9 +661,74 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         self._state_slices = None
         self._built = True
 
+    @staticmethod
+    def _sub_config_parameters(sub) -> List[str]:
+        """Parameter names an owned sub-system (candidate or gate) lists in
+        its own config."""
+        config = getattr(sub, "config", None)
+        if not isinstance(config, dict):
+            return []
+        return list(config.get("parameters", []))
+
     @property
     def config(self):
-        return self._config
+        """Everything that defines the controller, as attribute paths.
+
+        The list follows the controller's current state, so it is what
+        ``Model.serialize()`` writes and ``Model.load(filename=...)`` reads
+        back:
+
+        * the sizes ``n_sensors``, ``n_setpoints``, ``n_on_off_signals`` and
+          ``n_actuators``, the :attr:`candidate_structure`, the ``playback``
+          flag and (once rewired) the ``rewire_mode``;
+        * for a built controller, the ``onOffSignal`` normalisation bounds,
+          the selection weights of every actuator (``alpha_{a}``,
+          ``beta_{a}``, ``gamma_{a}``, ``beta_b_{a}``, ``gamma_gate_{a}``,
+          ``alpha_gate_{a}``, ``default_output_{a}``), the parameters of its
+          gate and the parameters of every candidate.
+
+        The bounds of a candidate parameter (``candidate_{a}_{c}.kp.min_value``
+        ...) come before the values: the rewire derives them per loop, and a
+        value is stored relative to its bounds.
+        """
+        names = [
+            "n_sensors",
+            "n_setpoints",
+            "n_on_off_signals",
+            "n_actuators",
+            "candidate_structure",
+            "playback",
+        ]
+        if self.rewire_mode is not None:
+            names.append("rewire_mode")
+        if not self._built:
+            return {"parameters": names}
+        names += ["on_off_signal_norm_min", "on_off_signal_norm_max"]
+        for a in range(self.n_actuators):
+            names += [f"alpha_{a}", f"beta_{a}", f"gamma_{a}"]
+            if self._has_cascade:
+                names.append(f"beta_b_{a}")
+            names += [f"gamma_gate_{a}", f"alpha_gate_{a}", f"default_output_{a}"]
+            gate = self._get_gate(a)
+            gate_names = self._sub_config_parameters(gate)
+            if hasattr(gate, "polarity") and "polarity" not in gate_names:
+                gate_names.append("polarity")
+            names += [f"gate_{a}.{n}" for n in gate_names]
+        bounds, values = [], []
+        for a in range(self.n_actuators):
+            for c in range(self.n_candidates):
+                ctrl = self._get_candidate(a, c)
+                for n in self._sub_config_parameters(ctrl):
+                    path = f"candidate_{a}_{c}.{n}"
+                    values.append(path)
+                    p = rgetattr(ctrl, n)
+                    if (
+                        isinstance(p, (tps.Parameter, tps.TensorParameter))
+                        and p.min_value is not None
+                        and p.max_value is not None
+                    ):
+                        bounds += [f"{path}.min_value", f"{path}.max_value"]
+        return {"parameters": names + bounds + values}
 
     @property
     def input(self) -> dict:

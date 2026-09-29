@@ -65,8 +65,6 @@ class PIDControllerSystem(core.System, nn.Module):
         super().__init__(**kwargs)
         nn.Module.__init__(self)
         self.is_reverse = is_reverse
-        # Deprecated alias until 2.1
-        self.isReverse = is_reverse
 
         kp = abs(kp)
         Ti = abs(Ti)
@@ -118,6 +116,17 @@ class PIDControllerSystem(core.System, nn.Module):
     @property
     def config(self):
         return self._config
+
+    @property
+    def isReverse(self) -> bool:
+        """Deprecated alias of ``is_reverse`` (until 2.1).  It reads and
+        writes the same flag, so the action written by a rewire or restored
+        from a serialized model is the one every reader sees."""
+        return self.is_reverse
+
+    @isReverse.setter
+    def isReverse(self, value: bool) -> None:
+        self.is_reverse = bool(value)
 
     def initialize(
         self,

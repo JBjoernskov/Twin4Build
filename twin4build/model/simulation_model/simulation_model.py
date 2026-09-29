@@ -1951,6 +1951,13 @@ class SimulationModel:
         Per-CITS ``RewireReport`` objects are stored on
         ``self._rewire_reports`` for downstream inspection.
 
+        What the rewire derives is part of each controller's ``config``
+        (structure, weights, gate, normalisation bounds, parameter bounds,
+        the ``playback`` flag and the mode as ``rewire_mode``), so a model
+        that is serialized after the rewire reloads with the same
+        controllers and needs no second rewire.  A later rewire derives
+        them again; its mode decides which loops are open.
+
         Args:
             start_time, end_time, step_size: Window passed to
                 :meth:`SensorSystem.initialize` so the rewire can
@@ -3994,6 +4001,21 @@ class SimulationModel:
             # keyword-shaped literals; every literal that resolves to a
             # ``tps.Parameter`` on the built component is written to it here,
             # so a serialized model reloads with its (fitted) values.
+            # Bounds first (``candidate_0_0.kp.min_value``): a parameter
+            # stores its value relative to its bounds, so they have to be
+            # the serialized ones before the value is written.
+            for key, value in attributes.items():
+                owner, _, bound = key.rpartition(".")
+                if (
+                    value is None
+                    or not owner
+                    or bound not in ("min_value", "max_value")
+                    or not rhasattr(component, owner)
+                ):
+                    continue
+                parameter = rgetattr(component, owner)
+                if isinstance(parameter, (tps.Parameter, tps.TensorParameter)):
+                    setattr(parameter, bound, value)
             for key, value in attributes.items():
                 if value is None or not rhasattr(component, key):
                     continue
