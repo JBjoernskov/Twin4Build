@@ -788,6 +788,7 @@ class SpaceHeaterSystem(core.System, nn.Module):
 
         This method advances the state-space model by one time step and calculates
         the outlet water temperature and the two powers. The method:
+
         1. Collects current input values
         2. Updates the state-space model
         3. Calculates the heat given to the room and the heat taken from the
