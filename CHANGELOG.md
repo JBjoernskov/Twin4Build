@@ -95,6 +95,14 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `Model(id=..., system_registry=...)` and
   `Translator(system_registry=...)` take a registry of their own, which the
   translator also uses as the whitelist of the external classes it accepts.
+- `Simulator.measurement_frames()` and
+  `Simulator.measurement_errors(skip=0)` compare the simulation that just
+  ran with the measurements: for every sensor that reads a computed port
+  and holds data, a frame (`measured`, `simulated`, `scored`) and a row of
+  errors (`sensor`, `port`, `n`, `mae`, `rmse`, `bias`) over the samples
+  the sensor's `scoring_mask` scores, after the first `skip` steps of each
+  period.  They work on the model the simulator ran, unbatched or batched.
+
 - Parameters by component id, across batchings.
   `Model.get_source_component_ids(component)` gives the ids of the
   components a batched meta stands for;

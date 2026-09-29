@@ -523,8 +523,9 @@ class SensorSystem(core.System):
         is taken as the steps of a period, in order.  ``None`` (default)
         scores every sample.  The mask lives on the sensor, not in the
         data, because the data loaders interpolate gaps away.  It is read
-        by the functional single-shooting objective of the estimator.  A
-        batched model holds a copy of the sensor
+        by the functional single-shooting objective of the estimator and by
+        :meth:`~twin4build.simulator.simulator.Simulator.measurement_errors`.
+        A batched model holds a copy of the sensor
         (``Model.get_batched_component_info``): a mask set after
         ``Model.batch_components`` is set on the copy.
         """
