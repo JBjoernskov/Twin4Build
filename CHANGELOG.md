@@ -364,7 +364,19 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `hessian="exact"|"gauss_newton"|"limited_memory"`; the default is `exact`.
 - `Optimizer.optimize` returns `OptimizationResult` (SciPy fields preserved)
 - Shared method parsing via `twin4build.utils.method_spec`
-- LOGGER: dual sinks — ANSI+indent on stdout, plain (no ANSI) logfile always (`progress.log` by default)
+- LOGGER: the indented tree is printed on stdout (ANSI colors on a
+  terminal), or appended as plain text to `LOGGER.logfile` when one is set.
+  `logfile=None` means no file: the implicit `progress.log` in the working
+  directory is gone (#138). A logfile that cannot be written gives a
+  `RuntimeWarning` once instead of failing silently. `load(logfile=None)`
+  leaves a configured `LOGGER.logfile` as it is.
+- `LOGGER.use_stdlib_logging()`: opt-in forwarding of every line as a
+  `logging.LogRecord` on `logging.getLogger("twin4build")` (level from the
+  badge; badge, nesting depth and line number in `t4b_*` attributes;
+  `change_status=True` arrives as `"<message> - OK"`). Nothing is printed
+  while it is on, and the root logger and `logging.disable` are not touched.
+- `LOGGER.is_interactive()` asks `sys.stdout.isatty()` instead of inspecting
+  `__main__`; `LOGGER.interactive = True | False` overrides it.
 - Top-level `tb.types` / `Vector` / `Scalar` / `Parameter` / `State`
 - Package version `2.0.0`
 - Canonical simulation, estimation, optimization, and scaling benchmarks now

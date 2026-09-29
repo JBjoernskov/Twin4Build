@@ -2484,7 +2484,7 @@ class SimulationModel:
             validate_model: Whether to perform model validation.
             force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
-            logfile: Path to the log file.
+            logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
         """
         if LOGGER.verbose:
             self._load(
@@ -2528,7 +2528,7 @@ class SimulationModel:
             validate_model: Whether to perform model validation.
             force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
-            logfile: Path to the log file.
+            logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
         """
         # if not LOGGER.is_active:
         #     reset_PRINTPROGRESS = True
@@ -2537,7 +2537,9 @@ class SimulationModel:
 
         # if verbose is not None:
         #     LOGGER.verbose = verbose
-        LOGGER.logfile = logfile
+        # ``None`` is "not given": a logfile configured on LOGGER stays.
+        if logfile is not None:
+            LOGGER.logfile = logfile
 
         if self._is_loaded:
             self._reset()

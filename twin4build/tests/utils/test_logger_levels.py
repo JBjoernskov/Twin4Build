@@ -8,7 +8,9 @@ popped and the closing removes do not raise (``estimator_example.ipynb`` died
 with ``IndexError: list index out of range`` in ``remove_level`` once the
 identifiability report printed its lines after the reset).
 """
+import io
 import unittest
+from unittest import mock
 
 import twin4build as tb
 from twin4build.utils.logger import Logger
@@ -17,6 +19,12 @@ tb._IS_TESTING = True
 
 
 class TestLevelStackUnderflow(unittest.TestCase):
+    def setUp(self):
+        # The logger prints on stdout when no logfile is set.
+        stdout = mock.patch("sys.stdout", new_callable=io.StringIO)
+        stdout.start()
+        self.addCleanup(stdout.stop)
+
     def _logger(self):
         logger = Logger()
         logger.verbose = 10
