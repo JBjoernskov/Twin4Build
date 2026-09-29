@@ -95,6 +95,17 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `Model(id=..., system_registry=...)` and
   `Translator(system_registry=...)` take a registry of their own, which the
   translator also uses as the whitelist of the external classes it accepts.
+- Workflow accessors, so that a workflow in an add-on package need not
+  reach into private attributes:
+  `twin4build.utils.get_main_dir.set_main_dir(path)` sets the folder models
+  keep their files in (instead of overwriting the module's `_main_dir`);
+  `Model.serialize()` returns the path of the saved instance graph and
+  `Model.instance_graph_path` gives it without serializing;
+  `discretize_onestep` is the public name of the one-step zero-order-hold
+  discretization (`_discretize_onestep` is unchanged);
+  `SpaceHeaterSystem.solve_UA()` returns the `UA` that meets the nominal
+  sizing, so a radiator can be sized before the model is initialized.
+
 - `Optimizer`: a decision variable may name a component's ``tps.Parameter``
   instead of an output port (`(component, "Y", lb, ub)`), so a handful of
   numbers (the points of a compensation curve, a gain, a setpoint) can be

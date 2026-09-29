@@ -30,6 +30,7 @@ from twin4build.utils.dict_utils import (
     flatten_dict,
     merge_dicts,
 )
+from twin4build.utils.get_main_dir import get_main_dir
 from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
@@ -3945,7 +3946,17 @@ class SimulationModel:
             for connection_point in connection_points:
                 _update_literals_for_connection_point(connection_point)
 
-    def serialize(self):
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the model to
+        (``instance_graph.ttl`` in the model's semantic_model directory),
+        whether or not it has been written.  ``load`` rebuilds the model
+        from it."""
+        return os.path.join(
+            get_main_dir(), *self._semantic_model.dir_conf, "instance_graph.ttl"
+        )
+
+    def serialize(self) -> str:
         """
         Serialize the simulation model to disk.
 
@@ -3953,6 +3964,10 @@ class SimulationModel:
         component/connection state and serializes it, writing
         ``ontology_graph.ttl`` and ``instance_graph.ttl`` (Turtle format) to
         the model's semantic_model directory.
+
+        Returns:
+            The path of the instance graph written
+            (:attr:`instance_graph_path`).
         """
         # dummy_start_time = [datetime.datetime.now()] * len(self._components)
         # dummy_end_time = [datetime.datetime.now()] * len(self._components)
@@ -3961,6 +3976,7 @@ class SimulationModel:
         # self.initialize(dummy_start_time, dummy_end_time, dummy_step_size)
         self._update_literals()
         self._semantic_model.serialize()
+        return self.instance_graph_path
 
     def visualize(
         self,

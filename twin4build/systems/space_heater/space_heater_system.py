@@ -394,11 +394,11 @@ class SpaceHeaterSystem(core.System, nn.Module):
             # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh.
             # When initialize_UA is False, the current UA value is used directly,
             # which is useful when UA is being estimated/calibrated.
-            UA0 = float(
-                self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
-            )
-            root = fsolve(self._ua_residual, UA0, full_output=True)
-            UA_val = float(root[0][0])
+            #
+            # ``solve_UA`` is the same solve as a public method, for a caller
+            # that sizes the radiator before the model is initialized (and
+            # then sets ``initialize_UA = False``).
+            UA_val = self.solve_UA()
             # Write the physical UA through ``set`` so normalization is applied.
             # ``data.fill_(UA_val)`` would store the physical value in the
             # normalized slot and make ``get()`` return min+(UA_val)*(max-min)
@@ -725,6 +725,31 @@ class SpaceHeaterSystem(core.System, nn.Module):
             outs["outletWaterTemperature"], i_t=step_index
         )
         self.output["Power"]._set(outs["Power"], i_t=step_index)
+
+    def solve_UA(self) -> float:
+        """The ``UA`` that meets the radiator's nominal sizing.
+
+        Solves for the overall heat transfer coefficient at which the
+        radiator, in steady state at its nominal conditions
+        (``T_a_nominal_sh``, ``T_b_nominal_sh``, ``TAir_nominal_sh``, and
+        the water flow that gives ``Q_flow_nominal_sh`` over that
+        temperature drop), delivers ``Q_flow_nominal_sh``.  It is the value
+        ``initialize`` sets when ``initialize_UA`` is True; the component is
+        not changed and need not be initialized.  To start a model from a
+        sized radiator, set the value and switch the solve at ``initialize``
+        off::
+
+            heater.UA.set(heater.solve_UA(), normalized=False)
+            heater.initialize_UA = False
+
+        Returns:
+            The heat transfer coefficient [W/K].
+        """
+        UA0 = float(
+            self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
+        )
+        root = fsolve(self._ua_residual, UA0, full_output=True)
+        return float(root[0][0])
 
 
 # Deprecated aliases (removed in twin4build 2.1)

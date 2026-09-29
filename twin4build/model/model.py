@@ -1166,12 +1166,24 @@ class Model:
             iter(self._translator.sim2sem_map[self._simulation_model._components[key]])
         )
 
-    def serialize(self) -> None:
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the simulation model to,
+        whether or not it has been written; ``load(filename=...)`` rebuilds
+        the model from it."""
+        return self._simulation_model.instance_graph_path
+
+    def serialize(self) -> str:
         """
         Serialize both halves of the model.
+
+        Returns:
+            The path of the saved instance graph of the simulation model
+            (:attr:`instance_graph_path`), the file ``load(filename=...)``
+            rebuilds the model from.
         """
         self._semantic_model.serialize()
-        self._simulation_model.serialize()
+        return self._simulation_model.serialize()
 
     def visualize(self, **kwargs) -> None:
         """
