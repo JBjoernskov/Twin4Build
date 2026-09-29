@@ -120,7 +120,7 @@ def main():
     )
 
     variables = [(valve_position_schedule, "scheduleValue", 0, 1)]
-    objectives = [(space_heater, "Power", "min")]
+    objectives = [(space_heater, "toRoomPower", "min")]
     ineq_cons = [
         (space, "indoorTemperature", "upper", cooling_setpoint),
         (space, "indoorTemperature", "lower", heating_setpoint),
@@ -157,7 +157,7 @@ def main():
         .history()
         .detach()
         .clone(),
-        "power": space_heater.output["Power"].history().detach().clone(),
+        "power": space_heater.output["toRoomPower"].history().detach().clone(),
         "valve_position": space_heater_valve.output["valvePosition"]
         .history()
         .detach()

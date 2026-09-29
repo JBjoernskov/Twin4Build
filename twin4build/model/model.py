@@ -482,7 +482,11 @@ class Model:
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
+
+        A deprecated output port name (``System.OUTPUT_PORT_ALIASES``)
+        connects as the name that replaced it, with a ``DeprecationWarning``.
         """
+        output_port = sender_component.resolve_output_port(output_port)
         self.simulation_model.add_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
@@ -513,6 +517,7 @@ class Model:
         Raises:
             ValueError: If the specified connection does not exist.
         """
+        output_port = sender_component.resolve_output_port(output_port)
         self.simulation_model.remove_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,

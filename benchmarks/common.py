@@ -2461,7 +2461,7 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
             "scheduleValue",
             "valvePosition",
         )
-        model.add_connection(zone["office_space_heater"], cost, "Power", "input_1")
+        model.add_connection(zone["office_space_heater"], cost, "toRoomPower", "input_1")
         model.add_connection(price, cost, "scheduleValue", "input_2")
         model.add_connection(
             zone["office_temperature_heating_setpoint"],

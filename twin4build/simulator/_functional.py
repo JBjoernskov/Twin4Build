@@ -32,7 +32,7 @@ input port of a functional component it uses one of
   the same step (pass-through sensors followed to their source), so parameter
   and state couplings are exact;
 * a **feedback** value -- a cut cycle edge (the producer executes *later* in
-  the Gauss-Seidel order, e.g. ``office.heatGain <- space_heater.Power``).
+  the Gauss-Seidel order, e.g. ``office.heatGain <- space_heater.toRoomPower``).
   These are one-step *lag variables*: :meth:`FunctionalModel.F_aug` appends
   them to the state, reproducing ``do_step``'s one-step-delayed feedback
   semantics exactly;
@@ -397,7 +397,7 @@ class FunctionalModel:
         #        is a cone forward-component that executes LATER (the cycle-broken
         #        edge).  Its value is a decision variable, NOT frozen, because it
         #        is a function of the states/params (e.g. office.heatGain <-
-        #        space_heater.Power).  A defect ties it to the producer's output.
+        #        space_heater.toRoomPower).  A defect ties it to the producer's output.
         #   ("exogenous", cap_index)             -- truly exogenous (weather,
         #        schedules): frozen from a reference sim (correct -- independent of
         #        the unknowns).

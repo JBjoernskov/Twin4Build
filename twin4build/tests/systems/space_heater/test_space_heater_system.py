@@ -113,7 +113,7 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
 
         # Check outputs
         outlet_temp = self.heater.output["outletWaterTemperature"].get()
-        radiator_power = self.heater.output["Power"].get()
+        radiator_power = self.heater.output["toRoomPower"].get()
 
         self.assertIsNotNone(outlet_temp)
         self.assertIsNotNone(radiator_power)
@@ -159,7 +159,7 @@ class TestSpaceHeaterTorchSystem(unittest.TestCase):
 
         # Check outputs - verify all outputs have consistent batch shape
         outlet_temp = heater_batch.output["outletWaterTemperature"].get()
-        radiator_power = heater_batch.output["Power"].get()
+        radiator_power = heater_batch.output["toRoomPower"].get()
 
         self.assertIsNotNone(outlet_temp)
         self.assertIsNotNone(radiator_power)
