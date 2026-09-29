@@ -237,6 +237,12 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Changed
 
+- A model loaded with `Model.load(filename=...)` serializes to a file that
+  loads again.  The loader rebuilt the connections but the semantic model
+  kept the instances it had cached while reading the file, and
+  `serialize()` wrote their triples back: every connection twice and JSON
+  literals as Python reprs, which the next load could not parse.
+
 - `twin4build.examples.patterns` is trimmed to the patterns the library's
   own translator example matches on its one-room model (16 patterns: the
   SAREF-shaped zone, outdoor environment, PID controller, schedule, damper,

@@ -4071,6 +4071,15 @@ class SimulationModel:
                 output_port_index=data["output_port_index"],
             )
 
+        # Step 4: Forget the instances that were cached while the file was
+        # read.  They hold the triples of the file -- the connections that
+        # were rebuilt above, the literals as they were parsed -- and
+        # ``SemanticModel.serialize`` writes what its cached instances hold
+        # back into the graph: a model loaded from a file would serialize
+        # the old connections next to the new ones, to a file that does not
+        # load again.
+        self._semantic_model._instances = {}
+
         LOGGER.remove_level()
         LOGGER.ok("Making connections", change_status=True)
 
