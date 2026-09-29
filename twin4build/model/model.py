@@ -1102,6 +1102,34 @@ class Model:
         """Forget the state set by :meth:`set_state`."""
         self.simulation_model.clear_state()
 
+    @staticmethod
+    def get_source_component_ids(component: "core.System") -> Tuple[str, ...]:
+        """The ids of the components ``component`` stands for, in instance
+        order: those a batched meta was built from
+        (:meth:`batch_components`), ``(component.id,)`` for any other
+        component."""
+        return core.SimulationModel.get_source_component_ids(component)
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters in physical units,
+        ``{(component id, attr): values}``, by the ids of the components the
+        model was built from: a batched meta of ``n_c`` instances gives
+        ``n_c`` keys.  ``parameters`` is an iterable of ``(component, attr,
+        ...)`` tuples (the estimator's parameter entries).  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_parameter_values`."""
+        return self.simulation_model.get_parameter_values(parameters)
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[str, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from ``{(component id, attr): values}``
+        (:meth:`get_parameter_values`), on this model whatever its batching:
+        an id names a component of the model or a component one of its
+        batched metas stands for.  Returns ``{"applied": n, "missing": m}``.
+        See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_parameter_values`."""
+        return self.simulation_model.set_parameter_values(values, strict=strict)
+
     def load_estimation_result(
         self,
         filename: Optional[str] = None,

@@ -3382,6 +3382,37 @@ class Estimator:
                 self._log_continuity_jumps(continuity_jumps_instances, continuity_tolerance_instances)
             except Exception as exc:  # the result is saved either way
                 LOGGER.warning("Continuity jumps per component not derived: %r", exc)
+        # The parameters by those ids too: the fitted values, the values the
+        # fit started from and the bounds, and per entry the components its
+        # component stood for.  A result loads onto another batching of the
+        # model through them (``load_estimation_result``).
+        parameter_instances = None
+        try:
+            model = self.simulator.model
+            model = getattr(model, "simulation_model", model)
+            entries = list(zip(self._flat_components, self._parameter_names))
+            component_source_ids = [
+                list(model.get_source_component_ids(component)) for component, _ in entries
+            ]
+            parameter_instances = model.get_parameter_values(entries)
+            parameter_instances_x0 = {}
+            parameter_instance_bounds = {}
+            for (component, attr), x0_, lb_, ub_ in zip(
+                entries,
+                self._theta_to_param_values(np.asarray(self._x0, dtype=float)),
+                self._theta_to_param_values(np.asarray(self._lb, dtype=float)),
+                self._theta_to_param_values(np.asarray(self._ub, dtype=float)),
+            ):
+                for (cid, start), (_, low), (_, high) in zip(
+                    model._split_instances(component, x0_),
+                    model._split_instances(component, lb_),
+                    model._split_instances(component, ub_),
+                ):
+                    parameter_instances_x0[(cid, attr)] = start
+                    parameter_instance_bounds[(cid, attr)] = (low, high)
+        except Exception as exc:  # the result is saved either way
+            parameter_instances = None
+            LOGGER.warning("Parameters per component not derived: %r", exc)
         collocation_audit = getattr(result, "collocation_audit", None)
         collocation_timing = getattr(result, "collocation_timing", None)
         multistart_audit = getattr(result, "multistart_audit", None)
@@ -3427,6 +3458,11 @@ class Estimator:
             result["continuity_tolerance_instances"] = continuity_tolerance_instances
         if continuity_shift_instances is not None:
             result["continuity_shift_instances"] = continuity_shift_instances
+        if parameter_instances is not None:
+            result["parameter_instances"] = parameter_instances
+            result["parameter_instances_x0"] = parameter_instances_x0
+            result["parameter_instance_bounds"] = parameter_instance_bounds
+            result["component_source_ids"] = component_source_ids
         if collocation_audit is not None:
             result["collocation_audit"] = collocation_audit
         if collocation_timing is not None:
@@ -4543,7 +4579,19 @@ class EstimationResult(ResultDict):
         initial states) and ``collocation_audit`` (collocation
         solution-quality audit), or ``multistart_audit``,
         ``derivative_stats``, and ``iteration_history`` for custom batched
-        shooting. Results saved to disk can be reloaded with
+        shooting.
+
+        A saved fit also carries its parameters by the ids of the components
+        the model was built from, ``{(component id, attr): values}`` in
+        physical units with one key per instance of a batched component:
+        ``parameter_instances`` (the fitted values),
+        ``parameter_instances_x0`` (the values the fit started from) and
+        ``parameter_instance_bounds`` (``(lower, upper)``); and
+        ``component_source_ids``, per entry of ``component_id`` the ids of
+        the components that component stood for.  Through them a result
+        loads onto another batching of the model.
+
+        Results saved to disk can be reloaded with
         :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
 
     Examples:

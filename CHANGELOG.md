@@ -95,6 +95,22 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `Model(id=..., system_registry=...)` and
   `Translator(system_registry=...)` take a registry of their own, which the
   translator also uses as the whitelist of the external classes it accepts.
+- Parameters by component id, across batchings.
+  `Model.get_source_component_ids(component)` gives the ids of the
+  components a batched meta stands for;
+  `Model.get_parameter_values(parameters)` reads the estimator's parameter
+  entries as `{(component id, attr): array}` in physical units, one key per
+  instance of a meta; `Model.set_parameter_values(values, strict=False)`
+  writes such values to the model whatever its batching (the unbatched
+  model, or a meta's instance, the other instances left alone) and returns
+  `{"applied": n, "missing": m}`.  A saved fit carries
+  `parameter_instances`, `parameter_instances_x0` (the values the fit
+  started from), `parameter_instance_bounds` and `component_source_ids`,
+  and `load_estimation_result` applies the values by component id when the
+  result was fitted on another batching of the model (its ids do not
+  resolve, or resolve to metas that stand for other components) instead of
+  failing with a `KeyError`.
+
 - `SensorSystem`: `scoring_mask` (the samples an estimation scores, a
   boolean Series indexed by time) and `measurement_sd` (the standard
   deviation the sensor is scored with) are declared attributes and
