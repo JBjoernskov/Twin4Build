@@ -2,6 +2,7 @@
 import atexit
 import functools
 import inspect
+import logging
 import os
 import sys
 import threading
@@ -9,12 +10,15 @@ import time
 import warnings
 
 # Third party imports
-import __main__
 import numpy as np
 from dateutil import tz
 import twin4build
 
-# Curses TUI removed in twin4build 2.0 in favor of dual ANSI stdout + plain logfile.
+#: Name of the standard-library logger that ``Logger.use_stdlib_logging``
+#: forwards to by default.
+STDLIB_LOGGER_NAME = "twin4build"
+
+# Curses TUI removed in twin4build 2.0 in favor of ANSI stdout or a plain logfile.
 # Keep the name defined so leftover guarded TUI branches (never entered when
 # ``_use_curses`` is False) do not trip flake8 F821 on CI.
 CURSES_AVAILABLE = False
@@ -88,6 +92,19 @@ class Logger:
     - ``key=value | key=value`` for iteration metrics.
     - ``component_id.attribute`` for identifiers.
 
+    Output
+    ------
+    Lines go to exactly one place the library chooses, and it never writes a
+    file it was not asked for:
+
+    - ``LOGGER.logfile = None`` (default): the tree is printed on
+      ``sys.stdout``, with ANSI colors when ``is_interactive()`` is true.
+    - ``LOGGER.logfile = "run.log"``: the plain tree is appended to that
+      file instead.
+    - ``LOGGER.use_stdlib_logging()``: every line becomes a record on the
+      standard ``logging`` logger ``"twin4build"`` and nothing is printed;
+      the application's handlers decide where it goes.
+
     Example
     -------
     ::
@@ -129,6 +146,12 @@ class Logger:
         self._log_flush_size = 1
         self._log_buffer = []  # Pending formatted lines not yet written
         self._flushed_line_count = 0  # Number of _curses_lines already written to disk
+        self._printed_line_count = 0  # Number of _curses_lines already on stdout
+        self._logfile_errors = set()  # Logfile paths already warned about
+        # None: ask the stream (``sys.stdout.isatty()``); True/False: forced
+        self._interactive = None
+        # Standard-library logger the lines are forwarded to (None: not forwarding)
+        self._stdlib_logger = None
         # File mode is buffered; ensure we flush on exit/crash
         self._file_flush_registered = False
         self._file_flush_logfile_path = None
@@ -510,14 +533,13 @@ class Logger:
         self._log_flush_size = value
 
     def _get_logfile_path(self):
-        """Get the plain (non-ANSI) logfile path.
+        """Get the plain (non-ANSI) logfile path, or None when no file is written.
 
-        Always returns a path so LLM-friendly plain logs are written. Human-facing
-        ANSI output still goes to stdout in parallel.
+        ``logfile=None`` means *no file*: the library does not pick a
+        location (it used to fall back to ``progress.log`` in the working
+        directory, #138).
         """
-        if self.logfile is not None:
-            return self.logfile
-        return "progress.log"
+        return self.logfile
 
     def get_log(self):
         logfile = self._get_logfile_path()
@@ -748,8 +770,17 @@ class Logger:
         try:
             with open(logfile_path, "a", encoding="utf-8") as f:
                 f.write(content)
-        except OSError:
-            pass
+        except OSError as e:
+            # A logging problem must not end a long solve, but it must not
+            # pass unseen either: say so once per path.
+            if logfile_path not in self._logfile_errors:
+                self._logfile_errors.add(logfile_path)
+                warnings.warn(
+                    "twin4build LOGGER cannot write to logfile %r (%s); "
+                    "its lines are dropped." % (logfile_path, e),
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
         self._flushed_line_count += len(self._log_buffer)
         self._log_buffer.clear()
 
@@ -788,31 +819,189 @@ class Logger:
 
             if len(self._log_buffer) >= self._log_flush_size:
                 self._flush_log_buffer(logfile_path)
-        else:
-            # Stdout output
-            if self.has_printed:
-                self.clear_lines(self.n_printed)
+        elif self._stdlib_logger is None:
+            # Stdout output, append-only like the file: a line is printed
+            # once, when it is added.
+            stream = sys.stdout
+            if stream is not None:
+                use_ansi = self.is_interactive()
+                for indent, message, status, level, location in self._curses_lines[
+                    self._printed_line_count :
+                ]:
+                    if use_ansi:
+                        s = self._format_line_ansi(
+                            indent, message, status, level, location
+                        )
+                    else:
+                        display_status = self._get_status_display_text(status)
+                        _status = display_status + " " if status != "" else ""
+                        display_message = self._format_message(
+                            message, location, use_ansi_colors=False
+                        )
+                        s = indent + _status + display_message
+                    print(s, file=stream, flush=True)
 
-            use_ansi = sys.stdout.isatty()
-
-            self.n_printed = 0
-            for indent, message, status, level, location in self._curses_lines:
-                if use_ansi:
-                    s = self._format_line_ansi(indent, message, status, level, location)
-                else:
-                    display_status = self._get_status_display_text(status)
-                    _status = display_status + " " if status != "" else ""
-                    display_message = self._format_message(
-                        message, location, use_ansi_colors=False
-                    )
-                    s = indent + _status + display_message
-                print(s, flush=True)
-                self.n_printed += 1
-
+        # Whatever the sink was, these lines are done: a later switch to
+        # stdout starts at the next line.
+        self._printed_line_count = len(self._curses_lines)
         self.has_printed = True
 
+    @property
+    def interactive(self):
+        """Explicit answer for ``is_interactive()``, or None to ask the stream."""
+        return self._interactive
+
+    @interactive.setter
+    def interactive(self, value):
+        assert value is None or isinstance(
+            value, bool
+        ), "interactive must be True, False or None"
+        self._interactive = value
+
     def is_interactive(self):
-        return not hasattr(__main__, "__file__")
+        """Whether the console output is read by a person at a terminal.
+
+        True when ``sys.stdout`` is a terminal (``sys.stdout.isatty()``),
+        unless ``LOGGER.interactive`` is set to True or False, which is then
+        the answer.  The console output is colored with ANSI codes when this
+        is true.
+
+        It used to test whether ``__main__`` has a ``__file__``, which says
+        nothing about the output under ``multiprocessing`` spawn, in an
+        embedded interpreter or in a WSGI/ASGI server (#138).
+
+        Returns:
+            bool: True if the console output goes to a terminal.
+        """
+        if self._interactive is not None:
+            return self._interactive
+        isatty = getattr(sys.stdout, "isatty", None)
+        if isatty is None:
+            return False
+        return bool(isatty())
+
+    @property
+    def stdlib_logger(self):
+        """The ``logging.Logger`` the lines are forwarded to, or None."""
+        return self._stdlib_logger
+
+    def use_stdlib_logging(self, enabled=True, logger=None):
+        """Forward the lines to the standard ``logging`` module.
+
+        For an application that configures ``logging`` itself.  While
+        enabled, every line is a ``logging.LogRecord`` on the logger
+        ``"twin4build"`` and nothing is printed on stdout; the application's
+        handlers, levels and formatters decide what happens to it.  A
+        ``LOGGER.logfile`` that was asked for is still written.  Nothing is
+        changed on the root logger, no handler is added and
+        ``logging.disable`` is not called.
+
+        The level of a record follows the badge: ``debug`` is ``DEBUG``;
+        ``warning`` is ``WARNING``; ``error`` is ``ERROR``; everything else
+        (``info``, ``config``, ``iter``, ``result``, ``section``, ``task``,
+        ``ok``) is ``INFO``.  The record names the file, line and function
+        of the caller, and carries:
+
+        - ``t4b_badge``: the badge without brackets, e.g. ``"TASK"``.
+        - ``t4b_depth``: the nesting depth (``add_level``/``remove_level``).
+        - ``t4b_line``: the number of the line in the current tree (the
+          numbering restarts when the logger resets).
+        - ``t4b_updates``: None, or for ``change_status=True`` the
+          ``t4b_line`` of the earlier line whose outcome this record
+          reports.  ``logging`` is append-only, so that record reads
+          ``"<message> - OK"`` (or ``WARNING``, ``ERROR``).
+
+        ``LOGGER.verbose`` and the status filters (``show_status``,
+        ``hide_status``) apply before a record is made; ``debug`` lines are
+        hidden by default, so ``LOGGER.show_status("debug")`` is needed next
+        to a ``DEBUG`` level on the logger.
+
+        Args:
+            enabled: True to forward, False to return to the console output.
+            logger: The ``logging.Logger`` to forward to, or its name.
+                Defaults to ``logging.getLogger("twin4build")``.
+
+        Example:
+            ::
+
+                import logging
+                from twin4build.utils.logger import LOGGER
+
+                logging.basicConfig(level=logging.INFO)
+                LOGGER.use_stdlib_logging()
+        """
+        if not enabled:
+            self._stdlib_logger = None
+            return
+        if logger is None:
+            logger = STDLIB_LOGGER_NAME
+        if isinstance(logger, str):
+            logger = logging.getLogger(logger)
+        assert isinstance(
+            logger, logging.Logger
+        ), "logger must be a logging.Logger, a logger name or None"
+        self._stdlib_logger = logger
+
+    def _get_status_logging_level(self, status):
+        """Get the ``logging`` level for a status string."""
+        color_pair = self._get_status_color_pair(status)
+        if color_pair == self.ERROR_COLOR_PAIR:
+            return logging.ERROR
+        elif color_pair == self.WARNING_COLOR_PAIR:
+            return logging.WARNING
+        elif "[debug" in status.lower():
+            return logging.DEBUG
+        return logging.INFO
+
+    def _get_caller_frame_info(self):
+        """Return (pathname, lineno, function name) for the caller of LOGGER."""
+        current_file = os.path.abspath(__file__)
+        frame = inspect.currentframe()
+        while frame is not None:
+            if os.path.abspath(frame.f_code.co_filename) != current_file:
+                return frame.f_code.co_filename, frame.f_lineno, frame.f_code.co_name
+            frame = frame.f_back
+        return "(unknown file)", 0, "(unknown function)"
+
+    def _forward_line(self, idx, outcome_status=None):
+        """Emit line ``idx`` of the tree as a record on the stdlib logger.
+
+        With ``outcome_status`` the record reports the outcome of that
+        earlier line (``change_status=True``) instead of the line itself.
+        """
+        logger = self._stdlib_logger
+        is_update = outcome_status is not None
+        level = self._get_status_logging_level(
+            outcome_status if is_update else self.status[idx]
+        )
+        if not logger.isEnabledFor(level):
+            return
+        badge = self._get_status_display_text(self.status[idx]).strip("[]")
+        if is_update:
+            outcome = {logging.ERROR: "ERROR", logging.WARNING: "WARNING"}
+            msg = "%s - %s"
+            args = (self.message[idx], outcome.get(level, "OK"))
+        else:
+            msg = self.message[idx]
+            args = ()
+        pathname, lineno, func = self._get_caller_frame_info()
+        record = logger.makeRecord(
+            logger.name,
+            level,
+            pathname,
+            lineno,
+            msg,
+            args,
+            None,
+            func=func,
+            extra={
+                "t4b_badge": badge,
+                "t4b_depth": self.level[idx],
+                "t4b_line": idx,
+                "t4b_updates": idx if is_update else None,
+            },
+        )
+        logger.handle(record)
 
     def _init_curses(self):
         """Initialize curses mode, optionally using alternate screen buffer"""
@@ -1386,6 +1575,8 @@ class Logger:
                 idx = match_idx[-1]
                 self.status[idx] = self._apply_color_to_status(self.status[idx], status)
                 self.print_lines()
+                if self._stdlib_logger is not None:
+                    self._forward_line(idx, outcome_status=status)
         else:
             if self._block_count > 0:
                 return
@@ -1407,6 +1598,8 @@ class Logger:
                     indent=indent, message=message, status=status, location=location
                 )
                 self.print_lines()
+                if self._stdlib_logger is not None:
+                    self._forward_line(len(self.message) - 1)
                 self.added_level = False
                 self.removed_level = False
             else:
@@ -1746,13 +1939,15 @@ class Logger:
         self._is_active = False
         self._log_buffer = []
         self._flushed_line_count = 0
+        self._printed_line_count = 0
         self._curses_lines = []
         self._paused = False
         self._pause_event.set()  # Ensure not paused after reset
         # Don't reset user-configured settings — only printing history.
         # Preserved: _verbose, logfile, _status_filters, _caller_filters,
         #            _caller_filter_mode, _warned_once_messages, _show_location,
-        #            _log_flush_size, _atexit_registered
+        #            _log_flush_size, _atexit_registered, _interactive,
+        #            _stdlib_logger
 
     def __del__(self):
         """Destructor to ensure curses cleanup"""
