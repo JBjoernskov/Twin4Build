@@ -527,6 +527,11 @@ class Estimator:
                 measuring device whose ``input["measuredValue"]`` holds historical
                 data and ``sd`` is the measurement standard deviation used to
                 weight that sensor's residuals (:math:`\\sigma_j` in the likelihood).
+                An entry may also be the sensor alone, or give ``None`` as
+                ``sd``: the sensor's ``measurement_sd`` is used then, and an
+                entry with neither is an error.  With a functional simulator
+                the samples a sensor's ``scoring_mask`` marks ``False`` are
+                not scored.
 
                 Passing ``measurements="auto"`` includes every sensor that is
                 driven by a non-sensor upstream component and has a wired data
@@ -950,6 +955,7 @@ class Estimator:
             parameters = self._auto_parameters()
         if isinstance(measurements, str) and measurements == "auto":
             measurements = self._auto_measurements()
+        measurements = self._resolve_measurements(measurements)
 
         if isinstance(parameters, dict):
             raise TypeError(
@@ -1611,6 +1617,35 @@ class Estimator:
         # measurements lists that callers built by hand.
         self._auto_measurement_ids = {c.id for c, _ in out}
         return out
+
+    @staticmethod
+    def _resolve_measurements(measurements) -> List[Tuple[core.System, float]]:
+        """The ``measurements`` argument of :meth:`estimate` as a list of
+        ``(sensor, sd)``.
+
+        An entry is ``(sensor, sd)``, ``(sensor,)`` or the sensor alone; a
+        missing or ``None`` ``sd`` is the sensor's ``measurement_sd``.
+
+        Raises:
+            ValueError: If an entry gives no standard deviation and its
+                sensor carries none.
+        """
+        resolved = []
+        for entry in measurements:
+            if isinstance(entry, (tuple, list)):
+                sensor = entry[0]
+                sd = entry[1] if len(entry) > 1 else None
+            else:
+                sensor, sd = entry, None
+            if sd is None:
+                sd = getattr(sensor, "measurement_sd", None)
+            if sd is None:
+                raise ValueError(
+                    f"The measurement '{getattr(sensor, 'id', sensor)}' has no standard "
+                    "deviation: give it as (sensor, sd) or set sensor.measurement_sd."
+                )
+            resolved.append((sensor, sd))
+        return resolved
 
     @staticmethod
     def _parameter_value_as_array(param) -> np.ndarray:

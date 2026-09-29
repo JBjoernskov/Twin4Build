@@ -92,7 +92,9 @@ class SensorSystem(core.System):
             Defaults to None.
         df: DataFrame containing readings.
             Defaults to None.
-        uuid: UUID identifying the time series in the database.
+        uuid: UUID identifying the time series in the database.  Given
+            together with ``df`` (and no ``dbconfig``) it is the sensor's
+            identity only: the sensor reads the DataFrame.
             Defaults to None.
         dbconfig: Configuration of the database to read sensor values from.
             Defaults to None.
@@ -108,6 +110,10 @@ class SensorSystem(core.System):
             Defaults to False.
         transformation: Optional function to transform the value.
             Defaults to None.
+        scoring_mask: Which samples of the sensor's series an estimation
+            scores, see :attr:`scoring_mask`.  Defaults to None (all).
+        measurement_sd: The standard deviation the sensor is scored with,
+            see :attr:`measurement_sd`.  Defaults to None.
         **kwargs: Additional keyword arguments passed to parent class.
 
     Note:
@@ -130,6 +136,8 @@ class SensorSystem(core.System):
         use_df: bool = False,
         transformation: Optional[callable] = None,
         transformation_ref: Optional[str] = None,
+        scoring_mask: Optional[Any] = None,
+        measurement_sd: Optional[float] = None,
         **kwargs,
     ) -> None:
         """Initialize the sensor system.
@@ -151,6 +159,10 @@ class SensorSystem(core.System):
                 Defaults to False.
             transformation: Optional function to transform the value.
                 Defaults to None.
+            scoring_mask: Which samples an estimation scores.
+                Defaults to None (all).
+            measurement_sd: The standard deviation the sensor is scored
+                with.  Defaults to None.
             **kwargs: Additional keyword arguments passed to parent class.
 
         Note:
@@ -171,7 +183,10 @@ class SensorSystem(core.System):
         # Count how many data sources are provided
         has_df = df is not None
         has_filename = filename is not None
-        has_database = dbconfig is not None or uuid is not None
+        # A uuid next to a DataFrame names the series the frame holds (the
+        # sensor's identity); it is a database source on its own or with a
+        # database configuration.
+        has_database = dbconfig is not None or (uuid is not None and not has_df)
         n_sources = sum([has_df, has_filename, has_database])
         n_flags = sum([use_spreadsheet, use_database, use_df])
 
@@ -224,6 +239,10 @@ class SensorSystem(core.System):
         self._is_leaf = None
         self._time_series_input = None
         self._transformation = transformation
+        self._scoring_mask = None
+        self._measurement_sd = None
+        self.scoring_mask = scoring_mask
+        self.measurement_sd = measurement_sd
         if transformation is None and transformation_ref:
             # A serialized model carries the transformation by import path.
             self.transformation_ref = transformation_ref
@@ -262,6 +281,22 @@ class SensorSystem(core.System):
         """
         return self._output
 
+    @staticmethod
+    def _names_a_new_source(current, value) -> bool:
+        """Whether assigning ``value`` to a data-source attribute that
+        holds ``current`` names a new source, which switches the sensor to
+        it.  Assigning the value the attribute already holds changes
+        nothing: ``Model.load`` restores every component's saved
+        configuration by assignment, and a sensor put on an in-memory series
+        (:meth:`set_series`) keeps the ``uuid``, ``dbconfig`` and
+        ``filename`` it had."""
+        if value is None:
+            return False
+        try:
+            return not bool(current == value)
+        except (TypeError, ValueError):
+            return True
+
     @property
     def filename(self) -> Optional[str]:
         """
@@ -273,10 +308,12 @@ class SensorSystem(core.System):
     def filename(self, value: Optional[str]) -> None:
         """
         Set the path to sensor readings file.
-        Automatically sets use_spreadsheet=True if a value is provided.
+        Automatically sets use_spreadsheet=True if a new value is provided;
+        assigning the value the sensor already has changes nothing.
         """
+        new = self._names_a_new_source(self._filename, value)
         self._filename = value
-        if value is not None:
+        if new:
             self._use_spreadsheet = True
             self._use_database = False
             self._use_df = False
@@ -415,13 +452,113 @@ class SensorSystem(core.System):
     def uuid(self, value: Optional[str]) -> None:
         """
         Set the UUID for database operations.
-        Automatically sets use_database=True if a value is provided.
+        Automatically sets use_database=True if a new value is provided;
+        assigning the value the sensor already has changes nothing.  To
+        name a sensor that reads an in-memory series, use :meth:`set_series`.
         """
+        new = self._names_a_new_source(self._uuid, value)
         self._uuid = value
-        if value is not None:
+        if new:
             self._use_database = True
             self._use_spreadsheet = False
             self._use_df = False
+
+    def set_series(
+        self, series: Union[pd.Series, pd.DataFrame], uuid: Optional[str] = None
+    ) -> None:
+        """Read an in-memory series from now on: no database, no spreadsheet.
+
+        The series replaces the sensor's data source at the next
+        ``initialize``.  Unlike the :attr:`uuid` setter, which switches the
+        sensor to database mode, ``uuid`` here is the sensor's identity only
+        (the name of the series it holds).
+
+        Args:
+            series: The readings, a ``pandas.Series`` with a
+                ``DatetimeIndex`` or a ``pandas.DataFrame`` with a
+                ``DatetimeIndex`` and one column.
+            uuid: The sensor's identity.  ``None`` (default) keeps the
+                current one.
+
+        Raises:
+            TypeError: If ``series`` is neither a Series nor a DataFrame, or
+                its index is not a ``DatetimeIndex``.
+            ValueError: If a DataFrame has another number of columns than one.
+        """
+        if isinstance(series, pd.Series):
+            frame = series.to_frame(name="value" if series.name is None else series.name)
+        elif isinstance(series, pd.DataFrame):
+            if series.shape[1] != 1:
+                raise ValueError(
+                    f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: set_series takes "
+                    f"a DataFrame with one column, got {series.shape[1]}."
+                )
+            frame = series
+        else:
+            raise TypeError(
+                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: set_series takes a "
+                f"pandas Series or a one-column DataFrame, got {type(series).__name__}."
+            )
+        if not isinstance(frame.index, pd.DatetimeIndex):
+            raise TypeError(
+                f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: the series must be "
+                f"indexed by time (a DatetimeIndex), got {type(frame.index).__name__}."
+            )
+        self._df = frame
+        self._use_df = True
+        self._use_database = False
+        self._use_spreadsheet = False
+        if uuid is not None:
+            self._uuid = uuid
+
+    @property
+    def scoring_mask(self) -> Optional[Any]:
+        """Which samples of the sensor's series an estimation scores.
+
+        A boolean ``pandas.Series`` indexed by time: ``False`` means the
+        sample is not scored (a duct sensor while its fan is off, an
+        implausible reading).  The mask is selected by the timestamps of
+        each estimated period, so one mask serves a span of several
+        periods; a time it does not cover is scored.  A plain boolean array
+        is taken as the steps of a period, in order.  ``None`` (default)
+        scores every sample.  The mask lives on the sensor, not in the
+        data, because the data loaders interpolate gaps away.  It is read
+        by the functional single-shooting objective of the estimator.  A
+        batched model holds a copy of the sensor
+        (``Model.get_batched_component_info``): a mask set after
+        ``Model.batch_components`` is set on the copy.
+        """
+        return getattr(self, "_scoring_mask", None)
+
+    @scoring_mask.setter
+    def scoring_mask(self, value: Optional[Any]) -> None:
+        self._scoring_mask = value
+
+    @scoring_mask.deleter
+    def scoring_mask(self) -> None:
+        self._scoring_mask = None
+
+    @property
+    def measurement_sd(self) -> Optional[float]:
+        """The standard deviation the sensor is scored with, in the unit of
+        its readings.
+
+        Used by :meth:`~twin4build.estimator.estimator.Estimator.estimate`
+        for an entry of ``measurements`` that names the sensor without a
+        standard deviation.  ``None`` (default): the entry must give one.
+        """
+        return getattr(self, "_measurement_sd", None)
+
+    @measurement_sd.setter
+    def measurement_sd(self, value: Optional[float]) -> None:
+        if value is not None:
+            value = float(value)
+            if not value > 0:
+                raise ValueError(
+                    f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: measurement_sd "
+                    f"must be positive, got {value}."
+                )
+        self._measurement_sd = value
 
     @property
     def dbconfig(self) -> Optional[Dict[str, Any]]:
@@ -434,10 +571,12 @@ class SensorSystem(core.System):
     def dbconfig(self, value: Optional[Dict[str, Any]]) -> None:
         """
         Set the database configuration parameters.
-        Automatically sets use_database=True if a value is provided.
+        Automatically sets use_database=True if a new value is provided;
+        assigning the value the sensor already has changes nothing.
         """
+        new = self._names_a_new_source(self._dbconfig, value)
         self._dbconfig = value
-        if value is not None:
+        if new:
             self._use_database = True
             self._use_spreadsheet = False
             self._use_df = False

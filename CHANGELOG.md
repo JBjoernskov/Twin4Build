@@ -95,6 +95,21 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `Model(id=..., system_registry=...)` and
   `Translator(system_registry=...)` take a registry of their own, which the
   translator also uses as the whitelist of the external classes it accepts.
+- `SensorSystem`: `scoring_mask` (the samples an estimation scores, a
+  boolean Series indexed by time) and `measurement_sd` (the standard
+  deviation the sensor is scored with) are declared attributes and
+  constructor arguments, and `Model.batch_components` carries them to the
+  sensor's copy in the batched model.  `set_series(series, uuid=None)` puts
+  a sensor on an in-memory series and names it without switching it to
+  database mode, and `SensorSystem(df=frame, uuid="X")` is an in-memory
+  sensor named "X".  Assigning `uuid`, `dbconfig` or `filename` the value
+  the sensor already has no longer switches its source (`Model.load`
+  restores the saved configuration by assignment and used to switch a
+  sensor on a series back to the database); a new value switches as before.
+- `Estimator.estimate`: an entry of `measurements` may be the sensor alone
+  or `(sensor, None)`, in which case the sensor's `measurement_sd` is used;
+  an entry with neither raises a `ValueError` that names the sensor.
+
 - Workflow accessors, so that a workflow in an add-on package need not
   reach into private attributes:
   `twin4build.utils.get_main_dir.set_main_dir(path)` sets the folder models
