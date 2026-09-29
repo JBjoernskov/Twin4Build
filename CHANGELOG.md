@@ -95,6 +95,15 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `Model(id=..., system_registry=...)` and
   `Translator(system_registry=...)` take a registry of their own, which the
   translator also uses as the whitelist of the external classes it accepts.
+- `twin4build.model.partition.keep_groups(model, partition, groups,
+  with_senders=True, stop_at=())` keeps some groups of a measured partition
+  (a few rooms of a building) and removes the rest of the model: the groups
+  named, with `with_senders` the groups that send into them over a measured
+  edge (not followed into the groups of `stop_at`, e.g. the air handling
+  unit's), and every leaf that feeds a kept component.  A
+  `ReturnFlowJunctionSystem`'s `branch_temperature_slots` follow the
+  surviving connections.
+
 - `Simulator.measurement_frames()` and
   `Simulator.measurement_errors(skip=0)` compare the simulation that just
   ran with the measurements: for every sensor that reads a computed port
