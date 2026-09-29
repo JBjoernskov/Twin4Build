@@ -37,6 +37,20 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- System registry (`twin4build.systems.registry`, #132): a `System` class
+  that lives in another package is registered under a stable type id,
+  `tb.system_registry.register(cls, type_id="acme:CoilSystem@1",
+  provider=..., version=...)`.  A serialized component of a registered class
+  records the type id, the provider and the provider version, and
+  `Model.load(filename=...)` resolves the class from the type id through the
+  registry of the model -- no class has to be set on `twin4build.systems`.
+  A type that is not registered raises `UnknownSystemTypeError` naming the
+  component, the type id and the provider to install.  Built-in classes need
+  no registration and are serialized as before; a model that records only
+  class names still loads.  `tb.system_registry` is the default registry;
+  `Model(id=..., system_registry=...)` and
+  `Translator(system_registry=...)` take a registry of their own, which the
+  translator also uses as the whitelist of the external classes it accepts.
 - `Optimizer`: a decision variable may name a component's ``tps.Parameter``
   instead of an output port (`(component, "Y", lb, ub)`), so a handful of
   numbers (the points of a compensation curve, a gain, a setpoint) can be
