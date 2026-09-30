@@ -44,6 +44,7 @@ import twin4build.examples.utils as example_utils
 from twin4build.examples import patterns as example_patterns
 from twin4build.optimizer.optimizer import _resolve_port_names
 from twin4build.utils import constants
+from twin4build.utils.logger import LOGGER
 
 tb._IS_TESTING = True
 
@@ -422,8 +423,15 @@ class TestModelSavedWithPower(unittest.TestCase):
             handle.write(old_text)
 
         loaded = tb.Model(id=self.MODEL_ID + "_old")
-        with self.assertWarnsRegex(DeprecationWarning, "SpaceHeaterSystem.toRoomPower"):
-            loaded.load(filename=old_path, draw_semantic_model=False, draw_simulation_model=False)
+        # a quiet load (LOGGER.verbose 0, as an example run elsewhere in the
+        # suite leaves it) silences every warning: load verbosely here
+        verbose = LOGGER.verbose
+        LOGGER.verbose = 3
+        try:
+            with self.assertWarnsRegex(DeprecationWarning, "SpaceHeaterSystem.toRoomPower"):
+                loaded.load(filename=old_path, draw_semantic_model=False, draw_simulation_model=False)
+        finally:
+            LOGGER.verbose = verbose
         heater = loaded.components["heater"]
         self.assertEqual([c.output_port for c in heater.connected_through], ["toRoomPower"])
         self.assertEqual(len(loaded.simulation_model._fused_components), 1)
