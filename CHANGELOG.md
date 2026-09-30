@@ -112,7 +112,12 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   the sensor's `scoring_mask` scores, after the first `skip` steps of each
   period.  They work on the model the simulator ran, unbatched or batched.
 
-- Parameters by component id, across batchings.
+- Parameters by component id, across batchings.  A result also carries
+  `parameter_instances_fixed`: every estimable parameter the fit held fixed
+  (pinned, fixed, left out of the selection) at the value it ran with, and
+  `load_estimation_result(..., fixed=True)` (the default) sets them before
+  the estimated ones, so a model simulates as it was fitted whatever its own
+  setup gave those parameters.
   `Model.get_source_component_ids(component)` gives the ids of the
   components a batched meta stands for;
   `Model.get_parameter_values(parameters)` reads the estimator's parameter

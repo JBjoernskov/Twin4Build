@@ -3681,6 +3681,7 @@ class SimulationModel:
         result: Optional[Dict] = None,
         parameters: bool = True,
         initial_state: bool = True,
+        fixed: bool = True,
         # verbose: int = 0,
     ) -> None:
         """
@@ -3706,6 +3707,13 @@ class SimulationModel:
                 estimated periods then starts from the estimated state
                 instead of the components' defaults.  ``False`` leaves the
                 model's state as it is.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed (pinned, fixed, left out of the selection) to
+                the values it ran with (``parameter_instances_fixed``), before
+                the estimated ones: the model then simulates as it was
+                fitted whatever its own setup gave those parameters.
+                ``False`` leaves them as they are.  A result without them is
+                loaded as before.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -3735,6 +3743,14 @@ class SimulationModel:
             self._load_estimated_initial_state(self._result)
         if not parameters:
             return
+        held = self._result.get("parameter_instances_fixed") if fixed else None
+        if held:
+            counts = self.set_parameter_values(held)
+            LOGGER.info(
+                "Load estimation result: %d parameters the fit held fixed set to its values, %d not in this model",
+                counts["applied"],
+                counts["missing"],
+            )
         result_x = self._result["result_x"]
 
         # Extended lookup including nested sub-objects (e.g.

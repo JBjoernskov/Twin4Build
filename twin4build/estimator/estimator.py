@@ -3413,6 +3413,34 @@ class Estimator:
         except Exception as exc:  # the result is saved either way
             parameter_instances = None
             LOGGER.warning("Parameters per component not derived: %r", exc)
+        # What the fit held fixed: every estimable parameter of the model
+        # that was not estimated (pinned to a value, fixed by the caller,
+        # left out of the selection), at the value the fit ran with.  It is
+        # part of the fit but not of theta, so a model the result is loaded
+        # into would otherwise keep whatever value its own setup gives it.
+        parameter_instances_fixed = None
+        try:
+            model = self.simulator.model
+            model = getattr(model, "simulation_model", model)
+            estimated = {(id(component), attr) for component, attr in zip(self._flat_components, self._parameter_names)}
+            held = []
+            for component in model.components.values():
+                getter = getattr(component, "get_estimable_parameters", None)
+                if not callable(getter):
+                    continue
+                for entry in getter():
+                    owner, attr = entry[0], entry[1]
+                    if (id(owner), attr) not in estimated:
+                        held.append((owner, attr))
+            parameter_instances_fixed = {}
+            for owner, attr in held:
+                try:
+                    parameter_instances_fixed.update(model.get_parameter_values([(owner, attr)]))
+                except (TypeError, AttributeError):
+                    continue  # not a parameter object
+        except Exception as exc:  # the result is saved either way
+            parameter_instances_fixed = None
+            LOGGER.warning("Fixed parameters per component not derived: %r", exc)
         collocation_audit = getattr(result, "collocation_audit", None)
         collocation_timing = getattr(result, "collocation_timing", None)
         multistart_audit = getattr(result, "multistart_audit", None)
@@ -3463,6 +3491,8 @@ class Estimator:
             result["parameter_instances_x0"] = parameter_instances_x0
             result["parameter_instance_bounds"] = parameter_instance_bounds
             result["component_source_ids"] = component_source_ids
+        if parameter_instances_fixed:
+            result["parameter_instances_fixed"] = parameter_instances_fixed
         if collocation_audit is not None:
             result["collocation_audit"] = collocation_audit
         if collocation_timing is not None:

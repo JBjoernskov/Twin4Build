@@ -1136,6 +1136,7 @@ class Model:
         result: Optional[Dict] = None,
         parameters: bool = True,
         initial_state: bool = True,
+        fixed: bool = True,
         # verbose: int = 0,
     ) -> None:
         """
@@ -1149,6 +1150,9 @@ class Model:
                 from the initial states the result carries (multiple
                 shooting, collocation), so a simulation of the estimated
                 periods starts from the estimated state.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed to the values it ran with, so the model
+                simulates as it was fitted.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -1158,6 +1162,7 @@ class Model:
             result=result,
             parameters=parameters,
             initial_state=initial_state,
+            fixed=fixed,
             # verbose=verbose,
         )
 

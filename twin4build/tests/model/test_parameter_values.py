@@ -451,6 +451,31 @@ class TestFitAcrossBatchings(unittest.TestCase):
             torch.testing.assert_close(loaded[k], self.reference[k], rtol=1e-9, atol=1e-9, msg=f"Zone{k}")
         np.testing.assert_allclose(meta.UA.max_value.numpy(), [400.0, 500.0, 600.0])
 
+    def test_the_result_carries_what_the_fit_held_fixed(self):
+        """Every estimable parameter the fit did not estimate is in the
+        result at the value the fit ran with; loading sets it back on a
+        model whose own setup gave it another value (``fixed=False``
+        leaves it)."""
+        held = self.result["parameter_instances_fixed"]
+        estimated = set(self.result["parameter_instances"])
+        self.assertTrue(held)
+        self.assertFalse(set(held) & estimated)
+        key = ("Zone0", "Q_occ_gain")  # a pinned occupant gain, as a site pins it
+        self.assertIn(key, held)
+        fitted_value = float(np.asarray(held[key]).reshape(-1)[0])
+
+        def fresh(model_id):
+            model = self.with_sensors(build(n_pairs=3, model_id=model_id))
+            model.set_parameter_values({key: 3.0 * fitted_value})  # a setup of its own
+            return model
+
+        model = fresh("pv_fit_held")
+        model.load_estimation_result(filename=self.filename)
+        np.testing.assert_allclose(model.get_parameter_values([(model.components["Zone0"], "Q_occ_gain")])[key], fitted_value, rtol=1e-12)
+        model = fresh("pv_fit_held_off")
+        model.load_estimation_result(filename=self.filename, fixed=False)
+        np.testing.assert_allclose(model.get_parameter_values([(model.components["Zone0"], "Q_occ_gain")])[key], 3.0 * fitted_value, rtol=1e-12)
+
     def test_a_result_without_the_values_by_component_loads_as_before(self):
         """A result saved before the values by component existed is set by
         its ids, and refused by a model that does not have them."""
