@@ -458,8 +458,6 @@ class Estimator:
         n_cores: Optional[int] = None,
         options: Optional[Dict] = None,
         schedule: Optional[List[Dict[str, Any]]] = None,
-        multiple_shooting: Optional[Dict] = None,
-        initial_state: Optional[Union[bool, Dict]] = None,
         **kwargs: Dict,
     ) -> EstimationResult:
         """
@@ -545,8 +543,11 @@ class Estimator:
                 ``optimizer`` is
                 the algorithm name, ``mode`` is ``"ad"`` (automatic
                 differentiation) or ``"fd"`` (finite difference), and the
-                optional ``transcription`` is ``"single_shooting"`` (default)
-                or ``"collocation"`` (requires the CasADi/IPOPT backend).
+                optional ``transcription`` is ``"single_shooting"`` (default),
+                ``"multiple_shooting"`` (single shooting per period, the
+                periods' initial states estimated and tied together; see
+                ``options``) or ``"collocation"`` (requires the CasADi/IPOPT
+                backend).
 
                 Supported optimizers by backend and mode:
 
@@ -626,6 +627,61 @@ class Estimator:
                 - "ftol": Function tolerance (SciPy: solver default applies
                   when omitted; CasADi: mapped to IPOPT's ``tol``)
                 - "verbose": Verbosity level
+
+                Single shooting transcription only:
+
+                - "estimate_initial_state" (bool, default False): Every
+                  period's initial state is a decision variable, boxed around
+                  the model's state at the period's start, and nothing ties
+                  the periods together: they need not be contiguous, and no
+                  warm-up is needed.  The periods must be of equal length
+                  (one batched window rollout).  ``initial_states``,
+                  ``initial_state_bound_rel`` and ``initial_state_bound_abs``
+                  (below) apply.
+
+                Multiple shooting transcription only (``(library, optimizer,
+                mode, "multiple_shooting")``; the functional objective:
+                ``Simulator(execution_mode="functional")`` and AD).  Every
+                period's initial state is a decision variable, and the end of
+                each period is tied to the start of the next by a continuity
+                defect: one residual column per state, divided by the state's
+                tolerance.  The periods must be contiguous (each starts where
+                the one before ends, else ``ValueError``) and of equal length.
+
+                - "initial_states": ``"all"`` (default) or a list of
+                  ``(class name, [state index, ...] | "all")``: the states
+                  that are variables (and tied).  A class names a component
+                  or a member of a fused state-space block; the indices count
+                  within that class's own state vector.
+                - "initial_state_bound_rel", "initial_state_bound_abs"
+                  (defaults 0.25, 0.0): the box around the recorded state,
+                  ``max(bound_abs, bound_rel * |state|)``, widened to include
+                  the end of the period before.
+                - "estimate_first_state" (bool, default True): the first
+                  period's state is a variable too (no warm-up needed; its
+                  own first measurements pin it).
+                - "continuity_sd_ref" (``"range"``, default, or ``"value"``),
+                  "continuity_sd_rel", "continuity_sd_abs": each state's
+                  tolerance, ``max(sd_abs, sd_rel * reference)``.  The
+                  reference is how much the state varies over the periods'
+                  starts and ends (``"range"``, default ``sd_rel`` 0.01) or
+                  its magnitude (``"value"``, default ``sd_rel`` 0.0025).
+                - "update_multipliers" (bool, default False): the tie is a
+                  weighted residual, so one fit may accept a jump at a
+                  boundary.  With a ``schedule`` of several phases, every
+                  phase after the first starts from the previous phase's
+                  parameters and initial states with the defects shifted by
+                  the jumps it left (the method of multipliers, an augmented
+                  Lagrangian), and the jumps go to zero at a fixed tolerance.
+                - "continuity_shift": the shift to start from, a result's
+                  ``continuity_shift_instances`` (to continue an earlier fit).
+
+                The initial-state options hold for the whole fit: give them
+                in ``options``, not in a schedule phase.  The result carries
+                the estimated states (``estimated_initial_state_instances``),
+                the jumps at the boundaries (``continuity_jumps_instances``,
+                ``continuity_tolerance_instances``) and the shift
+                (``continuity_shift_instances``).
 
                 Collocation transcription only:
 
@@ -741,29 +797,6 @@ class Estimator:
                          "options": {"ftol": 1e-9}},
                     ]
 
-            multiple_shooting: Estimate every period's initial state and tie
-                each period's start to the end of the period before it
-                (functional single shooting over equal-length periods).  The
-                periods must be contiguous: each starts where the one before
-                ends, else ``ValueError``.  A dict with the keys ``states``,
-                ``sd_ref``, ``sd_rel``, ``sd_abs``, ``bound_rel``, ``bound_abs``,
-                ``first_window`` and ``shift`` (see
-                ``FunctionalEstimationObjective._setup_multiple_shooting``).
-                The tie is a weighted residual, so a fit may still accept a
-                jump at a boundary; the result reports the jumps
-                (``continuity_jumps_instances``).  With
-                ``update_multipliers=True`` and a ``schedule`` of several
-                phases, every phase after the first starts from the previous
-                phase's parameters and initial states with the defects
-                shifted by what that phase left (the method of multipliers,
-                an augmented Lagrangian): the jumps go to zero at a fixed
-                tolerance.  ``None`` (the default): the periods are not tied.
-            initial_state: Estimate every period's initial state without
-                tying the periods together (``True`` or a dict with
-                ``states``, ``bound_rel``, ``bound_abs``): no warm-up is needed,
-                and the periods need not be contiguous.  Give this or
-                ``multiple_shooting``, not both.  ``None`` (the default): every
-                period starts from the model's state.
 
         Returns:
             EstimationResult: Dict-like object containing the optimized parameters
@@ -1036,30 +1069,16 @@ class Estimator:
 
         LOGGER.config("Method: %s", method)
 
-        # Multiple shooting over equal-length periods (functional single
-        # shooting only): the windows' initial states become decision
-        # variables with continuity defects between consecutive windows as
-        # residual columns.  See
-        # ``FunctionalEstimationObjective._setup_multiple_shooting`` for the
-        # keys (``states``, ``sd_ref``, ``sd_rel``, ``sd_abs``, ``bound_rel``,
-        # ``bound_abs``, ``first_window``).
-        if multiple_shooting and initial_state:
-            raise ValueError(
-                "multiple_shooting estimates the periods' initial states and ties them together; "
-                "initial_state estimates them without the tie: give one of the two"
-            )
-        if multiple_shooting:
-            _check_contiguous_periods(start_time, end_time)
-            self._multiple_shooting = dict(multiple_shooting, continuity=True)
-        elif initial_state:
-            config = {} if initial_state is True else dict(initial_state)
-            self._multiple_shooting = dict(config, continuity=False, first_window=True)
-        else:
-            self._multiple_shooting = None
-        if self._multiple_shooting and self._multiple_shooting.get("sd_ref", "range") not in ("range", "value"):
-            raise ValueError(
-                "multiple_shooting['sd_ref'] must be 'range' (the state's variation over the windows) "
-                f"or 'value' (its magnitude); got {self._multiple_shooting['sd_ref']!r}"
+        # The periods' initial states as decision variables: tied together
+        # by continuity defects (the multiple_shooting transcription) or not
+        # (single_shooting with estimate_initial_state).  The options leave
+        # ``options`` here and never reach a solver.
+        options = dict(options or {})
+        self._multiple_shooting = _initial_state_config(self._transcription, options, start_time, end_time)
+        if self._multiple_shooting and self._multiple_shooting.get("update_multipliers") and len(schedule or [{}]) < 2:
+            LOGGER.warning(
+                "update_multipliers takes effect between the phases of a schedule; with one phase the fit "
+                "keeps the jumps it accepts"
             )
 
         # Set up time periods
@@ -1363,6 +1382,12 @@ class Estimator:
             mode = entry.get("saturation_mode")  # None => keep current global
             phase_opts = entry.get("options") or {}
             phase_reg_comps = entry.get("regularization_components", None)
+            fit_wide = sorted(INITIAL_STATE_OPTIONS & set(phase_opts))
+            if fit_wide:
+                raise ValueError(
+                    f"Schedule entry at index {phase_idx}: {fit_wide} hold for the whole fit; give them in "
+                    "estimate(options=...)"
+                )
 
             merged_options = {**base_options, **phase_opts}
 
@@ -2864,10 +2889,15 @@ class Estimator:
         functional_requested = self.simulator.execution_mode == "functional"
         if (
             functional_requested
-            and self._transcription == "single_shooting"
+            and self._transcription in SHOOTING_TRANSCRIPTIONS
             and method[2] == "ad"
         ):
             self._setup_functional_objective(validate_functional=False)
+        elif self._multiple_shooting:
+            raise ValueError(
+                "the periods' initial states are variables of the functional objective: "
+                'Simulator(execution_mode="functional") and a method in AD mode'
+            )
         self._extend_for_multiple_shooting()
 
         # Run optimization based on method
@@ -2930,8 +2960,8 @@ class Estimator:
 
     def _solve_custom(self, method, options):
         """Solve functional single-shooting multistart methods."""
-        if self._transcription != "single_shooting":
-            raise ValueError("Custom solvers support only single_shooting")
+        if self._transcription not in SHOOTING_TRANSCRIPTIONS:
+            raise ValueError("Custom solvers support only single_shooting and multiple_shooting")
         if self._functional_objective is None:
             raise RuntimeError(
                 "Custom batched solvers require functional simulator execution "
@@ -3023,8 +3053,8 @@ class Estimator:
 
     def _solve_scipy(self, method, n_cores, options):
         """Own and validate SciPy-specific solver options."""
-        if self._transcription != "single_shooting":
-            raise ValueError("SciPy supports only single_shooting transcription")
+        if self._transcription not in SHOOTING_TRANSCRIPTIONS:
+            raise ValueError("SciPy supports only the single_shooting and multiple_shooting transcriptions")
         if "hessian" in options:
             raise TypeError("hessian is an IPOPT collocation option")
         if method[1] in ["trf", "dogbox"]:
@@ -3511,7 +3541,7 @@ class Estimator:
         mode = getattr(self, "_identifiability", "auto")
         if mode is False:
             return None
-        if getattr(self, "_transcription", "single_shooting") != "single_shooting":
+        if getattr(self, "_transcription", "single_shooting") not in SHOOTING_TRANSCRIPTIONS:
             return None
         has_ad = len(method) > 2 and method[2] == "ad"
         functional = getattr(self, "_functional_objective", None) is not None
@@ -4462,6 +4492,69 @@ class Estimator:
 
 
 
+#: The transcriptions that roll the model out per period (the functional
+#: objective); ``multiple_shooting`` adds the periods' initial states and the
+#: continuity defects between them.
+SHOOTING_TRANSCRIPTIONS = ("single_shooting", "multiple_shooting")
+
+#: ``Estimator.estimate`` option -> key of the objective's initial-state
+#: config (``FunctionalEstimationObjective._setup_multiple_shooting``).
+_INITIAL_STATE_KEYS = {
+    "initial_states": "states",
+    "initial_state_bound_rel": "bound_rel",
+    "initial_state_bound_abs": "bound_abs",
+}
+_CONTINUITY_KEYS = {
+    "estimate_first_state": "first_window",
+    "continuity_sd_ref": "sd_ref",
+    "continuity_sd_rel": "sd_rel",
+    "continuity_sd_abs": "sd_abs",
+    "continuity_shift": "shift",
+    "update_multipliers": "update_multipliers",
+}
+INITIAL_STATE_OPTIONS = frozenset(_INITIAL_STATE_KEYS) | frozenset(_CONTINUITY_KEYS) | {"estimate_initial_state"}
+
+
+def _initial_state_config(transcription, options, start_time, end_time):
+    """Take the initial-state options out of ``options`` (in place) and
+    return the objective's config: ``None`` (every period starts from the
+    model's state), the periods' initial states without a tie
+    (``single_shooting`` with ``estimate_initial_state``) or with the
+    continuity defects (``multiple_shooting``)."""
+    given = {name: options.pop(name) for name in list(options) if name in INITIAL_STATE_OPTIONS}
+    if transcription == "multiple_shooting":
+        if "estimate_initial_state" in given:
+            raise ValueError(
+                "estimate_initial_state is a single_shooting option; multiple_shooting always estimates "
+                "the periods' initial states"
+            )
+        _check_contiguous_periods(start_time, end_time)
+        keys = {**_INITIAL_STATE_KEYS, **_CONTINUITY_KEYS}
+        config = {keys[name]: value for name, value in given.items()}
+        if config.get("sd_ref", "range") not in ("range", "value"):
+            raise ValueError(
+                "continuity_sd_ref must be 'range' (the state's variation over the periods) or 'value' "
+                f"(its magnitude); got {config['sd_ref']!r}"
+            )
+        return dict(config, continuity=True)
+    tie = sorted(set(given) & set(_CONTINUITY_KEYS))
+    if tie:
+        raise ValueError(
+            f"{tie} tie the periods together: options of the multiple_shooting transcription, "
+            "method=(library, optimizer, mode, 'multiple_shooting')"
+        )
+    if not given:
+        return None
+    if transcription != "single_shooting":
+        raise ValueError(f"{sorted(given)} are options of the single_shooting and multiple_shooting transcriptions")
+    if not given.pop("estimate_initial_state", False):
+        if given:
+            raise ValueError(f"{sorted(given)} need estimate_initial_state=True or the multiple_shooting transcription")
+        return None
+    config = {_INITIAL_STATE_KEYS[name]: value for name, value in given.items()}
+    return dict(config, continuity=False, first_window=True)
+
+
 def _check_contiguous_periods(start_time, end_time) -> None:
     """Multiple shooting ties each period's start to the end of the one
     before: the periods must follow one another without gap or overlap."""
@@ -4470,10 +4563,11 @@ def _check_contiguous_periods(start_time, end_time) -> None:
     for p in range(len(starts) - 1):
         if ends[p] != starts[p + 1]:
             raise ValueError(
-                f"multiple_shooting ties period {p + 1}'s start to period {p}'s end, but period {p} ends at "
-                f"{ends[p]} and period {p + 1} starts at {starts[p + 1]}; give contiguous periods, or estimate "
-                "the initial states without the tie (initial_state=...)"
+                f"multiple_shooting ties period {p + 2}'s start to period {p + 1}'s end, but period {p + 1} ends "
+                f"at {ends[p]} and period {p + 2} starts at {starts[p + 1]}; give contiguous periods, or estimate "
+                "the initial states without the tie (single_shooting with estimate_initial_state=True)"
             )
+
 
 class EstimationResult(ResultDict):
     """

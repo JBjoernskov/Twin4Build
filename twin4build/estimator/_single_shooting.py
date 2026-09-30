@@ -201,7 +201,10 @@ class FunctionalEstimationObjective:
     def _setup_multiple_shooting(self, config) -> None:
         """Turn the windows' initial states into decision variables.
 
-        ``config`` (a dict, ``None`` = off):
+        ``config`` (a dict, ``None`` = off), built by ``Estimator.estimate``
+        from its options (``initial_states`` -> ``states``,
+        ``initial_state_bound_*`` -> ``bound_*``, ``continuity_*`` -> the
+        rest, ``estimate_first_state`` -> ``first_window``):
 
         * ``states``: ``"all"`` (every state of the flat state vector, the
           default) or a list of ``(component class name, [state index, ...]
@@ -226,9 +229,10 @@ class FunctionalEstimationObjective:
           ``(Y_end[p] - Y0[p + 1] + shift) / sd``.  Refitting with the shift
           the last fit returned (the method of multipliers: Hestenes 1969,
           Powell 1969) drives the jumps to zero at a fixed tolerance.
-        * ``continuity``: ``True`` (multiple shooting) scores the defects;
-          ``False`` (``Estimator.estimate(initial_state=...)``) estimates the
-          periods' initial states with no tie between them.
+        * ``continuity``: ``True`` (the ``multiple_shooting`` transcription)
+          scores the defects; ``False`` (``single_shooting`` with
+          ``estimate_initial_state``) estimates the periods' initial states
+          with no tie between them.
         * ``bound_rel`` / ``bound_abs``: the box around the recorded initial
           state, ``max(bound_abs, bound_rel * |state|)`` (default 25 %).
         * ``first_window``: the first window's initial state is a variable
@@ -248,11 +252,10 @@ class FunctionalEstimationObjective:
             return
         windows = self._windows()
         if windows is None:
-            LOGGER.warning(
-                "multiple shooting needs several equal-length periods rolled out as windows; "
-                "the initial states stay fixed"
+            raise ValueError(
+                "the periods' initial states are variables of the batched window rollout: give several periods "
+                "of one length (and leave T4B_WINDOW_BATCHING on)"
             )
-            return
         config = dict(config)
         continuity = bool(config.get("continuity", True))
         Y0, _tape = windows  # (P, D_aug)

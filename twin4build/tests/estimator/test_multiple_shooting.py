@@ -28,10 +28,19 @@ HOURS = 12
 #: The structural tests below use the explicit opt-out (the first window at
 #: its recorded state: one set of variables for two windows); the default
 #: frees every window's initial state (``test_first_window_state_is_a_variable_too``).
-MS = {"states": "all", "sd_rel": 0.0025, "sd_abs": 0.0, "bound_rel": 0.25, "bound_abs": 0.0, "first_window": False}
+MS = {
+    "initial_states": "all",
+    "continuity_sd_rel": 0.0025,
+    "continuity_sd_abs": 0.0,
+    "initial_state_bound_rel": 0.25,
+    "initial_state_bound_abs": 0.0,
+    "estimate_first_state": False,
+}
 
 
-def _estimator(device, *, multiple_shooting=None, windows=2, sim_kwargs=None, gap_hours=0, initial_state=None, schedule=None, maxiter=1):
+def _estimator(device, *, shooting=None, transcription="multiple_shooting", windows=2, sim_kwargs=None, gap_hours=0, schedule=None, maxiter=1):
+    """An estimator fitted over ``windows`` periods of ``HOURS``; ``shooting``
+    holds the initial-state options of ``transcription``."""
     model = load_model()
     if device == "cuda":
         model.to(device="cuda", dtype=torch.float64)
@@ -46,10 +55,8 @@ def _estimator(device, *, multiple_shooting=None, windows=2, sim_kwargs=None, ga
         end_time=[s + datetime.timedelta(hours=HOURS) for s in starts],
         step_size=STEP_SIZE,
         n_warmup=2,
-        method=("scipy", "SLSQP", "ad"),
-        options={"maxiter": maxiter},
-        multiple_shooting=multiple_shooting,
-        initial_state=initial_state,
+        method=("scipy", "SLSQP", "ad", transcription),
+        options={"maxiter": maxiter, **(shooting or {})},
         schedule=schedule,
     )
     return est
@@ -62,7 +69,7 @@ def _largest_jump(result):
 
 class TestMultipleShooting(unittest.TestCase):
     def test_variables_columns_and_blocks_grow_as_declared(self):
-        est = _estimator("cpu", multiple_shooting=MS)
+        est = _estimator("cpu", shooting=MS)
         obj = est._functional_objective
         self.assertIsNotNone(obj)
         D = int(obj.layout.width)
@@ -92,8 +99,8 @@ class TestMultipleShooting(unittest.TestCase):
         window's included (no warm-up needed anywhere); the defect columns
         are unchanged, and at the recorded states the loss equals the
         opt-out configuration's."""
-        default = _estimator("cpu", multiple_shooting=MS)  # the explicit opt-out
-        first = _estimator("cpu", multiple_shooting={k: v for k, v in MS.items() if k != "first_window"})  # the default
+        default = _estimator("cpu", shooting=MS)  # the explicit opt-out
+        first = _estimator("cpu", shooting={k: v for k, v in MS.items() if k != "estimate_first_state"})  # the default
         d_obj, f_obj = default._functional_objective, first._functional_objective
         self.assertEqual(f_obj.init_first, 0)
         self.assertEqual(f_obj.n_init, 2 * f_obj.init_n_slow)  # two windows: two sets
@@ -120,7 +127,7 @@ class TestMultipleShooting(unittest.TestCase):
         estimated periods starts there."""
         import pickle
 
-        est = _estimator("cpu", multiple_shooting={k: v for k, v in MS.items() if k != "first_window"})
+        est = _estimator("cpu", shooting={k: v for k, v in MS.items() if k != "estimate_first_state"})
         obj = est._functional_objective
         with open(est.result_savedir_pickle, "rb") as handle:
             result = pickle.load(handle)
@@ -149,8 +156,8 @@ class TestMultipleShooting(unittest.TestCase):
         self.assertIsNone(model.simulation_model._initial_state)
 
     def test_loose_tolerance_at_recorded_states_is_the_plain_objective(self):
-        plain = _estimator("cpu")
-        loose = _estimator("cpu", multiple_shooting=dict(MS, sd_abs=1e9, sd_rel=0.0))
+        plain = _estimator("cpu", transcription="single_shooting")
+        loose = _estimator("cpu", shooting=dict(MS, continuity_sd_abs=1e9, continuity_sd_rel=0.0))
         p_obj, l_obj = plain._functional_objective, loose._functional_objective
         theta = torch.tensor(np.asarray(plain._x0_norm, dtype=np.float64), dtype=torch.float64)
         x_ext = torch.cat([theta, l_obj.init_x0_norm.cpu()])
@@ -165,7 +172,7 @@ class TestMultipleShooting(unittest.TestCase):
         torch.testing.assert_close(l_obj.raw_residuals(x_ext), p_obj.raw_residuals(theta, transform_mode=True), rtol=1e-10, atol=1e-12)
 
     def test_zero_defect_reproduces_the_continuous_rollout(self):
-        est = _estimator("cpu", multiple_shooting=MS)
+        est = _estimator("cpu", shooting=MS)
         obj = est._functional_objective
         theta = torch.tensor(np.asarray(est._last_x_norm, dtype=np.float64), dtype=torch.float64)
         theta_phys = obj._denorm(theta)
@@ -204,7 +211,7 @@ class TestMultipleShooting(unittest.TestCase):
         """``continuity_jumps`` is the start of window p+1 minus the end of
         window p: the negative of the defect the objective scores, times the
         tolerance; it vanishes where window 1 continues window 0."""
-        est = _estimator("cpu", multiple_shooting=MS)
+        est = _estimator("cpu", shooting=MS)
         obj = est._functional_objective
         theta = torch.tensor(np.asarray(est._last_x_norm, dtype=np.float64), dtype=torch.float64)
         x_ext = torch.cat([theta, obj.init_x0_norm.cpu()])
@@ -232,7 +239,7 @@ class TestMultipleShooting(unittest.TestCase):
 
         from twin4build.estimator._continuity import COLUMNS, continuity_summary
 
-        est = _estimator("cpu", multiple_shooting=MS)
+        est = _estimator("cpu", shooting=MS)
         with open(est.result_savedir_pickle, "rb") as handle:
             result = pickle.load(handle)
         jumps, tolerance = result["continuity_jumps_instances"], result["continuity_tolerance_instances"]
@@ -247,11 +254,11 @@ class TestMultipleShooting(unittest.TestCase):
         self.assertTrue(np.all(np.diff(ratio[np.isfinite(ratio)]) <= 0))  # the largest first
 
     def test_the_tolerance_follows_how_much_a_state_varies(self):
-        """``sd_ref="range"`` (the default) scales each state's tolerance by
+        """``continuity_sd_ref="range"`` (the default) scales each state's tolerance by
         how much it moves over the windows' starts and ends; ``"value"`` by
         its magnitude; both floored as documented."""
-        ranged = _estimator("cpu", multiple_shooting={k: v for k, v in MS.items() if k not in ("sd_rel",)})
-        valued = _estimator("cpu", multiple_shooting=dict(MS, sd_ref="value"))
+        ranged = _estimator("cpu", shooting={k: v for k, v in MS.items() if k != "continuity_sd_rel"})
+        valued = _estimator("cpu", shooting=dict(MS, continuity_sd_ref="value"))
         r_obj, v_obj = ranged._functional_objective, valued._functional_objective
         torch.testing.assert_close(r_obj.init_sd, torch.clamp(0.01 * r_obj.init_sd_reference, min=1e-9), rtol=1e-12, atol=0)
         torch.testing.assert_close(v_obj.init_sd, torch.clamp(0.0025 * v_obj.init_sd_reference, min=1e-9), rtol=1e-12, atol=0)
@@ -262,7 +269,7 @@ class TestMultipleShooting(unittest.TestCase):
         # a state that barely moves gets a tighter tolerance than its magnitude would give it
         self.assertLess(float((r_obj.init_sd / v_obj.init_sd).min()), 1.0)
         with self.assertRaises(ValueError):
-            _estimator("cpu", multiple_shooting=dict(MS, sd_ref="energy"))
+            _estimator("cpu", shooting=dict(MS, continuity_sd_ref="energy"))
 
     def test_the_summary_tells_a_one_sided_state_from_noise(self):
         from twin4build.estimator._continuity import continuity_summary
@@ -286,7 +293,7 @@ class TestMultipleShooting(unittest.TestCase):
         picks its span of the block's state vector, and a class the model
         does not have selects nothing (the states stay fixed)."""
         zone_class = type(load_model().components["office"]).__name__
-        est = _estimator("cpu", multiple_shooting=dict(MS, states=[(zone_class, "all")]))
+        est = _estimator("cpu", shooting=dict(MS, initial_states=[(zone_class, "all")]))
         obj = est._functional_objective
         model = est.simulator.model.simulation_model
         expected = []
@@ -296,21 +303,41 @@ class TestMultipleShooting(unittest.TestCase):
                     expected += [start + i_c * ss + offset + k for i_c in range(n_c) for k in range(width)]
         self.assertTrue(expected)
         self.assertEqual(sorted(obj.init_index.tolist()), sorted(expected))
-        nothing = _estimator("cpu", multiple_shooting=dict(MS, states=[("NoSuchSystem", "all")]))
+        nothing = _estimator("cpu", shooting=dict(MS, initial_states=[("NoSuchSystem", "all")]))
         self.assertEqual(nothing._functional_objective.n_init, 0)
 
     def test_the_periods_must_be_contiguous(self):
         with self.assertRaises(ValueError) as raised:
-            _estimator("cpu", multiple_shooting=MS, gap_hours=1)
-        self.assertIn("initial_state", str(raised.exception))
-        with self.assertRaises(ValueError):
-            _estimator("cpu", multiple_shooting=MS, initial_state=True)
+            _estimator("cpu", shooting=MS, gap_hours=1)
+        self.assertIn("estimate_initial_state", str(raised.exception))
+
+    def test_the_options_belong_to_their_transcription(self):
+        """The tie's options need the multiple_shooting transcription,
+        ``estimate_initial_state`` is single shooting's, and none of them may
+        change between the phases of a schedule; the old keyword arguments
+        are gone."""
+        from twin4build.utils.method_spec import parse_method
+
+        method = ("scipy", "SLSQP", "ad")
+        self.assertEqual(parse_method(method + ("multiple_shooting",), allowed_methods=[method], default_methods=[method], allow_transcription=True), (method, "multiple_shooting"))
+        cases = [
+            dict(shooting=dict(MS, estimate_initial_state=True)),  # multiple shooting estimates them anyway
+            dict(transcription="single_shooting", shooting={"continuity_sd_rel": 0.01}),  # a tie without the transcription
+            dict(transcription="single_shooting", shooting={"initial_states": "all"}),  # without estimate_initial_state
+            dict(shooting=MS, schedule=[{}, {"options": {"update_multipliers": True}}]),  # per phase
+        ]
+        for case in cases:
+            with self.subTest(case=case), self.assertRaises(ValueError):
+                _estimator("cpu", **case)
+        for legacy in ({"multiple_shooting": {}}, {"initial_state": True}):
+            with self.subTest(legacy=legacy), self.assertRaises(TypeError):
+                tb.Estimator(tb.Simulator(load_model())).estimate(**legacy)
 
     def test_initial_states_without_the_tie(self):
-        """``initial_state``: every period's start is a variable, the
-        periods need not be contiguous, and nothing ties them: no defect
-        columns, no jumps."""
-        est = _estimator("cpu", initial_state=True, gap_hours=1)
+        """Single shooting with ``estimate_initial_state``: every period's
+        start is a variable, the periods need not be contiguous, and nothing
+        ties them: no defect columns, no jumps."""
+        est = _estimator("cpu", transcription="single_shooting", shooting={"estimate_initial_state": True}, gap_hours=1)
         obj = est._functional_objective
         self.assertFalse(obj.init_continuity)
         self.assertEqual(obj.init_first, 0)
@@ -331,7 +358,7 @@ class TestMultipleShooting(unittest.TestCase):
     def test_the_shift_enters_the_defect(self):
         """The defect is (end - next start + shift) / sd, and the next shift
         is this one plus the gap left."""
-        est = _estimator("cpu", multiple_shooting=MS)
+        est = _estimator("cpu", shooting=MS)
         obj = est._functional_objective
         theta = torch.tensor(np.asarray(est._last_x_norm, dtype=np.float64), dtype=torch.float64)
         x_ext = torch.cat([theta, obj.init_x0_norm.cpu()])
@@ -359,11 +386,11 @@ class TestMultipleShooting(unittest.TestCase):
         # a loose tie on the room's states (the test's SLSQP barely moves the
         # controllers' internal states in 20 iterations): the first fit leaves a jump
         zone_class = type(load_model().components["office"]).__name__
-        config = dict(MS, sd_ref="value", sd_rel=0.02, states=[(zone_class, "all")])
-        single = _estimator("cpu", multiple_shooting=config, maxiter=20)
+        config = dict(MS, continuity_sd_ref="value", continuity_sd_rel=0.02, initial_states=[(zone_class, "all")])
+        single = _estimator("cpu", shooting=config, maxiter=20)
         with open(single.result_savedir_pickle, "rb") as handle:
             first = pickle.load(handle)
-        phased = _estimator("cpu", multiple_shooting=dict(config, update_multipliers=True), schedule=[{}, {}, {}], maxiter=20)
+        phased = _estimator("cpu", shooting=dict(config, update_multipliers=True), schedule=[{}, {}, {}], maxiter=20)
         with open(phased.result_savedir_pickle, "rb") as handle:
             last = pickle.load(handle)
         self.assertIn("shift", phased._multiple_shooting)
@@ -371,7 +398,7 @@ class TestMultipleShooting(unittest.TestCase):
         self.assertLess(_largest_jump(last), 0.5 * _largest_jump(first))
 
     def test_gradient_reaches_the_initial_state_variables(self):
-        est = _estimator("cpu", multiple_shooting=MS)
+        est = _estimator("cpu", shooting=MS)
         obj = est._functional_objective
         x = torch.tensor(np.concatenate([est._last_x_norm, obj.init_x0_norm.cpu().numpy()]), dtype=torch.float64)
         cols, grad = obj.batched_column_loss_and_grad(x.unsqueeze(0))
@@ -383,8 +410,8 @@ class TestMultipleShooting(unittest.TestCase):
     def test_cuda_step_graphs_match_eager(self):
         try:
             ss.WINDOW_BATCHING = True
-            eager = _estimator("cuda", multiple_shooting=MS, sim_kwargs=dict(execution_backend="eager", compile_step=False))
-            step = _estimator("cuda", multiple_shooting=MS, sim_kwargs=dict(execution_backend="cuda_graph", cuda_graph_scope="step"))
+            eager = _estimator("cuda", shooting=MS, sim_kwargs=dict(execution_backend="eager", compile_step=False))
+            step = _estimator("cuda", shooting=MS, sim_kwargs=dict(execution_backend="cuda_graph", cuda_graph_scope="step"))
         finally:
             ss.WINDOW_BATCHING = True
         results = []
