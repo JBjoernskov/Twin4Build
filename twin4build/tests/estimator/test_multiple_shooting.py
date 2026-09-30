@@ -269,7 +269,62 @@ class TestMultipleShooting(unittest.TestCase):
         # a state that barely moves gets a tighter tolerance than its magnitude would give it
         self.assertLess(float((r_obj.init_sd / v_obj.init_sd).min()), 1.0)
         with self.assertRaises(ValueError):
-            _estimator("cpu", shooting=dict(MS, continuity_sd_ref="energy"))
+            _estimator("cpu", shooting=dict(MS, continuity_sd_ref="joules"))
+
+    def test_every_state_says_what_heat_it_holds(self):
+        """``state_heat_capacities``: one entry per state of every executing
+        component, the parameters' capacities for the thermal states (a
+        fused room's air and wall from ``C_air`` and ``C_wall``, a
+        radiator's elements from ``thermalMassHeatCapacity / nelements``),
+        NaN for the states that hold no heat (CO2, a controller's memory)."""
+        est = _estimator("cpu", shooting=MS)
+        obj = est._functional_objective
+        thermal = holds_nothing = 0
+        for comp, (n_c, ss) in zip(obj.layout.components, obj.layout.shapes):
+            caps = comp.state_heat_capacities()
+            if ss == 0:  # a component without state (the occupancy)
+                self.assertIsNone(caps, comp.id)
+                continue
+            self.assertEqual(tuple(caps.shape), (n_c, ss), comp.id)
+            thermal += int(torch.isfinite(caps).sum())
+            holds_nothing += int((~torch.isfinite(caps)).sum())
+            if type(comp).__name__ == "FusedStateSpaceSystem":
+                col = 0
+                for member in comp._members:
+                    for _prefix, unit in member._ss_units():
+                        width = unit.state_size()
+                        part = caps[:, col : col + width]
+                        name = type(unit).__name__
+                        if name == "BuildingSpaceThermalSystem":
+                            torch.testing.assert_close(part[:, 0], unit.C_air.get().reshape(-1).expand(n_c).to(part.dtype))
+                            torch.testing.assert_close(part[:, 1], unit.C_wall.get().reshape(-1).expand(n_c).to(part.dtype))
+                        elif name == "SpaceHeaterSystem":
+                            expected = (unit.thermalMassHeatCapacity.get().reshape(-1, 1) / unit.nelements).expand(n_c, width)
+                            torch.testing.assert_close(part, expected.to(part.dtype))
+                        elif name == "BuildingSpaceMassSystem":
+                            self.assertTrue(bool(torch.isnan(part).all()))
+                        col += width
+                self.assertEqual(col, ss)
+        self.assertGreater(thermal, 0)
+        self.assertGreater(holds_nothing, 0)
+
+    def test_the_energy_tolerance_holds_a_jumps_heat(self):
+        """``continuity_sd_ref="energy"``: a state that stores heat is held
+        to at most ``continuity_energy_tol / C`` (tighter than its range
+        tolerance when it is massive), a state that holds no heat keeps its
+        range tolerance; the energy tolerance needs the energy reference."""
+        energy_tol = 5e3  # J: tighter than the range for the massive states of the example
+        ranged = _estimator("cpu", shooting=MS)._functional_objective
+        by_energy = _estimator("cpu", shooting=dict(MS, continuity_sd_ref="energy", continuity_energy_tol=energy_tol))._functional_objective
+        capacity = by_energy.init_capacity
+        holds_heat = torch.isfinite(capacity) & (capacity > 0)
+        self.assertTrue(bool(holds_heat.any()) and bool((~holds_heat).any()))
+        expected = torch.where(holds_heat, torch.minimum(ranged.init_sd, energy_tol / torch.where(holds_heat, capacity, torch.ones_like(capacity))), ranged.init_sd)
+        torch.testing.assert_close(by_energy.init_sd, expected.clamp(min=1e-9), rtol=1e-12, atol=0)
+        self.assertTrue(bool((by_energy.init_sd[holds_heat] < ranged.init_sd[holds_heat]).any()))  # some are tightened
+        torch.testing.assert_close(by_energy.init_sd[~holds_heat], ranged.init_sd[~holds_heat], rtol=0, atol=0)
+        with self.assertRaises(ValueError):
+            _estimator("cpu", shooting=dict(MS, continuity_energy_tol=energy_tol))  # the range reference
 
     def test_the_summary_tells_a_one_sided_state_from_noise(self):
         from twin4build.estimator._continuity import continuity_summary

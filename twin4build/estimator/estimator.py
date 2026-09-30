@@ -660,12 +660,18 @@ class Estimator:
                 - "estimate_first_state" (bool, default True): the first
                   period's state is a variable too (no warm-up needed; its
                   own first measurements pin it).
-                - "continuity_sd_ref" (``"range"``, default, or ``"value"``),
-                  "continuity_sd_rel", "continuity_sd_abs": each state's
-                  tolerance, ``max(sd_abs, sd_rel * reference)``.  The
-                  reference is how much the state varies over the periods'
-                  starts and ends (``"range"``, default ``sd_rel`` 0.01) or
-                  its magnitude (``"value"``, default ``sd_rel`` 0.0025).
+                - "continuity_sd_ref" (``"range"``, default, ``"value"`` or
+                  ``"energy"``), "continuity_sd_rel", "continuity_sd_abs":
+                  each state's tolerance, ``max(sd_abs, sd_rel * reference)``.
+                  The reference is how much the state varies over the
+                  periods' starts and ends (``"range"``, default ``sd_rel``
+                  0.01) or its magnitude (``"value"``, default ``sd_rel``
+                  0.0025).  ``"energy"``: as ``"range"``, and a state that
+                  stores heat is held to at most "continuity_energy_tol"
+                  (J, default 3.6e5, 0.1 kWh) divided by its heat capacity
+                  (``System.state_heat_capacities``): a jump in a wall or the
+                  shared interior costs by the heat it creates, a jump in
+                  room air or a radiator hardly more than before.
                 - "update_multipliers" (bool, default False): the tie is a
                   weighted residual, so one fit may accept a jump at a
                   boundary.  With a ``schedule`` of several phases, every
@@ -4509,6 +4515,7 @@ _CONTINUITY_KEYS = {
     "continuity_sd_ref": "sd_ref",
     "continuity_sd_rel": "sd_rel",
     "continuity_sd_abs": "sd_abs",
+    "continuity_energy_tol": "energy_tol",
     "continuity_shift": "shift",
     "update_multipliers": "update_multipliers",
 }
@@ -4531,11 +4538,13 @@ def _initial_state_config(transcription, options, start_time, end_time):
         _check_contiguous_periods(start_time, end_time)
         keys = {**_INITIAL_STATE_KEYS, **_CONTINUITY_KEYS}
         config = {keys[name]: value for name, value in given.items()}
-        if config.get("sd_ref", "range") not in ("range", "value"):
+        if config.get("sd_ref", "range") not in ("range", "value", "energy"):
             raise ValueError(
-                "continuity_sd_ref must be 'range' (the state's variation over the periods) or 'value' "
-                f"(its magnitude); got {config['sd_ref']!r}"
+                "continuity_sd_ref must be 'range' (the state's variation over the periods), 'value' "
+                f"(its magnitude) or 'energy' (the heat a jump creates); got {config['sd_ref']!r}"
             )
+        if "energy_tol" in config and config.get("sd_ref") != "energy":
+            raise ValueError("continuity_energy_tol holds with continuity_sd_ref='energy' only")
         return dict(config, continuity=True)
     tie = sorted(set(given) & set(_CONTINUITY_KEYS))
     if tie:

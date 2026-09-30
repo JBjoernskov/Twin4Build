@@ -220,6 +220,14 @@ class FunctionalEstimationObjective:
           held tight and a fast one (a radiator's water) loosely; default
           ``sd_rel`` 0.01 there.  ``sd_ref="value"`` takes the state's
           magnitude (default ``sd_rel`` 0.0025: 0.05 K on a 20 C wall).
+          ``sd_ref="energy"`` starts from ``"range"`` and holds every state
+          that stores heat to the heat a jump creates: its tolerance is at
+          most ``energy_tol / C`` (default 3.6e5 J, 0.1 kWh), ``C`` the heat
+          capacity of the state (:meth:`System.state_heat_capacities` at the
+          start point).  A massive state (a wall, the shared interior) is
+          held tight, a light one (room air, a radiator) keeps its range
+          tolerance, a state that holds no heat (CO2, a controller's memory)
+          too.
           The tolerance is a penalty weight, not a hard limit: a fit may
           still buy a better fit of a window with a jump at its start.
         * ``shift``: the augmented-Lagrangian shift of the defects, in the
@@ -326,7 +334,7 @@ class FunctionalEstimationObjective:
             _out, end0 = self.est.simulator.rollout_functional_windows(self.composer, Y0, theta0, _tape, return_end=True)
         magnitude = torch.maximum(Y0[:, index_t].abs().amax(dim=0), end0[:, index_t].abs().amax(dim=0)).clamp(min=1.0)  # (n_slow,)
         sd_ref = str(config.get("sd_ref", "range"))
-        if sd_ref == "range":
+        if sd_ref in ("range", "energy"):
             # how much each state moves over the windows' starts and ends,
             # floored at a thousandth of its magnitude (a state that does not
             # move at the start point must not get a vanishing tolerance)
@@ -337,10 +345,26 @@ class FunctionalEstimationObjective:
             reference = magnitude
             sd_rel_default = 0.0025
         else:
-            raise ValueError(f"multiple_shooting sd_ref must be 'range' or 'value'; got {sd_ref!r}")
+            raise ValueError(f"multiple_shooting sd_ref must be 'range', 'value' or 'energy'; got {sd_ref!r}")
         sd_rel, sd_abs = float(config.get("sd_rel", sd_rel_default)), float(config.get("sd_abs", 0.0))
         b_rel, b_abs = float(config.get("bound_rel", 0.25)), float(config.get("bound_abs", 0.0))
         sd = torch.clamp(torch.maximum(torch.full_like(reference, sd_abs), sd_rel * reference), min=1e-9)
+        capacity = None
+        if sd_ref == "energy":
+            energy_tol = float(config.get("energy_tol", 3.6e5))
+            capacity = self._state_capacities(layout, dev, dtype)[index_t]  # (n_slow,) J/K, NaN: no heat
+            holds_heat = torch.isfinite(capacity) & (capacity > 0)
+            by_energy = energy_tol / torch.where(holds_heat, capacity, torch.ones_like(capacity))
+            sd = torch.where(holds_heat, torch.minimum(sd, by_energy), sd).clamp(min=1e-9)
+            tightened = holds_heat & (by_energy < sd_rel * reference)
+            LOGGER.config(
+                "multiple shooting: %d of %d tied states hold heat; %d of them held to %.3g J per jump "
+                "(tolerance median %.3g K, smallest %.3g K)",
+                int(holds_heat.sum()), int(index.size), int(tightened.sum()), energy_tol,
+                float(sd[tightened].median()) if bool(tightened.any()) else float("nan"),
+                float(sd[tightened].min()) if bool(tightened.any()) else float("nan"),
+            )
+        self.init_capacity = capacity
         half = torch.maximum(torch.full_like(x0, b_abs), b_rel * magnitude.unsqueeze(0).expand_as(x0)).clamp(min=1e-6)
         low, high = x0.clone(), x0.clone()
         if continuity:
@@ -633,6 +657,29 @@ class FunctionalEstimationObjective:
         )
 
     # -- the rollout ----------------------------------------------------------
+    def _state_capacities(self, layout, dev, dtype):
+        """The heat capacity of every entry of the flat state vector [J/K],
+        ``(D,)``: the executing components' :meth:`state_heat_capacities`
+        (a fused block's in its members' order), ``NaN`` where a state holds
+        no heat or its component does not say."""
+        flat = torch.full((int(layout.width),), float("nan"), dtype=dtype, device=dev)
+        for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
+            method = getattr(comp, "state_heat_capacities", None)
+            caps = method() if method is not None else None
+            if caps is None:
+                continue
+            caps = caps.to(device=dev, dtype=dtype)
+            if caps.shape[0] == 1 and n_c > 1:
+                caps = caps.expand(n_c, caps.shape[-1])
+            if tuple(caps.shape) != (n_c, ss):
+                LOGGER.warning(
+                    "multiple shooting: %s gives heat capacities of shape %s for its (%d, %d) states; "
+                    "they keep the range tolerance", comp.id, tuple(caps.shape), n_c, ss,
+                )
+                continue
+            flat[start:stop] = caps.reshape(-1)
+        return flat
+
     def _windows(self):
         """``(Y0 (P, D_aug), tape (n_t, P, n_exogenous))`` when the periods
         are several of equal length (one batched rollout advances them all),

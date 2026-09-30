@@ -551,6 +551,16 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
     #: Physical RC parameters, in a fixed order (the ``forward`` theta contract).
     SUPPORTS_TRANSFORM_MODE = True
+    def _state_heat_capacities(self):
+        """``[T_air, T_wall(, T_boundary)]`` hold ``C_air``, ``C_wall`` (and
+        ``C_boundary``) [J/K]."""
+        caps = [self.C_air.get(), self.C_wall.get()]
+        if self.n_boundary_temperature == 1:
+            caps.append(self.C_boundary.get())
+        caps = [c.reshape(-1) for c in caps]
+        n = max(int(c.numel()) for c in caps)
+        return torch.stack([c.expand(n) for c in caps], dim=-1)
+
     PARAM_NAMES = (
         "C_air",
         "C_wall",

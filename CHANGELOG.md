@@ -63,6 +63,15 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   (`continuity_shift_instances`); the fit logs the largest jumps, and
   `twin4build.estimator._continuity.continuity_summary` ranks them and marks
   the states re-set to one side at every boundary.
+- The continuity tolerance by energy: `continuity_sd_ref="energy"` holds
+  every state that stores heat to at most `continuity_energy_tol / C` (J,
+  default 3.6e5, 0.1 kWh), `C` its heat capacity, and leaves the others at
+  their range tolerance.  A jump in a wall or the shared interior costs by
+  the heat it creates; room air and radiators hardly change.
+  `System.state_heat_capacities()` gives every state's capacity [J/K]
+  (`NaN` for a state that holds no heat); the room, wall, radiator and
+  thermal-mass node declare theirs, composites and fused blocks concatenate
+  their units'.
 - Single shooting with `options={"estimate_initial_state": True}` estimates
   every period's initial state without tying the periods together (they need
   not be contiguous).
