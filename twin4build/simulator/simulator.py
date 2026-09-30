@@ -198,6 +198,10 @@ class Simulator:
 
     _EXECUTION_MODES = ("object", "functional")
     _EXECUTION_BACKENDS = ("eager", "cuda_graph")
+    #: What one captured CUDA graph spans: the whole rollout (and, in the
+    #: estimator, its backward pass) or one step, replayed along the rollout
+    #: (:mod:`twin4build.simulator._step_graph`).
+    _CUDA_GRAPH_SCOPES = ("rollout", "step")
     _COMPILE_STEP_OPTIONS = (True, False, "auto")
 
     def __init__(
@@ -206,6 +210,7 @@ class Simulator:
         execution_mode: str = "object",
         execution_backend: str = "eager",
         compile_step: Union[bool, str] = "auto",
+        cuda_graph_scope: str = "rollout",
     ):
         """
         Initialize the Simulator instance.
@@ -246,6 +251,11 @@ class Simulator:
             raise ValueError(
                 "execution_backend='cuda_graph' requires " "execution_mode='functional'"
             )
+        if cuda_graph_scope not in self._CUDA_GRAPH_SCOPES:
+            raise ValueError(
+                f"cuda_graph_scope must be one of {self._CUDA_GRAPH_SCOPES}; "
+                f"got {cuda_graph_scope!r}"
+            )
         if compile_step not in self._COMPILE_STEP_OPTIONS:
             raise ValueError(
                 f"compile_step must be one of {self._COMPILE_STEP_OPTIONS}; "
@@ -261,6 +271,7 @@ class Simulator:
         self.execution_mode = execution_mode
         self.execution_backend = execution_backend
         self.compile_step = compile_step
+        self.cuda_graph_scope = cuda_graph_scope
         self._functional_session = None
         self._functional_setup_count = 0
         self._functional_setup_seconds = 0.0
@@ -828,6 +839,10 @@ class Simulator:
         step runs through :attr:`FunctionalModel.compiled_step`; the
         cache-using (``transform_mode=False``) rollout is never compiled.
         """
+        if self.step_graph_active(theta.device) and transform_mode and not _functorch_active():
+            from twin4build.simulator._step_graph import step_graph_rollout
+
+            return step_graph_rollout(functional_model, y0, theta, exogenous_tape)[1]
         step = None
         if (
             transform_mode
@@ -854,12 +869,208 @@ class Simulator:
         batched step (``compile(vmap(F_aug))``) is used; otherwise the scalar
         rollout is ``vmap``-ed.
         """
+        if self.step_graph_active(Theta.device) and not _functorch_active():
+            from twin4build.simulator._step_graph import step_graph_rollout
+
+            return step_graph_rollout(functional_model, Y0, Theta, exogenous_tape, batched=True)[1].transpose(0, 1)
         step = None
         if not _functorch_active() and self.step_compilation_active(Theta.device):
             step = functional_model.compiled_batched_step
         return functional_rollout_batched(
             functional_model, Y0, Theta, exogenous_tape, step=step
         )
+
+    def rollout_functional_windows(self, functional_model, Y0, theta, exogenous_tape, *, return_end: bool = False):
+        """Roll ONE parameter vector over a batch of equal-length windows at
+        once (transform mode): ``Y0 (P, D_aug)``, ``theta (n_theta,)``,
+        ``exogenous_tape (n_t, P, n_exogenous)`` -> ``(P, n_t, n_meas)``,
+        or with ``return_end`` ``(outputs, Y_end (P, D_aug))``.  Per-step
+        CUDA graphs under ``cuda_graph_scope="step"`` (the eager vmapped
+        window step captured once per step), else the eager ``vmap``
+        rollout: ``torch.compile`` over ``vmap`` of the step is numerically
+        wrong (see :attr:`FunctionalModel.window_step`), so window batching
+        never compiles."""
+        from twin4build.simulator._functional import functional_rollout_windows
+
+        if self.step_graph_active(theta.device) and not _functorch_active():
+            from twin4build.simulator._step_graph import step_graph_rollout
+
+            states, out = step_graph_rollout(functional_model, Y0, theta, exogenous_tape, kind="windows")
+            out = out.transpose(0, 1)
+            return (out, states[-1]) if return_end else out
+        return functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, return_end=return_end)
+
+    def rollout_functional_batched_windows(self, functional_model, Y0, Theta, exogenous_tape, *, return_end: bool = False):
+        """A batch of parameter vectors over a batch of windows: ``Y0 (P,
+        D_aug)``, ``Theta (B, n_theta)``, ``exogenous_tape (n_t, P,
+        n_exogenous)`` -> ``(B, P, n_t, n_meas)``; the ``B x P`` rows roll
+        out flattened (:attr:`FunctionalModel.compiled_rows_step`)."""
+        from twin4build.simulator._functional import functional_rollout_rows
+
+        B = Theta.shape[0]
+        # ``Y0`` shared by the rows ``(P, D_aug)`` or one per row ``(B, P, D_aug)``
+        # (multiple shooting: the rows' initial-state variables differ)
+        P = Y0.shape[-2]
+        y_rows = (Y0.unsqueeze(0).expand(B, -1, -1) if Y0.dim() == 2 else Y0).reshape(B * P, -1)
+        theta_rows = Theta.repeat_interleave(P, dim=0)
+        tape_rows = exogenous_tape.unsqueeze(1).expand(-1, B, -1, -1).reshape(exogenous_tape.shape[0], B * P, -1)
+        if self.step_graph_active(Theta.device) and not _functorch_active():
+            from twin4build.simulator._step_graph import step_graph_rollout
+
+            states, out = step_graph_rollout(functional_model, y_rows, theta_rows, tape_rows, kind="rows")
+            out = out.transpose(0, 1)
+            end = states[-1]
+        else:
+            out, end = functional_rollout_rows(functional_model, y_rows, theta_rows, tape_rows, return_end=True)
+        out = out.reshape(B, P, out.shape[1], out.shape[2])
+        return (out, end.reshape(B, P, -1)) if return_end else out
+
+    # -- measured against simulated -------------------------------------------
+    @staticmethod
+    def _measured_port(sensor) -> Optional[str]:
+        """The port a sensor reads, as ``Class.port`` of the component that
+        sends it; ``None`` for a sensor that reads no port (a data leaf)."""
+        for point in sensor.connects_at:
+            if point.input_port != "measuredValue":
+                continue
+            for connection in point.connects_system_through:
+                sender = connection.connects_system
+                return f"{sender.__class__.__name__}.{connection.output_port}"
+        return None
+
+    def _measurement_periods(self) -> Dict[str, List[pd.DataFrame]]:
+        """``{sensor id: [frame per simulated period]}`` for
+        :meth:`measurement_frames`."""
+        from twin4build.systems.sensor.sensor_system import SensorSystem
+        from twin4build.utils.scoring_mask import period_mask
+
+        if getattr(self, "date_time_steps", None) is None:
+            raise RuntimeError(
+                "No simulation has run: call simulate() before reading the measurements."
+            )
+        _, _, _, n_timesteps = Simulator.get_simulation_timesteps(
+            self.start_time, self.end_time, self.step_size
+        )
+        out: Dict[str, List[pd.DataFrame]] = {}
+        for sensor in self.model.components.values():
+            if not isinstance(sensor, SensorSystem):
+                continue
+            series = sensor.time_series_input
+            if series is None or self._measured_port(sensor) is None:
+                continue
+            port = sensor.input["measuredValue"]
+            if port._history is None or not port._history_is_populated:
+                continue
+            simulated = port.history().detach().cpu().numpy()  # (n_t, n_s, n_c)
+            mask = sensor.scoring_mask
+            frames = []
+            for p, n_t in enumerate(n_timesteps):
+                measured = np.asarray(series.df[p].to_numpy(), dtype=float).reshape(-1)
+                n = min(int(n_t), measured.shape[0], simulated.shape[0])
+                index = pd.DatetimeIndex(self.date_time_steps[p, :n], name="time")
+                scored = (
+                    np.ones(n, dtype=bool) if mask is None else period_mask(mask, index, n)
+                )
+                frames.append(
+                    pd.DataFrame(
+                        {
+                            "measured": measured[:n],
+                            "simulated": simulated[:n, p, 0],
+                            "scored": scored,
+                        },
+                        index=index,
+                    )
+                )
+            out[sensor.id] = frames
+        return out
+
+    def measurement_frames(self) -> Dict[str, pd.DataFrame]:
+        """The measured and the simulated series of every scored sensor, for
+        the simulation that just ran.
+
+        A sensor is included when it reads a computed port (it has an
+        incoming connection), holds measured data and kept the history of
+        what it read.  An estimation keeps the histories of its
+        measurements only; ``model.set_save_simulation_result(True)``
+        before the simulation keeps them all.  It works the same on an
+        unbatched model and on a batched one
+        (:meth:`~twin4build.model.model.Model.batch_components`): the
+        sensors are those of the model this simulator ran.
+
+        Returns:
+            ``{sensor id: frame}``, the frame indexed by time with the
+            columns ``measured`` (the sensor's data; ``NaN`` where it has
+            none), ``simulated`` (the value of the port it reads) and
+            ``scored`` (the sensor's ``scoring_mask``, ``True`` where it
+            has none).  Several simulated periods follow one another in the
+            frame.
+
+        Raises:
+            RuntimeError: If no simulation has run.
+        """
+        return {
+            sensor_id: pd.concat(frames)
+            for sensor_id, frames in self._measurement_periods().items()
+        }
+
+    def measurement_errors(self, skip: int = 0) -> pd.DataFrame:
+        """The error of the simulation that just ran against every scored
+        sensor (see :meth:`measurement_frames`).
+
+        Args:
+            skip: The number of steps at the start of each simulated period
+                that are left out (the warm-up).
+
+        Returns:
+            One row per sensor with the columns ``sensor`` (its ``uuid``,
+            or its id when it has none), ``port`` (the port it reads, as
+            ``Class.port``), ``n`` (the number of samples), ``mae``,
+            ``rmse`` and ``bias`` (the mean of simulated minus measured).
+            The samples are those the sensor's ``scoring_mask`` scores and
+            that hold a measurement, after the first ``skip`` steps; the
+            errors are ``NaN`` when there is none.
+
+        Raises:
+            RuntimeError: If no simulation has run.
+        """
+        rows = []
+        for sensor_id, frames in sorted(self._measurement_periods().items()):
+            sensor = self.model.components[sensor_id]
+            residuals = []
+            for frame in frames:
+                part = frame.iloc[int(skip) :]
+                part = part[part["scored"]]
+                residuals.append((part["simulated"] - part["measured"]).dropna().to_numpy())
+            residual = np.concatenate(residuals)
+            n = int(residual.size)
+            rows.append(
+                {
+                    "sensor": sensor.uuid or sensor.id,
+                    "port": self._measured_port(sensor),
+                    "n": n,
+                    "mae": float(np.abs(residual).mean()) if n else float("nan"),
+                    "rmse": float(np.sqrt((residual**2).mean())) if n else float("nan"),
+                    "bias": float(residual.mean()) if n else float("nan"),
+                }
+            )
+        return pd.DataFrame(rows, columns=["sensor", "port", "n", "mae", "rmse", "bias"])
+
+    @property
+    def captures_rollouts(self) -> bool:
+        """Whether whole-rollout bundles (an objective's value and gradient)
+        are captured as one CUDA graph: ``execution_backend="cuda_graph"``
+        with the default ``cuda_graph_scope="rollout"``.  Under ``"step"``
+        the rollouts replay per-step graphs and bundles stay eager."""
+        return self.execution_backend == "cuda_graph" and self.cuda_graph_scope != "step"
+
+    def step_graph_active(self, device) -> bool:
+        """Whether functional rollouts on ``device`` replay per-step CUDA graphs
+        (``execution_backend="cuda_graph"``, ``cuda_graph_scope="step"``, a
+        CUDA device and the compiled step)."""
+        if self.execution_backend != "cuda_graph" or self.cuda_graph_scope != "step":
+            return False
+        device = torch.device(device)
+        return device.type == "cuda" and self.step_compilation_active(device)
 
     def step_compilation_active(self, device) -> bool:
         """Whether functional rollouts on ``device`` use the compiled step.

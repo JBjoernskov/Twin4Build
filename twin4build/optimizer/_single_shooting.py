@@ -527,12 +527,12 @@ class CapturedControlObjective:
     def __init__(self, objective: FunctionalControlObjective):
         self.objective = objective
         self.enabled = (
-            objective.opt.simulator.execution_backend == "cuda_graph"
+            getattr(objective.opt.simulator, "captures_rollouts", objective.opt.simulator.execution_backend == "cuda_graph")
             and objective.opt._device.type == "cuda"
         )
         self.graph = None
         self.stats = {
-            "requested": objective.opt.simulator.execution_backend == "cuda_graph",
+            "requested": getattr(objective.opt.simulator, "captures_rollouts", objective.opt.simulator.execution_backend == "cuda_graph"),
             "enabled": self.enabled,
             "calls": 0,
             "captures": 0,

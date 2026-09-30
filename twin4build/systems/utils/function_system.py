@@ -93,10 +93,14 @@ class FunctionSystem(core.System):
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
+        # A batched meta (``Model.batch_components``) carries its members
+        # along the component dimension; a singleton has one slot.
+        n_c = int(getattr(self, "_n_c_batched", 1) or 1)
+        self.n_c = n_c
         for inp in self.input.values():
-            inp.initialize(n_t=max_timesteps, n_s=batch_size)
+            inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=n_c)
         for out in self.output.values():
-            out.initialize(n_t=max_timesteps, n_s=batch_size)
+            out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=n_c)
 
     def do_step(
         self,
