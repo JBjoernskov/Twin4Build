@@ -189,6 +189,16 @@ def _rewire_pi_loops(
         carries over.  See :file:`controller_identification_system.py`
         for the gate-mixing formula.
 
+      * ``mode="playback"`` -- ``"simulate"`` with every loop opened:
+        the controller outputs its historised command (see
+        :func:`_apply_playback`).
+
+    The mode is recorded on every controller as ``rewire_mode`` and its
+    ``playback`` flag is set by this call (a loop opened by an earlier
+    rewire runs its identified law again unless this mode opens it); both
+    are part of the controller's ``config`` and therefore serialized with
+    the model.
+
     In both modes the function also pins the frozen selection weights
     (``alpha_0`` / ``beta_0`` / ``gamma_0`` / optional ``beta_b_0``)
     to one-hot vectors of the right shape (post-rebuild ``[1.0]`` for
@@ -326,6 +336,7 @@ def _rewire_pi_loops(
     """
     # ``"playback"`` is ``"simulate"`` plus an open loop: every controller
     # is then driven by its historised command (see :func:`_apply_playback`).
+    requested_mode = mode
     playback = mode == "playback"
     if playback:
         mode = "simulate"
@@ -534,6 +545,13 @@ def _rewire_pi_loops(
         for cid, (_kind, _bim, _on, gs) in gate_results.items()
     }
     _pin_frozen_cits_state(pi_cits_list, mode=mode, gate_active=gate_active)
+    # The mode and the playback flag are part of the controller's serialized
+    # state (``config``).  The flag follows THIS rewire: a loop that arrives
+    # open (a model reloaded from its playback graph carries the flag) runs
+    # its identified law again unless the mode opens it below.
+    for cits in pi_cits_list:
+        cits.rewire_mode = requested_mode
+        cits.playback = False
     # A loop whose command hardly moved (std below ``unexcited_std``) has
     # no information for any controller law -- fitted on it, the PI lands
     # wherever the optimizer wanders and, closed on a simulated room
@@ -2557,8 +2575,8 @@ def _apply_playback(model, cits_list) -> None:
             cp.input_port == "actuatorMeasured" and cp.connects_system_through
             for cp in cits.connects_at
         ):
-            # Already opened: a reloaded (serialized) or re-rewired model
-            # carries the playback wiring but not the flag -- the flag is
-            # derived from the wiring, not a literal.
+            # Already opened: a re-rewired model (or one reloaded from its
+            # serialized playback graph) carries the playback wiring, and
+            # the rewire has reset the flag before this pass.
             cits.playback = True
             LOGGER.info("[REWIRE] %s: playback (already wired)", cits.id)

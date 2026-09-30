@@ -557,6 +557,11 @@ class System:
                 # Use .tolist() to convert numpy types to Python native types
                 # This ensures values like np.float64(1.0) become 1.0
                 return value.get().detach().cpu().numpy().flatten().tolist()
+            elif isinstance(value, torch.Tensor):
+                # A plain tensor (a parameter's bound, a normalisation
+                # constant) is a list of numbers: the tensor itself is
+                # neither a literal nor JSON.
+                return value.detach().cpu().numpy().flatten().tolist()
             else:  # isinstance(value, (int, float, type(None))):
                 return value
 
