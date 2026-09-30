@@ -37,26 +37,31 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
-- Multiple shooting (#91).  `Estimator.estimate(..., options={"multiple_shooting":
-  {...}})` makes the initial state of every period a decision variable,
-  boxed around its recorded value (`bound_rel`, `bound_abs`) and tied to the
-  end of the period before it by a continuity defect (`sd_rel`, `sd_abs`).
+- Multiple shooting (#91).  `Estimator.estimate(..., multiple_shooting={...})`
+  makes the initial state of every period a decision variable and ties it
+  to the end of the period before it by a continuity defect.  The periods
+  must be contiguous (`ValueError` otherwise).  A state's start is boxed
+  around its recorded value and the end of the period before it
+  (`bound_rel`, `bound_abs`); its tolerance is a fraction (`sd_rel`, default
+  0.01) of how much the state varies over the periods (`sd_ref="range"`, the
+  default) or of its magnitude (`sd_ref="value"`, default 0.0025).
+  `states` selects by class, a member of a fused block included.
   `first_window` (default `True`) frees the first period's state as well, so
-  a fit needs no warm-up.  The loss scale is set from the measurement
-  residuals alone.  The result carries the estimated states:
-  `estimated_initial_state` (per executing component),
-  `estimated_initial_state_instances` (per original component, one row per
-  period) and `estimated_initial_state_labels`.  It also carries the jumps
-  the fit made at the window boundaries (`continuity_jumps_instances`, the
-  start of window p + 1 minus the end of window p, and
-  `continuity_tolerance_instances`); the fit logs the largest, and
-  `twin4build.estimator._continuity.continuity_summary` ranks them and marks
-  the states re-set to one side at every boundary.  The continuity tolerance
-  of a state is a fraction (`sd_rel`, default 0.01) of how much the state
-  varies over the windows (`sd_ref="range"`, the default), or of its
-  magnitude (`sd_ref="value"`, default 0.0025); tightening `sd_rel` over
-  successive fits, each started from the last result, drives the jumps to
-  zero.
+  a fit needs no warm-up.  The tie is a weighted residual, so one fit may
+  accept a jump at a boundary; with `update_multipliers=True` and a
+  `schedule` of several phases, every phase starts from the previous one's
+  parameters and initial states with the defects shifted by what it left
+  (the method of multipliers, `shift`), and the jumps go to zero at a fixed
+  tolerance.  The result carries the estimated states
+  (`estimated_initial_state`, `estimated_initial_state_instances`,
+  `estimated_initial_state_labels`), the jumps at the boundaries
+  (`continuity_jumps_instances`, `continuity_tolerance_instances`) and the
+  shift for a next fit (`continuity_shift_instances`); the fit logs the
+  largest jumps, and `twin4build.estimator._continuity.continuity_summary`
+  ranks them and marks the states re-set to one side at every boundary.
+- `Estimator.estimate(..., initial_state=True | {...})` estimates every
+  period's initial state without tying the periods together (they need not
+  be contiguous).
 - Model state.  `Model.get_state()`, `Model.set_state(values,
   period_starts=None)` and `Model.clear_state()` read and set the initial
   state by component id; with `period_starts` a row is matched to the

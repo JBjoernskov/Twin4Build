@@ -31,13 +31,14 @@ HOURS = 12
 MS = {"states": "all", "sd_rel": 0.0025, "sd_abs": 0.0, "bound_rel": 0.25, "bound_abs": 0.0, "first_window": False}
 
 
-def _estimator(device, *, multiple_shooting=None, windows=2, sim_kwargs=None):
+def _estimator(device, *, multiple_shooting=None, windows=2, sim_kwargs=None, gap_hours=0, initial_state=None, schedule=None, maxiter=1):
     model = load_model()
     if device == "cuda":
         model.to(device="cuda", dtype=torch.float64)
     est = tb.Estimator(tb.Simulator(model, execution_mode="functional", **(sim_kwargs or dict(execution_backend="eager", compile_step=False))))
     t0 = EXAMPLE_START[0]
-    starts = [t0 + datetime.timedelta(hours=HOURS * p) for p in range(windows)]  # contiguous windows
+    # contiguous windows unless ``gap_hours`` leaves time between them
+    starts = [t0 + datetime.timedelta(hours=(HOURS + gap_hours) * p) for p in range(windows)]
     est.estimate(
         parameters=example_parameters(model),
         measurements=example_measurements(model),
@@ -46,10 +47,17 @@ def _estimator(device, *, multiple_shooting=None, windows=2, sim_kwargs=None):
         step_size=STEP_SIZE,
         n_warmup=2,
         method=("scipy", "SLSQP", "ad"),
-        options={"maxiter": 1},
+        options={"maxiter": maxiter},
         multiple_shooting=multiple_shooting,
+        initial_state=initial_state,
+        schedule=schedule,
     )
     return est
+
+
+def _largest_jump(result):
+    values = [np.abs(np.asarray(v, dtype=float)) for v in result["continuity_jumps_instances"].values()]
+    return max(float(np.nanmax(v)) for v in values if np.isfinite(v).any())
 
 
 class TestMultipleShooting(unittest.TestCase):
@@ -269,6 +277,95 @@ class TestMultipleShooting(unittest.TestCase):
         self.assertAlmostEqual(node["mean |jump| / tolerance"], 3.9 / 7 / 0.05)
         self.assertLess(wall["one-sided"], 0.75)
         self.assertEqual(list(continuity_summary(jumps, tolerance)["component"])[0], "node")
+
+    def test_a_class_selects_the_states_of_fused_members(self):
+        """The room is fused with its radiator and wall: selecting its class
+        picks its span of the block's state vector, and a class the model
+        does not have selects nothing (the states stay fixed)."""
+        zone_class = type(load_model().components["office"]).__name__
+        est = _estimator("cpu", multiple_shooting=dict(MS, states=[(zone_class, "all")]))
+        obj = est._functional_objective
+        model = est.simulator.model.simulation_model
+        expected = []
+        for comp, (start, _stop), (n_c, ss) in zip(obj.layout.components, obj.layout.slices, obj.layout.shapes):
+            for leaf, owner, offset, width in model._stateful_leaves():
+                if leaf is comp and type(owner).__name__ == zone_class:
+                    expected += [start + i_c * ss + offset + k for i_c in range(n_c) for k in range(width)]
+        self.assertTrue(expected)
+        self.assertEqual(sorted(obj.init_index.tolist()), sorted(expected))
+        nothing = _estimator("cpu", multiple_shooting=dict(MS, states=[("NoSuchSystem", "all")]))
+        self.assertEqual(nothing._functional_objective.n_init, 0)
+
+    def test_the_periods_must_be_contiguous(self):
+        with self.assertRaises(ValueError) as raised:
+            _estimator("cpu", multiple_shooting=MS, gap_hours=1)
+        self.assertIn("initial_state", str(raised.exception))
+        with self.assertRaises(ValueError):
+            _estimator("cpu", multiple_shooting=MS, initial_state=True)
+
+    def test_initial_states_without_the_tie(self):
+        """``initial_state``: every period's start is a variable, the
+        periods need not be contiguous, and nothing ties them: no defect
+        columns, no jumps."""
+        est = _estimator("cpu", initial_state=True, gap_hours=1)
+        obj = est._functional_objective
+        self.assertFalse(obj.init_continuity)
+        self.assertEqual(obj.init_first, 0)
+        self.assertEqual(obj.n_init, 2 * obj.init_n_slow)
+        _theta_block, column_block, _ = obj.parameter_structure()
+        self.assertEqual(len(column_block), len(est._measurements))  # measured columns only
+        theta = torch.tensor(np.asarray(est._last_x_norm, dtype=np.float64), dtype=torch.float64)
+        x_ext = torch.cat([theta, obj.init_x0_norm.cpu()])
+        self.assertEqual(obj.continuity_jumps(x_ext), {})
+        self.assertIsNone(obj._rollout(*obj._physical(x_ext))[1])
+        import pickle
+
+        with open(est.result_savedir_pickle, "rb") as handle:
+            result = pickle.load(handle)
+        self.assertEqual(sorted(result["estimated_initial_state_labels"]), [0, 1])
+        self.assertNotIn("continuity_jumps_instances", result)
+
+    def test_the_shift_enters_the_defect(self):
+        """The defect is (end - next start + shift) / sd, and the next shift
+        is this one plus the gap left."""
+        est = _estimator("cpu", multiple_shooting=MS)
+        obj = est._functional_objective
+        theta = torch.tensor(np.asarray(est._last_x_norm, dtype=np.float64), dtype=torch.float64)
+        x_ext = torch.cat([theta, obj.init_x0_norm.cpu()])
+        _Ms, plain = obj._rollout(*obj._physical(x_ext))
+        shift = torch.linspace(-0.3, 0.3, obj.init_n_slow, dtype=plain.dtype).unsqueeze(0)
+        obj.init_shift = shift
+        _Ms, shifted = obj._rollout(*obj._physical(x_ext))
+        torch.testing.assert_close(shifted, plain + shift / obj.init_sd, rtol=1e-12, atol=1e-12)
+        nxt = obj.continuity_shift_next(x_ext)
+        flat = torch.cat([nxt[c.id].reshape(1, -1) for c in obj.layout.components], dim=1)[0]
+        torch.testing.assert_close(flat[obj.init_index.cpu()], (shifted[0] * obj.init_sd).cpu(), rtol=1e-12, atol=1e-12)
+        # a shift given by component id reaches the same columns
+        by_id = {}
+        model = est.simulator.model.simulation_model
+        for cid, block in model._instance_state({k: v for k, v in nxt.items()}).items():
+            by_id[cid] = torch.nan_to_num(block, nan=0.0)
+        again = obj._selected_from_instances(by_id, 1, plain.device, plain.dtype, obj.init_index)
+        torch.testing.assert_close(again[0], flat[obj.init_index.cpu()].to(again.dtype), rtol=1e-12, atol=1e-12)
+
+    def test_multiplier_updates_shrink_the_jumps(self):
+        """Three phases with update_multipliers: the tolerance stays, the
+        shift grows, and the largest jump left falls from phase to phase."""
+        import pickle
+
+        # a loose tie on the room's states (the test's SLSQP barely moves the
+        # controllers' internal states in 20 iterations): the first fit leaves a jump
+        zone_class = type(load_model().components["office"]).__name__
+        config = dict(MS, sd_ref="value", sd_rel=0.02, states=[(zone_class, "all")])
+        single = _estimator("cpu", multiple_shooting=config, maxiter=20)
+        with open(single.result_savedir_pickle, "rb") as handle:
+            first = pickle.load(handle)
+        phased = _estimator("cpu", multiple_shooting=dict(config, update_multipliers=True), schedule=[{}, {}, {}], maxiter=20)
+        with open(phased.result_savedir_pickle, "rb") as handle:
+            last = pickle.load(handle)
+        self.assertIn("shift", phased._multiple_shooting)
+        self.assertTrue(last["continuity_shift_instances"])
+        self.assertLess(_largest_jump(last), 0.5 * _largest_jump(first))
 
     def test_gradient_reaches_the_initial_state_variables(self):
         est = _estimator("cpu", multiple_shooting=MS)

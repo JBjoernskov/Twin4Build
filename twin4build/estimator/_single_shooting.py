@@ -205,7 +205,9 @@ class FunctionalEstimationObjective:
 
         * ``states``: ``"all"`` (every state of the flat state vector, the
           default) or a list of ``(component class name, [state index, ...]
-          or "all")`` selecting the slow states only.
+          or "all")`` selecting the slow states only.  A class names an
+          executing component or a member of a fused state-space block; the
+          indices count within that class's own state vector.
         * ``sd_ref``, ``sd_rel`` / ``sd_abs``: the continuity tolerance per
           state, ``max(sd_abs, sd_rel * reference)``.  ``sd_ref="range"``
           (the default) takes as the reference how much the state varies
@@ -215,9 +217,18 @@ class FunctionalEstimationObjective:
           held tight and a fast one (a radiator's water) loosely; default
           ``sd_rel`` 0.01 there.  ``sd_ref="value"`` takes the state's
           magnitude (default ``sd_rel`` 0.0025: 0.05 K on a 20 C wall).
-          Tightening ``sd_rel`` over successive fits (each started from
-          the last one's result) drives the jumps at the boundaries to
-          zero: see :mod:`twin4build.estimator._continuity`.
+          The tolerance is a penalty weight, not a hard limit: a fit may
+          still buy a better fit of a window with a jump at its start.
+        * ``shift``: the augmented-Lagrangian shift of the defects, in the
+          states' own units: ``{component id: (P - 1, state_size)}`` by the
+          ids of the components the model was built from (a result's
+          ``continuity_shift_instances``).  The defect of a state becomes
+          ``(Y_end[p] - Y0[p + 1] + shift) / sd``.  Refitting with the shift
+          the last fit returned (the method of multipliers: Hestenes 1969,
+          Powell 1969) drives the jumps to zero at a fixed tolerance.
+        * ``continuity``: ``True`` (multiple shooting) scores the defects;
+          ``False`` (``Estimator.estimate(initial_state=...)``) estimates the
+          periods' initial states with no tie between them.
         * ``bound_rel`` / ``bound_abs``: the box around the recorded initial
           state, ``max(bound_abs, bound_rel * |state|)`` (default 25 %).
         * ``first_window``: the first window's initial state is a variable
@@ -243,9 +254,10 @@ class FunctionalEstimationObjective:
             )
             return
         config = dict(config)
+        continuity = bool(config.get("continuity", True))
         Y0, _tape = windows  # (P, D_aug)
         P = int(Y0.shape[0])
-        if P < 2:
+        if P < 2 and continuity:
             return
         layout = self.layout
         D = int(layout.width)
@@ -257,14 +269,31 @@ class FunctionalEstimationObjective:
             wanted = {}
             for name, idx in selection:
                 wanted[str(name)] = idx
+            # a class names an executing component or a member of a fused
+            # state-space block (a room fused with its radiator and walls):
+            # the member's states are a span of the block's state vector
+            model = getattr(self.est.simulator.model, "simulation_model", self.est.simulator.model)
+            members_of = {}
+            for comp, owner, offset, width in model._stateful_leaves():
+                if owner is not comp:
+                    members_of.setdefault(comp.id, []).append((type(owner).__name__, offset, width))
             for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
-                idx = wanted.get(type(comp).__name__)
-                if idx is None:
-                    continue
-                ks = range(ss) if idx == "all" else [int(k) for k in idx]
-                for i_c in range(n_c):
-                    picked.extend(start + i_c * ss + int(k) for k in ks if 0 <= int(k) < ss)
+                spans = []
+                if type(comp).__name__ in wanted:
+                    spans.append((0, ss, wanted[type(comp).__name__]))
+                for class_name, offset, width in members_of.get(comp.id, []):
+                    if class_name in wanted:
+                        spans.append((offset, width, wanted[class_name]))
+                for offset, width, idx in spans:
+                    ks = range(width) if idx == "all" else [int(k) for k in idx if 0 <= int(k) < width]
+                    for i_c in range(n_c):
+                        picked.extend(start + i_c * ss + offset + int(k) for k in ks)
             index = np.asarray(sorted(set(picked)), dtype=np.int64)
+            if index.size == 0:
+                LOGGER.warning(
+                    "multiple shooting: the states selection %s matches no state of the model; "
+                    "the initial states stay fixed", sorted(wanted),
+                )
         blocks = self.composer.state_blocks(layout)
         attached = blocks[index] >= 0
         if not attached.all():
@@ -282,7 +311,7 @@ class FunctionalEstimationObjective:
         # measurements; no defect column, there is no window before it), so
         # no window needs a warm-up.  ``first_window=False`` keeps the first
         # window at its recorded state (windows 1..P-1 carry the variables).
-        p_first = 0 if bool(config.get("first_window", True)) else 1
+        p_first = 0 if (bool(config.get("first_window", True)) or not continuity) else 1
         x0 = Y0[p_first:, index_t].detach()  # (P - p_first, n_slow) physical
         # The scale of every selected state: the largest magnitude it takes
         # at the windows' starts and ends in a rollout at the start point,
@@ -310,7 +339,18 @@ class FunctionalEstimationObjective:
         b_rel, b_abs = float(config.get("bound_rel", 0.25)), float(config.get("bound_abs", 0.0))
         sd = torch.clamp(torch.maximum(torch.full_like(reference, sd_abs), sd_rel * reference), min=1e-9)
         half = torch.maximum(torch.full_like(x0, b_abs), b_rel * magnitude.unsqueeze(0).expand_as(x0)).clamp(min=1e-6)
-        lb, ub = x0 - half, x0 + half
+        low, high = x0.clone(), x0.clone()
+        if continuity:
+            # the box of a window's start also holds the end of the window
+            # before it at the start point: the continuous trajectory must be
+            # feasible, or a jump the box forces (a controller's integral
+            # recorded at zero and ending far from it) is indistinguishable
+            # from one the fit chose, and multiplier updates cannot close it
+            first_tied = 1 - p_first  # the row of window 1 in x0
+            previous_end = end0[:-1, index_t]  # the ends of windows 0 .. P-2
+            low[first_tied:] = torch.minimum(low[first_tied:], previous_end)
+            high[first_tied:] = torch.maximum(high[first_tied:], previous_end)
+        lb, ub = low - half, high + half
         n_slow = int(index.size)
         self.init_first = int(p_first)
         self.n_init = int((P - p_first) * n_slow)
@@ -318,6 +358,9 @@ class FunctionalEstimationObjective:
         self.init_n_slow = n_slow
         self.init_blocks = np.asarray(blocks[index], dtype=np.int64)  # (n_slow,)
         self.init_sd = sd
+        self.init_continuity = continuity
+        # the augmented-Lagrangian shift of the defects, physical (P - 1, n_slow)
+        self.init_shift = self._selected_from_instances(config.get("shift"), P - 1, dev, dtype, index_t) if continuity else None
         self.init_sd_reference = reference  # what sd_rel multiplies (see sd_ref)
         self.init_magnitude = magnitude
         self.init_x0 = x0
@@ -331,6 +374,43 @@ class FunctionalEstimationObjective:
             "continuity sd %.3g of the state's %s / %.3g absolute, box %.3g relative / %.3g absolute",
             P, n_slow, self.n_init, p_first, sd_rel, sd_ref, sd_abs, b_rel, b_abs,
         )
+        if not continuity:
+            LOGGER.config("initial states: estimated per period, not tied between periods")
+        elif self.init_shift is not None:
+            LOGGER.config(
+                "multiple shooting: defects shifted by the last fit's multipliers (largest shift %.3g)",
+                float(self.init_shift.abs().max()),
+            )
+
+    def _selected_from_instances(self, shift, rows: int, dev, dtype, index):
+        """``{component id: (rows, state_size)}`` by the ids of the components
+        the model was built from, as ``(rows, n_slow)`` over the selected
+        states ``index`` (zero where the mapping has no value), or ``None``."""
+        if not shift:
+            return None
+        model = self.est.simulator.model
+        model = getattr(model, "simulation_model", model)
+        flat = torch.zeros((rows, int(self.layout.width)), dtype=dtype, device=dev)
+        start_of = {comp.id: start for comp, (start, _stop) in zip(self.layout.components, self.layout.slices)}
+        shape_of = {comp.id: shape for comp, shape in zip(self.layout.components, self.layout.shapes)}
+        found = 0
+        for comp, owner, offset, width in model._stateful_leaves():
+            if comp.id not in start_of:
+                continue
+            _n_c, ss = shape_of[comp.id]
+            for i_c, cid in enumerate(model._instance_ids(owner)):
+                value = shift.get(cid)
+                if value is None:
+                    continue
+                value = torch.as_tensor(np.asarray(value, dtype=np.float64), dtype=dtype, device=dev).reshape(rows, -1)
+                if value.shape[1] != width:
+                    continue
+                col = start_of[comp.id] + i_c * ss + offset
+                flat[:, col : col + width] = torch.nan_to_num(value, nan=0.0)
+                found += 1
+        if found == 0:
+            return None
+        return flat[:, index]
 
     @property
     def n_theta_ext(self) -> int:
@@ -368,10 +448,16 @@ class FunctionalEstimationObjective:
             return base.index_put((b_idx, rows.repeat(B), cols.repeat(B)), init_phys.reshape(-1))
         return Y0.index_put((rows, cols), init_phys.reshape(-1))
 
-    def _defects(self, end: torch.Tensor, Y0: torch.Tensor) -> torch.Tensor:
-        """``(Y_end[p] - Y0[p + 1]) / sd`` over the selected states: ``(..., P-1, n_slow)``."""
+    def _defects(self, end: torch.Tensor, Y0: torch.Tensor):
+        """``(Y_end[p] - Y0[p + 1] + shift) / sd`` over the selected states:
+        ``(..., P-1, n_slow)``; ``None`` when the periods are not tied."""
+        if not getattr(self, "init_continuity", True):
+            return None
         idx = self.init_index
-        return (end[..., :-1, :][..., idx] - Y0[..., 1:, :][..., idx]) / self.init_sd
+        gap = end[..., :-1, :][..., idx] - Y0[..., 1:, :][..., idx]
+        if getattr(self, "init_shift", None) is not None:
+            gap = gap + self.init_shift
+        return gap / self.init_sd
 
     def init_entry_names(self):
         """One label per initial-state variable, ``init[p]:<component>[i_c].x<k>``."""
@@ -418,7 +504,7 @@ class FunctionalEstimationObjective:
         tolerance.  Empty without multiple shooting."""
         x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
         windows = self._windows()
-        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext:
+        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext or not self.init_continuity:
             return {}
         theta_phys, init_phys = self._physical(x)
         Y0, tape = windows
@@ -430,13 +516,32 @@ class FunctionalEstimationObjective:
         jumps[:, idx] = Y[1:, idx] - end[:-1, idx]
         return self._per_component(jumps)
 
+    def continuity_shift_next(self, x) -> dict:
+        """The shift for the next fit (the method of multipliers): this
+        fit's shift plus the gap it left, ``Y_end[p] - Y0[p + 1] + shift``,
+        per executing component ``{component id: (P-1, n_c, state_size)}``
+        in physical units (``NaN`` for a state that is not a variable).
+        Empty without multiple shooting."""
+        x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
+        windows = self._windows()
+        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext or not self.init_continuity:
+            return {}
+        theta_phys, init_phys = self._physical(x)
+        Y0, tape = windows
+        Y = self._Y0_with(Y0, init_phys)
+        with torch.no_grad():
+            _out, end = self.est.simulator.rollout_functional_windows(self.composer, Y, theta_phys, tape, return_end=True)
+        flat = torch.full_like(Y[1:], float("nan"))
+        flat[:, self.init_index] = self._defects(end, Y) * self.init_sd
+        return self._per_component(flat)
+
     def continuity_tolerance(self) -> dict:
         """The continuity tolerance of every state that is a variable, per
         executing component: ``{component id: (1, n_c, state_size)}``
         (``NaN`` elsewhere); a jump over its tolerance is the defect column
         the objective scores.  Empty without multiple shooting."""
         windows = self._windows()
-        if self.n_init == 0 or windows is None:
+        if self.n_init == 0 or windows is None or not self.init_continuity:
             return {}
         Y0 = windows[0]
         sd = torch.full_like(Y0[:1], float("nan"))
@@ -747,7 +852,8 @@ class FunctionalEstimationObjective:
             if self.n_init:
                 P1 = self.init_lb.shape[0]
                 theta_block = np.concatenate([np.asarray(theta_block), np.tile(self.init_blocks, P1)])
-                column_block = np.concatenate([np.asarray(column_block), self.init_blocks])
+                if self.init_continuity:
+                    column_block = np.concatenate([np.asarray(column_block), self.init_blocks])
             cached = (theta_block, column_block, n_blocks)
             self.__dict__["_parameter_structure"] = cached
         return cached
