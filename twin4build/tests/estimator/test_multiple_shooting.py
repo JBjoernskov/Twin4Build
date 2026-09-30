@@ -308,6 +308,33 @@ class TestMultipleShooting(unittest.TestCase):
         self.assertGreater(thermal, 0)
         self.assertGreater(holds_nothing, 0)
 
+    @unittest.skipUnless(torch.cuda.is_available(), "needs CUDA")
+    def test_the_energy_tolerance_on_the_gpu(self):
+        """The capacities of a model on the GPU (parameters there, the NaN of
+        a state that holds no heat made on the CPU) give the same tolerance
+        as on the CPU."""
+        shooting = dict(MS, continuity_sd_ref="energy", continuity_energy_tol=5e3)
+        on_cpu = _estimator("cpu", shooting=shooting)._functional_objective
+        on_gpu = _estimator("cuda", shooting=shooting)._functional_objective
+        self.assertIsNotNone(on_gpu)
+        torch.testing.assert_close(on_gpu.init_capacity.cpu(), on_cpu.init_capacity.to(on_gpu.init_capacity.dtype), rtol=1e-12, atol=0, equal_nan=True)
+        torch.testing.assert_close(on_gpu.init_sd.cpu(), on_cpu.init_sd.to(on_gpu.init_sd.dtype), rtol=1e-9, atol=0)
+
+    def test_a_fit_whose_functional_objective_fails_stops(self):
+        """The periods' initial states are variables of the functional
+        objective only: when it cannot be built, a multiple-shooting fit
+        stops with the reason instead of falling back to the object
+        objective (which cannot carry them)."""
+        from unittest import mock
+
+        import twin4build.estimator.estimator as estimator_module
+
+        with mock.patch.object(estimator_module, "FunctionalEstimationObjective", side_effect=RuntimeError("no functional model")):
+            with self.assertRaises(RuntimeError) as raised:
+                _estimator("cpu", shooting=MS)
+        self.assertIn("initial states", str(raised.exception))
+        self.assertIn("no functional model", str(raised.exception.__cause__))
+
     def test_the_energy_tolerance_holds_a_jumps_heat(self):
         """``continuity_sd_ref="energy"``: a state that stores heat is held
         to at most ``continuity_energy_tol / C`` (tighter than its range

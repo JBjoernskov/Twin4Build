@@ -24,7 +24,7 @@ from twin4build.utils.state_marker import StateMarker
 def _concatenate_capacities(parts, n_c):
     """Units' ``(n_c | 1, width)`` capacities side by side, ``(n_c, sum)``;
     a unit without state contributes nothing."""
-    parts = [part for part in parts if part is not None]
+    parts = [part.detach().cpu() for part in parts if part is not None]  # a NaN part is made on the CPU
     if not parts:
         return None
     dtype = parts[0].dtype
@@ -449,8 +449,9 @@ class System:
         A leaf unit declares its own with ``_state_heat_capacities()`` (from
         its parameters' current values); a composite of several state-space
         units (:meth:`_ss_units`) concatenates its units'.  ``None`` for a
-        component without state.  Detached: a tolerance, not a parameter
-        path (the multiple-shooting tolerance by energy reads it).
+        component without state.  Detached and on the CPU: a tolerance, not
+        a parameter path (the multiple-shooting tolerance by energy reads it
+        and moves it where it needs it).
         """
         width = self.state_size()
         if width == 0:
@@ -468,7 +469,7 @@ class System:
                 caps = _concatenate_capacities([unit.state_heat_capacities() for _, unit in units], self.n_c)
         if caps is None:
             return torch.full((self.n_c, width), float("nan"), dtype=tps.float_dtype())
-        caps = caps.detach()
+        caps = caps.detach().cpu()
         if caps.shape[0] == 1 and self.n_c > 1:
             caps = caps.expand(self.n_c, caps.shape[-1])
         if tuple(caps.shape) != (self.n_c, width):

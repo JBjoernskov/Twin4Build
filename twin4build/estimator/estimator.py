@@ -3686,6 +3686,12 @@ class Estimator:
         try:
             functional = FunctionalEstimationObjective(self)
         except Exception as exc:  # noqa: BLE001
+            if getattr(self, "_multiple_shooting", None):
+                # the periods' initial states are variables of the functional
+                # objective only: the object objective cannot carry them
+                raise RuntimeError(
+                    "the functional objective that carries the periods' initial states could not be built"
+                ) from exc
             LOGGER.warning(
                 "Fast single-shooting unavailable (%s) -- using the "
                 "object objective.",
