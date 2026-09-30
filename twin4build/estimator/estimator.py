@@ -1016,8 +1016,14 @@ class Estimator:
         # variables with continuity defects between consecutive windows as
         # residual columns.  See
         # ``FunctionalEstimationObjective._setup_multiple_shooting`` for the
-        # keys (``states``, ``sd_rel``, ``sd_abs``, ``bound_rel``, ``bound_abs``).
+        # keys (``states``, ``sd_ref``, ``sd_rel``, ``sd_abs``, ``bound_rel``,
+        # ``bound_abs``, ``first_window``).
         self._multiple_shooting = dict(multiple_shooting) if multiple_shooting else None
+        if self._multiple_shooting and self._multiple_shooting.get("sd_ref", "range") not in ("range", "value"):
+            raise ValueError(
+                "multiple_shooting['sd_ref'] must be 'range' (the state's variation over the windows) "
+                f"or 'value' (its magnitude); got {self._multiple_shooting['sd_ref']!r}"
+            )
 
         # Set up time periods
         self._n_warmup = n_warmup

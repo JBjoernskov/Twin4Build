@@ -206,9 +206,18 @@ class FunctionalEstimationObjective:
         * ``states``: ``"all"`` (every state of the flat state vector, the
           default) or a list of ``(component class name, [state index, ...]
           or "all")`` selecting the slow states only.
-        * ``sd_rel`` / ``sd_abs``: the continuity tolerance per state,
-          ``max(sd_abs, sd_rel * |state|)`` over the recorded initial value
-          (default 0.0025 relative: 0.05 K on a 20 C wall, 1 ppm on 400 ppm).
+        * ``sd_ref``, ``sd_rel`` / ``sd_abs``: the continuity tolerance per
+          state, ``max(sd_abs, sd_rel * reference)``.  ``sd_ref="range"``
+          (the default) takes as the reference how much the state varies
+          over the windows' starts and ends in a rollout at the start point:
+          each state is held in its own units and to its own scale, so a
+          slow state that barely moves (a building's shared interior) is
+          held tight and a fast one (a radiator's water) loosely; default
+          ``sd_rel`` 0.01 there.  ``sd_ref="value"`` takes the state's
+          magnitude (default ``sd_rel`` 0.0025: 0.05 K on a 20 C wall).
+          Tightening ``sd_rel`` over successive fits (each started from
+          the last one's result) drives the jumps at the boundaries to
+          zero: see :mod:`twin4build.estimator._continuity`.
         * ``bound_rel`` / ``bound_abs``: the box around the recorded initial
           state, ``max(bound_abs, bound_rel * |state|)`` (default 25 %).
         * ``first_window``: the first window's initial state is a variable
@@ -284,9 +293,22 @@ class FunctionalEstimationObjective:
             theta0 = self._denorm(torch.as_tensor(np.asarray(self.est._x0_norm, dtype=np.float64), dtype=dtype, device=dev)[: self.n_theta])
             _out, end0 = self.est.simulator.rollout_functional_windows(self.composer, Y0, theta0, _tape, return_end=True)
         magnitude = torch.maximum(Y0[:, index_t].abs().amax(dim=0), end0[:, index_t].abs().amax(dim=0)).clamp(min=1.0)  # (n_slow,)
-        sd_rel, sd_abs = float(config.get("sd_rel", 0.0025)), float(config.get("sd_abs", 0.0))
+        sd_ref = str(config.get("sd_ref", "range"))
+        if sd_ref == "range":
+            # how much each state moves over the windows' starts and ends,
+            # floored at a thousandth of its magnitude (a state that does not
+            # move at the start point must not get a vanishing tolerance)
+            both = torch.cat([Y0[:, index_t], end0[:, index_t]], dim=0)
+            reference = torch.maximum(both.amax(dim=0) - both.amin(dim=0), 1e-3 * magnitude)
+            sd_rel_default = 0.01
+        elif sd_ref == "value":
+            reference = magnitude
+            sd_rel_default = 0.0025
+        else:
+            raise ValueError(f"multiple_shooting sd_ref must be 'range' or 'value'; got {sd_ref!r}")
+        sd_rel, sd_abs = float(config.get("sd_rel", sd_rel_default)), float(config.get("sd_abs", 0.0))
         b_rel, b_abs = float(config.get("bound_rel", 0.25)), float(config.get("bound_abs", 0.0))
-        sd = torch.clamp(torch.maximum(torch.full_like(magnitude, sd_abs), sd_rel * magnitude), min=1e-9)
+        sd = torch.clamp(torch.maximum(torch.full_like(reference, sd_abs), sd_rel * reference), min=1e-9)
         half = torch.maximum(torch.full_like(x0, b_abs), b_rel * magnitude.unsqueeze(0).expand_as(x0)).clamp(min=1e-6)
         lb, ub = x0 - half, x0 + half
         n_slow = int(index.size)
@@ -296,6 +318,8 @@ class FunctionalEstimationObjective:
         self.init_n_slow = n_slow
         self.init_blocks = np.asarray(blocks[index], dtype=np.int64)  # (n_slow,)
         self.init_sd = sd
+        self.init_sd_reference = reference  # what sd_rel multiplies (see sd_ref)
+        self.init_magnitude = magnitude
         self.init_x0 = x0
         self.init_lb, self.init_ub = lb, ub
         self.init_x0_norm = ((x0 - lb) / (ub - lb)).reshape(-1)
@@ -304,8 +328,8 @@ class FunctionalEstimationObjective:
         self._init_put = (rows, cols)
         LOGGER.config(
             "multiple shooting: %d windows, %d states per window as variables (%d total, from window %d), "
-            "continuity sd %.3g relative / %.3g absolute, box %.3g relative / %.3g absolute",
-            P, n_slow, self.n_init, p_first, sd_rel, sd_abs, b_rel, b_abs,
+            "continuity sd %.3g of the state's %s / %.3g absolute, box %.3g relative / %.3g absolute",
+            P, n_slow, self.n_init, p_first, sd_rel, sd_ref, sd_abs, b_rel, b_abs,
         )
 
     @property

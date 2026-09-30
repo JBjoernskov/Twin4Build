@@ -51,7 +51,12 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   start of window p + 1 minus the end of window p, and
   `continuity_tolerance_instances`); the fit logs the largest, and
   `twin4build.estimator._continuity.continuity_summary` ranks them and marks
-  the states re-set to one side at every boundary.
+  the states re-set to one side at every boundary.  The continuity tolerance
+  of a state is a fraction (`sd_rel`, default 0.01) of how much the state
+  varies over the windows (`sd_ref="range"`, the default), or of its
+  magnitude (`sd_ref="value"`, default 0.0025); tightening `sd_rel` over
+  successive fits, each started from the last result, drives the jumps to
+  zero.
 - Model state.  `Model.get_state()`, `Model.set_state(values,
   period_starts=None)` and `Model.clear_state()` read and set the initial
   state by component id; with `period_starts` a row is matched to the

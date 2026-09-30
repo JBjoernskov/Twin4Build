@@ -235,6 +235,24 @@ class TestMultipleShooting(unittest.TestCase):
         ratio = table["mean |jump| / tolerance"].to_numpy()
         self.assertTrue(np.all(np.diff(ratio[np.isfinite(ratio)]) <= 0))  # the largest first
 
+    def test_the_tolerance_follows_how_much_a_state_varies(self):
+        """``sd_ref="range"`` (the default) scales each state's tolerance by
+        how much it moves over the windows' starts and ends; ``"value"`` by
+        its magnitude; both floored as documented."""
+        ranged = _estimator("cpu", multiple_shooting={k: v for k, v in MS.items() if k not in ("sd_rel",)})
+        valued = _estimator("cpu", multiple_shooting=dict(MS, sd_ref="value"))
+        r_obj, v_obj = ranged._functional_objective, valued._functional_objective
+        torch.testing.assert_close(r_obj.init_sd, torch.clamp(0.01 * r_obj.init_sd_reference, min=1e-9), rtol=1e-12, atol=0)
+        torch.testing.assert_close(v_obj.init_sd, torch.clamp(0.0025 * v_obj.init_sd_reference, min=1e-9), rtol=1e-12, atol=0)
+        torch.testing.assert_close(v_obj.init_sd_reference, v_obj.init_magnitude, rtol=0, atol=0)
+        # the range is floored at a thousandth of the magnitude and cannot exceed twice it
+        self.assertTrue(bool((r_obj.init_sd_reference >= 1e-3 * r_obj.init_magnitude - 1e-15).all()))
+        self.assertTrue(bool((r_obj.init_sd_reference <= 2.0 * r_obj.init_magnitude + 1e-12).all()))
+        # a state that barely moves gets a tighter tolerance than its magnitude would give it
+        self.assertLess(float((r_obj.init_sd / v_obj.init_sd).min()), 1.0)
+        with self.assertRaises(ValueError):
+            _estimator("cpu", multiple_shooting=dict(MS, sd_ref="energy"))
+
     def test_the_summary_tells_a_one_sided_state_from_noise(self):
         from twin4build.estimator._continuity import continuity_summary
 
