@@ -1309,6 +1309,7 @@ class Model:
                     meta._batched_execution_priority = group_idx
                     self._batch_parameters(meta, comps, n_c)
                     self._copy_init_attrs(meta, comps[0])
+                    self._stack_instance_attrs(meta, comps)
                 except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
                     # A class whose instances cannot be rebuilt from their
                     # constructor and stacked parameters (sub-models created
@@ -1765,6 +1766,22 @@ class Model:
         ".smooth_on_off_controller_system.SmoothOnOffControllerSystem": ("is_reverse",),
     }
 
+    @staticmethod
+    def _stack_instance_attrs(meta: Any, components: List) -> None:
+        """Stack the per-instance tensors a class declares in
+        ``_batch_stacked_attrs`` onto the meta, ``(n_c, ...)``.
+
+        For the values that are neither parameters (``_batch_parameters``
+        stacks those) nor shared structure (``_batch_init_kwargs``): an
+        identified controller's ``onOffSignal`` normalisation bounds, which
+        the rewire derives per loop.  A value an instance does not have (an
+        unbuilt controller) leaves the meta's own."""
+        for name in getattr(components[0], "_batch_stacked_attrs", ()):
+            values = [getattr(c, name, None) for c in components]
+            if any(v is None for v in values):
+                continue
+            setattr(meta, name, torch.stack([torch.as_tensor(v).detach() for v in values]))
+
     def _copy_init_attrs(self, meta: Any, source: Any) -> None:
         """Copy non-Parameter constructor attributes from *source* to *meta*.
 
@@ -1871,6 +1888,10 @@ class Model:
                 return value
             if isinstance(value, (list, tuple)):
                 return tuple(_declared_signature(item) for item in value)
+            if isinstance(value, dict):
+                # a literal (an identified controller's candidate structure):
+                # equal contents are the same structure
+                return tuple(sorted((str(k), _declared_signature(v)) for k, v in value.items()))
             # A callable (or any other object) counts as identity: two
             # separately created functions are two transformations as far as
             # batching is concerned, even if their source is identical.

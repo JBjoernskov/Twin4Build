@@ -405,15 +405,46 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             self._built = False
             self._build_components()
 
+    # -- batching ---------------------------------------------------------------
+    #: Per-instance values that are not parameters: the rewire derives the
+    #: ``onOffSignal`` normalisation bounds per loop, and a batched controller
+    #: holds them as ``(n_c, n_on_off_signals)`` (``Model.batch_components``).
+    _batch_stacked_attrs = ("on_off_signal_norm_min", "on_off_signal_norm_max")
+
+    @property
+    def _batch_init_kwargs(self) -> dict:
+        """What a batched controller is built from: the sizes, the candidate
+        structure, the playback flag and the rewire mode.  The meta is then
+        built with its candidates and gates, so the instances' stacked
+        parameters land on them; controllers of another structure (another
+        candidate list, another number of actuators or signals) batch apart
+        (``Model._component_signature``)."""
+        return {
+            "n_sensors": self.n_sensors,
+            "n_setpoints": self.n_setpoints,
+            "n_on_off_signals": self.n_on_off_signals,
+            "n_actuators": self.n_actuators,
+            "candidate_structure": self.candidate_structure,
+            "playback": bool(self.playback),
+            "rewire_mode": self.rewire_mode,
+        }
+
     # -- onOffSignal normalisation bounds ---------------------------------------
     def _on_off_norm_tensor(self, value) -> torch.Tensor:
         """``value`` (tensor, list or number) as one bound per ``onOffSignal``
-        slot."""
-        if isinstance(value, torch.Tensor):
-            value = value.detach().reshape(-1)
-        else:
-            value = torch.as_tensor(value, dtype=tps.float_dtype()).reshape(-1)
+        slot; a batched controller's ``(n_c, n_on_off_signals)`` stack (one
+        row per instance) is kept as it is, and restored from the flat list
+        of ``n_c * n_on_off_signals`` values a load writes back
+        (``System.populate_config`` flattens tensors; flat, the bounds would
+        broadcast every instance's signal against every instance's bounds)."""
+        value = value.detach() if isinstance(value, torch.Tensor) else torch.as_tensor(value, dtype=tps.float_dtype())
+        if value.dim() == 2:
+            return value
+        value = value.reshape(-1)
         n = self.n_on_off_signals
+        n_c = int(getattr(self, "n_c", 1) or 1)
+        if n is not None and n_c > 1 and value.numel() == n_c * n:
+            return value.reshape(n_c, n)
         if n is not None and value.numel() == 1 and n > 1:
             value = value.expand(n).clone()
         return value
@@ -826,12 +857,28 @@ class ControllerIdentificationSystem(core.System, nn.Module):
 
         params: List[Tuple[Any, str, Any, float, float]] = []
 
-        def _scalar(p) -> float:
+        def _scalar(p):
+            """The start: a float, or one value per instance on a batched
+            controller (``n_c`` wide, as ``System.get_estimable_parameters``)."""
             v = p.get()
-            try:
-                return float(v.item())
-            except AttributeError:
+            if not hasattr(v, "detach"):
                 return float(v)
+            v = v.detach().reshape(-1)
+            return v.cpu().numpy().astype(float) if v.numel() > 1 else float(v[0].item())
+
+        def _bounds(p, default):
+            """The bounds the parameter carries (the rewire's per-loop
+            ``(lb, ub)``), one per instance on a batched controller;
+            ``default`` when it carries none."""
+            try:
+                lb = p.min_value.detach().reshape(-1).cpu().numpy().astype(float)
+                ub = p.max_value.detach().reshape(-1).cpu().numpy().astype(float)
+            except (AttributeError, RuntimeError, ValueError):
+                return default
+            n = p.get().numel()
+            if n > 1 and lb.size == n and ub.size == n:
+                return lb, ub
+            return float(lb.min()), float(ub.max())
 
         for a in range(self.n_actuators):
             # Per-candidate PID-like knobs (kp / Ti / output_min).  Skip
@@ -859,12 +906,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                     # (Ti up to its 7200 s ceiling), and the static class
                     # constants (Ti <= 1800 s) would reject those seeds with
                     # "x0 must be <= upper bound".
-                    lb, ub = bounds
-                    try:
-                        lb = float(p.min_value.min().item())
-                        ub = float(p.max_value.max().item())
-                    except (AttributeError, RuntimeError, ValueError):
-                        pass
+                    lb, ub = _bounds(p, bounds)
                     params.append(
                         (
                             self,
@@ -1070,35 +1112,43 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        # Initialize Vector inputs with their sizes
+        # Initialize Vector inputs with their sizes; a batched controller
+        # (``Model.batch_components``) carries ``n_c`` instances in every port
+        n_c = self.n_c
         self.input["sensorValue"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_sensors
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_sensors
         )
         self.input["setpointValue"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_setpoints
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_setpoints
         )
         self.input["onOffSignal"].initialize(
             n_t=max_timesteps,
             n_s=batch_size,
+            n_c=n_c,
             n_v=self.n_on_off_signals,
         )
         self.input["actuatorMeasured"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_actuators
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_actuators
         )
 
         # Initialize output
         self.output["inputSignal"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_actuators
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_actuators
         )
 
-        # Initialize all candidate controllers
+        # Initialize all candidate controllers and the gates, with the
+        # controller's ``n_c``: a batched controller's stacked parameters
+        # hold one value per instance on its candidates and gates
         for a in range(self.n_actuators):
             for c in range(self.n_candidates):
-                self._get_candidate(a, c).initialize(start_time, end_time, step_size)
+                candidate = self._get_candidate(a, c)
+                candidate.n_c = n_c
+                candidate.initialize(start_time, end_time, step_size)
 
-        # Initialize gate sub-systems
         for a in range(self.n_actuators):
-            self._get_gate(a).initialize(start_time, end_time, step_size)
+            gate = self._get_gate(a)
+            gate.n_c = n_c
+            gate.initialize(start_time, end_time, step_size)
         # Identity-stable sample time for ``forward``'s coefficient caches
         # (the candidates key their caches on the sample-time object).
         self._sample_time = self._scalar_sample_time(step_size)
