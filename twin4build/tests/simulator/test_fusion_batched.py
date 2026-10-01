@@ -59,7 +59,7 @@ def build(n_pairs=3, radiators=True, walls=False, plain_zones=0, model_id="fusio
             model.add_connection(water_t, r, "scheduleValue", "supplyWaterTemperature")
             model.add_connection(flow, r, "scheduleValue", "waterFlowRate")
             model.add_connection(z, r, "indoorTemperature", "indoorTemperature")
-            model.add_connection(r, z, "Power", "heatGain")
+            model.add_connection(r, z, "toRoomPower", "heatGain")
         else:
             model.add_connection(zero, z, "scheduleValue", "heatGain")
         if walls:
@@ -109,7 +109,7 @@ class TestBatchedFusion(unittest.TestCase):
         self.assertEqual(len(fused), 1)
         self.assertEqual({m.id for m in fused[0].members}, {"Zone0", "Radiator0"})
         simulate(model)
-        power = history(model, "Radiator0", "Power")
+        power = history(model, "Radiator0", "toRoomPower")
         self.assertTrue(torch.isfinite(power).all())
         self.assertGreater(float(power[-1]), 0.0)
 
@@ -121,7 +121,7 @@ class TestBatchedFusion(unittest.TestCase):
         simulate(model)
         for k in range(2):
             gain = model.components[f"Zone{k}"].input["heatGain"].history()
-            power = model.components[f"Radiator{k}"].output["Power"].history()
+            power = model.components[f"Radiator{k}"].output["toRoomPower"].history()
             torch.testing.assert_close(gain.reshape(gain.shape[0], -1), power.reshape(power.shape[0], -1))
         walls = build(n_pairs=1, walls=True, model_id="fusion_walls")
         simulate(walls)
@@ -140,7 +140,7 @@ class TestBatchedFusion(unittest.TestCase):
         }
         x_next, outs = r.forward(x, inputs, r._forward_params(), STEP)
         expected = 40.0 / 3 * torch.sum(x_next - 21.0, dim=-1)
-        torch.testing.assert_close(outs["Power"], expected)
+        torch.testing.assert_close(outs["toRoomPower"], expected)
 
     def test_batched_equals_unbatched_fused(self):
         reference = build(n_pairs=3, model_id="ref")
@@ -155,11 +155,11 @@ class TestBatchedFusion(unittest.TestCase):
         simulate(batched)
         for k in range(3):
             torch.testing.assert_close(history(model, f"Zone{k}", "indoorTemperature", batched), history(reference, f"Zone{k}", "indoorTemperature"))
-            torch.testing.assert_close(history(model, f"Radiator{k}", "Power", batched), history(reference, f"Radiator{k}", "Power"))
+            torch.testing.assert_close(history(model, f"Radiator{k}", "toRoomPower", batched), history(reference, f"Radiator{k}", "toRoomPower"))
         simulate(batched, execution_mode="functional", execution_backend="eager")
         for k in range(3):
             torch.testing.assert_close(history(model, f"Zone{k}", "indoorTemperature", batched), history(reference, f"Zone{k}", "indoorTemperature"))
-            torch.testing.assert_close(history(model, f"Radiator{k}", "Power", batched), history(reference, f"Radiator{k}", "Power"))
+            torch.testing.assert_close(history(model, f"Radiator{k}", "toRoomPower", batched), history(reference, f"Radiator{k}", "toRoomPower"))
 
     def test_clusters_of_different_shape_batch_apart(self):
         reference = build(n_pairs=2, walls=True, plain_zones=2, model_id="ref_mixed")
@@ -257,8 +257,8 @@ class TestBatchedFusionCaptured(unittest.TestCase):
                 history(reference, f"Zone{k}", "indoorTemperature"), rtol=1e-6, atol=1e-6,
             )
             torch.testing.assert_close(
-                history(model, f"Radiator{k}", "Power", batched),
-                history(reference, f"Radiator{k}", "Power"), rtol=1e-6, atol=1e-4,
+                history(model, f"Radiator{k}", "toRoomPower", batched),
+                history(reference, f"Radiator{k}", "toRoomPower"), rtol=1e-6, atol=1e-4,
             )
 
 

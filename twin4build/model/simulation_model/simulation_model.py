@@ -30,6 +30,7 @@ from twin4build.utils.dict_utils import (
     flatten_dict,
     merge_dicts,
 )
+from twin4build.utils.get_main_dir import get_main_dir
 from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
@@ -350,6 +351,7 @@ class SimulationModel:
         "_translator",
         "_rewire_reports",
         "_system_registry",
+        "_initial_state",
     )
 
     def __str__(self):
@@ -414,6 +416,7 @@ class SimulationModel:
         self._execution_order = []
         self._flat_execution_order = []
         self._required_initialization_connections = []
+        self._initial_state = None  # see set_state
         self._components_no_cycles = {}
         self._fused_components = {}
         self._fusion_member_to_fused = {}
@@ -923,10 +926,16 @@ class SimulationModel:
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
+
+        A deprecated output port name (``System.OUTPUT_PORT_ALIASES``)
+        connects as the name that replaced it, with a ``DeprecationWarning``:
+        the connection and its serialized literals hold the current name, so
+        a model saved with the old name loads and saves the new one.
         """
         if components is None:
             components = self._components
 
+        output_port = sender_component.resolve_output_port(output_port)
         self.add_component(sender_component, components=components)
         self.add_component(receiver_component, components=components)
 
@@ -1226,6 +1235,7 @@ class SimulationModel:
         if components is None:
             components = self._components
 
+        output_port = sender_component.resolve_output_port(output_port)
         sender_component_connection = None
         for connection in sender_component.connected_through:
             if connection.output_port == output_port:
@@ -2063,6 +2073,9 @@ class SimulationModel:
         # ambient context is only paid here, never in the step loop.
         with torch.device(self.device):
             self._initialize_components(start_time, end_time, step_size)
+            # the state of ``set_state`` (an estimated initial state), after
+            # the components have set their own initial conditions
+            self._apply_initial_state(start_time)
 
     def _initialize_components(
         self,
@@ -2981,6 +2994,16 @@ class SimulationModel:
         # placement of the discrete-time model, inspectable for parity checks.
         self._removed_cycle_edges: List[Tuple[str, str]] = []
 
+        # Declared one-step lags first: a component whose class lists an
+        # output in ``LAGGED_OUTPUT_PORTS`` delivers that signal from the
+        # start of the step (its receivers read the previous step's value,
+        # and the output needs an initial value), so those edges are cut
+        # here, before the cycle search, exactly as a cycle cut would.  A
+        # star of a hundred walls around one such node otherwise multiplies
+        # every existing feedback loop by the star's size and the simple-cycle
+        # enumeration never returns.
+        self._cut_declared_lags()
+
         LOGGER.task("Detecting cycles")
         LOGGER.add_level()
 
@@ -3165,6 +3188,27 @@ class SimulationModel:
         )
         return best_edges[0]
 
+    def _cut_declared_lags(self) -> None:
+        """Cut every edge leaving an output named in the sender's class
+        attribute ``LAGGED_OUTPUT_PORTS`` (see :meth:`_remove_cycles`)."""
+        for component in list(self._components_no_cycles.values()):
+            decide = getattr(component, "lagged_output_ports", None)
+            lagged = decide() if callable(decide) else getattr(type(component), "LAGGED_OUTPUT_PORTS", frozenset())
+            if not lagged:
+                continue
+            receivers = []
+            for connection in list(component.connected_through):
+                if connection.output_port not in lagged:
+                    continue
+                for cp in list(connection.connects_system_at):
+                    r = cp.connection_point_of
+                    if r not in receivers:
+                        receivers.append(r)
+            for r in receivers:
+                LOGGER.info("Declared lag: cutting %s -> %s", component.id, r.id)
+                self._removed_cycle_edges.append((component.id, r.id))
+                self._remove_all_edges_between_components(component, r)
+
     def _remove_all_edges_between_components(self, c_from, c_to):
         """
         Remove ALL connections between two components.
@@ -3207,18 +3251,476 @@ class SimulationModel:
                 c_from.connected_through.remove(connection)
         LOGGER.remove_level()
 
+    # ------------------------------------------------------------------
+    # Model state
+    # ------------------------------------------------------------------
+    def _stateful_leaves(self) -> List[Tuple[Any, Any, int, int]]:
+        """``(executing component, state owner, offset, width)`` for every
+        state owner of the model, in execution order.  The state owner is the
+        component itself or, for a fused state-space block, each of its
+        members (the block's state is its members' states one after another).
+        A batched owner carries its instances' original ids in
+        ``_source_component_ids``."""
+        from twin4build.simulator._functional import collect_stateful
+
+        leaves = []
+        for comp in collect_stateful(self):
+            members = list(getattr(comp, "members", None) or [comp])
+            offset = 0
+            for member in members:
+                if not member.is_stateful():
+                    continue
+                width = int(member.state_size())
+                leaves.append((comp, member, offset, width))
+                offset += width
+        return leaves
+
+    @staticmethod
+    def _instance_ids(owner) -> Tuple[str, ...]:
+        return tuple(getattr(owner, "_source_component_ids", None) or (owner.id,))
+
+    # ------------------------------------------------------------------
+    # Parameters by component id, across batchings
+    # ------------------------------------------------------------------
+    @staticmethod
+    def get_source_component_ids(component) -> Tuple[str, ...]:
+        """The ids of the components ``component`` stands for, in instance
+        order.
+
+        A batched meta (see ``Model.batch_components``) stands for the
+        components it was built from, one per instance; any other component
+        stands for itself, ``(component.id,)``.
+        """
+        return SimulationModel._instance_ids(component)
+
+    @staticmethod
+    def _split_instances(component, values) -> List[Tuple[str, np.ndarray]]:
+        """The values of one parameter of ``component`` as ``[(source
+        component id, values)]``, one entry per component it stands for.
+
+        ``n`` values go one to each of ``n`` instances, a multiple of ``n``
+        in equal rows, and one value to every instance (the instances share
+        it).  A scalar is a 0-d array, a row a 1-d array.
+        """
+        ids = SimulationModel._instance_ids(component)
+        flat = np.array(values, dtype=float).reshape(-1)
+        n = len(ids)
+        if n == 1:
+            return [(ids[0], np.asarray(flat[0]) if flat.size == 1 else flat)]
+        if flat.size == n:
+            return [(cid, np.asarray(flat[i])) for i, cid in enumerate(ids)]
+        if flat.size == 1:
+            return [(cid, np.asarray(flat[0])) for cid in ids]
+        if flat.size % n == 0:
+            rows = flat.reshape(n, -1)
+            return [(cid, rows[i]) for i, cid in enumerate(ids)]
+        raise ValueError(
+            f"{flat.size} values cannot be divided over the {n} components "
+            f"'{component.id}' stands for"
+        )
+
+    @staticmethod
+    def _parameter_object(component, attr):
+        """The parameter ``attr`` of ``component`` (a dotted path), or
+        ``None`` when there is none or it is not a parameter object."""
+        try:
+            obj = rgetattr(component, attr)
+        except AttributeError:
+            return None
+        if not (callable(getattr(obj, "get", None)) and callable(getattr(obj, "set", None))):
+            return None
+        return obj
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters, by the ids of the components
+        the model was built from.
+
+        Args:
+            parameters: An iterable of ``(component, attr, ...)`` tuples, the
+                parameter entries of
+                :meth:`~twin4build.estimator.estimator.Estimator.estimate`
+                (what follows ``attr`` is ignored).  ``component`` is a
+                component or a list of components, ``attr`` the name of a
+                parameter, dotted for a parameter of a sub-model
+                (``"thermal.C_air"``).
+
+        Returns:
+            ``{(component id, attr): values}`` in physical units.  A batched
+            meta of ``n_c`` instances gives ``n_c`` keys, named by the
+            components it stands for (:meth:`get_source_component_ids`);
+            any other component gives one.  The values of a scalar
+            parameter are a 0-d array, those of a vector parameter a 1-d
+            array.  Keyed this way the values do not depend on how the
+            model was batched: :meth:`set_parameter_values` writes them to
+            the unbatched model or to any batching of it.
+
+        Raises:
+            TypeError: If ``attr`` is not a parameter of ``component``.
+        """
+        out: Dict[Tuple[str, str], np.ndarray] = {}
+        for entry in parameters:
+            component_s, attr = entry[0], str(entry[1])
+            components = component_s if isinstance(component_s, (list, tuple)) else [component_s]
+            for component in components:
+                param = self._parameter_object(component, attr)
+                if param is None:
+                    raise TypeError(
+                        f"'{attr}' is not a parameter of the component '{component.id}' "
+                        f"({component.__class__.__name__})"
+                    )
+                values = param.get().detach().cpu().numpy()
+                for cid, v in self._split_instances(component, values):
+                    out[(cid, attr)] = v
+        return out
+
+    def _component_lookup(self) -> Dict[str, Any]:
+        """The model's components by id, with the nested sub-objects that
+        carry an id of their own (e.g. ``OccupancySystem._DamperParams``).
+        ``nn.Module`` keeps child modules in ``_modules`` rather than
+        ``__dict__``, so ``.modules()`` walks the hierarchy."""
+        lookup = dict(self._components)
+        for comp in self._components.values():
+            if isinstance(comp, torch.nn.Module):
+                for child in comp.modules():
+                    if (
+                        child is not comp
+                        and hasattr(child, "id")
+                        and child.id not in lookup
+                    ):
+                        lookup[child.id] = child
+            else:
+                for attr_val in vars(comp).values():
+                    if hasattr(attr_val, "id") and attr_val.id not in lookup:
+                        lookup[attr_val.id] = attr_val
+        return lookup
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[str, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from values keyed by component id.
+
+        Args:
+            values: ``{(component id, attr): values}`` in physical units, as
+                returned by :meth:`get_parameter_values`.  The id names a
+                component of this model (or a sub-object of one that
+                carries an id of its own), or a component one of this
+                model's batched metas stands for.  For the latter the
+                values are written at that instance of the meta's
+                parameter and the other instances keep theirs.
+            strict: Raise on a key that names no parameter of this model.
+                ``False`` (default) counts it as missing.
+
+        Returns:
+            ``{"applied": n, "missing": m}``: the keys written and the keys
+            that name no parameter of this model (the component or the
+            attribute does not exist, or the number of values does not fit).
+
+        Raises:
+            KeyError: With ``strict``, on the first key that names no
+                parameter of this model; nothing is written then.
+        """
+        lookup = self._component_lookup()
+        instances: Dict[str, Tuple[Any, int, int]] = {}
+        for comp in self._components.values():
+            ids = self._instance_ids(comp)
+            for i_c, cid in enumerate(ids):
+                instances.setdefault(cid, (comp, i_c, len(ids)))
+        staged: Dict[Tuple[int, str], Tuple[Any, np.ndarray]] = {}
+        counts = {"applied": 0, "missing": 0}
+        for (cid, attr), value in values.items():
+            cid, attr = str(cid), str(attr)
+            if cid in lookup:
+                owner, i_c, n = lookup[cid], 0, 1
+            else:
+                owner, i_c, n = instances.get(cid, (None, 0, 1))
+            param = None if owner is None else self._parameter_object(owner, attr)
+            written = False
+            if param is not None:
+                key = (id(owner), attr)
+                if key not in staged:
+                    staged[key] = (param, param.get().detach().cpu().numpy().astype(float).copy())
+                current = staged[key][1]
+                flat = current.reshape(-1)  # a view: ``current`` is contiguous
+                new = np.array(
+                    value.detach().cpu().numpy() if isinstance(value, torch.Tensor) else value,
+                    dtype=float,
+                ).reshape(-1)
+                if n > 1 and flat.size == n * new.size:
+                    flat.reshape(n, -1)[i_c] = new
+                    written = True
+                elif n == 1 and new.size in (1, flat.size):
+                    flat[:] = new
+                    written = True
+                elif flat.size == 1 and new.size == 1:
+                    flat[:] = new  # one value the instances share
+                    written = True
+            if written:
+                counts["applied"] += 1
+                continue
+            if strict:
+                raise KeyError(
+                    f"('{cid}', '{attr}') names no parameter of the model '{self._id}'"
+                )
+            counts["missing"] += 1
+        with torch.no_grad():
+            for param, current in staged.values():
+                reference = param.get().detach()
+                param.set(
+                    torch.as_tensor(current, dtype=reference.dtype, device=reference.device).reshape(
+                        reference.shape
+                    ),
+                    normalized=False,
+                )
+        return counts
+
+    def get_state(self) -> Dict[str, torch.Tensor]:
+        """The current state of every stateful component, by component id:
+        ``{id: (n_s, state_size)}`` with ``n_s`` the simulated periods.
+
+        The ids are those of the components the model was built from: a
+        batched meta reports one entry per instance, a fused block one per
+        member.  Defined after :meth:`initialize` (or a simulation)."""
+        out: Dict[str, torch.Tensor] = {}
+        for _comp, owner, _offset, _width in self._stateful_leaves():
+            x = owner.get_state()  # (n_s, n_c, state_size)
+            for i_c, cid in enumerate(self._instance_ids(owner)):
+                out[cid] = x[:, i_c, :].detach().clone()
+        return out
+
+    def set_state(
+        self,
+        state: Optional[Dict[str, Any]],
+        period_starts: Optional[List[datetime.datetime]] = None,
+    ) -> None:
+        """Set the state the simulations that follow start from.
+
+        Args:
+            state: ``{component id: values}``, the ids as in :meth:`get_state`.
+                Values are ``(state_size,)`` (every period starts there) or
+                ``(n_periods, state_size)`` (one row per period).  ``NaN``
+                entries and components that are not named keep their own
+                initial condition.  ``None`` clears the state
+                (:meth:`clear_state`).
+            period_starts: The start time of each row.  A simulated period
+                takes the row whose start time is its own and keeps the
+                component defaults when there is none: a state estimated for
+                a window is the state at that window's start, not at any
+                other time.  Without ``period_starts`` the rows are taken in
+                order (one row serves every period).
+
+        The state is kept on the model and applied at every
+        :meth:`initialize`, after the components have set their defaults, so
+        it holds for object and functional simulations and for an estimation
+        that starts from this model.
+        """
+        if state is None:
+            self._initial_state = None
+            return
+        values = {}
+        n_rows = None
+        for cid, v in state.items():
+            t = torch.as_tensor(np.asarray(v.detach().cpu()) if isinstance(v, torch.Tensor) else np.asarray(v), dtype=tps.float_dtype())
+            if t.dim() == 1:
+                t = t.unsqueeze(0)
+            assert t.dim() == 2, f"state of '{cid}' must be (state_size,) or (n_periods, state_size), got {tuple(t.shape)}"
+            values[str(cid)] = t
+            if t.shape[0] > 1:
+                assert n_rows in (None, t.shape[0]), "the states name different numbers of periods"
+                n_rows = t.shape[0]
+        if period_starts is not None:
+            period_starts = list(period_starts)
+            assert n_rows in (None, len(period_starts)) , (
+                f"{len(period_starts)} period starts for states of {n_rows} periods"
+            )
+        self._initial_state = {"values": values, "period_starts": period_starts}
+        if getattr(self, "_is_loaded", False):
+            known = {cid for _c, owner, _o, _w in self._stateful_leaves() for cid in self._instance_ids(owner)}
+            unknown = sorted(set(values) - known)
+            if unknown:
+                LOGGER.warning(
+                    "set_state: %d of %d components are not stateful components of this model (first: %s)",
+                    len(unknown), len(values), unknown[0],
+                )
+
+    def clear_state(self) -> None:
+        """Forget the state set by :meth:`set_state`: simulations start from
+        the components' own initial conditions again."""
+        self._initial_state = None
+
+    @staticmethod
+    def _same_instant(a, b) -> bool:
+        try:
+            if (a.tzinfo is None) != (b.tzinfo is None):
+                a, b = a.replace(tzinfo=None), b.replace(tzinfo=None)
+            return abs((a - b).total_seconds()) < 1.0
+        except Exception:
+            return a == b
+
+    def _apply_initial_state(self, start_time: List[datetime.datetime]) -> None:
+        """Write the state of :meth:`set_state` into the components (called
+        at the end of :meth:`initialize`)."""
+        spec = getattr(self, "_initial_state", None)
+        if not spec:
+            return
+        values, starts = spec["values"], spec["period_starts"]
+        n_s = len(start_time)
+        n_rows = max(int(v.shape[0]) for v in values.values())
+        if starts is None:
+            rows = [s if n_rows == n_s else (0 if n_rows == 1 else None) for s in range(n_s)]
+        else:
+            rows = [
+                next((j for j, t0 in enumerate(starts) if self._same_instant(t0, start_time[s])), None)
+                for s in range(n_s)
+            ]
+        if all(r is None for r in rows):
+            LOGGER.warning(
+                "The model's state is set for other period starts than the simulated ones; "
+                "the components' own initial conditions are used"
+            )
+            return
+        n_set = 0
+        for _comp, owner, _offset, width in self._stateful_leaves():
+            ids = self._instance_ids(owner)
+            if not any(cid in values for cid in ids):
+                continue
+            x = owner.get_state().detach().clone()  # (n_s, n_c, state_size)
+            for i_c, cid in enumerate(ids):
+                v = values.get(cid)
+                if v is None:
+                    continue
+                assert v.shape[1] == width, f"state of '{cid}' has {v.shape[1]} entries, the component has {width}"
+                v = v.to(device=x.device, dtype=x.dtype)
+                for s, row in enumerate(rows):
+                    if row is None:
+                        continue
+                    new = v[row if v.shape[0] > 1 else 0]
+                    keep = torch.isnan(new)
+                    x[s, i_c, :] = torch.where(keep, x[s, i_c, :], new)
+                n_set += 1
+            owner.set_state(x)
+        LOGGER.info("Model state: %d component(s) start from the set state in %d of %d period(s)",
+                    n_set, sum(r is not None for r in rows), n_s)
+
+    def _instance_state(self, component_state: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+        """``{executing component id: (n_periods, n_c, state_size)}`` (the
+        estimators' ``estimated_initial_state``) as ``{component id:
+        (n_periods, state_size)}``, the ids as in :meth:`get_state`."""
+        out: Dict[str, torch.Tensor] = {}
+        for comp, owner, offset, width in self._stateful_leaves():
+            block = component_state.get(comp.id)
+            if block is None:
+                continue
+            block = torch.as_tensor(np.asarray(block.detach().cpu()) if isinstance(block, torch.Tensor) else np.asarray(block), dtype=tps.float_dtype())
+            for i_c, cid in enumerate(self._instance_ids(owner)):
+                out[cid] = block[:, i_c, offset : offset + width].clone()
+        return out
+
+    @staticmethod
+    def _component_state_from_labels(labelled: Dict[Any, Dict[str, float]]) -> Tuple[Dict[str, torch.Tensor], List[int]]:
+        """The first multiple-shooting results stored ``{window: {"<id>[i_c].x<k>":
+        value}}``; as ``{id: (n_windows, n_c, state_size)}`` (``NaN`` where a
+        state was not a variable) and the windows' indices."""
+        import re
+
+        windows = sorted(labelled)
+        shape: Dict[str, List[int]] = {}
+        parsed = {}
+        for p in windows:
+            for label, value in labelled[p].items():
+                m = re.match(r"^(.*)\[(\d+)\]\.x(\d+)$", label)
+                if m is None:
+                    continue
+                cid, i_c, k = m.group(1), int(m.group(2)), int(m.group(3))
+                n = shape.setdefault(cid, [0, 0])
+                n[0], n[1] = max(n[0], i_c + 1), max(n[1], k + 1)
+                parsed[(p, cid, i_c, k)] = float(value)
+        out = {cid: torch.full((len(windows), n_c, ss), float("nan"), dtype=tps.float_dtype()) for cid, (n_c, ss) in shape.items()}
+        for (p, cid, i_c, k), value in parsed.items():
+            out[cid][windows.index(p), i_c, k] = value
+        return out, windows
+
+    def _load_estimated_initial_state(self, result) -> bool:
+        """Set the model's state from the initial states an estimation
+        result carries (multiple shooting, collocation); ``False`` when it
+        carries none or none applies to this model."""
+        starts = list(result.get("start_time") or [])
+        instances = result.get("estimated_initial_state_instances")
+        if instances is None:
+            state = result.get("estimated_initial_state")
+            if not state:
+                return False
+            first = next(iter(state.values()))
+            if isinstance(first, dict):  # {window: {label: value}}
+                state, windows = self._component_state_from_labels(state)
+                starts = [starts[p] for p in windows] if starts and max(windows) < len(starts) else []
+            instances = self._instance_state(state)
+            if not instances:
+                LOGGER.warning(
+                    "The result's initial states name components this model does not execute "
+                    "(another batching); the model's state is not set"
+                )
+                return False
+        n_rows = max(int(torch.as_tensor(v).shape[0]) if torch.as_tensor(v).dim() == 2 else 1 for v in instances.values())
+        self.set_state(instances, period_starts=starts if len(starts) == n_rows else None)
+        LOGGER.info("Load estimation result: the model starts from the estimated state (%d components, %d periods)",
+                    len(instances), n_rows)
+        return True
+
+    def _result_names_this_model(self, component_lookup: Dict[str, Any]) -> bool:
+        """Whether every parameter entry of the loaded result names a
+        component of this model that stands for the components it stood for
+        when the result was fitted (``component_source_ids``; a result
+        without them is taken by its ids alone)."""
+        ids = list(self._result["component_id"])
+        if any(cid not in component_lookup for cid in ids):
+            return False
+        sources = self._result.get("component_source_ids")
+        if not sources:
+            return True
+        return all(
+            tuple(src) == self._instance_ids(component_lookup[cid])
+            for cid, src in zip(ids, sources)
+        )
+
     def load_estimation_result(
         self,
         filename: Optional[str] = None,
         result: Optional[Dict] = None,
+        parameters: bool = True,
+        initial_state: bool = True,
+        fixed: bool = True,
         # verbose: int = 0,
     ) -> None:
         """
         Load an estimation result from a file or dictionary.
 
+        A result names its parameters by the components of the model it was
+        fitted on.  Loaded onto another batching of that model (or onto the
+        unbatched model) those names do not resolve, or resolve to metas
+        that stand for other components; the parameters are then set from
+        the values the result carries by the ids of the components the
+        model was built from (``parameter_instances``, see
+        :meth:`set_parameter_values`), and the numbers applied and missing
+        are logged.  The parameters' bounds are left as they are in that
+        case.
+
         Args:
             filename (Optional[str]): The filename to load the estimation result from.
             result (Optional[Dict]): The estimation result dictionary to load.
+            parameters (bool): Set the estimated parameter values (default).
+            initial_state (bool): Set the model's state (:meth:`set_state`)
+                from the initial states the result carries, when it carries
+                any (multiple shooting, collocation): a simulation of the
+                estimated periods then starts from the estimated state
+                instead of the components' defaults.  ``False`` leaves the
+                model's state as it is.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed (pinned, fixed, left out of the selection) to
+                the values it ran with (``parameter_instances_fixed``), before
+                the estimated ones: the model then simulates as it was
+                fitted whatever its own setup gave those parameters.
+                ``False`` leaves them as they are.  A result without them is
+                loaded as before.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -3244,27 +3746,40 @@ class SimulationModel:
         assert isinstance(
             self._result, estimator.EstimationResult
         ), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
+        if initial_state:
+            self._load_estimated_initial_state(self._result)
+        if not parameters:
+            return
+        held = self._result.get("parameter_instances_fixed") if fixed else None
+        if held:
+            counts = self.set_parameter_values(held)
+            LOGGER.info(
+                "Load estimation result: %d parameters the fit held fixed set to its values, %d not in this model",
+                counts["applied"],
+                counts["missing"],
+            )
         result_x = self._result["result_x"]
 
-        # Build extended lookup including nested sub-objects (e.g.
+        # Extended lookup including nested sub-objects (e.g.
         # OccupancySystem._DamperParams) that have their own id but are
-        # not registered as top-level components.  nn.Module stores
-        # child modules in _modules rather than __dict__, so we use
-        # .modules() to walk the full hierarchy.
-        component_lookup = dict(self._components)
-        for comp in self._components.values():
-            if isinstance(comp, torch.nn.Module):
-                for child in comp.modules():
-                    if (
-                        child is not comp
-                        and hasattr(child, "id")
-                        and child.id not in component_lookup
-                    ):
-                        component_lookup[child.id] = child
-            else:
-                for attr_val in vars(comp).values():
-                    if hasattr(attr_val, "id") and attr_val.id not in component_lookup:
-                        component_lookup[attr_val.id] = attr_val
+        # not registered as top-level components.
+        component_lookup = self._component_lookup()
+
+        # A result fitted on another batching of the model (or on the
+        # unbatched model) names components this model does not have, or
+        # metas that stand for other components here.  The values it
+        # carries by the ids of the components the model was built from
+        # load onto any batching.
+        instance_values = self._result.get("parameter_instances")
+        if instance_values and not self._result_names_this_model(component_lookup):
+            counts = self.set_parameter_values(instance_values)
+            LOGGER.info(
+                "Load estimation result: the result was fitted on another batching of the "
+                "model; %d parameter values applied by component id, %d missing",
+                counts["applied"],
+                counts["missing"],
+            )
+            return
 
         flat_components = [
             component_lookup[com_id] for com_id in self._result["component_id"]
@@ -3675,7 +4190,17 @@ class SimulationModel:
             for connection_point in connection_points:
                 _update_literals_for_connection_point(connection_point)
 
-    def serialize(self):
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the model to
+        (``instance_graph.ttl`` in the model's semantic_model directory),
+        whether or not it has been written.  ``load`` rebuilds the model
+        from it."""
+        return os.path.join(
+            get_main_dir(), *self._semantic_model.dir_conf, "instance_graph.ttl"
+        )
+
+    def serialize(self) -> str:
         """
         Serialize the simulation model to disk.
 
@@ -3683,6 +4208,10 @@ class SimulationModel:
         component/connection state and serializes it, writing
         ``ontology_graph.ttl`` and ``instance_graph.ttl`` (Turtle format) to
         the model's semantic_model directory.
+
+        Returns:
+            The path of the instance graph written
+            (:attr:`instance_graph_path`).
         """
         # dummy_start_time = [datetime.datetime.now()] * len(self._components)
         # dummy_end_time = [datetime.datetime.now()] * len(self._components)
@@ -3691,6 +4220,7 @@ class SimulationModel:
         # self.initialize(dummy_start_time, dummy_end_time, dummy_step_size)
         self._update_literals()
         self._semantic_model.serialize()
+        return self.instance_graph_path
 
     def visualize(
         self,

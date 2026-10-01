@@ -8,7 +8,7 @@ model = tb.Model(id="example")  # Create a model
 c1 = tb.SpaceHeaterSystem(...)  # Create a space heater
 c2 = tb.BuildingSpaceSystem(...)  # Create a building space
 model.add_connection(
-    c1, c2, "Power", "heatGain"
+    c1, c2, "toRoomPower", "heatGain"
 )  # Add a connection between the space heater and the building space
 model.load()  # Load the model
 

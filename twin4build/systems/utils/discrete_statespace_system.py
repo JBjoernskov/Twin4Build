@@ -1173,3 +1173,32 @@ class DiscreteStatespaceSystem(core.System):
                 f"({self.n_c}, {self.n_states}), or ({self.n_states},), got {x.shape}"
             )
         self.x = x
+
+
+def discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
+    """The exact discretization of a bilinear state-space model over one
+    step, for an input held constant over the step (zero-order hold).
+
+    The continuous model is ``dx/dt = A_eff x + B_eff u`` with ``A_eff = A +
+    sum_k E[k] u[k]`` and ``B_eff = B + sum_k F[k] u[k]``
+    (:func:`effective_matrices`); the step is ``x_next = Ad x + Bd u``.  It
+    is the discretization :class:`DiscreteStatespaceSystem` steps with, so
+    a caller that needs the one-step map itself (an inverse model, an
+    initial guess) gets the very same matrices.
+
+    Args:
+        A: The state matrix, ``(..., n, n)``.
+        B: The input matrix, ``(..., n, m)``.
+        E: The state-input coupling, ``(..., m, n, n)``, or ``None``.
+        F: The input-input coupling, ``(..., m, n, m)``, or ``None``.
+        u: The input held over the step, ``(..., m)``.
+        sample_time: The step in seconds.
+        transform_mode: Use the matrix exponential that ``torch.func``
+            transforms can batch (``True``) or ``torch.matrix_exp``
+            (``False``).  ``None`` (default) chooses by whether a transform
+            is active.
+
+    Returns:
+        ``(Ad, Bd)``, shaped ``(..., n, n)`` and ``(..., n, m)``.
+    """
+    return _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=transform_mode)

@@ -111,6 +111,84 @@ class TestFunctionalEstimationObjective(unittest.TestCase):
                 f"theta[{i}]: gradient mismatch (rel inf-norm={rel_grad:.3e})",
             )
 
+    def test_nan_readings_are_unscored(self):
+        """A NaN in a sensor's readings (an ``allow_missing`` gap) is an
+        unscored sample: its residual is zero and every other residual is
+        unchanged."""
+        est = self.estimator
+        fast = est._functional_objective
+        x0 = torch.tensor(np.asarray(est._x0_norm, dtype=np.float64), dtype=torch.float64)
+        full = fast.residual_vector(x0).detach().clone()
+        act = fast.ACT[0]
+        saved = act.clone()
+        nw = est._n_warmup
+        rows, col = [nw + 3, nw + 7], 0
+        try:
+            act[rows, col] = float("nan")
+            masked = fast.residual_vector(x0).detach().clone()
+        finally:
+            act.copy_(saved)
+        self.assertTrue(torch.isfinite(masked).all())
+        n_cols = act.shape[1]
+        F, R = full.reshape(-1, n_cols), masked.reshape(-1, n_cols)
+        for r in rows:
+            self.assertEqual(float(R[r - nw, col]), 0.0)
+            self.assertNotEqual(float(F[r - nw, col]), 0.0)
+        keep = torch.ones_like(F, dtype=torch.bool)
+        for r in rows:
+            keep[r - nw, col] = False
+        torch.testing.assert_close(R[keep], F[keep])
+
+    def test_scoring_mask_on_the_device_blanks_the_samples(self):
+        """``scoring_mask`` on a measuring device (False = unscored) turns
+        those samples of the stacked measured matrix into NaN when the
+        objective is built, independent of what the loaders did to the data."""
+        import copy
+
+        from twin4build.estimator._single_shooting import FunctionalEstimationObjective
+
+        est = self.estimator
+        md0 = est._measurements[0][0]
+        n_t = int(est._functional_objective.ACT[0].shape[0])
+        mask = np.ones(n_t, dtype=bool)
+        mask[10:20] = False
+        md0.scoring_mask = mask
+        try:
+            fresh = FunctionalEstimationObjective(est)
+        finally:
+            del md0.scoring_mask
+        act = fresh.ACT[0]
+        self.assertTrue(torch.isnan(act[10:20, 0]).all())
+        self.assertFalse(torch.isnan(act[:10, 0]).any())
+        self.assertFalse(torch.isnan(act[20:, 0]).any())
+        self.assertFalse(torch.isnan(act[:, 1:]).any())
+
+    def test_scoring_mask_series_is_selected_by_period_time(self):
+        """A time-indexed ``scoring_mask`` spanning several periods blanks
+        the samples of the period it falls in, not the first period's."""
+        import pandas as pd
+
+        from twin4build.estimator._single_shooting import FunctionalEstimationObjective
+
+        est = self.estimator
+        md0 = est._measurements[0][0]
+        frames = est.actual_readings[md0.id]
+        p_last = len(frames) - 1
+        index = frames[p_last].index
+        mask = pd.Series(True, index=index)
+        mask.iloc[10:20] = False
+        md0.scoring_mask = mask
+        try:
+            fresh = FunctionalEstimationObjective(est)
+        finally:
+            del md0.scoring_mask
+        act = fresh.ACT[p_last]
+        self.assertTrue(torch.isnan(act[10:20, 0]).all())
+        self.assertFalse(torch.isnan(act[:10, 0]).any())
+        self.assertFalse(torch.isnan(act[20:, 0]).any())
+        if p_last > 0:
+            self.assertFalse(torch.isnan(fresh.ACT[0][:, 0]).any())
+
     def test_per_sensor_rmse_matches(self):
         est = self.estimator
         x0 = np.asarray(est._x0_norm, dtype=np.float64)

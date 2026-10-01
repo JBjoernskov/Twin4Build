@@ -33,10 +33,80 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 - `Translator.translate(systems_=...)` → `systems=`
 - Public `verbose=` kwargs → configure `LOGGER.verbose` / `LOGGER.logfile`
 - `get_component_by_class(dict_, ...)` → `get_components_by_class(Cls)`
+- `SpaceHeaterSystem` output `Power` → `toRoomPower`.  The old name still
+  connects (`add_connection`, `remove_connection`), loads from a saved
+  `instance_graph.ttl`, matches in signature patterns, names optimizer
+  objectives, variables and constraints, and reads (`heater.output["Power"]`),
+  each with a `DeprecationWarning`; the model holds and saves `toRoomPower`
 - `twin4build.utils.print_progress` → `twin4build.utils.logger`
 
 ### Added
 
+- Multiple shooting (#91).  `Estimator.estimate(..., multiple_shooting={...})`
+  makes the initial state of every period a decision variable and ties it
+  to the end of the period before it by a continuity defect.  The periods
+  must be contiguous (`ValueError` otherwise).  A state's start is boxed
+  around its recorded value and the end of the period before it
+  (`bound_rel`, `bound_abs`); its tolerance is a fraction (`sd_rel`, default
+  0.01) of how much the state varies over the periods (`sd_ref="range"`, the
+  default) or of its magnitude (`sd_ref="value"`, default 0.0025).
+  `states` selects by class, a member of a fused block included.
+- `SpaceHeaterSystem.toRadiatorPower`: the heat the radiator takes from the
+  heating circuit, `waterFlowRate * c_p * (supplyWaterTemperature -
+  outletWaterTemperature)`, which is what a heat meter on the circuit
+  measures.  `toRoomPower` (formerly `Power`) is the heat the radiator gives
+  to the room.  The two differ by the rate of change of the heat stored in
+  the radiator: equal in steady state and in the long-run mean, apart while
+  it warms up or cools down.  Both are evaluated at the end-of-step state.
+  `toRadiatorPower` is bilinear, so it is no row of the linear output
+  equation; a fused state-space block computes it after the joint step from
+  the member's inputs and its outlet temperature (a unit declares such
+  outputs with `SS_DERIVED_OUTPUT_PORTS` and `_ss_derived_outputs`), so it is
+  available fused and unfused, batched, in the object and the functional
+  rollout, and differentiable.
+- Renamed output ports.  `System.OUTPUT_PORT_ALIASES` maps a deprecated
+  output port name to the one that replaced it; the outputs of such a class
+  are an `AliasedPorts` (a `dict` that also answers to the old name) and
+  `System.resolve_output_port` gives the current name.
+- Multiple shooting (#91).  `Estimator.estimate(..., options={"multiple_shooting":
+  {...}})` makes the initial state of every period a decision variable,
+  boxed around its recorded value (`bound_rel`, `bound_abs`) and tied to the
+  end of the period before it by a continuity defect (`sd_rel`, `sd_abs`).
+  `first_window` (default `True`) frees the first period's state as well, so
+  a fit needs no warm-up.  The tie is a weighted residual, so one fit may
+  accept a jump at a boundary; with `update_multipliers=True` and a
+  `schedule` of several phases, every phase starts from the previous one's
+  parameters and initial states with the defects shifted by what it left
+  (the method of multipliers, `shift`), and the jumps go to zero at a fixed
+  tolerance.  The result carries the estimated states
+  (`estimated_initial_state`, `estimated_initial_state_instances`,
+  `estimated_initial_state_labels`), the jumps at the boundaries
+  (`continuity_jumps_instances`, `continuity_tolerance_instances`) and the
+  shift for a next fit (`continuity_shift_instances`); the fit logs the
+  largest jumps, and `twin4build.estimator._continuity.continuity_summary`
+  ranks them and marks the states re-set to one side at every boundary.
+- `Estimator.estimate(..., initial_state=True | {...})` estimates every
+  period's initial state without tying the periods together (they need not
+  be contiguous).
+- Model state.  `Model.get_state()`, `Model.set_state(values,
+  period_starts=None)` and `Model.clear_state()` read and set the initial
+  state by component id; with `period_starts` a row is matched to the
+  simulated period that starts at that time.
+  `Model.load_estimation_result(filename, parameters=True,
+  initial_state=True)` sets the estimated initial state with the parameters,
+  so a simulation of a fit starts where the fit started.
+- Window batching.  Several periods are rolled out as one batch
+  (`Simulator.rollout_functional_windows`,
+  `rollout_functional_batched_windows`), one initial state per period.
+- `Simulator(cuda_graph_scope="step")`: one CUDA graph per step, replayed along
+  the rollout, for models whose whole rollout does not fit in one captured
+  graph.
+- `ThermalMassNodeSystem`: one hidden thermal mass that many walls share.  A
+  component declares the outputs that are read one step late (the class
+  attribute `LAGGED_OUTPUT_PORTS`, or a method `lagged_output_ports()`), and
+  the loader cuts the algebraic loop there.
+- `FunctionSystem` and `WeightedSumSystem` batch.  A `SensorSystem` with
+  `allow_missing` keeps NaN samples as unscored gaps.
 - System registry (`twin4build.systems.registry`, #132): a `System` class
   that lives in another package is registered under a stable type id,
   `tb.system_registry.register(cls, type_id="acme:CoilSystem@1",
@@ -51,6 +121,70 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `Model(id=..., system_registry=...)` and
   `Translator(system_registry=...)` take a registry of their own, which the
   translator also uses as the whitelist of the external classes it accepts.
+- `twin4build.model.partition.keep_groups(model, partition, groups,
+  with_senders=True, stop_at=())` keeps some groups of a measured partition
+  (a few rooms of a building) and removes the rest of the model: the groups
+  named, with `with_senders` the groups that send into them over a measured
+  edge (not followed into the groups of `stop_at`, e.g. the air handling
+  unit's), and every leaf that feeds a kept component.  A
+  `ReturnFlowJunctionSystem`'s `branch_temperature_slots` follow the
+  surviving connections.
+
+- `Simulator.measurement_frames()` and
+  `Simulator.measurement_errors(skip=0)` compare the simulation that just
+  ran with the measurements: for every sensor that reads a computed port
+  and holds data, a frame (`measured`, `simulated`, `scored`) and a row of
+  errors (`sensor`, `port`, `n`, `mae`, `rmse`, `bias`) over the samples
+  the sensor's `scoring_mask` scores, after the first `skip` steps of each
+  period.  They work on the model the simulator ran, unbatched or batched.
+
+- Parameters by component id, across batchings.  A result also carries
+  `parameter_instances_fixed`: every estimable parameter the fit held fixed
+  (pinned, fixed, left out of the selection) at the value it ran with, and
+  `load_estimation_result(..., fixed=True)` (the default) sets them before
+  the estimated ones, so a model simulates as it was fitted whatever its own
+  setup gave those parameters.
+  `Model.get_source_component_ids(component)` gives the ids of the
+  components a batched meta stands for;
+  `Model.get_parameter_values(parameters)` reads the estimator's parameter
+  entries as `{(component id, attr): array}` in physical units, one key per
+  instance of a meta; `Model.set_parameter_values(values, strict=False)`
+  writes such values to the model whatever its batching (the unbatched
+  model, or a meta's instance, the other instances left alone) and returns
+  `{"applied": n, "missing": m}`.  A saved fit carries
+  `parameter_instances`, `parameter_instances_x0` (the values the fit
+  started from), `parameter_instance_bounds` and `component_source_ids`,
+  and `load_estimation_result` applies the values by component id when the
+  result was fitted on another batching of the model (its ids do not
+  resolve, or resolve to metas that stand for other components) instead of
+  failing with a `KeyError`.
+
+- `SensorSystem`: `scoring_mask` (the samples an estimation scores, a
+  boolean Series indexed by time) and `measurement_sd` (the standard
+  deviation the sensor is scored with) are declared attributes and
+  constructor arguments, and `Model.batch_components` carries them to the
+  sensor's copy in the batched model.  `set_series(series, uuid=None)` puts
+  a sensor on an in-memory series and names it without switching it to
+  database mode, and `SensorSystem(df=frame, uuid="X")` is an in-memory
+  sensor named "X".  Assigning `uuid`, `dbconfig` or `filename` the value
+  the sensor already has no longer switches its source (`Model.load`
+  restores the saved configuration by assignment and used to switch a
+  sensor on a series back to the database); a new value switches as before.
+- `Estimator.estimate`: an entry of `measurements` may be the sensor alone
+  or `(sensor, None)`, in which case the sensor's `measurement_sd` is used;
+  an entry with neither raises a `ValueError` that names the sensor.
+
+- Workflow accessors, so that a workflow in an add-on package need not
+  reach into private attributes:
+  `twin4build.utils.get_main_dir.set_main_dir(path)` sets the folder models
+  keep their files in (instead of overwriting the module's `_main_dir`);
+  `Model.serialize()` returns the path of the saved instance graph and
+  `Model.instance_graph_path` gives it without serializing;
+  `discretize_onestep` is the public name of the one-step zero-order-hold
+  discretization (`_discretize_onestep` is unchanged);
+  `SpaceHeaterSystem.solve_UA()` returns the `UA` that meets the nominal
+  sizing, so a radiator can be sized before the model is initialized.
+
 - `Optimizer`: a decision variable may name a component's ``tps.Parameter``
   instead of an output port (`(component, "Y", lb, ub)`), so a handful of
   numbers (the points of a compensation curve, a gain, a setpoint) can be

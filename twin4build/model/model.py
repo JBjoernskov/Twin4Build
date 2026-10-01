@@ -482,7 +482,11 @@ class Model:
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
+
+        A deprecated output port name (``System.OUTPUT_PORT_ALIASES``)
+        connects as the name that replaced it, with a ``DeprecationWarning``.
         """
+        output_port = sender_component.resolve_output_port(output_port)
         self.simulation_model.add_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
@@ -513,6 +517,7 @@ class Model:
         Raises:
             ValueError: If the specified connection does not exist.
         """
+        output_port = sender_component.resolve_output_port(output_port)
         self.simulation_model.remove_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
@@ -1081,10 +1086,62 @@ class Model:
         """
         self.simulation_model.set_save_simulation_result(flag=flag, c=c)
 
+    def get_state(self) -> Dict[str, torch.Tensor]:
+        """The current state of every stateful component, ``{component id:
+        (n_s, state_size)}``; see
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_state`."""
+        return self.simulation_model.get_state()
+
+    def set_state(
+        self,
+        state: Optional[Dict[str, Any]],
+        period_starts: Optional[List[datetime.datetime]] = None,
+    ) -> None:
+        """Set the state the simulations that follow start from,
+        ``{component id: (state_size,) or (n_periods, state_size)}``; applied
+        at every :meth:`initialize`.  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_state`."""
+        self.simulation_model.set_state(state, period_starts=period_starts)
+
+    def clear_state(self) -> None:
+        """Forget the state set by :meth:`set_state`."""
+        self.simulation_model.clear_state()
+
+    @staticmethod
+    def get_source_component_ids(component: "core.System") -> Tuple[str, ...]:
+        """The ids of the components ``component`` stands for, in instance
+        order: those a batched meta was built from
+        (:meth:`batch_components`), ``(component.id,)`` for any other
+        component."""
+        return core.SimulationModel.get_source_component_ids(component)
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters in physical units,
+        ``{(component id, attr): values}``, by the ids of the components the
+        model was built from: a batched meta of ``n_c`` instances gives
+        ``n_c`` keys.  ``parameters`` is an iterable of ``(component, attr,
+        ...)`` tuples (the estimator's parameter entries).  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_parameter_values`."""
+        return self.simulation_model.get_parameter_values(parameters)
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[str, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from ``{(component id, attr): values}``
+        (:meth:`get_parameter_values`), on this model whatever its batching:
+        an id names a component of the model or a component one of its
+        batched metas stands for.  Returns ``{"applied": n, "missing": m}``.
+        See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_parameter_values`."""
+        return self.simulation_model.set_parameter_values(values, strict=strict)
+
     def load_estimation_result(
         self,
         filename: Optional[str] = None,
         result: Optional[Dict] = None,
+        parameters: bool = True,
+        initial_state: bool = True,
+        fixed: bool = True,
         # verbose: int = 0,
     ) -> None:
         """
@@ -1093,6 +1150,14 @@ class Model:
         Args:
             filename (Optional[str]): The filename to load the estimation result from.
             result (Optional[Dict]): The estimation result dictionary to load.
+            parameters (bool): Set the estimated parameter values (default).
+            initial_state (bool): Set the model's state (:meth:`set_state`)
+                from the initial states the result carries (multiple
+                shooting, collocation), so a simulation of the estimated
+                periods starts from the estimated state.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed to the values it ran with, so the model
+                simulates as it was fitted.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -1100,6 +1165,9 @@ class Model:
         self.simulation_model.load_estimation_result(
             filename=filename,
             result=result,
+            parameters=parameters,
+            initial_state=initial_state,
+            fixed=fixed,
             # verbose=verbose,
         )
 
@@ -1136,12 +1204,24 @@ class Model:
             iter(self._translator.sim2sem_map[self._simulation_model._components[key]])
         )
 
-    def serialize(self) -> None:
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the simulation model to,
+        whether or not it has been written; ``load(filename=...)`` rebuilds
+        the model from it."""
+        return self._simulation_model.instance_graph_path
+
+    def serialize(self) -> str:
         """
         Serialize both halves of the model.
+
+        Returns:
+            The path of the saved instance graph of the simulation model
+            (:attr:`instance_graph_path`), the file ``load(filename=...)``
+            rebuilds the model from.
         """
         self._semantic_model.serialize()
-        self._simulation_model.serialize()
+        return self._simulation_model.serialize()
 
     def visualize(self, **kwargs) -> None:
         """
@@ -1733,6 +1813,10 @@ class Model:
             "initialize_UA",
         ),
         "twin4build.systems.building_space.building_space_system.BuildingSpaceSystem": (),
+        # The initial wall / node temperature is a constructor value, not a
+        # Parameter; without it a batched wall starts at the class default.
+        "twin4build.systems.wall.wall_system.WallSystem": ("T_init",),
+        "twin4build.systems.thermal_mass.thermal_mass_node_system.ThermalMassNodeSystem": ("T_init",),
         "twin4build.systems.controller.setpoint_controller.pid_controller"
         ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
         "twin4build.systems.controller.rulebased_controller.on_off_controller"
@@ -1797,10 +1881,20 @@ class Model:
             )
         )
 
+        # A component that only replays recorded data (a controller in
+        # playback) is exogenous to the functional composer while its
+        # computing twin is not; they must not share a meta, and neither
+        # must their receivers (a valve fed by a replayed command and one fed
+        # by a computed command are different routing kinds).
+        def _replays(c):
+            r = getattr(c, "replays_data", None)
+            return bool(r()) if callable(r) else False
+
         state_hints = (
             getattr(component, "n_states", None),
             getattr(component, "n_inputs", None),
             getattr(component, "n_outputs", None),
+            _replays(component),
         )
         data_signature = tuple(
             (name, repr(getattr(component, name)))
@@ -1813,6 +1907,20 @@ class Model:
             )
             if hasattr(component, name)
         )
+        # A component reading its own series (a sensor with a database
+        # ``uuid`` or an in-memory ``df``) is one data source: a meta
+        # carries a single source (``_copy_data_source_attrs`` copies the
+        # first member's), so two sensors on different series must never
+        # share one, or every member would read the first member's data.
+        source_identity = tuple(
+            (name, value if isinstance(value, str) else id(value))
+            for name, value in (
+                ("uuid", getattr(component, "uuid", None)),
+                ("df", getattr(component, "df", None)),
+            )
+            if value is not None
+        )
+        data_signature = data_signature + source_identity
 
         # Declared batch-construction values (a FunctionSystem's input names
         # and its transformation) are part of the component's identity: batching
@@ -1856,6 +1964,7 @@ class Model:
                         sender.__class__.__name__,
                         connection.output_port,
                         point.input_port,
+                        _replays(sender),
                     )
                 )
 

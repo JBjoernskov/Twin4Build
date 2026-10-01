@@ -235,7 +235,7 @@ def generate_data_with_twin4build(
     model.add_connection(
         building_space, space_heater, "indoorTemperature", "indoorTemperature"
     )
-    model.add_connection(space_heater, building_space, "Power", "heatGain")
+    model.add_connection(space_heater, building_space, "toRoomPower", "heatGain")
 
     model.load(draw_semantic_model=False, draw_simulation_model=False)
 
