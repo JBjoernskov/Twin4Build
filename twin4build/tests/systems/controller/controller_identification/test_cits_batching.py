@@ -193,6 +193,31 @@ class TestBatchingIdentifiedControllers(unittest.TestCase):
         entries = {attr: x0 for _, attr, x0, _, _ in metas[0].get_estimable_parameters()}
         self.assertEqual(len(entries["gamma_gate_0"]), 9)
 
+    def test_loops_in_playback_replay_their_own_commands(self):
+        """A batched controller in playback hands over every loop's measured
+        command (``replayed_output_history``), each at its instance; before,
+        it handed over the first loop's alone, and the functional rollout
+        could not take it."""
+        ids = [f"cits{k}" for k in range(3)]
+        measured = {k: [0.1 * (k + 1) + 0.05 * math.sin(2.0 * math.pi * i / (6.0 + k)) for i in range(N)] for k in range(3)}
+
+        model = tb.Model(id="test_cits_batching_playback")
+        for k in range(3):
+            cits = _controller(k, playback=True)
+            _wire(model, cits, k)
+            model.add_connection(_series(f"u{k}", measured[k]), cits, "measuredValue", "actuatorMeasured", input_port_index=0)
+        _wire(model, _controller(3), 3)  # a computing loop: the rollout has a state to step
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched = model.batch_components()
+        metas = [c for c in batched.components.values() if isinstance(c, ControllerIdentificationPISystem)]
+        self.assertEqual(sorted(m._n_c_batched for m in metas), [1, 3])
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        _simulate(batched, execution_mode="functional", execution_backend="eager")
+        got = _commands(model, ids)
+        for k, cid in enumerate(ids):
+            command = got[cid].reshape(-1)  # one value per step; the series also holds the end point
+            torch.testing.assert_close(command, torch.tensor(measured[k][: command.numel()], dtype=torch.float64), msg=cid)
+
     def test_the_meta_offers_one_start_and_bounds_per_loop(self):
         """``parameters="auto"`` on the batched model: each estimable entry of
         the meta holds one start per loop and the rewire's per-loop bounds

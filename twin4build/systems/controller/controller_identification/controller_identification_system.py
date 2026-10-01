@@ -37,6 +37,30 @@ from twin4build.translator.translator import (
 )  # noqa: F401 (StepRule/SetStepRule/AnyPathRule used in patterns below)
 
 
+def _index_pairs(point, connection):
+    """``(input slot, output slot, source instance, target instance)`` of every
+    pair a connection carries (a batched connection carries one per instance,
+    as index tensors); ``None`` where the connection names no index (the
+    whole port or every instance)."""
+    values = (
+        point.input_port_index.get(connection),
+        point.output_port_index.get(connection),
+        point.output_component_index.get(connection),
+        point.input_component_index.get(connection),
+    )
+    n = max((int(v.numel()) for v in values if isinstance(v, torch.Tensor)), default=1)
+
+    def as_list(value):
+        if value is None or isinstance(value, slice):
+            return [None] * n
+        if isinstance(value, torch.Tensor):
+            flat = [int(v) for v in value.reshape(-1).tolist()]
+            return flat if len(flat) == n else flat[:1] * n
+        return [int(value)] * n
+
+    return list(zip(*(as_list(v) for v in values)))
+
+
 class ControllerIdentificationSystem(core.System, nn.Module):
     r"""
     Controller Identification System using Continuous Relaxation.
@@ -1072,6 +1096,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         stepping this controller once per time step."""
         if not self.replays_data() or output_name != "inputSignal":
             return None
+        links = []
         for point in self.connects_at:
             if point.input_port != "actuatorMeasured":
                 continue
@@ -1080,8 +1105,31 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 history = port._history
                 if history is None or not (port._history_is_populated or port.is_leaf):
                     return None
-                return history[:n_t]
-        return None
+                links.append((point, connection, history[:n_t]))
+        if not links:
+            return None
+        n_c = int(getattr(self, "n_c", 1) or 1)
+        if len(links) == 1 and n_c == 1:
+            return links[0][2]
+        # A batched controller (``Model.batch_components``), or one with
+        # several actuators: each connection places its sensor's series at
+        # its instance and actuator slot, ``(n_t, n_s, n_c, n_actuators)``.
+        first = links[0][2]
+        out = torch.zeros(
+            (first.shape[0], first.shape[1], n_c, int(self.n_actuators)),
+            dtype=first.dtype, device=first.device,
+        )
+        for point, connection, history in links:
+            for slot, source_slot, source_ic, target_ic in _index_pairs(point, connection):
+                # a scalar port's history is (n_t, n_s, n_c), a vector's (n_t, n_s, n_c, n_v)
+                value = history[:, :, source_ic or 0]
+                if value.dim() == 3:
+                    value = value[..., source_slot or 0]
+                if target_ic is None:  # one series for every instance
+                    out[:, :, :, slot or 0] = value.unsqueeze(-1)
+                else:
+                    out[:, :, target_ic, slot or 0] = value
+        return out
 
     def initialize(
         self,
