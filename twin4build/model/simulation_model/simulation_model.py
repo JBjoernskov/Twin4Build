@@ -3271,20 +3271,6 @@ class SimulationModel:
     def _instance_ids(owner) -> Tuple[str, ...]:
         return tuple(getattr(owner, "_source_component_ids", None) or (owner.id,))
 
-    def get_state(self) -> Dict[str, torch.Tensor]:
-        """The current state of every stateful component, by component id:
-        ``{id: (n_s, state_size)}`` with ``n_s`` the simulated periods.
-
-        The ids are those of the components the model was built from: a
-        batched meta reports one entry per instance, a fused block one per
-        member.  Defined after :meth:`initialize` (or a simulation)."""
-        out: Dict[str, torch.Tensor] = {}
-        for _comp, owner, _offset, _width in self._stateful_leaves():
-            x = owner.get_state()  # (n_s, n_c, state_size)
-            for i_c, cid in enumerate(self._instance_ids(owner)):
-                out[cid] = x[:, i_c, :].detach().clone()
-        return out
-
     def set_state(
         self,
         state: Optional[Dict[str, Any]],
@@ -3293,12 +3279,12 @@ class SimulationModel:
         """Set the state the simulations that follow start from.
 
         Args:
-            state: ``{component id: values}``, the ids as in :meth:`get_state`.
-                Values are ``(state_size,)`` (every period starts there) or
-                ``(n_periods, state_size)`` (one row per period).  ``NaN``
-                entries and components that are not named keep their own
-                initial condition.  ``None`` clears the state
-                (:meth:`clear_state`).
+            state: ``{component id: values}`` by the ids of the components
+                the model was built from (a batched meta's instances, a fused
+                block's members).  Values are ``(state_size,)`` (every period
+                starts there) or ``(n_periods, state_size)`` (one row per
+                period).  ``NaN`` entries and components that are not named
+                keep their own initial condition.  ``None`` clears the state.
             period_starts: The start time of each row.  A simulated period
                 takes the row whose start time is its own and keeps the
                 component defaults when there is none: a state estimated for
@@ -3339,11 +3325,6 @@ class SimulationModel:
                     "set_state: %d of %d components are not stateful components of this model (first: %s)",
                     len(unknown), len(values), unknown[0],
                 )
-
-    def clear_state(self) -> None:
-        """Forget the state set by :meth:`set_state`: simulations start from
-        the components' own initial conditions again."""
-        self._initial_state = None
 
     @staticmethod
     def _same_instant(a, b) -> bool:
@@ -3402,7 +3383,7 @@ class SimulationModel:
     def _instance_state(self, component_state: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         """``{executing component id: (n_periods, n_c, state_size)}`` (the
         estimators' ``estimated_initial_state``) as ``{component id:
-        (n_periods, state_size)}``, the ids as in :meth:`get_state`."""
+        (n_periods, state_size)}``, the ids as in :meth:`set_state`."""
         out: Dict[str, torch.Tensor] = {}
         for comp, owner, offset, width in self._stateful_leaves():
             block = component_state.get(comp.id)
@@ -3412,30 +3393,6 @@ class SimulationModel:
             for i_c, cid in enumerate(self._instance_ids(owner)):
                 out[cid] = block[:, i_c, offset : offset + width].clone()
         return out
-
-    @staticmethod
-    def _component_state_from_labels(labelled: Dict[Any, Dict[str, float]]) -> Tuple[Dict[str, torch.Tensor], List[int]]:
-        """The first multiple-shooting results stored ``{window: {"<id>[i_c].x<k>":
-        value}}``; as ``{id: (n_windows, n_c, state_size)}`` (``NaN`` where a
-        state was not a variable) and the windows' indices."""
-        import re
-
-        windows = sorted(labelled)
-        shape: Dict[str, List[int]] = {}
-        parsed = {}
-        for p in windows:
-            for label, value in labelled[p].items():
-                m = re.match(r"^(.*)\[(\d+)\]\.x(\d+)$", label)
-                if m is None:
-                    continue
-                cid, i_c, k = m.group(1), int(m.group(2)), int(m.group(3))
-                n = shape.setdefault(cid, [0, 0])
-                n[0], n[1] = max(n[0], i_c + 1), max(n[1], k + 1)
-                parsed[(p, cid, i_c, k)] = float(value)
-        out = {cid: torch.full((len(windows), n_c, ss), float("nan"), dtype=tps.float_dtype()) for cid, (n_c, ss) in shape.items()}
-        for (p, cid, i_c, k), value in parsed.items():
-            out[cid][windows.index(p), i_c, k] = value
-        return out, windows
 
     def _load_estimated_initial_state(self, result) -> bool:
         """Set the model's state from the initial states an estimation
@@ -3447,10 +3404,6 @@ class SimulationModel:
             state = result.get("estimated_initial_state")
             if not state:
                 return False
-            first = next(iter(state.values()))
-            if isinstance(first, dict):  # {window: {label: value}}
-                state, windows = self._component_state_from_labels(state)
-                starts = [starts[p] for p in windows] if starts and max(windows) < len(starts) else []
             instances = self._instance_state(state)
             if not instances:
                 LOGGER.warning(

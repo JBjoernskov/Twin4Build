@@ -250,16 +250,3 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
         graphs = StepGraphs(step, spec, len(leaves), name=f"{kind} step")
         cache[key] = graphs
     return _StepGraphRollout.apply(graphs, y0, theta, tape, *leaves)
-
-
-def step_graph_memory(functional_model) -> dict:
-    """Capture time and replay counts of the cached step graphs, for logs."""
-    out = {}
-    for key, graphs in functional_model.__dict__.get("_step_graphs", {}).items():
-        out[key[0]] = {
-            "forward_capture_s": round(graphs.fwd.capture_seconds, 2),
-            "adjoint_capture_s": round(graphs.adj.capture_seconds, 2),
-            "forward_replays": graphs.fwd.replay_count,
-            "adjoint_replays": graphs.adj.replay_count,
-        }
-    return out

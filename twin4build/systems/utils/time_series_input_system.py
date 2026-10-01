@@ -449,12 +449,6 @@ class TimeSeriesInputSystem(core.System):
                 values[batch_index, size:] = df.values[-1]
 
         nan_mask = np.isnan(values)
-        if nan_mask.any() and getattr(self, "allow_missing", False):
-            # A scoring sensor may carry gaps (samples the objective must not
-            # score, see ``_raw_residuals_from_meas``): the frame keeps the
-            # NaNs, the port value must stay finite.
-            values = np.where(nan_mask, 0.0, values)
-            nan_mask = np.zeros_like(nan_mask)
         if nan_mask.any():
             nan_count = int(nan_mask.sum())
             nan_pct = nan_count / values.size * 100

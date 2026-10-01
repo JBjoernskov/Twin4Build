@@ -592,9 +592,6 @@ class SensorSystem(core.System):
                 dbconfig=self.dbconfig,
                 transformation=self._transformation,
             )
-            # ``allow_missing``: NaN samples in this sensor's series are
-            # unscored gaps, not an error (a duct sensor while the fan is off).
-            self.time_series_input.allow_missing = bool(getattr(self, "allow_missing", False))
             self.time_series_input.initialize(
                 start_time=start_time,
                 end_time=end_time,
