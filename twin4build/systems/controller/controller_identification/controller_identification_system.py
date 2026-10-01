@@ -406,10 +406,27 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             self._build_components()
 
     # -- batching ---------------------------------------------------------------
-    #: Per-instance values that are not parameters: the rewire derives the
-    #: ``onOffSignal`` normalisation bounds per loop, and a batched controller
-    #: holds them as ``(n_c, n_on_off_signals)`` (``Model.batch_components``).
-    _batch_stacked_attrs = ("on_off_signal_norm_min", "on_off_signal_norm_max")
+    #: The selection weights (``alpha_{a}``, ``beta_{a}``, ``gamma_{a}``,
+    #: ``beta_b_{a}``, ``gamma_gate_{a}``) hold one weight per slot; a batched
+    #: controller holds them flat, ``(n_c * k,)``, and normalises each
+    #: instance's over its own slots (:meth:`_selection`).
+    _batch_flat_vectors = True
+
+    @property
+    def _batch_stacked_attrs(self) -> Tuple[str, ...]:
+        """Per-loop values that are not parameters, which the rewire sets per
+        loop and a batched controller holds one per instance
+        (``Model.batch_components``): the ``onOffSignal`` normalisation bounds,
+        ``(n_c, n_on_off_signals)``, and every candidate's direction of action
+        (``is_reverse``, ``(n_c,)``: the sign of its error)."""
+        names = ["on_off_signal_norm_min", "on_off_signal_norm_max"]
+        if getattr(self, "_built", False):
+            for a in range(self.n_actuators):
+                for c in range(self.n_candidates):
+                    candidate = getattr(self, f"candidate_{a}_{c}", None)
+                    if candidate is not None and hasattr(candidate, "is_reverse"):
+                        names.append(f"candidate_{a}_{c}.is_reverse")
+        return tuple(names)
 
     @property
     def _batch_init_kwargs(self) -> dict:
@@ -1283,6 +1300,15 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             self._fwd_sub_cache = (params, sub)
         return sub
 
+    def _selection(self, weights: torch.Tensor, width: int) -> torch.Tensor:
+        """Selection weights normalised to one over their ``width`` slots:
+        ``(width,)`` on a controller; ``(n_c, width)`` on a batched one, whose
+        weights are flat ``(n_c * width,)``, one row per instance."""
+        if int(getattr(self, "n_c", 1) or 1) == 1:
+            return weights / (torch.sum(weights) + 1e-8)
+        weights = weights.reshape(-1, width)
+        return weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
+
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step controller identification
         ``(state, inputs, params) -> (new_state, outputs)``.
@@ -1315,16 +1341,13 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         new_state_parts = []  # (offset, tensor)
         actuator_outputs = []
         for a in range(self.n_actuators):
-            gamma = params[f"gamma_{a}"]
-            gamma_norm = gamma / (torch.sum(gamma) + 1e-8)
-            beta = params[f"beta_{a}"]
-            beta_norm = beta / (torch.sum(beta) + 1e-8)
+            gamma_norm = self._selection(params[f"gamma_{a}"], self.n_setpoints)
+            beta_norm = self._selection(params[f"beta_{a}"], self.n_sensors)
             weighted_setpoint = torch.sum(gamma_norm * setpoint_values, dim=-1)
             weighted_feedback = torch.sum(beta_norm * sensor_values, dim=-1)
             weighted_feedback_b = None
             if self._has_cascade:
-                beta_b = params[f"beta_b_{a}"]
-                beta_b_norm = beta_b / (torch.sum(beta_b) + 1e-8)
+                beta_b_norm = self._selection(params[f"beta_b_{a}"], self.n_sensors)
                 weighted_feedback_b = torch.sum(beta_b_norm * sensor_values, dim=-1)
 
             candidate_outputs = []
@@ -1355,13 +1378,14 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 if width:
                     new_state_parts.append((offset, x_c_next))
                 candidate_outputs.append(out_c["inputSignal"])
-            stacked = torch.stack(candidate_outputs, dim=0)  # (n_cand, ...)
-            alpha = params[f"alpha_{a}"]
-            alpha_norm = alpha / (torch.sum(alpha) + 1e-8)
-            combined = torch.einsum("c,c...->...", alpha_norm, stacked)
+            alpha_norm = self._selection(params[f"alpha_{a}"], self.n_candidates)
+            if alpha_norm.dim() == 1:
+                stacked = torch.stack(candidate_outputs, dim=0)  # (n_cand, ...)
+                combined = torch.einsum("c,c...->...", alpha_norm, stacked)
+            else:  # a batched controller: (n_c, n_cand), the outputs (..., n_c)
+                combined = sum(alpha_norm[:, c] * out for c, out in enumerate(candidate_outputs))
 
-            gamma_gate = params[f"gamma_gate_{a}"]
-            gamma_gate_norm = gamma_gate / (torch.sum(gamma_gate) + 1e-8)
+            gamma_gate_norm = self._selection(params[f"gamma_gate_{a}"], self.n_on_off_signals)
             gate_input = torch.sum(gamma_gate_norm * on_off_norm, dim=-1)
             gate = self._get_gate(a)
             _, gate_out = gate.forward(

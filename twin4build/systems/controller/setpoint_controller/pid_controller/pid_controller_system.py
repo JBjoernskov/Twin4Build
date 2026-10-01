@@ -3,6 +3,7 @@ import datetime
 from typing import List
 
 # Third party imports
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -116,6 +117,23 @@ class PIDControllerSystem(core.System, nn.Module):
     @property
     def config(self):
         return self._config
+
+    @property
+    def is_reverse(self):
+        """The direction of action: ``True`` acts on ``setpoint - feedback``,
+        ``False`` on ``feedback - setpoint``.  A bool, or a bool tensor with
+        one direction per instance on a batched controller
+        (``Model.batch_components``); a list or array of one value reads as a
+        bool."""
+        return self.__dict__["_is_reverse"]
+
+    @is_reverse.setter
+    def is_reverse(self, value) -> None:
+        if not isinstance(value, (torch.Tensor, list, tuple, np.ndarray)):
+            self.__dict__["_is_reverse"] = bool(value)
+            return
+        value = torch.as_tensor(value).detach().reshape(-1).to(torch.bool)
+        self.__dict__["_is_reverse"] = bool(value[0]) if value.numel() == 1 else value
 
     @property
     def isReverse(self) -> bool:
@@ -307,7 +325,11 @@ class PIDControllerSystem(core.System, nn.Module):
             coefficients = cache[2]
         c0, c1, c2 = coefficients
         err = inputs["setpointValue"] - inputs["actualValue"]
-        if self.is_reverse is False:
+        reverse = self.is_reverse
+        if isinstance(reverse, torch.Tensor):
+            # a batched controller: one direction per instance
+            err = torch.where(reverse.to(device=err.device), err, -err)
+        elif reverse is False:
             err = -err
         u_prev, err_prev, err_prev_m1 = x[..., 0], x[..., 1], x[..., 2]
         u = u_prev + (c0 * err + c1 * err_prev + c2 * err_prev_m1)

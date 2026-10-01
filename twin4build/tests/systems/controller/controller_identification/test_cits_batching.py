@@ -36,9 +36,10 @@ def _series(sid, values):
     return SensorSystem(id=sid, df=pd.DataFrame({"value": [float(v) for v in values]}, index=times), use_df=True)
 
 
-def _controller(k, **kwargs):
-    """A built PI controller with gains, gate and normalisation bounds of its own."""
-    cits = ControllerIdentificationPISystem(id=f"cits{k}", n_sensors=1, n_setpoints=1, n_on_off_signals=1, **kwargs)
+def _controller(k, slots=1, **kwargs):
+    """A built PI controller with gains, gate and normalisation bounds of its own; with several ``onOffSignal``
+    slots the gate weights slot ``k % slots`` most."""
+    cits = ControllerIdentificationPISystem(id=f"cits{k}", n_sensors=1, n_setpoints=1, n_on_off_signals=slots, **kwargs)
     # the selection weights as the forward test sets them: the PI candidate reaches the command
     for name in ("alpha_0", "beta_0", "gamma_0", "gamma_gate_0"):
         p = getattr(cits, name)
@@ -49,28 +50,32 @@ def _controller(k, **kwargs):
     cand.kp.set(torch.tensor(0.2 + 0.3 * k, dtype=torch.float64), normalized=False)
     cand.Ti.set(torch.tensor(900.0 + 600.0 * k, dtype=torch.float64), normalized=False)
     cits.gate_0.threshold.set(torch.tensor(0.2 + 0.1 * k, dtype=torch.float64), normalized=False)
-    cits.on_off_signal_norm_min = [18.0 - k]
-    cits.on_off_signal_norm_max = [24.0 + k]
+    cits.on_off_signal_norm_min = [18.0 - k - s for s in range(slots)]
+    cits.on_off_signal_norm_max = [24.0 + k + s for s in range(slots)]
+    if slots > 1:
+        weights = [0.9 if s == k % slots else 0.1 for s in range(slots)]
+        cits.gamma_gate_0.set(torch.tensor(weights, dtype=torch.float64), normalized=False)
     return cits
 
 
-def _wire(model, cits, k):
+def _wire(model, cits, k, slots=1):
     """Room temperature, setpoint and the gate's signal from data; the command to a sensor.  The temperature
     swings around the setpoint so the PI law acts unsaturated (direct action: above the setpoint opens) and the
     loops' different gains give different commands."""
     setpoint = [21.0 + 0.5 * k] * N
     temperature = [setpoint[i] + 0.3 * math.sin(2.0 * math.pi * i / 12.0) for i in range(N)]  # zero mean: no wind-up
-    on_off = [19.0 + (6.0 if 6 <= i < 30 else 0.0) for i in range(N)]
     model.add_connection(_series(f"t{k}", temperature), cits, "measuredValue", "sensorValue", input_port_index=0)
     model.add_connection(_series(f"sp{k}", setpoint), cits, "measuredValue", "setpointValue", input_port_index=0)
-    model.add_connection(_series(f"oo{k}", on_off), cits, "measuredValue", "onOffSignal", input_port_index=0)
+    for s in range(slots):  # each slot switches on at its own time
+        on_off = [19.0 + (6.0 if 6 + 8 * s <= i < 30 + 4 * s else 0.0) for i in range(N)]
+        model.add_connection(_series(f"oo{k}_{s}", on_off), cits, "measuredValue", "onOffSignal", input_port_index=s)
     model.add_connection(cits, _series(f"cmd{k}", [0.0] * N), "inputSignal", "measuredValue", output_port_index=0)
 
 
-def _model(controllers):
+def _model(controllers, slots=1):
     model = tb.Model(id="test_cits_batching")
     for k, cits in enumerate(controllers):
-        _wire(model, cits, k)
+        _wire(model, cits, k, slots)
     model.load(draw_semantic_model=False, draw_simulation_model=False)
     return model
 
@@ -131,6 +136,62 @@ class TestBatchingIdentifiedControllers(unittest.TestCase):
         got = _commands(model, ids)
         for cid in ids:
             torch.testing.assert_close(got[cid], expected[cid], rtol=1e-7, atol=1e-9, msg=cid)
+
+    def test_loops_acting_in_opposite_directions_share_a_meta(self):
+        """The rewire sets each loop's direction of action
+        (``candidate_0_0.is_reverse``): the meta holds one per loop, the sign of
+        its error, and every loop commands what it commands alone (before, the
+        meta's candidate acted in the default direction for all of them)."""
+        ids = [f"cits{k}" for k in range(4)]
+
+        def controllers():
+            out = [_controller(k) for k in range(4)]
+            for k, cits in enumerate(out):
+                cits.candidate_0_0.is_reverse = k % 2 == 1
+            return out
+
+        reference = _model(controllers())
+        _simulate(reference)
+        expected = {cid: _command(reference.components[cid]) for cid in ids}
+        model = _model(controllers())
+        batched = model.batch_components()
+        metas = [c for c in batched.components.values() if isinstance(c, ControllerIdentificationPISystem)]
+        self.assertEqual([m._n_c_batched for m in metas], [4])
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        # a load writes the stacked directions through the config and back
+        torch.testing.assert_close(metas[0].candidate_0_0.is_reverse, torch.tensor([False, True, False, True]))
+        _simulate(batched)
+        got = _commands(model, ids)
+        for cid in ids:
+            torch.testing.assert_close(got[cid], expected[cid], rtol=1e-7, atol=1e-9, msg=cid)
+        # the directions act: a reverse loop commands otherwise than a direct one
+        self.assertGreater(float((expected["cits0"] - expected["cits1"]).abs().max()), 1e-2)
+
+    def test_loops_with_several_gate_slots_share_a_meta(self):
+        """Loops whose gate reads several ``onOffSignal`` slots: the meta holds
+        the slot weights flat, ``(n_c * k,)``, normalises each loop's over its
+        own slots, and every loop commands what it commands alone, in the object
+        and the functional rollout (before, the weights could not be stacked and
+        every such loop stayed a component of its own)."""
+        ids = [f"cits{k}" for k in range(3)]
+        reference = _model([_controller(k, slots=3) for k in range(3)], slots=3)
+        _simulate(reference)
+        expected = {cid: _command(reference.components[cid]) for cid in ids}
+        self.assertGreater(float((expected["cits0"] - expected["cits1"]).abs().max()), 1e-2)
+        for mode in ({}, {"execution_mode": "functional", "execution_backend": "eager"}):
+            with self.subTest(mode=mode):
+                model = _model([_controller(k, slots=3) for k in range(3)], slots=3)
+                batched = model.batch_components()
+                metas = [c for c in batched.components.values() if isinstance(c, ControllerIdentificationPISystem)]
+                self.assertEqual([m._n_c_batched for m in metas], [3])
+                self.assertEqual(tuple(metas[0].gamma_gate_0.get().shape), (9,))
+                batched.load(draw_semantic_model=False, draw_simulation_model=False)
+                _simulate(batched, **mode)
+                got = _commands(model, ids)
+                for cid in ids:
+                    torch.testing.assert_close(got[cid], expected[cid], rtol=1e-7, atol=1e-9, msg=cid)
+        entries = {attr: x0 for _, attr, x0, _, _ in metas[0].get_estimable_parameters()}
+        self.assertEqual(len(entries["gamma_gate_0"]), 9)
 
     def test_the_meta_offers_one_start_and_bounds_per_loop(self):
         """``parameters="auto"`` on the batched model: each estimable entry of

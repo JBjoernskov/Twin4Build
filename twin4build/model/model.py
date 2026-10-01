@@ -1656,9 +1656,19 @@ class Model:
             self._stack_parameter_spec(meta, components, param_name)
 
             if isinstance(first, tps.Parameter):
-                vals = torch.stack([p.get().squeeze() for p in originals])
-                mins = torch.stack([p.min_value.squeeze() for p in originals])
-                maxs = torch.stack([p.max_value.squeeze() for p in originals])
+                if first.get().numel() > 1 and getattr(components[0], "_batch_flat_vectors", False):
+                    # k values per instance (an identified controller's
+                    # selection weights over its k slots), flat (n_c * k,):
+                    # the class reads them per instance
+                    vals = torch.cat([p.get().reshape(-1) for p in originals])
+                    mins = torch.cat([p.min_value.reshape(-1) for p in originals])
+                    maxs = torch.cat([p.max_value.reshape(-1) for p in originals])
+                    width = int(vals.numel())
+                else:
+                    vals = torch.stack([p.get().squeeze() for p in originals])
+                    mins = torch.stack([p.min_value.squeeze() for p in originals])
+                    maxs = torch.stack([p.max_value.squeeze() for p in originals])
+                    width = n_c
                 self._set_dotted_attr(
                     meta,
                     param_name,
@@ -1667,7 +1677,7 @@ class Model:
                         min_value=mins,
                         max_value=maxs,
                         requires_grad=first.requires_grad,
-                        n_c=n_c,
+                        n_c=width,
                         scaling=getattr(first, "scaling", "linear"),
                     ),
                 )
@@ -1768,19 +1778,21 @@ class Model:
 
     @staticmethod
     def _stack_instance_attrs(meta: Any, components: List) -> None:
-        """Stack the per-instance tensors a class declares in
-        ``_batch_stacked_attrs`` onto the meta, ``(n_c, ...)``.
+        """Stack the per-instance values a class declares in
+        ``_batch_stacked_attrs`` (dotted paths) onto the meta, ``(n_c, ...)``.
 
         For the values that are neither parameters (``_batch_parameters``
         stacks those) nor shared structure (``_batch_init_kwargs``): an
-        identified controller's ``onOffSignal`` normalisation bounds, which
-        the rewire derives per loop.  A value an instance does not have (an
-        unbuilt controller) leaves the meta's own."""
+        identified controller's ``onOffSignal`` normalisation bounds and its
+        candidates' directions of action, which the rewire sets per loop.  A
+        value an instance does not have (an unbuilt controller) leaves the
+        meta's own."""
         for name in getattr(components[0], "_batch_stacked_attrs", ()):
-            values = [getattr(c, name, None) for c in components]
+            values = [Model._resolve_dotted_attr(c, name) for c in components]
             if any(v is None for v in values):
                 continue
-            setattr(meta, name, torch.stack([torch.as_tensor(v).detach() for v in values]))
+            stacked = torch.stack([torch.as_tensor(v).detach() for v in values])
+            Model._set_dotted_attr(meta, name, stacked)
 
     def _copy_init_attrs(self, meta: Any, source: Any) -> None:
         """Copy non-Parameter constructor attributes from *source* to *meta*.
