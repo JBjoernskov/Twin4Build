@@ -253,6 +253,10 @@ class WallSystem(core.System, nn.Module):
         else:
             self.n_c = 1
 
+        # ``T_init`` is applied here, not only in ``__init__``: a batched meta
+        # is built with the class defaults and gets ``T_init`` copied
+        # afterwards (``Model._INIT_ATTRS_TO_COPY``).
+        self.output["wallTemperature"].init_value = float(self.T_init)
         for input in self.input.values():
             input.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for output in self.output.values():
@@ -285,6 +289,10 @@ class WallSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("C", "R_a", "R_b")
+
+    def _state_heat_capacities(self):
+        """``T_wall`` holds ``C`` [J/K]."""
+        return self.C.get().reshape(-1, 1)
 
     #: Fusable coupling ports: both temperature inputs enter the linear B
     #: matrix, and all outputs are exact linear functions of (state, inputs),

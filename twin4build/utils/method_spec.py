@@ -25,7 +25,7 @@ def parse_method(
     transcription = None
     if allow_transcription and isinstance(method, tuple) and len(method) == 4:
         transcription = method[3]
-        allowed_transcriptions = ("single_shooting", "collocation")
+        allowed_transcriptions = ("single_shooting", "multiple_shooting", "collocation")
         if transcription not in allowed_transcriptions:
             raise ValueError(
                 "The 4th (transcription) element of the method tuple must be one "

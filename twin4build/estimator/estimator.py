@@ -543,8 +543,11 @@ class Estimator:
                 ``optimizer`` is
                 the algorithm name, ``mode`` is ``"ad"`` (automatic
                 differentiation) or ``"fd"`` (finite difference), and the
-                optional ``transcription`` is ``"single_shooting"`` (default)
-                or ``"collocation"`` (requires the CasADi/IPOPT backend).
+                optional ``transcription`` is ``"single_shooting"`` (default),
+                ``"multiple_shooting"`` (single shooting per period, the
+                periods' initial states estimated and tied together; see
+                ``options``) or ``"collocation"`` (requires the CasADi/IPOPT
+                backend).
 
                 Supported optimizers by backend and mode:
 
@@ -624,6 +627,34 @@ class Estimator:
                 - "ftol": Function tolerance (SciPy: solver default applies
                   when omitted; CasADi: mapped to IPOPT's ``tol``)
                 - "verbose": Verbosity level
+
+                Multiple shooting transcription only (``(library, optimizer,
+                mode, "multiple_shooting")``; the functional objective:
+                ``Simulator(execution_mode="functional")`` and AD).  Every
+                period's initial state is a decision variable, the first
+                period's too (no warm-up is needed), boxed at 25 % of the
+                state's magnitude around the model's state at the period's
+                start.  The end of each period is tied to the start of the
+                next by a continuity defect: one residual column per state,
+                divided by the state's tolerance.  The periods must be
+                contiguous (each starts where the one before ends, else
+                ``ValueError``) and of equal length, and the fit has one
+                phase (no ``schedule`` of several).
+
+                - "continuity_sd_rel" (default 0.01): a state's tolerance is
+                  this fraction of how much the state varies over the
+                  periods' starts and ends.
+                - "continuity_energy_tol" (J, default 3.6e5, 0.1 kWh): a
+                  state that stores heat is held to at most this heat per
+                  jump, the tolerance divided by its heat capacity
+                  (``System.state_heat_capacities``): a jump in a wall or the
+                  shared interior costs by the heat it creates, a jump in
+                  room air or a radiator hardly more than its range allows.
+
+                The result carries the estimated states
+                (``estimated_initial_state_instances``) and the jumps at the
+                boundaries (``continuity_jumps_instances``,
+                ``continuity_tolerance_instances``).
 
                 Collocation transcription only:
 
@@ -738,6 +769,7 @@ class Estimator:
                         {"regularization_lambda": 0.1,   "saturation_mode": "hard",
                          "options": {"ftol": 1e-9}},
                     ]
+
 
         Returns:
             EstimationResult: Dict-like object containing the optimized parameters
@@ -1009,6 +1041,15 @@ class Estimator:
         self._transcription = transcription or "single_shooting"
 
         LOGGER.config("Method: %s", method)
+
+        # The periods' initial states as decision variables, tied together by
+        # continuity defects (the multiple_shooting transcription).  The
+        # options leave ``options`` here and never reach a solver.
+        options = dict(options or {})
+        self._multiple_shooting = _initial_state_config(self._transcription, options, start_time, end_time)
+        if self._multiple_shooting and len(schedule or [{}]) > 1:
+            # a later phase would start the windows from their recorded states again
+            raise ValueError("multiple_shooting fits in one phase: give no schedule of several phases")
 
         # Set up time periods
         self._n_warmup = n_warmup
@@ -1311,6 +1352,12 @@ class Estimator:
             mode = entry.get("saturation_mode")  # None => keep current global
             phase_opts = entry.get("options") or {}
             phase_reg_comps = entry.get("regularization_components", None)
+            fit_wide = sorted(INITIAL_STATE_OPTIONS & set(phase_opts))
+            if fit_wide:
+                raise ValueError(
+                    f"Schedule entry at index {phase_idx}: {fit_wide} hold for the whole fit; give them in "
+                    "estimate(options=...)"
+                )
 
             merged_options = {**base_options, **phase_opts}
 
@@ -2789,10 +2836,16 @@ class Estimator:
         functional_requested = self.simulator.execution_mode == "functional"
         if (
             functional_requested
-            and self._transcription == "single_shooting"
+            and self._transcription in SHOOTING_TRANSCRIPTIONS
             and method[2] == "ad"
         ):
             self._setup_functional_objective(validate_functional=False)
+        elif self._multiple_shooting:
+            raise ValueError(
+                "the periods' initial states are variables of the functional objective: "
+                'Simulator(execution_mode="functional") and a method in AD mode'
+            )
+        self._extend_for_multiple_shooting()
 
         # Run optimization based on method
         LOGGER.task("Running optimization")
@@ -2854,8 +2907,8 @@ class Estimator:
 
     def _solve_custom(self, method, options):
         """Solve functional single-shooting multistart methods."""
-        if self._transcription != "single_shooting":
-            raise ValueError("Custom solvers support only single_shooting")
+        if self._transcription not in SHOOTING_TRANSCRIPTIONS:
+            raise ValueError("Custom solvers support only single_shooting and multiple_shooting")
         if self._functional_objective is None:
             raise RuntimeError(
                 "Custom batched solvers require functional simulator execution "
@@ -2947,8 +3000,8 @@ class Estimator:
 
     def _solve_scipy(self, method, n_cores, options):
         """Own and validate SciPy-specific solver options."""
-        if self._transcription != "single_shooting":
-            raise ValueError("SciPy supports only single_shooting transcription")
+        if self._transcription not in SHOOTING_TRANSCRIPTIONS:
+            raise ValueError("SciPy supports only the single_shooting and multiple_shooting transcriptions")
         if "hessian" in options:
             raise TypeError("hessian is an IPOPT collocation option")
         if method[1] in ["trf", "dogbox"]:
@@ -3191,6 +3244,28 @@ class Estimator:
             )
             self.simulator.model.restore_parameters(keep_values=True)
 
+        # Multiple shooting: the solver's vector carries the windows' initial
+        # states after theta; report them and cut the vector back to theta.
+        objective = getattr(self, "_functional_objective", None)
+        n_init = int(getattr(objective, "n_init", 0) or 0)
+        x_full = np.asarray(result.x, dtype=np.float64)
+        if n_init and x_full.shape[0] == objective.n_theta_ext:
+            # per executing component (the collocation's format)
+            result.estimated_initial_state = objective.initial_state(x_full)
+            # what the fit set anew at every window boundary instead of
+            # carrying it over: a one-sided jump in a slow state is physics
+            # the model lacks (see _log_continuity_jumps)
+            try:
+                result.continuity_jumps = objective.continuity_jumps(x_full)
+                result.continuity_tolerance = objective.continuity_tolerance()
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Continuity jumps not derived: %r", exc)
+            result.x = x_full[: objective.n_theta]
+            self._x0_norm = np.asarray(self._x0_norm, dtype=np.float64)[: objective.n_theta]
+            self._lb_norm = np.asarray(self._lb_norm, dtype=np.float64)[: objective.n_theta]
+            self._ub_norm = np.asarray(self._ub_norm, dtype=np.float64)[: objective.n_theta]
+            self.bounds = Bounds(lb=self._lb_norm, ub=self._ub_norm)
+
         # Store the normalised solution for warm-starting (used by lambda scheduling)
         self._last_x_norm = result.x.copy()
         theta_norm_at_optimum = np.asarray(result.x, dtype=np.float64)
@@ -3216,6 +3291,29 @@ class Estimator:
         # carry the optimised initial state through so callers can seed a
         # continuous prediction from it (see EstimationResult).
         estimated_initial_state = getattr(result, "estimated_initial_state", None)
+        # The same states by the ids of the components the model was built
+        # from (a batched meta's instances, a fused block's members): the
+        # form that loads onto another batching of the model.
+        estimated_initial_state_instances = None
+        if estimated_initial_state:
+            try:
+                model = self.simulator.model
+                model = getattr(model, "simulation_model", model)
+                estimated_initial_state_instances = model._instance_state(estimated_initial_state) or None
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Initial states per component not derived: %r", exc)
+        continuity_jumps = getattr(result, "continuity_jumps", None)
+        continuity_tolerance = getattr(result, "continuity_tolerance", None)
+        continuity_jumps_instances = continuity_tolerance_instances = None
+        if continuity_jumps:
+            try:
+                model = self.simulator.model
+                model = getattr(model, "simulation_model", model)
+                continuity_jumps_instances = model._instance_state(continuity_jumps) or None
+                continuity_tolerance_instances = model._instance_state(continuity_tolerance) or None
+                self._log_continuity_jumps(continuity_jumps_instances, continuity_tolerance_instances)
+            except Exception as exc:  # the result is saved either way
+                LOGGER.warning("Continuity jumps per component not derived: %r", exc)
         collocation_audit = getattr(result, "collocation_audit", None)
         collocation_timing = getattr(result, "collocation_timing", None)
         multistart_audit = getattr(result, "multistart_audit", None)
@@ -3248,6 +3346,12 @@ class Estimator:
         )
         if estimated_initial_state is not None:
             result["estimated_initial_state"] = estimated_initial_state
+        if estimated_initial_state_instances is not None:
+            result["estimated_initial_state_instances"] = estimated_initial_state_instances
+        if continuity_jumps_instances is not None:
+            result["continuity_jumps_instances"] = continuity_jumps_instances
+        if continuity_tolerance_instances is not None:
+            result["continuity_tolerance_instances"] = continuity_tolerance_instances
         if collocation_audit is not None:
             result["collocation_audit"] = collocation_audit
         if collocation_timing is not None:
@@ -3331,6 +3435,28 @@ class Estimator:
         jac = jac.detach().cpu().numpy() if hasattr(jac, "detach") else np.asarray(jac)
         return residual, jac
 
+    @staticmethod
+    def _log_continuity_jumps(jumps, tolerance, n: int = 10) -> None:
+        """The states the fit re-set most at its window boundaries (see
+        :mod:`twin4build.estimator._continuity`)."""
+        from twin4build.estimator._continuity import continuity_summary
+
+        table = continuity_summary(jumps or {}, tolerance)
+        if table.empty:
+            return
+        LOGGER.info(
+            "Continuity jumps at the window boundaries: %d states; mean |jump| / tolerance median %.3g, "
+            "%d states re-set to one side at every boundary",
+            len(table),
+            float(table["mean |jump| / tolerance"].median()),
+            int(((table["one-sided"] >= 1.0) & (table["boundaries"] > 1)).sum()),
+        )
+        for row in table.head(n).itertuples(index=False):
+            LOGGER.info(
+                "  %s x%d: mean jump %+.4g, max |jump| %.4g, %.3g x tolerance, %.0f %% one-sided",
+                row[0], row[1], row[3], row[5], row[7], 100.0 * row[8],
+            )
+
     def _log_identifiability(self, theta_norm: np.ndarray, method) -> Optional[dict]:
         """Post-fit local identifiability analysis (see
         :mod:`twin4build.estimator._identifiability`), logged and returned as
@@ -3342,7 +3468,12 @@ class Estimator:
         mode = getattr(self, "_identifiability", "auto")
         if mode is False:
             return None
-        if getattr(self, "_transcription", "single_shooting") != "single_shooting":
+        if getattr(self, "_transcription", "single_shooting") not in SHOOTING_TRANSCRIPTIONS:
+            return None
+        if self._multiple_shooting:
+            # the windows' initial states are not part of the analysis
+            if mode is True:
+                LOGGER.warning("identifiability=True is not available with multiple shooting; skipped")
             return None
         has_ad = len(method) > 2 and method[2] == "ad"
         functional = getattr(self, "_functional_objective", None) is not None
@@ -3377,7 +3508,8 @@ class Estimator:
             t0 = time_module.time()
             residual, jac = self._residual_and_jacobian_at(theta_norm)
             names = self._theta_entry_names()
-            report = analyze(jac, residual, names, theta_norm, self._lb_norm, self._ub_norm)
+            lb_norm, ub_norm = np.asarray(self._lb_norm, dtype=np.float64), np.asarray(self._ub_norm, dtype=np.float64)
+            report = analyze(jac, residual, names, theta_norm, lb_norm, ub_norm)
             LOGGER.iter(
                 "n_theta=%d | n_residuals=%d | condition number %.3g | elapsed=%.1fs",
                 jac.shape[1],
@@ -3423,6 +3555,33 @@ class Estimator:
                 pass
             return None
 
+    def _extend_for_multiple_shooting(self) -> None:
+        """Append the functional objective's initial-state variables to the
+        normalised start, bounds and caches the solvers read (``_x0_norm``,
+        ``_lb_norm``, ``_ub_norm``, ``bounds``); the results are cut back to
+        theta in :meth:`_finalize_solve`."""
+        objective = getattr(self, "_functional_objective", None)
+        n_init = int(getattr(objective, "n_init", 0) or 0)
+        self._n_theta_base = int(len(self._x0_norm))
+        if not n_init:
+            return
+        if self._multiple_shooting and objective is None:
+            LOGGER.warning("multiple shooting needs the functional objective; the initial states stay fixed")
+            return
+        x0 = objective.init_x0_norm.detach().cpu().numpy().astype(np.float64)
+        self._x0_norm = np.concatenate([np.asarray(self._x0_norm, dtype=np.float64), x0])
+        self._lb_norm = np.concatenate([np.asarray(self._lb_norm, dtype=np.float64), np.zeros(n_init)])
+        self._ub_norm = np.concatenate([np.asarray(self._ub_norm, dtype=np.float64), np.ones(n_init)])
+        self.bounds = Bounds(lb=self._lb_norm, ub=self._ub_norm)
+        for name in ("_theta_obj", "_theta_jac", "_theta_hes"):
+            self.__dict__[name] = torch.nan * torch.ones(
+                len(self._x0_norm), dtype=tps.float_dtype(), device=self._device
+            )
+        LOGGER.config(
+            "multiple shooting: %d initial-state variables appended to %d parameters",
+            n_init, self._n_theta_base,
+        )
+
     def _setup_functional_objective(self, validate_functional: bool = False) -> None:
         """Build the functional single-shooting objective.
 
@@ -3447,6 +3606,12 @@ class Estimator:
         try:
             functional = FunctionalEstimationObjective(self)
         except Exception as exc:  # noqa: BLE001
+            if getattr(self, "_multiple_shooting", None):
+                # the periods' initial states are variables of the functional
+                # objective only: the object objective cannot carry them
+                raise RuntimeError(
+                    "the functional objective that carries the periods' initial states could not be built"
+                ) from exc
             LOGGER.warning(
                 "Fast single-shooting unavailable (%s) -- using the "
                 "object objective.",
@@ -4256,6 +4421,51 @@ class Estimator:
             self._theta_hes = theta
             self._hes = self.__hes_ad(theta, output)
             return np.asarray(self._hes.detach().cpu().numpy(), dtype=np.float64)
+
+
+
+#: The transcriptions that roll the model out per period (the functional
+#: objective); ``multiple_shooting`` adds the periods' initial states and the
+#: continuity defects between them.
+SHOOTING_TRANSCRIPTIONS = ("single_shooting", "multiple_shooting")
+
+#: ``Estimator.estimate`` option -> key of the objective's multiple-shooting
+#: config (``FunctionalEstimationObjective._setup_multiple_shooting``).
+_CONTINUITY_KEYS = {
+    "continuity_sd_rel": "sd_rel",
+    "continuity_energy_tol": "energy_tol",
+}
+INITIAL_STATE_OPTIONS = frozenset(_CONTINUITY_KEYS)
+
+
+def _initial_state_config(transcription, options, start_time, end_time):
+    """Take the multiple-shooting options out of ``options`` (in place) and
+    return the objective's config: ``None`` (every period starts from the
+    model's state) or the periods' initial states with the continuity
+    defects (``multiple_shooting``)."""
+    given = {name: options.pop(name) for name in list(options) if name in INITIAL_STATE_OPTIONS}
+    if transcription == "multiple_shooting":
+        _check_contiguous_periods(start_time, end_time)
+        return {_CONTINUITY_KEYS[name]: value for name, value in given.items()}
+    if given:
+        raise ValueError(
+            f"{sorted(given)} tie the periods together: options of the multiple_shooting transcription, "
+            "method=(library, optimizer, mode, 'multiple_shooting')"
+        )
+    return None
+
+
+def _check_contiguous_periods(start_time, end_time) -> None:
+    """Multiple shooting ties each period's start to the end of the one
+    before: the periods must follow one another without gap or overlap."""
+    starts = list(start_time) if isinstance(start_time, (list, tuple)) else [start_time]
+    ends = list(end_time) if isinstance(end_time, (list, tuple)) else [end_time]
+    for p in range(len(starts) - 1):
+        if ends[p] != starts[p + 1]:
+            raise ValueError(
+                f"multiple_shooting ties period {p + 2}'s start to period {p + 1}'s end, but period {p + 1} ends "
+                f"at {ends[p]} and period {p + 2} starts at {starts[p + 1]}; give contiguous periods"
+            )
 
 
 class EstimationResult(ResultDict):

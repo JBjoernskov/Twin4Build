@@ -37,6 +37,47 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Added
 
+- Multiple shooting (#91), a transcription:
+  `method=(library, optimizer, mode, "multiple_shooting")` makes the initial
+  state of every period a decision variable, the first period's too (a fit
+  needs no warm-up), and ties it to the end of the period before it by a
+  continuity defect.  The periods must be contiguous and of equal length
+  (`ValueError` otherwise), and the fit has one phase.  A state's start is
+  boxed at 25 % of its magnitude around its recorded value, widened to
+  include the end of the period before it.  Its tolerance is a fraction
+  (`continuity_sd_rel`, default 0.01) of how much the state varies over the
+  periods, and a state that stores heat is held to at most
+  `continuity_energy_tol / C` (J, default 3.6e5, 0.1 kWh), `C` its heat
+  capacity: a jump in a wall or the shared interior costs by the heat it
+  creates, room air and radiators keep their range tolerance.  The two
+  options hold for the whole fit (a schedule phase may not set them).  The
+  result carries the estimated states (`estimated_initial_state`,
+  `estimated_initial_state_instances`) and the jumps at the boundaries
+  (`continuity_jumps_instances`, `continuity_tolerance_instances`); the fit
+  logs the largest jumps, and
+  `twin4build.estimator._continuity.continuity_summary` ranks them and marks
+  the states re-set to one side at every boundary.
+- `System.state_heat_capacities()` gives every state's capacity [J/K]
+  (`NaN` for a state that holds no heat); the room, wall, radiator and
+  thermal-mass node declare theirs, composites and fused blocks concatenate
+  their units'.
+- Model state.  `Model.set_state(values, period_starts=None)` sets the
+  initial state by component id; with `period_starts` a row is matched to the
+  simulated period that starts at that time.
+  `Model.load_estimation_result(filename, parameters=True,
+  initial_state=True)` sets the estimated initial state with the parameters,
+  so a simulation of a fit starts where the fit started.
+- Window batching.  Several periods are rolled out as one batch
+  (`Simulator.rollout_functional_windows`,
+  `rollout_functional_batched_windows`), one initial state per period.
+- `Simulator(cuda_graph_scope="step")`: one CUDA graph per step, replayed along
+  the rollout, for models whose whole rollout does not fit in one captured
+  graph.
+- `ThermalMassNodeSystem`: one hidden thermal mass that many walls share.  A
+  component declares the outputs that are read one step late (the class
+  attribute `LAGGED_OUTPUT_PORTS`, or a method `lagged_output_ports()`), and
+  the loader cuts the algebraic loop there.
+- `FunctionSystem` and `WeightedSumSystem` batch.
 - System registry (`twin4build.systems.registry`, #132): a `System` class
   that lives in another package is registered under a stable type id,
   `tb.system_registry.register(cls, type_id="acme:CoilSystem@1",
