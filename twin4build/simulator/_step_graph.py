@@ -32,6 +32,14 @@ import torch
 from torch.utils import _pytree as pytree
 
 
+def initialization_count(functional_model) -> int:
+    """How often the model ``functional_model`` steps has been initialized
+    (``SimulationModel.initialization_count``)."""
+    model = functional_model.model
+    model = getattr(model, "_simulation_model", None) or model
+    return int(getattr(model, "initialization_count", 0))
+
+
 class StepGraph:
     """One captured graph for a fixed-shape, tensor-only ``fn(*static, *dynamic)``.
 
@@ -244,6 +252,14 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
     else:
         raise ValueError(f"unknown step kind {kind!r}")
     key = (kind, tuple(y0.shape), tuple(theta.shape), tuple(tape.shape[1:]), tuple(tuple(l.shape) for l in leaves))
+    # A captured step reads every tensor it touches at its address at capture;
+    # an initialize() of the model reallocates the components' tensors, and a
+    # graph from before reads freed memory (the second simulate() of one
+    # simulator ran from garbage).  The graphs hold for one initialization.
+    count = initialization_count(functional_model)
+    if functional_model.__dict__.get("_step_graphs_initialization") != count:
+        functional_model.__dict__["_step_graphs"] = {}
+        functional_model.__dict__["_step_graphs_initialization"] = count
     cache = functional_model.__dict__.setdefault("_step_graphs", {})
     graphs = cache.get(key)
     if graphs is None:

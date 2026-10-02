@@ -351,6 +351,7 @@ class SimulationModel:
         "_rewire_reports",
         "_system_registry",
         "_initial_state",
+        "_initialization_count",
     )
 
     def __str__(self):
@@ -416,6 +417,7 @@ class SimulationModel:
         self._flat_execution_order = []
         self._required_initialization_connections = []
         self._initial_state = None  # see set_state
+        self._initialization_count = 0  # see initialization_count
         self._components_no_cycles = {}
         self._fused_components = {}
         self._fusion_member_to_fused = {}
@@ -2068,6 +2070,16 @@ class SimulationModel:
             # the state of ``set_state`` (an estimated initial state), after
             # the components have set their own initial conditions
             self._apply_initial_state(start_time)
+        # The components reallocate their tensors here; a CUDA graph captured
+        # before reads them at their old addresses, so captured graphs hold
+        # for one initialization (``initialization_count``).
+        self._initialization_count = self.initialization_count + 1
+
+    @property
+    def initialization_count(self) -> int:
+        """How often the model has been initialized: a CUDA graph captured
+        after the n-th :meth:`initialize` is valid until the next."""
+        return self._initialization_count
 
     def _initialize_components(
         self,
