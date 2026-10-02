@@ -12,7 +12,7 @@ import twin4build as tb
 
 tb._IS_TESTING = True
 
-from twin4build.tests.simulator.test_fusion_batched import build, history, simulate
+from twin4build.tests.simulator.test_fusion_batched import START, STEP, build, history, simulate
 
 
 @unittest.skipUnless(torch.cuda.is_available(), "needs CUDA")
@@ -41,6 +41,29 @@ class TestStepGraphScope(unittest.TestCase):
             )
         # the simulation captured two step graphs and nothing at rollout level
         session = batched.simulation_model  # noqa: F841 (the model owns the functional model's graph cache)
+
+    def test_a_graph_holds_for_one_initialization(self):
+        """Every simulate() initializes the model, and the components
+        reallocate their tensors: a step graph captured before reads them at
+        their old addresses (on the HTR ring the second simulation of one
+        simulator ran from freed memory, rooms 2.3 K off).  The second
+        simulation captures its graphs again and gives what the first gave."""
+        model = build(n_pairs=3, model_id="scope_repeat")
+        batched = model.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched.to(device="cuda", dtype=torch.float64)
+        simulator = tb.Simulator(batched, execution_mode="functional", execution_backend="cuda_graph", cuda_graph_scope="step")
+        graphs, temperatures = [], []
+        for _ in range(2):
+            simulator.simulate(start_time=START, end_time=START + datetime.timedelta(hours=6), step_size=STEP, show_progress_bar=False)
+            cache = simulator._functional_session.functional_model.__dict__["_step_graphs"]
+            graphs.append({key: g.fwd.graph for key, g in cache.items()})
+            temperatures.append(history(model, "Zone0", "indoorTemperature", batched))
+        self.assertTrue(graphs[0])
+        self.assertEqual(set(graphs[1]), set(graphs[0]))
+        for key in graphs[0]:
+            self.assertIsNot(graphs[1][key], graphs[0][key], "a graph from before the initialization was replayed")
+        torch.testing.assert_close(temperatures[1], temperatures[0], rtol=0, atol=0)
 
     def test_gradient_matches_whole_rollout_capture(self):
         from twin4build.tests.estimator.example_fixture import (
