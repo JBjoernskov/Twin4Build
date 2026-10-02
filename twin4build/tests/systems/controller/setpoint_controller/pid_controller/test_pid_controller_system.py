@@ -3,6 +3,7 @@ import datetime
 import unittest
 
 # Third party imports
+import numpy as np
 import torch
 from dateutil import tz
 
@@ -12,6 +13,7 @@ import twin4build
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
+from twin4build.systems.utils.smooth_saturation import saturation_mode
 
 twin4build._IS_TESTING = True
 
@@ -87,7 +89,7 @@ class TestPIDControllerSystem(unittest.TestCase):
         )  # Output batch matches input batch
 
     def test_transform_path_bypasses_identity_cache_and_compiles(self):
-        x = torch.tensor([[0.2, -0.1, 0.05]], dtype=torch.float64)
+        x = torch.tensor([[0.2, -0.1]], dtype=torch.float64)
         inputs = {
             "setpointValue": torch.tensor([22.0], dtype=torch.float64),
             "actualValue": torch.tensor([20.0], dtype=torch.float64),
@@ -120,6 +122,79 @@ class TestPIDControllerSystem(unittest.TestCase):
                 transformed, backend="aot_eager", fullgraph=True, dynamic=False
             )
             torch.testing.assert_close(compiled(x, params["kp"]), expected)
+
+
+def _run(controller, setpoint, actual, kp, Ti, Td=0.0, step=600.0):
+    """The controller's output over the series, through ``forward`` from a
+    zero state."""
+    params = {
+        "kp": torch.tensor(kp, dtype=torch.float64),
+        "Ti": torch.tensor(Ti, dtype=torch.float64),
+        "Td": torch.tensor(Td, dtype=torch.float64),
+        "output_min": torch.tensor(0.0, dtype=torch.float64),
+        "output_max": torch.tensor(1.0, dtype=torch.float64),
+    }
+    x = torch.zeros(2, dtype=torch.float64)
+    out = []
+    with saturation_mode("hard"):
+        for sp, y in zip(setpoint, actual):
+            x, o = controller.forward(
+                x,
+                {"setpointValue": torch.tensor(float(sp), dtype=torch.float64), "actualValue": torch.tensor(float(y), dtype=torch.float64)},
+                params,
+                step,
+                transform_mode=True,
+            )
+            out.append(float(o["inputSignal"]))
+    return np.array(out)
+
+
+class TestPositionalForm(unittest.TestCase):
+    """The positional PID: proportional about its setpoint when the integral
+    time is infinite, the velocity form's output while unsaturated, and no
+    windup."""
+
+    def test_an_infinite_integral_time_is_proportional_about_the_setpoint(self):
+        """A CO2 loop that opens a damper above 800 ppm, fully at 1000: one
+        day of CO2 rising from 420 to 1000 ppm and back gives exactly
+        ``clamp(kp * (CO2 - 800))``, closed below the setpoint."""
+        t = np.arange(144)
+        co2 = 420 + 580 * np.clip(np.minimum((t - 48) / 24, (110 - t) / 24), 0, 1)
+        kp = 1 / 200
+        direct = PIDControllerSystem(kp=kp, Ti=1e12, is_reverse=False, id="co2_loop")
+        u = _run(direct, [800.0] * len(t), co2, kp, 1e12)
+        np.testing.assert_allclose(u, np.clip(kp * (co2 - 800), 0, 1), atol=1e-6)
+        self.assertEqual(float(u[co2 < 800].max()), 0.0)
+
+    def test_unsaturated_it_is_the_velocity_form(self):
+        # the room 0.2 - 0.6 K below its setpoint: the valve opens, never fully
+        actual = 20.6 + 0.2 * np.sin(2 * np.pi * np.arange(60) / 20)
+        setpoint = np.full(60, 21.0)
+        kp, Ti, Td, step = 0.05, 1800.0, 60.0, 600.0
+        u = _run(PIDControllerSystem(kp=kp, Ti=Ti, Td=Td, is_reverse=True, id="unsaturated"), setpoint, actual, kp, Ti, Td, step)
+        self.assertTrue(((u > 0) & (u < 1)).all())  # the comparison holds while unsaturated
+        e = setpoint - actual
+        velocity, u_prev, e1, e2 = [], 0.0, 0.0, 0.0
+        for k in range(len(e)):
+            u_prev = u_prev + kp * ((1 + step / Ti + Td / step) * e[k] - (1 + 2 * Td / step) * e1 + Td / step * e2)
+            e2, e1 = e1, e[k]
+            velocity.append(u_prev)
+        np.testing.assert_allclose(u, velocity, atol=1e-12)
+
+    def test_the_integral_does_not_wind_up(self):
+        """A room 2 K below its setpoint for a day saturates the valve open;
+        the integral holds what saturates it (``1 - kp * 2``), not a day of
+        error.  Once the room is 0.5 K above, the valve closes from there at
+        the integral's rate, where a wound-up integral (``144 * ki * 2``)
+        would hold it open for hundreds of steps."""
+        actual = np.r_[np.full(144, 19.0), np.full(12, 21.5)]
+        kp, Ti, step = 0.2, 1800.0, 600.0
+        ki = kp * step / Ti
+        u = _run(PIDControllerSystem(kp=kp, Ti=Ti, is_reverse=True, id="windup"), np.full(len(actual), 21.0), actual, kp, Ti, step=step)
+        self.assertEqual(float(u[143]), 1.0)
+        held = 1.0 - kp * 2.0
+        np.testing.assert_allclose(u[144:], held - kp * 0.5 - ki * 0.5 * np.arange(1, 13), atol=1e-12)
+        self.assertGreater(144 * ki * 2.0 - kp * 0.5 - 12 * ki * 0.5, 1.0)  # wound up: still saturated
 
 
 if __name__ == "__main__":
