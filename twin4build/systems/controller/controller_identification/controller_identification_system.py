@@ -393,6 +393,11 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         self._max_candidates = [c for c, t in enumerate(self._candidate_types) if t == self.CTRL_MAX]
         self._blend_candidates = [c for c, t in enumerate(self._candidate_types) if t != self.CTRL_MAX]
         assert self._blend_candidates, "at least one candidate that is not a 'max' loop must be provided"
+        # the blend is a leading slice of the candidates (an index list would
+        # be copied to the device inside a captured CUDA graph)
+        assert self._blend_candidates == list(range(len(self._blend_candidates))), (
+            "the 'max' candidates must come after the others"
+        )
 
     def _resolve_candidate_structure(
         self, structure: Union[dict, List[dict]]
@@ -1442,15 +1447,15 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         """The alpha-weighted blend of the candidates that are not ``"max"``
         loops, the weights normalised over those candidates (one row per
         instance on a batched controller, whose weights are flat)."""
-        blend = self._blend_candidates
+        k = len(self._blend_candidates)  # a leading slice (the "max" candidates come last)
         n = self.n_candidates
         if int(getattr(self, "n_c", 1) or 1) == 1:
-            weights = alpha.reshape(-1)[blend]
+            weights = alpha.reshape(-1)[:k]
             weights = weights / (torch.sum(weights) + 1e-8)
-            return sum(weights[k] * outputs[c] for k, c in enumerate(blend))
-        weights = alpha.reshape(-1, n)[:, blend]
+            return sum(weights[c] * outputs[c] for c in range(k))
+        weights = alpha.reshape(-1, n)[:, :k]
         weights = weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
-        return sum(weights[:, k] * outputs[c] for k, c in enumerate(blend))
+        return sum(weights[:, c] * outputs[c] for c in range(k))
 
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step controller identification

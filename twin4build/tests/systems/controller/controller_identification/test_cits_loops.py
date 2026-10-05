@@ -184,6 +184,31 @@ class TestMaxCandidate(unittest.TestCase):
             torch.testing.assert_close(got, expected[cid], rtol=1e-7, atol=1e-9, msg=cid)
         self.assertGreater(float((expected["cits0"] - expected["cits1"]).abs().max()), 1e-2)  # their setpoints act
 
+    @unittest.skipUnless(torch.cuda.is_available(), "needs CUDA")
+    def test_the_blend_captures_in_a_cuda_graph(self):
+        """A batched controller with a loop joined by max blends its other
+        candidates inside a captured CUDA graph (the estimator's eager
+        gradient evaluation captures the step): the blend took its candidates
+        by an index list, which is copied to the device during the capture."""
+        model = _max_model([_max_controller(k) for k in range(2)])
+        batched = model.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched.to(device="cuda", dtype=torch.float64)
+        meta = next(c for c in batched.components.values() if isinstance(c, ControllerIdentificationPISystem))
+        alpha = meta.alpha_0.get().detach()
+        outputs = [torch.full((2,), float(c + 1), dtype=torch.float64, device="cuda") for c in range(meta.n_candidates)]
+        expected = meta._blend(alpha, outputs)
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            meta._blend(alpha, outputs)
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            captured = meta._blend(alpha, outputs)
+        graph.replay()
+        torch.testing.assert_close(captured, expected)
+        torch.testing.assert_close(expected, torch.ones(2, dtype=torch.float64, device="cuda"))  # the blend is the first candidate
 
 class TestRewire(unittest.TestCase):
     def _wired(self, model_id, u, temperature, co2, setpoints):
