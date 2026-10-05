@@ -1457,7 +1457,10 @@ class FunctionalModel:
                 bind(cid, spec)
 
         # theta entries: per-index slices attach entry start+i to index i; a
-        # single shared entry couples every index of the component.
+        # vector parameter a batched component holds flat (``_batch_flat_vectors``:
+        # one row of slots per instance, a controller's gate-slot weights)
+        # attaches each row to its instance; a single shared entry couples
+        # every index of the component.
         n_theta = 0
         for cid, attrs in self.theta_by_comp.items():
             comp = next((c for c in self.cone if c.id == cid), None)
@@ -1473,6 +1476,10 @@ class FunctionalModel:
                     if len(entries) == n_c:
                         for i, t in enumerate(entries):
                             union(("theta", t), (cid, i))
+                    elif getattr(comp, "_batch_flat_vectors", False) and n_c > 1 and len(entries) % n_c == 0:
+                        width = len(entries) // n_c
+                        for j, t in enumerate(entries):
+                            union(("theta", t), (cid, j // width))
                     else:
                         for t in entries:
                             for i in range(n_c):
