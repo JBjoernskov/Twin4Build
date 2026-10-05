@@ -199,6 +199,19 @@ class TestRewire(unittest.TestCase):
         model.add_connection(cits, _sensor("cmd", u), "inputSignal", "measuredValue", output_port_index=0)
         return model, cits
 
+    def _wired_sensors(self, model_id, u, sensors, setpoints):
+        """The command ``u``; ``sensors`` and ``setpoints`` (``{id: series}``)
+        on the feedback and the setpoint bus."""
+        model = tb.Model(id=model_id)
+        cits = ControllerIdentificationPISystem(id="cits")
+        for j, (sid, values) in enumerate(sensors.items()):
+            model.add_connection(_sensor(sid, values), cits, "measuredValue", "sensorValue", input_port_index=j)
+        for j, (sid, values) in enumerate(setpoints.items()):
+            model.add_connection(_sensor(sid, values), cits, "measuredValue", "setpointValue", input_port_index=j)
+        model.add_connection(_sensor("flow_sp", np.ones(N)), cits, "measuredValue", "onOffSignal", input_port_index=0)
+        model.add_connection(cits, _sensor("cmd", u), "inputSignal", "measuredValue", output_port_index=0)
+        return model, cits
+
     def _rewire(self, model, mode="train"):
         model.rewire(start_time=[START], end_time=[START + datetime.timedelta(days=DAYS)], step_size=int(STEP), mode=mode)
         return model.simulation_model.rewire_reports["cits"]
@@ -214,6 +227,42 @@ class TestRewire(unittest.TestCase):
         self.assertIsNone(report.max_loop)  # the CO2 explains nothing more
         self.assertEqual(cits.n_sensors, 1)
         self.assertNotIn("max", [entry["type"] for entry in cits.candidate_structure])
+
+    def test_a_room_with_two_sensors_is_controlled_on_their_mix(self):
+        """The valve acts on the mean of the room's two temperature sensors:
+        the rewire keeps both, weighted half and half, and adds no loop on
+        the second sensor."""
+        temperature, setback, flat = _room()
+        _, co2 = _ventilated_room()
+        second = temperature + 0.6 + 0.3 * np.sin(2 * np.pi * T / 37)
+        u = pi_outputs(setback - (temperature + second) / 2, np.array([0.4]), np.array([3600.0]), STEP)[:, 0]
+        model, cits = self._wired_sensors(
+            "test_cits_loops_mix", u, {"zone_t1": temperature, "zone_t2": second, "zone_co2": co2}, {"sp_flat": flat, "sp_setback": setback}
+        )
+        report = self._rewire(model)
+        self.assertEqual(report.feedback, [("zone_t1", 0.5), ("zone_t2", 0.5)])
+        self.assertEqual(report.winner[1], "sp_setback")
+        self.assertIsNone(report.max_loop)
+        self.assertEqual(cits.n_sensors, 2)
+        torch.testing.assert_close(cits.beta_0.get().reshape(-1), torch.tensor([0.5, 0.5], dtype=torch.float64))
+
+    def test_a_room_far_from_its_setpoint_keeps_its_pair(self):
+        """A room 2.5 K below the heating setpoint its valve follows (the
+        valve open in proportion): the pair is ranked by the fit, not
+        removed for sitting more than 1.5 K from the setpoint, so a closer
+        setpoint the valve does not follow does not win."""
+        _, setback, _ = _room()
+        _, co2 = _ventilated_room()
+        temperature = setback - 2.5 + 0.8 * np.sin(2 * np.pi * T / 144) + 0.2 * np.sin(2 * np.pi * T / 23)
+        self.assertGreater(float(np.min(np.abs(setback - temperature))), 1.5)  # on any samples
+        u = pi_outputs(setback - temperature, np.array([0.25]), np.array([np.inf]), STEP)[:, 0]
+        self.assertGreater(float(u.std()), 0.1)  # the valve modulates
+        model, cits = self._wired_sensors(
+            "test_cits_loops_far", u, {"zone_t": temperature, "zone_co2": co2}, {"sp_low": np.full(N, 19.0), "sp_setback": setback}
+        )
+        report = self._rewire(model)
+        self.assertEqual(report.winner[1], "sp_setback")
+        self.assertEqual(report.feedback, [("zone_t", 1.0)])
 
     def test_the_damper_gets_its_co2_loop(self):
         temperature, co2 = _ventilated_room()
