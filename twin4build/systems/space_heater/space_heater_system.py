@@ -559,6 +559,11 @@ class SpaceHeaterSystem(core.System, nn.Module):
     #: ``Power`` was renamed when the water-side power became an output of
     #: its own (see ``System.OUTPUT_PORT_ALIASES``).
     OUTPUT_PORT_ALIASES = {"Power": "toRoomPower"}
+
+    def _state_heat_capacities(self):
+        """Every element holds ``thermalMassHeatCapacity / nelements`` [J/K]."""
+        per_element = self.thermalMassHeatCapacity.get().reshape(-1, 1) / self.nelements
+        return per_element.expand(per_element.shape[0], self.nelements)
     #: Fusable coupling ports (see FusedStateSpaceSystem): the zone's
     #: temperature in, the power given to the room out.  That power is linear
     #: in the element temperatures and the zone temperature (an output row),

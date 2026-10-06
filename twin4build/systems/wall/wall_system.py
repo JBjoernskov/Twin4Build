@@ -290,6 +290,10 @@ class WallSystem(core.System, nn.Module):
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("C", "R_a", "R_b")
 
+    def _state_heat_capacities(self):
+        """``T_wall`` holds ``C`` [J/K]."""
+        return self.C.get().reshape(-1, 1)
+
     #: Fusable coupling ports: both temperature inputs enter the linear B
     #: matrix, and all outputs are exact linear functions of (state, inputs),
     #: so a zone<->wall connection can be eliminated into one monolithic

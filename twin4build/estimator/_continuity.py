@@ -1,6 +1,6 @@
 r"""The jumps a multiple-shooting fit makes at its window boundaries.
 
-With multiple shooting (``Estimator.estimate(..., multiple_shooting=...)``)
+With multiple shooting (``method=(..., "multiple_shooting")``)
 every window starts from a state the fit chooses, tied to the end of the
 window before it by a continuity defect.  The fit may accept a mismatch
 there when it buys a better fit of the following window: a *jump*, the

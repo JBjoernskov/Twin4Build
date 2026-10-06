@@ -1086,12 +1086,6 @@ class Model:
         """
         self.simulation_model.set_save_simulation_result(flag=flag, c=c)
 
-    def get_state(self) -> Dict[str, torch.Tensor]:
-        """The current state of every stateful component, ``{component id:
-        (n_s, state_size)}``; see
-        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_state`."""
-        return self.simulation_model.get_state()
-
     def set_state(
         self,
         state: Optional[Dict[str, Any]],
@@ -1102,10 +1096,6 @@ class Model:
         at every :meth:`initialize`.  See
         :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_state`."""
         self.simulation_model.set_state(state, period_starts=period_starts)
-
-    def clear_state(self) -> None:
-        """Forget the state set by :meth:`set_state`."""
-        self.simulation_model.clear_state()
 
     @staticmethod
     def get_source_component_ids(component: "core.System") -> Tuple[str, ...]:

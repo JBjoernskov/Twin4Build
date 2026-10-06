@@ -112,7 +112,7 @@ class TestFunctionalEstimationObjective(unittest.TestCase):
             )
 
     def test_nan_readings_are_unscored(self):
-        """A NaN in a sensor's readings (an ``allow_missing`` gap) is an
+        """A NaN in a sensor's readings (a ``scoring_mask`` gap) is an
         unscored sample: its residual is zero and every other residual is
         unchanged."""
         est = self.estimator

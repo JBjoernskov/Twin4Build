@@ -249,6 +249,21 @@ class FusedStateSpaceSystem(core.System, nn.Module):
     # Initialization
     # ------------------------------------------------------------------
 
+    def state_heat_capacities(self):
+        """The members' units' heat capacities in the block's state order
+        (members in order, then each member's units), ``(n_c, D)``."""
+        from twin4build.systems.saref4syst.system import _concatenate_capacities
+
+        parts = [unit.state_heat_capacities() for m in self._members for _prefix, unit in m._ss_units()]
+        caps = _concatenate_capacities(parts, self.n_c)
+        width = self.state_size()
+        if caps is None or caps.shape[-1] != width:
+            raise ValueError(
+                f"fused block '{self.id}': its units' capacities cover {None if caps is None else caps.shape[-1]} "
+                f"of its {width} states"
+            )
+        return caps
+
     def initialize(
         self,
         start_time: datetime.datetime = None,
