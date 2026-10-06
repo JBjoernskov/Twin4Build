@@ -96,6 +96,7 @@ __all__ = [
     "Scalar",
     "Parameter",
     "State",
+    "Variable",
     "__version__",
 ]
 
@@ -105,7 +106,7 @@ def __getattr__(name: str):
         value = importlib.import_module("twin4build.utils.types")
     elif name == "plot":
         value = importlib.import_module("twin4build.utils.plot")
-    elif name in {"Vector", "Scalar", "Parameter", "State"}:
+    elif name in {"Vector", "Scalar", "Parameter", "State", "Variable"}:
         value = getattr(importlib.import_module("twin4build.utils.types"), name)
     elif name in _PUBLIC_MODULES:
         value = getattr(importlib.import_module(_PUBLIC_MODULES[name]), name)
