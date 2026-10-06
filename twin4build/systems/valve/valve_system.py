@@ -128,7 +128,7 @@ class ValveSystem(core.System, nn.Module):
             # cap at 5e-3 still allows a very small zone; below that
             # the valve cannot deliver enough water to register a
             # measurable supply-air rise.
-            "waterFlowRateMax": {"lb": 5e-3, "ub": 1.0},
+            "waterFlowRateMax": {"lb": 5e-3, "ub": 1.0, "relative": (0.25, 4.0)},
             # Authority < 0.3 in this characteristic (see class
             # docstring: ``u_norm = u / sqrt(u^2*(1-a) + a)``) makes
             # the valve barely affect flow over much of its travel and

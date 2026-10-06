@@ -153,8 +153,8 @@ class AirToAirHeatRecoverySystem(core.System):
             # operation.  Same 0.5 - 10 kg/s envelope as the fan and
             # damper sub-systems -- needs to bracket the same
             # physical AHU sizes consistently.
-            "primaryAirFlowRateMax":   {"lb": 0.5, "ub": 10.0},
-            "secondaryAirFlowRateMax": {"lb": 0.5, "ub": 10.0},
+            "primaryAirFlowRateMax":   {"lb": 0.5, "ub": 10.0, "relative": (0.25, 4.0)},
+            "secondaryAirFlowRateMax": {"lb": 0.5, "ub": 10.0, "relative": (0.25, 4.0)},
         }
         self._config = {"parameters": list(self.parameter.keys())}
 

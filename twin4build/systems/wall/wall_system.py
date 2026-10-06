@@ -183,9 +183,9 @@ class WallSystem(core.System, nn.Module):
             "wallTemperature": tps.Scalar(T_init),  # Wall temperature [degC]
         }
         self.parameter = {
-            "C": {"lb": 1e3, "ub": 1e8},
-            "R_a": {"lb": 1e-4, "ub": 10.0},
-            "R_b": {"lb": 1e-4, "ub": 10.0},
+            "C": {"lb": 1e3, "ub": 1e8, "relative": (0.1, 10.0)},
+            "R_a": {"lb": 1e-4, "ub": 10.0, "relative": (0.1, 10.0)},
+            "R_b": {"lb": 1e-4, "ub": 10.0, "relative": (0.1, 10.0)},
         }
         self._config = {"parameters": list(self.parameter.keys())}
         self.INITIALIZED = False

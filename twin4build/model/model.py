@@ -1794,6 +1794,10 @@ class Model:
         for key in ("lb", "ub"):
             values = [float(np.asarray(b[key], dtype=float).reshape(-1)[0]) for b in specs]
             stacked[key] = values[0] if len(set(values)) == 1 else values
+        if "relative" in specs[0]:
+            # relative bounds (System.size_parameter) hold for the meta only
+            # when every instance was sized; the others keep the absolute ones
+            stacked["sized"] = all(b.get("sized", False) for b in specs)
         meta_owner.parameter = dict(meta_spec)
         meta_owner.parameter[leaf] = {**specs[0], **stacked}
 
