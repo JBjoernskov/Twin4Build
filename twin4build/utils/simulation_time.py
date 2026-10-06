@@ -39,30 +39,26 @@ def get_simulation_timesteps(
     The steps are ``step_size`` seconds of absolute time apart, and a period
     holds as many as fit in its real duration: across a DST change a day is
     23 or 25 hours long, as long as the data loaded for it.  The datetimes
-    are local times in the start's time zone."""
+    are local times in the start's time zone.
+
+    Periods of different lengths are stepped together for ``max_timesteps``
+    steps: a shorter period's padding continues its own grid past its end
+    (times a schedule can read; ``NaN`` made them fail), and its own steps
+    are the first ``n_timesteps[p]``, which is what a caller keeps."""
     if isinstance(start_time, datetime.datetime):
         start_time = [start_time]
     if isinstance(end_time, datetime.datetime):
         end_time = [end_time]
     if isinstance(step_size, int):
         step_size = [step_size]
-    second_time_steps = []
-    date_time_steps = []
-    n_timesteps = []
-    for start_time_, end_time_, step_size_ in zip(start_time, end_time, step_size):
-        n_steps = math.floor(_elapsed_seconds(start_time_, end_time_) / step_size_)
-        second_time_steps.append([i * step_size_ for i in range(n_steps)])
-        date_time_steps.append(_steps(start_time_, n_steps, step_size_))
-        n_timesteps.append(n_steps)
-    max_timesteps = max(len(time_steps) for time_steps in second_time_steps)
-    second_time_steps = [
-        time_steps + [np.nan] * (max_timesteps - len(time_steps))
-        for time_steps in second_time_steps
+    periods = list(zip(start_time, end_time, step_size))
+    n_timesteps = [
+        math.floor(_elapsed_seconds(start_time_, end_time_) / step_size_)
+        for start_time_, end_time_, step_size_ in periods
     ]
-    date_time_steps = [
-        time_steps + [np.nan] * (max_timesteps - len(time_steps))
-        for time_steps in date_time_steps
-    ]
+    max_timesteps = max(n_timesteps)
+    second_time_steps = [[i * step_size_ for i in range(max_timesteps)] for _s, _e, step_size_ in periods]
+    date_time_steps = [_steps(start_time_, max_timesteps, step_size_) for start_time_, _e, step_size_ in periods]
     return (
         np.array(second_time_steps),
         np.array(date_time_steps),

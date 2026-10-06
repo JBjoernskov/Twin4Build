@@ -94,5 +94,44 @@ class TestStepsAcrossDst(unittest.TestCase):
                 np.testing.assert_allclose(values, np.arange(0, hours * 60, 10, dtype=float))
 
 
+
+class TestPeriodsOfUnequalLength(unittest.TestCase):
+    """A day over a DST change is 23 or 25 hours: periods of one local day
+    differ in length.  A shorter period's padding steps (stepped together
+    with the longer one) carried NaN times, and a schedule reading the clock
+    failed; they now continue its grid, and each period keeps its own
+    steps.  (Multiple shooting still needs windows of one length: equal
+    stretches of absolute time.)"""
+
+    def test_a_fit_over_periods_of_different_lengths(self):
+        from twin4build.tests.estimator.example_fixture import (
+            EXAMPLE_START,
+            STEP_SIZE,
+            example_measurements,
+            example_parameters,
+            load_model,
+        )
+
+        model = load_model()
+        est = tb.Estimator(tb.Simulator(model, execution_mode="functional", execution_backend="eager", compile_step=False))
+        t0 = EXAMPLE_START[0]
+        bounds = [t0, t0 + datetime.timedelta(hours=11), t0 + datetime.timedelta(hours=23)]  # 11 h, then 12 h
+        est.estimate(
+            parameters=example_parameters(model),
+            measurements=example_measurements(model),
+            start_time=bounds[:-1],
+            end_time=bounds[1:],
+            step_size=STEP_SIZE,
+            n_warmup=2,
+            method=("scipy", "SLSQP", "ad"),
+            options={"maxiter": 1},
+        )
+        obj = est._functional_objective
+        self.assertIsNotNone(obj)
+        steps = [int((b - a).total_seconds()) // STEP_SIZE for a, b in zip(bounds, bounds[1:])]
+        self.assertEqual([int(n) for n in obj.n_t], steps)
+        self.assertEqual([a.shape[0] for a in obj.ACT], steps)
+
+
 if __name__ == "__main__":
     unittest.main()
