@@ -140,6 +140,56 @@ class TestStepGraphScope(unittest.TestCase):
         torch.testing.assert_close(results["step"][0], results["eager"][0], rtol=1e-4, atol=1e-6)
         torch.testing.assert_close(results["step"][1], results["eager"][1], rtol=1e-3, atol=1e-6)
 
+    def test_tape_gradient_matches_eager(self):
+        """The gradient with respect to the exogenous tape (the optimizer's
+        trajectory decision variables override columns of it) under per-step
+        graphs equals the eager rollout's, for one parameter vector and for a
+        batch of them on one shared tape (#236).  Before, the step graphs
+        returned no tape gradient at all."""
+        from twin4build.tests.estimator.example_fixture import (
+            EXAMPLE_START,
+            STEP_SIZE,
+            example_measurements,
+            example_parameters,
+            load_model,
+        )
+
+        results = {}
+        for name, kwargs in (("eager", dict(execution_backend="eager", compile_step=False)), ("step", dict(execution_backend="cuda_graph", cuda_graph_scope="step"))):
+            model = load_model()
+            model.to(device="cuda", dtype=torch.float64)
+            simulator = tb.Simulator(model, execution_mode="functional", **kwargs)
+            est = tb.Estimator(simulator)
+            start = EXAMPLE_START[0]
+            est.estimate(
+                parameters=example_parameters(model),
+                measurements=example_measurements(model),
+                start_time=[start],
+                end_time=[start + datetime.timedelta(hours=24)],
+                step_size=STEP_SIZE,
+                n_warmup=5,
+                method=("scipy", "SLSQP", "ad"),
+                options={"maxiter": 1},
+            )
+            obj = est._functional_objective
+            x0 = torch.tensor(np.asarray(est._x0_norm, dtype=np.float64), dtype=torch.float64, device="cuda")
+            theta, _ = obj._physical(x0)
+            self.assertEqual(simulator.step_graph_active(torch.device("cuda")), name == "step")
+
+            tape = obj.CAP[0].detach().clone().requires_grad_(True)
+            out = simulator.rollout_functional(obj.composer, obj.Y0[0], theta, tape, transform_mode=True)
+            weights = torch.linspace(0.5, 1.5, out.numel(), dtype=out.dtype, device=out.device).reshape(out.shape)
+            (single,) = torch.autograd.grad((out * weights).sum(), tape)
+
+            shared = obj.CAP[0].detach().clone().requires_grad_(True)
+            Theta = torch.stack([theta, theta * 1.01])
+            batch = simulator.rollout_functional_batched(obj.composer, obj.Y0[0].unsqueeze(0).expand(2, -1), Theta, shared)
+            (batched,) = torch.autograd.grad(batch.sum(), shared)
+            results[name] = (single.cpu(), batched.cpu())
+        self.assertGreater(float(results["eager"][0].abs().max()), 0.0)
+        torch.testing.assert_close(results["step"][0], results["eager"][0], rtol=1e-3, atol=1e-6)
+        torch.testing.assert_close(results["step"][1], results["eager"][1], rtol=1e-3, atol=1e-6)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,6 +16,10 @@ last step to the first.  Both are wrapped in one :class:`torch.autograd.Function
 so the estimator's objectives differentiate through the rollout exactly as
 before, without capturing anything at rollout level.  Memory is one step's
 two graphs plus the saved states; time is one graph launch per step.
+When the exogenous tape requires grad (the optimizer's trajectory decision
+variables override columns of it), the adjoint graph also returns each
+step's input-row cotangent and the rollout returns them as the tape's
+gradient (#236); otherwise that output is not captured at all.
 
 The step is the compiled transform-mode step (:meth:`FunctionalModel.compiled_step`,
 or the compiled batched step for a batch of parameter vectors); the
@@ -118,12 +122,16 @@ class StepGraphs:
     ``step(y, theta, u, constants)`` is the (compiled) transform-mode step;
     ``constants`` is the pytree the rollout hoists (``None`` for the batched
     step, which rebuilds its matrices).  ``static`` = ``(theta, *leaves)``.
+    With ``tape_grad`` the adjoint also returns the cotangent of the step's
+    input row ``u``: its outputs are ``(ybar, thetabar, ubar, *leafbars)``,
+    else ``(ybar, thetabar, *leafbars)``.
     """
 
-    def __init__(self, step: Callable, spec, n_leaves: int, name: str = "step"):
+    def __init__(self, step: Callable, spec, n_leaves: int, name: str = "step", tape_grad: bool = False):
         self.step = step
         self.spec = spec
         self.n_leaves = int(n_leaves)
+        self.tape_grad = bool(tape_grad)
         n_static = 1 + self.n_leaves
 
         def unflatten(leaves):
@@ -138,13 +146,13 @@ class StepGraphs:
             leaves, (y, u, ybar_next, mbar) = rest[: self.n_leaves], rest[self.n_leaves :]
             y_ = y.detach().requires_grad_(True)
             theta_ = theta.detach().requires_grad_(True)
+            u_ = u.detach().requires_grad_(True) if self.tape_grad else u
             leaves_ = [l.detach().requires_grad_(True) for l in leaves]
+            wrt = (y_, theta_, u_, *leaves_) if self.tape_grad else (y_, theta_, *leaves_)
             with torch.enable_grad():
-                y_next, meas = step(y_, theta_, u, unflatten(leaves_))
-                grads = torch.autograd.grad(
-                    (y_next, meas), (y_, theta_, *leaves_), grad_outputs=(ybar_next, mbar), allow_unused=True
-                )
-            return tuple(g if g is not None else torch.zeros_like(x) for g, x in zip(grads, (y_, theta_, *leaves_)))
+                y_next, meas = step(y_, theta_, u_, unflatten(leaves_))
+                grads = torch.autograd.grad((y_next, meas), wrt, grad_outputs=(ybar_next, mbar), allow_unused=True)
+            return tuple(g if g is not None else torch.zeros_like(x) for g, x in zip(grads, wrt))
 
         self.fwd = StepGraph(fwd_fn, n_static, name=f"{name}:forward")
         self.adj = StepGraph(adj_fn, n_static, name=f"{name}:adjoint")
@@ -158,7 +166,8 @@ class _StepGraphRollout(torch.autograd.Function):
     """The rollout as one autograd node: forward replays the step graph and
     keeps the states, backward sweeps the adjoint graph from the last step
     to the first, accumulating the cotangents of theta and of the hoisted
-    matrices."""
+    matrices, and (``graphs.tape_grad``) collecting each step's input-row
+    cotangent as the tape's gradient."""
 
     @staticmethod
     def forward(ctx, graphs: StepGraphs, y0, theta, tape, *leaves):
@@ -186,7 +195,9 @@ class _StepGraphRollout(torch.autograd.Function):
         n_t = tape.shape[0]
         ybar = torch.zeros_like(states[0])
         thetabar = torch.zeros_like(theta)
+        tapebar = torch.zeros_like(tape) if graphs.tape_grad else None
         leafbars = [torch.zeros_like(l) for l in leaves]
+        first_leaf = 3 if graphs.tape_grad else 2
         with torch.no_grad():
             for t in range(n_t - 1, -1, -1):
                 if sbar is not None:
@@ -194,18 +205,22 @@ class _StepGraphRollout(torch.autograd.Function):
                 out = graphs.adj(states[t], tape[t], ybar, mbar[t])
                 ybar = out[0].clone()
                 thetabar += out[1]
+                if tapebar is not None:
+                    tapebar[t] = out[2]
                 for i in range(len(leaves)):
-                    leafbars[i] += out[2 + i]
+                    leafbars[i] += out[first_leaf + i]
             if sbar is not None:
                 ybar = ybar + sbar[0]
-        return (None, ybar, thetabar, None, *leafbars)
+        return (None, ybar, thetabar, tapebar, *leafbars)
 
 
 def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = False, kind: Optional[str] = None):
     """Roll ``functional_model`` over ``tape`` with per-step CUDA graphs.
 
     Returns ``(states (n_t + 1, ...), outputs (n_t, ...))``, both
-    differentiable w.r.t. ``theta`` (and ``y0``).  ``kind``:
+    differentiable w.r.t. ``theta`` and ``y0``, and w.r.t. ``tape`` when it
+    requires grad (its graphs then return the input rows' cotangents; they
+    are cached apart from the ones without).  ``kind``:
 
     * ``"scalar"`` (default): ``y0 (D_aug,)``, ``theta (n_theta,)``,
       ``tape (n_t, n_exogenous)``; the compiled step with the hoisted
@@ -251,7 +266,8 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
         leaves, spec = pytree.tree_flatten(constants)
     else:
         raise ValueError(f"unknown step kind {kind!r}")
-    key = (kind, tuple(y0.shape), tuple(theta.shape), tuple(tape.shape[1:]), tuple(tuple(l.shape) for l in leaves))
+    tape_grad = bool(tape.requires_grad and torch.is_grad_enabled())
+    key = (kind, tuple(y0.shape), tuple(theta.shape), tuple(tape.shape[1:]), tuple(tuple(l.shape) for l in leaves), tape_grad)
     # A captured step reads every tensor it touches at its address at capture;
     # an initialize() of the model reallocates the components' tensors, and a
     # graph from before reads freed memory (the second simulate() of one
@@ -263,6 +279,6 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
     cache = functional_model.__dict__.setdefault("_step_graphs", {})
     graphs = cache.get(key)
     if graphs is None:
-        graphs = StepGraphs(step, spec, len(leaves), name=f"{kind} step")
+        graphs = StepGraphs(step, spec, len(leaves), name=f"{kind} step", tape_grad=tape_grad)
         cache[key] = graphs
     return _StepGraphRollout.apply(graphs, y0, theta, tape, *leaves)
