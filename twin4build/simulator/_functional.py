@@ -1256,9 +1256,15 @@ class FunctionalModel:
                     if exo is not None and not groups and not leftovers:
                         value = exogenous[exo[0]]
                     else:
-                        value = torch.zeros((n_c, n_v), dtype=states_flat.dtype, device=states_flat.device)
+                        # Assembled flat and functionally (scatter, then
+                        # scatter_add): torch 2.11 Inductor miscompiles
+                        # ``index_put`` into this unbatched buffer under
+                        # ``vmap``, every batch row writing the same storage
+                        # (#241).  Same values: the exogenous slots are
+                        # unique, the producers' values add as before.
+                        value = torch.zeros((n_c * n_v,), dtype=states_flat.dtype, device=states_flat.device)
                         if exo is not None:
-                            value = value.index_put((exo[1], exo[2]), exogenous[exo[0]])
+                            value = torch.scatter(value, 0, (exo[1] * n_v + exo[2]).reshape(-1), exogenous[exo[0]].reshape(-1))
                         for pid, pport, is_vector, s_ic, out_v, r_ic, in_v in groups:
                             out = produced[pid][pport]
                             if is_vector and out.ndim >= 2:
@@ -1267,9 +1273,10 @@ class FunctionalModel:
                                 gathered = out[out_v]
                             else:
                                 gathered = out.reshape(-1)[s_ic]
-                            value = value.index_put((r_ic, in_v), gathered, accumulate=True)
+                            value = torch.scatter_add(value, 0, r_ic * n_v + in_v, gathered.reshape(-1))
                         for rows_t, slot_full, slot_spec in leftovers:
-                            value = value.index_put((rows_t, slot_full), _input_value(slot_spec).reshape(-1), accumulate=True)
+                            value = torch.scatter_add(value, 0, rows_t * n_v + slot_full, _input_value(slot_spec).reshape(-1))
+                        value = value.reshape(n_c, n_v)
                     inputs[port] = value
                 elif spec[0] == "vector":
                     vals = []
