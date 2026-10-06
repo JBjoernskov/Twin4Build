@@ -44,6 +44,7 @@ from twin4build.solvers.registry import (
 from twin4build.utils._cuda_graph import is_cuda_graph_capture_invalidated
 from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
+from twin4build.utils.problem_variables import estimator_parameters
 from twin4build.utils.method_spec import parse_method
 from twin4build.utils.result import ResultDict
 from twin4build.utils.rgetattr import rgetattr
@@ -478,6 +479,17 @@ class Estimator:
 
             parameters: Parameter specifications. Either the string ``"auto"`` or
                 a list/dict as described below.
+
+                **Variables**: an entry may also be a :class:`tb.Variable
+                <twin4build.utils.types.Variable>` or a bare ``tb.Parameter``
+                (a ``Variable`` with its defaults): the parameter object names
+                itself, its bounds default to the ones its component declares
+                (else its own ``min_value`` / ``max_value``), ``x0=None``
+                starts from its current value, and ``components="private"``
+                gives each listed component its own value (``"shared"``: one
+                for all of them).  They resolve to the tuples below::
+
+                    parameters = [space.thermal.C_air, tb.Variable(controller.kp, lb=1e-5, ub=1.0)]
 
                 **Auto-discovery**: Passing ``parameters="auto"`` walks every
                 component on the model and collects parameter tuples from those
@@ -933,6 +945,10 @@ class Estimator:
                     f"start_time ({s}) must be strictly less than end_time ({e})"
                 )
 
+        # tb.Variable / bare parameters -> (component, path) tuples, before the
+        # eager initialize: it may replace a parameter object (a multi-branch
+        # component widens it), and the path is what stays (#235)
+        parameters = estimator_parameters(parameters, self.simulator.model)
         self.simulator.model.initialize(start_time, end_time, step_size)
 
         # ``parameters="auto"`` / ``measurements="auto"`` sentinels.
