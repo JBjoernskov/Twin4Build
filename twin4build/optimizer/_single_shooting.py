@@ -241,6 +241,27 @@ class FunctionalControlObjective:
         # -- reference rollout (captures exogenous inputs, initial state) ------
         self._record_exogenous_inputs()
 
+        # -- periods and warm-up ------------------------------------------------
+        # Every period starts from defined states (the model's set state for
+        # that period start, e.g. an estimation result's, else the components'
+        # own initial conditions; states are never decision variables) and its
+        # first ``n_warmup`` steps are simulated but kept out of the objectives
+        # and constraints, as in the Estimator.
+        self.n_warmup = int(getattr(opt, "_n_warmup", 0) or 0)
+        if self.n_warmup and self.n_warmup >= min(self.n_t):
+            raise ValueError(f"n_warmup={self.n_warmup} leaves no step of the shortest period ({min(self.n_t)} steps)")
+        # Equal-length periods roll out side by side (the Estimator's windows,
+        # Simulator.rollout_functional_windows / _batched_windows).  A
+        # trajectory decision variable overrides the tape per period and row,
+        # which the windowed rollouts' shared tape cannot carry yet: then the
+        # periods step one after another (#237).
+        self.parallel_periods = bool(
+            self.n_periods > 1 and len(set(self.n_t)) == 1 and not self._has_slots and self.n_traj == 0
+        )
+        if self.parallel_periods:
+            self._Y0_windows = torch.stack(list(self.Y0))  # (P, D_aug)
+            self._tape_windows = torch.stack(list(self.CAP), dim=1)  # (n_t, P, n_exogenous)
+
         # -- normalization floats ----------------------------------------------
         # Populate each loss port's normalization cache from the reference
         # history -- exactly the history the object-graph path would cache from
@@ -279,8 +300,8 @@ class FunctionalControlObjective:
                     j,
                     [
                         (
-                            d[: self.n_t[p], p, :]
-                            .reshape(self.n_t[p], -1)
+                            d[self.n_warmup : self.n_t[p], p, :]
+                            .reshape(self.n_t[p] - self.n_warmup, -1)
                             .expand(-1, width)
                             .reshape(-1)
                             - mn
@@ -304,8 +325,8 @@ class FunctionalControlObjective:
                     ctype,
                     [
                         (
-                            d[: self.n_t[p], p, :]
-                            .reshape(self.n_t[p], -1)
+                            d[self.n_warmup : self.n_t[p], p, :]
+                            .reshape(self.n_t[p] - self.n_warmup, -1)
                             .expand(-1, width)
                             .reshape(-1)
                             - mn
@@ -388,6 +409,9 @@ class FunctionalControlObjective:
         # (functionally -- see __init__) and step the composed map (the shared
         # sequential rollout, :meth:`Simulator.rollout_functional`).
         sim = opt.simulator
+        if self.parallel_periods:
+            M = sim.rollout_functional_windows(self.composer, self._Y0_windows, theta_params, self._tape_windows)
+            return [[M[p][:, idx] for _kind, idx in self.out_kind] for p in range(self.n_periods)]
         OUT = []
         for p in range(self.n_periods):
             cap = self.CAP[p]
@@ -439,12 +463,15 @@ class FunctionalControlObjective:
 
         # Means over the per-period concatenation equal the object graph's
         # masked means (the mask selects the same entries; means are
-        # order-invariant).
+        # order-invariant).  The first ``n_warmup`` steps of every period are
+        # left out.
+        w = self.n_warmup
+
         def _norm_col(j):
             mn, mx = self._out_norm[j]
             return torch.cat(
                 [
-                    ((OUT[p][j] - mn) / (mx - mn)).reshape(-1)
+                    ((OUT[p][j][w:] - mn) / (mx - mn)).reshape(-1)
                     for p in range(self.n_periods)
                 ]
             )
@@ -478,7 +505,7 @@ class FunctionalControlObjective:
             objs.append(m if objective_type == "min" else -m)
             phys.append(
                 torch.mean(
-                    torch.cat([OUT[p][j].reshape(-1) for p in range(self.n_periods)])
+                    torch.cat([OUT[p][j][w:].reshape(-1) for p in range(self.n_periods)])
                 )
             )
 
@@ -490,7 +517,9 @@ class FunctionalControlObjective:
         variables: ``OUT[p][j]`` of shape ``(B, n_t_p, n_c_j)`` from one wide
         rollout per period (:meth:`Simulator.rollout_functional_batched`: the
         compiled step over the rows, replayed as per-step CUDA graphs under
-        ``cuda_graph_scope="step"``), as the Estimator's ``_rollout_batched``.
+        ``cuda_graph_scope="step"``), as the Estimator's ``_rollout_batched``;
+        with :attr:`parallel_periods` one rollout of rows x periods
+        (:meth:`Simulator.rollout_functional_batched_windows`).
         Trajectory decision variables override the captured tape per row,
         which the batched step's shared tape cannot carry: not batched here
         (:meth:`batched_parts` runs them row by row)."""
@@ -502,6 +531,10 @@ class FunctionalControlObjective:
             offset += n
         Theta = torch.cat(pieces, dim=1) if pieces else self._theta_empty.expand(B, 0)
         sim = self.opt.simulator
+        if self.parallel_periods:
+            # rows x periods side by side (the Estimator's batched windows)
+            M = sim.rollout_functional_batched_windows(self.composer, self._Y0_windows, Theta, self._tape_windows)
+            return [[M[:, p][:, :, idx] for _kind, idx in self.out_kind] for p in range(self.n_periods)]
         OUT = []
         for p in range(self.n_periods):
             M = sim.rollout_functional_batched(

@@ -450,6 +450,7 @@ class Optimizer:
         ineq_cons: List[Tuple[Any, str, str, Any]] = None,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         options: Dict = None,
+        n_warmup: int = 0,
         **kwargs,
     ):
         """
@@ -493,6 +494,13 @@ class Optimizer:
                 Examples: ``("scipy", "SLSQP", "ad")`` is preferred for most
                 constrained optimization problems.
 
+            n_warmup: Steps at the start of every period that are simulated
+                but kept out of the objectives and constraints, as the
+                Estimator's ``n_warmup``.  Every period starts from defined
+                states (the model's set state for that period start, e.g. an
+                estimation result's via ``load_estimation_result``, else the
+                components' own initial conditions); states are never decision
+                variables.  Needs the functional objective.
             options: Additional options for the chosen method:
 
                 - "verbose": Verbosity level (0-3)
@@ -540,6 +548,7 @@ class Optimizer:
         self._start_time = start_time
         self._end_time = end_time
         self._stepSize = step_size
+        self._n_warmup = int(n_warmup)
         self._max_values = {}
 
         # Validate input arguments
@@ -844,6 +853,7 @@ class Optimizer:
         batched_prepass: bool = True,
         prepass_options: Dict = None,
         options: Dict = None,
+        n_warmup: int = 0,
     ):
         """Trace a bi-objective front with the augmented epsilon-constraint method.
 
@@ -861,6 +871,11 @@ class Optimizer:
         :func:`twin4build.solvers.registry.register_pareto_route` is accepted
         under its own method tuple; it replaces both the anchor solves and
         the epsilon sweep and receives ``options`` unchanged.
+
+        Several periods (``start_time`` / ``end_time`` lists) of equal length
+        roll out side by side; ``n_warmup`` steps at the start of every period
+        are simulated but kept out of the objectives and constraints (see
+        :meth:`optimize`).
         """
         built_in = (
             ("scipy", "SLSQP", "ad"),
@@ -898,6 +913,7 @@ class Optimizer:
         self._start_time, self._end_time, self._stepSize = validate_period(
             start_time, end_time, step_size
         )
+        self._n_warmup = int(n_warmup)  # as in optimize()
         self._max_values = {}
         (
             self._second_time_steps,
@@ -1538,6 +1554,11 @@ class Optimizer:
             )
         if self.simulator.execution_mode == "functional" and method[2] == "ad":
             self._setup_functional_objective(x0)
+        if getattr(self, "_n_warmup", 0) and self._functional_objective is None:
+            raise RuntimeError(
+                "n_warmup needs the functional objective: construct "
+                "Simulator(model, execution_mode='functional') and use an 'ad' method."
+            )
         if self._parameter_variables and self._functional_objective is None:
             raise RuntimeError(
                 "Parameter decision variables need the functional objective: construct "

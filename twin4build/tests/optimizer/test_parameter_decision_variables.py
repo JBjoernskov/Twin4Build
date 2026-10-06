@@ -104,7 +104,7 @@ class TestParameterDecisionVariables(unittest.TestCase):
         optimizer.optimize(
             start_time=self.start, end_time=self.end, step_size=2400,
             variables=[(curve, "Y", 12.0, 24.0)],
-            objectives=[(heater, "toRoomPower", "min"), (discomfort, "output", "min")],
+            objectives=[(heater, "Power", "min"), (discomfort, "output", "min")],
             method=("scipy", "SLSQP", "ad"),
             options={"maxiter": 1},
         )
@@ -141,6 +141,78 @@ class TestParameterDecisionVariables(unittest.TestCase):
             torch.stack(rows.objs).detach().numpy(), torch.stack(wide.objs).detach().numpy(), rtol=1e-9
         )
 
+    def _periods(self):
+        """Three periods of 24 h starting at 00, 08 and 16 h on consecutive
+        days: each meets the outdoor step at another time of its day."""
+        starts = [self.start + datetime.timedelta(days=d, hours=8 * d) for d in range(3)]
+        return starts, [s + datetime.timedelta(hours=24) for s in starts]
+
+    def _periods_objective(self, n_warmup=0):
+        starts, ends = self._periods()
+        optimizer = self._optimizer()
+        optimizer.optimize(
+            start_time=starts, end_time=ends, step_size=2400,
+            variables=[(self.curve, "Y", 12.0, 24.0)],
+            objectives=[(self.heater, "Power", "min"), (self.discomfort, "output", "min")],
+            method=("scipy", "SLSQP", "ad"),
+            options={"maxiter": 1},
+            n_warmup=n_warmup,
+        )
+        return optimizer._functional_objective
+
+    def test_periods_roll_out_side_by_side(self):
+        """Equal-length periods roll out side by side (the Estimator's
+        windows): the same parts and gradients as one period after another,
+        for one row and for a batch of rows."""
+        objective = self._periods_objective()
+        self.assertTrue(objective.parallel_periods)
+        theta = torch.tensor(self.THETA, dtype=torch.float64)
+        results = {}
+        for parallel in (True, False):
+            objective.parallel_periods = parallel
+            z = theta.clone().requires_grad_(True)
+            batch = objective._batched_parts_wide(z)
+            (gradient,) = torch.autograd.grad(sum(batch.objs).sum(), z)
+            row = objective.parts(theta[0])
+            results[parallel] = (
+                torch.stack(batch.objs + batch.phys).detach(), gradient, torch.stack(row.objs + row.phys).detach()
+            )
+        for side, sequence in zip(results[True], results[False]):
+            np.testing.assert_allclose(side.numpy(), sequence.numpy(), rtol=1e-8, atol=1e-12)
+        # the periods do differ: they meet the outdoor step at other times of their day
+        objective.parallel_periods = True
+        out = objective._rollout(theta[0])
+        j = objective._obj_terms[0][0]
+        self.assertFalse(torch.allclose(out[0][j], out[1][j]))
+
+    def test_warmup_steps_leave_the_objectives(self):
+        """The first ``n_warmup`` steps of every period are simulated but not
+        part of the objectives."""
+        objective = self._periods_objective(n_warmup=6)
+        theta = torch.tensor(self.THETA[0], dtype=torch.float64)
+        out = objective._rollout(theta)
+        parts = objective.parts(theta)
+        for k, (j, _kind) in enumerate(objective._obj_terms):
+            kept = torch.cat([out[p][j][6:].reshape(-1) for p in range(3)]).mean()
+            np.testing.assert_allclose(float(parts.phys[k]), float(kept), rtol=1e-12)
+        heater = objective._obj_terms[0][0]
+        everything = torch.cat([out[p][heater].reshape(-1) for p in range(3)]).mean()
+        self.assertGreater(abs(float(parts.phys[0]) - float(everything)), 1e-6 * abs(float(everything)))
+
+    def test_warmup_needs_the_functional_objective(self):
+        starts, ends = self._periods()
+        optimizer = tb.Optimizer(tb.Simulator(self.model, execution_mode="object"))
+        waterflow = self.model.components["Waterflow"]
+        with self.assertRaises(RuntimeError):
+            optimizer.optimize(
+                start_time=starts, end_time=ends, step_size=2400,
+                variables=[(waterflow, "scheduleValue", 0.0, 0.02)],
+                objectives=[(self.heater, "Power", "min")],
+                method=("scipy", "SLSQP", "ad"),
+                options={"maxiter": 1},
+                n_warmup=6,
+            )
+
     @unittest.skipUnless(torch.cuda.is_available(), "the captured, compiled step needs CUDA")
     def test_batched_parts_on_the_captured_compiled_step(self):
         """On the GPU with per-step CUDA graphs of the compiled step: the
@@ -158,6 +230,34 @@ class TestParameterDecisionVariables(unittest.TestCase):
         z = theta.clone().requires_grad_(True)
         batch = objective.batched_parts(z)
         (gradient,) = torch.autograd.grad(sum(batch.objs).sum(), z)
+        self._assert_rows(objective, batch, theta, gradient, transform_mode=True)
+
+    @unittest.skipUnless(torch.cuda.is_available(), "the captured, compiled step needs CUDA")
+    def test_periods_side_by_side_on_the_captured_compiled_step(self):
+        """On the GPU with per-step CUDA graphs: periods side by side, for a
+        batch of rows, give each row its own sequential parts and gradient."""
+        model, curve, heater, discomfort = build_model(self.MODEL_ID + "_gpu")
+        model.to(device="cuda", dtype=torch.float64)
+        simulator = tb.Simulator(
+            model, execution_mode="functional", execution_backend="cuda_graph",
+            compile_step=True, cuda_graph_scope="step",
+        )
+        starts, ends = self._periods()
+        optimizer = tb.Optimizer(simulator)
+        optimizer.optimize(
+            start_time=starts, end_time=ends, step_size=2400,
+            variables=[(curve, "Y", 12.0, 24.0)],
+            objectives=[(heater, "Power", "min"), (discomfort, "output", "min")],
+            method=("scipy", "SLSQP", "ad"),
+            options={"maxiter": 1},
+        )
+        objective = optimizer._functional_objective
+        self.assertTrue(objective.parallel_periods and simulator.step_graph_active(torch.device("cuda")))
+        theta = torch.tensor(self.THETA, dtype=torch.float64, device="cuda")
+        z = theta.clone().requires_grad_(True)
+        batch = objective.batched_parts(z)
+        (gradient,) = torch.autograd.grad(sum(batch.objs).sum(), z)
+        objective.parallel_periods = False  # the reference: one period after another, row by row
         self._assert_rows(objective, batch, theta, gradient, transform_mode=True)
 
     def test_curve_points_are_the_decision_vector(self):
