@@ -231,6 +231,64 @@ miss an algebraic cycle. Over-declaration preserves numerical correctness but
 may reject a valid fusion or perform unnecessary work. Never discover support
 by evaluating one default, lower-bound, or random parameter point.
 
+Every output of a fused member must be computed by the fused block. An output
+that is no row of ``C`` and ``D`` (it is not linear in the states and
+inputs, like a radiator's water-side power ``waterFlowRate * c_p *
+(supplyWaterTemperature - outletWaterTemperature)``) is a *derived output*.
+The unit names it in ``SS_DERIVED_OUTPUT_PORTS``, names what it is computed
+from in ``SS_DERIVED_INPUT_PORTS`` (external input ports) and
+``SS_DERIVED_ROW_PORTS`` (its own output rows), and supplies a pure
+``_ss_derived_outputs(inputs, rows)`` that returns the outputs by name. The
+fused block calls it after the joint step with the step's inputs and the
+end-of-step rows; the unit's own ``forward`` should call the same function,
+so that fused and unfused agree by construction:
+
+.. code-block:: python
+
+   SS_DERIVED_OUTPUT_PORTS = ("toRadiatorPower",)
+   SS_DERIVED_INPUT_PORTS = ("supplyWaterTemperature", "waterFlowRate")
+   SS_DERIVED_ROW_PORTS = ("outletWaterTemperature",)
+
+   @staticmethod
+   def _ss_derived_outputs(inputs, rows):
+       return {
+           "toRadiatorPower": inputs["waterFlowRate"]
+           * CP_WATER
+           * (inputs["supplyWaterTemperature"] - rows["outletWaterTemperature"]),
+       }
+
+A derived output cannot couple members (only output rows are eliminated), so
+it must not appear in ``FUSABLE_OUTPUT_PORTS``. A fused block logs a warning
+for a member output that is neither a row nor a derived output: that output
+would keep its initial value.
+
+Renaming an output port
+-----------------------
+
+A component that renames an output port keeps the old name working for a
+release. It lists the old name in ``OUTPUT_PORT_ALIASES`` (``{"old":
+"new"}``) and holds its outputs in an
+:class:`~twin4build.systems.saref4syst.system.AliasedPorts`:
+
+.. code-block:: python
+
+   OUTPUT_PORT_ALIASES = {"Power": "toRoomPower"}
+
+   self._output = core.AliasedPorts(
+       {"toRoomPower": tps.Scalar(0), ...},
+       aliases=self.OUTPUT_PORT_ALIASES,
+       owner=type(self).__name__,
+   )
+
+The ports are a plain ``dict`` of the current names, so everything that walks
+them sees one name per port; ``output["old"]`` and ``output.get("old")``
+return the renamed port with a ``DeprecationWarning`` and ``"old" in output``
+is true. ``Model.add_connection`` and ``remove_connection``, the loader of a
+saved model, the translator's signature-pattern inputs and the optimizer's
+``(component, port, ...)`` tuples replace the old name through
+``System.resolve_output_port``, so connections, saved models, fusion,
+batching and the functional rollout hold the new name only.
+
 Persistent tensors in ``nn.Module``
 -----------------------------------
 

@@ -102,7 +102,7 @@ class TestSerializeRoundTrip(unittest.TestCase):
         model.add_connection(_schedule("water", 0.01), heater, "scheduleValue", "waterFlowRate")
         model.add_connection(_schedule("t_water", 60.0), heater, "scheduleValue", "supplyWaterTemperature")
         model.add_connection(room, heater, "indoorTemperature", "indoorTemperature")
-        model.add_connection(heater, room, "Power", "heatGain")
+        model.add_connection(heater, room, "toRoomPower", "heatGain")
         model.load()
         # "Fitted" values, nested and flat, written the way the estimator writes them.
         model.simulation_model.set_parameters(

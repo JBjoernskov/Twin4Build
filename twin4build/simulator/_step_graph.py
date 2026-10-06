@@ -16,6 +16,10 @@ last step to the first.  Both are wrapped in one :class:`torch.autograd.Function
 so the estimator's objectives differentiate through the rollout exactly as
 before, without capturing anything at rollout level.  Memory is one step's
 two graphs plus the saved states; time is one graph launch per step.
+When the exogenous tape requires grad (the optimizer's trajectory decision
+variables override columns of it), the rollout returns the tape's gradient
+from a second adjoint graph that also returns each step's input-row
+cotangent (#236); the forward graph is the same either way.
 
 The step is the compiled transform-mode step (:meth:`FunctionalModel.compiled_step`,
 or the compiled batched step for a batch of parameter vectors); the
@@ -118,12 +122,16 @@ class StepGraphs:
     ``step(y, theta, u, constants)`` is the (compiled) transform-mode step;
     ``constants`` is the pytree the rollout hoists (``None`` for the batched
     step, which rebuilds its matrices).  ``static`` = ``(theta, *leaves)``.
+    The adjoint's outputs are ``(ybar, thetabar, *leafbars)``, and with
+    ``tape_grad`` the cotangent of the step's input row ``u`` after them;
+    :meth:`adjoint` captures the variant a backward needs, once.
     """
 
     def __init__(self, step: Callable, spec, n_leaves: int, name: str = "step"):
         self.step = step
         self.spec = spec
         self.n_leaves = int(n_leaves)
+        self.name = name
         n_static = 1 + self.n_leaves
 
         def unflatten(leaves):
@@ -134,31 +142,42 @@ class StepGraphs:
             y_next, meas = step(y, theta, u, unflatten(leaves))
             return y_next, meas
 
-        def adj_fn(theta, *rest):
+        def adj_fn(theta, *rest, tape_grad=False):
             leaves, (y, u, ybar_next, mbar) = rest[: self.n_leaves], rest[self.n_leaves :]
             y_ = y.detach().requires_grad_(True)
             theta_ = theta.detach().requires_grad_(True)
+            u_ = u.detach().requires_grad_(True) if tape_grad else u
             leaves_ = [l.detach().requires_grad_(True) for l in leaves]
+            wrt = (y_, theta_, *leaves_) + ((u_,) if tape_grad else ())
             with torch.enable_grad():
-                y_next, meas = step(y_, theta_, u, unflatten(leaves_))
-                grads = torch.autograd.grad(
-                    (y_next, meas), (y_, theta_, *leaves_), grad_outputs=(ybar_next, mbar), allow_unused=True
-                )
-            return tuple(g if g is not None else torch.zeros_like(x) for g, x in zip(grads, (y_, theta_, *leaves_)))
+                y_next, meas = step(y_, theta_, u_, unflatten(leaves_))
+                grads = torch.autograd.grad((y_next, meas), wrt, grad_outputs=(ybar_next, mbar), allow_unused=True)
+            return tuple(g if g is not None else torch.zeros_like(x) for g, x in zip(grads, wrt))
 
         self.fwd = StepGraph(fwd_fn, n_static, name=f"{name}:forward")
-        self.adj = StepGraph(adj_fn, n_static, name=f"{name}:adjoint")
+        self._adj_fn = adj_fn
+        self._n_static = n_static
+        self._adjoints = {}
+
+    def adjoint(self, tape_grad: bool) -> StepGraph:
+        """The adjoint graph, with (``tape_grad``) or without the input-row cotangent."""
+        graph = self._adjoints.get(bool(tape_grad))
+        if graph is None:
+            fn = self._adj_fn if not tape_grad else (lambda *a: self._adj_fn(*a, tape_grad=True))
+            graph = StepGraph(fn, self._n_static, name=f"{self.name}:adjoint{':tape' if tape_grad else ''}")
+            self._adjoints[bool(tape_grad)] = graph
+        return graph
 
     def set_static(self, theta: torch.Tensor, leaves: Sequence[torch.Tensor]) -> None:
         self.fwd.set_static(theta, *leaves)
-        self.adj.set_static(theta, *leaves)
 
 
 class _StepGraphRollout(torch.autograd.Function):
     """The rollout as one autograd node: forward replays the step graph and
     keeps the states, backward sweeps the adjoint graph from the last step
     to the first, accumulating the cotangents of theta and of the hoisted
-    matrices."""
+    matrices, and, when the tape needs a gradient, collecting each step's
+    input-row cotangent as the tape's gradient."""
 
     @staticmethod
     def forward(ctx, graphs: StepGraphs, y0, theta, tape, *leaves):
@@ -181,31 +200,37 @@ class _StepGraphRollout(torch.autograd.Function):
     @staticmethod
     def backward(ctx, sbar, mbar):
         theta, tape, states, *leaves = ctx.saved_tensors
-        graphs = ctx.graphs
-        graphs.set_static(theta, leaves)
+        tape_grad = bool(ctx.needs_input_grad[3])
+        adj = ctx.graphs.adjoint(tape_grad)
+        adj.set_static(theta, *leaves)
         n_t = tape.shape[0]
         ybar = torch.zeros_like(states[0])
         thetabar = torch.zeros_like(theta)
+        tapebar = torch.zeros_like(tape) if tape_grad else None
         leafbars = [torch.zeros_like(l) for l in leaves]
         with torch.no_grad():
             for t in range(n_t - 1, -1, -1):
                 if sbar is not None:
                     ybar = ybar + sbar[t + 1]
-                out = graphs.adj(states[t], tape[t], ybar, mbar[t])
+                out = adj(states[t], tape[t], ybar, mbar[t])
                 ybar = out[0].clone()
                 thetabar += out[1]
                 for i in range(len(leaves)):
                     leafbars[i] += out[2 + i]
+                if tape_grad:
+                    tapebar[t] = out[-1]
             if sbar is not None:
                 ybar = ybar + sbar[0]
-        return (None, ybar, thetabar, None, *leafbars)
+        return (None, ybar, thetabar, tapebar, *leafbars)
 
 
 def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = False, kind: Optional[str] = None):
     """Roll ``functional_model`` over ``tape`` with per-step CUDA graphs.
 
     Returns ``(states (n_t + 1, ...), outputs (n_t, ...))``, both
-    differentiable w.r.t. ``theta`` (and ``y0``).  ``kind``:
+    differentiable w.r.t. ``theta`` and ``y0``, and w.r.t. ``tape`` when it
+    requires grad (the backward then replays the adjoint graph that also
+    returns the input rows' cotangents).  ``kind``:
 
     * ``"scalar"`` (default): ``y0 (D_aug,)``, ``theta (n_theta,)``,
       ``tape (n_t, n_exogenous)``; the compiled step with the hoisted

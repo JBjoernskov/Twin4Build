@@ -76,6 +76,19 @@ are evaluated at the end-of-step state with held external inputs; this can
 differ slightly from the unfused object graph (which used the lagged
 neighbour value), but only in the *reported* signal -- the dynamics are
 exact.
+
+Derived outputs
+---------------
+
+An output that is no row of the linear output equation -- a radiator's
+water-side power ``waterFlowRate * c_p * (supplyWaterTemperature -
+outletWaterTemperature)`` is bilinear -- is declared by its unit with
+``SS_DERIVED_OUTPUT_PORTS`` and computed by the unit's pure
+``_ss_derived_outputs(inputs, rows)`` from the external inputs it names
+(``SS_DERIVED_INPUT_PORTS``) and its output rows at the end of the joint
+step (``SS_DERIVED_ROW_PORTS``).  The member's own ``forward`` calls the same
+hook, so fused and unfused agree by construction.  A derived output cannot
+couple members: only output rows are eliminated.
 """
 
 # Standard library imports
@@ -90,6 +103,7 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 
 
@@ -385,6 +399,35 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                 )
             self._input_transforms.append((m.id, transform, ports))
 
+        # -- per-unit derived outputs (a radiator's water-side power): the
+        # outputs that are no rows of the linear output equation, a pure
+        # function of the unit's external inputs and its output rows at the
+        # end of the joint step (see "Derived outputs" in the module
+        # docstring).  The inputs they read must be external columns, like a
+        # transform's: a substituted input has no value of its own here.
+        self._derived_outputs = []
+        for entry in self._units:
+            derive = getattr(entry["unit"], "_ss_derived_outputs", None)
+            if derive is None:
+                continue
+            unit = entry["unit"]
+            m = entry["member"]
+            in_ports = tuple(getattr(unit, "SS_DERIVED_INPUT_PORTS", ()))
+            row_ports = tuple(getattr(unit, "SS_DERIVED_ROW_PORTS", ()))
+            out_ports = tuple(getattr(unit, "SS_DERIVED_OUTPUT_PORTS", ()))
+            for port in in_ports:
+                assert f"{m.id}.{port}" in ext_index, (
+                    f"{type(unit).__name__} derives outputs from input port "
+                    f"{port!r}, which is not an external column of fused "
+                    f"member {m.id}"
+                )
+            for port in row_ports:
+                assert port in entry["layout"]["y"], (
+                    f"{type(unit).__name__} derives outputs from {port!r}, "
+                    "which is not one of its output rows"
+                )
+            self._derived_outputs.append((m.id, derive, in_ports, row_ports, out_ports))
+
         # Bilinear inputs must be external.  Validate this structural rule once
         # from the declared support instead of asserting inside every traced
         # assembly.
@@ -425,6 +468,21 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             assert (s.id, s_port) in self._sender_rows, (
                 f"internal arc source {s.id}.{s_port} is not a state-space "
                 "output of the cluster"
+            )
+        # Every member output is written by the joint step, as a row or as a
+        # derived output; one that is neither would keep its initial value.
+        published = set(self._out_names) | {
+            f"{member_id}.{port}"
+            for (member_id, _, _, _, out_ports) in self._derived_outputs
+            for port in out_ports
+        }
+        unpublished = sorted(set(self._output) - published)
+        if unpublished:
+            LOGGER.warning(
+                "Fused state-space cluster %s does not compute member output(s) %s "
+                "(neither output rows nor derived outputs); they keep their initial values",
+                self.id,
+                ", ".join(unpublished),
             )
 
         # Validate the declared feedthrough graph once.  Runtime matrix values
@@ -636,8 +694,10 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         ``inputs`` is keyed by the namespaced external port names
         (``"<member_id>.<port>"``); ``params`` by prefixed parameter paths
         (``"<member_key>.<unit>.<name>"``); outputs cover every member output,
-        namespaced.  Matrices are cached per params-dict identity (theta-only
-        work, done once per theta in a sequential rollout)."""
+        namespaced: the output rows, then the derived outputs (evaluated on
+        the step's external inputs and the end-of-step rows).  Matrices are
+        cached per params-dict identity (theta-only work, done once per theta
+        in a sequential rollout)."""
         if transform_mode:
             matrices = getattr(params, "matrices", None)
             if matrices is None:
@@ -689,6 +749,13 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             transform_mode=transform_mode,
         )
         outputs = {name: y[..., p] for p, name in enumerate(self._out_names)}
+        for member_id, derive, in_ports, row_ports, out_ports in self._derived_outputs:
+            derived = derive(
+                {port: summed[f"{member_id}.{port}"] for port in in_ports},
+                {port: outputs[f"{member_id}.{port}"] for port in row_ports},
+            )
+            for port in out_ports:
+                outputs[f"{member_id}.{port}"] = derived[port]
         return x_next, outputs
 
     def _transform_inputs(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:

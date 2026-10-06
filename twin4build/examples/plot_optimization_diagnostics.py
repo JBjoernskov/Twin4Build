@@ -129,7 +129,7 @@ def main():
     heat_gain = space.input["heatGain"].history()
     irradiation = space.input["globalIrradiation"].history()
 
-    heater_power = space_heater.output["Power"].history()
+    heater_power = space_heater.output["toRoomPower"].history()
     water_t_out = space_heater.output["outletWaterTemperature"].history()
     water_t_in = space_heater.input["supplyWaterTemperature"].history()
     water_flow = space_heater.input["waterFlowRate"].history()

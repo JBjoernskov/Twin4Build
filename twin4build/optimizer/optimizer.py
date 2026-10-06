@@ -39,6 +39,23 @@ def _min_max_normalize(x, min_val=None, max_val=None):
     return (x - min_val) / (max_val - min_val)
 
 
+def _resolve_port_names(entries):
+    """The ``(component, port, ...)`` tuples with a deprecated output port
+    name (``System.OUTPUT_PORT_ALIASES``) replaced by the name that replaced
+    it, with a ``DeprecationWarning`` pointing at the caller of the
+    ``Optimizer`` method.  The optimizer and its functional objective then
+    see one name per port (a fused radiator publishes ``toRoomPower`` only)."""
+    out = []
+    for entry in entries:
+        entry = tuple(entry)
+        resolve = getattr(entry[0], "resolve_output_port", None) if entry else None
+        if resolve is not None and len(entry) >= 2:
+            # 2 = this function, 3 = the Optimizer method, 4 = its caller
+            entry = (entry[0], resolve(entry[1], stacklevel=4), *entry[2:])
+        out.append(entry)
+    return out
+
+
 class Optimizer:
     r"""
     A class for optimizing building operation in the twin4build framework.
@@ -544,10 +561,10 @@ class Optimizer:
         reject_unexpected_kwargs("Optimizer.optimize", kwargs)
 
         # tb.Variable / bare parameters -> (component, name, lb, ub) (#235)
-        self._variables = optimizer_variables(variables or [], self.simulator.model)
-        self._objectives = objectives or []
-        self._eq_cons = eq_cons or []
-        self._ineq_cons = ineq_cons or []
+        self._variables = _resolve_port_names(optimizer_variables(variables or [], self.simulator.model))
+        self._objectives = _resolve_port_names(objectives or [])
+        self._eq_cons = _resolve_port_names(eq_cons or [])
+        self._ineq_cons = _resolve_port_names(ineq_cons or [])
 
         start_time, end_time, step_size = validate_period(
             start_time, end_time, step_size
@@ -914,10 +931,10 @@ class Optimizer:
         if not variables:
             raise ValueError("No decision variables specified for optimization")
 
-        self._variables = optimizer_variables(variables, self.simulator.model)  # (#235)
-        self._objectives = [tuple(objective1), tuple(objective2)]
-        self._eq_cons = eq_cons or []
-        self._ineq_cons = ineq_cons or []
+        self._variables = _resolve_port_names(optimizer_variables(variables, self.simulator.model))  # (#235)
+        self._objectives = _resolve_port_names([objective1, objective2])
+        self._eq_cons = _resolve_port_names(eq_cons or [])
+        self._ineq_cons = _resolve_port_names(ineq_cons or [])
         self._start_time, self._end_time, self._stepSize = validate_period(
             start_time, end_time, step_size
         )

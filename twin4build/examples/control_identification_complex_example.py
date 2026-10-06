@@ -241,7 +241,7 @@ def generate_single_controller_data(
     model.add_connection(
         building_space, heater, "indoorTemperature", "indoorTemperature"
     )
-    model.add_connection(heater, building_space, "Power", "heatGain")
+    model.add_connection(heater, building_space, "toRoomPower", "heatGain")
 
     model.load(draw_semantic_model=False, draw_simulation_model=False)
 

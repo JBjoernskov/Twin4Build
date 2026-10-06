@@ -482,7 +482,11 @@ class Model:
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
+
+        A deprecated output port name (``System.OUTPUT_PORT_ALIASES``)
+        connects as the name that replaced it, with a ``DeprecationWarning``.
         """
+        output_port = sender_component.resolve_output_port(output_port)
         self.simulation_model.add_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
@@ -513,6 +517,7 @@ class Model:
         Raises:
             ValueError: If the specified connection does not exist.
         """
+        output_port = sender_component.resolve_output_port(output_port)
         self.simulation_model.remove_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
@@ -1092,12 +1097,41 @@ class Model:
         :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_state`."""
         self.simulation_model.set_state(state, period_starts=period_starts)
 
+    @staticmethod
+    def get_source_component_ids(component: "core.System") -> Tuple[str, ...]:
+        """The ids of the components ``component`` stands for, in instance
+        order: those a batched meta was built from
+        (:meth:`batch_components`), ``(component.id,)`` for any other
+        component."""
+        return core.SimulationModel.get_source_component_ids(component)
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters in physical units,
+        ``{(component id, attr): values}``, by the ids of the components the
+        model was built from: a batched meta of ``n_c`` instances gives
+        ``n_c`` keys.  ``parameters`` is an iterable of ``(component, attr,
+        ...)`` tuples (the estimator's parameter entries).  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_parameter_values`."""
+        return self.simulation_model.get_parameter_values(parameters)
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[str, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from ``{(component id, attr): values}``
+        (:meth:`get_parameter_values`), on this model whatever its batching:
+        an id names a component of the model or a component one of its
+        batched metas stands for.  Returns ``{"applied": n, "missing": m}``.
+        See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_parameter_values`."""
+        return self.simulation_model.set_parameter_values(values, strict=strict)
+
     def load_estimation_result(
         self,
         filename: Optional[str] = None,
         result: Optional[Dict] = None,
         parameters: bool = True,
         initial_state: bool = True,
+        fixed: bool = True,
         # verbose: int = 0,
     ) -> None:
         """
@@ -1111,6 +1145,9 @@ class Model:
                 from the initial states the result carries (multiple
                 shooting, collocation), so a simulation of the estimated
                 periods starts from the estimated state.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed to the values it ran with, so the model
+                simulates as it was fitted.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -1120,6 +1157,7 @@ class Model:
             result=result,
             parameters=parameters,
             initial_state=initial_state,
+            fixed=fixed,
             # verbose=verbose,
         )
 
@@ -1156,12 +1194,24 @@ class Model:
             iter(self._translator.sim2sem_map[self._simulation_model._components[key]])
         )
 
-    def serialize(self) -> None:
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the simulation model to,
+        whether or not it has been written; ``load(filename=...)`` rebuilds
+        the model from it."""
+        return self._simulation_model.instance_graph_path
+
+    def serialize(self) -> str:
         """
         Serialize both halves of the model.
+
+        Returns:
+            The path of the saved instance graph of the simulation model
+            (:attr:`instance_graph_path`), the file ``load(filename=...)``
+            rebuilds the model from.
         """
         self._semantic_model.serialize()
-        self._simulation_model.serialize()
+        return self._simulation_model.serialize()
 
     def visualize(self, **kwargs) -> None:
         """
@@ -1309,6 +1359,7 @@ class Model:
                     meta._batched_execution_priority = group_idx
                     self._batch_parameters(meta, comps, n_c)
                     self._copy_init_attrs(meta, comps[0])
+                    self._stack_instance_attrs(meta, comps)
                 except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
                     # A class whose instances cannot be rebuilt from their
                     # constructor and stacked parameters (sub-models created
@@ -1655,9 +1706,19 @@ class Model:
             self._stack_parameter_spec(meta, components, param_name)
 
             if isinstance(first, tps.Parameter):
-                vals = torch.stack([p.get().squeeze() for p in originals])
-                mins = torch.stack([p.min_value.squeeze() for p in originals])
-                maxs = torch.stack([p.max_value.squeeze() for p in originals])
+                if first.get().numel() > 1 and getattr(components[0], "_batch_flat_vectors", False):
+                    # k values per instance (an identified controller's
+                    # selection weights over its k slots), flat (n_c * k,):
+                    # the class reads them per instance
+                    vals = torch.cat([p.get().reshape(-1) for p in originals])
+                    mins = torch.cat([p.min_value.reshape(-1) for p in originals])
+                    maxs = torch.cat([p.max_value.reshape(-1) for p in originals])
+                    width = int(vals.numel())
+                else:
+                    vals = torch.stack([p.get().squeeze() for p in originals])
+                    mins = torch.stack([p.min_value.squeeze() for p in originals])
+                    maxs = torch.stack([p.max_value.squeeze() for p in originals])
+                    width = n_c
                 self._set_dotted_attr(
                     meta,
                     param_name,
@@ -1666,7 +1727,7 @@ class Model:
                         min_value=mins,
                         max_value=maxs,
                         requires_grad=first.requires_grad,
-                        n_c=n_c,
+                        n_c=width,
                         scaling=getattr(first, "scaling", "linear"),
                     ),
                 )
@@ -1764,6 +1825,24 @@ class Model:
         "twin4build.systems.controller.rulebased_controller.on_off_controller"
         ".smooth_on_off_controller_system.SmoothOnOffControllerSystem": ("is_reverse",),
     }
+
+    @staticmethod
+    def _stack_instance_attrs(meta: Any, components: List) -> None:
+        """Stack the per-instance values a class declares in
+        ``_batch_stacked_attrs`` (dotted paths) onto the meta, ``(n_c, ...)``.
+
+        For the values that are neither parameters (``_batch_parameters``
+        stacks those) nor shared structure (``_batch_init_kwargs``): an
+        identified controller's ``onOffSignal`` normalisation bounds and its
+        candidates' directions of action, which the rewire sets per loop.  A
+        value an instance does not have (an unbuilt controller) leaves the
+        meta's own."""
+        for name in getattr(components[0], "_batch_stacked_attrs", ()):
+            values = [Model._resolve_dotted_attr(c, name) for c in components]
+            if any(v is None for v in values):
+                continue
+            stacked = torch.stack([torch.as_tensor(v).detach() for v in values])
+            Model._set_dotted_attr(meta, name, stacked)
 
     def _copy_init_attrs(self, meta: Any, source: Any) -> None:
         """Copy non-Parameter constructor attributes from *source* to *meta*.
@@ -1871,6 +1950,10 @@ class Model:
                 return value
             if isinstance(value, (list, tuple)):
                 return tuple(_declared_signature(item) for item in value)
+            if isinstance(value, dict):
+                # a literal (an identified controller's candidate structure):
+                # equal contents are the same structure
+                return tuple(sorted((str(k), _declared_signature(v)) for k, v in value.items()))
             # A callable (or any other object) counts as identity: two
             # separately created functions are two transformations as far as
             # batching is concerned, even if their source is identical.

@@ -273,7 +273,7 @@ def generate_data_with_twin4build(
     model.add_connection(
         building_space, space_heater, "indoorTemperature", "indoorTemperature"
     )
-    model.add_connection(space_heater, building_space, "Power", "heatGain")
+    model.add_connection(space_heater, building_space, "toRoomPower", "heatGain")
 
     # =========================================================================
     # Load and Simulate
@@ -310,7 +310,7 @@ def generate_data_with_twin4build(
     actuator = (
         pi_controller.output["inputSignal"].history(i_s=0, i_c=0).detach().numpy()
     )
-    heater_power = space_heater.output["Power"].history(i_s=0, i_c=0).detach().numpy()
+    heater_power = space_heater.output["toRoomPower"].history(i_s=0, i_c=0).detach().numpy()
     setpoint = weather["setpoint"]["value"].values
 
     # Create output DataFrames (no noise added to outputs - noise only in inputs/weather)
