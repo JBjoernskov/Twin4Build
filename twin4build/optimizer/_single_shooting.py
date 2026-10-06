@@ -247,20 +247,19 @@ class FunctionalControlObjective:
         # own initial conditions; states are never decision variables) and its
         # first ``n_warmup`` steps are simulated but kept out of the objectives
         # and constraints, as in the Estimator.
-        self.n_warmup = int(getattr(opt, "_n_warmup", 0) or 0)
-        if self.n_warmup and self.n_warmup >= min(self.n_t):
-            raise ValueError(f"n_warmup={self.n_warmup} leaves no step of the shortest period ({min(self.n_t)} steps)")
+        self.n_warmup = int(getattr(opt, "_n_warmup", 0) or 0)  # checked by the Optimizer
         # Equal-length periods roll out side by side (the Estimator's windows,
         # Simulator.rollout_functional_windows / _batched_windows).  A
         # trajectory decision variable overrides the tape per period and row,
         # which the windowed rollouts' shared tape cannot carry yet: then the
         # periods step one after another (#237).
         self.parallel_periods = bool(
-            self.n_periods > 1 and len(set(self.n_t)) == 1 and not self._has_slots and self.n_traj == 0
+            self.n_periods > 1 and len(set(self.n_t)) == 1 and self.n_traj == 0
         )
         if self.parallel_periods:
             self._Y0_windows = torch.stack(list(self.Y0))  # (P, D_aug)
             self._tape_windows = torch.stack(list(self.CAP), dim=1)  # (n_t, P, n_exogenous)
+            self.CAP = list(self._tape_windows.unbind(1))  # views: the tape is held once
 
         # -- normalization floats ----------------------------------------------
         # Populate each loss port's normalization cache from the reference
@@ -377,19 +376,25 @@ class FunctionalControlObjective:
         self.n_periods = len(R.n_timesteps)
 
     # -- the differentiable loss ------------------------------------------------
+    def _params_physical(self, theta_par: torch.Tensor) -> torch.Tensor:
+        """The parameter decision variables, normalized [0, 1] -> physical in
+        theta_spec order, for one vector ``(n,)`` or a batch ``(B, n)``."""
+        pieces, offset = [], 0
+        for comp, name, lower, upper, n in self.param_vars:
+            pieces.append(theta_par[..., offset : offset + n] * (upper - lower) + lower)
+            offset += n
+        if pieces:
+            return torch.cat(pieces, dim=-1)
+        return self._theta_empty if theta_par.dim() == 1 else self._theta_empty.expand(theta_par.shape[0], 0)
+
     def _rollout(self, theta: torch.Tensor, *, transform_mode: bool = False):
         """Composed-map rollout at ``theta``: per-period loss-port
         trajectories ``OUT[p][j]`` of shape ``(n_t_p, n_c_j)`` in PHYSICAL
         units, matching each object-graph port history including branches."""
         opt = self.opt
         n_vars = len(self.vars)
-        theta_traj, theta_par = theta[: self.n_traj], theta[self.n_traj :]
-        # Parameters: normalized [0, 1] -> physical, in theta_spec order.
-        pieces, offset = [], 0
-        for comp, name, lower, upper, n in self.param_vars:
-            pieces.append(theta_par[offset : offset + n] * (upper - lower) + lower)
-            offset += n
-        theta_params = torch.cat(pieces) if pieces else self._theta_empty
+        theta_traj = theta[: self.n_traj]
+        theta_params = self._params_physical(theta[self.n_traj :])
         theta_m = theta_traj.reshape(-1, max(n_vars, 1))  # (sum n_t, n_vars)
 
         # Per-period physical trajectories per variable: theta rows are
@@ -409,7 +414,7 @@ class FunctionalControlObjective:
         # (functionally -- see __init__) and step the composed map (the shared
         # sequential rollout, :meth:`Simulator.rollout_functional`).
         sim = opt.simulator
-        if self.parallel_periods:
+        if self.parallel_periods and transform_mode:  # as the Estimator: windows batch in transform mode only
             M = sim.rollout_functional_windows(self.composer, self._Y0_windows, theta_params, self._tape_windows)
             return [[M[p][:, idx] for _kind, idx in self.out_kind] for p in range(self.n_periods)]
         OUT = []
@@ -524,12 +529,7 @@ class FunctionalControlObjective:
         which the batched step's shared tape cannot carry: not batched here
         (:meth:`batched_parts` runs them row by row)."""
         B = theta_batch.shape[0]
-        pieces, offset = [], 0
-        theta_par = theta_batch[:, self.n_traj :]
-        for comp, name, lower, upper, n in self.param_vars:
-            pieces.append(theta_par[:, offset : offset + n] * (upper - lower) + lower)
-            offset += n
-        Theta = torch.cat(pieces, dim=1) if pieces else self._theta_empty.expand(B, 0)
+        Theta = self._params_physical(theta_batch[:, self.n_traj :])
         sim = self.opt.simulator
         if self.parallel_periods:
             # rows x periods side by side (the Estimator's batched windows)
@@ -578,7 +578,7 @@ class FunctionalControlObjective:
         plain ``torch.autograd.grad`` (the Estimator's
         ``batched_value_and_grad``)."""
         on_cpu = theta_batch.device.type == "cpu"
-        if on_cpu or theta_batch.shape[0] == 1 or self.n_traj or self._has_slots:
+        if on_cpu or theta_batch.shape[0] == 1 or self.n_traj:
             rows = [self.parts(th, transform_mode=not on_cpu) for th in theta_batch]
             return self._unpack_parts(torch.stack([self._flatten_parts(r) for r in rows]))
         return self._batched_parts_wide(theta_batch)

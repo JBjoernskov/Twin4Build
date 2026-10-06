@@ -548,7 +548,6 @@ class Optimizer:
         self._start_time = start_time
         self._end_time = end_time
         self._stepSize = step_size
-        self._n_warmup = int(n_warmup)
         self._max_values = {}
 
         # Validate input arguments
@@ -565,6 +564,7 @@ class Optimizer:
         ) = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
+        self._n_warmup = self._checked_warmup(n_warmup, method)
 
         timestep_mask = torch.ones(
             self._max_timesteps, len(self._start_time), dtype=torch.bool
@@ -913,7 +913,6 @@ class Optimizer:
         self._start_time, self._end_time, self._stepSize = validate_period(
             start_time, end_time, step_size
         )
-        self._n_warmup = int(n_warmup)  # as in optimize()
         self._max_values = {}
         (
             self._second_time_steps,
@@ -923,6 +922,7 @@ class Optimizer:
         ) = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
+        self._n_warmup = self._checked_warmup(n_warmup, method)
         self._timestep_mask = torch.ones(
             self._max_timesteps, len(self._start_time), dtype=torch.bool
         )
@@ -1565,6 +1565,19 @@ class Optimizer:
                 "Simulator(model, execution_mode='functional') and use an 'ad' method."
             )
         return x0, bounds_obj
+
+    def _checked_warmup(self, n_warmup, method) -> int:
+        """``n_warmup`` checked before anything is simulated: at least 0,
+        fewer than the steps of the shortest period, and not with the
+        collocation transcription (whose objective has no warm-up mask)."""
+        n = int(n_warmup)
+        if n < 0:
+            raise ValueError(f"n_warmup must be >= 0, got {n}")
+        if n and n >= min(self._n_timesteps):
+            raise ValueError(f"n_warmup={n} leaves no step of the shortest period ({min(self._n_timesteps)} steps)")
+        if n and isinstance(method, (tuple, list)) and len(method) > 3 and method[3] == "collocation":
+            raise ValueError("n_warmup is not supported with the collocation transcription")
+        return n
 
     def _split_variables(self):
         """``(trajectories, parameters)``: a decision variable naming an output

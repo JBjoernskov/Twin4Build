@@ -1944,7 +1944,8 @@ def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, s
 def functional_rollout_rows(functional_model, Y0, Theta, exogenous_tape, *, step=None, return_end=False):
     """Roll a batch of rows that each carry their own state, parameters and
     exogenous inputs: ``Y0 (N, D_aug)``, ``Theta (N, n_theta)``,
-    ``exogenous_tape (n_t, N, n_exogenous)``; returns ``(N, n_t, n_meas)``,
+    ``exogenous_tape (n_t, N, n_exogenous)`` (or ``(n_t, B, P,
+    n_exogenous)``, a broadcast view flattened per step); returns ``(N, n_t, n_meas)``,
     or with ``return_end`` ``(outputs, Y_end (N, D_aug))``.  A batch of
     parameter starts over a batch of windows, flattened.  ``step`` defaults
     to :attr:`FunctionalModel.rows_step` (an eager vmap)."""
@@ -1957,7 +1958,8 @@ def functional_rollout_rows(functional_model, Y0, Theta, exogenous_tape, *, step
     Y = Y0
     rows = []
     for t in range(exogenous_tape.shape[0]):
-        Y, meas = step(Y, Theta, exogenous_tape[t])
+        u = exogenous_tape[t]
+        Y, meas = step(Y, Theta, u.reshape(-1, u.shape[-1]))
         rows.append(meas)
     if not rows:
         out = torch.zeros((Y0.shape[0], 0, functional_model.n_meas), dtype=exogenous_tape.dtype, device=exogenous_tape.device)
