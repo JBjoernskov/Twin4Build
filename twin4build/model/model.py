@@ -1359,6 +1359,7 @@ class Model:
                     meta._batched_execution_priority = group_idx
                     self._batch_parameters(meta, comps, n_c)
                     self._copy_init_attrs(meta, comps[0])
+                    self._stack_instance_attrs(meta, comps)
                 except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
                     # A class whose instances cannot be rebuilt from their
                     # constructor and stacked parameters (sub-models created
@@ -1705,9 +1706,19 @@ class Model:
             self._stack_parameter_spec(meta, components, param_name)
 
             if isinstance(first, tps.Parameter):
-                vals = torch.stack([p.get().squeeze() for p in originals])
-                mins = torch.stack([p.min_value.squeeze() for p in originals])
-                maxs = torch.stack([p.max_value.squeeze() for p in originals])
+                if first.get().numel() > 1 and getattr(components[0], "_batch_flat_vectors", False):
+                    # k values per instance (an identified controller's
+                    # selection weights over its k slots), flat (n_c * k,):
+                    # the class reads them per instance
+                    vals = torch.cat([p.get().reshape(-1) for p in originals])
+                    mins = torch.cat([p.min_value.reshape(-1) for p in originals])
+                    maxs = torch.cat([p.max_value.reshape(-1) for p in originals])
+                    width = int(vals.numel())
+                else:
+                    vals = torch.stack([p.get().squeeze() for p in originals])
+                    mins = torch.stack([p.min_value.squeeze() for p in originals])
+                    maxs = torch.stack([p.max_value.squeeze() for p in originals])
+                    width = n_c
                 self._set_dotted_attr(
                     meta,
                     param_name,
@@ -1716,7 +1727,7 @@ class Model:
                         min_value=mins,
                         max_value=maxs,
                         requires_grad=first.requires_grad,
-                        n_c=n_c,
+                        n_c=width,
                         scaling=getattr(first, "scaling", "linear"),
                     ),
                 )
@@ -1814,6 +1825,24 @@ class Model:
         "twin4build.systems.controller.rulebased_controller.on_off_controller"
         ".smooth_on_off_controller_system.SmoothOnOffControllerSystem": ("is_reverse",),
     }
+
+    @staticmethod
+    def _stack_instance_attrs(meta: Any, components: List) -> None:
+        """Stack the per-instance values a class declares in
+        ``_batch_stacked_attrs`` (dotted paths) onto the meta, ``(n_c, ...)``.
+
+        For the values that are neither parameters (``_batch_parameters``
+        stacks those) nor shared structure (``_batch_init_kwargs``): an
+        identified controller's ``onOffSignal`` normalisation bounds and its
+        candidates' directions of action, which the rewire sets per loop.  A
+        value an instance does not have (an unbuilt controller) leaves the
+        meta's own."""
+        for name in getattr(components[0], "_batch_stacked_attrs", ()):
+            values = [Model._resolve_dotted_attr(c, name) for c in components]
+            if any(v is None for v in values):
+                continue
+            stacked = torch.stack([torch.as_tensor(v).detach() for v in values])
+            Model._set_dotted_attr(meta, name, stacked)
 
     def _copy_init_attrs(self, meta: Any, source: Any) -> None:
         """Copy non-Parameter constructor attributes from *source* to *meta*.
@@ -1921,6 +1950,10 @@ class Model:
                 return value
             if isinstance(value, (list, tuple)):
                 return tuple(_declared_signature(item) for item in value)
+            if isinstance(value, dict):
+                # a literal (an identified controller's candidate structure):
+                # equal contents are the same structure
+                return tuple(sorted((str(k), _declared_signature(v)) for k, v in value.items()))
             # A callable (or any other object) counts as identity: two
             # separately created functions are two transformations as far as
             # batching is concerned, even if their source is identical.

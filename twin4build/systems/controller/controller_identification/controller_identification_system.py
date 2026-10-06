@@ -37,6 +37,30 @@ from twin4build.translator.translator import (
 )  # noqa: F401 (StepRule/SetStepRule/AnyPathRule used in patterns below)
 
 
+def _index_pairs(point, connection):
+    """``(input slot, output slot, source instance, target instance)`` of every
+    pair a connection carries (a batched connection carries one per instance,
+    as index tensors); ``None`` where the connection names no index (the
+    whole port or every instance)."""
+    values = (
+        point.input_port_index.get(connection),
+        point.output_port_index.get(connection),
+        point.output_component_index.get(connection),
+        point.input_component_index.get(connection),
+    )
+    n = max((int(v.numel()) for v in values if isinstance(v, torch.Tensor)), default=1)
+
+    def as_list(value):
+        if value is None or isinstance(value, slice):
+            return [None] * n
+        if isinstance(value, torch.Tensor):
+            flat = [int(v) for v in value.reshape(-1).tolist()]
+            return flat if len(flat) == n else flat[:1] * n
+        return [int(value)] * n
+
+    return list(zip(*(as_list(v) for v in values)))
+
+
 class ControllerIdentificationSystem(core.System, nn.Module):
     r"""
     Controller Identification System using Continuous Relaxation.
@@ -405,15 +429,63 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             self._built = False
             self._build_components()
 
+    # -- batching ---------------------------------------------------------------
+    #: The selection weights (``alpha_{a}``, ``beta_{a}``, ``gamma_{a}``,
+    #: ``beta_b_{a}``, ``gamma_gate_{a}``) hold one weight per slot; a batched
+    #: controller holds them flat, ``(n_c * k,)``, and normalises each
+    #: instance's over its own slots (:meth:`_selection`).
+    _batch_flat_vectors = True
+
+    @property
+    def _batch_stacked_attrs(self) -> Tuple[str, ...]:
+        """Per-loop values that are not parameters, which the rewire sets per
+        loop and a batched controller holds one per instance
+        (``Model.batch_components``): the ``onOffSignal`` normalisation bounds,
+        ``(n_c, n_on_off_signals)``, and every candidate's direction of action
+        (``is_reverse``, ``(n_c,)``: the sign of its error)."""
+        names = ["on_off_signal_norm_min", "on_off_signal_norm_max"]
+        if getattr(self, "_built", False):
+            for a in range(self.n_actuators):
+                for c in range(self.n_candidates):
+                    candidate = getattr(self, f"candidate_{a}_{c}", None)
+                    if candidate is not None and hasattr(candidate, "is_reverse"):
+                        names.append(f"candidate_{a}_{c}.is_reverse")
+        return tuple(names)
+
+    @property
+    def _batch_init_kwargs(self) -> dict:
+        """What a batched controller is built from: the sizes, the candidate
+        structure, the playback flag and the rewire mode.  The meta is then
+        built with its candidates and gates, so the instances' stacked
+        parameters land on them; controllers of another structure (another
+        candidate list, another number of actuators or signals) batch apart
+        (``Model._component_signature``)."""
+        return {
+            "n_sensors": self.n_sensors,
+            "n_setpoints": self.n_setpoints,
+            "n_on_off_signals": self.n_on_off_signals,
+            "n_actuators": self.n_actuators,
+            "candidate_structure": self.candidate_structure,
+            "playback": bool(self.playback),
+            "rewire_mode": self.rewire_mode,
+        }
+
     # -- onOffSignal normalisation bounds ---------------------------------------
     def _on_off_norm_tensor(self, value) -> torch.Tensor:
         """``value`` (tensor, list or number) as one bound per ``onOffSignal``
-        slot."""
-        if isinstance(value, torch.Tensor):
-            value = value.detach().reshape(-1)
-        else:
-            value = torch.as_tensor(value, dtype=tps.float_dtype()).reshape(-1)
+        slot; a batched controller's ``(n_c, n_on_off_signals)`` stack (one
+        row per instance) is kept as it is, and restored from the flat list
+        of ``n_c * n_on_off_signals`` values a load writes back
+        (``System.populate_config`` flattens tensors; flat, the bounds would
+        broadcast every instance's signal against every instance's bounds)."""
+        value = value.detach() if isinstance(value, torch.Tensor) else torch.as_tensor(value, dtype=tps.float_dtype())
+        if value.dim() == 2:
+            return value
+        value = value.reshape(-1)
         n = self.n_on_off_signals
+        n_c = int(getattr(self, "n_c", 1) or 1)
+        if n is not None and n_c > 1 and value.numel() == n_c * n:
+            return value.reshape(n_c, n)
         if n is not None and value.numel() == 1 and n > 1:
             value = value.expand(n).clone()
         return value
@@ -826,12 +898,28 @@ class ControllerIdentificationSystem(core.System, nn.Module):
 
         params: List[Tuple[Any, str, Any, float, float]] = []
 
-        def _scalar(p) -> float:
+        def _scalar(p):
+            """The start: a float, or one value per instance on a batched
+            controller (``n_c`` wide, as ``System.get_estimable_parameters``)."""
             v = p.get()
-            try:
-                return float(v.item())
-            except AttributeError:
+            if not hasattr(v, "detach"):
                 return float(v)
+            v = v.detach().reshape(-1)
+            return v.cpu().numpy().astype(float) if v.numel() > 1 else float(v[0].item())
+
+        def _bounds(p, default):
+            """The bounds the parameter carries (the rewire's per-loop
+            ``(lb, ub)``), one per instance on a batched controller;
+            ``default`` when it carries none."""
+            try:
+                lb = p.min_value.detach().reshape(-1).cpu().numpy().astype(float)
+                ub = p.max_value.detach().reshape(-1).cpu().numpy().astype(float)
+            except (AttributeError, RuntimeError, ValueError):
+                return default
+            n = p.get().numel()
+            if n > 1 and lb.size == n and ub.size == n:
+                return lb, ub
+            return float(lb.min()), float(ub.max())
 
         for a in range(self.n_actuators):
             # Per-candidate PID-like knobs (kp / Ti / output_min).  Skip
@@ -859,12 +947,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                     # (Ti up to its 7200 s ceiling), and the static class
                     # constants (Ti <= 1800 s) would reject those seeds with
                     # "x0 must be <= upper bound".
-                    lb, ub = bounds
-                    try:
-                        lb = float(p.min_value.min().item())
-                        ub = float(p.max_value.max().item())
-                    except (AttributeError, RuntimeError, ValueError):
-                        pass
+                    lb, ub = _bounds(p, bounds)
                     params.append(
                         (
                             self,
@@ -1013,6 +1096,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         stepping this controller once per time step."""
         if not self.replays_data() or output_name != "inputSignal":
             return None
+        links = []
         for point in self.connects_at:
             if point.input_port != "actuatorMeasured":
                 continue
@@ -1021,8 +1105,31 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 history = port._history
                 if history is None or not (port._history_is_populated or port.is_leaf):
                     return None
-                return history[:n_t]
-        return None
+                links.append((point, connection, history[:n_t]))
+        if not links:
+            return None
+        n_c = int(getattr(self, "n_c", 1) or 1)
+        if len(links) == 1 and n_c == 1:
+            return links[0][2]
+        # A batched controller (``Model.batch_components``), or one with
+        # several actuators: each connection places its sensor's series at
+        # its instance and actuator slot, ``(n_t, n_s, n_c, n_actuators)``.
+        first = links[0][2]
+        out = torch.zeros(
+            (first.shape[0], first.shape[1], n_c, int(self.n_actuators)),
+            dtype=first.dtype, device=first.device,
+        )
+        for point, connection, history in links:
+            for slot, source_slot, source_ic, target_ic in _index_pairs(point, connection):
+                # a scalar port's history is (n_t, n_s, n_c), a vector's (n_t, n_s, n_c, n_v)
+                value = history[:, :, source_ic or 0]
+                if value.dim() == 3:
+                    value = value[..., source_slot or 0]
+                if target_ic is None:  # one series for every instance
+                    out[:, :, :, slot or 0] = value.unsqueeze(-1)
+                else:
+                    out[:, :, target_ic, slot or 0] = value
+        return out
 
     def initialize(
         self,
@@ -1070,35 +1177,43 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         )
         batch_size = len(start_time)
 
-        # Initialize Vector inputs with their sizes
+        # Initialize Vector inputs with their sizes; a batched controller
+        # (``Model.batch_components``) carries ``n_c`` instances in every port
+        n_c = self.n_c
         self.input["sensorValue"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_sensors
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_sensors
         )
         self.input["setpointValue"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_setpoints
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_setpoints
         )
         self.input["onOffSignal"].initialize(
             n_t=max_timesteps,
             n_s=batch_size,
+            n_c=n_c,
             n_v=self.n_on_off_signals,
         )
         self.input["actuatorMeasured"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_actuators
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_actuators
         )
 
         # Initialize output
         self.output["inputSignal"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_v=self.n_actuators
+            n_t=max_timesteps, n_s=batch_size, n_c=n_c, n_v=self.n_actuators
         )
 
-        # Initialize all candidate controllers
+        # Initialize all candidate controllers and the gates, with the
+        # controller's ``n_c``: a batched controller's stacked parameters
+        # hold one value per instance on its candidates and gates
         for a in range(self.n_actuators):
             for c in range(self.n_candidates):
-                self._get_candidate(a, c).initialize(start_time, end_time, step_size)
+                candidate = self._get_candidate(a, c)
+                candidate.n_c = n_c
+                candidate.initialize(start_time, end_time, step_size)
 
-        # Initialize gate sub-systems
         for a in range(self.n_actuators):
-            self._get_gate(a).initialize(start_time, end_time, step_size)
+            gate = self._get_gate(a)
+            gate.n_c = n_c
+            gate.initialize(start_time, end_time, step_size)
         # Identity-stable sample time for ``forward``'s coefficient caches
         # (the candidates key their caches on the sample-time object).
         self._sample_time = self._scalar_sample_time(step_size)
@@ -1233,6 +1348,15 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             self._fwd_sub_cache = (params, sub)
         return sub
 
+    def _selection(self, weights: torch.Tensor, width: int) -> torch.Tensor:
+        """Selection weights normalised to one over their ``width`` slots:
+        ``(width,)`` on a controller; ``(n_c, width)`` on a batched one, whose
+        weights are flat ``(n_c * width,)``, one row per instance."""
+        if int(getattr(self, "n_c", 1) or 1) == 1:
+            return weights / (torch.sum(weights) + 1e-8)
+        weights = weights.reshape(-1, width)
+        return weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
+
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step controller identification
         ``(state, inputs, params) -> (new_state, outputs)``.
@@ -1265,16 +1389,13 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         new_state_parts = []  # (offset, tensor)
         actuator_outputs = []
         for a in range(self.n_actuators):
-            gamma = params[f"gamma_{a}"]
-            gamma_norm = gamma / (torch.sum(gamma) + 1e-8)
-            beta = params[f"beta_{a}"]
-            beta_norm = beta / (torch.sum(beta) + 1e-8)
+            gamma_norm = self._selection(params[f"gamma_{a}"], self.n_setpoints)
+            beta_norm = self._selection(params[f"beta_{a}"], self.n_sensors)
             weighted_setpoint = torch.sum(gamma_norm * setpoint_values, dim=-1)
             weighted_feedback = torch.sum(beta_norm * sensor_values, dim=-1)
             weighted_feedback_b = None
             if self._has_cascade:
-                beta_b = params[f"beta_b_{a}"]
-                beta_b_norm = beta_b / (torch.sum(beta_b) + 1e-8)
+                beta_b_norm = self._selection(params[f"beta_b_{a}"], self.n_sensors)
                 weighted_feedback_b = torch.sum(beta_b_norm * sensor_values, dim=-1)
 
             candidate_outputs = []
@@ -1305,13 +1426,14 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 if width:
                     new_state_parts.append((offset, x_c_next))
                 candidate_outputs.append(out_c["inputSignal"])
-            stacked = torch.stack(candidate_outputs, dim=0)  # (n_cand, ...)
-            alpha = params[f"alpha_{a}"]
-            alpha_norm = alpha / (torch.sum(alpha) + 1e-8)
-            combined = torch.einsum("c,c...->...", alpha_norm, stacked)
+            alpha_norm = self._selection(params[f"alpha_{a}"], self.n_candidates)
+            if alpha_norm.dim() == 1:
+                stacked = torch.stack(candidate_outputs, dim=0)  # (n_cand, ...)
+                combined = torch.einsum("c,c...->...", alpha_norm, stacked)
+            else:  # a batched controller: (n_c, n_cand), the outputs (..., n_c)
+                combined = sum(alpha_norm[:, c] * out for c, out in enumerate(candidate_outputs))
 
-            gamma_gate = params[f"gamma_gate_{a}"]
-            gamma_gate_norm = gamma_gate / (torch.sum(gamma_gate) + 1e-8)
+            gamma_gate_norm = self._selection(params[f"gamma_gate_{a}"], self.n_on_off_signals)
             gate_input = torch.sum(gamma_gate_norm * on_off_norm, dim=-1)
             gate = self._get_gate(a)
             _, gate_out = gate.forward(
