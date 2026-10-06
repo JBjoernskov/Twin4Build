@@ -30,6 +30,7 @@ from twin4build.utils.dict_utils import (
     flatten_dict,
     merge_dicts,
 )
+from twin4build.utils.get_main_dir import get_main_dir
 from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
@@ -3283,6 +3284,200 @@ class SimulationModel:
     def _instance_ids(owner) -> Tuple[str, ...]:
         return tuple(getattr(owner, "_source_component_ids", None) or (owner.id,))
 
+    # ------------------------------------------------------------------
+    # Parameters by component id, across batchings
+    # ------------------------------------------------------------------
+    @staticmethod
+    def get_source_component_ids(component) -> Tuple[str, ...]:
+        """The ids of the components ``component`` stands for, in instance
+        order.
+
+        A batched meta (see ``Model.batch_components``) stands for the
+        components it was built from, one per instance; any other component
+        stands for itself, ``(component.id,)``.
+        """
+        return SimulationModel._instance_ids(component)
+
+    @staticmethod
+    def _split_instances(component, values) -> List[Tuple[str, np.ndarray]]:
+        """The values of one parameter of ``component`` as ``[(source
+        component id, values)]``, one entry per component it stands for.
+
+        ``n`` values go one to each of ``n`` instances, a multiple of ``n``
+        in equal rows, and one value to every instance (the instances share
+        it).  A scalar is a 0-d array, a row a 1-d array.
+        """
+        ids = SimulationModel._instance_ids(component)
+        flat = np.array(values, dtype=float).reshape(-1)
+        n = len(ids)
+        if n == 1:
+            return [(ids[0], np.asarray(flat[0]) if flat.size == 1 else flat)]
+        if flat.size == n:
+            return [(cid, np.asarray(flat[i])) for i, cid in enumerate(ids)]
+        if flat.size == 1:
+            return [(cid, np.asarray(flat[0])) for cid in ids]
+        if flat.size % n == 0:
+            rows = flat.reshape(n, -1)
+            return [(cid, rows[i]) for i, cid in enumerate(ids)]
+        raise ValueError(
+            f"{flat.size} values cannot be divided over the {n} components "
+            f"'{component.id}' stands for"
+        )
+
+    @staticmethod
+    def _parameter_object(component, attr):
+        """The parameter ``attr`` of ``component`` (a dotted path), or
+        ``None`` when there is none or it is not a parameter object."""
+        try:
+            obj = rgetattr(component, attr)
+        except AttributeError:
+            return None
+        if not (callable(getattr(obj, "get", None)) and callable(getattr(obj, "set", None))):
+            return None
+        return obj
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters, by the ids of the components
+        the model was built from.
+
+        Args:
+            parameters: An iterable of ``(component, attr, ...)`` tuples, the
+                parameter entries of
+                :meth:`~twin4build.estimator.estimator.Estimator.estimate`
+                (what follows ``attr`` is ignored).  ``component`` is a
+                component or a list of components, ``attr`` the name of a
+                parameter, dotted for a parameter of a sub-model
+                (``"thermal.C_air"``).
+
+        Returns:
+            ``{(component id, attr): values}`` in physical units.  A batched
+            meta of ``n_c`` instances gives ``n_c`` keys, named by the
+            components it stands for (:meth:`get_source_component_ids`);
+            any other component gives one.  The values of a scalar
+            parameter are a 0-d array, those of a vector parameter a 1-d
+            array.  Keyed this way the values do not depend on how the
+            model was batched: :meth:`set_parameter_values` writes them to
+            the unbatched model or to any batching of it.
+
+        Raises:
+            TypeError: If ``attr`` is not a parameter of ``component``.
+        """
+        out: Dict[Tuple[str, str], np.ndarray] = {}
+        for entry in parameters:
+            component_s, attr = entry[0], str(entry[1])
+            components = component_s if isinstance(component_s, (list, tuple)) else [component_s]
+            for component in components:
+                param = self._parameter_object(component, attr)
+                if param is None:
+                    raise TypeError(
+                        f"'{attr}' is not a parameter of the component '{component.id}' "
+                        f"({component.__class__.__name__})"
+                    )
+                values = param.get().detach().cpu().numpy()
+                for cid, v in self._split_instances(component, values):
+                    out[(cid, attr)] = v
+        return out
+
+    def _component_lookup(self) -> Dict[str, Any]:
+        """The model's components by id, with the nested sub-objects that
+        carry an id of their own (e.g. ``OccupancySystem._DamperParams``).
+        ``nn.Module`` keeps child modules in ``_modules`` rather than
+        ``__dict__``, so ``.modules()`` walks the hierarchy."""
+        lookup = dict(self._components)
+        for comp in self._components.values():
+            if isinstance(comp, torch.nn.Module):
+                for child in comp.modules():
+                    if (
+                        child is not comp
+                        and hasattr(child, "id")
+                        and child.id not in lookup
+                    ):
+                        lookup[child.id] = child
+            else:
+                for attr_val in vars(comp).values():
+                    if hasattr(attr_val, "id") and attr_val.id not in lookup:
+                        lookup[attr_val.id] = attr_val
+        return lookup
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[str, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from values keyed by component id.
+
+        Args:
+            values: ``{(component id, attr): values}`` in physical units, as
+                returned by :meth:`get_parameter_values`.  The id names a
+                component of this model (or a sub-object of one that
+                carries an id of its own), or a component one of this
+                model's batched metas stands for.  For the latter the
+                values are written at that instance of the meta's
+                parameter and the other instances keep theirs.
+            strict: Raise on a key that names no parameter of this model.
+                ``False`` (default) counts it as missing.
+
+        Returns:
+            ``{"applied": n, "missing": m}``: the keys written and the keys
+            that name no parameter of this model (the component or the
+            attribute does not exist, or the number of values does not fit).
+
+        Raises:
+            KeyError: With ``strict``, on the first key that names no
+                parameter of this model; nothing is written then.
+        """
+        lookup = self._component_lookup()
+        instances: Dict[str, Tuple[Any, int, int]] = {}
+        for comp in self._components.values():
+            ids = self._instance_ids(comp)
+            for i_c, cid in enumerate(ids):
+                instances.setdefault(cid, (comp, i_c, len(ids)))
+        staged: Dict[Tuple[int, str], Tuple[Any, np.ndarray]] = {}
+        counts = {"applied": 0, "missing": 0}
+        for (cid, attr), value in values.items():
+            cid, attr = str(cid), str(attr)
+            if cid in lookup:
+                owner, i_c, n = lookup[cid], 0, 1
+            else:
+                owner, i_c, n = instances.get(cid, (None, 0, 1))
+            param = None if owner is None else self._parameter_object(owner, attr)
+            written = False
+            if param is not None:
+                key = (id(owner), attr)
+                if key not in staged:
+                    staged[key] = (param, param.get().detach().cpu().numpy().astype(float).copy())
+                current = staged[key][1]
+                flat = current.reshape(-1)  # a view: ``current`` is contiguous
+                new = np.array(
+                    value.detach().cpu().numpy() if isinstance(value, torch.Tensor) else value,
+                    dtype=float,
+                ).reshape(-1)
+                if n > 1 and flat.size == n * new.size:
+                    flat.reshape(n, -1)[i_c] = new
+                    written = True
+                elif n == 1 and new.size in (1, flat.size):
+                    flat[:] = new
+                    written = True
+                elif flat.size == 1 and new.size == 1:
+                    flat[:] = new  # one value the instances share
+                    written = True
+            if written:
+                counts["applied"] += 1
+                continue
+            if strict:
+                raise KeyError(
+                    f"('{cid}', '{attr}') names no parameter of the model '{self._id}'"
+                )
+            counts["missing"] += 1
+        with torch.no_grad():
+            for param, current in staged.values():
+                reference = param.get().detach()
+                param.set(
+                    torch.as_tensor(current, dtype=reference.dtype, device=reference.device).reshape(
+                        reference.shape
+                    ),
+                    normalized=False,
+                )
+        return counts
+
     def set_state(
         self,
         state: Optional[Dict[str, Any]],
@@ -3429,16 +3624,43 @@ class SimulationModel:
                     len(instances), n_rows)
         return True
 
+    def _result_names_this_model(self, component_lookup: Dict[str, Any]) -> bool:
+        """Whether every parameter entry of the loaded result names a
+        component of this model that stands for the components it stood for
+        when the result was fitted (``component_source_ids``; a result
+        without them is taken by its ids alone)."""
+        ids = list(self._result["component_id"])
+        if any(cid not in component_lookup for cid in ids):
+            return False
+        sources = self._result.get("component_source_ids")
+        if not sources:
+            return True
+        return all(
+            tuple(src) == self._instance_ids(component_lookup[cid])
+            for cid, src in zip(ids, sources)
+        )
+
     def load_estimation_result(
         self,
         filename: Optional[str] = None,
         result: Optional[Dict] = None,
         parameters: bool = True,
         initial_state: bool = True,
+        fixed: bool = True,
         # verbose: int = 0,
     ) -> None:
         """
         Load an estimation result from a file or dictionary.
+
+        A result names its parameters by the components of the model it was
+        fitted on.  Loaded onto another batching of that model (or onto the
+        unbatched model) those names do not resolve, or resolve to metas
+        that stand for other components; the parameters are then set from
+        the values the result carries by the ids of the components the
+        model was built from (``parameter_instances``, see
+        :meth:`set_parameter_values`), and the numbers applied and missing
+        are logged.  The parameters' bounds are left as they are in that
+        case.
 
         Args:
             filename (Optional[str]): The filename to load the estimation result from.
@@ -3450,6 +3672,13 @@ class SimulationModel:
                 estimated periods then starts from the estimated state
                 instead of the components' defaults.  ``False`` leaves the
                 model's state as it is.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed (pinned, fixed, left out of the selection) to
+                the values it ran with (``parameter_instances_fixed``), before
+                the estimated ones: the model then simulates as it was
+                fitted whatever its own setup gave those parameters.
+                ``False`` leaves them as they are.  A result without them is
+                loaded as before.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -3479,27 +3708,36 @@ class SimulationModel:
             self._load_estimated_initial_state(self._result)
         if not parameters:
             return
+        held = self._result.get("parameter_instances_fixed") if fixed else None
+        if held:
+            counts = self.set_parameter_values(held)
+            LOGGER.info(
+                "Load estimation result: %d parameters the fit held fixed set to its values, %d not in this model",
+                counts["applied"],
+                counts["missing"],
+            )
         result_x = self._result["result_x"]
 
-        # Build extended lookup including nested sub-objects (e.g.
+        # Extended lookup including nested sub-objects (e.g.
         # OccupancySystem._DamperParams) that have their own id but are
-        # not registered as top-level components.  nn.Module stores
-        # child modules in _modules rather than __dict__, so we use
-        # .modules() to walk the full hierarchy.
-        component_lookup = dict(self._components)
-        for comp in self._components.values():
-            if isinstance(comp, torch.nn.Module):
-                for child in comp.modules():
-                    if (
-                        child is not comp
-                        and hasattr(child, "id")
-                        and child.id not in component_lookup
-                    ):
-                        component_lookup[child.id] = child
-            else:
-                for attr_val in vars(comp).values():
-                    if hasattr(attr_val, "id") and attr_val.id not in component_lookup:
-                        component_lookup[attr_val.id] = attr_val
+        # not registered as top-level components.
+        component_lookup = self._component_lookup()
+
+        # A result fitted on another batching of the model (or on the
+        # unbatched model) names components this model does not have, or
+        # metas that stand for other components here.  The values it
+        # carries by the ids of the components the model was built from
+        # load onto any batching.
+        instance_values = self._result.get("parameter_instances")
+        if instance_values and not self._result_names_this_model(component_lookup):
+            counts = self.set_parameter_values(instance_values)
+            LOGGER.info(
+                "Load estimation result: the result was fitted on another batching of the "
+                "model; %d parameter values applied by component id, %d missing",
+                counts["applied"],
+                counts["missing"],
+            )
+            return
 
         flat_components = [
             component_lookup[com_id] for com_id in self._result["component_id"]
@@ -3910,7 +4148,17 @@ class SimulationModel:
             for connection_point in connection_points:
                 _update_literals_for_connection_point(connection_point)
 
-    def serialize(self):
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the model to
+        (``instance_graph.ttl`` in the model's semantic_model directory),
+        whether or not it has been written.  ``load`` rebuilds the model
+        from it."""
+        return os.path.join(
+            get_main_dir(), *self._semantic_model.dir_conf, "instance_graph.ttl"
+        )
+
+    def serialize(self) -> str:
         """
         Serialize the simulation model to disk.
 
@@ -3918,6 +4166,10 @@ class SimulationModel:
         component/connection state and serializes it, writing
         ``ontology_graph.ttl`` and ``instance_graph.ttl`` (Turtle format) to
         the model's semantic_model directory.
+
+        Returns:
+            The path of the instance graph written
+            (:attr:`instance_graph_path`).
         """
         # dummy_start_time = [datetime.datetime.now()] * len(self._components)
         # dummy_end_time = [datetime.datetime.now()] * len(self._components)
@@ -3926,6 +4178,7 @@ class SimulationModel:
         # self.initialize(dummy_start_time, dummy_end_time, dummy_step_size)
         self._update_literals()
         self._semantic_model.serialize()
+        return self.instance_graph_path
 
     def visualize(
         self,

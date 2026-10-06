@@ -525,6 +525,11 @@ class Estimator:
                 measuring device whose ``input["measuredValue"]`` holds historical
                 data and ``sd`` is the measurement standard deviation used to
                 weight that sensor's residuals (:math:`\\sigma_j` in the likelihood).
+                An entry may also be the sensor alone, or give ``None`` as
+                ``sd``: the sensor's ``measurement_sd`` is used then, and an
+                entry with neither is an error.  With a functional simulator
+                the samples a sensor's ``scoring_mask`` marks ``False`` are
+                not scored.
 
                 Passing ``measurements="auto"`` includes every sensor that is
                 driven by a non-sensor upstream component and has a wired data
@@ -956,6 +961,7 @@ class Estimator:
             parameters = self._auto_parameters()
         if isinstance(measurements, str) and measurements == "auto":
             measurements = self._auto_measurements()
+        measurements = self._resolve_measurements(measurements)
 
         if isinstance(parameters, dict):
             raise TypeError(
@@ -1583,6 +1589,35 @@ class Estimator:
         # measurements lists that callers built by hand.
         self._auto_measurement_ids = {c.id for c, _ in out}
         return out
+
+    @staticmethod
+    def _resolve_measurements(measurements) -> List[Tuple[core.System, float]]:
+        """The ``measurements`` argument of :meth:`estimate` as a list of
+        ``(sensor, sd)``.
+
+        An entry is ``(sensor, sd)``, ``(sensor,)`` or the sensor alone; a
+        missing or ``None`` ``sd`` is the sensor's ``measurement_sd``.
+
+        Raises:
+            ValueError: If an entry gives no standard deviation and its
+                sensor carries none.
+        """
+        resolved = []
+        for entry in measurements:
+            if isinstance(entry, (tuple, list)):
+                sensor = entry[0]
+                sd = entry[1] if len(entry) > 1 else None
+            else:
+                sensor, sd = entry, None
+            if sd is None:
+                sd = getattr(sensor, "measurement_sd", None)
+            if sd is None:
+                raise ValueError(
+                    f"The measurement '{getattr(sensor, 'id', sensor)}' has no standard "
+                    "deviation: give it as (sensor, sd) or set sensor.measurement_sd."
+                )
+            resolved.append((sensor, sd))
+        return resolved
 
     @staticmethod
     def _parameter_value_as_array(param) -> np.ndarray:
@@ -3314,6 +3349,65 @@ class Estimator:
                 self._log_continuity_jumps(continuity_jumps_instances, continuity_tolerance_instances)
             except Exception as exc:  # the result is saved either way
                 LOGGER.warning("Continuity jumps per component not derived: %r", exc)
+        # The parameters by those ids too: the fitted values, the values the
+        # fit started from and the bounds, and per entry the components its
+        # component stood for.  A result loads onto another batching of the
+        # model through them (``load_estimation_result``).
+        parameter_instances = None
+        try:
+            model = self.simulator.model
+            model = getattr(model, "simulation_model", model)
+            entries = list(zip(self._flat_components, self._parameter_names))
+            component_source_ids = [
+                list(model.get_source_component_ids(component)) for component, _ in entries
+            ]
+            parameter_instances = model.get_parameter_values(entries)
+            parameter_instances_x0 = {}
+            parameter_instance_bounds = {}
+            for (component, attr), x0_, lb_, ub_ in zip(
+                entries,
+                self._theta_to_param_values(np.asarray(self._x0, dtype=float)),
+                self._theta_to_param_values(np.asarray(self._lb, dtype=float)),
+                self._theta_to_param_values(np.asarray(self._ub, dtype=float)),
+            ):
+                for (cid, start), (_, low), (_, high) in zip(
+                    model._split_instances(component, x0_),
+                    model._split_instances(component, lb_),
+                    model._split_instances(component, ub_),
+                ):
+                    parameter_instances_x0[(cid, attr)] = start
+                    parameter_instance_bounds[(cid, attr)] = (low, high)
+        except Exception as exc:  # the result is saved either way
+            parameter_instances = None
+            LOGGER.warning("Parameters per component not derived: %r", exc)
+        # What the fit held fixed: every estimable parameter of the model
+        # that was not estimated (pinned to a value, fixed by the caller,
+        # left out of the selection), at the value the fit ran with.  It is
+        # part of the fit but not of theta, so a model the result is loaded
+        # into would otherwise keep whatever value its own setup gives it.
+        parameter_instances_fixed = None
+        try:
+            model = self.simulator.model
+            model = getattr(model, "simulation_model", model)
+            estimated = {(id(component), attr) for component, attr in zip(self._flat_components, self._parameter_names)}
+            held = []
+            for component in model.components.values():
+                getter = getattr(component, "get_estimable_parameters", None)
+                if not callable(getter):
+                    continue
+                for entry in getter():
+                    owner, attr = entry[0], entry[1]
+                    if (id(owner), attr) not in estimated:
+                        held.append((owner, attr))
+            parameter_instances_fixed = {}
+            for owner, attr in held:
+                try:
+                    parameter_instances_fixed.update(model.get_parameter_values([(owner, attr)]))
+                except (TypeError, AttributeError):
+                    continue  # not a parameter object
+        except Exception as exc:  # the result is saved either way
+            parameter_instances_fixed = None
+            LOGGER.warning("Fixed parameters per component not derived: %r", exc)
         collocation_audit = getattr(result, "collocation_audit", None)
         collocation_timing = getattr(result, "collocation_timing", None)
         multistart_audit = getattr(result, "multistart_audit", None)
@@ -3352,6 +3446,13 @@ class Estimator:
             result["continuity_jumps_instances"] = continuity_jumps_instances
         if continuity_tolerance_instances is not None:
             result["continuity_tolerance_instances"] = continuity_tolerance_instances
+        if parameter_instances is not None:
+            result["parameter_instances"] = parameter_instances
+            result["parameter_instances_x0"] = parameter_instances_x0
+            result["parameter_instance_bounds"] = parameter_instance_bounds
+            result["component_source_ids"] = component_source_ids
+        if parameter_instances_fixed:
+            result["parameter_instances_fixed"] = parameter_instances_fixed
         if collocation_audit is not None:
             result["collocation_audit"] = collocation_audit
         if collocation_timing is not None:
@@ -4501,7 +4602,19 @@ class EstimationResult(ResultDict):
         initial states) and ``collocation_audit`` (collocation
         solution-quality audit), or ``multistart_audit``,
         ``derivative_stats``, and ``iteration_history`` for custom batched
-        shooting. Results saved to disk can be reloaded with
+        shooting.
+
+        A saved fit also carries its parameters by the ids of the components
+        the model was built from, ``{(component id, attr): values}`` in
+        physical units with one key per instance of a batched component:
+        ``parameter_instances`` (the fitted values),
+        ``parameter_instances_x0`` (the values the fit started from) and
+        ``parameter_instance_bounds`` (``(lower, upper)``); and
+        ``component_source_ids``, per entry of ``component_id`` the ids of
+        the components that component stood for.  Through them a result
+        loads onto another batching of the model.
+
+        Results saved to disk can be reloaded with
         :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
 
     Examples:

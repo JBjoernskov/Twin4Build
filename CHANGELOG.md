@@ -92,6 +92,70 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   `Model(id=..., system_registry=...)` and
   `Translator(system_registry=...)` take a registry of their own, which the
   translator also uses as the whitelist of the external classes it accepts.
+- `twin4build.model.partition.keep_groups(model, partition, groups,
+  with_senders=True, stop_at=())` keeps some groups of a measured partition
+  (a few rooms of a building) and removes the rest of the model: the groups
+  named, with `with_senders` the groups that send into them over a measured
+  edge (not followed into the groups of `stop_at`, e.g. the air handling
+  unit's), and every leaf that feeds a kept component.  A
+  `ReturnFlowJunctionSystem`'s `branch_temperature_slots` follow the
+  surviving connections.
+
+- `Simulator.measurement_frames()` and
+  `Simulator.measurement_errors(skip=0)` compare the simulation that just
+  ran with the measurements: for every sensor that reads a computed port
+  and holds data, a frame (`measured`, `simulated`, `scored`) and a row of
+  errors (`sensor`, `port`, `n`, `mae`, `rmse`, `bias`) over the samples
+  the sensor's `scoring_mask` scores, after the first `skip` steps of each
+  period.  They work on the model the simulator ran, unbatched or batched.
+
+- Parameters by component id, across batchings.  A result also carries
+  `parameter_instances_fixed`: every estimable parameter the fit held fixed
+  (pinned, fixed, left out of the selection) at the value it ran with, and
+  `load_estimation_result(..., fixed=True)` (the default) sets them before
+  the estimated ones, so a model simulates as it was fitted whatever its own
+  setup gave those parameters.
+  `Model.get_source_component_ids(component)` gives the ids of the
+  components a batched meta stands for;
+  `Model.get_parameter_values(parameters)` reads the estimator's parameter
+  entries as `{(component id, attr): array}` in physical units, one key per
+  instance of a meta; `Model.set_parameter_values(values, strict=False)`
+  writes such values to the model whatever its batching (the unbatched
+  model, or a meta's instance, the other instances left alone) and returns
+  `{"applied": n, "missing": m}`.  A saved fit carries
+  `parameter_instances`, `parameter_instances_x0` (the values the fit
+  started from), `parameter_instance_bounds` and `component_source_ids`,
+  and `load_estimation_result` applies the values by component id when the
+  result was fitted on another batching of the model (its ids do not
+  resolve, or resolve to metas that stand for other components) instead of
+  failing with a `KeyError`.
+
+- `SensorSystem`: `scoring_mask` (the samples an estimation scores, a
+  boolean Series indexed by time) and `measurement_sd` (the standard
+  deviation the sensor is scored with) are declared attributes and
+  constructor arguments, and `Model.batch_components` carries them to the
+  sensor's copy in the batched model.  `set_series(series, uuid=None)` puts
+  a sensor on an in-memory series and names it without switching it to
+  database mode, and `SensorSystem(df=frame, uuid="X")` is an in-memory
+  sensor named "X".  Assigning `uuid`, `dbconfig` or `filename` the value
+  the sensor already has no longer switches its source (`Model.load`
+  restores the saved configuration by assignment and used to switch a
+  sensor on a series back to the database); a new value switches as before.
+- `Estimator.estimate`: an entry of `measurements` may be the sensor alone
+  or `(sensor, None)`, in which case the sensor's `measurement_sd` is used;
+  an entry with neither raises a `ValueError` that names the sensor.
+
+- Workflow accessors, so that a workflow in an add-on package need not
+  reach into private attributes:
+  `twin4build.utils.get_main_dir.set_main_dir(path)` sets the folder models
+  keep their files in (instead of overwriting the module's `_main_dir`);
+  `Model.serialize()` returns the path of the saved instance graph and
+  `Model.instance_graph_path` gives it without serializing;
+  `discretize_onestep` is the public name of the one-step zero-order-hold
+  discretization (`_discretize_onestep` is unchanged);
+  `SpaceHeaterSystem.solve_UA()` returns the `UA` that meets the nominal
+  sizing, so a radiator can be sized before the model is initialized.
+
 - `Optimizer`: a decision variable may name a component's ``tps.Parameter``
   instead of an output port (`(component, "Y", lb, ub)`), so a handful of
   numbers (the points of a compensation curve, a gain, a setpoint) can be
