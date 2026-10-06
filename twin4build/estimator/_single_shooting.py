@@ -48,7 +48,6 @@ Enable with ``Simulator(model, execution_mode="functional")``.
 from __future__ import annotations
 
 import numpy as np
-import os
 
 import torch
 
@@ -60,9 +59,13 @@ from twin4build.utils.types import denormalize_unit, theta_bound_tensors
 
 
 #: Roll equal-length periods out as one batch of windows (one wide step
-#: per time index) instead of one after another.  ``T4B_WINDOW_BATCHING=0``
-#: keeps the sequential rollout.
-WINDOW_BATCHING = os.environ.get("T4B_WINDOW_BATCHING", "1").strip().lower() not in {"0", "false", "no"}
+#: per time index) instead of one after another; the tests switch it off to
+#: compare with the sequential rollout.
+WINDOW_BATCHING = True
+
+#: The box of a window's initial-state variable: this fraction of the
+#: state's magnitude on either side of the recorded state.
+INITIAL_STATE_BOX = 0.25
 
 
 class FunctionalEstimationObjective:
@@ -170,104 +173,53 @@ class FunctionalEstimationObjective:
     def _setup_multiple_shooting(self, config) -> None:
         """Turn the windows' initial states into decision variables.
 
-        ``config`` (a dict, ``None`` = off):
+        ``config`` (a dict, ``None`` = off), built by ``Estimator.estimate``
+        from its options:
 
-        * ``states``: ``"all"`` (every state of the flat state vector, the
-          default) or a list of ``(component class name, [state index, ...]
-          or "all")`` selecting the slow states only.  A class names an
-          executing component or a member of a fused state-space block; the
-          indices count within that class's own state vector.
-        * ``sd_ref``, ``sd_rel`` / ``sd_abs``: the continuity tolerance per
-          state, ``max(sd_abs, sd_rel * reference)``.  ``sd_ref="range"``
-          (the default) takes as the reference how much the state varies
-          over the windows' starts and ends in a rollout at the start point:
-          each state is held in its own units and to its own scale, so a
-          slow state that barely moves (a building's shared interior) is
-          held tight and a fast one (a radiator's water) loosely; default
-          ``sd_rel`` 0.01 there.  ``sd_ref="value"`` takes the state's
-          magnitude (default ``sd_rel`` 0.0025: 0.05 K on a 20 C wall).
-          The tolerance is a penalty weight, not a hard limit: a fit may
-          still buy a better fit of a window with a jump at its start.
-        * ``shift``: the augmented-Lagrangian shift of the defects, in the
-          states' own units: ``{component id: (P - 1, state_size)}`` by the
-          ids of the components the model was built from (a result's
-          ``continuity_shift_instances``).  The defect of a state becomes
-          ``(Y_end[p] - Y0[p + 1] + shift) / sd``.  Refitting with the shift
-          the last fit returned (the method of multipliers: Hestenes 1969,
-          Powell 1969) drives the jumps to zero at a fixed tolerance.
-        * ``continuity``: ``True`` (multiple shooting) scores the defects;
-          ``False`` (``Estimator.estimate(initial_state=...)``) estimates the
-          periods' initial states with no tie between them.
-        * ``bound_rel`` / ``bound_abs``: the box around the recorded initial
-          state, ``max(bound_abs, bound_rel * |state|)`` (default 25 %).
-        * ``first_window``: the first window's initial state is a variable
-          too (default ``True``; it has no defect column, its own first
-          measurements pin it).  ``False`` keeps it at the recorded state.
+        * ``sd_rel``: the continuity tolerance of a state is ``sd_rel``
+          (default 0.01) times how much the state varies over the windows'
+          starts and ends in a rollout at the start point: each state is
+          held in its own units and to its own scale.
+        * ``energy_tol``: a state that stores heat is held to at most
+          ``energy_tol / C`` (default 3.6e5 J, 0.1 kWh), ``C`` the heat
+          capacity of the state (:meth:`System.state_heat_capacities` at the
+          start point): a jump costs by the heat it creates.  A massive state
+          (a wall, the shared interior) is held tight, a light one (room
+          air, a radiator) keeps its range tolerance, a state that holds no
+          heat (CO2, a controller's memory) too.
 
-        Every window (every window but the first with ``first_window=False``)
-        gets one variable per selected state,
-        normalised linearly on its box; the defect ``Y_end[p] - Y0[p + 1]``
-        over the selected states, divided by the tolerance, joins the
-        residual columns (one column per selected state).  The variables
-        and the columns attach to the block of the state's component, so
-        the block solvers see them as any other parameter and residual.
-        Needs the batched window rollout (equal-length periods).
+        The tolerance is a penalty weight, not a hard limit: a fit may still
+        buy a better fit of a window with a jump at its start.
+
+        Every window gets one variable per state, the first window's too (no
+        defect column, its own first measurements pin it), normalised
+        linearly on its box: 25 % of the state's magnitude around the
+        recorded state, widened to include the end of the window before.
+        The defect ``Y_end[p] - Y0[p + 1]``, divided by the tolerance, joins
+        the residual columns (one column per state).  The variables and the
+        columns attach to the block of the state's component, so the block
+        solvers see them as any other parameter and residual.  Needs the
+        batched window rollout (equal-length periods).
         """
         if not config:
             return
         windows = self._windows()
         if windows is None:
-            LOGGER.warning(
-                "multiple shooting needs several equal-length periods rolled out as windows; "
-                "the initial states stay fixed"
+            raise ValueError(
+                "the periods' initial states are variables of the batched window rollout: give several periods "
+                "of one length"
             )
-            return
-        config = dict(config)
-        continuity = bool(config.get("continuity", True))
         Y0, _tape = windows  # (P, D_aug)
         P = int(Y0.shape[0])
-        if P < 2 and continuity:
+        if P < 2:
             return
         layout = self.layout
-        D = int(layout.width)
-        selection = config.get("states", "all")
-        if selection == "all" or selection is None:
-            index = np.arange(D, dtype=np.int64)
-        else:
-            picked = []
-            wanted = {}
-            for name, idx in selection:
-                wanted[str(name)] = idx
-            # a class names an executing component or a member of a fused
-            # state-space block (a room fused with its radiator and walls):
-            # the member's states are a span of the block's state vector
-            model = getattr(self.est.simulator.model, "simulation_model", self.est.simulator.model)
-            members_of = {}
-            for comp, owner, offset, width in model._stateful_leaves():
-                if owner is not comp:
-                    members_of.setdefault(comp.id, []).append((type(owner).__name__, offset, width))
-            for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
-                spans = []
-                if type(comp).__name__ in wanted:
-                    spans.append((0, ss, wanted[type(comp).__name__]))
-                for class_name, offset, width in members_of.get(comp.id, []):
-                    if class_name in wanted:
-                        spans.append((offset, width, wanted[class_name]))
-                for offset, width, idx in spans:
-                    ks = range(width) if idx == "all" else [int(k) for k in idx if 0 <= int(k) < width]
-                    for i_c in range(n_c):
-                        picked.extend(start + i_c * ss + offset + int(k) for k in ks)
-            index = np.asarray(sorted(set(picked)), dtype=np.int64)
-            if index.size == 0:
-                LOGGER.warning(
-                    "multiple shooting: the states selection %s matches no state of the model; "
-                    "the initial states stay fixed", sorted(wanted),
-                )
+        index = np.arange(int(layout.width), dtype=np.int64)
         blocks = self.composer.state_blocks(layout)
         attached = blocks[index] >= 0
         if not attached.all():
             LOGGER.warning(
-                "multiple shooting: %d of %d selected states belong to no estimated block and stay fixed",
+                "multiple shooting: %d of %d states belong to no estimated block and stay fixed",
                 int((~attached).sum()), int(index.size),
             )
             index = index[attached]
@@ -278,10 +230,8 @@ class FunctionalEstimationObjective:
         # Every window's initial state is a variable, the first window's
         # too (boxed around its recorded value and pinned by its own first
         # measurements; no defect column, there is no window before it), so
-        # no window needs a warm-up.  ``first_window=False`` keeps the first
-        # window at its recorded state (windows 1..P-1 carry the variables).
-        p_first = 0 if (bool(config.get("first_window", True)) or not continuity) else 1
-        x0 = Y0[p_first:, index_t].detach()  # (P - p_first, n_slow) physical
+        # no window needs a warm-up.
+        x0 = Y0[:, index_t].detach()  # (P, n_slow) physical
         # The scale of every selected state: the largest magnitude it takes
         # at the windows' starts and ends in a rollout at the start point,
         # floored at one unit -- a state recorded at zero (a controller's
@@ -291,95 +241,56 @@ class FunctionalEstimationObjective:
             theta0 = self._denorm(torch.as_tensor(np.asarray(self.est._x0_norm, dtype=np.float64), dtype=dtype, device=dev)[: self.n_theta])
             _out, end0 = self.est.simulator.rollout_functional_windows(self.composer, Y0, theta0, _tape, return_end=True)
         magnitude = torch.maximum(Y0[:, index_t].abs().amax(dim=0), end0[:, index_t].abs().amax(dim=0)).clamp(min=1.0)  # (n_slow,)
-        sd_ref = str(config.get("sd_ref", "range"))
-        if sd_ref == "range":
-            # how much each state moves over the windows' starts and ends,
-            # floored at a thousandth of its magnitude (a state that does not
-            # move at the start point must not get a vanishing tolerance)
-            both = torch.cat([Y0[:, index_t], end0[:, index_t]], dim=0)
-            reference = torch.maximum(both.amax(dim=0) - both.amin(dim=0), 1e-3 * magnitude)
-            sd_rel_default = 0.01
-        elif sd_ref == "value":
-            reference = magnitude
-            sd_rel_default = 0.0025
-        else:
-            raise ValueError(f"multiple_shooting sd_ref must be 'range' or 'value'; got {sd_ref!r}")
-        sd_rel, sd_abs = float(config.get("sd_rel", sd_rel_default)), float(config.get("sd_abs", 0.0))
-        b_rel, b_abs = float(config.get("bound_rel", 0.25)), float(config.get("bound_abs", 0.0))
-        sd = torch.clamp(torch.maximum(torch.full_like(reference, sd_abs), sd_rel * reference), min=1e-9)
-        half = torch.maximum(torch.full_like(x0, b_abs), b_rel * magnitude.unsqueeze(0).expand_as(x0)).clamp(min=1e-6)
+        # how much each state moves over the windows' starts and ends,
+        # floored at a thousandth of its magnitude (a state that does not
+        # move at the start point must not get a vanishing tolerance)
+        both = torch.cat([Y0[:, index_t], end0[:, index_t]], dim=0)
+        reference = torch.maximum(both.amax(dim=0) - both.amin(dim=0), 1e-3 * magnitude)
+        sd_rel = float(config.get("sd_rel", 0.01))
+        energy_tol = float(config.get("energy_tol", 3.6e5))
+        sd = (sd_rel * reference).clamp(min=1e-9)
+        capacity = self._state_capacities(layout, dev, dtype)[index_t]  # (n_slow,) J/K, NaN: no heat
+        holds_heat = torch.isfinite(capacity) & (capacity > 0)
+        by_energy = energy_tol / torch.where(holds_heat, capacity, torch.ones_like(capacity))
+        sd = torch.where(holds_heat, torch.minimum(sd, by_energy), sd).clamp(min=1e-9)
+        tightened = holds_heat & (by_energy < sd_rel * reference)
+        LOGGER.config(
+            "multiple shooting: %d of %d tied states hold heat; %d of them held to %.3g J per jump "
+            "(tolerance median %.3g K, smallest %.3g K)",
+            int(holds_heat.sum()), int(index.size), int(tightened.sum()), energy_tol,
+            float(sd[tightened].median()) if bool(tightened.any()) else float("nan"),
+            float(sd[tightened].min()) if bool(tightened.any()) else float("nan"),
+        )
+        self.init_capacity = capacity
+        half = (INITIAL_STATE_BOX * magnitude.unsqueeze(0).expand_as(x0)).clamp(min=1e-6)
+        # the box of a window's start also holds the end of the window before
+        # it at the start point: the continuous trajectory must be feasible,
+        # or a jump the box forces (a controller's integral recorded at zero
+        # and ending far from it) is indistinguishable from one the fit chose
         low, high = x0.clone(), x0.clone()
-        if continuity:
-            # the box of a window's start also holds the end of the window
-            # before it at the start point: the continuous trajectory must be
-            # feasible, or a jump the box forces (a controller's integral
-            # recorded at zero and ending far from it) is indistinguishable
-            # from one the fit chose, and multiplier updates cannot close it
-            first_tied = 1 - p_first  # the row of window 1 in x0
-            previous_end = end0[:-1, index_t]  # the ends of windows 0 .. P-2
-            low[first_tied:] = torch.minimum(low[first_tied:], previous_end)
-            high[first_tied:] = torch.maximum(high[first_tied:], previous_end)
+        previous_end = end0[:-1, index_t]  # the ends of windows 0 .. P-2
+        low[1:] = torch.minimum(low[1:], previous_end)
+        high[1:] = torch.maximum(high[1:], previous_end)
         lb, ub = low - half, high + half
         n_slow = int(index.size)
-        self.init_first = int(p_first)
-        self.n_init = int((P - p_first) * n_slow)
+        self.n_init = int(P * n_slow)
         self.init_index = index_t
         self.init_n_slow = n_slow
         self.init_blocks = np.asarray(blocks[index], dtype=np.int64)  # (n_slow,)
         self.init_sd = sd
-        self.init_continuity = continuity
-        # the augmented-Lagrangian shift of the defects, physical (P - 1, n_slow)
-        self.init_shift = self._selected_from_instances(config.get("shift"), P - 1, dev, dtype, index_t) if continuity else None
-        self.init_sd_reference = reference  # what sd_rel multiplies (see sd_ref)
+        self.init_sd_reference = reference  # what sd_rel multiplies
         self.init_magnitude = magnitude
         self.init_x0 = x0
         self.init_lb, self.init_ub = lb, ub
         self.init_x0_norm = ((x0 - lb) / (ub - lb)).reshape(-1)
-        rows = torch.arange(p_first, P, device=dev).repeat_interleave(n_slow)
-        cols = index_t.repeat(P - p_first)
+        rows = torch.arange(P, device=dev).repeat_interleave(n_slow)
+        cols = index_t.repeat(P)
         self._init_put = (rows, cols)
         LOGGER.config(
-            "multiple shooting: %d windows, %d states per window as variables (%d total, from window %d), "
-            "continuity sd %.3g of the state's %s / %.3g absolute, box %.3g relative / %.3g absolute",
-            P, n_slow, self.n_init, p_first, sd_rel, sd_ref, sd_abs, b_rel, b_abs,
+            "multiple shooting: %d windows, %d states per window as variables (%d total), "
+            "continuity sd %.3g of the state's range, at most %.3g J per jump in a state that stores heat",
+            P, n_slow, self.n_init, sd_rel, energy_tol,
         )
-        if not continuity:
-            LOGGER.config("initial states: estimated per period, not tied between periods")
-        elif self.init_shift is not None:
-            LOGGER.config(
-                "multiple shooting: defects shifted by the last fit's multipliers (largest shift %.3g)",
-                float(self.init_shift.abs().max()),
-            )
-
-    def _selected_from_instances(self, shift, rows: int, dev, dtype, index):
-        """``{component id: (rows, state_size)}`` by the ids of the components
-        the model was built from, as ``(rows, n_slow)`` over the selected
-        states ``index`` (zero where the mapping has no value), or ``None``."""
-        if not shift:
-            return None
-        model = self.est.simulator.model
-        model = getattr(model, "simulation_model", model)
-        flat = torch.zeros((rows, int(self.layout.width)), dtype=dtype, device=dev)
-        start_of = {comp.id: start for comp, (start, _stop) in zip(self.layout.components, self.layout.slices)}
-        shape_of = {comp.id: shape for comp, shape in zip(self.layout.components, self.layout.shapes)}
-        found = 0
-        for comp, owner, offset, width in model._stateful_leaves():
-            if comp.id not in start_of:
-                continue
-            _n_c, ss = shape_of[comp.id]
-            for i_c, cid in enumerate(model._instance_ids(owner)):
-                value = shift.get(cid)
-                if value is None:
-                    continue
-                value = torch.as_tensor(np.asarray(value, dtype=np.float64), dtype=dtype, device=dev).reshape(rows, -1)
-                if value.shape[1] != width:
-                    continue
-                col = start_of[comp.id] + i_c * ss + offset
-                flat[:, col : col + width] = torch.nan_to_num(value, nan=0.0)
-                found += 1
-        if found == 0:
-            return None
-        return flat[:, index]
 
     @property
     def n_theta_ext(self) -> int:
@@ -400,17 +311,17 @@ class FunctionalEstimationObjective:
         return x[..., : self.n_theta], x[..., self.n_theta :]
 
     def _denorm_init(self, init_norm: torch.Tensor) -> torch.Tensor:
-        """Physical initial states ``(..., P-1, n_slow)`` from the normalised variables."""
+        """Physical initial states ``(..., P, n_slow)`` from the normalised variables."""
         lb, ub = self.init_lb.reshape(-1), self.init_ub.reshape(-1)
         phys = lb + init_norm * (ub - lb)
         return phys.reshape(*init_norm.shape[:-1], self.init_lb.shape[0], self.init_n_slow)
 
     def _Y0_with(self, Y0: torch.Tensor, init_phys):
-        """The windows' initial states with the variables written into rows 1..P-1."""
+        """The windows' initial states with the variables written in."""
         if init_phys is None:
             return Y0
         rows, cols = self._init_put
-        if init_phys.dim() == 3:  # a batch: (B, P-1, n_slow) -> (B, P, D_aug)
+        if init_phys.dim() == 3:  # a batch: (B, P, n_slow) -> (B, P, D_aug)
             B = init_phys.shape[0]
             base = Y0.unsqueeze(0).expand(B, -1, -1)
             b_idx = torch.arange(B, device=Y0.device).repeat_interleave(rows.numel())
@@ -418,32 +329,11 @@ class FunctionalEstimationObjective:
         return Y0.index_put((rows, cols), init_phys.reshape(-1))
 
     def _defects(self, end: torch.Tensor, Y0: torch.Tensor):
-        """``(Y_end[p] - Y0[p + 1] + shift) / sd`` over the selected states:
-        ``(..., P-1, n_slow)``; ``None`` when the periods are not tied."""
-        if not getattr(self, "init_continuity", True):
-            return None
+        """``(Y_end[p] - Y0[p + 1]) / sd`` over the tied states:
+        ``(..., P-1, n_slow)``."""
         idx = self.init_index
         gap = end[..., :-1, :][..., idx] - Y0[..., 1:, :][..., idx]
-        if getattr(self, "init_shift", None) is not None:
-            gap = gap + self.init_shift
         return gap / self.init_sd
-
-    def init_entry_names(self):
-        """One label per initial-state variable, ``init[p]:<component>[i_c].x<k>``."""
-        names = []
-        if self.n_init == 0:
-            return names
-        layout = self.layout
-        owner = {}
-        for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
-            for i_c in range(n_c):
-                for k in range(ss):
-                    owner[start + i_c * ss + k] = f"{comp.id}[{i_c}].x{k}"
-        first = int(getattr(self, "init_first", 1))
-        for p in range(first, first + self.init_lb.shape[0]):
-            for j in self.init_index.tolist():
-                names.append(f"init[{p}]:{owner.get(int(j), f'state{j}')}")
-        return names
 
     def initial_state(self, x) -> dict:
         """The windows' initial states at a solver vector, per executing
@@ -473,7 +363,7 @@ class FunctionalEstimationObjective:
         tolerance.  Empty without multiple shooting."""
         x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
         windows = self._windows()
-        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext or not self.init_continuity:
+        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext:
             return {}
         theta_phys, init_phys = self._physical(x)
         Y0, tape = windows
@@ -485,32 +375,13 @@ class FunctionalEstimationObjective:
         jumps[:, idx] = Y[1:, idx] - end[:-1, idx]
         return self._per_component(jumps)
 
-    def continuity_shift_next(self, x) -> dict:
-        """The shift for the next fit (the method of multipliers): this
-        fit's shift plus the gap it left, ``Y_end[p] - Y0[p + 1] + shift``,
-        per executing component ``{component id: (P-1, n_c, state_size)}``
-        in physical units (``NaN`` for a state that is not a variable).
-        Empty without multiple shooting."""
-        x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
-        windows = self._windows()
-        if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext or not self.init_continuity:
-            return {}
-        theta_phys, init_phys = self._physical(x)
-        Y0, tape = windows
-        Y = self._Y0_with(Y0, init_phys)
-        with torch.no_grad():
-            _out, end = self.est.simulator.rollout_functional_windows(self.composer, Y, theta_phys, tape, return_end=True)
-        flat = torch.full_like(Y[1:], float("nan"))
-        flat[:, self.init_index] = self._defects(end, Y) * self.init_sd
-        return self._per_component(flat)
-
     def continuity_tolerance(self) -> dict:
         """The continuity tolerance of every state that is a variable, per
         executing component: ``{component id: (1, n_c, state_size)}``
         (``NaN`` elsewhere); a jump over its tolerance is the defect column
         the objective scores.  Empty without multiple shooting."""
         windows = self._windows()
-        if self.n_init == 0 or windows is None or not self.init_continuity:
+        if self.n_init == 0 or windows is None:
             return {}
         Y0 = windows[0]
         sd = torch.full_like(Y0[:1], float("nan"))
@@ -522,24 +393,6 @@ class FunctionalEstimationObjective:
         out = {}
         for comp, (start, stop), (n_c, ss) in zip(self.layout.components, self.layout.slices, self.layout.shapes):
             out[comp.id] = flat[:, start:stop].reshape(flat.shape[0], n_c, ss).detach().cpu().clone()
-        return out
-
-    def init_values(self, x) -> dict:
-        """The optimised initial states per window and state label from a
-        solver vector (``{window p: {label: value}}``), empty without them."""
-        x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
-        if self.n_init == 0 or x.shape[-1] != self.n_theta_ext:
-            return {}
-        phys = self._denorm_init(x[self.n_theta :]).detach().cpu().numpy()
-        names = self.init_entry_names()
-        out = {}
-        k = 0
-        first = int(getattr(self, "init_first", 1))
-        for p in range(first, first + phys.shape[0]):
-            out[p] = {}
-            for j in range(phys.shape[1]):
-                out[p][names[k].split(":", 1)[1]] = float(phys[p - first, j])
-                k += 1
         return out
 
     # -- one-time capture of exogenous inputs + initial state ----------------
@@ -599,6 +452,29 @@ class FunctionalEstimationObjective:
         )
 
     # -- the rollout ----------------------------------------------------------
+    def _state_capacities(self, layout, dev, dtype):
+        """The heat capacity of every entry of the flat state vector [J/K],
+        ``(D,)``: the executing components' :meth:`state_heat_capacities`
+        (a fused block's in its members' order), ``NaN`` where a state holds
+        no heat or its component does not say."""
+        flat = torch.full((int(layout.width),), float("nan"), dtype=dtype, device=dev)
+        for comp, (start, stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
+            method = getattr(comp, "state_heat_capacities", None)
+            caps = method() if method is not None else None
+            if caps is None:
+                continue
+            caps = caps.to(device=dev, dtype=dtype)
+            if caps.shape[0] == 1 and n_c > 1:
+                caps = caps.expand(n_c, caps.shape[-1])
+            if tuple(caps.shape) != (n_c, ss):
+                LOGGER.warning(
+                    "multiple shooting: %s gives heat capacities of shape %s for its (%d, %d) states; "
+                    "they keep the range tolerance", comp.id, tuple(caps.shape), n_c, ss,
+                )
+                continue
+            flat[start:stop] = caps.reshape(-1)
+        return flat
+
     def _windows(self):
         """``(Y0 (P, D_aug), tape (n_t, P, n_exogenous))`` when the periods
         are several of equal length (one batched rollout advances them all),
@@ -704,8 +580,8 @@ class FunctionalEstimationObjective:
                 M = torch.stack(cols, dim=1)
             act = self.ACT[p][nw:]
             diff = act - M[nw:]
-            # A NaN reading is an unscored sample (a sensor's ``allow_missing``
-            # gap): zero residual and zero gradient there.
+            # A NaN reading is an unscored sample (a ``scoring_mask`` gap):
+            # zero residual and zero gradient there.
             raw_terms.append(torch.where(torch.isnan(act), torch.zeros_like(diff), diff))
         return torch.cat(raw_terms, dim=0)
 
@@ -751,7 +627,7 @@ class FunctionalEstimationObjective:
     # -- per-column (per residual signal) losses: sum over columns == loss ------
     def _column_loss_from_rollout(self, Ms, defects=None) -> torch.Tensor:
         """``(n_meas [+ n_slow],)``: the measured columns, then one column per
-        selected state summing its defects over the window boundaries."""
+        tied state summing its defects over the window boundaries."""
         cols = self._weighted(self._raw_residuals_from_meas(Ms)).square().sum(dim=0)
         wd = self._weighted_defects(defects)
         if wd is not None:
@@ -821,8 +697,7 @@ class FunctionalEstimationObjective:
             if self.n_init:
                 P1 = self.init_lb.shape[0]
                 theta_block = np.concatenate([np.asarray(theta_block), np.tile(self.init_blocks, P1)])
-                if self.init_continuity:
-                    column_block = np.concatenate([np.asarray(column_block), self.init_blocks])
+                column_block = np.concatenate([np.asarray(column_block), self.init_blocks])
             cached = (theta_block, column_block, n_blocks)
             self.__dict__["_parameter_structure"] = cached
         return cached

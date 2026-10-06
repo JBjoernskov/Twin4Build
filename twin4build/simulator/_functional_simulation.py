@@ -10,6 +10,7 @@ import torch
 import twin4build.utils.types as tps
 from twin4build.utils.slots import slot_pairs
 from twin4build.utils import _cuda_graph
+from twin4build.simulator._step_graph import initialization_count
 from twin4build.utils._cuda_graph import CudaGraphCallable
 from twin4build.simulator._functional import (
     _replays_data,
@@ -643,7 +644,13 @@ class FunctionalSimulationSession:
             self.replay_seconds += time.perf_counter() - started
             self.replay_count += 1
             return RolloutResult(torch.stack(state_rows, dim=1), torch.stack(output_rows, dim=1))
+        # a graph captured before the model's last initialize() reads the
+        # tensors it reallocated at their old addresses: capture again
+        count = initialization_count(self.functional_model)
+        if self.graph is not None and getattr(self, "_graph_initialization", None) != count:
+            self.graph = None
         if self.graph is None:
+            self._graph_initialization = count
             _cuda_graph.warn_if_large_eager_capture(
                 len(self.functional_model.cone),
                 int(exogenous_tape.shape[0]) * int(self.n_periods),

@@ -161,6 +161,10 @@ class ThermalMassNodeSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("C",)
+
+    def _state_heat_capacities(self):
+        """``T_node`` holds ``C`` [J/K]."""
+        return self.C.get().reshape(-1, 1)
     #: The temperature is delivered from the start of the step: its edges are
     #: cut by the loader before cycle detection (a declared one-step lag).
     LAGGED_OUTPUT_PORTS = frozenset({"temperature"})
