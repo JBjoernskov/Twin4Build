@@ -14,6 +14,7 @@ import datetime
 import os
 import shutil
 import unittest
+from unittest import mock
 
 import numpy as np
 import torch
@@ -90,7 +91,7 @@ class TestParameterDecisionVariables(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        for model_id in (cls.MODEL_ID, cls.MODEL_ID + "_gpu"):
+        for model_id in (cls.MODEL_ID, cls.MODEL_ID + "_gpu", cls.MODEL_ID + "_object", cls.MODEL_ID + "_warmup"):
             path = os.path.join("generated_files", "models", model_id)
             if os.path.exists(path):
                 shutil.rmtree(path)
@@ -200,18 +201,50 @@ class TestParameterDecisionVariables(unittest.TestCase):
         self.assertGreater(abs(float(parts.phys[0]) - float(everything)), 1e-6 * abs(float(everything)))
 
     def test_warmup_needs_the_functional_objective(self):
+        # a model of its own: the object path's setup changes the model before it refuses
+        model, _curve, heater, _discomfort = build_model(self.MODEL_ID + "_object")
         starts, ends = self._periods()
-        optimizer = tb.Optimizer(tb.Simulator(self.model, execution_mode="object"))
-        waterflow = self.model.components["Waterflow"]
+        optimizer = tb.Optimizer(tb.Simulator(model, execution_mode="object"))
         with self.assertRaises(RuntimeError):
             optimizer.optimize(
                 start_time=starts, end_time=ends, step_size=2400,
-                variables=[(waterflow, "scheduleValue", 0.0, 0.02)],
-                objectives=[(self.heater, "Power", "min")],
+                variables=[(model.components["Waterflow"], "scheduleValue", 0.0, 0.02)],
+                objectives=[(heater, "Power", "min")],
                 method=("scipy", "SLSQP", "ad"),
                 options={"maxiter": 1},
                 n_warmup=6,
             )
+
+    def test_an_invalid_warmup_is_refused_before_any_simulation(self):
+        """Negative, as long as a period, or with the collocation
+        transcription (whose objective has no warm-up mask): refused by the
+        Optimizer before anything is simulated."""
+        model, curve, heater, discomfort = build_model(self.MODEL_ID + "_warmup")
+        starts, ends = self._periods()  # 36 steps of 2400 s each
+        cases = (
+            (-1, ("scipy", "SLSQP", "ad"), "optimize"),
+            (36, ("scipy", "SLSQP", "ad"), "optimize"),
+            (36, ("scipy", "SLSQP", "ad"), "pareto_front"),
+            (6, ("casadi", "ipopt", "ad", "collocation"), "pareto_front"),
+        )
+        for n_warmup, method, route in cases:
+            optimizer = tb.Optimizer(tb.Simulator(model, execution_mode="functional"))
+            # Model has __slots__: patched on the class for the check
+            with mock.patch.object(type(model), "initialize", side_effect=AssertionError("simulated before the check")):
+                with self.assertRaises(ValueError, msg=f"{route}, n_warmup={n_warmup}, {method}"):
+                    if route == "optimize":
+                        optimizer.optimize(
+                            start_time=starts, end_time=ends, step_size=2400,
+                            variables=[(curve, "Y", 12.0, 24.0)], objectives=[(heater, "Power", "min")],
+                            method=method, options={"maxiter": 1}, n_warmup=n_warmup,
+                        )
+                    else:
+                        optimizer.pareto_front(
+                            start_time=starts, end_time=ends, step_size=2400,
+                            variables=[(curve, "Y", 12.0, 24.0)],
+                            objective1=(heater, "Power", "min"), objective2=(discomfort, "output", "min"),
+                            n_points=3, method=method, options={"maxiter": 1}, n_warmup=n_warmup,
+                        )
 
     @unittest.skipUnless(torch.cuda.is_available(), "the captured, compiled step needs CUDA")
     def test_batched_parts_on_the_captured_compiled_step(self):
