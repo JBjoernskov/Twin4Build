@@ -429,8 +429,13 @@ class FunctionalControlObjective:
         ``loss()`` reassembles exactly the object-graph accumulation order, so
         existing callers see bit-identical values.
         """
+        return self._parts_from_out(self._rollout(theta, transform_mode=transform_mode), theta)
+
+    def _parts_from_out(self, OUT, like: torch.Tensor) -> SimpleNamespace:
+        """:meth:`parts` from one row's rollout ``OUT[p][j]`` (``like``: a
+        tensor of the row's dtype and device).  Pure: ``vmap``-ed over a
+        batch of rollouts by :meth:`batched_parts`."""
         opt = self.opt
-        OUT = self._rollout(theta, transform_mode=transform_mode)
 
         # Means over the per-period concatenation equal the object graph's
         # masked means (the mask selects the same entries; means are
@@ -454,8 +459,8 @@ class FunctionalControlObjective:
 
         ineq = None
         if self._ineq_terms:
-            upper = theta.new_zeros(())
-            lower = theta.new_zeros(())
+            upper = like.new_zeros(())
+            lower = like.new_zeros(())
             for j, ctype, desired in self._ineq_terms:
                 y_norm = _norm_col(j)
                 d_norm = torch.cat(desired)
@@ -478,6 +483,78 @@ class FunctionalControlObjective:
             )
 
         return SimpleNamespace(eq=eq, ineq=ineq, objs=objs, phys=phys)
+
+    # -- the batched loss: the Estimator's structure -------------------------------
+    def _rollout_batched(self, theta_batch: torch.Tensor):
+        """Batched counterpart of :meth:`_rollout` for parameter decision
+        variables: ``OUT[p][j]`` of shape ``(B, n_t_p, n_c_j)`` from one wide
+        rollout per period (:meth:`Simulator.rollout_functional_batched`: the
+        compiled step over the rows, replayed as per-step CUDA graphs under
+        ``cuda_graph_scope="step"``), as the Estimator's ``_rollout_batched``.
+        Trajectory decision variables override the captured tape per row,
+        which the batched step's shared tape cannot carry: not batched here
+        (:meth:`batched_parts` runs them row by row)."""
+        B = theta_batch.shape[0]
+        pieces, offset = [], 0
+        theta_par = theta_batch[:, self.n_traj :]
+        for comp, name, lower, upper, n in self.param_vars:
+            pieces.append(theta_par[:, offset : offset + n] * (upper - lower) + lower)
+            offset += n
+        Theta = torch.cat(pieces, dim=1) if pieces else self._theta_empty.expand(B, 0)
+        sim = self.opt.simulator
+        OUT = []
+        for p in range(self.n_periods):
+            M = sim.rollout_functional_batched(
+                self.composer, self.Y0[p].unsqueeze(0).expand(B, -1), Theta, self.CAP[p]
+            )  # (B, n_t_p, n_meas)
+            OUT.append([M[:, :, idx] for _kind, idx in self.out_kind])
+        return OUT
+
+    def _parts_vector(self, OUT, like: torch.Tensor) -> torch.Tensor:
+        """:meth:`_parts_from_out` flattened (:meth:`_flatten_parts`)."""
+        return self._flatten_parts(self._parts_from_out(OUT, like))
+
+    def _unpack_parts(self, vec: torch.Tensor) -> SimpleNamespace:
+        """``(B, n)`` rows of :meth:`_parts_vector` -> the :meth:`parts`
+        namespace with ``(B,)`` entries."""
+        n_eq, n_obj = len(self._eq_terms), len(self._obj_terms)
+        i = n_eq
+        ineq = None
+        if self._ineq_terms:
+            ineq, i = vec[:, i], i + 1
+        return SimpleNamespace(
+            eq=[vec[:, k] for k in range(n_eq)],
+            ineq=ineq,
+            objs=[vec[:, i + k] for k in range(n_obj)],
+            phys=[vec[:, i + n_obj + k] for k in range(n_obj)],
+        )
+
+    def _batched_parts_wide(self, theta_batch: torch.Tensor) -> SimpleNamespace:
+        """One wide rollout for every row, then the pure post-processing
+        ``vmap``-ed over the rows (the Estimator's ``batched_loss``)."""
+        OUT = self._rollout_batched(theta_batch)
+        return self._unpack_parts(torch.func.vmap(self._parts_vector)(OUT, theta_batch))
+
+    def batched_parts(self, theta_batch: torch.Tensor) -> SimpleNamespace:
+        """:meth:`parts` for a batch of decision vectors ``(B, n)``: the same
+        namespace with ``(B,)`` entries (``ineq`` ``None`` without inequality
+        constraints).  As the Estimator's ``batched_loss``: on the CPU row by
+        row, a single row as :meth:`parts` in transform mode, else one batched
+        rollout of the compiled step.  Trajectory decision variables (a
+        per-row tape) run row by row in transform mode.  Differentiable with
+        plain ``torch.autograd.grad`` (the Estimator's
+        ``batched_value_and_grad``)."""
+        on_cpu = theta_batch.device.type == "cpu"
+        if on_cpu or theta_batch.shape[0] == 1 or self.n_traj or self._has_slots:
+            rows = [self.parts(th, transform_mode=not on_cpu) for th in theta_batch]
+            return self._unpack_parts(torch.stack([self._flatten_parts(r) for r in rows]))
+        return self._batched_parts_wide(theta_batch)
+
+    @staticmethod
+    def _flatten_parts(p: SimpleNamespace) -> torch.Tensor:
+        """``[eq..., ineq?, objs..., phys...]`` (:meth:`_unpack_parts` reverses it)."""
+        values = list(p.eq) + ([p.ineq] if p.ineq is not None else []) + list(p.objs) + list(p.phys)
+        return torch.stack(values)
 
     def penalty(self, p: SimpleNamespace) -> torch.Tensor:
         """Sum of the constraint-penalty components of ``parts()`` output, in

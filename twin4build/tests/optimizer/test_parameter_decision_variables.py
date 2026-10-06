@@ -90,12 +90,75 @@ class TestParameterDecisionVariables(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        path = os.path.join("generated_files", "models", cls.MODEL_ID)
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        for model_id in (cls.MODEL_ID, cls.MODEL_ID + "_gpu"):
+            path = os.path.join("generated_files", "models", model_id)
+            if os.path.exists(path):
+                shutil.rmtree(path)
 
     def _optimizer(self):
         return tb.Optimizer(tb.Simulator(self.model, execution_mode="functional"))
+
+    def _functional_objective(self, optimizer, curve, heater, discomfort):
+        """The functional objective of ``optimizer`` over the two objectives
+        (one SLSQP iteration builds it)."""
+        optimizer.optimize(
+            start_time=self.start, end_time=self.end, step_size=2400,
+            variables=[(curve, "Y", 12.0, 24.0)],
+            objectives=[(heater, "toRoomPower", "min"), (discomfort, "output", "min")],
+            method=("scipy", "SLSQP", "ad"),
+            options={"maxiter": 1},
+        )
+        return optimizer._functional_objective
+
+    def _assert_rows(self, objective, batch, theta, gradient, transform_mode):
+        """Every row of ``batch`` (and of its gradient) is the row's own
+        :meth:`parts` (and gradient)."""
+        for i in range(theta.shape[0]):
+            z = theta[i].detach().clone().requires_grad_(True)
+            row = objective.parts(z, transform_mode=transform_mode)
+            for wide, own in zip(batch.objs + batch.phys, row.objs + row.phys):
+                # relative: the means span 1e-2 (overheating) to 1e3 W, and a batched rollout sums in another order
+                np.testing.assert_allclose(float(wide[i]), float(own), rtol=1e-8, atol=1e-12)
+            (own_gradient,) = torch.autograd.grad(sum(row.objs), z)
+            np.testing.assert_allclose(
+                gradient[i].cpu().numpy(), own_gradient.cpu().numpy(), rtol=1e-8, atol=1e-12
+            )
+
+    THETA = [[0.25, 0.5, 0.75, 1.0], [0.6, 0.4, 0.2, 0.1], [1.0, 1.0, 0.0, 0.0]]
+
+    def test_batched_parts_are_the_rows_parts(self):
+        """One wide rollout for every row, the post-processing vmapped (the
+        Estimator's batched structure), gives each row's parts and gradient;
+        ``batched_parts`` on the CPU (row by row) gives the same values."""
+        objective = self._functional_objective(self._optimizer(), self.curve, self.heater, self.discomfort)
+        theta = torch.tensor(self.THETA, dtype=torch.float64)
+        z = theta.clone().requires_grad_(True)
+        wide = objective._batched_parts_wide(z)
+        (gradient,) = torch.autograd.grad(sum(wide.objs).sum(), z)
+        self._assert_rows(objective, wide, theta, gradient, transform_mode=False)
+        rows = objective.batched_parts(theta)
+        np.testing.assert_allclose(
+            torch.stack(rows.objs).detach().numpy(), torch.stack(wide.objs).detach().numpy(), rtol=1e-9
+        )
+
+    @unittest.skipUnless(torch.cuda.is_available(), "the captured, compiled step needs CUDA")
+    def test_batched_parts_on_the_captured_compiled_step(self):
+        """On the GPU with per-step CUDA graphs of the compiled step: the
+        batch runs as one wide rollout and every row matches its own
+        transform-mode :meth:`parts`."""
+        model, curve, heater, discomfort = build_model(self.MODEL_ID + "_gpu")
+        model.to(device="cuda", dtype=torch.float64)
+        simulator = tb.Simulator(
+            model, execution_mode="functional", execution_backend="cuda_graph",
+            compile_step=True, cuda_graph_scope="step",
+        )
+        objective = self._functional_objective(tb.Optimizer(simulator), curve, heater, discomfort)
+        self.assertTrue(simulator.step_graph_active(torch.device("cuda")))
+        theta = torch.tensor(self.THETA, dtype=torch.float64, device="cuda")
+        z = theta.clone().requires_grad_(True)
+        batch = objective.batched_parts(z)
+        (gradient,) = torch.autograd.grad(sum(batch.objs).sum(), z)
+        self._assert_rows(objective, batch, theta, gradient, transform_mode=True)
 
     def test_curve_points_are_the_decision_vector(self):
         """Only the two curve points the outdoor temperature visits carry a
