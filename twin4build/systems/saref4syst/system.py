@@ -15,10 +15,85 @@ from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.utils.types as tps
+from twin4build.utils.deprecation import deprecate_name
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.simulation_time import get_simulation_timesteps
 from twin4build.utils.state_marker import StateMarker
+
+
+class AliasedPorts(dict):
+    """
+    The ports of a component, which also answer to the deprecated names of
+    renamed ports.
+
+    This is a plain ``dict`` of the ports under their current names:
+    iteration, ``keys()``, ``values()``, ``items()`` and ``len()`` see the
+    current names only, so everything that walks the ports of a component
+    (initialization, serialization, the functional rollout) sees one name per
+    port.  A lookup by a deprecated name (``ports[name]``, ``ports.get(name)``)
+    returns the port that replaced it and emits a ``DeprecationWarning``;
+    ``name in ports`` is true for a deprecated name and does not warn.
+
+    Args:
+        ports: The ports, keyed by their current names.
+        aliases: Deprecated name -> current name.
+        owner: The name of the owner of the ports (its class name), used in
+            the warning.
+    """
+
+    #: Class-level defaults: a copy or an unpickled instance is filled item
+    #: by item before its attributes are restored.
+    aliases: dict = {}
+    owner: str = ""
+
+    def __init__(
+        self,
+        ports: Union[dict, None] = None,
+        aliases: Union[dict, None] = None,
+        owner: str = "",
+    ):
+        super().__init__({} if ports is None else ports)
+        self.aliases = dict({} if aliases is None else aliases)
+        self.owner = owner
+
+    def resolve(self, name: str, stacklevel: int = 3) -> str:
+        """
+        The current name of a port.
+
+        A deprecated name is replaced by the name that stands for it, with a
+        ``DeprecationWarning``; any other name is returned unchanged.
+
+        Args:
+            name: The name of the port, current or deprecated.
+            stacklevel: The frame the warning points at, counted from this
+                method (``2`` is its caller, ``3`` the caller of the caller,
+                which is the user's code for ``ports[name]``).
+
+        Returns:
+            str: The current name of the port.
+        """
+        new = self.aliases.get(name) if isinstance(name, str) else None
+        if new is None or dict.__contains__(self, name):
+            return name
+        prefix = f"{self.owner}." if self.owner else ""
+        deprecate_name(f"{prefix}{name}", f"{prefix}{new}", stacklevel=stacklevel + 1)
+        return new
+
+    def __getitem__(self, name):
+        return dict.__getitem__(self, self.resolve(name))
+
+    def __contains__(self, name):
+        if dict.__contains__(self, name):
+            return True
+        return isinstance(name, str) and dict.__contains__(
+            self, self.aliases.get(name)
+        )
+
+    def get(self, name, default=None):
+        if name in self:
+            return dict.__getitem__(self, self.resolve(name))
+        return default
 
 
 def _concatenate_capacities(parts, n_c):
@@ -56,6 +131,14 @@ class System:
     #: call tree bypasses mutable caches and tensor-dependent Python behavior.
     #: See :doc:`/manual/differentiable_system_models`.
     SUPPORTS_TRANSFORM_MODE = False
+
+    #: Deprecated output port names and the names that replaced them
+    #: (``{"old": "new"}``).  A class that renames an output port lists the
+    #: old name here and holds its outputs in an :class:`AliasedPorts`; the
+    #: old name then still connects, loads and reads, with a
+    #: ``DeprecationWarning``, and the model holds the new name only (see
+    #: :meth:`resolve_output_port`).  Empty on the base class.
+    OUTPUT_PORT_ALIASES: dict = {}
 
     def __str__(self):
         t = PrettyTable(field_names=["input", "output"], divider=True)
@@ -209,6 +292,32 @@ class System:
         Set the id of the system.
         """
         self._id = value
+
+    def resolve_output_port(self, output_port: str, stacklevel: int = 3) -> str:
+        """
+        The current name of an output port of the system.
+
+        A deprecated name (a key of :attr:`OUTPUT_PORT_ALIASES`) is replaced
+        by the name that stands for it, with a ``DeprecationWarning``; any
+        other name is returned unchanged.  Everything that takes a
+        ``(component, output port)`` pair from the user resolves the name
+        here first, so connections, objectives and serialized models hold
+        the current name only.
+
+        Args:
+            output_port: The name of the output port, current or deprecated.
+            stacklevel: The frame the warning points at, counted from this
+                method (``2`` is its caller, ``3`` the caller of the caller).
+
+        Returns:
+            str: The current name of the output port.
+        """
+        new = self.OUTPUT_PORT_ALIASES.get(output_port) if isinstance(output_port, str) else None
+        if new is None or dict.__contains__(self.output, output_port):
+            return output_port
+        name = type(self).__name__
+        deprecate_name(f"{name}.{output_port}", f"{name}.{new}", stacklevel=stacklevel + 1)
+        return new
 
     @property
     def n_c(self) -> int:

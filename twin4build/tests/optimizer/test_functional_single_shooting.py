@@ -125,8 +125,8 @@ def build_model():
     model.add_connection(
         building_space, space_heater, "indoorTemperature", "indoorTemperature"
     )
-    model.add_connection(space_heater, building_space, "Power", "heatGain")
-    model.add_connection(space_heater, costs, "Power", "input_1")
+    model.add_connection(space_heater, building_space, "toRoomPower", "heatGain")
+    model.add_connection(space_heater, costs, "toRoomPower", "input_1")
     model.add_connection(price, costs, "scheduleValue", "input_2")
     model.load(draw_semantic_model=False, draw_simulation_model=False)
 
@@ -197,7 +197,7 @@ class TestFunctionalControlObjective(unittest.TestCase):
             step_size=2400,
             variables=[(waterflow, "scheduleValue", 0, mf)],
             objectives=[
-                (space_heater, "Power", "min"),
+                (space_heater, "toRoomPower", "min"),
                 (costs, "output", "min"),
             ],
             ineq_cons=[

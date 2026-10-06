@@ -340,7 +340,7 @@ def main():
     move_legend(fig, y=1.02)
 
     energy_kwh = (
-        model.components["office_space_heater"].output["Power"].history().sum()
+        model.components["office_space_heater"].output["toRoomPower"].history().sum()
         * step_size
         / 3600
         / 1000

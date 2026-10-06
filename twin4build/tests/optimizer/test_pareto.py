@@ -578,7 +578,7 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
         )
         model.add_connection(waterflow, heater, "scheduleValue", "waterFlowRate")
         model.add_connection(space, heater, "indoorTemperature", "indoorTemperature")
-        model.add_connection(heater, space, "Power", "heatGain")
+        model.add_connection(heater, space, "toRoomPower", "heatGain")
         model.add_connection(setpoint, discomfort, "scheduleValue", "setpoint")
         model.add_connection(space, discomfort, "indoorTemperature", "measured")
         model.load(draw_semantic_model=False, draw_simulation_model=False)
@@ -603,7 +603,7 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
             end_time=self.end,
             step_size=2400,
             variables=[(self.waterflow, "scheduleValue", 0.0, self.mf)],
-            objective1=(self.heater, "Power", "min"),
+            objective1=(self.heater, "toRoomPower", "min"),
             objective2=(self.discomfort, "output", "min"),
             n_points=4,
             options={"maxiter": 20},
@@ -670,7 +670,7 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
                 end_time=self.end,
                 step_size=2400,
                 variables=[(self.waterflow, "scheduleValue", 0.0, self.mf)],
-                objective1=(self.heater, "Power", "min"),
+                objective1=(self.heater, "toRoomPower", "min"),
                 objective2=(self.discomfort, "output", "min"),
                 n_points=4,
                 method=_Route.method,
@@ -695,7 +695,7 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
                 end_time=self.end,
                 step_size=2400,
                 variables=[(self.waterflow, "scheduleValue", 0.0, self.mf)],
-                objective1=(self.heater, "Power", "min"),
+                objective1=(self.heater, "toRoomPower", "min"),
                 objective2=(self.discomfort, "output", "min"),
                 n_points=3,
                 method=("plugin", "nobody-registered-this", "ad"),

@@ -123,7 +123,7 @@ def main():
     model.add_connection(
         valve_position_schedule, space_heater_valve, "scheduleValue", "valvePosition"
     )
-    model.add_connection(space_heater, costs_sensor, "Power", "input_1")
+    model.add_connection(space_heater, costs_sensor, "toRoomPower", "input_1")
     model.add_connection(price_schedule, costs_sensor, "scheduleValue", "input_2")
     model.load()
     print("Model rewired for optimization.")
@@ -175,7 +175,7 @@ def main():
         .history()
         .detach()
         .clone(),
-        "power": space_heater.output["Power"].history().detach().clone(),
+        "power": space_heater.output["toRoomPower"].history().detach().clone(),
         "valve_position": space_heater_valve.output["valvePosition"]
         .history()
         .detach()

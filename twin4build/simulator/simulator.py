@@ -748,6 +748,8 @@ class Simulator:
                 the map must return (Estimator data-fit signals).
             outputs: List of ``(component, out_port)`` arbitrary outputs the
                 map must return (Optimizer objective/constraint signals).
+                A deprecated port name (``System.OUTPUT_PORT_ALIASES``)
+                stands for the port that replaced it.
             step_size: Step size in seconds -- a scalar or the per-period
                 list; all periods must share one step size.
 
@@ -757,6 +759,9 @@ class Simulator:
             stateful components and the
             :class:`~twin4build.simulator._functional.FunctionalModel`.
         """
+        if outputs is not None:
+            # A fused member publishes under ``"<id>.<current name>"`` only.
+            outputs = [(comp, comp.resolve_output_port(port)) for comp, port in outputs]
         stateful = collect_stateful(self.model)
         if not stateful:
             raise RuntimeError("no stateful components")

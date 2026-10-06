@@ -36,8 +36,8 @@ class TestStepGraphScope(unittest.TestCase):
                 history(reference, f"Zone{k}", "indoorTemperature"), rtol=1e-6, atol=1e-6,
             )
             torch.testing.assert_close(
-                history(model, f"Radiator{k}", "Power", batched),
-                history(reference, f"Radiator{k}", "Power"), rtol=1e-6, atol=1e-4,
+                history(model, f"Radiator{k}", "toRoomPower", batched),
+                history(reference, f"Radiator{k}", "toRoomPower"), rtol=1e-6, atol=1e-4,
             )
         # the simulation captured two step graphs and nothing at rollout level
         session = batched.simulation_model  # noqa: F841 (the model owns the functional model's graph cache)

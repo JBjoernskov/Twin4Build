@@ -961,7 +961,7 @@ def _solve_sparse_collocation(
     # inputs captured once -- no per-eval object-graph simulate (the profiled
     # bottleneck: model.initialize re-read every CSV on every evaluation).
     #
-    # Cut feedback edges (e.g. office.heatGain <- space_heater.Power) are one-step
+    # Cut feedback edges (e.g. office.heatGain <- space_heater.toRoomPower) are one-step
     # LAG variables -- state in a discrete-time sense.  We append them to the
     # state (y = [state | feedback], width Da = D + n_fb); F_aug maps
     # y_t -> [F(s_t, w_t), producer_output(s_t, w_t)], so feedback continuity IS

@@ -33,10 +33,32 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 - `Translator.translate(systems_=...)` → `systems=`
 - Public `verbose=` kwargs → configure `LOGGER.verbose` / `LOGGER.logfile`
 - `get_component_by_class(dict_, ...)` → `get_components_by_class(Cls)`
+- `SpaceHeaterSystem` output `Power` → `toRoomPower`.  The old name still
+  connects (`add_connection`, `remove_connection`), loads from a saved
+  `instance_graph.ttl`, matches in signature patterns, names optimizer
+  objectives, variables and constraints, and reads (`heater.output["Power"]`),
+  each with a `DeprecationWarning`; the model holds and saves `toRoomPower`
 - `twin4build.utils.print_progress` → `twin4build.utils.logger`
 
 ### Added
 
+- `SpaceHeaterSystem.toRadiatorPower`: the heat the radiator takes from the
+  heating circuit, `waterFlowRate * c_p * (supplyWaterTemperature -
+  outletWaterTemperature)`, which is what a heat meter on the circuit
+  measures.  `toRoomPower` (formerly `Power`) is the heat the radiator gives
+  to the room.  The two differ by the rate of change of the heat stored in
+  the radiator: equal in steady state and in the long-run mean, apart while
+  it warms up or cools down.  Both are evaluated at the end-of-step state.
+  `toRadiatorPower` is bilinear, so it is no row of the linear output
+  equation; a fused state-space block computes it after the joint step from
+  the member's inputs and its outlet temperature (a unit declares such
+  outputs with `SS_DERIVED_OUTPUT_PORTS` and `_ss_derived_outputs`), so it is
+  available fused and unfused, batched, in the object and the functional
+  rollout, and differentiable.
+- Renamed output ports.  `System.OUTPUT_PORT_ALIASES` maps a deprecated
+  output port name to the one that replaced it; the outputs of such a class
+  are an `AliasedPorts` (a `dict` that also answers to the old name) and
+  `System.resolve_output_port` gives the current name.
 - Multiple shooting (#91), a transcription:
   `method=(library, optimizer, mode, "multiple_shooting")` makes the initial
   state of every period a decision variable, the first period's too (a fit
