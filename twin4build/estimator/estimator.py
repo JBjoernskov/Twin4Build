@@ -954,6 +954,10 @@ class Estimator:
         self._auto_measurement_ids = set()
         if isinstance(parameters, str) and parameters == "auto":
             parameters = self._auto_parameters()
+        # tb.Variable / bare tb.Parameter entries -> the tuples validated below (#235)
+        from twin4build.utils.problem_variables import estimator_parameters
+
+        parameters = estimator_parameters(parameters, self.simulator.model)
         if isinstance(measurements, str) and measurements == "auto":
             measurements = self._auto_measurements()
 

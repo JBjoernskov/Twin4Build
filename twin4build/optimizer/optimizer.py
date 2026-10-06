@@ -536,7 +536,10 @@ class Optimizer:
                 )
         reject_unexpected_kwargs("Optimizer.optimize", kwargs)
 
-        self._variables = variables or []
+        # tb.Variable / bare tb.Parameter entries -> (component, name, lb, ub) (#235)
+        from twin4build.utils.problem_variables import optimizer_variables
+
+        self._variables = optimizer_variables(variables or [], self.simulator.model)
         self._objectives = objectives or []
         self._eq_cons = eq_cons or []
         self._ineq_cons = ineq_cons or []
@@ -906,7 +909,9 @@ class Optimizer:
         if not variables:
             raise ValueError("No decision variables specified for optimization")
 
-        self._variables = variables
+        from twin4build.utils.problem_variables import optimizer_variables
+
+        self._variables = optimizer_variables(variables, self.simulator.model)  # (#235)
         self._objectives = [tuple(objective1), tuple(objective2)]
         self._eq_cons = eq_cons or []
         self._ineq_cons = ineq_cons or []
