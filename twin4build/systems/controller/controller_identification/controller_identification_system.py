@@ -990,6 +990,14 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             if hasattr(target, attr):
                 scales.append(1.0)
 
+    def lagged_output_ports(self):
+        """The command is a start-of-step signal while the loop COMPUTES (a
+        sampled controller acts on the last measurement; the loader cuts the
+        controller -> actuator edges before its cycle search instead of
+        enumerating every closed loop's cycles through the batched metas).
+        A replaying controller is recorded data and keeps its edges."""
+        return frozenset() if self.replays_data() else frozenset({"inputSignal"})
+
     def replays_data(self) -> bool:
         """In playback mode the controller outputs its historised command:
         recorded data, not a dynamic system, so the functional engine keeps

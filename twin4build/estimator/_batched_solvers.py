@@ -59,7 +59,10 @@ class BatchedObjectiveEvaluator:
                 compiled,
             )
         self.objective = objective
-        self.capture = objective.est.simulator.execution_backend == "cuda_graph"
+        simulator = objective.est.simulator
+        # under cuda_graph_scope="step" the rollouts replay per-step graphs
+        # and differentiate through them; nothing is captured at bundle level
+        self.capture = simulator.execution_backend == "cuda_graph" and getattr(simulator, "cuda_graph_scope", "rollout") != "step"
         self._graphs = {}
         self.stats = {}
         self.last_nonfinite = {}

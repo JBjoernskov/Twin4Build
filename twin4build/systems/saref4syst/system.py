@@ -21,6 +21,19 @@ from twin4build.utils.simulation_time import get_simulation_timesteps
 from twin4build.utils.state_marker import StateMarker
 
 
+def _concatenate_capacities(parts, n_c):
+    """Units' ``(n_c | 1, width)`` capacities side by side, ``(n_c, sum)``;
+    a unit without state contributes nothing."""
+    parts = [part.detach().cpu() for part in parts if part is not None]  # a NaN part is made on the CPU
+    if not parts:
+        return None
+    dtype = parts[0].dtype
+    return torch.cat(
+        [part.to(dtype).expand(n_c, part.shape[-1]) if part.shape[0] == 1 else part.to(dtype) for part in parts],
+        dim=-1,
+    )
+
+
 class System:
     """
     A base-class representing a component model used as part of a simulation model.
@@ -426,6 +439,45 @@ class System:
                 f"System '{self.id}' has no continuous state (no tps.State declared)."
             )
         return torch.cat(parts, dim=-1)
+
+    def state_heat_capacities(self):
+        """The heat capacity of every continuous state [J/K], ``(n_c, D)`` in
+        state order: the heat a jump of one kelvin in the state creates or
+        destroys.  ``NaN`` for a state that holds no heat (a concentration,
+        a controller's memory).
+
+        A leaf unit declares its own with ``_state_heat_capacities()`` (from
+        its parameters' current values); a composite of several state-space
+        units (:meth:`_ss_units`) concatenates its units'.  ``None`` for a
+        component without state.  Detached and on the CPU: a tolerance, not
+        a parameter path (the multiple-shooting tolerance by energy reads it
+        and moves it where it needs it).
+        """
+        width = self.state_size()
+        if width == 0:
+            return None
+        caps = None
+        own = getattr(self, "_state_heat_capacities", None)
+        if own is not None:
+            caps = own()
+        else:
+            try:
+                units = self._ss_units()
+            except NotImplementedError:
+                units = []
+            if units and not (len(units) == 1 and units[0][1] is self):
+                caps = _concatenate_capacities([unit.state_heat_capacities() for _, unit in units], self.n_c)
+        if caps is None:
+            return torch.full((self.n_c, width), float("nan"), dtype=tps.float_dtype())
+        caps = caps.detach().cpu()
+        if caps.shape[0] == 1 and self.n_c > 1:
+            caps = caps.expand(self.n_c, caps.shape[-1])
+        if tuple(caps.shape) != (self.n_c, width):
+            raise ValueError(
+                f"{type(self).__name__} '{self.id}': heat capacities of shape {tuple(caps.shape)} "
+                f"for a state of ({self.n_c}, {width})"
+            )
+        return caps
 
     def set_state(self, x: torch.Tensor) -> None:
         """Write continuous state from a ``(n_s, n_c, D)`` tensor.

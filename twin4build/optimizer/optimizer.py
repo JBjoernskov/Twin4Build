@@ -1226,7 +1226,7 @@ class Optimizer:
                 if (
                     optimizer_name == "SLSQP"
                     and self._functional_objective is not None
-                    and self.simulator.execution_backend == "cuda_graph"
+                    and getattr(self.simulator, "captures_rollouts", self.simulator.execution_backend == "cuda_graph")
                 ):
                     result = self._solve_scipy_captured_slsqp(
                         x0,

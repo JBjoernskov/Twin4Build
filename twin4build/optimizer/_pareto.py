@@ -117,12 +117,23 @@ class _EpsSubproblem:
         self._bundle_graph = None
         self._hessian_graph = None
         self.capture_derivatives = (
-            opt.simulator.execution_backend == "cuda_graph"
+            getattr(opt.simulator, "captures_rollouts", opt.simulator.execution_backend == "cuda_graph")
             and opt._device.type == "cuda"
         )
         # The reachable direct-shooting Pareto route is SciPy SLSQP, which
         # never asks for a Hessian. IPOPT is collocation-only.
         self.capture_hessian = False
+        # The transform-mode rollout is the fast path whenever the step is
+        # compiled or captured for the device (per-step CUDA graphs under
+        # ``cuda_graph_scope="step"`` replay only in transform mode); the
+        # cache-using rollout is the eager fallback.
+        sim = opt.simulator
+        self.transform_mode = bool(
+            self.capture_derivatives
+            or self.capture_hessian
+            or getattr(sim, "step_graph_active", lambda d: False)(opt._device)
+            or getattr(sim, "step_compilation_active", lambda d: False)(opt._device)
+        )
         self.stats = {
             "bundle_requested": opt.simulator.execution_backend == "cuda_graph",
             "bundle_enabled": self.capture_derivatives,
@@ -158,7 +169,7 @@ class _EpsSubproblem:
         if self.opt._functional_objective is not None:
             return self.opt._functional_objective.parts(
                 z,
-                transform_mode=(self.capture_derivatives or self.capture_hessian),
+                transform_mode=self.transform_mode,
             )
         return self.opt._graph_parts(z)
 
@@ -439,7 +450,7 @@ def pareto_front(
     }
     solver_options = dict(options)  # objective-related keys were consumed
     method_name = method[1]
-    capture_requested = opt.simulator.execution_backend == "cuda_graph"
+    capture_requested = getattr(opt.simulator, "captures_rollouts", opt.simulator.execution_backend == "cuda_graph")
     capture_derivatives = capture_requested and opt._device.type == "cuda"
     capture_hessian = capture_derivatives and method_name.lower() == "ipopt"
 

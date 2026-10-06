@@ -350,6 +350,8 @@ class SimulationModel:
         "_translator",
         "_rewire_reports",
         "_system_registry",
+        "_initial_state",
+        "_initialization_count",
     )
 
     def __str__(self):
@@ -414,6 +416,8 @@ class SimulationModel:
         self._execution_order = []
         self._flat_execution_order = []
         self._required_initialization_connections = []
+        self._initial_state = None  # see set_state
+        self._initialization_count = 0  # see initialization_count
         self._components_no_cycles = {}
         self._fused_components = {}
         self._fusion_member_to_fused = {}
@@ -2063,6 +2067,19 @@ class SimulationModel:
         # ambient context is only paid here, never in the step loop.
         with torch.device(self.device):
             self._initialize_components(start_time, end_time, step_size)
+            # the state of ``set_state`` (an estimated initial state), after
+            # the components have set their own initial conditions
+            self._apply_initial_state(start_time)
+        # The components reallocate their tensors here; a CUDA graph captured
+        # before reads them at their old addresses, so captured graphs hold
+        # for one initialization (``initialization_count``).
+        self._initialization_count = self.initialization_count + 1
+
+    @property
+    def initialization_count(self) -> int:
+        """How often the model has been initialized: a CUDA graph captured
+        after the n-th :meth:`initialize` is valid until the next."""
+        return self._initialization_count
 
     def _initialize_components(
         self,
@@ -2981,6 +2998,16 @@ class SimulationModel:
         # placement of the discrete-time model, inspectable for parity checks.
         self._removed_cycle_edges: List[Tuple[str, str]] = []
 
+        # Declared one-step lags first: a component whose class lists an
+        # output in ``LAGGED_OUTPUT_PORTS`` delivers that signal from the
+        # start of the step (its receivers read the previous step's value,
+        # and the output needs an initial value), so those edges are cut
+        # here, before the cycle search, exactly as a cycle cut would.  A
+        # star of a hundred walls around one such node otherwise multiplies
+        # every existing feedback loop by the star's size and the simple-cycle
+        # enumeration never returns.
+        self._cut_declared_lags()
+
         LOGGER.task("Detecting cycles")
         LOGGER.add_level()
 
@@ -3165,6 +3192,27 @@ class SimulationModel:
         )
         return best_edges[0]
 
+    def _cut_declared_lags(self) -> None:
+        """Cut every edge leaving an output named in the sender's class
+        attribute ``LAGGED_OUTPUT_PORTS`` (see :meth:`_remove_cycles`)."""
+        for component in list(self._components_no_cycles.values()):
+            decide = getattr(component, "lagged_output_ports", None)
+            lagged = decide() if callable(decide) else getattr(type(component), "LAGGED_OUTPUT_PORTS", frozenset())
+            if not lagged:
+                continue
+            receivers = []
+            for connection in list(component.connected_through):
+                if connection.output_port not in lagged:
+                    continue
+                for cp in list(connection.connects_system_at):
+                    r = cp.connection_point_of
+                    if r not in receivers:
+                        receivers.append(r)
+            for r in receivers:
+                LOGGER.info("Declared lag: cutting %s -> %s", component.id, r.id)
+                self._removed_cycle_edges.append((component.id, r.id))
+                self._remove_all_edges_between_components(component, r)
+
     def _remove_all_edges_between_components(self, c_from, c_to):
         """
         Remove ALL connections between two components.
@@ -3207,10 +3255,186 @@ class SimulationModel:
                 c_from.connected_through.remove(connection)
         LOGGER.remove_level()
 
+    # ------------------------------------------------------------------
+    # Model state
+    # ------------------------------------------------------------------
+    def _stateful_leaves(self) -> List[Tuple[Any, Any, int, int]]:
+        """``(executing component, state owner, offset, width)`` for every
+        state owner of the model, in execution order.  The state owner is the
+        component itself or, for a fused state-space block, each of its
+        members (the block's state is its members' states one after another).
+        A batched owner carries its instances' original ids in
+        ``_source_component_ids``."""
+        from twin4build.simulator._functional import collect_stateful
+
+        leaves = []
+        for comp in collect_stateful(self):
+            members = list(getattr(comp, "members", None) or [comp])
+            offset = 0
+            for member in members:
+                if not member.is_stateful():
+                    continue
+                width = int(member.state_size())
+                leaves.append((comp, member, offset, width))
+                offset += width
+        return leaves
+
+    @staticmethod
+    def _instance_ids(owner) -> Tuple[str, ...]:
+        return tuple(getattr(owner, "_source_component_ids", None) or (owner.id,))
+
+    def set_state(
+        self,
+        state: Optional[Dict[str, Any]],
+        period_starts: Optional[List[datetime.datetime]] = None,
+    ) -> None:
+        """Set the state the simulations that follow start from.
+
+        Args:
+            state: ``{component id: values}`` by the ids of the components
+                the model was built from (a batched meta's instances, a fused
+                block's members).  Values are ``(state_size,)`` (every period
+                starts there) or ``(n_periods, state_size)`` (one row per
+                period).  ``NaN`` entries and components that are not named
+                keep their own initial condition.  ``None`` clears the state.
+            period_starts: The start time of each row.  A simulated period
+                takes the row whose start time is its own and keeps the
+                component defaults when there is none: a state estimated for
+                a window is the state at that window's start, not at any
+                other time.  Without ``period_starts`` the rows are taken in
+                order (one row serves every period).
+
+        The state is kept on the model and applied at every
+        :meth:`initialize`, after the components have set their defaults, so
+        it holds for object and functional simulations and for an estimation
+        that starts from this model.
+        """
+        if state is None:
+            self._initial_state = None
+            return
+        values = {}
+        n_rows = None
+        for cid, v in state.items():
+            t = torch.as_tensor(np.asarray(v.detach().cpu()) if isinstance(v, torch.Tensor) else np.asarray(v), dtype=tps.float_dtype())
+            if t.dim() == 1:
+                t = t.unsqueeze(0)
+            assert t.dim() == 2, f"state of '{cid}' must be (state_size,) or (n_periods, state_size), got {tuple(t.shape)}"
+            values[str(cid)] = t
+            if t.shape[0] > 1:
+                assert n_rows in (None, t.shape[0]), "the states name different numbers of periods"
+                n_rows = t.shape[0]
+        if period_starts is not None:
+            period_starts = list(period_starts)
+            assert n_rows in (None, len(period_starts)) , (
+                f"{len(period_starts)} period starts for states of {n_rows} periods"
+            )
+        self._initial_state = {"values": values, "period_starts": period_starts}
+        if getattr(self, "_is_loaded", False):
+            known = {cid for _c, owner, _o, _w in self._stateful_leaves() for cid in self._instance_ids(owner)}
+            unknown = sorted(set(values) - known)
+            if unknown:
+                LOGGER.warning(
+                    "set_state: %d of %d components are not stateful components of this model (first: %s)",
+                    len(unknown), len(values), unknown[0],
+                )
+
+    @staticmethod
+    def _same_instant(a, b) -> bool:
+        try:
+            if (a.tzinfo is None) != (b.tzinfo is None):
+                a, b = a.replace(tzinfo=None), b.replace(tzinfo=None)
+            return abs((a - b).total_seconds()) < 1.0
+        except Exception:
+            return a == b
+
+    def _apply_initial_state(self, start_time: List[datetime.datetime]) -> None:
+        """Write the state of :meth:`set_state` into the components (called
+        at the end of :meth:`initialize`)."""
+        spec = getattr(self, "_initial_state", None)
+        if not spec:
+            return
+        values, starts = spec["values"], spec["period_starts"]
+        n_s = len(start_time)
+        n_rows = max(int(v.shape[0]) for v in values.values())
+        if starts is None:
+            rows = [s if n_rows == n_s else (0 if n_rows == 1 else None) for s in range(n_s)]
+        else:
+            rows = [
+                next((j for j, t0 in enumerate(starts) if self._same_instant(t0, start_time[s])), None)
+                for s in range(n_s)
+            ]
+        if all(r is None for r in rows):
+            LOGGER.warning(
+                "The model's state is set for other period starts than the simulated ones; "
+                "the components' own initial conditions are used"
+            )
+            return
+        n_set = 0
+        for _comp, owner, _offset, width in self._stateful_leaves():
+            ids = self._instance_ids(owner)
+            if not any(cid in values for cid in ids):
+                continue
+            x = owner.get_state().detach().clone()  # (n_s, n_c, state_size)
+            for i_c, cid in enumerate(ids):
+                v = values.get(cid)
+                if v is None:
+                    continue
+                assert v.shape[1] == width, f"state of '{cid}' has {v.shape[1]} entries, the component has {width}"
+                v = v.to(device=x.device, dtype=x.dtype)
+                for s, row in enumerate(rows):
+                    if row is None:
+                        continue
+                    new = v[row if v.shape[0] > 1 else 0]
+                    keep = torch.isnan(new)
+                    x[s, i_c, :] = torch.where(keep, x[s, i_c, :], new)
+                n_set += 1
+            owner.set_state(x)
+        LOGGER.info("Model state: %d component(s) start from the set state in %d of %d period(s)",
+                    n_set, sum(r is not None for r in rows), n_s)
+
+    def _instance_state(self, component_state: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+        """``{executing component id: (n_periods, n_c, state_size)}`` (the
+        estimators' ``estimated_initial_state``) as ``{component id:
+        (n_periods, state_size)}``, the ids as in :meth:`set_state`."""
+        out: Dict[str, torch.Tensor] = {}
+        for comp, owner, offset, width in self._stateful_leaves():
+            block = component_state.get(comp.id)
+            if block is None:
+                continue
+            block = torch.as_tensor(np.asarray(block.detach().cpu()) if isinstance(block, torch.Tensor) else np.asarray(block), dtype=tps.float_dtype())
+            for i_c, cid in enumerate(self._instance_ids(owner)):
+                out[cid] = block[:, i_c, offset : offset + width].clone()
+        return out
+
+    def _load_estimated_initial_state(self, result) -> bool:
+        """Set the model's state from the initial states an estimation
+        result carries (multiple shooting, collocation); ``False`` when it
+        carries none or none applies to this model."""
+        starts = list(result.get("start_time") or [])
+        instances = result.get("estimated_initial_state_instances")
+        if instances is None:
+            state = result.get("estimated_initial_state")
+            if not state:
+                return False
+            instances = self._instance_state(state)
+            if not instances:
+                LOGGER.warning(
+                    "The result's initial states name components this model does not execute "
+                    "(another batching); the model's state is not set"
+                )
+                return False
+        n_rows = max(int(torch.as_tensor(v).shape[0]) if torch.as_tensor(v).dim() == 2 else 1 for v in instances.values())
+        self.set_state(instances, period_starts=starts if len(starts) == n_rows else None)
+        LOGGER.info("Load estimation result: the model starts from the estimated state (%d components, %d periods)",
+                    len(instances), n_rows)
+        return True
+
     def load_estimation_result(
         self,
         filename: Optional[str] = None,
         result: Optional[Dict] = None,
+        parameters: bool = True,
+        initial_state: bool = True,
         # verbose: int = 0,
     ) -> None:
         """
@@ -3219,6 +3443,13 @@ class SimulationModel:
         Args:
             filename (Optional[str]): The filename to load the estimation result from.
             result (Optional[Dict]): The estimation result dictionary to load.
+            parameters (bool): Set the estimated parameter values (default).
+            initial_state (bool): Set the model's state (:meth:`set_state`)
+                from the initial states the result carries, when it carries
+                any (multiple shooting, collocation): a simulation of the
+                estimated periods then starts from the estimated state
+                instead of the components' defaults.  ``False`` leaves the
+                model's state as it is.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -3244,6 +3475,10 @@ class SimulationModel:
         assert isinstance(
             self._result, estimator.EstimationResult
         ), f"The estimation result must be of type estimator.EstimationResult. The provided estimation result is of type {type(self._result)}."
+        if initial_state:
+            self._load_estimated_initial_state(self._result)
+        if not parameters:
+            return
         result_x = self._result["result_x"]
 
         # Build extended lookup including nested sub-objects (e.g.
