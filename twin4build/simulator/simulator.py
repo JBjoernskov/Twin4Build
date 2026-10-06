@@ -918,7 +918,10 @@ class Simulator:
         P = Y0.shape[-2]
         y_rows = (Y0.unsqueeze(0).expand(B, -1, -1) if Y0.dim() == 2 else Y0).reshape(B * P, -1)
         theta_rows = Theta.repeat_interleave(P, dim=0)
-        tape_rows = exogenous_tape.unsqueeze(1).expand(-1, B, -1, -1).reshape(exogenous_tape.shape[0], B * P, -1)
+        # the rows share the windows' tape: a broadcast view (n_t, B, P,
+        # n_exogenous), flattened one step at a time by the rows step, so the
+        # tape is not copied once per row
+        tape_rows = exogenous_tape.unsqueeze(1).expand(-1, B, -1, -1)
         if self.step_graph_active(Theta.device) and not _functorch_active():
             from twin4build.simulator._step_graph import step_graph_rollout
 

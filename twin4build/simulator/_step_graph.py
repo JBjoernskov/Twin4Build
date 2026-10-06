@@ -263,7 +263,9 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
         rstep = functional_model.rows_step
 
         def step(y, th, u, constants):
-            return rstep(y, th, u)
+            # a step's rows may come as (B, P, n_exogenous), one broadcast
+            # tape for B rows over P windows
+            return rstep(y, th, u.reshape(-1, u.shape[-1]))
 
         leaves, spec = [], None
     elif kind == "windows":

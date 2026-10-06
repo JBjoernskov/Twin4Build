@@ -467,6 +467,7 @@ class Optimizer:
         ineq_cons: List[Tuple[Any, str, str, Any]] = None,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         options: Dict = None,
+        n_warmup: int = 0,
         **kwargs,
     ):
         """
@@ -510,6 +511,13 @@ class Optimizer:
                 Examples: ``("scipy", "SLSQP", "ad")`` is preferred for most
                 constrained optimization problems.
 
+            n_warmup: Steps at the start of every period that are simulated
+                but kept out of the objectives and constraints, as the
+                Estimator's ``n_warmup``.  Every period starts from defined
+                states (the model's set state for that period start, e.g. an
+                estimation result's via ``load_estimation_result``, else the
+                components' own initial conditions); states are never decision
+                variables.  Needs the functional objective.
             options: Additional options for the chosen method:
 
                 - "verbose": Verbosity level (0-3)
@@ -573,6 +581,7 @@ class Optimizer:
         ) = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
+        self._n_warmup = self._checked_warmup(n_warmup, method)
 
         timestep_mask = torch.ones(
             self._max_timesteps, len(self._start_time), dtype=torch.bool
@@ -861,6 +870,7 @@ class Optimizer:
         batched_prepass: bool = True,
         prepass_options: Dict = None,
         options: Dict = None,
+        n_warmup: int = 0,
     ):
         """Trace a bi-objective front with the augmented epsilon-constraint method.
 
@@ -878,6 +888,11 @@ class Optimizer:
         :func:`twin4build.solvers.registry.register_pareto_route` is accepted
         under its own method tuple; it replaces both the anchor solves and
         the epsilon sweep and receives ``options`` unchanged.
+
+        Several periods (``start_time`` / ``end_time`` lists) of equal length
+        roll out side by side; ``n_warmup`` steps at the start of every period
+        are simulated but kept out of the objectives and constraints (see
+        :meth:`optimize`).
         """
         built_in = (
             ("scipy", "SLSQP", "ad"),
@@ -924,6 +939,7 @@ class Optimizer:
         ) = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
+        self._n_warmup = self._checked_warmup(n_warmup, method)
         self._timestep_mask = torch.ones(
             self._max_timesteps, len(self._start_time), dtype=torch.bool
         )
@@ -1555,12 +1571,30 @@ class Optimizer:
             )
         if self.simulator.execution_mode == "functional" and method[2] == "ad":
             self._setup_functional_objective(x0)
+        if getattr(self, "_n_warmup", 0) and self._functional_objective is None:
+            raise RuntimeError(
+                "n_warmup needs the functional objective: construct "
+                "Simulator(model, execution_mode='functional') and use an 'ad' method."
+            )
         if self._parameter_variables and self._functional_objective is None:
             raise RuntimeError(
                 "Parameter decision variables need the functional objective: construct "
                 "Simulator(model, execution_mode='functional') and use an 'ad' method."
             )
         return x0, bounds_obj
+
+    def _checked_warmup(self, n_warmup, method) -> int:
+        """``n_warmup`` checked before anything is simulated: at least 0,
+        fewer than the steps of the shortest period, and not with the
+        collocation transcription (whose objective has no warm-up mask)."""
+        n = int(n_warmup)
+        if n < 0:
+            raise ValueError(f"n_warmup must be >= 0, got {n}")
+        if n and n >= min(self._n_timesteps):
+            raise ValueError(f"n_warmup={n} leaves no step of the shortest period ({min(self._n_timesteps)} steps)")
+        if n and isinstance(method, (tuple, list)) and len(method) > 3 and method[3] == "collocation":
+            raise ValueError("n_warmup is not supported with the collocation transcription")
+        return n
 
     def _split_variables(self):
         """``(trajectories, parameters)``: a decision variable naming an output
