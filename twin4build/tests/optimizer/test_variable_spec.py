@@ -11,14 +11,16 @@ import datetime
 import os
 import shutil
 import unittest
+from unittest import mock
 
 import numpy as np
 import torch
 from dateutil import tz
 
 import twin4build as tb
-from twin4build.tests.estimator.example_fixture import load_model
-from twin4build.tests.optimizer.test_parameter_decision_variables import build_model
+from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
+from twin4build.tests.estimator.example_fixture import EXAMPLE_START, STEP_SIZE, example_measurements, load_model
+from twin4build.tests.optimizer.test_parameter_decision_variables import X_OUT, build_model
 from twin4build.utils.problem_variables import estimator_parameters, optimizer_variables
 
 
@@ -33,9 +35,10 @@ class TestVariableSpec(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        path = os.path.join("generated_files", "models", cls.MODEL_ID)
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        for model_id in (cls.MODEL_ID, cls.MODEL_ID + "_two_curves"):
+            path = os.path.join("generated_files", "models", model_id)
+            if os.path.exists(path):
+                shutil.rmtree(path)
 
     # -- the spec ------------------------------------------------------------
     def test_the_spec_is_validated(self):
@@ -78,6 +81,54 @@ class TestVariableSpec(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             estimator_parameters([tb.Variable(space.thermal.C_air, periods="per_period")], model)
 
+    def test_private_components_keep_their_own_bounds(self):
+        """A private Variable over several components gives each its own
+        declared bounds; a shared one refuses bounds that differ."""
+        model, curve, _heater, _discomfort = build_model(self.MODEL_ID + "_two_curves")
+        other = PiecewiseLinearSystem(id="Curve2", X=X_OUT, Y=torch.tensor([15.0] * 4), Y_bounds=(10.0, 20.0))
+        model.add_component(other)
+        resolved = estimator_parameters([tb.Variable([curve.Y, other.Y])], model)
+        self.assertEqual([(r[0].id, r[1], r[3], r[4], r[5]) for r in resolved], [("Curve", "Y", 12.0, 24.0, "private"), ("Curve2", "Y", 10.0, 20.0, "private")])
+        with self.assertRaises(ValueError):
+            estimator_parameters([tb.Variable([curve.Y, other.Y], components="shared")], model)
+        with self.assertRaises(ValueError):
+            estimator_parameters([tb.Variable([curve.Y, curve.Y])], model)
+
+    def test_a_frozen_parameter_resolves(self):
+        """The lookup does not depend on a parameter's state: a parameter an
+        earlier fit left with requires_grad False is still named."""
+        model = load_model()
+        controller = model.components["office_temperature_heating_controller"]
+        controller.kp.requires_grad_(False)
+        (resolved,) = estimator_parameters([tb.Variable(controller.kp, lb=1e-5, ub=1.0)], model)
+        self.assertEqual(resolved[:2], (controller, "kp"))
+
+    def test_the_estimator_resolves_before_it_initializes(self):
+        """An initialize may replace a parameter object (a multi-branch
+        component widens it); a Variable taken before estimate() still names
+        it, because the Estimator resolves it to its path first."""
+        model = load_model()
+        space = model.components["office"]
+        handle = space.thermal.C_air
+        initialize = type(model).initialize
+
+        def replacing_initialize(self_, *args, **kwargs):
+            initialize(self_, *args, **kwargs)
+            space.thermal.C_air = tb.Parameter(
+                handle.get().detach().clone(), min_value=handle._min_value, max_value=handle._max_value
+            )
+
+        est = tb.Estimator(tb.Simulator(model, execution_mode="functional"))
+        start = EXAMPLE_START[0]
+        with mock.patch.object(type(model), "initialize", replacing_initialize):
+            est.estimate(
+                parameters=[tb.Variable(handle, x0=2e6, lb=1e6, ub=1e7)],
+                measurements=example_measurements(model),
+                start_time=[start], end_time=[start + datetime.timedelta(hours=24)], step_size=STEP_SIZE,
+                n_warmup=5, method=("scipy", "SLSQP", "ad"), options={"maxiter": 1},
+            )
+        self.assertIsNot(space.thermal.C_air, handle)  # it was replaced, and the fit ran all the same
+
     def test_a_parameter_of_no_component_is_refused(self):
         stray = tb.Parameter(torch.tensor([1.0], dtype=torch.float64), min_value=0.0, max_value=2.0)
         with self.assertRaises(ValueError):
@@ -93,6 +144,17 @@ class TestVariableSpec(unittest.TestCase):
         self.assertEqual(resolved[1], (self.model.components["Waterflow"], "scheduleValue", 0.0, 0.02))
         with self.assertRaises(NotImplementedError):
             optimizer_variables([tb.Variable(self.curve.Y, periods="per_period")], self.model)
+
+    def test_the_optimizer_refuses_what_it_cannot_honour(self):
+        """The Optimizer starts from the parameter's value (no x0) and a
+        trajectory names one port (no sharing); a tuple of Variables is a
+        list of them."""
+        port = self.model.components["Waterflow"].output["scheduleValue"]
+        with self.assertRaises(ValueError):
+            optimizer_variables([tb.Variable(self.curve.Y, x0=[18.0] * 4)], self.model)
+        with self.assertRaises(ValueError):
+            optimizer_variables([tb.Variable(port, lb=0.0, ub=0.02, components="shared")], self.model)
+        self.assertEqual(optimizer_variables((tb.Variable(port, lb=0.0, ub=0.02),), self.model), [(self.model.components["Waterflow"], "scheduleValue", 0.0, 0.02)])
 
     def test_a_variable_defines_the_tuples_problem(self):
         """The curve's points as a bare parameter define the same problem as

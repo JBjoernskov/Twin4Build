@@ -1772,7 +1772,7 @@ class Variable:
 
     ``target`` names the model quantity by the object itself:
 
-    * a :class:`Parameter` of a component: an estimated parameter of the
+    * a :class:`Parameter` (or a :class:`TensorParameter`) of a component: an estimated parameter of the
       :class:`~twin4build.estimator.estimator.Estimator`, or a parameter
       decision variable of the :class:`~twin4build.optimizer.optimizer.Optimizer`;
       a list of them (one per component) for several components at once;
@@ -1814,7 +1814,7 @@ class Variable:
         trajectory = [isinstance(t, (Scalar, Vector)) for t in targets]
         if any(trajectory) and (len(targets) > 1 or not all(trajectory)):
             raise ValueError("a trajectory Variable names one output port")
-        if not any(trajectory) and not all(isinstance(t, nn.Parameter) for t in targets):
+        if not any(trajectory) and not all(isinstance(t, (nn.Parameter, TensorParameter)) for t in targets):
             raise TypeError("a Variable's target is a Parameter, a list of Parameters or an output port")
         if any(trajectory) and (lb is None or ub is None):
             raise ValueError("a trajectory Variable needs lb and ub")
