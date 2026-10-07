@@ -6,6 +6,7 @@ max over the CO2 and temperature loops is such a port) the CO2 was 421.5 instead
 command 0.0267 instead of 0.0182 after ten steps on the GPU; on the CPU Inductor failed in code generation.
 """
 import datetime
+import os
 import unittest
 
 import numpy as np
@@ -59,6 +60,9 @@ class TestCompiledBatchedStep(unittest.TestCase):
         # the rows do differ, so a batch collapsed onto one row would show
         self.assertFalse(torch.allclose(rows[0], rows[-1]))
 
+    # Inductor's CPU code generation for the example's step does not finish on the CI runners: every job hung here
+    # until GitHub's 6-hour limit (#246, #247, dev on 6 Oct 2026); it takes minutes on a workstation
+    @unittest.skipIf(os.environ.get("CI"), "Inductor's CPU code generation does not finish on the CI runners")
     def test_rows_agree_on_the_cpu(self):
         self._rows_agree("cpu")
 
