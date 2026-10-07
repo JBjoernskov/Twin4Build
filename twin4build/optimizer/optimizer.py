@@ -20,6 +20,7 @@ from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
 from twin4build.solvers.registry import find_pareto_route
 from twin4build.utils.method_spec import parse_method
+from twin4build.utils.problem_variables import optimizer_variables
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.result import ResultDict
 from twin4build.utils.validate_period import validate_period
@@ -485,6 +486,12 @@ class Optimizer:
             step_size: Step size(s) for simulation in seconds.
             variables: List of tuples (component, output_name, lower_bound, upper_bound).
                 The decision variables (actuator trajectories) to optimize.
+                An entry may also be a :class:`tb.Variable
+                <twin4build.utils.types.Variable>`: an output port (a
+                trajectory, ``lb`` and ``ub`` required) or a parameter (bounds
+                default to the ones its component declares), or a bare
+                ``tb.Parameter``; the Optimizer starts from the parameter's
+                current value.
             objectives: List of tuples (component, output_name, objective_type)
                 where objective_type is "min" or "max".
             eq_cons: List of tuples (component, output_name, desired_value) where
@@ -553,7 +560,8 @@ class Optimizer:
                 )
         reject_unexpected_kwargs("Optimizer.optimize", kwargs)
 
-        self._variables = _resolve_port_names(variables or [])
+        # tb.Variable / bare parameters -> (component, name, lb, ub) (#235)
+        self._variables = _resolve_port_names(optimizer_variables(variables or [], self.simulator.model))
         self._objectives = _resolve_port_names(objectives or [])
         self._eq_cons = _resolve_port_names(eq_cons or [])
         self._ineq_cons = _resolve_port_names(ineq_cons or [])
@@ -923,7 +931,7 @@ class Optimizer:
         if not variables:
             raise ValueError("No decision variables specified for optimization")
 
-        self._variables = _resolve_port_names(variables)
+        self._variables = _resolve_port_names(optimizer_variables(variables, self.simulator.model))  # (#235)
         self._objectives = _resolve_port_names([objective1, objective2])
         self._eq_cons = _resolve_port_names(eq_cons or [])
         self._ineq_cons = _resolve_port_names(ineq_cons or [])
