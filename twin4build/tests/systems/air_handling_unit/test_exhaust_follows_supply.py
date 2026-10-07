@@ -7,6 +7,7 @@ identifiable (only their total is); the ratio is pinned by that meter.
 
 # Standard library imports
 import datetime
+import functools
 import unittest
 
 # Third party imports
@@ -16,6 +17,7 @@ from dateutil import tz
 # Local application imports
 import twin4build
 import twin4build as tb
+from twin4build.systems.utils.smooth_saturation import saturation_mode
 from twin4build.systems.air_handling_unit.air_handling_unit_system import (
     AirHandlingUnitSystem,
 )
@@ -23,6 +25,18 @@ from twin4build.systems.air_handling_unit.air_handling_unit_system import (
 twin4build._IS_TESTING = True
 
 START = datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)
+
+
+def _exact(test):
+    """The exact balance (the hard saturation mode): the smooth mode's
+    make-up flow is small but not zero where the hard max is."""
+
+    @functools.wraps(test)
+    def run(self):
+        with saturation_mode("hard"):
+            return test(self)
+
+    return run
 
 
 def _ahu(follows: bool, ratio: float = 0.93, n_branches: int = 2) -> AirHandlingUnitSystem:
@@ -140,6 +154,7 @@ class TestOccupancyFollowsSupply(unittest.TestCase):
         _, out = occ.forward(None, inputs, params, 600.0)
         return float(out["scheduleValue"])
 
+    @_exact
     def test_ratio_changes_the_booked_people(self):
         n_surplus = self._people(self._occ(True))
         n_deficit = self._people(self._occ(True), ratio_param=1.2)
