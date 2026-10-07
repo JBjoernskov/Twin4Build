@@ -40,22 +40,63 @@ The constant infiltration :math:`\dot m_{inf}` (a parameter of both models)
 is *additive* to the make-up flow, the EnergyPlus convention: it models
 wind- and stack-driven exchange that exists regardless of the mechanical
 imbalance, and is balanced by an equal outflow at room state.
+
+The :math:`\max(\cdot, 0)` is the library's saturation
+(:func:`~twin4build.systems.utils.smooth_saturation.clamp`), so it follows
+the process-wide saturation mode.  A hard max has a corner at zero
+imbalance, and a room whose exhaust follows its supply sits exactly on it:
+the gradient there matches neither side, and an estimator fitting the
+exhaust-to-supply ratio cannot move it.  The smooth mode (the default)
+rounds the corner with a power curve that keeps a gradient at any
+imbalance, at the price of a small make-up flow where the hard max is zero
+(:data:`FLOW_CURVE_START` divided by :math:`\sqrt 3` at zero imbalance);
+the hard mode (``saturation_mode("hard")``, the refinement stage) is the
+exact max.
 """
 
 import torch
+
+from twin4build.systems.utils.smooth_saturation import clamp
 
 #: Input ports read by :func:`balanced_flow_inputs`; the fused block asserts
 #: they are external columns of the unit (an internal, substituted flow
 #: would bypass the transform).
 TRANSFORM_PORTS = ("supplyAirFlowRate", "exhaustAirFlowRate")
 
+#: Width [kg/s] of the smooth mode's curve around zero flow (about 1 % of a
+#: room's ventilation flow).
+FLOW_CURVE_START = 1e-3
+#: Exponent of the power curve; the curve's steepness is its inverse, so the
+#: curve joins the straight part with slope 1 (continuously differentiable).
+_POWER_EXP = 0.5
+#: An upper bound no air flow reaches [kg/s] (the clamp is one-sided).
+_UNBOUNDED = 1e6
+
+
+def positive_flow(u: torch.Tensor) -> torch.Tensor:
+    r""":math:`\max(u, 0)` of an air flow [kg/s] in the current saturation
+    mode: exact under ``saturation_mode("hard")``; in the smooth mode a power
+    curve below :data:`FLOW_CURVE_START`, continuously differentiable,
+    positive everywhere (:math:`c/\sqrt 3` at zero, :math:`c\sqrt{c/2|u|}` for
+    a negative :math:`u` far from it, with :math:`c` the curve start)."""
+    return clamp(
+        u,
+        lower=0.0,
+        upper=_UNBOUNDED,
+        curve_start=FLOW_CURVE_START,
+        steepness=1.0 / _POWER_EXP,
+        curve_type="power",
+        power_exp=_POWER_EXP,
+    )
+
 
 def make_up_air_flow(supply: torch.Tensor, exhaust: torch.Tensor) -> torch.Tensor:
     r"""Outdoor make-up flow :math:`\max(\dot m_{exh} - \dot m_{sup}, 0)`
     [kg/s] -- the exhaust in excess of the supply, drawn through the
-    envelope at outdoor state.  Zero whenever the supply covers the exhaust.
-    Differentiable (piecewise linear), traceable under functorch/cuda graphs."""
-    return torch.clamp(exhaust - supply, min=0.0)
+    envelope at outdoor state (:func:`positive_flow`: exactly zero whenever
+    the supply covers the exhaust in the hard saturation mode, a small flow
+    in the smooth one).  Traceable under functorch/cuda graphs."""
+    return positive_flow(exhaust - supply)
 
 
 def balanced_flow_inputs(inputs: dict) -> dict:

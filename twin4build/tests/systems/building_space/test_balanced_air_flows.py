@@ -9,10 +9,13 @@ state, so
   envelope;
 
 on the object (``do_step``), functional (``forward``) and fused paths alike.
+The exact balance is the hard saturation mode's; the smooth mode (the
+default) rounds the make-up flow's corner at zero imbalance.
 """
 
 # Standard library imports
 import datetime
+import math
 import unittest
 
 # Third party imports
@@ -24,8 +27,14 @@ import twin4build
 import twin4build as tb
 import twin4build.utils.constants as constants
 from twin4build.systems.building_space.air_balance import (
+    FLOW_CURVE_START,
     balanced_flow_inputs,
     make_up_air_flow,
+    positive_flow,
+)
+from twin4build.systems.utils.smooth_saturation import (
+    get_saturation_mode,
+    set_saturation_mode,
 )
 
 twin4build._IS_TESTING = True
@@ -38,7 +47,63 @@ def _t(v):
     return torch.tensor([float(v)], dtype=torch.float64)
 
 
-class TestMakeUpFlow(unittest.TestCase):
+class _HardSaturation(unittest.TestCase):
+    """The exact balance: every test of the class in the hard saturation mode."""
+
+    def setUp(self):
+        mode = get_saturation_mode()
+        set_saturation_mode("hard")
+        self.addCleanup(set_saturation_mode, mode)
+
+
+class TestSmoothMakeUpFlow(unittest.TestCase):
+    """The smooth mode: no corner at zero imbalance, a gradient everywhere."""
+
+    def setUp(self):
+        mode = get_saturation_mode()
+        set_saturation_mode("smooth")
+        self.addCleanup(set_saturation_mode, mode)
+
+    @staticmethod
+    def _slope(u):
+        x = torch.tensor([float(u)], dtype=torch.float64, requires_grad=True)
+        (g,) = torch.autograd.grad(positive_flow(x).sum(), x)
+        return float(g)
+
+    def test_value_at_zero_and_above_the_curve(self):
+        c = FLOW_CURVE_START
+        self.assertAlmostEqual(float(positive_flow(_t(0.0))), c / math.sqrt(3.0), places=15)
+        torch.testing.assert_close(positive_flow(_t(5 * c)), _t(5 * c), rtol=0, atol=0)
+
+    def test_one_sided_slopes_agree_at_zero_imbalance(self):
+        # The hard max's slopes are 0 and 1 on the two sides of zero; the
+        # smooth flow's differences on either side converge to one derivative.
+        h = 1e-4 * FLOW_CURVE_START
+        f = lambda u: float(positive_flow(_t(u)))
+        up, down = (f(h) - f(0.0)) / h, (f(0.0) - f(-h)) / h
+        self.assertAlmostEqual(up, down, delta=1e-3 * up)
+        self.assertAlmostEqual(self._slope(0.0), 0.5 * (up + down), delta=1e-3 * up)
+
+    def test_slope_is_continuous_where_the_curve_meets_the_straight_part(self):
+        c = FLOW_CURVE_START
+        self.assertAlmostEqual(self._slope(c * (1 - 1e-9)), 1.0, places=6)
+        self.assertAlmostEqual(self._slope(c * (1 + 1e-9)), 1.0, places=12)
+
+    def test_positive_with_a_gradient_deep_in_surplus(self):
+        u = -0.05  # 50 g/s of surplus supply
+        value, slope = float(positive_flow(_t(u))), self._slope(u)
+        self.assertGreater(value, 0.0)
+        self.assertGreater(slope, 0.0)
+        c = FLOW_CURVE_START
+        self.assertAlmostEqual(value, c * math.sqrt(c / (2 * (c - u) + c)), places=15)
+
+    def test_hard_mode_is_the_exact_max(self):
+        set_saturation_mode("hard")
+        u = torch.tensor([-0.05, 0.0, 1e-6, 0.06], dtype=torch.float64)
+        torch.testing.assert_close(positive_flow(u), torch.clamp(u, min=0.0), rtol=0, atol=0)
+
+
+class TestMakeUpFlow(_HardSaturation):
     def test_make_up_is_exhaust_deficit_clamped_at_zero(self):
         sup = torch.tensor([0.10, 0.10, 0.10], dtype=torch.float64)
         exh = torch.tensor([0.05, 0.10, 0.16], dtype=torch.float64)
@@ -56,7 +121,7 @@ class TestMakeUpFlow(unittest.TestCase):
         self.assertEqual(balanced_flow_inputs({"supplyAirFlowRate": _t(0.1)}), {})
 
 
-class TestThermalBalance(unittest.TestCase):
+class TestThermalBalance(_HardSaturation):
     """Right-hand side of the air node with the wall at air temperature (no
     conduction) and no other gains: only the ventilation terms remain."""
 
@@ -64,6 +129,7 @@ class TestThermalBalance(unittest.TestCase):
     T_I, T_O, T_SUP = 20.0, 5.0, 30.0
 
     def setUp(self):
+        super().setUp()
         self.zone = tb.BuildingSpaceThermalSystem(
             C_air=self.C_AIR,
             C_wall=5e6,
@@ -136,11 +202,12 @@ class TestThermalBalance(unittest.TestCase):
         self.assertAlmostEqual(got, self._expected(0.1, 0.16), places=6)
 
 
-class TestMassBalance(unittest.TestCase):
+class TestMassBalance(_HardSaturation):
     V = 100.0
     C_I, C_OUT = 1000.0, 400.0
 
     def setUp(self):
+        super().setUp()
         self.room = tb.BuildingSpaceMassSystem(V=self.V, G_occ=0.0, m_inf=0.0, id="room")
         self.room.initialize(
             start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[DT]
@@ -239,7 +306,7 @@ def _simulate(model, hours, step_size):
     }
 
 
-class TestFusedPathAppliesTheTransform(unittest.TestCase):
+class TestFusedPathAppliesTheTransform(_HardSaturation):
     """The fused block stacks the members' raw inputs; the make-up transform
     must be applied there too, or fused and unfused rooms disagree."""
 
