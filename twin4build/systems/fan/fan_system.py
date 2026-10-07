@@ -135,10 +135,10 @@ class FanSystem(core.System, nn.Module):
             # AHU fan rated power.  Spans small fan-coil supply (~ 200
             # W) up to a 10 kW primary AHU.  Outside this range the
             # other parameters compensate in unphysical ways.
-            "nominalPowerRate": {"lb": 200.0, "ub": 10000.0},
+            "nominalPowerRate": {"lb": 200.0, "ub": 10000.0, "relative": (0.25, 4.0)},
             # AHU air flow [kg/s].  ~ 0.5 kg/s is a small fan-coil,
             # ~ 10 kg/s a large central handler.
-            "nominalAirFlowRate": {"lb": 0.5, "ub": 10.0},
+            "nominalAirFlowRate": {"lb": 0.5, "ub": 10.0, "relative": (0.25, 4.0)},
             # Polynomial coefficients of the ``P(m)`` curve.  These
             # can legitimately be negative (curve concavity) but
             # values past ~ 5 in magnitude give pathological power

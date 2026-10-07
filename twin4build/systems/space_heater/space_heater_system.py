@@ -356,8 +356,8 @@ class SpaceHeaterSystem(core.System, nn.Module):
             # Bounds make a parameter estimable through the base
             # ``get_estimable_parameters`` contract; the construction
             # nominals stay plain floats and are skipped.
-            "thermalMassHeatCapacity": {"lb": 1e4, "ub": 1e7},
-            "UA": {"lb": 1.0, "ub": 2000.0},
+            "thermalMassHeatCapacity": {"lb": 1e4, "ub": 1e7, "relative": (0.25, 4.0)},
+            "UA": {"lb": 1.0, "ub": 2000.0, "relative": (0.25, 4.0)},
             "initialize_UA": {},
         }
         self._config = {"parameters": list(self.parameter.keys())}

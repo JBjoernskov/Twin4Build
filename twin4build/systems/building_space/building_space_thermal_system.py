@@ -341,12 +341,12 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         self.parameter = {
             # Effective air-node capacity: air plus furniture / light
             # internal mass, which is why 1e6 J/K binds on classrooms.
-            "C_air": {"lb": 1000.0, "ub": 3000000.0},
-            "C_wall": {"lb": 10000.0, "ub": 10000000.0},
-            "C_boundary": {"lb": 10000.0, "ub": 10000000.0},
-            "R_out": {"lb": 0.001, "ub": 1.0},
-            "R_in": {"lb": 0.001, "ub": 1.0},
-            "R_boundary": {"lb": 0.001, "ub": 1.0},
+            "C_air": {"lb": 1000.0, "ub": 3000000.0, "relative": (0.1, 10.0)},
+            "C_wall": {"lb": 10000.0, "ub": 10000000.0, "relative": (0.1, 10.0)},
+            "C_boundary": {"lb": 10000.0, "ub": 10000000.0, "relative": (0.1, 10.0)},
+            "R_out": {"lb": 0.001, "ub": 1.0, "relative": (0.1, 10.0)},
+            "R_in": {"lb": 0.001, "ub": 1.0, "relative": (0.1, 10.0)},
+            "R_boundary": {"lb": 0.001, "ub": 1.0, "relative": (0.1, 10.0)},
             "f_wall": {"lb": 0.0, "ub": 1.0},
             "f_air": {"lb": 0.0, "ub": 1.0},
             "Q_occ_gain": {"lb": 50.0, "ub": 200.0},
