@@ -26,6 +26,19 @@ def _has_triton() -> bool:
     return True
 
 
+def _has_cpp_compiler() -> bool:
+    """Whether Inductor's CPU backend finds its C++ compiler (the Windows CI
+    runners have no ``cl``: InvalidCxxCompiler)."""
+    try:
+        from torch._inductor.cpp_builder import get_compiler_version_info, get_cpp_compiler
+
+        get_compiler_version_info(get_cpp_compiler())
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
+NEEDS_CPP = unittest.skipUnless(_has_cpp_compiler(), "Inductor's CPU backend finds no C++ compiler")
 STEP = 600
 START = datetime.datetime(2024, 1, 1, tzinfo=tz.UTC)
 
@@ -77,9 +90,11 @@ class TestCompiledBatchedStep(unittest.TestCase):
         # the rows do differ, so a batch collapsed onto one row would show
         self.assertFalse(torch.allclose(rows[0], rows[-1]))
 
+    @NEEDS_CPP
     def test_loops_through_one_vector_port_on_the_cpu(self):
         self._rows_agree("cpu", loops=True)
 
+    @NEEDS_CPP
     def test_slots_of_one_vector_port_on_the_cpu(self):
         self._rows_agree("cpu", loops=False)
 
