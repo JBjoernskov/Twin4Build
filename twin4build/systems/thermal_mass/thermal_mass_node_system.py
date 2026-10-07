@@ -90,7 +90,7 @@ class ThermalMassNodeSystem(core.System, nn.Module):
             "temperature": tps.Scalar(T_init),  # Node temperature [degC]
         }
         self.parameter = {
-            "C": {"lb": 1e4, "ub": 1e11},
+            "C": {"lb": 1e4, "ub": 1e11, "relative": (0.1, 10.0)},
         }
         self._config = {"parameters": list(self.parameter.keys())}
         self.n_flows = 0

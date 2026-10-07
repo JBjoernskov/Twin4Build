@@ -162,7 +162,7 @@ class DamperSystem(core.System, nn.Module):
             # zone at 1 ach (~ 0.03 kg/s) up to a large primary AHU
             # branch (~ 5 kg/s).  Below 0.01 kg/s the coil's
             # energy balance becomes singular.
-            "nominalAirFlowRate": {"lb": 0.001, "ub": 5.0},
+            "nominalAirFlowRate": {"lb": 0.001, "ub": 5.0, "relative": (0.25, 4.0)},
             # Offset of the characteristic (kg/s); estimable once untied.
             # ``a + c`` is the closed-damper flow: ``c < -a`` gives a dead
             # band (the flow is clamped at zero), ``c > -a`` a leakage.

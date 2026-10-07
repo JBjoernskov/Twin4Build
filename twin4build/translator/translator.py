@@ -2401,6 +2401,11 @@ class Translator:
                                                 requires_grad=False,
                                             ),
                                         )
+                                        # a value from the semantic model
+                                        # sizes the parameter: a size
+                                        # quantity's bounds become relative
+                                        # to it (#245)
+                                        component.size_parameter(key)
                                     else:
                                         rsetattr(component, key, value)
                             LOGGER.remove_level()

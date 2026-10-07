@@ -16,6 +16,7 @@ from prettytable import PrettyTable
 # Local application imports
 import twin4build.utils.types as tps
 from twin4build.utils.deprecation import deprecate_name
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.simulation_time import get_simulation_timesteps
@@ -106,6 +107,24 @@ def _concatenate_capacities(parts, n_c):
     return torch.cat(
         [part.to(dtype).expand(n_c, part.shape[-1]) if part.shape[0] == 1 else part.to(dtype) for part in parts],
         dim=-1,
+    )
+
+
+_UNSIZED_WARNED = set()
+
+
+def _warn_unsized(owner, leaf: str) -> None:
+    """Warn once per class and attribute that a size quantity kept its
+    absolute fallback bounds (nothing sized it, see
+    :meth:`System.size_parameter`)."""
+    key = (type(owner).__name__, leaf)
+    if key in _UNSIZED_WARNED:
+        return
+    _UNSIZED_WARNED.add(key)
+    LOGGER.warning(
+        "%s.%s is a size quantity nothing sized: it keeps the class's absolute bounds; "
+        "size it (System.size_parameter) for bounds relative to its size",
+        key[0], leaf,
     )
 
 
@@ -626,7 +645,13 @@ class System:
 
         Owner resolution: ``"thermal.C_air"`` looks up
         ``self.thermal.parameter["C_air"]`` for bounds; an unprefixed
-        path looks up ``self.parameter[leaf]``.  Subclasses with a
+        path looks up ``self.parameter[leaf]``.
+
+        A size quantity declares ``"relative": (lo, hi)`` next to its
+        absolute ``lb`` / ``ub``: once :meth:`size_parameter` has sized it,
+        ``lb`` / ``ub`` are ``lo`` / ``hi`` times the sized value; unsized,
+        the absolute bounds stay and a warning names the attribute (once
+        per class and attribute).  Subclasses with a
         bespoke parameter space (e.g.
         :class:`ControllerIdentificationSystem`) override this with
         their own discovery logic.
@@ -671,6 +696,8 @@ class System:
             bounds = spec.get(leaf)
             if not isinstance(bounds, dict) or "lb" not in bounds or "ub" not in bounds:
                 continue
+            if "relative" in bounds and not bounds.get("sized", False):
+                _warn_unsized(owner, leaf)
             # A batched meta's spec may hold one bound per instance
             # (``Model._stack_parameter_spec``); a scalar stays a float.
             lb = np.asarray(bounds["lb"], dtype=float).reshape(-1)
@@ -697,6 +724,60 @@ class System:
                 continue
             out.append((self, path, x0, lb, ub))
         return out
+
+    def size_parameter(self, path: str, value=None) -> bool:
+        """Mark the parameter at ``path`` as sized, its bounds relative.
+
+        A size quantity (a nominal flow, a capacity, a volume) declares
+        ``"relative": (lo, hi)`` in its owner's ``parameter`` spec next to
+        its absolute ``lb`` / ``ub``.  Whatever sizes it (the translator
+        mapping a value from the semantic model, a workflow's sizing rule)
+        calls this: ``value`` (physical; one per instance or one for all)
+        is set when given, and the instance's ``lb`` / ``ub`` become ``lo``
+        / ``hi`` times the parameter's value.  The sized value is the
+        anchor: a later value (a warm start, a fit's result) moves the
+        parameter, not its bounds.
+
+        Args:
+            path: The attribute path, as in ``_config["parameters"]``
+                (``"heat_recovery.primaryAirFlowRateMax"``).
+            value: The sized value; ``None`` anchors at the current one.
+
+        Returns:
+            bool: Whether the bounds were made relative: ``False`` for an
+            attribute without ``"relative"`` in its spec, or a value that
+            is not positive (the absolute bounds then stay).
+        """
+        *prefix, leaf = path.split(".")
+        owner = rgetattr(self, ".".join(prefix)) if prefix else self
+        param = getattr(owner, leaf)
+        if value is not None:
+            current = param.get().detach()
+            with torch.no_grad():
+                param.set(
+                    torch.as_tensor(value, dtype=current.dtype, device=current.device).expand_as(current).clone(),
+                    normalized=False,
+                )
+        spec = getattr(owner, "parameter", None)
+        entry = spec.get(leaf) if isinstance(spec, dict) else None
+        if not isinstance(entry, dict) or "relative" not in entry:
+            return False
+        sized = np.asarray(param.get().detach().cpu(), dtype=float).reshape(-1)
+        if not np.all(sized > 0):
+            LOGGER.warning(
+                "%s.%s: sized value %s is not positive; its absolute bounds stay",
+                getattr(self, "id", type(self).__name__), path, sized,
+            )
+            return False
+        lo, hi = entry["relative"]
+
+        def bound(factor):
+            b = factor * sized
+            return float(b[0]) if b.size == 1 or np.all(b == b[0]) else b.tolist()
+
+        # a new dict: the spec may be shared with another instance's
+        owner.parameter = {**spec, leaf: {**entry, "lb": bound(lo), "ub": bound(hi), "sized": True}}
+        return True
 
     def populate_config(self) -> dict:
         """
