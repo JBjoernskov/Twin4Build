@@ -1565,12 +1565,10 @@ class FunctionalModel:
         rollout then advances every shooting window of one parameter vector
         at once (:func:`functional_rollout_windows`).
 
-        Deliberately NOT ``torch.compile``-d: on torch 2.11 ``compile`` over
-        ``vmap`` of this step is numerically wrong (a measurement off by 23 %
-        after one step in the probe of 26 Sep 2026, while the eager vmap and
-        the compiled scalar step agree to 1e-15).  Under
-        ``cuda_graph_scope="step"`` the eager vmapped step is captured once
-        per step kind, so its kernel count costs nothing at replay."""
+        The eager vmap; :attr:`compiled_window_step` is the compiled one, which
+        the per-step CUDA graphs capture (``compile`` over ``vmap`` was
+        numerically wrong on torch 2.11 until #241: the vector inputs are
+        assembled with ``scatter`` / ``scatter_add`` since)."""
         step = self.__dict__.get("_window_step")
         if step is None:
             model = self
@@ -1587,10 +1585,8 @@ class FunctionalModel:
         """``vmap`` of the transform-mode ``F_aug`` over a batch of parameter
         starts sharing one exogenous row: ``step(Y, Theta, u)`` with ``Y (B,
         D_aug)``, ``Theta (B, n_theta)``, ``u (n_exogenous,)``: the eager
-        counterpart of :attr:`compiled_batched_step`, captured per step under
-        ``cuda_graph_scope="step"``.  Eager for the reason given on
-        :attr:`window_step` (``compile`` over this ``vmap`` is numerically
-        wrong on torch 2.11)."""
+        counterpart of :attr:`compiled_batched_step`, which the per-step CUDA
+        graphs capture."""
         step = self.__dict__.get("_batched_step")
         if step is None:
             model = self
@@ -1608,8 +1604,9 @@ class FunctionalModel:
         their own state, parameters AND exogenous row: ``step(Y, Theta, U)``
         with ``Y (N, D_aug)``, ``Theta (N, n_theta)``, ``U (N, n_exogenous)``:
         a batch of parameter starts times a batch of windows, flattened
-        (:func:`functional_rollout_rows`).  Eager for the reason given on
-        :attr:`window_step`."""
+        (:func:`functional_rollout_rows`).  The eager vmap;
+        :attr:`compiled_rows_step` is the compiled one, which the per-step
+        CUDA graphs capture."""
         step = self.__dict__.get("_rows_step")
         if step is None:
             model = self
@@ -1619,6 +1616,39 @@ class FunctionalModel:
 
             step = torch.func.vmap(_step, in_dims=(0, 0, 0))
             self.__dict__["_rows_step"] = step
+        return step
+
+    @property
+    def compiled_window_step(self):
+        """:attr:`window_step` compiled: ``torch.compile(vmap(F_aug))`` over a
+        batch of windows sharing one parameter vector and the hoisted
+        matrices, the vmap inside the compiled function as in
+        :attr:`compiled_batched_step`."""
+        step = self.__dict__.get("_compiled_window_step")
+        if step is None:
+            model = self
+
+            def _step(y, theta, u, constants):
+                return model.F_aug(y, theta, u, transform_mode=True, constants=constants)
+
+            step = torch.compile(torch.func.vmap(_step, in_dims=(0, None, 0, None)), fullgraph=True, dynamic=False)
+            self.__dict__["_compiled_window_step"] = step
+        return step
+
+    @property
+    def compiled_rows_step(self):
+        """:attr:`rows_step` compiled: ``torch.compile(vmap(F_aug))`` over rows
+        with their own state, parameters and exogenous row, the vmap inside
+        the compiled function as in :attr:`compiled_batched_step`."""
+        step = self.__dict__.get("_compiled_rows_step")
+        if step is None:
+            model = self
+
+            def _step(y, theta, u):
+                return model.F_aug(y, theta, u, transform_mode=True)
+
+            step = torch.compile(torch.func.vmap(_step, in_dims=(0, 0, 0)), fullgraph=True, dynamic=False)
+            self.__dict__["_compiled_rows_step"] = step
         return step
 
     @property
