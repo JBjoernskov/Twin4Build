@@ -9,6 +9,7 @@ model and inverted again must come back -- at AHU sample times
 """
 
 # Standard library imports
+import functools
 import inspect
 import unittest
 
@@ -18,6 +19,7 @@ import torch
 # Local application imports
 import twin4build
 import twin4build as tb
+from twin4build.systems.utils.smooth_saturation import saturation_mode
 import twin4build.utils.constants as constants
 from twin4build.simulator.simulator import _has_triton
 from twin4build.systems.building_space.building_space_mass_system import (
@@ -33,6 +35,18 @@ from twin4build.systems.utils.discrete_statespace_system import (
 )
 
 twin4build._IS_TESTING = True
+
+
+def _exact(test):
+    """The exact balance (the hard saturation mode): the smooth mode's
+    make-up flow is small but not zero where the hard max is."""
+
+    @functools.wraps(test)
+    def run(self):
+        with saturation_mode("hard"):
+            return test(self)
+
+    return run
 
 DT = 1.0
 DT_AHU = 600.0
@@ -332,6 +346,7 @@ class TestInversionRoundTrip(unittest.TestCase):
         got = _invert_raw(0.10, 0.10, 900.0, c_now, DT_AHU)
         self.assertAlmostEqual(float(got), 0.0, places=5)
 
+    @_exact
     def test_generation_only(self):
         # No ventilation, no infiltration: the step is exactly linear in
         # time, so the people come straight back out.
@@ -352,6 +367,7 @@ class TestInversionRoundTrip(unittest.TestCase):
         )
         self.assertAlmostEqual(float(got), 8.0, places=6)
 
+    @_exact
     def test_surplus_supply_ignores_exhaust(self):
         # The forward model drops the exhaust when the supply covers it; so
         # must the inversion (same people for any smaller exhaust).
