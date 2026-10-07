@@ -1,19 +1,21 @@
 """``compiled_batched_step`` (``torch.compile(vmap(F_aug))``) steps every row as ``F_aug`` steps it alone (#241).
 
-torch 2.11 Inductor miscompiled ``F_aug``'s assembly of vector inputs fed by several producers (``index_put`` into
-an unbatched buffer under ``vmap``): every batch row wrote the same storage.  On the example office (the damper's
-max over the CO2 and temperature loops is such a port) the CO2 was 421.5 instead of 438.9 ppm and the damper
-command 0.0267 instead of 0.0182 after ten steps on the GPU; on the CPU Inductor failed in code generation.
+torch 2.11 Inductor miscompiled ``F_aug``'s assembly of a vector input from slots assembled one by one (``index_put``
+into an unbatched buffer under ``vmap``): every batch row wrote the same storage, or the CPU code generation failed.
+A minimal model reproduces both: leaves (``v = p``) feed one vector port of a hub, sinks accumulate the hub's slots.
+Before the fix, the leaves' direct slots failed in the CPU code generation, and two loops through one vector port
+(as an office damper takes the max of its CO2 and temperature loops) gave every row the same values (450 off after
+four steps).  The model compiles in about 13 s on the CPU; the example office's step took about 170 s, which the CI
+runners did not finish in six hours.
 """
 import datetime
-import os
 import unittest
 
-import numpy as np
 import torch
+from dateutil import tz
 
 import twin4build as tb
-from twin4build.tests.estimator.example_fixture import EXAMPLE_START, STEP_SIZE, example_measurements, example_parameters, load_model
+from twin4build.tests.model.test_batching_vector_slots import Hub, Leaf, Sink
 
 
 def _has_triton() -> bool:
@@ -24,34 +26,49 @@ def _has_triton() -> bool:
     return True
 
 
+STEP = 600
+START = datetime.datetime(2024, 1, 1, tzinfo=tz.UTC)
+
+
+def _functional(device, loops: bool):
+    """The minimal model on ``device`` as a functional map: ``(fm, y0, tape, n_theta)``.  ``loops``: two loops
+    through the hub's one vector port (leaf i -> hub slot i -> sink i -> hub slot 2 + i), else four leaves into
+    the hub's own slots, each read by a sink."""
+    model = tb.Model(id=f"compiled_batched_step_{'loops' if loops else 'slots'}")
+    hub = Hub(id="hub")
+    n = 2 if loops else 4
+    leaves = [Leaf(p=float(i + 1), id=f"leaf{i}") for i in range(n)]
+    sinks = [Sink(id=f"sink{i}") for i in range(n)]
+    for i in range(n):
+        model.add_connection(leaves[i], hub, "v", "x", input_port_index=i)
+        model.add_connection(hub, sinks[i], "y", "u", output_port_index=i, input_port_index=0)
+        if loops:
+            model.add_connection(sinks[i], hub, "w", "x", input_port_index=n + i)
+    model.load(draw_semantic_model=False, draw_simulation_model=False)
+    model.to(device=device, dtype=torch.float64)
+    sim = tb.Simulator(model, execution_mode="functional", execution_backend="eager", compile_step=False)
+    end = START + datetime.timedelta(seconds=8 * STEP)
+    model.initialize(start_time=[START], end_time=[end], step_size=[STEP])
+    layout, fm = sim.build_functional_model(
+        theta_spec=[(leaf, "p") for leaf in leaves], outputs=[(sink, "w") for sink in sinks], step_size=STEP
+    )
+    recording = sim.record_exogenous_inputs(fm, [START], [end], [STEP], layout=layout)
+    fm.prepare_routes(device)  # as a session does: the vector ports regrouped into the assembly #241 broke
+    return fm, recording.Y0[0], recording.exogenous_tape[0], n
+
+
 class TestCompiledBatchedStep(unittest.TestCase):
     STEPS, ROWS = 4, 3
 
-    def _rows_agree(self, device):
-        model = load_model()
-        model.to(device=device, dtype=torch.float64)
-        est = tb.Estimator(tb.Simulator(model, execution_mode="functional", execution_backend="eager", compile_step=False))
-        start = EXAMPLE_START[0]
-        est.estimate(
-            parameters=example_parameters(model),
-            measurements=example_measurements(model),
-            start_time=[start],
-            end_time=[start + datetime.timedelta(hours=24)],
-            step_size=STEP_SIZE,
-            n_warmup=5,
-            method=("scipy", "SLSQP", "ad"),
-            options={"maxiter": 1},
-        )
-        obj = est._functional_objective
-        fm = obj.composer
-        x0 = torch.tensor(np.asarray(est._x0_norm, dtype=np.float64), dtype=torch.float64, device=device)
-        theta0 = obj._physical(x0)[0] if hasattr(obj, "_physical") else obj._denorm(x0)
-        Theta = torch.stack([theta0 * (1.0 + 0.02 * b) for b in range(self.ROWS)])  # distinct rows
-        Y = obj.Y0[0].unsqueeze(0).expand(self.ROWS, -1).contiguous()
+    def _rows_agree(self, device, loops):
+        fm, y0, tape, n = _functional(device, loops)
+        theta0 = torch.arange(1.0, n + 1.0, dtype=torch.float64, device=device)
+        Theta = torch.stack([theta0 * (1.0 + 0.5 * b) for b in range(self.ROWS)])  # distinct rows
+        Y = y0.unsqueeze(0).expand(self.ROWS, -1).contiguous()
         rows = [Y[b] for b in range(self.ROWS)]
         with torch.no_grad():
             for t in range(self.STEPS):
-                u = obj.CAP[0][t]
+                u = tape[t]
                 Y, M = fm.compiled_batched_step(Y, Theta, u)
                 for b in range(self.ROWS):
                     rows[b], m = fm.F_aug(rows[b], Theta[b], u, transform_mode=True)
@@ -60,15 +77,15 @@ class TestCompiledBatchedStep(unittest.TestCase):
         # the rows do differ, so a batch collapsed onto one row would show
         self.assertFalse(torch.allclose(rows[0], rows[-1]))
 
-    # Inductor's CPU code generation for the example's step does not finish on the CI runners: every job hung here
-    # until GitHub's 6-hour limit (#246, #247, dev on 6 Oct 2026); it takes minutes on a workstation
-    @unittest.skipIf(os.environ.get("CI"), "Inductor's CPU code generation does not finish on the CI runners")
-    def test_rows_agree_on_the_cpu(self):
-        self._rows_agree("cpu")
+    def test_loops_through_one_vector_port_on_the_cpu(self):
+        self._rows_agree("cpu", loops=True)
+
+    def test_slots_of_one_vector_port_on_the_cpu(self):
+        self._rows_agree("cpu", loops=False)
 
     @unittest.skipUnless(torch.cuda.is_available() and _has_triton(), "needs CUDA and Triton")
-    def test_rows_agree_on_the_gpu(self):
-        self._rows_agree("cuda")
+    def test_loops_through_one_vector_port_on_the_gpu(self):
+        self._rows_agree("cuda", loops=True)
 
 
 if __name__ == "__main__":
