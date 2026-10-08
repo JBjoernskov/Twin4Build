@@ -94,6 +94,22 @@ class ControllerIdentificationSystem(core.System, nn.Module):
 
     where :math:`C_k` is the k-th candidate controller.
 
+    **Loops combined by max:** a ``"max"`` candidate :math:`M_m` is a loop
+    of its own: it acts on its own feedback (``beta_{a}_{m}`` over the
+    sensors) about its own constant setpoint (``setpoint_{a}_{m}``,
+    estimated), and the actuator takes the larger demand,
+
+    .. math::
+
+        \hat{u}_{a,t} = \max\big(\sum_k \alpha_{a,k} C_k(e_t),\;
+                        \max_m M_m(c_{a,m} - \sum_i \beta_{a,m,i} y_{it})\big)
+
+    before the gate -- a VAV damper that answers the room temperature and,
+    above a CO2 level, the CO2 (``max(temperature PI, CO2 P)``).  With
+    ``Ti`` to infinity the loop is proportional about its setpoint, so the
+    threshold and whether there is a CO2 loop at all are identified, not
+    assumed.
+
     **Binarization Penalty:**
 
     .. math::
@@ -108,6 +124,11 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             If None, uses default PIDControllerSystem with different configurations.
         candidate_controller_kwargs: List of kwargs dicts for each candidate controller.
             If None, uses default configurations.
+        max_controllers: Controller classes of the ``"max"`` candidates
+            (loops on their own feedback and setpoint whose output joins the
+            others' by max); none by default.
+        max_controller_kwargs: Constructor arguments of each ``"max"``
+            candidate.
         candidate_structure: The ordered candidate list as literals, one
             dict with the keys ``type`` and ``ref`` per candidate (see
             :attr:`candidate_structure`).  This is the form a serialized
@@ -166,6 +187,11 @@ class ControllerIdentificationSystem(core.System, nn.Module):
     # Controller type constants -- each defines a signal routing strategy
     CTRL_SETPOINT = "setpoint"
     CTRL_CASCADE = "cascade"
+    #: A loop on its own feedback and constant setpoint, joined by max.
+    CTRL_MAX = "max"
+    #: Bounds of a ``"max"`` candidate's setpoint when nothing set them
+    #: (the rewire writes the range of the loop's feedback).
+    _MAX_SETPOINT_BOUNDS: Tuple[float, float] = (-1e6, 1e6)
 
     # Gate class used for the per-actuator setpoint-based gate
     # ("gate_{a}") constructed in :meth:`_build_components`.  Subclasses
@@ -207,6 +233,8 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         setpoint_controller_kwargs: Optional[List[dict]] = None,
         cascade_controllers: Optional[List[Type[core.System]]] = None,
         cascade_controller_kwargs: Optional[List[dict]] = None,
+        max_controllers: Optional[List[Type[core.System]]] = None,
+        max_controller_kwargs: Optional[List[dict]] = None,
         # --- Serialized state (see ``config``) ---
         candidate_structure: Optional[Union[dict, List[dict]]] = None,
         playback: bool = False,
@@ -268,11 +296,16 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         cascade_controller_kwargs = cascade_controller_kwargs or [
             {} for _ in cascade_controllers
         ]
+        max_controllers = max_controllers or []
+        max_controller_kwargs = max_controller_kwargs or [
+            {} for _ in max_controllers
+        ]
 
         # Validate lengths
         for label, classes, kws in [
             ("setpoint", setpoint_controllers, setpoint_controller_kwargs),
             ("cascade", cascade_controllers, cascade_controller_kwargs),
+            ("max", max_controllers, max_controller_kwargs),
         ]:
             assert len(classes) == len(kws), (
                 f"{label}_controllers ({len(classes)}) and "
@@ -285,6 +318,8 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             self._candidate_entries.append((cls, kw, self.CTRL_SETPOINT))
         for cls, kw in zip(cascade_controllers, cascade_controller_kwargs):
             self._candidate_entries.append((cls, kw, self.CTRL_CASCADE))
+        for cls, kw in zip(max_controllers, max_controller_kwargs):
+            self._candidate_entries.append((cls, kw, self.CTRL_MAX))
 
         assert (
             len(self._candidate_entries) > 0
@@ -354,6 +389,15 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         self.candidate_controller_classes = [e[0] for e in self._candidate_entries]
         self._candidate_controller_kwargs = [e[1] for e in self._candidate_entries]
         self._has_cascade = self.CTRL_CASCADE in self._candidate_types
+        #: The ``"max"`` candidates' indices, and the others' (the blend).
+        self._max_candidates = [c for c, t in enumerate(self._candidate_types) if t == self.CTRL_MAX]
+        self._blend_candidates = [c for c, t in enumerate(self._candidate_types) if t != self.CTRL_MAX]
+        assert self._blend_candidates, "at least one candidate that is not a 'max' loop must be provided"
+        # the blend is a leading slice of the candidates (an index list would
+        # be copied to the device inside a captured CUDA graph)
+        assert self._blend_candidates == list(range(len(self._blend_candidates))), (
+            "the 'max' candidates must come after the others"
+        )
 
     def _resolve_candidate_structure(
         self, structure: Union[dict, List[dict]]
@@ -374,7 +418,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         entries = []
         for c, item in enumerate(structure):
             ctype = item["type"]
-            assert ctype in (self.CTRL_SETPOINT, self.CTRL_CASCADE), (
+            assert ctype in (self.CTRL_SETPOINT, self.CTRL_CASCADE, self.CTRL_MAX), (
                 f"ControllerIdentificationSystem '{self.id}': unknown candidate "
                 f"type {ctype!r} in candidate_structure."
             )
@@ -403,7 +447,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         """The ordered candidate list as literals.
 
         One dict per candidate with the keys ``type``, the signal routing
-        (``"setpoint"`` or ``"cascade"``), and ``ref``, the import path
+        (``"setpoint"``, ``"cascade"`` or ``"max"``), and ``ref``, the import path
         ``module:qualname`` of the candidate's class.  This is the form that
         survives ``Model.serialize()`` / ``Model.load(filename=...)`` (a
         class is not a literal).  Assigning a different structure to a built
@@ -627,6 +671,30 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                     ),
                 )
 
+            # A "max" loop's own feedback selection and its constant setpoint.
+            for c in self._max_candidates:
+                setattr(
+                    self,
+                    f"beta_{a}_{c}",
+                    tps.Parameter(
+                        torch.full((n_sensors,), beta_init, dtype=tps.float_dtype()),
+                        min_value=0.0,
+                        max_value=1.0,
+                        requires_grad=False,
+                        n_c=n_sensors,
+                    ),
+                )
+                setattr(
+                    self,
+                    f"setpoint_{a}_{c}",
+                    tps.Parameter(
+                        torch.tensor(0.0, dtype=tps.float_dtype()),
+                        min_value=self._MAX_SETPOINT_BOUNDS[0],
+                        max_value=self._MAX_SETPOINT_BOUNDS[1],
+                        requires_grad=True,
+                    ),
+                )
+
             # Setpoint-based gate sub-system per actuator.  Type is
             # configurable via the ``_gate_class`` class attribute
             # (defaults to ``BandGate``).  ``BandGate`` is parameterized
@@ -721,6 +789,8 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             names += [f"alpha_{a}", f"beta_{a}", f"gamma_{a}"]
             if self._has_cascade:
                 names.append(f"beta_b_{a}")
+            for c in self._max_candidates:
+                names += [f"beta_{a}_{c}", f"setpoint_{a}_{c}"]
             names += [f"gamma_gate_{a}", f"alpha_gate_{a}", f"default_output_{a}"]
             gate = getattr(self, f"gate_{a}")
             names += [f"gate_{a}.{n}" for n in getattr(gate, "PARAM_NAMES", ())]
@@ -757,7 +827,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
           the selection weights of every actuator (``alpha_{a}``,
           ``beta_{a}``, ``gamma_{a}``, ``beta_b_{a}``, ``gamma_gate_{a}``,
           ``alpha_gate_{a}``, ``default_output_{a}``), the parameters of its
-          gate and the parameters of every candidate.
+          gate and the parameters of every candidate, and each ``"max"``
+          loop's feedback selection and setpoint (``beta_{a}_{c}``,
+          ``setpoint_{a}_{c}``).
 
         The bounds of a candidate parameter (``candidate_{a}_{c}.kp.min_value``
         ...) come before the values: the rewire derives them per loop, and a
@@ -780,6 +852,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             names += [f"alpha_{a}", f"beta_{a}", f"gamma_{a}"]
             if self._has_cascade:
                 names.append(f"beta_b_{a}")
+            names += [f"beta_{a}_{c}" for c in self._max_candidates]
             names += [f"gamma_gate_{a}", f"alpha_gate_{a}", f"default_output_{a}"]
             gate = self._get_gate(a)
             gate_names = self._sub_config_parameters(gate)
@@ -788,6 +861,10 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             names += [f"gate_{a}.{n}" for n in gate_names]
         bounds, values = [], []
         for a in range(self.n_actuators):
+            for c in self._max_candidates:
+                path = f"setpoint_{a}_{c}"
+                bounds += [f"{path}.min_value", f"{path}.max_value"]
+                values.append(path)
             for c in range(self.n_candidates):
                 ctrl = self._get_candidate(a, c)
                 for n in self._sub_config_parameters(ctrl):
@@ -879,6 +956,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
           * ``candidate_{a}_{c}.kp``        -- PI proportional gain
           * ``candidate_{a}_{c}.Ti``        -- PI integral time
           * ``candidate_{a}_{c}.output_min``-- saturation lower bound
+          * ``setpoint_{a}_{c}``            -- a ``"max"`` loop's setpoint
           * ``default_output_{a}``          -- fallback output when gate inactive
           * ``gate_{a}.threshold``          -- gate lower edge (T_lo)
           * ``gate_{a}.band``               -- gate width (BandGate only)
@@ -957,6 +1035,14 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                             ub,
                         )
                     )
+
+            # A "max" loop's setpoint, within the range the rewire found
+            # its feedback in.
+            for c in self._max_candidates:
+                p = getattr(self, f"setpoint_{a}_{c}")
+                if getattr(p, "requires_grad", True):
+                    lb, ub = _bounds(p, self._MAX_SETPOINT_BOUNDS)
+                    params.append((self, f"setpoint_{a}_{c}", _scalar(p), lb, ub))
 
             # default_output_{a}
             default_out = getattr(self, f"default_output_{a}", None)
@@ -1357,6 +1443,20 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         weights = weights.reshape(-1, width)
         return weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
 
+    def _blend(self, alpha: torch.Tensor, outputs: List[torch.Tensor]) -> torch.Tensor:
+        """The alpha-weighted blend of the candidates that are not ``"max"``
+        loops, the weights normalised over those candidates (one row per
+        instance on a batched controller, whose weights are flat)."""
+        k = len(self._blend_candidates)  # a leading slice (the "max" candidates come last)
+        n = self.n_candidates
+        if int(getattr(self, "n_c", 1) or 1) == 1:
+            weights = alpha.reshape(-1)[:k]
+            weights = weights / (torch.sum(weights) + 1e-8)
+            return sum(weights[c] * outputs[c] for c in range(k))
+        weights = alpha.reshape(-1, n)[:, :k]
+        weights = weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
+        return sum(weights[:, c] * outputs[c] for c in range(k))
+
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
         """Pure one-step controller identification
         ``(state, inputs, params) -> (new_state, outputs)``.
@@ -1367,7 +1467,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         ``(..., D)`` (``None`` when every candidate is stateless); ``params``
         a dict for :attr:`PARAM_NAMES`.  For each actuator: the beta / gamma
         weighted feedback and setpoint drive every candidate's ``forward``,
-        the outputs are alpha-blended, and the gamma-gate weighted on/off
+        the outputs are alpha-blended, every ``"max"`` loop (its own
+        feedback about its own setpoint) joins by max, and the gamma-gate
+        weighted on/off
         signal (normalised with the rewire-populated bounds) passes through
         the actuator's gate.  Returns ``(x_next, {"inputSignal": (...,
         n_actuators)})``.
@@ -1408,6 +1510,13 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                         "actualValue_a": weighted_feedback,
                         "actualValue_b": weighted_feedback_b,
                     }
+                elif ctype == self.CTRL_MAX:
+                    beta_m = self._selection(params[f"beta_{a}_{c}"], self.n_sensors)
+                    feedback_m = torch.sum(beta_m * sensor_values, dim=-1)
+                    ctrl_inputs = {
+                        "setpointValue": params[f"setpoint_{a}_{c}"] + torch.zeros_like(feedback_m),
+                        "actualValue": feedback_m,
+                    }
                 else:
                     ctrl_inputs = {
                         "setpointValue": weighted_setpoint,
@@ -1426,12 +1535,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 if width:
                     new_state_parts.append((offset, x_c_next))
                 candidate_outputs.append(out_c["inputSignal"])
-            alpha_norm = self._selection(params[f"alpha_{a}"], self.n_candidates)
-            if alpha_norm.dim() == 1:
-                stacked = torch.stack(candidate_outputs, dim=0)  # (n_cand, ...)
-                combined = torch.einsum("c,c...->...", alpha_norm, stacked)
-            else:  # a batched controller: (n_c, n_cand), the outputs (..., n_c)
-                combined = sum(alpha_norm[:, c] * out for c, out in enumerate(candidate_outputs))
+            combined = self._blend(params[f"alpha_{a}"], candidate_outputs)
+            for c in self._max_candidates:
+                combined = torch.maximum(combined, candidate_outputs[c])
 
             gamma_gate_norm = self._selection(params[f"gamma_gate_{a}"], self.n_on_off_signals)
             gate_input = torch.sum(gamma_gate_norm * on_off_norm, dim=-1)
@@ -1472,6 +1578,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             if self._has_cascade:
                 beta_b = self._get_beta_b_vector(a)
                 penalty = penalty + torch.sum(beta_b * (1 - beta_b))
+            for c in self._max_candidates:
+                beta_m = getattr(self, f"beta_{a}_{c}").get()
+                penalty = penalty + torch.sum(beta_m * (1 - beta_m))
             # Gate selection weights
             gamma_gate = self._get_gamma_gate_vector(a)
             penalty = penalty + torch.sum(gamma_gate * (1 - gamma_gate))
@@ -1672,6 +1781,17 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             for j in range(self.n_setpoints):
                 val = weights[f"gamma_{a}_{j}"].item()
                 lines.append(f"      γ_{a},{j}: {val:.4f}")
+
+        if self._max_candidates:
+            lines.append("  Max loops (own feedback selection and setpoint):")
+            for a in range(self.n_actuators):
+                for c in self._max_candidates:
+                    beta_m = getattr(self, f"beta_{a}_{c}").get().detach().reshape(-1)
+                    setpoint = float(getattr(self, f"setpoint_{a}_{c}").get().detach().reshape(-1)[0])
+                    lines.append(
+                        f"    candidate {a},{c}: setpoint {setpoint:.4f}, "
+                        f"β {[round(float(v), 4) for v in beta_m]}"
+                    )
 
         if self._has_cascade:
             lines.append("  Beta_b (cascade B-loop sensor selection per actuator):")

@@ -53,6 +53,14 @@ import twin4build.core as core
 from twin4build.systems.controller.controller_identification.controller_identification_pi_system import (
     ControllerIdentificationPISystem,
 )
+from twin4build.systems.controller.controller_identification.loop_fit import (
+    LoopFit,
+    fit_max_loop,
+    fit_pi,
+)
+from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
+    PIDControllerSystem,
+)
 from twin4build.systems.controller.controller_identification.loop_classifier import (
     ActuatorSeeds,
     GateSeeds,
@@ -133,6 +141,20 @@ class RewireReport:
     # radiator valve shut all week): nothing identifies such a loop, and
     # in ``simulate`` mode it replays its measured command.
     excited: Optional[bool] = None
+    # The loop joined by max that the rewire added (``mode="train"``):
+    # its feedback, setpoint, gains, direction and the fit with and
+    # without it; ``None`` when none explained the command better.
+    max_loop: Optional[Dict[str, Any]] = None
+    # The main loop's feedback: ``[(sensor id, weight), ...]``, the weights
+    # its beta selection holds (one sensor, or a mix of the sensors that
+    # pair with its setpoint, a room's two temperature sensors).
+    feedback: Optional[List[Tuple[str, float]]] = None
+
+
+#: The weights of the first of two feedback sensors in the mixes the rewire
+#: fits (the second takes the rest; one sensor alone is a candidate too); of
+#: three or more sensors, their mean.
+FEEDBACK_MIX_WEIGHTS = (0.25, 0.5, 0.75)
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +175,7 @@ def _rewire_pi_loops(
     kp_decade_pad: float = 1.0,
     Ti_decade_pad: float = 0.5,
     Ti_lb_floor: float = 60.0,
-    Ti_ub_ceil: float = 7200.0,
+    Ti_ub_ceil: float = 1e7,
     kp_lb_floor: float = 0.05,
     kp_ub_ceil: float = 20.0,
     n_min_active: int = 50,
@@ -162,8 +184,9 @@ def _rewire_pi_loops(
     sp_fb_corr_max: float = 0.95,
     fb_actuator_corr_max: float = 0.95,
     fb_sp_scale_max_offset: float = 30.0,
-    fb_sp_median_tracking_max: float = 1.5,
     unexcited_std: float = 0.05,
+    max_loops: bool = True,
+    max_loop_min_gain: float = 0.05,
 ) -> Dict[str, RewireReport]:
     """Run the data-driven rewire on every PI-CITS in ``model``.
 
@@ -297,40 +320,6 @@ def _rewire_pi_loops(
             Supply-Air-Temp (~13 °C vs 21 °C setpoint = 8 K offset)
             but rejects Percent-Air-Flow (max ~100 → 80-unit
             envelope excursion) and Supply-Air-Flow (CFM-scale).
-        fb_sp_median_tracking_max: Maximum allowed *median* ``|fb -
-            sp|`` (in setpoint units, K) for a feedback candidate.
-            Where ``fb_sp_scale_max_offset`` rejects gross *unit* /
-            envelope mismatches (flow vs temp), this filter rejects
-            *like-unit* candidates whose typical operating point is
-            far from the setpoint -- the textbook example is wiring
-            ``Supply_Air_Temp`` (downstream of a reheat valve, sits
-            10-30 K above ``Zone_Air_Temp_Setpoint``) onto a CITS that
-            should be closing on ``Zone_Air_Temp``.  The valve→supply
-            mechanical link is so direct that the regression
-            identifies a *spurious* high-R^2 negative slope, but the
-            relationship is causality (u causes Δfb), not the
-            closed-loop PI law (e drives Δu).  Median ``|fb - sp|`` during
-            the active mask cleanly separates the regimes empirically
-            observed on the bldg1 / Mortar dataset:
-
-              * true PI feedback (Zone_Air_Temp vs Setpoint):
-                median ~ 0.2 - 0.7 K (controller keeps them close;
-                comfort band sits well under 1 K most of the time).
-              * downstream-of-actuator (Supply_Air_Temp vs zone
-                setpoint, even on a *mildly*-reheated system where the
-                AHU supply is already close to occupied setpoint):
-                median ~ 2 - 4 K (the valve has to clear the AHU/zone
-                offset every time it opens, never gets there).
-
-            On heavily-reheated systems the downstream gap is much
-            larger (10-30 K), but the lower bound is what determines
-            the discriminator: as long as the threshold sits *above*
-            the worst-case legitimate tracking error and *below* the
-            best-case downstream gap, the filter does the right thing.
-            Default ``1.5`` K leaves an honest tracking-loop alone
-            even during disturbances but rejects feedbacks that the
-            CITS does not actually close on.
-
     Returns:
         Mapping of PI-CITS id to its :class:`RewireReport`.
     """
@@ -470,7 +459,8 @@ def _rewire_pi_loops(
                 sp_fb_corr_max=sp_fb_corr_max,
                 fb_actuator_corr_max=fb_actuator_corr_max,
                 fb_sp_scale_max_offset=fb_sp_scale_max_offset,
-                fb_sp_median_tracking_max=fb_sp_median_tracking_max,
+                allow_max_loop=max_loops and mode == "train",
+                max_loop_min_gain=max_loop_min_gain,
             )
         except Exception as ex:  # noqa: BLE001
             LOGGER.warning(
@@ -545,6 +535,12 @@ def _rewire_pi_loops(
         for cid, (_kind, _bim, _on, gs) in gate_results.items()
     }
     _pin_frozen_cits_state(pi_cits_list, mode=mode, gate_active=gate_active)
+    # the feedback mix the fit chose (the pin sets beta one-hot)
+    for cits in pi_cits_list:
+        rep = reports.get(cits.id)
+        if rep is not None and rep.feedback and int(cits.n_sensors or 1) > 1:
+            weights = [w for _, w in rep.feedback] + [0.0] * (int(cits.n_sensors) - len(rep.feedback))
+            cits.beta_0.set(torch.tensor(weights, dtype=torch.float64), normalized=False)
     # The mode and the playback flag are part of the controller's serialized
     # state (``config``).  The flag follows THIS rewire: a loop that arrives
     # open (a model reloaded from its playback graph carries the flag) runs
@@ -1640,6 +1636,43 @@ def _apply_seeds(
     return kp_x0, kp_lb, kp_ub, Ti_x0, Ti_lb, Ti_ub, is_reverse
 
 
+def _apply_max_loop_seeds(
+    cits: ControllerIdentificationPISystem,
+    max_loop: Dict[str, Any],
+    *,
+    slot: int,
+    actuator_seeds: ActuatorSeeds,
+    Ti_ub_ceil: float,
+    Ti_decade_pad: float,
+    h: float,
+) -> None:
+    """Write the fitted max loop onto its candidate (the last one): its
+    feedback selection one-hot on ``slot`` (after the main loop's), its setpoint within the range its
+    feedback was seen in, its gains (``kp`` a decade either way, in the
+    feedback's own units; ``Ti`` up to ``Ti_ub_ceil``, so the loop may stay
+    proportional), its direction and the main candidate's output limits."""
+    c = cits._max_candidates[-1]
+    beta = getattr(cits, f"beta_0_{c}")
+    one_hot = [0.0] * int(cits.n_sensors)
+    one_hot[slot] = 1.0
+    beta.set(torch.tensor(one_hot, dtype=torch.float64), normalized=False)
+    lo, hi = max_loop["setpoint_range"]
+    _set_param(cits, f"setpoint_0_{c}", max_loop["setpoint"], lo, hi)
+    cand = getattr(cits, f"candidate_0_{c}")
+    kp = float(max_loop["kp"])
+    _set_param(cand, "kp", kp, kp / 10.0, kp * 10.0)
+    Ti = float(min(max_loop["Ti"], Ti_ub_ceil))
+    _set_param(cand, "Ti", Ti, max(h, Ti / 10.0 ** float(Ti_decade_pad)), Ti_ub_ceil)
+    omin = float(np.clip(actuator_seeds.output_min_x0, 0.0, 1.0))
+    omax = float(np.clip(actuator_seeds.output_max_x0, 0.0, 1.0))
+    if omax <= omin:
+        omin, omax = 0.0, 1.0
+    _set_param(cand, "output_min", omin, 0.0, max(omin + 1e-3, omax))
+    _set_param(cand, "output_max", omax, min(omin, omax - 1e-3), 1.0)
+    if hasattr(cand, "is_reverse"):
+        cand.is_reverse = bool(max_loop["is_reverse"])
+
+
 def _set_param(component: Any, attr: str, x0: float, lb: float, ub: float) -> None:
     """Write ``(x0, lb, ub)`` onto a ``tps.Parameter`` attribute, preserving
     its current scaling mode.
@@ -1698,9 +1731,22 @@ def _rewire_one(
     sp_fb_corr_max: float = 0.95,
     fb_actuator_corr_max: float = 0.95,
     fb_sp_scale_max_offset: float = 30.0,
-    fb_sp_median_tracking_max: float = 1.5,
+    allow_max_loop: bool = False,
+    max_loop_min_gain: float = 0.05,
 ) -> RewireReport:
-    """Rewire one PI-CITS.  See :func:`rewire_pi_loops` for arg semantics."""
+    """Rewire one PI-CITS.  See :func:`rewire_pi_loops` for arg semantics.
+
+    The (feedback, setpoint) pairs that pass the filters are ranked by
+    the open-loop fit of the PI to the actuator's command
+    (:func:`~twin4build.systems.controller.controller_identification.loop_fit.fit_pi`,
+    every sample scored, the gate holding the command at its park value).
+    With ``allow_max_loop``, another wired feedback whose loop, joined by
+    max (about a constant setpoint), lowers the fit's RMSE by at least
+    ``max_loop_min_gain`` of it becomes a ``"max"`` candidate.  A
+    controller that already has one keeps its structure in the other
+    modes (it was decided in ``train``)."""
+    if not allow_max_loop and getattr(cits, "_max_candidates", None):
+        return _untouched_report(cits.id, reason="structure_decided_with_a_max_loop")
     sensors_dict, setpoints_dict = _collect_input_signals(cits)
     actuator_sensor = _resolve_actuator_measurement(cits)
 
@@ -1818,6 +1864,8 @@ def _rewire_one(
     # back to the actuator-only mask with a ``[REWIRE]`` log line so
     # the degradation is auditable.
     combined_mask: Optional[np.ndarray] = active_mask
+    # The gate the loop is fitted behind (``None``: always on).
+    fit_gate: Optional[np.ndarray] = None
     if active_mask is not None:
         slot_signals, oo_min, oo_max, n_oo = _collect_on_off_slot_signals(cits)
         if n_oo > 0:
@@ -1852,6 +1900,7 @@ def _rewire_one(
                         gate_mode_partial = (s_norm >= thr) & (s_norm <= thr + band)
                         gate_mode_mask = np.zeros(active_mask.size, dtype=bool)
                         gate_mode_mask[:n_w] = gate_mode_partial
+                        fit_gate = gate_mode_mask
                         proposed = active_mask & gate_mode_mask
                         n_on = int(active_mask.sum())
                         n_gate = int(gate_mode_mask.sum())
@@ -1976,14 +2025,6 @@ def _rewire_one(
     # to ``Δu ~ Δsp``, which fits the actuator's setpoint-tracking
     # behaviour even though the slope mixes incompatible units.
     scale_incompatible_pairs: Dict[Tuple[str, str], Tuple[float, float]] = {}
-    # ``downstream_pairs[(s, sp)] = (median |fb - sp|, sp_mean)`` collects
-    # candidates that survive the scale filter but still drift far from
-    # their setpoint (typical of ``Supply_Air_Temp`` wired as feedback for
-    # a reheat-valve loop -- it sits 10-30 K above the zone setpoint
-    # because the valve directly heats it, which is causality, not
-    # closed-loop tracking).  See the in-loop comment block for the full
-    # rationale.
-    downstream_pairs: Dict[Tuple[str, str], Tuple[float, float]] = {}
     for s_id, (s_obj, _conn) in sensors_dict.items():
         if s_id in actuator_clone_sensors:
             continue
@@ -2026,46 +2067,10 @@ def _rewire_one(
             if np.isfinite(offset) and offset > fb_sp_scale_max_offset:
                 scale_incompatible_pairs[(s_id, sp_id)] = (offset, sp_mean)
                 continue
-
-            # ----------- Median-tracking-error (downstream-of-actuator) -----------
-            # A *true* PI loop's feedback tracks its setpoint within
-            # ~1 K most of the time -- the controller's whole job is to
-            # keep them close, comfort bands rarely exceed +/-1 K.
-            # ``Supply_Air_Temp`` wired as ``sensorValue`` for a
-            # reheat-valve loop, by contrast, is the actuator's
-            # *downstream effect*: even on a mildly-reheated system
-            # the valve has to clear the AHU/zone offset every time it
-            # opens, so ``Supply_Air_Temp`` sits ~2-4 K above
-            # ``Zone_Air_Temp_Setpoint`` whenever the valve is active
-            # (much more on a heavily-reheated system).  The
-            # regression then identifies a spurious negative slope
-            # (``Δsupply > 0`` when ``Δu > 0``, i.e.
-            # ``Δ(sp - supply) < 0``) which gets a *high* R^2 because
-            # the valve->supply mechanical link is direct, but it
-            # does not represent the closed-loop PI law.  Median
-            # ``|fb - sp|`` over the active-mode mask cleanly
-            # separates the two regimes -- empirically observed on
-            # bldg1: true zone-temp feedbacks have median 0.2-0.7 K
-            # while supply-air-temp feedbacks have median 1.9-3.3 K.
-            # A 1.5 K threshold safely sits between the two and also
-            # works on heavier-reheat systems where the gap is
-            # 10-30 K.
-            try:
-                tracking = np.abs(fb_arr - sp_arr)
-                tracking = tracking[np.isfinite(tracking)]
-                if combined_mask is not None and tracking.size:
-                    m = combined_mask[: tracking.size]
-                    if m.any():
-                        tracking = tracking[m[: tracking.size]]
-                med_track = (
-                    float(np.median(tracking)) if tracking.size else float("nan")
-                )
-            except Exception:  # noqa: BLE001
-                med_track = float("nan")
-            if np.isfinite(med_track) and med_track > fb_sp_median_tracking_max:
-                downstream_pairs[(s_id, sp_id)] = (med_track, sp_mean)
-                continue
-
+            # No rule on how far the feedback sits from the setpoint: the
+            # open-loop fit below ranks the pairs, and a feedback the loop
+            # does not close on (a supply air temperature downstream of a
+            # reheat valve) does not explain the command.
             sc = score_pair(
                 u=actuator_ts,
                 sp=sp_ts,
@@ -2133,54 +2138,6 @@ def _rewire_one(
                 f"setpoint (e.g. flow / percent vs temperature)."
             )
 
-    # Same defensive fallback for the median-tracking-error filter: if
-    # rejecting downstream-of-actuator pairs leaves *no* scoreable
-    # candidate (e.g. on a building where only Supply_Air_Temp is
-    # historized as the "feedback"), undo the rejection so we still
-    # produce a winner.  In practice this branch only fires when the
-    # CITS has no zone-temperature feedback wired at all.
-    if downstream_pairs and not scores:
-        LOGGER.warning(
-            f"[REWIRE] {cits.id}: every surviving (sensor, setpoint) "
-            f"pair ({len(downstream_pairs)}) failed the median-tracking "
-            f"filter (median |fb - sp| > "
-            f"fb_sp_median_tracking_max={fb_sp_median_tracking_max} K); "
-            f"keeping them all so a winner can be picked.  This usually "
-            f"means no zone-temperature feedback was wired -- inspect "
-            f"the candidate ``sensorValue`` connections."
-        )
-        for (s_id, sp_id), (med_track, sp_mean) in downstream_pairs.items():
-            s_obj, _conn = sensors_dict[s_id]
-            sp_obj, _conn = setpoints_dict[sp_id]
-            s_ts = _sensor_timeseries(s_obj)
-            sp_ts = _sensor_timeseries(sp_obj)
-            if s_ts is None or sp_ts is None:
-                continue
-            sc = score_pair(
-                u=actuator_ts,
-                sp=sp_ts,
-                fb=s_ts,
-                h=h,
-                n_min=n_min_active,
-                sat_lo=sat_lo,
-                sat_hi=sat_hi,
-                on_mask=combined_mask,
-            )
-            scores[(s_id, sp_id)] = sc
-        downstream_pairs = {}
-    elif downstream_pairs:
-        for (s_id, sp_id), (med_track, sp_mean) in downstream_pairs.items():
-            LOGGER.info(
-                f"[REWIRE] {cits.id}: excluding pair (sensor='{s_id}', "
-                f"setpoint='{sp_id}') -- median |fb - sp| = "
-                f"{med_track:.2f} K (sp_mean={sp_mean:.2f}) exceeds "
-                f"fb_sp_median_tracking_max="
-                f"{fb_sp_median_tracking_max} K; the feedback never "
-                f"tracks the setpoint, so it is the actuator's "
-                f"downstream effect (e.g. Supply_Air_Temp heated by a "
-                f"reheat valve), not a closed-loop PI feedback."
-            )
-
     if not scores:
         return _untouched_report(
             cits.id,
@@ -2188,16 +2145,100 @@ def _rewire_one(
             actuator_id=actuator_sensor.id,
         )
 
-    # Pick the winner by R^2; ties (every constant setpoint gives the same
-    # increment regression) go to the setpoint whose LEVEL explains which
-    # side the actuator sits on (LoopScore.level_agreement).
-    def _rank(kv):
-        s = kv[1]
-        agree = getattr(s, "level_agreement", float("nan"))
-        return (round(float(s.r2), 3), -1.0 if not np.isfinite(agree) else float(agree))
+    # Rank the pairs by the open-loop fit of the PI to the command, every
+    # sample scored: the increment regression's R^2 cannot see a constant
+    # setpoint's level and drops the saturated samples (a valve shut all
+    # night below a 22 C setpoint), which are what tell 22 C from 20 C.
+    actuator_seeds = derive_actuator_seeds(actuator_ts)
+    park = float(np.clip(actuator_seeds.default_output_x0, 0.0, 1.0))
+    if active_mask is not None:
+        off = ~np.asarray(active_mask, dtype=bool)
+        finite = np.isfinite(actuator_ts[: off.size])
+        off = off[: finite.size] & finite
+        if off.sum() >= 10:
+            park = float(np.clip(np.median(actuator_ts[: off.size][off]), 0.0, 1.0))
+    omin = float(np.clip(actuator_seeds.output_min_x0, 0.0, 1.0))
+    omax = float(np.clip(actuator_seeds.output_max_x0, 0.0, 1.0))
+    if omax <= omin:
+        omin, omax = 0.0, 1.0
+    fit_kw = dict(gate=fit_gate, park=park, lower=omin, upper=omax, n_min=n_min_active)
+    # The candidates: every pair, and where several feedback sensors pair
+    # with one setpoint (a room's two temperature sensors), their weighted
+    # mixes -- the controller averages its feedback sensors with its beta
+    # weights.  A candidate's feedback is ``((sensor id, weight), ...)``.
+    sensor_series = {s_id: np.asarray(_sensor_timeseries(sensors_dict[s_id][0]), dtype=np.float64) for s_id, _ in scores}
+    setpoint_series = {sp_id: _sensor_timeseries(setpoints_dict[sp_id][0]) for _, sp_id in scores}
+    candidates: Dict[Tuple[Tuple[Tuple[str, float], ...], str], np.ndarray] = {}
+    by_setpoint: Dict[str, List[str]] = {}
+    for s_id, sp_id in scores:
+        candidates[(((s_id, 1.0),), sp_id)] = sensor_series[s_id]
+        by_setpoint.setdefault(sp_id, []).append(s_id)
+    for sp_id, s_ids in by_setpoint.items():
+        if len(s_ids) < 2:
+            continue
+        s_ids = sorted(s_ids)
+        n_mix = min(sensor_series[s_id].size for s_id in s_ids)
+        mixes = (
+            [(w, 1.0 - w) for w in FEEDBACK_MIX_WEIGHTS]
+            if len(s_ids) == 2
+            else [tuple([1.0 / len(s_ids)] * len(s_ids))]
+        )
+        for weights in mixes:
+            mixed = sum(w * sensor_series[s_id][:n_mix] for s_id, w in zip(s_ids, weights))
+            candidates[(tuple(zip(s_ids, weights)), sp_id)] = mixed
 
-    winner_pair, winner_score = max(scores.items(), key=_rank)
-    candidate_scores = {pair: s.r2 for pair, s in scores.items()}
+    def _label(feedback):
+        return "+".join(s_id[-14:] if len(feedback) == 1 else f"{w:.2f}*{s_id[-14:]}" for s_id, w in feedback)
+
+    fits: Dict[Tuple[Tuple[Tuple[str, float], ...], str], LoopFit] = {}
+    for key, fb in candidates.items():
+        fit = fit_pi(actuator_ts, setpoint_series[key[1]], fb, h, **fit_kw)
+        if fit.reason is None:
+            fits[key] = fit
+    winner_fit: Optional[LoopFit] = None
+    if fits:
+        winner_key = min(fits, key=lambda key: fits[key].rmse)
+        winner_fit = fits[winner_key]
+        feedback, winner_setpoint = winner_key
+        # the report's (sensor, setpoint): the mix's first sensor
+        winner_pair = (feedback[0][0], winner_setpoint)
+        base = (
+            scores[winner_pair]
+            if len(feedback) == 1
+            else score_pair(
+                u=actuator_ts,
+                sp=setpoint_series[winner_setpoint],
+                fb=candidates[winner_key],
+                h=h,
+                n_min=n_min_active,
+                sat_lo=sat_lo,
+                sat_hi=sat_hi,
+                on_mask=combined_mask,
+            )
+        )
+        Ti_fit = float(winner_fit.Ti) if np.isfinite(winner_fit.Ti) else Ti_ub_ceil
+        winner_score = replace(
+            base,
+            slope=winner_fit.kp if winner_fit.is_reverse else -winner_fit.kp,
+            kp=winner_fit.kp,
+            Ti=min(Ti_fit, Ti_ub_ceil),
+            r2=winner_fit.r2,
+            n_active=winner_fit.n,
+            reason=None,
+        )
+        candidate_scores = {(_label(fb), sp): f.r2 for (fb, sp), f in fits.items()}
+        LOGGER.info(
+            f"[REWIRE] {cits.id}: pairs by open-loop fit (RMSE): "
+            + ", ".join(
+                f"{_label(fb)}|{sp[-14:]}={f.rmse:.3f}" for (fb, sp), f in sorted(fits.items(), key=lambda kv: kv[1].rmse)
+            )
+            + f"; winner {_label(feedback)}|{winner_setpoint[-30:]} (R2 {winner_fit.r2:.2f})"
+        )
+    else:
+        # no pair could be fitted (too few samples): the regression's R^2
+        winner_pair, winner_score = max(scores.items(), key=lambda kv: float(kv[1].r2))
+        feedback = ((winner_pair[0], 1.0),)
+        candidate_scores = {pair: sc.r2 for pair, sc in scores.items()}
     confidence = confidence_label(
         winner_score.r2,
         winner_score.n_active,
@@ -2205,6 +2246,45 @@ def _rewire_one(
         r2_low=confidence_low,
         n_min=n_min_active,
     )
+
+    # A loop joined by max: another wired feedback about a constant
+    # setpoint (a CO2 loop over the temperature loop of a VAV damper).
+    max_loop: Optional[Dict[str, Any]] = None
+    if allow_max_loop and winner_fit is not None and int(cits.n_actuators or 1) == 1:
+        best_max = None
+        for s_id, (s_obj, _conn) in sensors_dict.items():
+            if s_id in dict(feedback) or s_id in actuator_clone_sensors:
+                continue
+            s_ts = _sensor_timeseries(s_obj)
+            if s_ts is None or len(s_ts) == 0:
+                continue
+            fit = fit_max_loop(actuator_ts, s_ts, winner_fit.command, h, **fit_kw)
+            if fit.reason is None and (best_max is None or fit.rmse < best_max[1].rmse):
+                best_max = (s_id, fit, s_ts)
+        if best_max is not None:
+            s_id, fit, s_ts = best_max
+            gain = 1.0 - fit.rmse / max(winner_fit.rmse, 1e-12)
+            keep = gain >= max_loop_min_gain
+            LOGGER.info(
+                f"[REWIRE] {cits.id}: a loop on '{s_id[-40:]}' joined by max "
+                f"(setpoint {fit.setpoint:.4g}, kp {fit.kp:.3g}, Ti {fit.Ti:.3g} s, "
+                f"{'reverse' if fit.is_reverse else 'direct'}): RMSE {winner_fit.rmse:.3f} -> "
+                f"{fit.rmse:.3f} ({gain:+.0%}); {'kept' if keep else 'not kept'} "
+                f"(max_loop_min_gain={max_loop_min_gain})"
+            )
+            if keep:
+                y = np.asarray(s_ts, dtype=np.float64)
+                y = y[np.isfinite(y)]
+                max_loop = {
+                    "sensor": s_id,
+                    "setpoint": float(fit.setpoint),
+                    "setpoint_range": (float(y.min()), float(y.max())),
+                    "kp": float(fit.kp),
+                    "Ti": float(fit.Ti),
+                    "is_reverse": bool(fit.is_reverse),
+                    "rmse": float(fit.rmse),
+                    "rmse_without": float(winner_fit.rmse),
+                }
 
     # ------------------------------------------------------------------
     # Low-confidence path: regression slope is essentially noise, but
@@ -2228,7 +2308,7 @@ def _rewire_one(
     # taken from the regression sign, which is robust even at low R^2
     # because the +1/-1 decision only requires the sign of the slope.
     # ------------------------------------------------------------------
-    if confidence in ("low", "failed"):
+    if confidence in ("low", "failed") and winner_fit is None:
         kp_heuristic = float(
             np.clip(
                 np.sqrt(kp_lb_floor * kp_ub_ceil) / 10.0,
@@ -2260,9 +2340,11 @@ def _rewire_one(
     # High/medium (and now low/failed): prune losers and apply seeds.
     winner_sensor_id, winner_setpoint_id = winner_pair
 
-    # Remove non-winning sensor connections.
+    # Remove non-winning sensor connections (the mix's sensors and the max
+    # loop's feedback stay).
+    kept_sensors = [s_id for s_id, _ in feedback] + ([max_loop["sensor"]] if max_loop else [])
     for s_id, (s_obj, _conn) in list(sensors_dict.items()):
-        if s_id == winner_sensor_id:
+        if s_id in kept_sensors:
             continue
         try:
             model.remove_connection(
@@ -2290,10 +2372,18 @@ def _rewire_one(
                 f"[REWIRE] {cits.id}: could not drop setpoint '{sp_id}': {ex}"
             )
 
-    # Re-number surviving input_port_index entries to start at 0.
+    # Re-number surviving input_port_index entries to start at 0; the
+    # main loop's feedback first, the max loop's last (the pin of
+    # ``beta_0`` falls back to slot 0; a mix is written after it).
     for cp in cits.connects_at:
         if cp.input_port in ("sensorValue", "setpointValue"):
             _reindex_connection_point(cp)
+        if cp.input_port == "sensorValue" and len(kept_sensors) > 1:
+            order = {sid: k for k, sid in enumerate(kept_sensors)}
+            survivors = list(cp.connects_system_through)
+            cp.input_port_index.clear()
+            for conn in survivors:
+                cp.set_input_port_index(conn, order.get(conn.connects_system.id, len(order)))
 
     # Collapse n_sensors / n_setpoints to 1 and rebuild candidate components.
     # ``n_on_off_signals`` is NOT pruned by the rewire (the gate input bus
@@ -2305,8 +2395,20 @@ def _rewire_one(
     # any ``initialize()`` has happened, so the attribute would
     # otherwise still be ``None`` and ``torch.full((None,), ...)``
     # would blow up.
-    cits.n_sensors = 1
+    cits.n_sensors = len(kept_sensors)
     cits.n_setpoints = 1
+    # the candidates without a max loop (a rewire in "train" decides it
+    # again), then the one the data asked for
+    entries = [e for e in cits._candidate_entries if e[2] != cits.CTRL_MAX]
+    if max_loop:
+        entries.append(
+            (
+                PIDControllerSystem,
+                {"kp": max_loop["kp"], "Ti": min(max_loop["Ti"], Ti_ub_ceil), "Td": 0.0, "is_reverse": max_loop["is_reverse"]},
+                cits.CTRL_MAX,
+            )
+        )
+    cits._set_candidate_entries(entries)
     if cits.n_on_off_signals is None:
         n_oo = cits.get_n_v_from_connections("onOffSignal")
         cits.n_on_off_signals = n_oo if n_oo is not None else 1
@@ -2350,7 +2452,14 @@ def _rewire_one(
         h=h,
     )
 
+    if max_loop:
+        _apply_max_loop_seeds(
+            cits, max_loop, slot=len(feedback), actuator_seeds=actuator_seeds, Ti_ub_ceil=Ti_ub_ceil, Ti_decade_pad=Ti_decade_pad, h=h
+        )
+
     return RewireReport(
+        max_loop=max_loop,
+        feedback=[(s_id, float(w)) for s_id, w in feedback],
         cits_id=cits.id,
         pruned=True,
         confidence=confidence,
