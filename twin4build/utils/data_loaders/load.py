@@ -1,13 +1,18 @@
 # Standard library imports
+import collections
 import configparser
 import datetime
 import hashlib
+import json
 import os
+import re
 
 # Third party imports
 import numpy as np
 import pandas as pd
 import psycopg2
+import pyarrow as pa
+import pyarrow.parquet as pq
 from dateutil.parser import parse
 from dateutil.tz import gettz
 from psycopg2.extras import RealDictCursor
@@ -507,6 +512,149 @@ def _fetch(conn_string, table_name, query, params):
         raise
 
 
+#: Windows of one point closer than this are fetched together into the raw
+#: store: contiguous windows (shooting windows, a front's periods) cost one
+#: query per point, separate periods (two years) stay separate.
+RAW_SPAN_GAP = datetime.timedelta(days=1)
+
+_RAW_COVERED = b"twin4build_covered"
+_RAW_MEMO = collections.OrderedDict()  # path -> (mtime_ns, rows, covered), the last few stores read
+_RAW_MEMO_SIZE = 8
+
+
+def contiguous_spans(start_times, end_times, gap=RAW_SPAN_GAP):
+    """The windows ``[start, end)`` merged into spans where they lie at most
+    ``gap`` apart, in time order."""
+    spans = []
+    for a, b in sorted(zip(start_times, end_times)):
+        if spans and a - spans[-1][1] <= gap:
+            spans[-1] = (spans[-1][0], max(spans[-1][1], b))
+        else:
+            spans.append((a, b))
+    return spans
+
+
+def _utc(t):
+    t = pd.Timestamp(t)
+    return t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
+
+
+def _merged(intervals):
+    out = []
+    for a, b in sorted(i for i in intervals if i[0] < i[1]):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def _missing(a, b, covered):
+    """The parts of ``[a, b)`` outside the ``covered`` intervals."""
+    out = []
+    for c, d in _merged(covered):
+        if d <= a or c >= b:
+            continue
+        if c > a:
+            out.append((a, c))
+        a = max(a, d)
+    if a < b:
+        out.append((a, b))
+    return out
+
+
+def _raw_store_path(cache_root, server, table_name, sensor_id):
+    """``generated_files/cached_data/raw/<table>_<server>/<point>.parquet``,
+    the server named by a hash of host, port and database."""
+    folder = f"{table_name}_{hashlib.sha256(server.encode('utf-8')).hexdigest()[:10]}"
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", sensor_id)
+    if name != sensor_id:
+        name = f"{name}_{hashlib.sha256(sensor_id.encode('utf-8')).hexdigest()[:8]}"
+    path, _ = mkdir_in_root(
+        folder_list=["generated_files", "cached_data", "raw", folder],
+        filename=f"{name}.parquet",
+        root=cache_root,
+    )
+    return path
+
+
+def _read_raw(path):
+    """The stored rows (``date_time`` in UTC, ``value``) and the intervals
+    they cover; a store read before is reused while its file is unchanged."""
+    if not os.path.isfile(path):
+        empty = pd.DataFrame({"date_time": pd.DatetimeIndex([], tz="UTC"), "value": []})
+        return empty, []
+    mtime = os.stat(path).st_mtime_ns
+    memo = _RAW_MEMO.get(path)
+    if memo is not None and memo[0] == mtime:
+        _RAW_MEMO.move_to_end(path)
+        return memo[1], memo[2]
+    table = pq.read_table(path)
+    covered = [
+        (pd.Timestamp(a), pd.Timestamp(b))
+        for a, b in json.loads((table.schema.metadata or {}).get(_RAW_COVERED, b"[]"))
+    ]
+    rows = table.to_pandas()
+    _remember(path, mtime, rows, covered)
+    return rows, covered
+
+
+def _remember(path, mtime, rows, covered):
+    _RAW_MEMO[path] = (mtime, rows, covered)
+    _RAW_MEMO.move_to_end(path)
+    while len(_RAW_MEMO) > _RAW_MEMO_SIZE:
+        _RAW_MEMO.popitem(last=False)
+
+
+def _write_raw(path, rows, covered):
+    """Rows and covered intervals in one file, replaced atomically (another
+    process may write the same point: the last write wins, and an interval
+    lost that way is fetched again later)."""
+    table = pa.Table.from_pandas(rows, preserve_index=False)
+    meta = dict(table.schema.metadata or {})
+    meta[_RAW_COVERED] = json.dumps(
+        [[a.isoformat(), b.isoformat()] for a, b in covered]
+    ).encode("utf-8")
+    table = table.replace_schema_metadata(meta)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        pq.write_table(table, tmp)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    _remember(path, os.stat(path).st_mtime_ns, rows, covered)
+
+
+def _rows_from_raw_store(path, window, span, fetch):
+    """The raw rows of ``window`` (``[start, end)``, UTC) from the point's
+    store.  Missing parts are fetched (``fetch(a, b)`` -> rows) over the
+    whole ``span`` around the window, so the span's next windows are in the
+    store already.  An interval is marked covered only up to
+    ``EMPTY_WINDOW_CACHE_AGE`` ago: later rows may still arrive."""
+    q0, q1 = window
+    rows, covered = _read_raw(path)
+    if _missing(q0, q1, covered):
+        a, b = span if span is not None and span[0] <= q0 and q1 <= span[1] else window
+        gaps = _missing(a, b, covered)
+        fetched = [fetch(c, d) for c, d in gaps]
+        for frame in fetched:  # one UTC timeline (a session returns the zone's offsets, mixed across DST)
+            frame["date_time"] = pd.to_datetime(frame["date_time"], utc=True)
+        stale = np.zeros(len(rows), dtype=bool)
+        for c, d in gaps:  # stored but uncovered rows (recent ones) come again
+            stale |= ((rows["date_time"] >= c) & (rows["date_time"] < d)).to_numpy()
+        rows = pd.concat([rows[~stale], *fetched], ignore_index=True)
+        rows = rows.sort_values("date_time", kind="stable", ignore_index=True)
+        horizon = _utc(datetime.datetime.now(datetime.timezone.utc) - EMPTY_WINDOW_CACHE_AGE)
+        covered = _merged(covered + [(c, min(d, horizon)) for c, d in gaps])
+        try:
+            _write_raw(path, rows, covered)
+        except (pa.ArrowException, OSError) as e:
+            LOGGER.warning("Raw rows of %s not stored: %s.", os.path.basename(path), e)
+    inside = (rows["date_time"] >= q0) & (rows["date_time"] < q1)
+    return rows[inside].reset_index(drop=True)
+
+
 def load_from_database(
     start_time: datetime.datetime,
     end_time: datetime.datetime,
@@ -527,6 +675,7 @@ def load_from_database(
     db_name=None,
     db_user=None,
     db_password=None,
+    fetch_span=None,
 ):
     r"""
     Load time series data from TimescaleDB database for building sensor data.
@@ -598,7 +747,10 @@ def load_from_database(
            If False, all available data within the time range will be returned. Defaults to True.
        cache (bool, optional): Whether to cache the results in pickle files for faster subsequent loads.
            Cache files are stored in generated_files/cached_data/ directory. A window without rows is
-           cached too once it ended more than ``EMPTY_WINDOW_CACHE_AGE`` (two days) ago. Defaults to True.
+           cached too once it ended more than ``EMPTY_WINDOW_CACHE_AGE`` (two days) ago. Behind this
+           cache, the raw rows of each point are kept in generated_files/cached_data/raw/ (one parquet
+           file per point, with the intervals it covers), so another split of a stored span into windows
+           or another step needs no query. Defaults to True.
        cache_root (str, optional): Root directory for cache files. If None, uses the default Twin4Build cache location.
        tz (str, optional): Timezone for data processing. Can be timezone name (e.g., "Europe/Copenhagen"),
            UTC offset (e.g., "UTC+2", "GMT-8"), or "UTC". Defaults to "Europe/Copenhagen".
@@ -610,6 +762,10 @@ def load_from_database(
        db_name (str, optional): Database name. Overrides config file and environment variables.
        db_user (str, optional): Database username. Overrides config file and environment variables.
        db_password (str, optional): Database password. Overrides config file and environment variables.
+       fetch_span (tuple of datetime, optional): The span of windows this window belongs to (see
+           ``contiguous_spans``). A window missing from the raw store fetches the whole span, so the
+           span's other windows need no query. A span that does not hold the window is ignored.
+           Defaults to the window itself.
 
     Returns:
        pandas.DataFrame: DataFrame with time series data. The index is a date_timeIndex with timezone
@@ -721,13 +877,33 @@ def load_from_database(
             ORDER BY {time_column}
         """
 
+    def fetch(a, b):
+        a, b = (t.to_pydatetime() if isinstance(t, pd.Timestamp) else t for t in (a, b))
+        rows = _fetch(conn_string, table_name, query, [sensor_id, a, b])
+        frame = pd.DataFrame(rows, columns=[time_column, value_column])
+        return frame.rename(columns={time_column: "date_time", value_column: "value"})
+
     try:
-        rows = _fetch(conn_string, table_name, query, params)
+        if cache and start_time.tzinfo is not None:
+            # The raw rows come from the point's store; a miss there fetches
+            # the whole span of windows around this one.  (A naive window is
+            # read in the database session's zone: fetched directly.)
+            span = None
+            if fetch_span is not None:
+                span = (_utc(fetch_span[0] - buffer), _utc(fetch_span[1] + buffer))
+            df = _rows_from_raw_store(
+                _raw_store_path(cache_root, f"{db_host}:{db_port}/{db_name}", table_name, sensor_id),
+                (_utc(query_start_time), _utc(query_end_time)),
+                span,
+                fetch,
+            )
+        else:
+            df = fetch(query_start_time, query_end_time)
     except Exception as e:
         LOGGER.error("Error loading data from database: %s.", e)
         raise
 
-    if not rows:
+    if len(df) == 0:
         LOGGER.warning("No rows returned from query:\n%s.", query % tuple(params))
         LOGGER.warning("No data found for table %s.", table_name)
         df = pd.DataFrame()
@@ -737,12 +913,6 @@ def load_from_database(
             # A past window without rows: the next load skips the database.
             df.to_pickle(cached_filename)
         return df
-
-    # Convert to DataFrame
-    df = pd.DataFrame(rows)
-
-    # Rename columns to standard names for sample_from_df
-    df = df.rename(columns={time_column: "date_time", value_column: "value"})
 
     # Use the existing sample_from_df function for consistent processing
     # Pass valuecolumn to match the behavior of load_from_spreadsheet
