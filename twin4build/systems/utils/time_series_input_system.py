@@ -14,6 +14,7 @@ import torch
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.utils.data_loaders.load import (
+    contiguous_spans,
     load_from_database,
     load_from_spreadsheet,
     sample_from_df,
@@ -363,6 +364,9 @@ class TimeSeriesInputSystem(core.System):
         if is_cached == False:
             self.df = []
             self._cached_initialize_arguments = []
+            # Windows that lie together are fetched together (one query per
+            # span into the loader's raw store, not one per window).
+            spans = contiguous_spans(start_time, end_time)
             for start_time_, end_time_, step_size_ in zip(
                 start_time, end_time, step_size
             ):
@@ -388,6 +392,9 @@ class TimeSeriesInputSystem(core.System):
                             cache_root=self._cache_root,
                             cache=self._cache,
                             sensor_id=self.uuid,
+                            fetch_span=next(
+                                (a, b) for a, b in spans if a <= start_time_ and end_time_ <= b
+                            ),
                             **self.dbconfig,
                         )
                 else:
