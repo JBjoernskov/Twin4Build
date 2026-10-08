@@ -748,6 +748,8 @@ class Simulator:
                 the map must return (Estimator data-fit signals).
             outputs: List of ``(component, out_port)`` arbitrary outputs the
                 map must return (Optimizer objective/constraint signals).
+                A deprecated port name (``System.OUTPUT_PORT_ALIASES``)
+                stands for the port that replaced it.
             step_size: Step size in seconds -- a scalar or the per-period
                 list; all periods must share one step size.
 
@@ -757,6 +759,9 @@ class Simulator:
             stateful components and the
             :class:`~twin4build.simulator._functional.FunctionalModel`.
         """
+        if outputs is not None:
+            # A fused member publishes under ``"<id>.<current name>"`` only.
+            outputs = [(comp, comp.resolve_output_port(port)) for comp, port in outputs]
         stateful = collect_stateful(self.model)
         if not stateful:
             raise RuntimeError("no stateful components")
@@ -913,7 +918,10 @@ class Simulator:
         P = Y0.shape[-2]
         y_rows = (Y0.unsqueeze(0).expand(B, -1, -1) if Y0.dim() == 2 else Y0).reshape(B * P, -1)
         theta_rows = Theta.repeat_interleave(P, dim=0)
-        tape_rows = exogenous_tape.unsqueeze(1).expand(-1, B, -1, -1).reshape(exogenous_tape.shape[0], B * P, -1)
+        # the rows share the windows' tape: a broadcast view (n_t, B, P,
+        # n_exogenous), flattened one step at a time by the rows step, so the
+        # tape is not copied once per row
+        tape_rows = exogenous_tape.unsqueeze(1).expand(-1, B, -1, -1)
         if self.step_graph_active(Theta.device) and not _functorch_active():
             from twin4build.simulator._step_graph import step_graph_rollout
 
@@ -924,6 +932,136 @@ class Simulator:
             out, end = functional_rollout_rows(functional_model, y_rows, theta_rows, tape_rows, return_end=True)
         out = out.reshape(B, P, out.shape[1], out.shape[2])
         return (out, end.reshape(B, P, -1)) if return_end else out
+
+    # -- measured against simulated -------------------------------------------
+    @staticmethod
+    def _measured_port(sensor) -> Optional[str]:
+        """The port a sensor reads, as ``Class.port`` of the component that
+        sends it; ``None`` for a sensor that reads no port (a data leaf)."""
+        for point in sensor.connects_at:
+            if point.input_port != "measuredValue":
+                continue
+            for connection in point.connects_system_through:
+                sender = connection.connects_system
+                return f"{sender.__class__.__name__}.{connection.output_port}"
+        return None
+
+    def _measurement_periods(self) -> Dict[str, List[pd.DataFrame]]:
+        """``{sensor id: [frame per simulated period]}`` for
+        :meth:`measurement_frames`."""
+        from twin4build.systems.sensor.sensor_system import SensorSystem
+        from twin4build.utils.scoring_mask import period_mask
+
+        if getattr(self, "date_time_steps", None) is None:
+            raise RuntimeError(
+                "No simulation has run: call simulate() before reading the measurements."
+            )
+        _, _, _, n_timesteps = Simulator.get_simulation_timesteps(
+            self.start_time, self.end_time, self.step_size
+        )
+        out: Dict[str, List[pd.DataFrame]] = {}
+        for sensor in self.model.components.values():
+            if not isinstance(sensor, SensorSystem):
+                continue
+            series = sensor.time_series_input
+            if series is None or self._measured_port(sensor) is None:
+                continue
+            port = sensor.input["measuredValue"]
+            if port._history is None or not port._history_is_populated:
+                continue
+            simulated = port.history().detach().cpu().numpy()  # (n_t, n_s, n_c)
+            mask = sensor.scoring_mask
+            frames = []
+            for p, n_t in enumerate(n_timesteps):
+                measured = np.asarray(series.df[p].to_numpy(), dtype=float).reshape(-1)
+                n = min(int(n_t), measured.shape[0], simulated.shape[0])
+                index = pd.DatetimeIndex(self.date_time_steps[p, :n], name="time")
+                scored = (
+                    np.ones(n, dtype=bool) if mask is None else period_mask(mask, index, n)
+                )
+                frames.append(
+                    pd.DataFrame(
+                        {
+                            "measured": measured[:n],
+                            "simulated": simulated[:n, p, 0],
+                            "scored": scored,
+                        },
+                        index=index,
+                    )
+                )
+            out[sensor.id] = frames
+        return out
+
+    def measurement_frames(self) -> Dict[str, pd.DataFrame]:
+        """The measured and the simulated series of every scored sensor, for
+        the simulation that just ran.
+
+        A sensor is included when it reads a computed port (it has an
+        incoming connection), holds measured data and kept the history of
+        what it read.  An estimation keeps the histories of its
+        measurements only; ``model.set_save_simulation_result(True)``
+        before the simulation keeps them all.  It works the same on an
+        unbatched model and on a batched one
+        (:meth:`~twin4build.model.model.Model.batch_components`): the
+        sensors are those of the model this simulator ran.
+
+        Returns:
+            ``{sensor id: frame}``, the frame indexed by time with the
+            columns ``measured`` (the sensor's data; ``NaN`` where it has
+            none), ``simulated`` (the value of the port it reads) and
+            ``scored`` (the sensor's ``scoring_mask``, ``True`` where it
+            has none).  Several simulated periods follow one another in the
+            frame.
+
+        Raises:
+            RuntimeError: If no simulation has run.
+        """
+        return {
+            sensor_id: pd.concat(frames)
+            for sensor_id, frames in self._measurement_periods().items()
+        }
+
+    def measurement_errors(self, skip: int = 0) -> pd.DataFrame:
+        """The error of the simulation that just ran against every scored
+        sensor (see :meth:`measurement_frames`).
+
+        Args:
+            skip: The number of steps at the start of each simulated period
+                that are left out (the warm-up).
+
+        Returns:
+            One row per sensor with the columns ``sensor`` (its ``uuid``,
+            or its id when it has none), ``port`` (the port it reads, as
+            ``Class.port``), ``n`` (the number of samples), ``mae``,
+            ``rmse`` and ``bias`` (the mean of simulated minus measured).
+            The samples are those the sensor's ``scoring_mask`` scores and
+            that hold a measurement, after the first ``skip`` steps; the
+            errors are ``NaN`` when there is none.
+
+        Raises:
+            RuntimeError: If no simulation has run.
+        """
+        rows = []
+        for sensor_id, frames in sorted(self._measurement_periods().items()):
+            sensor = self.model.components[sensor_id]
+            residuals = []
+            for frame in frames:
+                part = frame.iloc[int(skip) :]
+                part = part[part["scored"]]
+                residuals.append((part["simulated"] - part["measured"]).dropna().to_numpy())
+            residual = np.concatenate(residuals)
+            n = int(residual.size)
+            rows.append(
+                {
+                    "sensor": sensor.uuid or sensor.id,
+                    "port": self._measured_port(sensor),
+                    "n": n,
+                    "mae": float(np.abs(residual).mean()) if n else float("nan"),
+                    "rmse": float(np.sqrt((residual**2).mean())) if n else float("nan"),
+                    "bias": float(residual.mean()) if n else float("nan"),
+                }
+            )
+        return pd.DataFrame(rows, columns=["sensor", "port", "n", "mae", "rmse", "bias"])
 
     @property
     def captures_rollouts(self) -> bool:

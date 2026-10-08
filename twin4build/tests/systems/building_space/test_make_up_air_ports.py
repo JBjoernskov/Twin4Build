@@ -4,6 +4,7 @@ only the exhaust-deficit case can see it."""
 
 # Standard library imports
 import datetime
+import functools
 import unittest
 
 # Third party imports
@@ -12,6 +13,7 @@ import torch
 # Local application imports
 import twin4build
 import twin4build as tb
+from twin4build.systems.utils.smooth_saturation import saturation_mode
 from twin4build.systems.building_space.building_space_mass_system import (
     ACTIVE_INPUT_SLOTS,
     MAKE_UP_CO2_SLOT,
@@ -21,6 +23,18 @@ from twin4build.systems.building_space.building_space_mass_system import (
 )
 
 twin4build._IS_TESTING = True
+
+
+def _exact(test):
+    """The exact balance (the hard saturation mode): the smooth mode's
+    make-up flow is small but not zero where the hard max is."""
+
+    @functools.wraps(test)
+    def run(self):
+        with saturation_mode("hard"):
+            return test(self)
+
+    return run
 
 DT = 600.0
 START = datetime.datetime(2024, 3, 4, 0, 0)
@@ -76,6 +90,7 @@ class TestMassMakeUpPort(unittest.TestCase):
         c_mid = self._step(0.1, 0.18, make_up=600.0, wired=True)
         self.assertAlmostEqual(c_mid - c_out, (c_corr - c_out) / 2, places=9)
 
+    @_exact
     def test_wired_surplus_never_sees_the_port(self):
         self.assertAlmostEqual(
             self._step(0.1, 0.03, make_up=400.0, wired=True),
@@ -127,6 +142,7 @@ class TestThermalMakeUpPort(unittest.TestCase):
         t_corr = self._step(0.1, 0.18, make_up=22.0, wired=True)
         self.assertGreater(t_corr, t_out)
 
+    @_exact
     def test_wired_surplus_never_sees_the_port(self):
         self.assertAlmostEqual(
             self._step(0.1, 0.03, make_up=self.T_O, wired=True),

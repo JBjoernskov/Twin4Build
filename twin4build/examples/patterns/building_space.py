@@ -68,7 +68,7 @@ def saref_signature_pattern_sensor():
 
     sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
     sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
-    sp.add_input("heatGain", node4, "Power")
+    sp.add_input("heatGain", node4, "toRoomPower")
     sp.add_input("numberOfPeople", node5, "scheduleValue")
     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
     sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
@@ -138,7 +138,7 @@ def saref_signature_pattern():
 
     sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
     sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
-    sp.add_input("heatGain", node4, "Power")
+    sp.add_input("heatGain", node4, "toRoomPower")
     sp.add_input("numberOfPeople", node5, "scheduleValue")
     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
     sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")

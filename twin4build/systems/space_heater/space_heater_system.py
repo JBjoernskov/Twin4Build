@@ -74,13 +74,56 @@ class SpaceHeaterSystem(core.System, nn.Module):
        - :math:`T_z` is the zone (room) temperature [°C]
        - :math:`T_{sup}` is the supply water temperature [°C]
 
-    **Heat Output Calculation:**
+    **The Two Powers:**
 
-    The total heat output is calculated as:
+    The radiator has two heat flows, and they are two different outputs.
+
+    ``toRoomPower`` is the heat the radiator gives to the room:
 
     .. math::
 
-        Q = \frac{UA}{n} \sum_{i=1}^n (T_i - T_z)
+        Q_{room} = \frac{UA}{n} \sum_{i=1}^n (T_i - T_z)
+
+    ``toRadiatorPower`` is the heat the radiator takes from the heating
+    circuit, which is what a heat meter on the circuit measures:
+
+    .. math::
+
+        Q_{rad} = \dot{m} \cdot c_p \cdot (T_{sup} - T_n)
+
+    where :math:`T_n`, the temperature of the last element, is the outlet
+    water temperature.  Summing the element equations above gives the heat
+    balance of the radiator:
+
+    .. math::
+
+        \sum_{i=1}^n C_i \frac{dT_i}{dt} = Q_{rad} - Q_{room}
+
+    The two powers differ by the rate of change of the heat stored in the
+    radiator.  They are equal in steady state and have the same long-run
+    mean; they differ while the radiator warms up (it takes more from the
+    circuit than it gives to the room) and while it cools down (it gives heat
+    to the room with the valve closed, when :math:`Q_{rad} = 0`).  Compare
+    ``toRadiatorPower`` with a heat meter on the water side and use
+    ``toRoomPower`` as the heat gain of the room.
+
+    Both outputs are evaluated at the end-of-step element temperatures, with
+    the inputs of the step.
+
+    **Inputs and Outputs:**
+
+    Inputs:
+       - ``supplyWaterTemperature``: Supply water temperature [°C]
+       - ``waterFlowRate``: Water mass flow rate [kg/s]
+       - ``indoorTemperature``: Room air temperature [°C]
+
+    Outputs:
+       - ``outletWaterTemperature``: Outlet water temperature [°C]
+       - ``toRoomPower``: Heat given to the room [W]
+       - ``toRadiatorPower``: Heat taken from the heating circuit [W]
+
+    ``Power`` is the deprecated name of ``toRoomPower`` (removed in
+    twin4build 2.1).
 
     **State-Space Representation:**
 
@@ -115,11 +158,20 @@ class SpaceHeaterSystem(core.System, nn.Module):
 
     .. math::
 
-       \mathbf{C} = \begin{bmatrix} 0 & 0 & \cdots & 0 & 1 \end{bmatrix}
+       \mathbf{C} = \begin{bmatrix}
+       0 & 0 & \cdots & 0 & 1 \\
+       \frac{UA}{n} & \frac{UA}{n} & \cdots & \frac{UA}{n} & \frac{UA}{n}
+       \end{bmatrix}
 
     .. math::
 
-       \mathbf{D} = \begin{bmatrix} 0 & 0 & 0 \end{bmatrix}
+       \mathbf{D} = \begin{bmatrix} 0 & 0 & 0 \\ 0 & 0 & -UA \end{bmatrix}
+
+    The rows of :math:`\mathbf{C}` and :math:`\mathbf{D}` are the outlet water
+    temperature and ``toRoomPower``.  ``toRadiatorPower`` is a product of two
+    inputs and of an input and a state, so it is not a row of the linear
+    output equation; it is computed from the inputs and the outlet water
+    temperature after the step.
 
     **Bilinear Coupling Matrices:**
 
@@ -286,11 +338,16 @@ class SpaceHeaterSystem(core.System, nn.Module):
             "waterFlowRate": tps.Scalar(),
             "indoorTemperature": tps.Scalar(),
         }
-        self._output = {
-            # "outletWaterTemperature": tps.Vector(tensor=torch.ones(nelements)*21, size=nelements),
-            "outletWaterTemperature": tps.Scalar(21),
-            "Power": tps.Scalar(0),
-        }
+        self._output = core.AliasedPorts(
+            {
+                # "outletWaterTemperature": tps.Vector(tensor=torch.ones(nelements)*21, size=nelements),
+                "outletWaterTemperature": tps.Scalar(21),
+                "toRoomPower": tps.Scalar(0),
+                "toRadiatorPower": tps.Scalar(0),
+            },
+            aliases=self.OUTPUT_PORT_ALIASES,
+            owner=type(self).__name__,
+        )
         self.parameter = {
             "Q_flow_nominal_sh": {},
             "T_a_nominal_sh": {},
@@ -299,8 +356,8 @@ class SpaceHeaterSystem(core.System, nn.Module):
             # Bounds make a parameter estimable through the base
             # ``get_estimable_parameters`` contract; the construction
             # nominals stay plain floats and are skipped.
-            "thermalMassHeatCapacity": {"lb": 1e4, "ub": 1e7},
-            "UA": {"lb": 1.0, "ub": 2000.0},
+            "thermalMassHeatCapacity": {"lb": 1e4, "ub": 1e7, "relative": (0.25, 4.0)},
+            "UA": {"lb": 1.0, "ub": 2000.0, "relative": (0.25, 4.0)},
             "initialize_UA": {},
         }
         self._config = {"parameters": list(self.parameter.keys())}
@@ -336,7 +393,10 @@ class SpaceHeaterSystem(core.System, nn.Module):
         Returns:
             dict: Dictionary containing output ports:
                 - "outletWaterTemperature": Outlet water temperature [°C]
-                - "Power": Heating power [W]
+                - "toRoomPower": Heat given to the room [W]
+                - "toRadiatorPower": Heat taken from the heating circuit [W]
+
+            ``"Power"`` is the deprecated name of ``"toRoomPower"``.
         """
         return self._output
 
@@ -394,11 +454,11 @@ class SpaceHeaterSystem(core.System, nn.Module):
             # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh.
             # When initialize_UA is False, the current UA value is used directly,
             # which is useful when UA is being estimated/calibrated.
-            UA0 = float(
-                self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
-            )
-            root = fsolve(self._ua_residual, UA0, full_output=True)
-            UA_val = float(root[0][0])
+            #
+            # ``solve_UA`` is the same solve as a public method, for a caller
+            # that sizes the radiator before the model is initialized (and
+            # then sets ``initialize_UA = False``).
+            UA_val = self.solve_UA()
             # Write the physical UA through ``set`` so normalization is applied.
             # ``data.fill_(UA_val)`` would store the physical value in the
             # normalized slot and make ``get()`` return min+(UA_val)*(max-min)
@@ -496,31 +556,58 @@ class SpaceHeaterSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("thermalMassHeatCapacity", "UA")
+    #: ``Power`` was renamed when the water-side power became an output of
+    #: its own (see ``System.OUTPUT_PORT_ALIASES``).
+    OUTPUT_PORT_ALIASES = {"Power": "toRoomPower"}
 
     def _state_heat_capacities(self):
         """Every element holds ``thermalMassHeatCapacity / nelements`` [J/K]."""
         per_element = self.thermalMassHeatCapacity.get().reshape(-1, 1) / self.nelements
         return per_element.expand(per_element.shape[0], self.nelements)
     #: Fusable coupling ports (see FusedStateSpaceSystem): the zone's
-    #: temperature in, the delivered power out.  The power is linear in the
-    #: element temperatures and the zone temperature (an output row), so a
-    #: radiator and its zone fuse into one exact block instead of stepping
-    #: against each other's previous values.
+    #: temperature in, the power given to the room out.  That power is linear
+    #: in the element temperatures and the zone temperature (an output row),
+    #: so a radiator and its zone fuse into one exact block instead of
+    #: stepping against each other's previous values.
     FUSABLE_INPUT_PORTS = frozenset({"indoorTemperature"})
-    FUSABLE_OUTPUT_PORTS = frozenset({"Power"})
+    FUSABLE_OUTPUT_PORTS = frozenset({"toRoomPower"})
+    #: The output that is no row of the linear output equation, and the
+    #: inputs and output rows :meth:`_ss_derived_outputs` computes it from
+    #: (see FusedStateSpaceSystem: a fused block evaluates the hook on the
+    #: member's external inputs and its output rows after the joint step).
+    SS_DERIVED_OUTPUT_PORTS = ("toRadiatorPower",)
+    SS_DERIVED_INPUT_PORTS = ("supplyWaterTemperature", "waterFlowRate")
+    SS_DERIVED_ROW_PORTS = ("outletWaterTemperature",)
 
     def _ss_layout(self):
         """Port <-> matrix index map, mirroring :meth:`forward` exactly:
         ``u = [supplyWaterTemperature, waterFlowRate, indoorTemperature]``;
-        output rows ``[outletWaterTemperature, Power]``."""
+        output rows ``[outletWaterTemperature, toRoomPower]``."""
         return {
             "u": [("supplyWaterTemperature", 1), ("waterFlowRate", 1), ("indoorTemperature", 1)],
-            "y": {"outletWaterTemperature": 0, "Power": 1},
+            "y": {"outletWaterTemperature": 0, "toRoomPower": 1},
+        }
+
+    @staticmethod
+    def _ss_derived_outputs(inputs, rows):
+        """The outputs that are no rows of the linear output equation, as a
+        pure function of the inputs of the step (:attr:`SS_DERIVED_INPUT_PORTS`)
+        and the output rows at the end of it (:attr:`SS_DERIVED_ROW_PORTS`).
+
+        ``toRadiatorPower`` is the heat the water leaves in the radiator,
+        ``waterFlowRate * c_p * (supplyWaterTemperature -
+        outletWaterTemperature)``: bilinear, so it cannot be a row of ``C``
+        and ``D``.  :meth:`forward` and the fused block both compute it here.
+        """
+        return {
+            "toRadiatorPower": inputs["waterFlowRate"]
+            * constants.CP_WATER
+            * (inputs["supplyWaterTemperature"] - rows["outletWaterTemperature"]),
         }
 
     def _ss_support(self):
         """Conservative structural support of the ``D``, ``E`` and ``F``
-        matrices: the power row feeds through the zone temperature; the water
+        matrices: the room power row feeds through the zone temperature; the water
         flow (input 1) scales the element chain (``E``) and, with the supply
         temperature (input 0), the first element's inflow (``F``)."""
         n = self.nelements
@@ -587,8 +674,8 @@ class SpaceHeaterSystem(core.System, nn.Module):
         )
 
         # Output rows: the outlet water temperature (the last element) and the
-        # delivered power ``UA/n * sum_i (T_i - T_zone)``, linear in the
-        # states and the zone temperature (the fusable coupling row).
+        # power given to the room ``UA/n * sum_i (T_i - T_zone)``, linear in
+        # the states and the zone temperature (the fusable coupling row).
         # Built on the device (a Python list would be a host-to-device copy,
         # illegal while a CUDA graph records the rollout that builds these
         # matrices once per rollout).
@@ -643,8 +730,11 @@ class SpaceHeaterSystem(core.System, nn.Module):
         dict assembled here in do_step order ``[supplyWaterTemperature,
         waterFlowRate, indoorTemperature]``; ``params`` a dict for
         :attr:`PARAM_NAMES`.  Returns the next element temperatures and the named
-        outputs ``{outletWaterTemperature, Power}`` (Power = UA * sum(T_i -
-        T_zone), the heat delivered to the zone -- the coupling into thermal).
+        outputs ``{outletWaterTemperature, toRoomPower, toRadiatorPower}``:
+        toRoomPower = UA/n * sum(T_i - T_zone), the heat given to the zone
+        (the coupling into thermal), and toRadiatorPower = waterFlowRate * c_p
+        * (supplyWaterTemperature - outletWaterTemperature), the heat taken
+        from the heating circuit.  Both at the end-of-step state.
         """
         # Params-only matrices, cached per params-dict identity (rebuilt once
         # per theta in a sequential rollout, not once per step).  sample_time
@@ -686,8 +776,10 @@ class SpaceHeaterSystem(core.System, nn.Module):
         )
         outlet = y[..., 0]
         # the power row: UA/n * sum_i (T_i - T_zone) at the end-of-step state
-        Power = y[..., 1]
-        return x_next, {"outletWaterTemperature": outlet, "Power": Power}
+        outputs = {"outletWaterTemperature": outlet, "toRoomPower": y[..., 1]}
+        # the water side, from the same end-of-step outlet temperature
+        outputs.update(self._ss_derived_outputs(inputs, outputs))
+        return x_next, outputs
 
 
     def do_step(
@@ -700,10 +792,12 @@ class SpaceHeaterSystem(core.System, nn.Module):
         """Perform one simulation step.
 
         This method advances the state-space model by one time step and calculates
-        the outlet water temperature and heat output. The method:
+        the outlet water temperature and the two powers. The method:
+
         1. Collects current input values
         2. Updates the state-space model
-        3. Calculates the heat output based on element temperatures
+        3. Calculates the heat given to the room and the heat taken from the
+           heating circuit based on element temperatures
         4. Updates output values
 
         Args:
@@ -729,7 +823,33 @@ class SpaceHeaterSystem(core.System, nn.Module):
         self.output["outletWaterTemperature"]._set(
             outs["outletWaterTemperature"], i_t=step_index
         )
-        self.output["Power"]._set(outs["Power"], i_t=step_index)
+        self.output["toRoomPower"]._set(outs["toRoomPower"], i_t=step_index)
+        self.output["toRadiatorPower"]._set(outs["toRadiatorPower"], i_t=step_index)
+
+    def solve_UA(self) -> float:
+        """The ``UA`` that meets the radiator's nominal sizing.
+
+        Solves for the overall heat transfer coefficient at which the
+        radiator, in steady state at its nominal conditions
+        (``T_a_nominal_sh``, ``T_b_nominal_sh``, ``TAir_nominal_sh``, and
+        the water flow that gives ``Q_flow_nominal_sh`` over that
+        temperature drop), delivers ``Q_flow_nominal_sh``.  It is the value
+        ``initialize`` sets when ``initialize_UA`` is True; the component is
+        not changed and need not be initialized.  To start a model from a
+        sized radiator, set the value and switch the solve at ``initialize``
+        off::
+
+            heater.UA.set(heater.solve_UA(), normalized=False)
+            heater.initialize_UA = False
+
+        Returns:
+            The heat transfer coefficient [W/K].
+        """
+        UA0 = float(
+            self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
+        )
+        root = fsolve(self._ua_residual, UA0, full_output=True)
+        return float(root[0][0])
 
 
 # Deprecated aliases (removed in twin4build 2.1)

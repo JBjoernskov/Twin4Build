@@ -482,7 +482,11 @@ class Model:
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
+
+        A deprecated output port name (``System.OUTPUT_PORT_ALIASES``)
+        connects as the name that replaced it, with a ``DeprecationWarning``.
         """
+        output_port = sender_component.resolve_output_port(output_port)
         self.simulation_model.add_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
@@ -513,6 +517,7 @@ class Model:
         Raises:
             ValueError: If the specified connection does not exist.
         """
+        output_port = sender_component.resolve_output_port(output_port)
         self.simulation_model.remove_connection(
             sender_component=sender_component,
             receiver_component=receiver_component,
@@ -1092,12 +1097,41 @@ class Model:
         :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_state`."""
         self.simulation_model.set_state(state, period_starts=period_starts)
 
+    @staticmethod
+    def get_source_component_ids(component: "core.System") -> Tuple[str, ...]:
+        """The ids of the components ``component`` stands for, in instance
+        order: those a batched meta was built from
+        (:meth:`batch_components`), ``(component.id,)`` for any other
+        component."""
+        return core.SimulationModel.get_source_component_ids(component)
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters in physical units,
+        ``{(component id, attr): values}``, by the ids of the components the
+        model was built from: a batched meta of ``n_c`` instances gives
+        ``n_c`` keys.  ``parameters`` is an iterable of ``(component, attr,
+        ...)`` tuples (the estimator's parameter entries).  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_parameter_values`."""
+        return self.simulation_model.get_parameter_values(parameters)
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[str, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from ``{(component id, attr): values}``
+        (:meth:`get_parameter_values`), on this model whatever its batching:
+        an id names a component of the model or a component one of its
+        batched metas stands for.  Returns ``{"applied": n, "missing": m}``.
+        See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_parameter_values`."""
+        return self.simulation_model.set_parameter_values(values, strict=strict)
+
     def load_estimation_result(
         self,
         filename: Optional[str] = None,
         result: Optional[Dict] = None,
         parameters: bool = True,
         initial_state: bool = True,
+        fixed: bool = True,
         # verbose: int = 0,
     ) -> None:
         """
@@ -1111,6 +1145,9 @@ class Model:
                 from the initial states the result carries (multiple
                 shooting, collocation), so a simulation of the estimated
                 periods starts from the estimated state.
+            fixed (bool): With ``parameters``, also set the parameters the
+                fit held fixed to the values it ran with, so the model
+                simulates as it was fitted.
 
         Raises:
             AssertionError: If invalid arguments are provided.
@@ -1120,6 +1157,7 @@ class Model:
             result=result,
             parameters=parameters,
             initial_state=initial_state,
+            fixed=fixed,
             # verbose=verbose,
         )
 
@@ -1156,12 +1194,24 @@ class Model:
             iter(self._translator.sim2sem_map[self._simulation_model._components[key]])
         )
 
-    def serialize(self) -> None:
+    @property
+    def instance_graph_path(self) -> str:
+        """The file :meth:`serialize` writes the simulation model to,
+        whether or not it has been written; ``load(filename=...)`` rebuilds
+        the model from it."""
+        return self._simulation_model.instance_graph_path
+
+    def serialize(self) -> str:
         """
         Serialize both halves of the model.
+
+        Returns:
+            The path of the saved instance graph of the simulation model
+            (:attr:`instance_graph_path`), the file ``load(filename=...)``
+            rebuilds the model from.
         """
         self._semantic_model.serialize()
-        self._simulation_model.serialize()
+        return self._simulation_model.serialize()
 
     def visualize(self, **kwargs) -> None:
         """
@@ -1744,6 +1794,10 @@ class Model:
         for key in ("lb", "ub"):
             values = [float(np.asarray(b[key], dtype=float).reshape(-1)[0]) for b in specs]
             stacked[key] = values[0] if len(set(values)) == 1 else values
+        if "relative" in specs[0]:
+            # relative bounds (System.size_parameter) hold for the meta only
+            # when every instance was sized; the others keep the absolute ones
+            stacked["sized"] = all(b.get("sized", False) for b in specs)
         meta_owner.parameter = dict(meta_spec)
         meta_owner.parameter[leaf] = {**specs[0], **stacked}
 

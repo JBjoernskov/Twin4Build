@@ -15,6 +15,7 @@ Covers, on a two-zone + partition-wall model:
 
 # Standard library imports
 import datetime
+import functools
 import unittest
 
 # Third party imports
@@ -23,10 +24,23 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
+from twin4build.systems.utils.smooth_saturation import saturation_mode
 
 tb._IS_TESTING = True
 
 START = datetime.datetime(2024, 1, 4, tzinfo=tz.gettz("Europe/Copenhagen"))
+
+
+def _exact(test):
+    """The exact balance (the hard saturation mode): the smooth mode's
+    make-up flow is small but not zero where the hard max is."""
+
+    @functools.wraps(test)
+    def run(self):
+        with saturation_mode("hard"):
+            return test(self)
+
+    return run
 
 
 def build_model(r_a=0.02, r_b=0.02, fuse=True, model_id="test_fusion"):
@@ -126,6 +140,7 @@ def observed_support(matrix):
 class TestFusionExactness(unittest.TestCase):
     """The fused one-step map must equal the hand-derived monolithic model."""
 
+    @_exact
     def test_matches_hand_derived_monolithic_model(self):
         model, zone_a, zone_b, wall = build_model()
         sim_model = model.simulation_model

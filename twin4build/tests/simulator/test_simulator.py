@@ -320,8 +320,10 @@ class TestSimulator(unittest.TestCase):
 
         self.assertEqual(max_timesteps, 6)  # Max of 6 and 3
         self.assertEqual(n_timesteps, [6, 3])
-        # Second period should be padded with NaN
-        self.assertTrue(np.isnan(second_steps[1, 3]))
+        # The second period's padding continues its own grid (valid times a
+        # schedule can read); its own steps are the first three.
+        self.assertEqual(list(second_steps[1]), [0, 600, 1200, 1800, 2400, 3000])
+        self.assertEqual(date_steps[1, 3], datetime.datetime(2023, 1, 2, 0, 30, 0, tzinfo=tz.UTC))
 
     def _setup_estimator_example_model(self, model_id: str) -> tb.Model:
         """

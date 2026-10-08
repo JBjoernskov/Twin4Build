@@ -113,7 +113,7 @@ def main():
     # ── 7. Extract all signals ────────────────────────────────────────────
     indoor_temp = space.output["indoorTemperature"].history().detach()
     valve = space_heater_valve.output["valvePosition"].history().detach()
-    power = space_heater.output["Power"].history().detach()
+    power = space_heater.output["toRoomPower"].history().detach()
     heating_sp = heating_setpoint.output["scheduleValue"].history().detach()
 
     supply_air_temp = space.input["supplyAirTemperature"].history().detach()
@@ -298,7 +298,7 @@ def main():
         print("Perturbed simulation complete.\n")
 
         pert_temp = space.output["indoorTemperature"].history().detach()[:, 0, 0]
-        pert_power = space_heater.output["Power"].history().detach()[:, 0, 0]
+        pert_power = space_heater.output["toRoomPower"].history().detach()[:, 0, 0]
         pert_sp = heating_setpoint.output["scheduleValue"].history().detach()[:, 0, 0]
         pert_violations = (pert_sp - pert_temp).clamp(min=0)
 

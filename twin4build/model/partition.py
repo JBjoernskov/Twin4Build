@@ -326,3 +326,141 @@ def cut_measured_edges(
 
     LOGGER.info("partition: %d pairings cut, %d replay leaves added", len(by_pairing), len(added))
     return added
+
+
+def _repair_return_junctions(model) -> List[str]:
+    """Make every return junction's ``branch_temperature_slots`` follow its
+    surviving connections; returns the ids of the junctions changed.
+
+    The map names, per flow slot (a branch), the temperature slot that
+    carries its temperature, and the junction sizes its ports from the
+    connections it has.  With components removed the map is cut to the
+    surviving branches, and a branch that lost its flow or its temperature
+    points at a surviving temperature slot (a branch without a connection
+    carries no flow, so the temperature it points at does not count).
+
+    Removing a connection leaves its slot indices on the connection point,
+    and a component sizes a vector port by the indices it finds there; the
+    junction's are dropped with their connections, so that its ports and
+    its map are sized by the same connections."""
+    from twin4build.systems.junction.return_flow_junction_system import (
+        ReturnFlowJunctionSystem,
+    )
+
+    connected: Dict[Tuple[str, str], Set[int]] = {}
+    for e in _edges(model):
+        if isinstance(e.receiver, ReturnFlowJunctionSystem) and e.input_slot is not None:
+            connected.setdefault((e.receiver.id, e.input_port), set()).add(e.input_slot)
+    repaired = []
+    for junction in model.components.values():
+        if not isinstance(junction, ReturnFlowJunctionSystem):
+            continue
+        slots = list(junction.branch_temperature_slots)
+        branches = connected.get((junction.id, "airFlowRateIn"), set())
+        temperatures = connected.get((junction.id, "airTemperatureIn"), set())
+        if not slots or not branches or not temperatures:
+            continue
+        for cp in junction.connects_at:
+            for indices in (
+                cp.input_port_index, cp.output_port_index,
+                cp.input_component_index, cp.output_component_index,
+            ):
+                for connection in [c for c in indices if c not in cp.connects_system_through]:
+                    del indices[connection]
+        fallback = min(temperatures)
+        new = [
+            slots[b] if b in branches and b < len(slots) and slots[b] in temperatures else fallback
+            for b in range(max(branches) + 1)
+        ]
+        if new != slots:
+            junction.branch_temperature_slots = new
+            repaired.append(junction.id)
+    return repaired
+
+
+def keep_groups(
+    model,
+    partition: Partition,
+    groups: Iterable[int],
+    with_senders: bool = True,
+    stop_at: Iterable[int] = (),
+) -> Dict:
+    """Keep the given groups of ``partition`` and remove the rest of the
+    model, in place: the smaller model that has the same structure per
+    group (a few rooms of a building, to fit them alone or to reproduce a
+    fault on a model of a size that can be looked at).
+
+    Kept are the components of ``groups``; with ``with_senders`` also the
+    groups that send into a kept group over a measured edge
+    (``partition.crossing``: a room's terminals, their controllers),
+    transitively; and every leaf that feeds a kept component (data,
+    schedules, the weather, the replay leaves of :func:`cut_measured_edges`):
+    a leaf carries no parameters and joins no group, and without it the
+    kept component has no input.  Everything else is removed, and what the
+    removal breaks is repaired: a ``ReturnFlowJunctionSystem``'s
+    ``branch_temperature_slots`` follow the surviving connections.
+
+    Args:
+        model: The model the partition was made of, cut
+            (:func:`cut_measured_edges`) or not.
+        partition: The measured partition (:func:`measured_partition`).
+        groups: The indices of the groups to keep (``partition.group_of``
+            gives a component's).
+        with_senders: Keep the groups that send into a kept group as well.
+        stop_at: Groups ``with_senders`` does not take in (unless they are
+            in ``groups``): the air handling unit's group, which every room
+            receives from and which receives from every room, so that
+            through it a few rooms would keep the whole building.
+
+    Returns:
+        ``{"kept": [...], "removed": [...], "groups": [...],
+        "repaired": [...]}``: the ids of the components kept and removed,
+        the indices of the groups kept and the ids of the junctions
+        repaired.  Call ``model.load`` afterwards.
+
+    Raises:
+        ValueError: If ``groups`` names a group the partition does not have.
+    """
+    kept_groups = {int(g) for g in groups}
+    unknown = sorted(g for g in kept_groups if not 0 <= g < len(partition.groups))
+    if unknown:
+        raise ValueError(
+            f"The partition has {len(partition.groups)} groups; there is no group {unknown}"
+        )
+    if with_senders:
+        barred = {int(g) for g in stop_at} - kept_groups
+        senders: Dict[int, Set[int]] = {}
+        for e in partition.crossing:
+            senders.setdefault(partition.group_of[e.receiver.id], set()).add(
+                partition.group_of[e.sender.id]
+            )
+        frontier = set(kept_groups)
+        while frontier:
+            for g in senders.get(frontier.pop(), ()):
+                if g not in kept_groups and g not in barred:
+                    kept_groups.add(g)
+                    frontier.add(g)
+    keep = {cid for cid, g in partition.group_of.items() if g in kept_groups and cid in model.components}
+    for cid, comp in model.components.items():
+        if cid in keep or _has_inputs(comp):
+            continue
+        if any(
+            cp.connection_point_of.id in keep
+            for conn in comp.connected_through
+            for cp in conn.connects_system_at
+        ):
+            keep.add(cid)
+    removed = [cid for cid in model.components if cid not in keep]
+    for cid in removed:
+        model.remove_component(model.components[cid])
+    repaired = _repair_return_junctions(model)
+    LOGGER.info(
+        "partition: %d groups kept, %d components kept, %d removed, %d junctions repaired",
+        len(kept_groups), len(keep), len(removed), len(repaired),
+    )
+    return {
+        "kept": sorted(keep),
+        "removed": removed,
+        "groups": sorted(kept_groups),
+        "repaired": repaired,
+    }

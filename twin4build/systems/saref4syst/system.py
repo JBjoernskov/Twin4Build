@@ -15,10 +15,86 @@ from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.utils.types as tps
+from twin4build.utils.deprecation import deprecate_name
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.simulation_time import get_simulation_timesteps
 from twin4build.utils.state_marker import StateMarker
+
+
+class AliasedPorts(dict):
+    """
+    The ports of a component, which also answer to the deprecated names of
+    renamed ports.
+
+    This is a plain ``dict`` of the ports under their current names:
+    iteration, ``keys()``, ``values()``, ``items()`` and ``len()`` see the
+    current names only, so everything that walks the ports of a component
+    (initialization, serialization, the functional rollout) sees one name per
+    port.  A lookup by a deprecated name (``ports[name]``, ``ports.get(name)``)
+    returns the port that replaced it and emits a ``DeprecationWarning``;
+    ``name in ports`` is true for a deprecated name and does not warn.
+
+    Args:
+        ports: The ports, keyed by their current names.
+        aliases: Deprecated name -> current name.
+        owner: The name of the owner of the ports (its class name), used in
+            the warning.
+    """
+
+    #: Class-level defaults: a copy or an unpickled instance is filled item
+    #: by item before its attributes are restored.
+    aliases: dict = {}
+    owner: str = ""
+
+    def __init__(
+        self,
+        ports: Union[dict, None] = None,
+        aliases: Union[dict, None] = None,
+        owner: str = "",
+    ):
+        super().__init__({} if ports is None else ports)
+        self.aliases = dict({} if aliases is None else aliases)
+        self.owner = owner
+
+    def resolve(self, name: str, stacklevel: int = 3) -> str:
+        """
+        The current name of a port.
+
+        A deprecated name is replaced by the name that stands for it, with a
+        ``DeprecationWarning``; any other name is returned unchanged.
+
+        Args:
+            name: The name of the port, current or deprecated.
+            stacklevel: The frame the warning points at, counted from this
+                method (``2`` is its caller, ``3`` the caller of the caller,
+                which is the user's code for ``ports[name]``).
+
+        Returns:
+            str: The current name of the port.
+        """
+        new = self.aliases.get(name) if isinstance(name, str) else None
+        if new is None or dict.__contains__(self, name):
+            return name
+        prefix = f"{self.owner}." if self.owner else ""
+        deprecate_name(f"{prefix}{name}", f"{prefix}{new}", stacklevel=stacklevel + 1)
+        return new
+
+    def __getitem__(self, name):
+        return dict.__getitem__(self, self.resolve(name))
+
+    def __contains__(self, name):
+        if dict.__contains__(self, name):
+            return True
+        return isinstance(name, str) and dict.__contains__(
+            self, self.aliases.get(name)
+        )
+
+    def get(self, name, default=None):
+        if name in self:
+            return dict.__getitem__(self, self.resolve(name))
+        return default
 
 
 def _concatenate_capacities(parts, n_c):
@@ -31,6 +107,24 @@ def _concatenate_capacities(parts, n_c):
     return torch.cat(
         [part.to(dtype).expand(n_c, part.shape[-1]) if part.shape[0] == 1 else part.to(dtype) for part in parts],
         dim=-1,
+    )
+
+
+_UNSIZED_WARNED = set()
+
+
+def _warn_unsized(owner, leaf: str) -> None:
+    """Warn once per class and attribute that a size quantity kept its
+    absolute fallback bounds (nothing sized it, see
+    :meth:`System.size_parameter`)."""
+    key = (type(owner).__name__, leaf)
+    if key in _UNSIZED_WARNED:
+        return
+    _UNSIZED_WARNED.add(key)
+    LOGGER.warning(
+        "%s.%s is a size quantity nothing sized: it keeps the class's absolute bounds; "
+        "size it (System.size_parameter) for bounds relative to its size",
+        key[0], leaf,
     )
 
 
@@ -56,6 +150,14 @@ class System:
     #: call tree bypasses mutable caches and tensor-dependent Python behavior.
     #: See :doc:`/manual/differentiable_system_models`.
     SUPPORTS_TRANSFORM_MODE = False
+
+    #: Deprecated output port names and the names that replaced them
+    #: (``{"old": "new"}``).  A class that renames an output port lists the
+    #: old name here and holds its outputs in an :class:`AliasedPorts`; the
+    #: old name then still connects, loads and reads, with a
+    #: ``DeprecationWarning``, and the model holds the new name only (see
+    #: :meth:`resolve_output_port`).  Empty on the base class.
+    OUTPUT_PORT_ALIASES: dict = {}
 
     def __str__(self):
         t = PrettyTable(field_names=["input", "output"], divider=True)
@@ -209,6 +311,32 @@ class System:
         Set the id of the system.
         """
         self._id = value
+
+    def resolve_output_port(self, output_port: str, stacklevel: int = 3) -> str:
+        """
+        The current name of an output port of the system.
+
+        A deprecated name (a key of :attr:`OUTPUT_PORT_ALIASES`) is replaced
+        by the name that stands for it, with a ``DeprecationWarning``; any
+        other name is returned unchanged.  Everything that takes a
+        ``(component, output port)`` pair from the user resolves the name
+        here first, so connections, objectives and serialized models hold
+        the current name only.
+
+        Args:
+            output_port: The name of the output port, current or deprecated.
+            stacklevel: The frame the warning points at, counted from this
+                method (``2`` is its caller, ``3`` the caller of the caller).
+
+        Returns:
+            str: The current name of the output port.
+        """
+        new = self.OUTPUT_PORT_ALIASES.get(output_port) if isinstance(output_port, str) else None
+        if new is None or dict.__contains__(self.output, output_port):
+            return output_port
+        name = type(self).__name__
+        deprecate_name(f"{name}.{output_port}", f"{name}.{new}", stacklevel=stacklevel + 1)
+        return new
 
     @property
     def n_c(self) -> int:
@@ -517,7 +645,13 @@ class System:
 
         Owner resolution: ``"thermal.C_air"`` looks up
         ``self.thermal.parameter["C_air"]`` for bounds; an unprefixed
-        path looks up ``self.parameter[leaf]``.  Subclasses with a
+        path looks up ``self.parameter[leaf]``.
+
+        A size quantity declares ``"relative": (lo, hi)`` next to its
+        absolute ``lb`` / ``ub``: once :meth:`size_parameter` has sized it,
+        ``lb`` / ``ub`` are ``lo`` / ``hi`` times the sized value; unsized,
+        the absolute bounds stay and a warning names the attribute (once
+        per class and attribute).  Subclasses with a
         bespoke parameter space (e.g.
         :class:`ControllerIdentificationSystem`) override this with
         their own discovery logic.
@@ -562,6 +696,8 @@ class System:
             bounds = spec.get(leaf)
             if not isinstance(bounds, dict) or "lb" not in bounds or "ub" not in bounds:
                 continue
+            if "relative" in bounds and not bounds.get("sized", False):
+                _warn_unsized(owner, leaf)
             # A batched meta's spec may hold one bound per instance
             # (``Model._stack_parameter_spec``); a scalar stays a float.
             lb = np.asarray(bounds["lb"], dtype=float).reshape(-1)
@@ -588,6 +724,60 @@ class System:
                 continue
             out.append((self, path, x0, lb, ub))
         return out
+
+    def size_parameter(self, path: str, value=None) -> bool:
+        """Mark the parameter at ``path`` as sized, its bounds relative.
+
+        A size quantity (a nominal flow, a capacity, a volume) declares
+        ``"relative": (lo, hi)`` in its owner's ``parameter`` spec next to
+        its absolute ``lb`` / ``ub``.  Whatever sizes it (the translator
+        mapping a value from the semantic model, a workflow's sizing rule)
+        calls this: ``value`` (physical; one per instance or one for all)
+        is set when given, and the instance's ``lb`` / ``ub`` become ``lo``
+        / ``hi`` times the parameter's value.  The sized value is the
+        anchor: a later value (a warm start, a fit's result) moves the
+        parameter, not its bounds.
+
+        Args:
+            path: The attribute path, as in ``_config["parameters"]``
+                (``"heat_recovery.primaryAirFlowRateMax"``).
+            value: The sized value; ``None`` anchors at the current one.
+
+        Returns:
+            bool: Whether the bounds were made relative: ``False`` for an
+            attribute without ``"relative"`` in its spec, or a value that
+            is not positive (the absolute bounds then stay).
+        """
+        *prefix, leaf = path.split(".")
+        owner = rgetattr(self, ".".join(prefix)) if prefix else self
+        param = getattr(owner, leaf)
+        if value is not None:
+            current = param.get().detach()
+            with torch.no_grad():
+                param.set(
+                    torch.as_tensor(value, dtype=current.dtype, device=current.device).expand_as(current).clone(),
+                    normalized=False,
+                )
+        spec = getattr(owner, "parameter", None)
+        entry = spec.get(leaf) if isinstance(spec, dict) else None
+        if not isinstance(entry, dict) or "relative" not in entry:
+            return False
+        sized = np.asarray(param.get().detach().cpu(), dtype=float).reshape(-1)
+        if not np.all(sized > 0):
+            LOGGER.warning(
+                "%s.%s: sized value %s is not positive; its absolute bounds stay",
+                getattr(self, "id", type(self).__name__), path, sized,
+            )
+            return False
+        lo, hi = entry["relative"]
+
+        def bound(factor):
+            b = factor * sized
+            return float(b[0]) if b.size == 1 or np.all(b == b[0]) else b.tolist()
+
+        # a new dict: the spec may be shared with another instance's
+        owner.parameter = {**spec, leaf: {**entry, "lb": bound(lo), "ub": bound(hi), "sized": True}}
+        return True
 
     def populate_config(self) -> dict:
         """

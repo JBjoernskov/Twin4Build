@@ -12,7 +12,8 @@ Re-exported classes:
     - Simulator, Estimator: Simulation and parameter estimation
     - Translator and signature-pattern classes: SignaturePattern, Diff, StepRule,
       NoStepRule, SetStepRule, OptionalRule, PathRule, AnyPathRule
-    - SAREF4SYST base classes: System, Connection, ConnectionPoint
+    - SAREF4SYST base classes: System, Connection, ConnectionPoint, and
+      AliasedPorts (the ports of a System that renamed some of them)
 
 Defined here:
     - BlankNode: Sentinel for matching untyped RDF blank nodes in signature patterns
@@ -174,6 +175,7 @@ _PUBLIC_MODULES = {
     "Connection": "twin4build.systems.saref4syst.connection",
     "ConnectionPoint": "twin4build.systems.saref4syst.connection_point",
     "System": "twin4build.systems.saref4syst.system",
+    "AliasedPorts": "twin4build.systems.saref4syst.system",
     "Translator": "twin4build.translator.translator",
     "SignaturePattern": "twin4build.translator.translator",
     "Diff": "twin4build.translator.translator",

@@ -362,7 +362,7 @@ t4b:136778830489 a s4syst:ConnectionPoint,
 t4b:136778830828 a s4syst:Connection,
         <n9411526c0c9c4b9f9fea134fb6f03758b1>,
         <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
-    t4b:output_port "Power" ;
+    t4b:output_port "toRoomPower" ;
     s4syst:connectsSystem t4b:office_space_heater ;
     s4syst:connectsSystemAt t4b:136778830378 .
 

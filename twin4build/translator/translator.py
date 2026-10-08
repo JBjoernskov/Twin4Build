@@ -1610,6 +1610,14 @@ class Translator:
                                             break
 
                                     if b:
+                                        # A pattern written against a renamed
+                                        # output port (``"Power"`` of a
+                                        # radiator) connects the port that
+                                        # replaced it; the candidate edge and
+                                        # the model hold the current name.
+                                        source_key = provider_component.resolve_output_port(
+                                            source_key
+                                        )
                                         # Resolve Node-based port indices to integer indices
                                         # Both output_port_index and input_port_index Nodes are from
                                         # the TARGET's signature pattern. We need to find their semantic
@@ -2393,6 +2401,11 @@ class Translator:
                                                 requires_grad=False,
                                             ),
                                         )
+                                        # a value from the semantic model
+                                        # sizes the parameter: a size
+                                        # quantity's bounds become relative
+                                        # to it (#245)
+                                        component.size_parameter(key)
                                     else:
                                         rsetattr(component, key, value)
                             LOGGER.remove_level()
@@ -5675,7 +5688,7 @@ class SignaturePattern:
     ...     # Configure inputs for the building space
     ...     sp.add_input("supplyAirFlowRate", supply_damper, "airFlowRate")
     ...     sp.add_input("exhaustAirFlowRate", return_damper, "airFlowRate")
-    ...     sp.add_input("heatGain", space_heater, "Power")
+    ...     sp.add_input("heatGain", space_heater, "toRoomPower")
     ...     sp.add_input("numberOfPeople", schedule, "scheduleValue")
     ...     sp.add_input("outdoorTemperature", outdoor_env, "outdoorTemperature")
     ...     sp.add_input("supplyAirTemperature", supply_equipment,

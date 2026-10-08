@@ -1766,6 +1766,69 @@ class TensorParameter:
         )
 
 
+
+class Variable:
+    """A variable of an estimation or optimization problem.
+
+    ``target`` names the model quantity by the object itself:
+
+    * a :class:`Parameter` (or a :class:`TensorParameter`) of a component: an estimated parameter of the
+      :class:`~twin4build.estimator.estimator.Estimator`, or a parameter
+      decision variable of the :class:`~twin4build.optimizer.optimizer.Optimizer`;
+      a list of them (one per component) for several components at once;
+    * an output port (a :class:`Scalar` in ``component.output``): a
+      trajectory decision variable of the Optimizer.
+
+    The role a parameter plays is a choice of the run, so it lives here and
+    not on the :class:`Parameter`: the same parameter is fixed in one run,
+    estimated in the next and optimized in a third.
+
+    Args:
+        target: The parameter(s) or the output port.
+        lb, ub: Bounds.  ``None`` takes the component's declared bounds (as
+            ``parameters="auto"`` does); a trajectory needs both.
+        x0: The Estimator's start value; ``None`` takes the parameter's
+            current value.
+        components: ``"private"`` (each listed component its own value) or
+            ``"shared"`` (one value for all of them).
+        periods: ``"shared"`` (one value, or one trajectory of the period
+            length, in every period) or ``"per_period"`` (its own value or
+            trajectory in each period).  ``None``: ``"shared"`` for a
+            parameter, ``"per_period"`` for a trajectory.
+
+    A bare :class:`Parameter` in a ``parameters`` or ``variables`` list is a
+    ``Variable`` with these defaults.
+    """
+
+    COMPONENTS = ("private", "shared")
+    PERIODS = ("shared", "per_period")
+
+    def __init__(self, target, *, lb=None, ub=None, x0=None, components: str = "private", periods: Optional[str] = None):
+        if components not in self.COMPONENTS:
+            raise ValueError(f"components must be one of {self.COMPONENTS}, got {components!r}")
+        if periods is not None and periods not in self.PERIODS:
+            raise ValueError(f"periods must be one of {self.PERIODS}, got {periods!r}")
+        targets = list(target) if isinstance(target, (list, tuple)) else [target]
+        if not targets:
+            raise ValueError("a Variable needs a target")
+        trajectory = [isinstance(t, (Scalar, Vector)) for t in targets]
+        if any(trajectory) and (len(targets) > 1 or not all(trajectory)):
+            raise ValueError("a trajectory Variable names one output port")
+        if not any(trajectory) and not all(isinstance(t, (nn.Parameter, TensorParameter)) for t in targets):
+            raise TypeError("a Variable's target is a Parameter, a list of Parameters or an output port")
+        if any(trajectory) and (lb is None or ub is None):
+            raise ValueError("a trajectory Variable needs lb and ub")
+        self.targets = targets
+        self.is_trajectory = bool(any(trajectory))
+        self.lb, self.ub, self.x0 = lb, ub, x0
+        self.components = components
+        self.periods = periods or ("per_period" if self.is_trajectory else "shared")
+
+    def __repr__(self) -> str:
+        kind = "trajectory" if self.is_trajectory else f"{len(self.targets)} parameter(s)"
+        return f"Variable({kind}, lb={self.lb}, ub={self.ub}, components={self.components!r}, periods={self.periods!r})"
+
+
 def _expand_to_3D_tensor(v: Union[Scalar, float, int, torch.Tensor]):
     """
     Convert a Scalar, float, int, or torch.Tensor to torch.Tensor with shape (batch_size, 1)

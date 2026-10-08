@@ -32,7 +32,7 @@ input port of a functional component it uses one of
   the same step (pass-through sensors followed to their source), so parameter
   and state couplings are exact;
 * a **feedback** value -- a cut cycle edge (the producer executes *later* in
-  the Gauss-Seidel order, e.g. ``office.heatGain <- space_heater.Power``).
+  the Gauss-Seidel order, e.g. ``office.heatGain <- space_heater.toRoomPower``).
   These are one-step *lag variables*: :meth:`FunctionalModel.F_aug` appends
   them to the state, reproducing ``do_step``'s one-step-delayed feedback
   semantics exactly;
@@ -397,7 +397,7 @@ class FunctionalModel:
         #        is a cone forward-component that executes LATER (the cycle-broken
         #        edge).  Its value is a decision variable, NOT frozen, because it
         #        is a function of the states/params (e.g. office.heatGain <-
-        #        space_heater.Power).  A defect ties it to the producer's output.
+        #        space_heater.toRoomPower).  A defect ties it to the producer's output.
         #   ("exogenous", cap_index)             -- truly exogenous (weather,
         #        schedules): frozen from a reference sim (correct -- independent of
         #        the unknowns).
@@ -1256,9 +1256,15 @@ class FunctionalModel:
                     if exo is not None and not groups and not leftovers:
                         value = exogenous[exo[0]]
                     else:
-                        value = torch.zeros((n_c, n_v), dtype=states_flat.dtype, device=states_flat.device)
+                        # Assembled flat and functionally (scatter, then
+                        # scatter_add): torch 2.11 Inductor miscompiles
+                        # ``index_put`` into this unbatched buffer under
+                        # ``vmap``, every batch row writing the same storage
+                        # (#241).  Same values: the exogenous slots are
+                        # unique, the producers' values add as before.
+                        value = torch.zeros((n_c * n_v,), dtype=states_flat.dtype, device=states_flat.device)
                         if exo is not None:
-                            value = value.index_put((exo[1], exo[2]), exogenous[exo[0]])
+                            value = torch.scatter(value, 0, (exo[1] * n_v + exo[2]).reshape(-1), exogenous[exo[0]].reshape(-1))
                         for pid, pport, is_vector, s_ic, out_v, r_ic, in_v in groups:
                             out = produced[pid][pport]
                             if is_vector and out.ndim >= 2:
@@ -1267,9 +1273,10 @@ class FunctionalModel:
                                 gathered = out[out_v]
                             else:
                                 gathered = out.reshape(-1)[s_ic]
-                            value = value.index_put((r_ic, in_v), gathered, accumulate=True)
+                            value = torch.scatter_add(value, 0, r_ic * n_v + in_v, gathered.reshape(-1))
                         for rows_t, slot_full, slot_spec in leftovers:
-                            value = value.index_put((rows_t, slot_full), _input_value(slot_spec).reshape(-1), accumulate=True)
+                            value = torch.scatter_add(value, 0, rows_t * n_v + slot_full, _input_value(slot_spec).reshape(-1))
+                        value = value.reshape(n_c, n_v)
                     inputs[port] = value
                 elif spec[0] == "vector":
                     vals = []
@@ -1944,7 +1951,8 @@ def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, s
 def functional_rollout_rows(functional_model, Y0, Theta, exogenous_tape, *, step=None, return_end=False):
     """Roll a batch of rows that each carry their own state, parameters and
     exogenous inputs: ``Y0 (N, D_aug)``, ``Theta (N, n_theta)``,
-    ``exogenous_tape (n_t, N, n_exogenous)``; returns ``(N, n_t, n_meas)``,
+    ``exogenous_tape (n_t, N, n_exogenous)`` (or ``(n_t, B, P,
+    n_exogenous)``, a broadcast view flattened per step); returns ``(N, n_t, n_meas)``,
     or with ``return_end`` ``(outputs, Y_end (N, D_aug))``.  A batch of
     parameter starts over a batch of windows, flattened.  ``step`` defaults
     to :attr:`FunctionalModel.rows_step` (an eager vmap)."""
@@ -1957,7 +1965,8 @@ def functional_rollout_rows(functional_model, Y0, Theta, exogenous_tape, *, step
     Y = Y0
     rows = []
     for t in range(exogenous_tape.shape[0]):
-        Y, meas = step(Y, Theta, exogenous_tape[t])
+        u = exogenous_tape[t]
+        Y, meas = step(Y, Theta, u.reshape(-1, u.shape[-1]))
         rows.append(meas)
     if not rows:
         out = torch.zeros((Y0.shape[0], 0, functional_model.n_meas), dtype=exogenous_tape.dtype, device=exogenous_tape.device)

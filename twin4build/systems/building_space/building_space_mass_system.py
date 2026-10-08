@@ -344,9 +344,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
         # Define parameters for calibration
         self.parameter = {
-            "V": {"lb": 10.0, "ub": 1000.0},
+            "V": {"lb": 10.0, "ub": 1000.0, "relative": (0.5, 2.0)},
             "G_occ": {"lb": 0.000001, "ub": 0.00001},
-            "m_inf": {"lb": 0.0001, "ub": 0.01},
+            "m_inf": {"lb": 0.0001, "ub": 0.01, "relative": (0.2, 5.0)},
         }
 
         self._config = {"parameters": list(self.parameter.keys())}

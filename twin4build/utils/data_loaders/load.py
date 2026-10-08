@@ -126,7 +126,12 @@ def sample_from_df(
                     df[column], errors="coerce"
                 )  # Remove string entries
 
-        df["date_time"] = pd.to_datetime(df["date_time"])  # ), format=format)
+        # A database session in local time returns two UTC offsets across a
+        # DST change (psycopg2 gives timestamptz in the session's time zone);
+        # pandas parses mixed offsets only as UTC, which the next lines
+        # convert every aware column to anyway.
+        aware = df["date_time"].map(lambda x: getattr(x, "tzinfo", None) is not None).any()
+        df["date_time"] = pd.to_datetime(df["date_time"], utc=bool(aware))
         if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
             has_tz = True
             df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))

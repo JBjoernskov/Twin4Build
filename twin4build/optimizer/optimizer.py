@@ -20,6 +20,7 @@ from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
 from twin4build.solvers.registry import find_pareto_route
 from twin4build.utils.method_spec import parse_method
+from twin4build.utils.problem_variables import optimizer_variables
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.result import ResultDict
 from twin4build.utils.validate_period import validate_period
@@ -36,6 +37,23 @@ def _min_max_normalize(x, min_val=None, max_val=None):
     if max_val is None:
         max_val = torch.max(x)
     return (x - min_val) / (max_val - min_val)
+
+
+def _resolve_port_names(entries):
+    """The ``(component, port, ...)`` tuples with a deprecated output port
+    name (``System.OUTPUT_PORT_ALIASES``) replaced by the name that replaced
+    it, with a ``DeprecationWarning`` pointing at the caller of the
+    ``Optimizer`` method.  The optimizer and its functional objective then
+    see one name per port (a fused radiator publishes ``toRoomPower`` only)."""
+    out = []
+    for entry in entries:
+        entry = tuple(entry)
+        resolve = getattr(entry[0], "resolve_output_port", None) if entry else None
+        if resolve is not None and len(entry) >= 2:
+            # 2 = this function, 3 = the Optimizer method, 4 = its caller
+            entry = (entry[0], resolve(entry[1], stacklevel=4), *entry[2:])
+        out.append(entry)
+    return out
 
 
 class Optimizer:
@@ -450,6 +468,7 @@ class Optimizer:
         ineq_cons: List[Tuple[Any, str, str, Any]] = None,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         options: Dict = None,
+        n_warmup: int = 0,
         **kwargs,
     ):
         """
@@ -467,6 +486,12 @@ class Optimizer:
             step_size: Step size(s) for simulation in seconds.
             variables: List of tuples (component, output_name, lower_bound, upper_bound).
                 The decision variables (actuator trajectories) to optimize.
+                An entry may also be a :class:`tb.Variable
+                <twin4build.utils.types.Variable>`: an output port (a
+                trajectory, ``lb`` and ``ub`` required) or a parameter (bounds
+                default to the ones its component declares), or a bare
+                ``tb.Parameter``; the Optimizer starts from the parameter's
+                current value.
             objectives: List of tuples (component, output_name, objective_type)
                 where objective_type is "min" or "max".
             eq_cons: List of tuples (component, output_name, desired_value) where
@@ -493,6 +518,13 @@ class Optimizer:
                 Examples: ``("scipy", "SLSQP", "ad")`` is preferred for most
                 constrained optimization problems.
 
+            n_warmup: Steps at the start of every period that are simulated
+                but kept out of the objectives and constraints, as the
+                Estimator's ``n_warmup``.  Every period starts from defined
+                states (the model's set state for that period start, e.g. an
+                estimation result's via ``load_estimation_result``, else the
+                components' own initial conditions); states are never decision
+                variables.  Needs the functional objective.
             options: Additional options for the chosen method:
 
                 - "verbose": Verbosity level (0-3)
@@ -528,10 +560,11 @@ class Optimizer:
                 )
         reject_unexpected_kwargs("Optimizer.optimize", kwargs)
 
-        self._variables = variables or []
-        self._objectives = objectives or []
-        self._eq_cons = eq_cons or []
-        self._ineq_cons = ineq_cons or []
+        # tb.Variable / bare parameters -> (component, name, lb, ub) (#235)
+        self._variables = _resolve_port_names(optimizer_variables(variables or [], self.simulator.model))
+        self._objectives = _resolve_port_names(objectives or [])
+        self._eq_cons = _resolve_port_names(eq_cons or [])
+        self._ineq_cons = _resolve_port_names(ineq_cons or [])
 
         start_time, end_time, step_size = validate_period(
             start_time, end_time, step_size
@@ -556,6 +589,7 @@ class Optimizer:
         ) = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
+        self._n_warmup = self._checked_warmup(n_warmup, method)
 
         timestep_mask = torch.ones(
             self._max_timesteps, len(self._start_time), dtype=torch.bool
@@ -844,6 +878,7 @@ class Optimizer:
         batched_prepass: bool = True,
         prepass_options: Dict = None,
         options: Dict = None,
+        n_warmup: int = 0,
     ):
         """Trace a bi-objective front with the augmented epsilon-constraint method.
 
@@ -861,6 +896,11 @@ class Optimizer:
         :func:`twin4build.solvers.registry.register_pareto_route` is accepted
         under its own method tuple; it replaces both the anchor solves and
         the epsilon sweep and receives ``options`` unchanged.
+
+        Several periods (``start_time`` / ``end_time`` lists) of equal length
+        roll out side by side; ``n_warmup`` steps at the start of every period
+        are simulated but kept out of the objectives and constraints (see
+        :meth:`optimize`).
         """
         built_in = (
             ("scipy", "SLSQP", "ad"),
@@ -891,10 +931,10 @@ class Optimizer:
         if not variables:
             raise ValueError("No decision variables specified for optimization")
 
-        self._variables = variables
-        self._objectives = [tuple(objective1), tuple(objective2)]
-        self._eq_cons = eq_cons or []
-        self._ineq_cons = ineq_cons or []
+        self._variables = _resolve_port_names(optimizer_variables(variables, self.simulator.model))  # (#235)
+        self._objectives = _resolve_port_names([objective1, objective2])
+        self._eq_cons = _resolve_port_names(eq_cons or [])
+        self._ineq_cons = _resolve_port_names(ineq_cons or [])
         self._start_time, self._end_time, self._stepSize = validate_period(
             start_time, end_time, step_size
         )
@@ -907,6 +947,7 @@ class Optimizer:
         ) = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
+        self._n_warmup = self._checked_warmup(n_warmup, method)
         self._timestep_mask = torch.ones(
             self._max_timesteps, len(self._start_time), dtype=torch.bool
         )
@@ -1538,12 +1579,30 @@ class Optimizer:
             )
         if self.simulator.execution_mode == "functional" and method[2] == "ad":
             self._setup_functional_objective(x0)
+        if getattr(self, "_n_warmup", 0) and self._functional_objective is None:
+            raise RuntimeError(
+                "n_warmup needs the functional objective: construct "
+                "Simulator(model, execution_mode='functional') and use an 'ad' method."
+            )
         if self._parameter_variables and self._functional_objective is None:
             raise RuntimeError(
                 "Parameter decision variables need the functional objective: construct "
                 "Simulator(model, execution_mode='functional') and use an 'ad' method."
             )
         return x0, bounds_obj
+
+    def _checked_warmup(self, n_warmup, method) -> int:
+        """``n_warmup`` checked before anything is simulated: at least 0,
+        fewer than the steps of the shortest period, and not with the
+        collocation transcription (whose objective has no warm-up mask)."""
+        n = int(n_warmup)
+        if n < 0:
+            raise ValueError(f"n_warmup must be >= 0, got {n}")
+        if n and n >= min(self._n_timesteps):
+            raise ValueError(f"n_warmup={n} leaves no step of the shortest period ({min(self._n_timesteps)} steps)")
+        if n and isinstance(method, (tuple, list)) and len(method) > 3 and method[3] == "collocation":
+            raise ValueError("n_warmup is not supported with the collocation transcription")
+        return n
 
     def _split_variables(self):
         """``(trajectories, parameters)``: a decision variable naming an output
