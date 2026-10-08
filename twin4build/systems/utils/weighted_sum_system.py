@@ -65,6 +65,9 @@ class WeightedSumSystem(core.System):
             value = torch.as_tensor(value, dtype=torch.float64).reshape(-1)
             self._weights = [float(v) for v in value]
         self._w = None
+        # Batching builds a meta from the constructor's arguments: declared here, the weights both keep sums with
+        # different weights apart (they enter the batching signature) and reach the meta of sums that share them.
+        self._batch_init_kwargs = {"weights": None if self._weights is None else list(self._weights)}
 
     def initialize(
         self,
