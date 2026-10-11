@@ -187,6 +187,10 @@ class FunctionalEstimationObjective:
           (a wall, the shared interior) is held tight, a light one (room
           air, a radiator) keeps its range tolerance, a state that holds no
           heat (CO2, a controller's memory) too.
+        * ``ties``: one flag per window boundary, present only when some
+          window does not start where the one before ends (the
+          ``continuity_gaps`` option): a boundary flagged ``False`` has no
+          defect, so the window after a gap starts free like the first.
 
         The tolerance is a penalty weight, not a hard limit: a fit may still
         buy a better fit of a window with a jump at its start.
@@ -227,6 +231,13 @@ class FunctionalEstimationObjective:
             return
         dev, dtype = Y0.device, Y0.dtype
         index_t = torch.as_tensor(index, dtype=torch.long, device=dev)
+        ties = config.get("ties")
+        if ties is not None:
+            assert len(ties) == P - 1, (len(ties), P)
+            self.init_tie = torch.as_tensor([1.0 if t else 0.0 for t in ties], dtype=dtype, device=dev).reshape(-1, 1)
+            LOGGER.info(
+                "multiple shooting: %d of %d window boundaries are gaps, not tied", sum(not t for t in ties), P - 1
+            )
         # Every window's initial state is a variable, the first window's
         # too (boxed around its recorded value and pinned by its own first
         # measurements; no defect column, there is no window before it), so
@@ -269,6 +280,8 @@ class FunctionalEstimationObjective:
         # and ending far from it) is indistinguishable from one the fit chose
         low, high = x0.clone(), x0.clone()
         previous_end = end0[:-1, index_t]  # the ends of windows 0 .. P-2
+        if ties is not None:  # across a gap the window before belongs to another span: its end widens nothing
+            previous_end = torch.where(torch.as_tensor(ties, device=dev).reshape(-1, 1), previous_end, x0[1:])
         low[1:] = torch.minimum(low[1:], previous_end)
         high[1:] = torch.maximum(high[1:], previous_end)
         lb, ub = low - half, high + half
@@ -330,9 +343,12 @@ class FunctionalEstimationObjective:
 
     def _defects(self, end: torch.Tensor, Y0: torch.Tensor):
         """``(Y_end[p] - Y0[p + 1]) / sd`` over the tied states:
-        ``(..., P-1, n_slow)``."""
+        ``(..., P-1, n_slow)``; zero across a gap between periods."""
         idx = self.init_index
         gap = end[..., :-1, :][..., idx] - Y0[..., 1:, :][..., idx]
+        tie = getattr(self, "init_tie", None)
+        if tie is not None:
+            gap = gap * tie
         return gap / self.init_sd
 
     def initial_state(self, x) -> dict:
