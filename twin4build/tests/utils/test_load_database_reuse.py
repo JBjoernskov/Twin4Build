@@ -32,6 +32,7 @@ class FakeServer:
         self.data = data  # point -> pd.Series
         self.connections = []
         self.queries = []
+        self.fetched = []  # the parameters of every data query
         self.down = False
 
     def connect(self, conn_string):
@@ -78,6 +79,7 @@ class FakeCursor:
         if "information_schema" in query:
             self.one = {"exists": True}
         else:
+            self.conn.server.fetched.append(list(params))
             self.all = self.conn.server.rows(*params)
 
     def fetchone(self):
