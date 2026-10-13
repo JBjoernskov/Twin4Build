@@ -79,6 +79,12 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   logs the largest jumps, and
   `twin4build.estimator._continuity.continuity_summary` ranks them and marks
   the states re-set to one side at every boundary.
+- Multiple shooting across gaps (#262): with `continuity_gaps=True` the
+  periods may leave gaps between them, so one fit can cover several spans of
+  data (two seasons or two years).  A period that does not start where the
+  one before ends is not tied to it (no defect, its box not widened by the
+  other span's end): it starts free like the first period, while the periods
+  within each span stay tied.  Contiguous periods behave as before.
 - `System.state_heat_capacities()` gives every state's capacity [J/K]
   (`NaN` for a state that holds no heat); the room, wall, radiator and
   thermal-mass node declare theirs, composites and fused blocks concatenate

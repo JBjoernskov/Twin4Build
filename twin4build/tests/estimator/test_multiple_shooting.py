@@ -326,6 +326,17 @@ class TestMultipleShooting(unittest.TestCase):
             _estimator("cpu", shooting=MS, gap_hours=1)
         self.assertIn("contiguous", str(raised.exception))
 
+    def test_a_gap_drops_the_tie_across_it(self):
+        # continuity_gaps: periods from two spans of data; the window after a gap starts free, like the first
+        est = _estimator("cpu", shooting=dict(MS, continuity_gaps=True), gap_hours=1)
+        obj = est._functional_objective
+        self.assertEqual(float(obj.init_tie.abs().sum()), 0.0)
+        theta = torch.tensor(np.asarray(est._last_x_norm, dtype=np.float64), dtype=torch.float64)
+        _Ms, defects = obj._rollout(obj._denorm(theta), obj._denorm_init(obj.init_x0_norm))
+        self.assertEqual(float(defects.abs().max()), 0.0)
+        # contiguous periods keep every tie, with or without the option
+        self.assertIsNone(getattr(_estimator("cpu", shooting=dict(MS, continuity_gaps=True))._functional_objective, "init_tie", None))
+
     def test_the_options_belong_to_their_transcription(self):
         """The tie's options need the multiple_shooting transcription and hold
         for the whole fit, which has one phase; the old keyword arguments are

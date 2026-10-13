@@ -655,8 +655,8 @@ class Estimator:
                 next by a continuity defect: one residual column per state,
                 divided by the state's tolerance.  The periods must be
                 contiguous (each starts where the one before ends, else
-                ``ValueError``) and of equal length, and the fit has one
-                phase (no ``schedule`` of several).
+                ``ValueError``; see ``continuity_gaps``) and of equal length,
+                and the fit has one phase (no ``schedule`` of several).
 
                 - "continuity_sd_rel" (default 0.01): a state's tolerance is
                   this fraction of how much the state varies over the
@@ -667,6 +667,11 @@ class Estimator:
                   (``System.state_heat_capacities``): a jump in a wall or the
                   shared interior costs by the heat it creates, a jump in
                   room air or a radiator hardly more than its range allows.
+                - "continuity_gaps" (default False): the periods may leave
+                  gaps between them (several spans of data in one fit).  A
+                  period that does not start where the one before ends is
+                  not tied to it: it starts free, like the first period,
+                  while the periods within each span stay tied.
 
                 The result carries the estimated states
                 (``estimated_initial_state_instances``) and the jumps at the
@@ -4551,6 +4556,7 @@ SHOOTING_TRANSCRIPTIONS = ("single_shooting", "multiple_shooting")
 _CONTINUITY_KEYS = {
     "continuity_sd_rel": "sd_rel",
     "continuity_energy_tol": "energy_tol",
+    "continuity_gaps": "gaps",
 }
 INITIAL_STATE_OPTIONS = frozenset(_CONTINUITY_KEYS)
 
@@ -4562,14 +4568,26 @@ def _initial_state_config(transcription, options, start_time, end_time):
     defects (``multiple_shooting``)."""
     given = {name: options.pop(name) for name in list(options) if name in INITIAL_STATE_OPTIONS}
     if transcription == "multiple_shooting":
-        _check_contiguous_periods(start_time, end_time)
-        return {_CONTINUITY_KEYS[name]: value for name, value in given.items()}
+        if not given.get("continuity_gaps", False):
+            _check_contiguous_periods(start_time, end_time)
+        config = {_CONTINUITY_KEYS[name]: value for name, value in given.items()}
+        ties = _period_ties(start_time, end_time)
+        if not all(ties):
+            config["ties"] = ties
+        return config
     if given:
         raise ValueError(
             f"{sorted(given)} tie the periods together: options of the multiple_shooting transcription, "
             "method=(library, optimizer, mode, 'multiple_shooting')"
         )
     return None
+
+
+def _period_ties(start_time, end_time) -> list:
+    """Whether each period starts where the one before ends (``P - 1`` flags)."""
+    starts = list(start_time) if isinstance(start_time, (list, tuple)) else [start_time]
+    ends = list(end_time) if isinstance(end_time, (list, tuple)) else [end_time]
+    return [ends[p] == starts[p + 1] for p in range(len(starts) - 1)]
 
 
 def _check_contiguous_periods(start_time, end_time) -> None:
@@ -4581,7 +4599,8 @@ def _check_contiguous_periods(start_time, end_time) -> None:
         if ends[p] != starts[p + 1]:
             raise ValueError(
                 f"multiple_shooting ties period {p + 2}'s start to period {p + 1}'s end, but period {p + 1} ends "
-                f"at {ends[p]} and period {p + 2} starts at {starts[p + 1]}; give contiguous periods"
+                f"at {ends[p]} and period {p + 2} starts at {starts[p + 1]}; give contiguous periods, or "
+                "continuity_gaps=True to leave the tie out across a gap"
             )
 
 
