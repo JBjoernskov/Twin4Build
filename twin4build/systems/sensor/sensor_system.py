@@ -720,21 +720,50 @@ class SensorSystem(core.System):
             if self.use_df:
                 if self.df is None:
                     raise ValueError("df must be provided when use_df=True.")
-            self.time_series_input = TimeSeriesInputSystem(
-                id=f"time series input - {self.id}",
-                df=self.df,
-                filename=self.filename,
-                date_column=self.datecolumn,
-                value_column=self.valuecolumn,
-                use_spreadsheet=self.use_spreadsheet,
-                use_database=self.use_database,
-                uuid=self.uuid,
-                dbconfig=self.dbconfig,
-                transformation=self._transformation,
-            )
             # ``allow_missing``: NaN samples in this sensor's series are
             # unscored gaps, not an error (a duct sensor while the fan is off).
-            self.time_series_input.allow_missing = bool(getattr(self, "allow_missing", False))
+            allow_missing = bool(getattr(self, "allow_missing", False))
+            # The series input is kept while its source is unchanged: it
+            # caches by window (start, end, step), so initializing again over
+            # the same windows (every simulate of a model) skips the load.  A
+            # new frame (``set_series``), file, point, database,
+            # transformation or ``allow_missing`` builds a new input.
+            source = (
+                self.df,
+                self._transformation,
+                (
+                    self.filename,
+                    self.datecolumn,
+                    self.valuecolumn,
+                    self.use_spreadsheet,
+                    self.use_database,
+                    self.uuid,
+                    None if self.dbconfig is None else dict(self.dbconfig),
+                    allow_missing,
+                ),
+            )
+            kept = getattr(self, "_series_source", None)
+            if (
+                self.time_series_input is None
+                or kept is None
+                or kept[0] is not source[0]
+                or kept[1] is not source[1]
+                or kept[2] != source[2]
+            ):
+                self.time_series_input = TimeSeriesInputSystem(
+                    id=f"time series input - {self.id}",
+                    df=self.df,
+                    filename=self.filename,
+                    date_column=self.datecolumn,
+                    value_column=self.valuecolumn,
+                    use_spreadsheet=self.use_spreadsheet,
+                    use_database=self.use_database,
+                    uuid=self.uuid,
+                    dbconfig=self.dbconfig,
+                    transformation=self._transformation,
+                )
+                self.time_series_input.allow_missing = allow_missing
+                self._series_source = source
             self.time_series_input.initialize(
                 start_time=start_time,
                 end_time=end_time,

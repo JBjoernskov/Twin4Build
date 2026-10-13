@@ -433,6 +433,80 @@ def load_database_config(config_file=None, section="timescaledb"):
     return config
 
 
+#: An empty window is cached only once it ended this long ago: rows still
+#: arriving (an ingestion delay) must not stay cached as missing.
+EMPTY_WINDOW_CACHE_AGE = datetime.timedelta(days=2)
+
+# One open connection per process and server (a psycopg2 connection does not
+# survive a fork), keyed by a hash of the connection string, and the tables
+# already found on each.
+_CONNECTIONS = {}
+_TABLES = set()
+
+
+def _connection(conn_string):
+    """This process's connection to the server, and whether it was open
+    already."""
+    key = (os.getpid(), hashlib.sha256(conn_string.encode("utf-8")).hexdigest())
+    conn = _CONNECTIONS.get(key)
+    if conn is not None and not conn.closed:
+        return key, conn, True
+    conn = psycopg2.connect(conn_string)
+    conn.autocommit = True  # reads only: no transaction stays open between loads
+    _CONNECTIONS[key] = conn
+    return key, conn, False
+
+
+def _drop_connection(key):
+    conn = _CONNECTIONS.pop(key, None)
+    if conn is not None:
+        try:
+            conn.close()
+        except psycopg2.Error:
+            pass
+    _TABLES.difference_update({t for t in _TABLES if t[0] == key})
+
+
+def _fetch(conn_string, table_name, query, params):
+    """The rows of ``query``.  The table's existence is checked once per
+    connection.  A connection kept open from an earlier load that the server
+    has dropped since (an idle timeout) is opened again, once."""
+
+    def run(key, conn):
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            if (key, table_name) not in _TABLES:
+                cursor.execute(
+                    """
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_name = %s
+                    );
+                """,
+                    (table_name,),
+                )
+                if not cursor.fetchone()["exists"]:
+                    raise Exception(
+                        f"Table {table_name} does not exist in the database"
+                    )
+                _TABLES.add((key, table_name))
+            cursor.execute(query, params)
+            return cursor.fetchall()
+
+    key, conn, kept = _connection(conn_string)
+    try:
+        return run(key, conn)
+    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+        _drop_connection(key)
+        if not kept:
+            raise
+    key, conn, _ = _connection(conn_string)
+    try:
+        return run(key, conn)
+    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+        _drop_connection(key)
+        raise
+
+
 def load_from_database(
     start_time: datetime.datetime,
     end_time: datetime.datetime,
@@ -523,7 +597,8 @@ def load_from_database(
        clip (bool, optional): Whether to clip data to the specified start_time and end_time range.
            If False, all available data within the time range will be returned. Defaults to True.
        cache (bool, optional): Whether to cache the results in pickle files for faster subsequent loads.
-           Cache files are stored in generated_files/cached_data/ directory. Defaults to True.
+           Cache files are stored in generated_files/cached_data/ directory. A window without rows is
+           cached too once it ended more than ``EMPTY_WINDOW_CACHE_AGE`` (two days) ago. Defaults to True.
        cache_root (str, optional): Root directory for cache files. If None, uses the default Twin4Build cache location.
        tz (str, optional): Timezone for data processing. Can be timezone name (e.g., "Europe/Copenhagen"),
            UTC offset (e.g., "UTC+2", "GMT-8"), or "UTC". Defaults to "Europe/Copenhagen".
@@ -577,6 +652,8 @@ def load_from_database(
 
     Note:
        The function requires psycopg2 to be installed for PostgreSQL connectivity.
+       One connection per process and server is kept open and reused by later loads;
+       a kept connection the server has closed meanwhile is opened again.
        Database schema should have columns: time, id, value (configurable).
        Timezone handling follows the same logic as load_from_spreadsheet.
        Caching uses the same mechanism as load_from_spreadsheet for consistency.
@@ -631,97 +708,35 @@ def load_from_database(
     else:
         conn_string = f"host={db_host} port={db_port} dbname={db_name} user={db_user}"
 
-    try:
-        # Connect to database
-        conn = psycopg2.connect(conn_string)
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Build full table name with schema if provided
-
-        # Check if table exists
-        # if schema:
-        #     cursor.execute(
-        #         """
-        #         SELECT EXISTS (
-        #             SELECT FROM information_schema.tables
-        #             WHERE table_schema = %s AND table_name = %s
-        #         );
-        #     """,
-        #         (schema, table_name),
-        #     )
-        # else:
-        cursor.execute(
-            """
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = %s
-            );
-        """,
-            (table_name,),
-        )
-
-        if not cursor.fetchone()["exists"]:
-            raise Exception(f"Table {table_name} does not exist in the database")
-
-        # Build WHERE clause
-        where_conditions = []
-        params = []
-
-        # Get data for +/- 3 steps of buffer
-        buffer = datetime.timedelta(seconds=3 * step_size)
-        query_start_time = start_time - buffer
-        query_end_time = end_time + buffer
-
-        where_conditions.append(f"{id_column} = %s")
-        params.append(sensor_id)
-
-        where_conditions.append(f"{time_column} >= %s")
-        params.append(query_start_time)
-
-        where_conditions.append(f"{time_column} < %s")
-        params.append(query_end_time)
-        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-
-        # Execute query
-        query = f"""
+    # Get data for +/- 3 steps of buffer
+    buffer = datetime.timedelta(seconds=3 * step_size)
+    query_start_time = start_time - buffer
+    query_end_time = end_time + buffer
+    where_clause = f"{id_column} = %s AND {time_column} >= %s AND {time_column} < %s"
+    params = [sensor_id, query_start_time, query_end_time]
+    query = f"""
             SELECT {time_column}, {value_column} 
             FROM {table_name} 
             WHERE {where_clause}
             ORDER BY {time_column}
         """
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-        if len(rows) > 0:
-            pass
-        else:
-            q = query % tuple(params)
-            LOGGER.warning("No rows returned from query:\n%s.", q)
-            # # Debug: Check what sensor IDs exist in the database
-            # try:
-            #     cursor.execute(
-            #         f"SELECT DISTINCT {id_column} FROM {full_table_name} ORDER BY {id_column}"
-            #     )
-            #     existing_sensors = cursor.fetchall()
-            #     print(
-            #         f"Available sensor IDs in database: {[row[id_column] for row in existing_sensors]}"
-            #     )
-            # except Exception as e:
-            #     print(f"Could not check existing sensors: {e}")
-
-        if "conn" in locals():
-            conn.close()
-
+    try:
+        rows = _fetch(conn_string, table_name, query, params)
     except Exception as e:
-        if "conn" in locals():
-            conn.close()
         LOGGER.error("Error loading data from database: %s.", e)
         raise
 
     if not rows:
+        LOGGER.warning("No rows returned from query:\n%s.", query % tuple(params))
         LOGGER.warning("No data found for table %s.", table_name)
-        return pd.DataFrame()
+        df = pd.DataFrame()
+        if cache and query_end_time <= datetime.datetime.now(
+            query_end_time.tzinfo
+        ) - EMPTY_WINDOW_CACHE_AGE:
+            # A past window without rows: the next load skips the database.
+            df.to_pickle(cached_filename)
+        return df
 
     # Convert to DataFrame
     df = pd.DataFrame(rows)
