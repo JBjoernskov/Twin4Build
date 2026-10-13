@@ -42,7 +42,27 @@ class PIDControllerSystem(core.System, nn.Module):
     r"""
     PID Controller System.
 
-    This class implements a PID controller with a differentiable saturation function.
+    A positional PID with a differentiable output saturation and an
+    integral that does not wind up:
+
+    .. math::
+
+        e_t = \pm(sp_t - y_t), \qquad
+        p_t = k_p e_t + k_p \frac{T_d}{\Delta t} (e_t - e_{t-1})
+
+        I_t = \min\bigl(\max(I_{t-1} + k_p \tfrac{\Delta t}{T_i} e_t,\;
+              \min(I_{t-1}, u_{min} - p_t)),\; \max(I_{t-1}, u_{max} - p_t)\bigr)
+
+        u_t = \mathrm{clamp}(p_t + I_t, u_{min}, u_{max})
+
+    The integral moves until the output saturates and no further, and it
+    holds its value while the output saturates on the error's side
+    (conditional integration).  With :math:`T_i \to \infty` the integral
+    keeps its start value (zero) and the controller is purely proportional
+    about its setpoint, :math:`u = \mathrm{clamp}(k_p e)`: a loop that acts
+    only above a threshold (a CO2 loop opening a damper above 800 ppm) is
+    the same structure as a PI loop.  Unsaturated, the output equals the
+    velocity-form PID's.
 
     Args:
         kp: Proportional gain
@@ -104,11 +124,11 @@ class PIDControllerSystem(core.System, nn.Module):
 
         self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar(0)}
-        # Velocity-form PID memory as a first-class state (width 3):
-        # [u_prev, err_prev, err_prev_m1].  Zero initial condition.
+        # The PID's memory as a first-class state (width 2): [integral,
+        # err_prev].  Zero initial condition.
         self._state = tps.State(
-            n_v=3, init_value=0.0,
-            names=[f"{self.id}.u_prev", f"{self.id}.err_prev", f"{self.id}.err_prev_m1"],
+            n_v=2, init_value=0.0,
+            names=[f"{self.id}.integral", f"{self.id}.err_prev"],
         )
         self._config = {
             "parameters": ["kp", "Ti", "Td", "output_min", "output_max", "is_reverse"]
@@ -179,8 +199,8 @@ class PIDControllerSystem(core.System, nn.Module):
         self.output_min = self.output_min.expand_to_n_c(self.n_c)
         self.output_max = self.output_max.expand_to_n_c(self.n_c)
 
-        # Allocate the velocity-form PID state (n_s, n_c, 3), zero initial value.
-        self._state.initialize(n_s=batch_size, n_c=self.n_c, n_v=3, force=True)
+        # Allocate the PID state (n_s, n_c, 2), zero initial value.
+        self._state.initialize(n_s=batch_size, n_c=self.n_c, n_v=2, force=True)
 
         # Cache step_size as tensor to avoid creating it every step
         # step_size may be a list with one value per batch element, so unsqueeze(1) gives shape (batch, 1)
@@ -244,21 +264,10 @@ class PIDControllerSystem(core.System, nn.Module):
         )
 
     def _compute_pid_coefficients(self, kp, Ti, Td, step_size):
-        """
-        Pre-compute PID coefficients to reduce per-step tensor operations.
-
-        The incremental PID formula is:
-            du = kp * (c0 * err + c1 * err_prev + c2 * err_prev_m1)
-        where:
-            c0 = 1 + dt/Ti + Td/dt
-            c1 = -1 - 2*Td/dt
-            c2 = Td/dt
-        """
-        Td_over_step = Td / step_size
-        c0 = kp * (1 + step_size / Ti + Td_over_step)  # coefficient for err
-        c1 = kp * (-1 - 2 * Td_over_step)  # coefficient for err_prev
-        c2 = kp * Td_over_step  # coefficient for err_prev_m1
-        return c0, c1, c2
+        """The gains per step: proportional ``kp``, integral ``kp * dt / Ti``
+        and derivative ``kp * Td / dt`` (computed once per parameter set,
+        not once per step)."""
+        return kp, kp * step_size / Ti, kp * Td / step_size
 
     def do_step(
         self,
@@ -268,7 +277,7 @@ class PIDControllerSystem(core.System, nn.Module):
         step_index: int,
     ) -> None:
         """Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the velocity-form PID math).  ``forward``'s identity-keyed
+        truth for the PID math).  ``forward``'s identity-keyed
         coefficient cache replaces the old per-attribute caching: the params
         dict from ``_forward_params`` and ``self._step_size_tensor`` are both
         identity-stable across steps, so the coefficients are recomputed only
@@ -278,7 +287,7 @@ class PIDControllerSystem(core.System, nn.Module):
             "actualValue": self.input["actualValue"].get(),
         }
         x_next, outs = self.forward(
-            self._state.get(),  # (n_s, n_c, 3) = [u_prev, err_prev, err_prev_m1]
+            self._state.get(),  # (n_s, n_c, 2) = [integral, err_prev]
             inputs,
             self._forward_params(),
             self._step_size_tensor,
@@ -286,7 +295,7 @@ class PIDControllerSystem(core.System, nn.Module):
         self._state.set(x_next)
         self.output["inputSignal"]._set(outs["inputSignal"], i_t=step_index)
 
-    # Continuous state (velocity-form memory [u_prev, err_prev, err_prev_m1]) is
+    # Continuous state (the memory [integral, err_prev]) is
     # the ``tps.State`` ``self._state``; get/set/enumeration come from the System
     # base class generically.
 
@@ -295,10 +304,10 @@ class PIDControllerSystem(core.System, nn.Module):
     PARAM_NAMES = ("kp", "Ti", "Td", "output_min", "output_max")
 
     def forward(self, x, inputs, params, sample_time, transform_mode=None):
-        """Pure one-step velocity-form PID ``(state, inputs, params) -> (new_state, outputs)``.
+        """Pure one-step PID ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``x`` is the memory
-        ``(n_c, 3)`` = ``[u_prev, err_prev, err_prev_m1]``; ``inputs`` provides
+        ``(n_c, 2)`` = ``[integral, err_prev]``; ``inputs`` provides
         ``setpointValue`` / ``actualValue``; ``params`` a dict for
         :attr:`PARAM_NAMES`.  Returns ``(x_next, {"inputSignal"})``.
         """
@@ -323,7 +332,7 @@ class PIDControllerSystem(core.System, nn.Module):
                 )
                 self._fwd_coef_cache = cache
             coefficients = cache[2]
-        c0, c1, c2 = coefficients
+        kp, ki, kd = coefficients
         err = inputs["setpointValue"] - inputs["actualValue"]
         reverse = self.is_reverse
         if isinstance(reverse, torch.Tensor):
@@ -331,9 +340,16 @@ class PIDControllerSystem(core.System, nn.Module):
             err = torch.where(reverse.to(device=err.device), err, -err)
         elif reverse is False:
             err = -err
-        u_prev, err_prev, err_prev_m1 = x[..., 0], x[..., 1], x[..., 2]
-        u = u_prev + (c0 * err + c1 * err_prev + c2 * err_prev_m1)
-        u = clamp(u, lower=params["output_min"], upper=params["output_max"])
-        return torch.stack([u, err, err_prev], dim=-1), {"inputSignal": u}
+        integral, err_prev = x[..., 0], x[..., 1]
+        lower, upper = params["output_min"], params["output_max"]
+        p_d = kp * err + kd * (err - err_prev)
+        # conditional integration: toward saturating the output and no
+        # further; held while the output saturates on the error's side
+        integral = torch.minimum(
+            torch.maximum(integral + ki * err, torch.minimum(integral, lower - p_d)),
+            torch.maximum(integral, upper - p_d),
+        )
+        u = clamp(p_d + integral, lower=lower, upper=upper)
+        return torch.stack([integral, err], dim=-1), {"inputSignal": u}
 
 

@@ -96,6 +96,32 @@ def _commands(model, ids):
     return {cid: _command(*model._component_to_meta[cid]) for cid in ids}
 
 
+class TestBlocks(unittest.TestCase):
+    def test_flat_slot_weights_keep_one_block_per_loop(self):
+        """A batched controller holds each loop's gate-slot weights flat, one
+        row per loop: estimated, they belong to their own loop, so two loops
+        stay two independent blocks of the estimation problem (they were one,
+        and the HTR ring's 317 loops two dense blocks of 1120 and 1570
+        parameters under one trust region)."""
+        model = _model([_controller(k, slots=2) for k in range(2)], slots=2)
+        batched = model.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=HOURS)], step_size=STEP)
+        meta = next(c for c in batched.components.values() if isinstance(c, ControllerIdentificationPISystem))
+        self.assertEqual(tuple(meta.gamma_gate_0.get().shape), (4,))  # flat: two loops x two slots
+        theta_spec = [(meta, "candidate_0_0.kp", slice(0, 2)), (meta, "gamma_gate_0", slice(2, 6))]
+        simulator = tb.Simulator(batched, execution_mode="functional", execution_backend="eager")
+        commands = [batched.components[f"cmd{k}"] for k in range(2)]
+        _, fm = simulator.build_functional_model(theta_spec=theta_spec, measurements=commands, step_size=STEP)
+        fm.prepare_routes(torch.device("cpu"))
+        theta_block, column_block, n_blocks = fm.index_coupling()
+        self.assertEqual(n_blocks, 2)
+        kp0, kp1 = theta_block[0], theta_block[1]
+        self.assertNotEqual(kp0, kp1)
+        self.assertEqual(list(theta_block[2:]), [kp0, kp0, kp1, kp1])  # each loop's two slot weights with its kp
+        self.assertTrue((column_block >= 0).all())
+
+
 class TestBatchingIdentifiedControllers(unittest.TestCase):
     def test_one_meta_steps_like_its_instances(self):
         ids = [f"cits{k}" for k in range(3)]
