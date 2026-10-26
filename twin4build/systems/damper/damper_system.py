@@ -91,6 +91,7 @@ class DamperSystem(core.System, nn.Module):
         c: Optional[float] = None,
         c_tied: Optional[bool] = None,
         exhaustFlowRatio: float = 1.0,
+        exhaust_modelled: bool = True,
         **kwargs,
     ):
         """
@@ -100,6 +101,9 @@ class DamperSystem(core.System, nn.Module):
             nominalAirFlowRate: Nominal air flow rate [kg/s].
             exhaustFlowRatio: The terminal's exhaust flow as a ratio of its
                 supply flow [-] (``exhaustAirFlowRate`` output); estimable.
+            exhaust_modelled: ``False`` when the terminal's exhaust is
+                modelled elsewhere (a unit with explicit exhaust terminals):
+                the ratio is then not estimated.
 
         """
         super().__init__(**kwargs)
@@ -130,12 +134,17 @@ class DamperSystem(core.System, nn.Module):
             torch.tensor(exhaustFlowRatio, dtype=tps.float_dtype()),
             requires_grad=False,
         )
+        self.exhaust_modelled = bool(exhaust_modelled)
         # Define inputs and outputs using Scalar (n_c handles vectorization).
         # ``fanSpeed`` gates the flow: a pressure-controlled branch passes
         # nothing while the unit's fan is stopped (1.0 when unwired).
+        # ``exhaustRatioScale`` multiplies the exhaust ratio step by step (a
+        # ratio as operated, from data; 1.0 when unwired): the exhaust is then
+        # ``exhaustFlowRatio * exhaustRatioScale * airFlowRate``.
         self._input = {
             "damperPosition": tps.Scalar(),
             "fanSpeed": tps.Scalar(1.0, optional=True),
+            "exhaustRatioScale": tps.Scalar(1.0, optional=True),
         }
         self._output = {
             "damperPosition": tps.Scalar(),
@@ -172,7 +181,7 @@ class DamperSystem(core.System, nn.Module):
         }
 
         self._config = {
-            "parameters": ["a", "nominalAirFlowRate", "c", "c_tied", "exhaustFlowRatio"]
+            "parameters": ["a", "nominalAirFlowRate", "c", "c_tied", "exhaustFlowRatio", "exhaust_modelled"]
         }
 
         self.INITIALIZED = False
@@ -196,8 +205,15 @@ class DamperSystem(core.System, nn.Module):
 
     def get_estimable_parameters(self):
         """Own estimable parameters; ``c`` only once untied (tied, it is
-        derived from ``a`` and estimating it would change nothing)."""
-        return [e for e in super().get_estimable_parameters() if not (self._c_tied and e[1] == "c")]
+        derived from ``a`` and estimating it would change nothing), and
+        ``exhaustFlowRatio`` only while the terminal carries its exhaust
+        (``exhaust_modelled``; a unit with explicit exhaust terminals models
+        it elsewhere)."""
+        return [
+            e for e in super().get_estimable_parameters()
+            if not (self._c_tied and e[1] == "c")
+            and not (e[1] == "exhaustFlowRatio" and not self.exhaust_modelled)
+        ]
 
     @property
     def config(self):
@@ -312,6 +328,7 @@ class DamperSystem(core.System, nn.Module):
         inputs = {
             "damperPosition": self.input["damperPosition"].get(),
             "fanSpeed": self.input["fanSpeed"].get(),
+            "exhaustRatioScale": self.input["exhaustRatioScale"].get(),
         }
         _, outs = self.forward(None, inputs, self._forward_params(), step_size)
         self.output["damperPosition"]._set(
@@ -343,7 +360,8 @@ class DamperSystem(core.System, nn.Module):
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` provides
         ``damperPosition`` and, optionally, ``fanSpeed`` (no gating without
-        it); ``params`` a dict for :attr:`PARAM_NAMES`.  ``x`` (an empty
+        it) and ``exhaustRatioScale`` (the ratio as given without it);
+        ``params`` a dict for :attr:`PARAM_NAMES`.  ``x`` (an empty
         state) is passed through.  Returns
         ``(x, {"damperPosition", "airFlowRate", "exhaustAirFlowRate"})``.
         """
@@ -357,6 +375,9 @@ class DamperSystem(core.System, nn.Module):
         ratio = params.get("exhaustFlowRatio")
         if ratio is None:
             ratio = self.exhaustFlowRatio.get()
+        scale = inputs.get("exhaustRatioScale")
+        if scale is not None:
+            ratio = ratio * scale
         return x, {
             "damperPosition": dp,
             "airFlowRate": air_flow_rate,

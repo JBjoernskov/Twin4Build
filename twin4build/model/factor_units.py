@@ -14,6 +14,11 @@ in place on the model, into the factored form::
     return junction --> core.totalExhaustAirFlowRate, core.returnAirTemperature
     core (the unit's id, coil, heat recovery and fans) --> whatever read the unit's scalar outputs
 
+A unit with an explicit exhaust side (``returnAirFlowRate`` wired, see
+:class:`AirHandlingUnitSystem`) has no per-branch exhaust: its return
+junction takes the exhaust terminals' streams and their temperatures slot
+for slot, and the terminals' exhaust ratio is zero.
+
 The damper parameters, the exhaust ratio and the device's submodels are the
 unit's own, so the factored model simulates exactly as the composite did
 (tested step for step).  What changes is the structure the estimator sees:
@@ -57,6 +62,7 @@ CORE_OUTPUTS = (
     "coolingPower",
     "supplyFanPower",
     "exhaustFanPower",
+    "electricityPower",
 )
 #: The unit's scalar inputs the core takes under the same names.
 CORE_INPUTS = ("supplyAirTemperatureSetpoint", "outdoorAirTemperature")
@@ -123,8 +129,23 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
         raise ValueError(f"|{unit.id}|: no damper command is wired, there is no branch to factor")
     follows = bool(unit.exhaust_follows_supply)
     per_branch_ratio = bool(unit.exhaust_ratio_per_branch)
+    # An explicit exhaust side: the return junction mixes the exhaust
+    # terminals' streams, and the branches carry no exhaust of their own.
+    explicit = bool(unit.explicit_return)
 
     # --- read the wiring before anything is removed ---------------------------------
+    return_flows = {in_v: (s, p, out_v) for s, p, out_v, in_v in _sources(unit, "returnAirFlowRate")}
+    return_temperatures = {in_v: (s, p, out_v) for s, p, out_v, in_v in _sources(unit, "returnAirTemperature")}
+    # stream k's temperature slot: the unit's map, or slot k
+    stream_slots = list(unit.return_temperature_slots) or sorted(return_flows, key=lambda k: -1 if k is None else k)
+    if explicit and (
+        len(stream_slots) != len(return_flows)
+        or set(stream_slots) != set(return_temperatures)
+    ):
+        raise ValueError(
+            f"|{unit.id}|: return streams {sorted(return_flows, key=str)} with flows map onto temperature slots "
+            f"{sorted(set(stream_slots))}, and {sorted(return_temperatures, key=str)} have temperatures"
+        )
     commands = {in_v: (s, p, out_v) for s, p, out_v, in_v in _sources(unit, "supplyDamperPosition")}
     exhaust_commands = {
         in_v: (s, p, out_v) for s, p, out_v, in_v in _sources(unit, "exhaustDamperPosition")
@@ -165,7 +186,8 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
     exhaust_dampers: List[DamperSystem] = []
     for b in range(n):
         ratio = (
-            _per_branch(unit.exhaustFlowRatio, b, n) if (follows and per_branch_ratio)
+            0.0 if explicit  # the branches carry no exhaust (as the composite)
+            else _per_branch(unit.exhaustFlowRatio, b, n) if (follows and per_branch_ratio)
             else float(torch.as_tensor(unit.exhaustFlowRatio.get()).reshape(-1)[0])
         )
         sd = unit.supply_damper
@@ -176,6 +198,7 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
                 nominalAirFlowRate=_per_branch(sd.nominalAirFlowRate, b, n),
                 c=None if sd.c_tied else _per_branch(sd.c, b, n),
                 exhaustFlowRatio=ratio if follows else 1.0,
+                exhaust_modelled=not explicit,
             )
         )
         if not follows:
@@ -199,7 +222,9 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
         else:
             branch_temperature_slots.append(0)
     return_junction = ReturnFlowJunctionSystem(
-        id=f"{unit_id}_return_junction", branch_temperature_slots=branch_temperature_slots
+        id=f"{unit_id}_return_junction",
+        # explicit streams: the unit's stream -> temperature slot map (empty: slot for slot)
+        branch_temperature_slots=list(unit.return_temperature_slots) if explicit else branch_temperature_slots,
     )
 
     core = AirHandlingUnitCoreSystem(id=unit_id)
@@ -234,6 +259,8 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
             exhaust_source = (e, "airFlowRate")
         for r, ip, in_v in exhaust_readers.get(b, []):
             _connect(model, exhaust_source[0], exhaust_source[1], r, ip, in_v=in_v)
+        if explicit:
+            continue
         if b in room_temperature:
             _connect(model, exhaust_source[0], exhaust_source[1], return_junction, "airFlowRateIn", in_v=b)
         else:
@@ -242,10 +269,16 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
                 "%s: branch %d has no room temperature; its exhaust is left out of the return junction",
                 unit_id, b,
             )
+    if explicit:
+        # the return streams, slot for slot, onto the junction
+        for k, (s, p, out_v) in return_flows.items():
+            _connect(model, s, p, return_junction, "airFlowRateIn", out_v=out_v, in_v=k)
+        for k, (s, p, out_v) in return_temperatures.items():
+            _connect(model, s, p, return_junction, "airTemperatureIn", out_v=out_v, in_v=k)
     # every room's temperature once, on its own slot of the return junction
     connected_rooms = set()
     for b in range(n):
-        if b not in room_temperature:
+        if explicit or b not in room_temperature:
             continue
         s, p, out_v = room_temperature[b]
         if (id(s), p) in connected_rooms:
@@ -263,8 +296,9 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
         for r, ip, in_v in readers:
             _connect(model, core, port, r, ip, in_v=in_v)
     LOGGER.info(
-        "%s: factored into %d terminal(s)%s, two junctions and the core unit",
+        "%s: factored into %d terminal(s)%s, two junctions and the core unit%s",
         unit_id, n, "" if follows else f" with {n} exhaust damper(s)",
+        f", the return from {len(return_flows)} explicit stream(s)" if explicit else "",
     )
     return {
         "core": core,

@@ -82,6 +82,19 @@ class AirHandlingUnitSystem(core.System, nn.Module):
       - exhaustTemperature: Exhaust air temperatures per branch (vector) [°C] [n_branches]
       - supplyAirTemperatureSetpoint: Desired supply air temperature [°C]
       - outdoorAirTemperature: Outdoor air temperature [°C]
+      - returnAirFlowRate: Optional. The return streams of explicit exhaust
+        terminals (vector) [kg/s] [n_streams]: the boxes that extract air
+        from rooms and corridors and return it to this unit.
+      - returnAirTemperature: Optional. The return streams' temperatures
+        (vector) [°C]: one slot per stream, or one per source with
+        ``return_temperature_slots`` mapping each stream to its source's slot
+        (several boxes extract one room or corridor)
+
+    With ``returnAirFlowRate`` wired the exhaust side is explicit: the unit's
+    return air is those streams, mixed by flow, and the per-branch exhaust
+    (``exhaustAirFlowRate``, the exhaust dampers, ``exhaustFlowRatio``) is
+    not modelled (zero, and not estimated).  Unwired, the return air is the
+    per-branch exhaust as before.
 
     Outputs:
       - supplyAirFlowRate: Supply air mass flow rate per branch [kg/s] [n_branches]
@@ -92,6 +105,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
       - coolingPower: Coil cooling power [W]
       - supplyFanPower: Supply fan electrical power [W]
       - exhaustFanPower: Exhaust/return fan electrical power [W]
+      - electricityPower: the unit's electricity, its two fans [W]
 
     Notes
     -----
@@ -114,6 +128,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         exhaust_follows_supply: bool = False,
         exhaustFlowRatio: float = 1.0,
         exhaust_ratio_per_branch: bool = False,
+        return_temperature_slots=None,
         **kwargs,
     ):
         """
@@ -205,6 +220,15 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         # One ratio per branch (zone-level imbalance is real: a BMS snapshot
         # showed 500 m3/h in / 250 out in one room with the floor balanced).
         self.exhaust_ratio_per_branch = bool(exhaust_ratio_per_branch)
+        # Explicit return streams: stream k's temperature is slot
+        # ``return_temperature_slots[k]`` of returnAirTemperature (empty: slot k).
+        # A list, or its comma-joined literal from a saved model (the loader
+        # turns a one-slot literal such as "0" into the integer 0).
+        if isinstance(return_temperature_slots, str):
+            return_temperature_slots = [int(v) for v in return_temperature_slots.split(",") if v.strip() != ""]
+        elif isinstance(return_temperature_slots, (int, float)) and not isinstance(return_temperature_slots, bool):
+            return_temperature_slots = [int(return_temperature_slots)]
+        self.return_temperature_slots = [int(v) for v in (return_temperature_slots or [])]
         self.exhaustFlowRatio = tps.Parameter(
             torch.tensor(exhaustFlowRatio, dtype=tps.float_dtype()),
             requires_grad=False,
@@ -224,6 +248,10 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             # ``_fan_gate`` (fully on above FAN_ON_SPEED).
             "supplyFanSpeed": tps.Scalar(1.0, optional=True),
             "exhaustFanSpeed": tps.Scalar(1.0, optional=True),
+            # The explicit exhaust side (see the class docstring): one slot
+            # per return stream, flow and temperature aligned.
+            "returnAirFlowRate": tps.Vector(optional=True),
+            "returnAirTemperature": tps.Vector(optional=True),
         }
         self._output = {
             "supplyAirFlowRate": tps.Vector(),  # Vector: one per branch
@@ -241,6 +269,8 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             "coolingPower": tps.Scalar(),
             "supplyFanPower": tps.Scalar(),
             "exhaustFanPower": tps.Scalar(),
+            # the unit's electricity: its two fans (what its electricity meter reads of the model)
+            "electricityPower": tps.Scalar(),
         }
 
         # Parameter configuration for calibration
@@ -272,7 +302,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             + hr_params
             + junction_params
             + fan_params
-            + ["exhaust_follows_supply", "exhaustFlowRatio", "exhaust_ratio_per_branch"]
+            + ["exhaust_follows_supply", "exhaustFlowRatio", "exhaust_ratio_per_branch", "return_temperature_slots"]
         }
         self.PARAM_NAMES = tuple(
             f"{sub_name}.{param_name}"
@@ -342,8 +372,28 @@ class AirHandlingUnitSystem(core.System, nn.Module):
                 output_port.initialize(n_t=max_timesteps, n_s=batch_size)
 
         # Exhaust branches read their room's exhaust temperature through the
-        # branch -> room map (None when the two are aligned one-to-one).
-        self._branch_room_index = self._exhaust_branch_map(n_v_exhaust)
+        # branch -> room map (None when the two are aligned one-to-one).  With
+        # an explicit exhaust side the branches carry no exhaust.
+        explicit = self.explicit_return
+        self._branch_room_index = None if explicit else self._exhaust_branch_map(n_v_exhaust)
+        n_streams = self.input["returnAirFlowRate"].n_v if explicit else None
+        self._return_temperature_index = None
+        if explicit:
+            n_temperature = self.input["returnAirTemperature"].n_v
+            slots = self.return_temperature_slots
+            if slots:
+                if len(slots) != n_streams or max(slots) >= n_temperature:
+                    raise ValueError(
+                        f"|{self.__class__.__name__}|{self.id}|: return_temperature_slots maps {len(slots)} streams "
+                        f"onto slots up to {max(slots)}; returnAirFlowRate has {n_streams} streams and "
+                        f"returnAirTemperature {n_temperature} slots"
+                    )
+                self._return_temperature_index = torch.tensor(slots, dtype=torch.long)
+            elif n_temperature != n_streams:
+                raise ValueError(
+                    f"|{self.__class__.__name__}|{self.id}|: returnAirFlowRate has {n_streams} "
+                    f"streams but returnAirTemperature {n_temperature}"
+                )
 
         # Set n_c for damper subcomponents: n_c_ahu * n_v (flattened from Vector shape)
         # Supply and exhaust can have different n_v values
@@ -360,7 +410,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
 
         # Initialize junction subcomponents - set n_input_ports based on n_v
         self.supply_junction.n_input_ports = n_v_supply
-        self.return_junction.n_input_ports = n_v_exhaust
+        self.return_junction.n_input_ports = n_streams if explicit else n_v_exhaust
         self.supply_junction.initialize(start_time, end_time, step_size)
         self.return_junction.initialize(start_time, end_time, step_size)
 
@@ -370,6 +420,16 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         self.supply_fan.initialize(start_time, end_time, step_size)
         self.exhaust_fan.initialize(start_time, end_time, step_size)
         self.INITIALIZED = True
+
+    @property
+    def explicit_return(self) -> bool:
+        """``True`` when the return air comes from explicit exhaust terminals:
+        something is wired into ``returnAirFlowRate`` (read off the wiring,
+        so it holds before ``initialize`` too)."""
+        return any(
+            cp.input_port == "returnAirFlowRate" and len(cp.connects_system_through) > 0
+            for cp in self.connects_at
+        )
 
     #: Fan speed (0-1) above which a fan is fully "on" for the branch flows.
     FAN_ON_SPEED = 0.1
@@ -430,6 +490,16 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             )
         return torch.tensor(index, dtype=torch.long)
 
+    def _stream_temperature(self, return_temperature):
+        """Each explicit return stream's temperature (``return_temperature_slots``)."""
+        index = getattr(self, "_return_temperature_index", None)
+        if index is None:
+            return return_temperature
+        if index.device != return_temperature.device:
+            index = index.to(return_temperature.device)
+            self._return_temperature_index = index
+        return return_temperature[..., index]
+
     def _per_branch_exhaust_temperature(self, exhaust_temperature):
         index = getattr(self, "_branch_room_index", None)
         if index is None:
@@ -471,11 +541,14 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         self.supply_junction.do_step(second_time, date_time, step_size, step_index)
         supply_flow_total = self.supply_junction.output["airFlowRateIn"].get()
 
-        # 3) Exhaust flows: the exhaust damper model (gated by the
-        #    exhaust fan), or the supply flows scaled by the exhaust-to-
-        #    supply ratio (exhaust_follows_supply; the supply flows already
-        #    carry the supply fan gate)
-        if self.exhaust_follows_supply:
+        # 3) Exhaust flows: none per branch with an explicit exhaust side;
+        #    else the exhaust damper model (gated by the exhaust fan), or the
+        #    supply flows scaled by the exhaust-to-supply ratio
+        #    (exhaust_follows_supply; the supply flows already carry the
+        #    supply fan gate)
+        if self.explicit_return:
+            exhaust_flow_vec = torch.zeros_like(supply_flow_vec)
+        elif self.exhaust_follows_supply:
             exhaust_flow_vec = self._scale_by_ratio(
                 supply_flow_vec, self.exhaustFlowRatio.get(), per_branch=self.exhaust_ratio_per_branch
             )
@@ -495,12 +568,18 @@ class AirHandlingUnitSystem(core.System, nn.Module):
                 self.input["exhaustFanSpeed"].get()
             ).unsqueeze(-1)
 
-        # 4) Return junction: combine exhaust flows and temperatures
-        exhaust_temp_vec = self._per_branch_exhaust_temperature(
-            self.input["exhaustTemperature"].get()
-        )
-        self.return_junction.input["airFlowRateIn"].set(exhaust_flow_vec, step_index)
-        self.return_junction.input["airTemperatureIn"].set(exhaust_temp_vec, step_index)
+        # 4) Return junction: combine exhaust flows and temperatures (the
+        #    explicit return streams, or the per-branch exhaust)
+        if self.explicit_return:
+            return_flow_vec = self.input["returnAirFlowRate"].get()
+            return_temp_vec = self._stream_temperature(self.input["returnAirTemperature"].get())
+        else:
+            return_flow_vec = exhaust_flow_vec
+            return_temp_vec = self._per_branch_exhaust_temperature(
+                self.input["exhaustTemperature"].get()
+            )
+        self.return_junction.input["airFlowRateIn"].set(return_flow_vec, step_index)
+        self.return_junction.input["airTemperatureIn"].set(return_temp_vec, step_index)
         self.return_junction.do_step(second_time, date_time, step_size, step_index)
         secondary_flow = self.return_junction.output["airFlowRateOut"].get()
         return_temp = self.return_junction.output["airTemperatureOut"].get()
@@ -567,6 +646,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         )
         self.output["supplyFanPower"]._set(supply_fan_power, i_t=step_index)
         self.output["exhaustFanPower"]._set(exhaust_fan_power, i_t=step_index)
+        self.output["electricityPower"]._set(supply_fan_power + exhaust_fan_power, i_t=step_index)
 
     # -- composed-map support (mirrors BuildingSpaceSystem) -------------
 
@@ -587,7 +667,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
     def get_estimable_parameters(self):
         """The submodels' estimable parameters: a damper's offset ``c`` only
         once untied (see ``DamperSystem.set_c``); the exhaust damper's not at
-        all when the exhaust follows the supply, and the ratio only then."""
+        all when the exhaust follows the supply, and the ratio only then;
+        neither with an explicit exhaust side."""
+        explicit = self.explicit_return
         out = []
         for entry in super().get_estimable_parameters():
             attr = str(entry[1])
@@ -596,9 +678,9 @@ class AirHandlingUnitSystem(core.System, nn.Module):
                 continue
             if leaf == "exhaustFlowRatio" and prefix.endswith("damper"):
                 continue
-            if self.exhaust_follows_supply and attr.startswith("exhaust_damper."):
+            if (self.exhaust_follows_supply or explicit) and attr.startswith("exhaust_damper."):
                 continue
-            if not self.exhaust_follows_supply and attr == "exhaustFlowRatio":
+            if (not self.exhaust_follows_supply or explicit) and attr == "exhaustFlowRatio":
                 continue
             out.append(entry)
         return out
@@ -618,8 +700,11 @@ class AirHandlingUnitSystem(core.System, nn.Module):
 
     def _inactive_parameters(self):
         """Parameters the exhaust mode leaves without effect: the exhaust
-        damper's when the exhaust follows the supply, the ratio otherwise."""
-        return () if self.exhaust_follows_supply else ("exhaustFlowRatio",)
+        damper's when the exhaust follows the supply, the ratio otherwise
+        (and with an explicit exhaust side)."""
+        if self.exhaust_follows_supply and not self.explicit_return:
+            return ()
+        return ("exhaustFlowRatio",)
 
     _resolve_sub_params = staticmethod(resolve_sub_params)
 
@@ -671,8 +756,12 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         )
         supply_flow_total = j_sup["airFlowRateIn"]
 
-        # 3) Exhaust flows: damper model (fan-gated), or supply flows times the ratio
-        if self.exhaust_follows_supply:
+        # 3) Exhaust flows: none per branch with an explicit exhaust side; else
+        #    the damper model (fan-gated), or supply flows times the ratio
+        explicit = self.explicit_return
+        if explicit:
+            exhaust_flow_vec = torch.zeros_like(supply_flow_vec)
+        elif self.exhaust_follows_supply:
             ratio = params.get("exhaustFlowRatio", None)
             if ratio is None:
                 ratio = self.exhaustFlowRatio.get()
@@ -692,15 +781,23 @@ class AirHandlingUnitSystem(core.System, nn.Module):
                     inputs["exhaustFanSpeed"]
                 ).unsqueeze(-1)
 
-        # 4) Return junction: combine exhaust flows and temperatures
-        _, j_ret = self.return_junction.forward(
-            None,
-            {
+        # 4) Return junction: combine exhaust flows and temperatures (the
+        #    explicit return streams, or the per-branch exhaust)
+        if explicit:
+            return_in = {
+                "airFlowRateIn": inputs["returnAirFlowRate"],
+                "airTemperatureIn": self._stream_temperature(inputs["returnAirTemperature"]),
+            }
+        else:
+            return_in = {
                 "airFlowRateIn": exhaust_flow_vec,
                 "airTemperatureIn": self._per_branch_exhaust_temperature(
                     inputs["exhaustTemperature"]
                 ),
-            },
+            }
+        _, j_ret = self.return_junction.forward(
+            None,
+            return_in,
             P["return_junction"],
             sample_time,
         )

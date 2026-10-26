@@ -122,6 +122,8 @@ def unit_chain(
         "coolingPower": coil["coolingPower"],
         "supplyFanPower": f_sup["Power"],
         "exhaustFanPower": f_exh["Power"],
+        # what the unit's electricity meter reads of the model: its two fans
+        "electricityPower": f_sup["Power"] + f_exh["Power"],
     }
 
 
@@ -213,6 +215,7 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
             "coolingPower": tps.Scalar(),
             "supplyFanPower": tps.Scalar(),
             "exhaustFanPower": tps.Scalar(),
+            "electricityPower": tps.Scalar(),
         }
         self._config = {
             "parameters": [

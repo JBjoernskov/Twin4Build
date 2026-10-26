@@ -107,6 +107,28 @@ class TestDamperTorchSystem(unittest.TestCase):
         self.assertAlmostEqual(flow(untied, 0.0), 0.0)
         self.assertAlmostEqual(flow(untied, 1.0), 0.5, places=6)
 
+    def test_exhaust_ratio_scale_multiplies_the_ratio(self):
+        """``exhaustRatioScale`` (a ratio as operated) multiplies ``exhaustFlowRatio``; unwired it is 1."""
+        damper = DamperSystem(id="scaled", a=1.0, nominalAirFlowRate=0.5, exhaustFlowRatio=1.2)
+        damper.initialize(
+            start_time=[datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)],
+            end_time=[datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)],
+            step_size=[600],
+        )
+        when = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
+        damper.input["damperPosition"].set(torch.tensor([1.0]), i_t=0)
+        damper.do_step(second_time=0, date_time=when, step_size=600, step_index=0)
+        self.assertAlmostEqual(damper.output["exhaustAirFlowRate"].get().item(), 1.2 * 0.5, places=6)
+        damper.input["exhaustRatioScale"].set(torch.tensor([1.5]), i_t=0)
+        damper.do_step(second_time=0, date_time=when, step_size=600, step_index=0)
+        self.assertAlmostEqual(damper.output["exhaustAirFlowRate"].get().item(), 1.2 * 1.5 * 0.5, places=6)
+        self.assertAlmostEqual(damper.output["airFlowRate"].get().item(), 0.5, places=6)  # the supply as before
+        _, outs = damper.forward(
+            None, {"damperPosition": torch.tensor([1.0]), "exhaustRatioScale": torch.tensor([0.5])},
+            {"a": torch.tensor(1.0), "nominalAirFlowRate": torch.tensor(0.5), "exhaustFlowRatio": torch.tensor(1.2)}, 600,
+        )
+        self.assertAlmostEqual(float(outs["exhaustAirFlowRate"]), 1.2 * 0.5 * 0.5, places=6)
+
     def test_do_step_batch(self):
         """Test damper system do_step method with batch size > 1."""
         damper_batch = DamperSystem(
