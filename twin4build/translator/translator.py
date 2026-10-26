@@ -7819,6 +7819,10 @@ class PathRule(Rule):
     - :class:`AnyPathRule` when multiple structurally distinct paths
       between the same endpoints should all count as valid matches.
 
+    ``predicate`` is a predicate URI, a tuple of them (any of them may
+    hop), or a :class:`Predicate`; a URI or a tuple is wrapped in a
+    :class:`Predicate`.
+
     Example
     -------
 
@@ -7832,26 +7836,19 @@ class PathRule(Rule):
     """
 
     def __init__(self, stop_early=True, **kwargs):
-        # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node)
-        super().__init__(**kwargs)
+        # Normalize predicate to Predicate class (similar to how we normalize cls to tuple in Node);
+        # before the base, which reads a bare tuple as one predicate per subject
         if kwargs.get("predicate") is None:
             predicate = None
         elif isinstance(kwargs.get("predicate"), Predicate):
             predicate = kwargs.get("predicate")
         else:
-            # Deprecation warning
-            warnings.warn(
-                "The 'predicate' argument is deprecated. Use the 'Predicate' class instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
             # Auto-wrap in Predicate (handles single value or tuple)
             predicate = Predicate(kwargs.get("predicate"))
         kwargs["predicate"] = predicate
+        super().__init__(**kwargs)
         self.rule = StepRule(**kwargs) | _SinglePath(**kwargs)  # This order
         self.stop_early = stop_early
-        # super().__init__(**kwargs)
 
     def apply(
         self,
@@ -8205,6 +8202,10 @@ class AnyPathRule(Rule):
     over one ``AnyPathRule``. Retained for patterns where enumerating
     alternatives is infeasible.
 
+    ``predicate`` is a predicate URI, a tuple of them (any of them may
+    hop), or a :class:`Predicate`; a URI or a tuple is wrapped in a
+    :class:`Predicate`.
+
     Example
     -------
 
@@ -8222,13 +8223,6 @@ class AnyPathRule(Rule):
         elif isinstance(kwargs.get("predicate"), Predicate):
             predicate = kwargs.get("predicate")
         else:
-            # Deprecation warning
-            warnings.warn(
-                "The 'predicate' argument is deprecated. Use the 'Predicate' class instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
             # Auto-wrap in Predicate (handles single value or tuple)
             predicate = Predicate(kwargs.get("predicate"))
         kwargs["predicate"] = predicate
@@ -8417,6 +8411,10 @@ class SetAnyPathRule(SetStepRule):
       (e.g. an AHU and the set of all zones it ultimately feeds via a
       VAV cascade).
 
+    ``predicate`` is a predicate URI, a tuple of them (any of them may
+    hop), or a :class:`Predicate`; a URI or a tuple is wrapped in a
+    :class:`Predicate`.
+
     Example
     -------
 
@@ -8437,11 +8435,6 @@ class SetAnyPathRule(SetStepRule):
         elif isinstance(kwargs.get("predicate"), Predicate):
             predicate = kwargs.get("predicate")
         else:
-            warnings.warn(
-                "The 'predicate' argument is deprecated. Use the 'Predicate' class instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
             predicate = Predicate(kwargs.get("predicate"))
         kwargs["predicate"] = predicate
         self.stop_early = stop_early
