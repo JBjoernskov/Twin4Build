@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 import datetime
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Hashable, List, Optional, Tuple, Union
 
 # Third party imports
 import numpy as np
@@ -755,6 +755,20 @@ class System:
                 continue
             out.append((self, path, x0, lb, ub))
         return out
+
+    def curvature_group(self, path: str) -> Optional[Hashable]:
+        """The curvature group of the estimable parameter at ``path``.
+
+        A solver that models the curvature of a parameter block (a quasi-Newton
+        matrix per independent block) may split the block into groups:
+        entries of one group share a dense model, different groups none.  A
+        component whose parameters are many and only locally coupled (a
+        profile's knots, day by day) names a group per parameter; ``None``
+        (the default) leaves the entry in its block's main group, with the
+        windows' initial states and every component that names none.  Labels
+        are compared within a block only.
+        """
+        return None
 
     def size_parameter(self, path: str, value=None) -> bool:
         """Mark the parameter at ``path`` as sized, its bounds relative.

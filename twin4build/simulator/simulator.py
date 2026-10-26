@@ -885,11 +885,14 @@ class Simulator:
             functional_model, Y0, Theta, exogenous_tape, step=step
         )
 
-    def rollout_functional_windows(self, functional_model, Y0, theta, exogenous_tape, *, return_end: bool = False):
+    def rollout_functional_windows(self, functional_model, Y0, theta, exogenous_tape, *, return_end: bool = False, return_extent: bool = False):
         """Roll ONE parameter vector over a batch of equal-length windows at
         once (transform mode): ``Y0 (P, D_aug)``, ``theta (n_theta,)``,
         ``exogenous_tape (n_t, P, n_exogenous)`` -> ``(P, n_t, n_meas)``,
-        or with ``return_end`` ``(outputs, Y_end (P, D_aug))``.  Per-step
+        or with ``return_end`` ``(outputs, Y_end (P, D_aug))``, or with
+        ``return_extent`` ``(outputs, Y_end, Y_min, Y_max)``: also the lowest
+        and highest value every state takes in every window, its start and
+        end included (``(P, D_aug)`` each).  Per-step
         CUDA graphs under ``cuda_graph_scope="step"`` (the eager vmapped
         window step captured once per step), else the eager ``vmap``
         rollout: ``torch.compile`` over ``vmap`` of the step is numerically
@@ -902,8 +905,10 @@ class Simulator:
 
             states, out = step_graph_rollout(functional_model, Y0, theta, exogenous_tape, kind="windows")
             out = out.transpose(0, 1)
+            if return_extent:
+                return out, states[-1], states.amin(dim=0), states.amax(dim=0)
             return (out, states[-1]) if return_end else out
-        return functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, return_end=return_end)
+        return functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, return_end=return_end, return_extent=return_extent)
 
     def rollout_functional_batched_windows(self, functional_model, Y0, Theta, exogenous_tape, *, return_end: bool = False):
         """A batch of parameter vectors over a batch of windows: ``Y0 (P,
