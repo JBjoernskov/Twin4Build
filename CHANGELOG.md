@@ -4,6 +4,15 @@
 
 API-quality major release. Preferred forms are documented below; new soft-compat aliases warn and will be **removed in 2.1.0**.
 
+### Removed
+
+Unused and untested; 2.0 drops them without a deprecation period.
+
+- The estimator's finite-difference route: the `("scipy", <optimizer>, "fd")`
+  methods and `Estimator.estimate(n_cores=...)` (the worker pools that
+  computed the Jacobian).  Every component is a torch module; use
+  `method=(..., "ad")`.
+
 ### Removed (previously deprecated)
 
 - camelCase kwargs already routed through deprecation helpers (`startTime` / `endTime` / `stepSize`, `useSpreadsheet` / `useDatabase` / `usedf` / `usedict`, …)

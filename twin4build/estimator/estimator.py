@@ -3,8 +3,6 @@ from __future__ import annotations
 # Standard library imports
 import datetime
 import functools
-
-# import multiprocessing
 import math
 import os
 import pickle
@@ -17,10 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 # Third party imports
 import numpy as np
 import torch
-import torch.multiprocessing as multiprocessing
 import torch.nn as nn
-from fmpy.fmi1 import FMICallException
-from scipy._lib._array_api import array_namespace
 from scipy.optimize import Bounds, basinhopping, dual_annealing, least_squares, minimize
 
 # Local application imports
@@ -62,54 +57,13 @@ from twin4build.utils.rgetattr import rgetattr
 AUTO_SD_FLOOR = 0.05
 
 
-def _atleast_nd(x, /, *, ndim: int, xp) -> Any:
-    """
-    Recursively expand the dimension of an array to at least `ndim`.
-
-    Parameters
-    ----------
-    x : array
-        Input array to expand.
-    ndim : int
-        The minimum number of dimensions for the result.
-    xp : array_namespace
-        The standard-compatible namespace for `x`.
-
-    Returns
-    -------
-    res : array
-        An array with ``res.ndim`` >= `ndim`.
-        If ``x.ndim`` >= `ndim`, `x` is returned.
-        If ``x.ndim`` < `ndim`, `x` is expanded by prepending new axes
-        until ``res.ndim`` equals `ndim`.
-
-    Examples
-    --------
-    >>> import array_api_strict as xp
-    >>> import array_api_extra as xpx
-    >>> x = xp.asarray([1])
-    >>> xpx._atleast_nd(x, ndim=3, xp=xp)
-    Array([[[1]]], dtype=array_api_strict.int64)
-
-    >>> x = xp.asarray([[[1, 2],
-    ...                  [3, 4]]])
-    >>> xpx._atleast_nd(x, ndim=1, xp=xp) is x
-    True
-    """
-    if x.ndim < ndim:
-        x = xp.expand_dims(x, axis=0)
-        x = _atleast_nd(x, ndim=ndim, xp=xp)
-    return x
-
-
 class Estimator:
     r"""
     A class for parameter estimation in the twin4build framework.
 
     This class estimates model parameters from measured data using maximum
-    likelihood estimation (MLE). Gradients are computed either by automatic
-    differentiation (AD, preferred for torch-based models) or by finite
-    differences (FD, for FMU/non-torch models).
+    likelihood estimation (MLE). Gradients are computed by automatic
+    differentiation (AD): every component is a torch module.
 
     Args:
         simulator: The simulator instance for running simulations.
@@ -276,9 +230,8 @@ class Estimator:
     variable. The problem is solved as the unconstrained (bound-constrained)
     minimization of the negative log-likelihood above.
 
-    Gradients are obtained either by backpropagating through the unrolled
-    trajectory (AD mode, requires all components to be torch modules) or by
-    parallel finite differences (FD mode, requires ``n_cores``). The gradient
+    Gradients are obtained by backpropagating through the unrolled
+    trajectory (AD mode; all components are torch modules). The gradient
     flows through the full composition
     :math:`f \circ f \circ \cdots \circ f`, i.e. a product of per-step
     Jacobians. For unstable or oscillatory dynamics this product is badly
@@ -413,18 +366,6 @@ class Estimator:
     ...     method=("casadi", "ipopt", "ad", "collocation"),
     ...     options={"maxiter": 500, "early_stopping": {"patience": 20}}
     ... )
-
-    For non-PyTorch models, use the finite difference mode:
-
-    >>> result = estimator.estimate(
-    ...     parameters=parameters,
-    ...     measurements=measurements,
-    ...     start_time=start,
-    ...     end_time=end,
-    ...     step_size=step,
-    ...     method=("scipy", "trf", "fd"),
-    ...     n_cores=4  # Required for FD mode
-    ... )
     """
 
     def __init__(self, simulator: core.Simulator):
@@ -456,7 +397,6 @@ class Estimator:
         measurements: Union[str, List[Tuple[core.System, float]]] = None,
         n_warmup: int = 60,
         method: Union[str, Tuple[str, str, str], Tuple[str, str, str, str]] = "scipy",
-        n_cores: Optional[int] = None,
         options: Optional[Dict] = None,
         schedule: Optional[List[Dict[str, Any]]] = None,
         **kwargs: Dict,
@@ -464,8 +404,8 @@ class Estimator:
         """
         Perform parameter estimation using specified method and configuration.
 
-        This method sets up and executes the parameter estimation process, supporting
-        both automatic differentiation (AD) and finite difference (FD) optimization methods.
+        This method sets up and executes the parameter estimation process, with the
+        gradients by automatic differentiation (AD).
 
         Args:
             start_time: Start time(s) for estimation period(s). Can be a single date_time or list
@@ -559,7 +499,7 @@ class Estimator:
                 ``library`` is ``"scipy"``, ``"casadi"``, or ``"custom"``,
                 ``optimizer`` is
                 the algorithm name, ``mode`` is ``"ad"`` (automatic
-                differentiation) or ``"fd"`` (finite difference), and the
+                differentiation), and the
                 optional ``transcription`` is ``"single_shooting"`` (default),
                 ``"multiple_shooting"`` (single shooting per period, the
                 periods' initial states estimated and tied together; see
@@ -583,10 +523,6 @@ class Estimator:
                   acceptance; options ``niter``, ``T``, ``stepsize``,
                   ``local_search_method``). Good for non-convex landscapes
                   with many local minima.
-                - SciPy backend, FD mode (all require ``n_cores``): ``"trf"``,
-                  ``"dogbox"``, ``"SLSQP"``, ``"L-BFGS-B"``, ``"TNC"``,
-                  ``"trust-constr"`` -- same algorithms with the Jacobian
-                  computed by parallel finite differences.
                 - CasADi backend:
                   ``("casadi", "ipopt", "ad")`` is an IPOPT interior-point
                   solve of the same single-shooting objective as the SciPy
@@ -617,24 +553,12 @@ class Estimator:
                   eager because PyTorch cannot safely replay those
                   higher-order transforms.
 
-                Mode selection: use ``"ad"`` when all components are
-                ``torch.nn.Module`` (preferred, faster); use ``"fd"`` for
-                non-PyTorch or mixed models (requires ``n_cores``).
-
                 Examples: ``("scipy", "SLSQP", "ad")`` for most PyTorch
                 models; ``("scipy", "dual_annealing", "ad")`` for non-convex
                 problems; ``("casadi", "ipopt", "ad", "collocation")`` for
-                long horizons; ``("scipy", "trf", "fd")`` for non-PyTorch
+                long horizons; ``("scipy", "trf", "ad")`` for
                 least-squares problems; ``"scipy"`` defaults to
                 ``("scipy", "SLSQP", "ad")``.
-
-            n_cores: Number of CPU cores to use for parallel computation. Required when using
-                finite difference (FD) mode for Jacobian computation. Not used in automatic
-                differentiation (AD) mode.
-
-                - For FD mode: Must be specified (typically 2-8 cores depending on system)
-                - For AD mode: Ignored (not needed for automatic differentiation)
-                - Default: None (will raise error if FD mode is used without specifying)
 
             options: Additional options for the chosen optimization method.
 
@@ -809,12 +733,10 @@ class Estimator:
         Raises:
             AssertionError: If method specification is invalid or input parameters are inconsistent.
             ValueError: If method format is incorrect or unsupported.
-            FMICallException: If simulation fails during parameter evaluation.
 
         Notes:
             - The method automatically handles parameter normalization and bounds checking.
             - For AD mode, all components must be torch.nn.Module instances.
-            - For FD mode, n_cores must be specified for parallel Jacobian computation.
             - Results are automatically saved to disk in the model's estimation_results
               directory and can be reloaded with
               :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.load_estimation_result`.
@@ -1013,17 +935,11 @@ class Estimator:
 
         # Define allowed optimization methods
         allowed_methods = [
-            ("scipy", "trf", "fd"),
-            ("scipy", "dogbox", "fd"),
             ("scipy", "trf", "ad"),
             ("scipy", "dogbox", "ad"),
-            ("scipy", "L-BFGS-B", "fd"),
             ("scipy", "L-BFGS-B", "ad"),
-            ("scipy", "TNC", "fd"),
             ("scipy", "TNC", "ad"),
-            ("scipy", "SLSQP", "fd"),
             ("scipy", "SLSQP", "ad"),
-            ("scipy", "trust-constr", "fd"),
             ("scipy", "trust-constr", "ad"),
             ("scipy", "dual_annealing", "ad"),
             ("scipy", "basinhopping", "ad"),
@@ -1296,7 +1212,6 @@ class Estimator:
         result = self._run_schedule(
             schedule=schedule,
             method=method,
-            n_cores=n_cores,
             base_options=options,
         )
         LOGGER.remove_level()
@@ -1330,7 +1245,6 @@ class Estimator:
         self,
         schedule: List[Dict[str, Any]],
         method: tuple,
-        n_cores: Optional[int],
         base_options: Dict,
     ) -> "EstimationResult":
         """Run a multi-phase optimisation schedule.
@@ -1356,8 +1270,6 @@ class Estimator:
             ``base_options`` only).
         method : tuple
             Solver method tuple, forwarded to :meth:`_solve`.
-        n_cores : int or None
-            Cores for FD mode, forwarded to :meth:`_solve`.
         base_options : dict
             Top-level ``options`` dict; per-phase ``options`` are
             merged on top.
@@ -1416,7 +1328,7 @@ class Estimator:
             # override is requested.
             ctx = saturation_mode(mode) if mode is not None else _nullcontext()
             with ctx:
-                result = self._solve(method=method, n_cores=n_cores, **merged_options)
+                result = self._solve(method=method, **merged_options)
 
             # Warm-start next phase from this phase's converged x.
             self._x0_norm = self._last_x_norm.copy()
@@ -2214,368 +2126,10 @@ class Estimator:
                 seen_unique.add(param_idx)
         return theta
 
-    def _jac_fd(self, x0: np.ndarray, output: str) -> np.ndarray:
-        """
-        Compute the Jacobian matrix using finite differences.
-
-        This method implements numerical differentiation using finite difference schemes
-        to compute the Jacobian matrix for optimization algorithms that require gradient
-        information but cannot use automatic differentiation.
-
-        Parameters
-        ----------
-        x0 : np.ndarray
-            Parameter vector at which to compute the Jacobian.
-
-        Returns
-        -------
-        np.ndarray
-            Jacobian matrix with shape (n_residuals, n_parameters).
-
-        Notes
-        -----
-        This method uses a 2-point finite difference scheme by default, with automatic
-        adjustment for bound constraints. The step size is computed based on the
-        parameter values and machine precision.
-        """
-
-        def _prepare_bounds(bounds, x0):
-            """
-            Prepares new-style bounds from a two-tuple specifying the lower and upper
-            limits for values in x0. If a value is not bound then the lower/upper bound
-            will be expected to be -np.inf/np.inf.
-
-            Examples
-            --------
-            >>> _prepare_bounds([(0, 1, 2), (1, 2, np.inf)], [0.5, 1.5, 2.5])
-            (array([0., 1., 2.]), array([ 1.,  2., inf]))
-            """
-            lb, ub = (np.asarray(b, dtype=float) for b in bounds)
-            if lb.ndim == 0:
-                lb = np.resize(lb, x0.shape)
-
-            if ub.ndim == 0:
-                ub = np.resize(ub, x0.shape)
-
-            return lb, ub
-
-        def _adjust_scheme_to_bounds(x0, h, num_steps, scheme, lb, ub):
-            """Adjust final difference scheme to the presence of bounds.
-
-            Parameters
-            ----------
-            x0 : ndarray, shape (n,)
-                Point at which we wish to estimate derivative.
-            h : ndarray, shape (n,)
-                Desired absolute finite difference steps.
-            num_steps : int
-                Number of `h` steps in one direction required to implement finite
-                difference scheme. For example, 2 means that we need to evaluate
-                f(x0 + 2 * h) or f(x0 - 2 * h)
-            scheme : {'1-sided', '2-sided'}
-                Whether steps in one or both directions are required. In other
-                words '1-sided' applies to forward and backward schemes, '2-sided'
-                applies to center schemes.
-            lb : ndarray, shape (n,)
-                Lower bounds on independent variables.
-            ub : ndarray, shape (n,)
-                Upper bounds on independent variables.
-
-            Returns
-            -------
-            h_adjusted : ndarray, shape (n,)
-                Adjusted absolute step sizes. Step size decreases only if a sign flip
-                or switching to one-sided scheme doesn't allow to take a full step.
-            use_one_sided : ndarray of bool, shape (n,)
-                Whether to switch to one-sided scheme. Informative only for
-                ``scheme='2-sided'``.
-            """
-            if scheme == "1-sided":
-                use_one_sided = np.ones_like(h, dtype=bool)
-            elif scheme == "2-sided":
-                h = np.abs(h)
-                use_one_sided = np.zeros_like(h, dtype=bool)
-            else:
-                raise ValueError("`scheme` must be '1-sided' or '2-sided'.")
-
-            if np.all((lb == -np.inf) & (ub == np.inf)):
-                return h, use_one_sided
-
-            h_total = h * num_steps
-            h_adjusted = h.copy()
-
-            lower_dist = x0 - lb
-            upper_dist = ub - x0
-
-            if scheme == "1-sided":
-                x = x0 + h_total
-                violated = (x < lb) | (x > ub)
-                fitting = np.abs(h_total) <= np.maximum(lower_dist, upper_dist)
-                h_adjusted[violated & fitting] *= -1
-
-                forward = (upper_dist >= lower_dist) & ~fitting
-                h_adjusted[forward] = upper_dist[forward] / num_steps
-                backward = (upper_dist < lower_dist) & ~fitting
-                h_adjusted[backward] = -lower_dist[backward] / num_steps
-            elif scheme == "2-sided":
-                central = (lower_dist >= h_total) & (upper_dist >= h_total)
-
-                forward = (upper_dist >= lower_dist) & ~central
-                h_adjusted[forward] = np.minimum(
-                    h[forward], 0.5 * upper_dist[forward] / num_steps
-                )
-                use_one_sided[forward] = True
-
-                backward = (upper_dist < lower_dist) & ~central
-                h_adjusted[backward] = -np.minimum(
-                    h[backward], 0.5 * lower_dist[backward] / num_steps
-                )
-                use_one_sided[backward] = True
-
-                min_dist = np.minimum(upper_dist, lower_dist) / num_steps
-                adjusted_central = ~central & (np.abs(h_adjusted) <= min_dist)
-                h_adjusted[adjusted_central] = min_dist[adjusted_central]
-                use_one_sided[adjusted_central] = False
-
-            return h_adjusted, use_one_sided
-
-        def _dense_difference(fun, x0, f0, h, use_one_sided, method):
-            """Compute finite differences for dense Jacobian computation."""
-            m = f0.size
-            n = x0.size
-            J_transposed = np.empty((n, m))
-            x1 = x0.copy()
-            x2 = x0.copy()
-            xc = x0.astype(complex, copy=True)
-
-            x1_ = np.empty((n, n))
-            x2_ = np.empty((n, n))
-
-            for i in range(h.size):
-                if method == "2-point":
-                    x1[i] += h[i]
-                elif method == "3-point" and use_one_sided[i]:
-                    x1[i] += h[i]
-                    x2[i] += 2 * h[i]
-                elif method == "3-point" and not use_one_sided[i]:
-                    x1[i] -= h[i]
-                    x2[i] += h[i]
-                else:
-                    raise RuntimeError("Never be here.")
-
-                x1_[i, :] = x1
-                x2_[i, :] = x2
-                x1[i] = x2[i] = xc[i] = x0[i]
-
-            if method == "2-point":
-                args = [(x, output) for x in x1_]
-                f = np.array(
-                    list(
-                        self.jac_pool.starmap(
-                            self._obj_fd, args, chunksize=self.jac_chunksize
-                        )
-                    )
-                )
-                df = f - f0
-                dx = np.diag(x1_) - x0
-            elif method == "3-point":
-                args = [(x, output) for x in x1_]
-                f1 = np.array(
-                    list(
-                        self.jac_pool.starmap(
-                            self._obj_fd, args, chunksize=self.jac_chunksize
-                        )
-                    )
-                )
-                args = [(x, output) for x in x2_]
-                f2 = np.array(
-                    list(
-                        self.jac_pool.starmap(
-                            self._obj_fd, args, chunksize=self.jac_chunksize
-                        )
-                    )
-                )
-                df = np.empty_like(f1)
-                df[use_one_sided, :] = (
-                    -3.0 * f0[use_one_sided]
-                    + 4 * f1[use_one_sided, :]
-                    - f2[use_one_sided, :]
-                )
-                df[~use_one_sided] = f2[~use_one_sided, :] - f1[~use_one_sided, :]
-                dx = np.diag(x2_) - x0
-                dx[~use_one_sided] = (
-                    np.diag(x2_)[~use_one_sided] - np.diag(x1_)[~use_one_sided]
-                )
-
-            J_transposed = df / dx.reshape((dx.shape[0], 1))
-
-            if m == 1:
-                J_transposed = np.ravel(J_transposed)
-
-            return J_transposed.T
-
-        def _compute_absolute_step(rel_step, x0, f0, method):
-            """
-            Computes an absolute step from a relative step for finite difference
-            calculation.
-
-            Parameters
-            ----------
-            rel_step: None or array-like
-                Relative step for the finite difference calculation
-            x0 : np.ndarray
-                Parameter vector
-            f0 : np.ndarray or scalar
-            method : {'2-point', '3-point', 'cs'}
-
-            Returns
-            -------
-            h : float
-                The absolute step size
-
-            Notes
-            -----
-            `h` will always be np.float64. However, if `x0` or `f0` are
-            smaller floating point dtypes (e.g. np.float32), then the absolute
-            step size will be calculated from the smallest floating point size.
-            """
-            # this is used instead of np.sign(x0) because we need
-            # sign_x0 to be 1 when x0 == 0.
-            sign_x0 = (x0 >= 0).astype(float) * 2 - 1
-
-            rstep = _eps_for_method(x0.dtype, f0.dtype, method)
-
-            if rel_step is None:
-                abs_step = rstep * sign_x0 * np.maximum(1.0, np.abs(x0))
-            else:
-                # User has requested specific relative steps.
-                # Don't multiply by max(1, abs(x0) because if x0 < 1 then their
-                # requested step is not used.
-                abs_step = rel_step * sign_x0 * np.abs(x0)
-
-                # however we don't want an abs_step of 0, which can happen if
-                # rel_step is 0, or x0 is 0. Instead, substitute a realistic step
-                dx = (x0 + abs_step) - x0
-                abs_step = np.where(
-                    dx == 0, rstep * sign_x0 * np.maximum(1.0, np.abs(x0)), abs_step
-                )
-
-            return abs_step
-
-        @functools.lru_cache
-        def _eps_for_method(x0_dtype, f0_dtype, method):
-            """
-            Calculates relative EPS step to use for a given data type
-            and numdiff step method.
-
-            Progressively smaller steps are used for larger floating point types.
-
-            Parameters
-            ----------
-            f0_dtype: np.dtype
-                dtype of function evaluation
-
-            x0_dtype: np.dtype
-                dtype of parameter vector
-
-            method: {'2-point', '3-point', 'cs'}
-
-            Returns
-            -------
-            EPS: float
-                relative step size. May be np.float16, np.float32, np.float64
-
-            Notes
-            -----
-            The default relative step will be np.float64. However, if x0 or f0 are
-            smaller floating point types (np.float16, np.float32), then the smallest
-            floating point type is chosen.
-            """
-            # the default EPS value
-            EPS = np.finfo(np.float64).eps
-
-            x0_is_fp = False
-            if np.issubdtype(x0_dtype, np.inexact):
-                # if you're a floating point type then over-ride the default EPS
-                EPS = np.finfo(x0_dtype).eps
-                x0_itemsize = np.dtype(x0_dtype).itemsize
-                x0_is_fp = True
-
-            if np.issubdtype(f0_dtype, np.inexact):
-                f0_itemsize = np.dtype(f0_dtype).itemsize
-                # choose the smallest itemsize between x0 and f0
-                if x0_is_fp and f0_itemsize < x0_itemsize:
-                    EPS = np.finfo(f0_dtype).eps
-
-            if method in ["2-point", "cs"]:
-                return EPS**0.5
-            elif method in ["3-point"]:
-                return EPS ** (1 / 3)
-            else:
-                raise RuntimeError(
-                    "Unknown step method, should be one of "
-                    "{'2-point', '3-point', 'cs'}"
-                )
-
-        method = "2-point"
-        rel_step = None
-        f0 = None
-
-        if method not in ["2-point", "3-point", "cs"]:
-            raise ValueError("Unknown method '%s'. " % method)
-
-        xp = array_namespace(x0)
-        _x = _atleast_nd(x0, ndim=1, xp=xp)
-        _dtype = xp.float64
-        if xp.isdtype(_x.dtype, "real floating"):
-            _dtype = _x.dtype
-
-        # promotes to floating
-        x0 = xp.astype(_x, _dtype)
-
-        if x0.ndim > 1:
-            raise ValueError("`x0` must have at most 1 dimension.")
-
-        lb, ub = self.bounds.lb, self.bounds.ub
-        bounds = (lb, ub)
-        lb, ub = _prepare_bounds(bounds, x0)
-
-        if lb.shape != x0.shape or ub.shape != x0.shape:
-            raise ValueError("Inconsistent shapes between bounds and `x0`.")
-
-        if f0 is None:
-            f0 = self._obj_fd(x0, output)
-        else:
-            f0 = np.atleast_1d(f0)
-            if f0.ndim > 1:
-                raise ValueError("`f0` passed has more than 1 dimension.")
-
-        if np.any((x0 < lb) | (x0 > ub)):
-            raise ValueError("`x0` violates bound constraints.")
-
-        # by default we use rel_step
-        h = _compute_absolute_step(rel_step, x0, f0, method)
-
-        if method == "2-point":
-            h, use_one_sided = _adjust_scheme_to_bounds(x0, h, 1, "1-sided", lb, ub)
-        elif method == "3-point":
-            h, use_one_sided = _adjust_scheme_to_bounds(x0, h, 1, "2-sided", lb, ub)
-        elif method == "cs":
-            use_one_sided = False
-
-        jac = _dense_difference(self._obj_fd, x0, f0, h, use_one_sided, method)
-
-        return jac
-
     def __getstate__(self):
         """Prepare object for pickling by removing non-serializable attributes."""
 
         self_dict = self.__dict__.copy()
-        if hasattr(self, "fun_pool"):
-            del self_dict["fun_pool"]
-        if hasattr(self, "jac_pool"):
-            del self_dict["jac_pool"]
-
         if hasattr(self, "obj"):
             del self_dict["obj"]
             del self_dict["_theta_obj"]
@@ -2586,59 +2140,6 @@ class Estimator:
             del self_dict["hes"]
             del self_dict["_theta_hes"]
         return self_dict
-
-    def _obj_fd(self, theta: np.ndarray, output: str) -> np.ndarray:
-        """
-        Objective function wrapper for finite difference methods.
-
-        This method handles exceptions during objective function evaluation
-        and returns a large penalty value if the simulation fails.
-
-        Parameters
-        ----------
-        theta : np.ndarray
-            Parameter vector.
-
-        Returns
-        -------
-        np.ndarray
-            Objective function value or penalty value if evaluation fails.
-        """
-        try:
-            theta_tensor = torch.tensor(
-                theta, dtype=tps.float_dtype(), device=self._device
-            )
-            res = self._obj(theta_tensor, output).detach().cpu().numpy()
-        except FMICallException:
-            res = self.res_fail
-        except Exception as e:
-            # Handle any other exceptions, including TensorWrapper issues
-            LOGGER.warning("Objective function evaluation failed: %s.", e)
-            res = self.res_fail
-        return res
-
-    def _obj_fd_separate_process(self, theta: np.ndarray, output: str) -> np.ndarray:
-        """
-        Evaluate objective function in a separate process.
-
-        Parameters
-        ----------
-        theta : np.ndarray
-            Parameter vector.
-
-        Returns
-        -------
-        np.ndarray
-            Objective function value.
-        """
-        # res = np.array(list(self.fun_pool.imap(self._obj_fd, [(theta, output)], chunksize=self.jac_chunksize))[0])
-        res = list(
-            self.fun_pool.starmap(
-                self._obj_fd, [(theta, output)], chunksize=self.jac_chunksize
-            )
-        )[0]
-
-        return res
 
     def _set_bounds(self, normalize: bool = True) -> None:
         """
@@ -2723,14 +2224,11 @@ class Estimator:
         self._ub_norm = np.array(ub_norm_list)
         self._x0_norm = np.array(x0_norm_list)
 
-    def _solve(
-        self, method: tuple, n_cores: Optional[int] = None, **options
-    ) -> EstimationResult:
+    def _solve(self, method: tuple, **options) -> EstimationResult:
         """
         Perform optimization using SciPy's optimization algorithms.
 
-        This method handles both automatic differentiation and finite difference
-        optimization using various SciPy optimizers.
+        The gradients come from automatic differentiation.
 
         Parameters
         ----------
@@ -2828,31 +2326,6 @@ class Estimator:
             torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=self._device)
         )
 
-        # Setup for FD method
-        if method[2] == "fd":
-            if method[1] in ["trf", "dogbox"]:
-                res_fail = np.zeros((self._n_timesteps, len(self._measurements)))
-                for j, measuring_device in enumerate(self._measurements):
-                    res_fail[:, j] = np.ones((self._n_timesteps)) * 100
-                self.res_fail = res_fail.flatten()
-            else:
-                # scalar output
-                self.res_fail = 100
-
-            assert n_cores is not None, "n_cores must be provided when using FD method"
-
-            # Set up multiprocessing pools
-            self.fun_pool = multiprocessing.get_context("spawn").Pool(
-                1, maxtasksperchild=30
-            )
-            self.jac_pool = multiprocessing.get_context("spawn").Pool(
-                n_cores, maxtasksperchild=10
-            )
-            self.jac_chunksize = 1
-
-            # Make model pickable and ensure all tensors are properly handled
-            self.simulator.model.make_pickable()
-
         # -- Initial Jacobian diagnostic --------------------------------------
         # Compute J(x0) *once* before scipy starts so we can log per-parameter
         # column norms.  A parameter with ||J[:, i]|| ≈ 0 is structurally
@@ -2905,10 +2378,10 @@ class Estimator:
 
         # Run optimization based on method
         LOGGER.task("Running optimization")
-        result = self._dispatch_solve(method, n_cores, options)
+        result = self._dispatch_solve(method, options)
         return self._finalize_solve(result, method)
 
-    def _dispatch_solve(self, method, n_cores, options):
+    def _dispatch_solve(self, method, options):
         """Route a prepared problem to exactly one backend owner.
 
         A solver instance passed as ``method`` or a solver registered for
@@ -2919,7 +2392,7 @@ class Estimator:
         if solver is not None:
             return solver.solve(self.estimation_problem(), dict(options))
         if method[0] == "scipy":
-            return self._solve_scipy(method, n_cores, options)
+            return self._solve_scipy(method, options)
         if method == ("casadi", "ipopt", "ad"):
             return self._solve_ipopt(method, options)
         if method[0] == "custom":
@@ -3054,35 +2527,22 @@ class Estimator:
         }
         return result
 
-    def _solve_scipy(self, method, n_cores, options):
+    def _solve_scipy(self, method, options):
         """Own and validate SciPy-specific solver options."""
         if self._transcription not in SHOOTING_TRANSCRIPTIONS:
             raise ValueError("SciPy supports only the single_shooting and multiple_shooting transcriptions")
         if "hessian" in options:
             raise TypeError("hessian is an IPOPT collocation option")
         if method[1] in ["trf", "dogbox"]:
-            if method[2] == "ad":
-                result = least_squares(
-                    self._obj_ad,
-                    x0=self._x0_norm,
-                    args=("vector",),
-                    jac=self._jac_ad,
-                    bounds=self.bounds,
-                    method=method[1],
-                    **options,
-                )
-            else:
-                # Clean up torch objects before setting up FD method
-                # self.cleanup_torch_objects() # Removed as per edit hint
-                result = least_squares(
-                    self._obj_fd_separate_process,
-                    x0=self._x0_norm,
-                    args=("vector",),
-                    jac=self._jac_fd,
-                    bounds=self.bounds,
-                    method=method[1],
-                    **options,
-                )
+            result = least_squares(
+                self._obj_ad,
+                x0=self._x0_norm,
+                args=("vector",),
+                jac=self._jac_ad,
+                bounds=self.bounds,
+                method=method[1],
+                **options,
+            )
         elif method[1] == "dual_annealing":
             # Global optimization via generalized simulated annealing.
             # High temperature explores broadly to find the right basin,
@@ -3218,18 +2678,7 @@ class Estimator:
                 self.bounds.lb = np.asarray(self.bounds.lb, dtype=np.float64)
                 self.bounds.ub = np.asarray(self.bounds.ub, dtype=np.float64)
 
-            if method[2] == "fd":
-                result = minimize(
-                    self._obj_fd_separate_process,
-                    self._x0_norm,
-                    args=("scalar",),
-                    method=method[1],
-                    jac=self._jac_fd,
-                    hess=hess,
-                    bounds=self.bounds,
-                    options=options,
-                )
-            elif (
+            if (
                 method[1] == "SLSQP"
                 and self._functional_objective is not None
                 and self.simulator.execution_backend == "cuda_graph"
@@ -4225,9 +3674,8 @@ class Estimator:
             # simulator raises ``ValueError("Input ... is NaN")``
             # downstream when the bad value propagates into the next
             # component.  Crashing the whole estimator on that wastes
-            # everything the solver has learned so far; ``_obj_fd``
-            # already handles this with a large-penalty ``res_fail``.
-            # Mirror that here and dump the offending theta in user
+            # everything the solver has learned so far: return a large
+            # penalty instead and dump the offending theta in user
             # units so the *next* run can see exactly which parameter
             # combination is unstable instead of guessing.
             try:
