@@ -511,10 +511,6 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
             f_wall=0,
             f_air=0,
             Q_occ_gain=100.0,
-            CO2_occ_gain=0.004,
-            CO2_start=400.0,
-            infiltrationRate=0.0,
-            airVolume=100.0,
             id="BuildingSpace",
         )
         heater = tb.SpaceHeaterTorchSystem(

@@ -2367,7 +2367,18 @@ class Translator:
                         base_kwargs.update(extension_kwargs)
                         s = base_kwargs["id"]
                         LOGGER.info("Instantiating component: %s", s)
-                        component = component_cls(**base_kwargs)
+                        # The node's literals name every property the graph
+                        # records; a component takes only its constructor's
+                        # keywords and rejects the rest.
+                        keywords = component_cls.constructor_keywords()
+                        dropped = sorted(k for k in base_kwargs if k not in keywords)
+                        if dropped:
+                            LOGGER.debug(
+                                "%s takes no %s: not passed", component_cls.__name__, ", ".join(dropped)
+                            )
+                        component = component_cls(
+                            **{k: v for k, v in base_kwargs.items() if k in keywords}
+                        )
 
                         if component_cls not in class_to_instance_map:
                             class_to_instance_map[component_cls] = {}

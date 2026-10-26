@@ -42,6 +42,14 @@ class OnOffControllerSystem(core.System):
         - "inputSignal": Control signal, either ``on_value`` or ``off_value``.
     """
 
+    #: Deprecated keyword names and the ones that replaced them (see
+    #: ``System.DEPRECATED_KEYWORDS``).
+    DEPRECATED_KEYWORDS = {
+        "offValue": "off_value",
+        "onValue": "on_value",
+        "isReverse": "is_reverse",
+    }
+
     def __init__(
         self,
         off_value=0,
@@ -50,9 +58,9 @@ class OnOffControllerSystem(core.System):
         **kwargs,
     ):
         legacy = deprecate_args(
-            ["offValue", "onValue", "isReverse"],
-            ["off_value", "on_value", "is_reverse"],
-            [None, None, None],
+            list(OnOffControllerSystem.DEPRECATED_KEYWORDS),
+            list(OnOffControllerSystem.DEPRECATED_KEYWORDS.values()),
+            [None] * len(OnOffControllerSystem.DEPRECATED_KEYWORDS),
             kwargs,
         )
         off_value = legacy.get("off_value", off_value)

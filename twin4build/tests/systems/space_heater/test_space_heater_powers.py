@@ -378,7 +378,11 @@ class TestModelSavedWithPower(unittest.TestCase):
 
     def _build(self):
         model = tb.Model(id=self.MODEL_ID)
-        room = tb.BuildingSpaceSystem(id="room", C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02, airVolume=100.0)
+        room = tb.BuildingSpaceSystem(
+            id="room",
+            thermal_kwargs=dict(C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02),
+            mass_kwargs=dict(V=100.0),
+        )
         heater = _radiator("heater", C=2e5, UA=45.0)
         for port, value in (
             ("outdoorTemperature", 5.0), ("numberOfPeople", 0.0), ("globalIrradiation", 0.0),

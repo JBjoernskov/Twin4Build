@@ -518,8 +518,7 @@ def run_controller_identification_example():
         n_sensors=1,
         n_setpoints=1,
         n_actuators=1,
-        # candidate_controllers=None uses default PIDControllerSystem variants
-        is_reverse=True,  # Match the true controller
+        # the default candidates; the fit identifies the direction (reverse or direct)
         id="identified_controller",
     )
 

@@ -377,7 +377,6 @@ class WallSystem(core.System, nn.Module):
             state_names=["T_wall"],
             E=E,
             F=F,
-            add_noise=False,
             id=f"ss_model_{self.id}",
         )
 

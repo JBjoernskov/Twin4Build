@@ -82,9 +82,9 @@ class TestSerializeRoundTrip(unittest.TestCase):
     def _build(self):
         model = tb.Model(id=self.MODEL_ID)
         room = BuildingSpaceSystem(
-            id="room", C_wall=1e6, C_air=1e4, C_boundary=5e5, R_out=0.01, R_in=0.02, R_boundary=0.03,
-            f_wall=0.5, f_air=0.3, Q_occ_gain=100.0, CO2_occ_gain=0.004, CO2_start=400.0, airVolume=100.0,
-            T_wall_start=20.0, T_air_start=20.0, T_int_start=20.0, T_boundary_start=18.0,
+            id="room",
+            thermal_kwargs=dict(C_wall=1e6, C_air=1e4, C_boundary=5e5, R_out=0.01, R_in=0.02, R_boundary=0.03, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
+            mass_kwargs=dict(V=100.0),
         )
         heater = SpaceHeaterSystem(id="heater")
         outdoor = SensorSystem(
@@ -189,7 +189,7 @@ class TestSerializeRoundTrip(unittest.TestCase):
         outdoor.set_transformation(celsius_from_deci)
         outdoor._transformation_globalIrradiation = clip_irradiance
         sink = _schedule("sink", 0.0)
-        room = BuildingSpaceSystem(id="room2", airVolume=100.0)
+        room = BuildingSpaceSystem(id="room2", mass_kwargs=dict(V=100.0))
         model.add_connection(outdoor, room, "outdoorTemperature", "outdoorTemperature")
         model.add_connection(outdoor, room, "globalIrradiation", "globalIrradiation")
         for port, value in (("numberOfPeople", 0.0), ("supplyAirFlowRate", 0.0), ("supplyAirTemperature", 18.0), ("heatGain", 0.0)):

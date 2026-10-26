@@ -105,7 +105,7 @@ class TestThermalMakeUpPort(unittest.TestCase):
     def setUp(self):
         self.zone = tb.BuildingSpaceThermalSystem(
             C_air=1e5, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0,
-            Q_occ_gain=0.0, T_air_start=self.T_I, T_wall_start=self.T_I, id="zone",
+            Q_occ_gain=0.0, id="zone",
         )
         self.zone.initialize([START], [START + datetime.timedelta(hours=1)], [DT])
         self.params = self.zone._forward_params()

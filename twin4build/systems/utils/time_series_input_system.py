@@ -46,6 +46,13 @@ class TimeSeriesInputSystem(core.System):
         **kwargs: Additional keyword arguments
     """
 
+    #: Deprecated keyword names and the ones that replaced them (see
+    #: ``System.DEPRECATED_KEYWORDS``).
+    DEPRECATED_KEYWORDS = {
+        "datecolumn": "date_column",
+        "valuecolumn": "value_column",
+    }
+
     def __init__(
         self,
         df: Optional[pd.DataFrame] = None,
@@ -95,9 +102,9 @@ class TimeSeriesInputSystem(core.System):
                 )
 
         legacy = deprecate_args(
-            ["datecolumn", "valuecolumn"],
-            ["date_column", "value_column"],
-            [None, None],
+            list(TimeSeriesInputSystem.DEPRECATED_KEYWORDS),
+            list(TimeSeriesInputSystem.DEPRECATED_KEYWORDS.values()),
+            [None] * len(TimeSeriesInputSystem.DEPRECATED_KEYWORDS),
             kwargs,
         )
         date_column = legacy.get("date_column", date_column)

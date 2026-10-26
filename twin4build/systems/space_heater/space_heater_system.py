@@ -714,7 +714,6 @@ class SpaceHeaterSystem(core.System, nn.Module):
             state_names=[f"T_{i+1}" for i in range(n)],
             E=E,  # State-input coupling
             F=F,  # Input-input coupling
-            add_noise=False,
             id=f"ss_model_{self.id}",
         )
 

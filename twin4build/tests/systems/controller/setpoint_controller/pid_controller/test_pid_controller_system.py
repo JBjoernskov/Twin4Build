@@ -20,7 +20,7 @@ twin4build._IS_TESTING = True
 
 class TestPIDControllerSystem(unittest.TestCase):
     def setUp(self):
-        self.controller = PIDControllerSystem(id="test_pid", Kp=1.0, Ki=0.1, Kd=0.01)
+        self.controller = PIDControllerSystem(id="test_pid", kp=1.0, Ti=10.0, Td=0.01)
 
     def test_initialization(self):
         """Test PID controller initialization."""
@@ -53,7 +53,7 @@ class TestPIDControllerSystem(unittest.TestCase):
     def test_do_step_batch(self):
         """Test PID controller do_step method with batch size > 1."""
         controller_batch = PIDControllerSystem(
-            id="test_pid_batch", Kp=1.0, Ki=0.1, Kd=0.01
+            id="test_pid_batch", kp=1.0, Ti=10.0, Td=0.01
         )
 
         batch_size = 3

@@ -525,7 +525,6 @@ def run_multi_signal_identification_example():
         n_sensors=len(sensors),
         n_setpoints=len(setpoints),
         n_actuators=1,
-        is_reverse=True,
         id="identified_controller",
     )
     model.add_component(controller)

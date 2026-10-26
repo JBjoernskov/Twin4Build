@@ -69,6 +69,14 @@ class SmoothOnOffControllerSystem(core.System, nn.Module):
         ... )
     """
 
+    #: Deprecated keyword names and the ones that replaced them (see
+    #: ``System.DEPRECATED_KEYWORDS``).
+    DEPRECATED_KEYWORDS = {
+        "offValue": "off_value",
+        "onValue": "on_value",
+        "isReverse": "is_reverse",
+    }
+
     def __init__(
         self,
         off_value: float = 0.0,
@@ -78,9 +86,9 @@ class SmoothOnOffControllerSystem(core.System, nn.Module):
         **kwargs,
     ):
         legacy = deprecate_args(
-            ["offValue", "onValue", "isReverse"],
-            ["off_value", "on_value", "is_reverse"],
-            [None, None, None],
+            list(SmoothOnOffControllerSystem.DEPRECATED_KEYWORDS),
+            list(SmoothOnOffControllerSystem.DEPRECATED_KEYWORDS.values()),
+            [None] * len(SmoothOnOffControllerSystem.DEPRECATED_KEYWORDS),
             kwargs,
         )
         off_value = legacy.get("off_value", off_value)
