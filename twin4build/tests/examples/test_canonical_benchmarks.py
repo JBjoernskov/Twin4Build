@@ -164,8 +164,8 @@ def _all_parameter_values(component):
 def test_zone_copies_keep_every_template_parameter():
     """Zone replication deep-copies the template; a ``tps.Parameter`` deep copy
     used to re-normalize its data (unbounded values became 1.0), so gate
-    steepness, the on/off controller output and the boundary node all drifted
-    from the canonical example.  Every parameter must match the template."""
+    steepness, the occupancy controller's on level and the boundary node all
+    drifted from the canonical example.  Every parameter must match the template."""
     common = _common()
     template = common._translated_template()
     components, roles = common._prefix_copy(template, 0)
@@ -182,7 +182,9 @@ def test_zone_copies_keep_every_template_parameter():
             n_checked += 1
     assert n_checked > 40
     assert float(roles["office_occupancy_detector"].steepness.get()) == 10.0
-    assert float(roles["office_occupancy_controller"].on_value.get()) == pytest.approx(0.3)
+    occupancy_controller = roles["office_occupancy_controller"]
+    assert float(occupancy_controller.output_max.get()) == pytest.approx(0.3)
+    assert float(occupancy_controller.output_min.get()) == pytest.approx(0.0)
 
 
 def test_truth_values_are_physical_after_replication():

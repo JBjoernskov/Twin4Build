@@ -27,8 +27,6 @@ Key Components:
     Control Systems:
         - PIDControllerSystem: Proportional-Integral-Derivative controller
         - CascadeControllerSystem: Cascade (outer/inner loop) controller
-        - OnOffControllerSystem: Threshold-based on/off controller
-        - SmoothOnOffControllerSystem: Torch-based on/off controller
         - ScheduleSwitchControllerSystem: Schedule-based switching controller
         - SATLinearRuleSystem / SATCompensatedControllerSystem: Supply air
           temperature compensation rules
@@ -88,8 +86,6 @@ __all__ = [
     # Controllers
     "PIDControllerSystem",
     "CascadeControllerSystem",
-    "OnOffControllerSystem",
-    "SmoothOnOffControllerSystem",
     "ScheduleSwitchControllerSystem",
     "SATLinearRuleSystem",
     "SATCompensatedControllerSystem",
@@ -161,8 +157,6 @@ _MODULES = {
     "score_pair": "controller.controller_identification.loop_classifier",
     "RewireReport": "controller.controller_identification.pi_loop_rewire",
     "NeuralPolicyControllerSystem": "controller.neural_policy_controller.neural_policy_controller_system",
-    "OnOffControllerSystem": "controller.rulebased_controller.on_off_controller.on_off_controller_system",
-    "SmoothOnOffControllerSystem": "controller.rulebased_controller.on_off_controller.smooth_on_off_controller_system",
     "SATCompensatedControllerSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
     "SATLinearRuleSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
     "ScheduleSwitchControllerSystem": "controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_system",
@@ -207,7 +201,6 @@ _ALIASES = {
     "SpaceHeaterTorchSystem": "SpaceHeaterSystem",
     "FanCoilUnitTorchSystem": "FanCoilUnitSystem",
     "AirHandlingUnitTorchSystem": "AirHandlingUnitSystem",
-    "OnOffControllerTorchSystem": "SmoothOnOffControllerSystem",
     "ScheduleSwitchControllerTorchSystem": "ScheduleSwitchControllerSystem",
     "SATCompensatedControllerTorchSystem": "SATCompensatedControllerSystem",
     "ControllerIdentificationTorchSystem": "ControllerIdentificationSystem",

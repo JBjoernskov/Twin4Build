@@ -227,22 +227,29 @@ def fcn(self):
         occupancy_system, occupancy_detector, "scheduleValue", "occupancy"
     )
 
-    # On/off controller: binary occupancy → minimum damper position (0.3 when occupied)
-    occupancy_controller = tb.SmoothOnOffControllerSystem(
-        on_value=0.3,
-        off_value=0.0,
+    # Occupancy controller: binary occupancy → minimum damper position (0.3
+    # when occupied).  On-off control is a proportional loop saturated to
+    # [output_min, output_max] = [off, on]: u = clamp(kp * (signal -
+    # setpoint), 0, 0.3), no integral (Ti -> infinity).  kp = 3 about 0.45 is
+    # off below 0.45 and fully on above 0.55 of the 0-1 detector signal.
+    occupancy_controller = tb.PIDControllerSystem(
+        kp=3.0,
+        Ti=1e12,
+        Td=0.0,
+        output_min=0.0,
+        output_max=0.3,
         is_reverse=False,
-        # steepness=10.0,
         id="office_occupancy_controller",
     )
     self.add_connection(
         occupancy_detector, occupancy_controller, "occupancySignal", "actualValue"
     )
 
-    # Constant setpoint at 0.5 (midpoint of the 0-1 detector signal)
+    # Constant setpoint at 0.45: the loop's transition is 0.45-0.55, centred
+    # on the midpoint of the 0-1 detector signal
     occupancy_controller_setpoint = tb.ScheduleSystem(
         weekday_ruleset={
-            "ruleset_default_value": 0.5,
+            "ruleset_default_value": 0.45,
             "ruleset_start_minute": [],
             "ruleset_end_minute": [],
             "ruleset_start_hour": [],
@@ -258,7 +265,7 @@ def fcn(self):
         "setpointValue",
     )
 
-    # Max selector: final damper position = max(CO2 PID output, occupancy on/off output)
+    # Max selector: final damper position = max(CO2 PID output, occupancy controller output)
     damper_max = tb.MaxSystem(id="office_damper_max")
     self.add_connection(
         self.components["office_co2_controller"],
@@ -469,10 +476,11 @@ def main():
         # recovers G_occ = 5.0e-6, i.e. the textbook per-person CO2 generation
         # rate, without needing hand-tightened bounds to force it there.
         (occupancy_detector, "threshold", 1.0, 0.02, 5.0),
-        # NOTE: the occupancy controller's onValue (minimum damper position
+        # NOTE: the occupancy controller's output_max (minimum damper position
         # when occupied) is NOT estimated: it is a known BMS constant (0.3 in
         # the measured damper data), and leaving it free lets the solver
         # strand it at an arbitrary value once the detection branch is quiet.
+        # Its kp / Ti are not estimated either: they only make it an on-off.
     ]
 
     print(f"Total parameter groups: {len(parameters)}")
