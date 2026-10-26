@@ -14,6 +14,9 @@ Unused and untested; 2.0 drops them without a deprecation period.
   `method=(..., "ad")`.
 - `FmuSystem` (and its `fmuSystem` alias): FMU components and the `fmpy`
   dependency.
+- `Model.make_pickable`, `SimulationModel.make_pickable`,
+  `SimulationModel.reset_torch_tensors` and `Vector.make_pickable`: they
+  prepared a model for the finite-difference worker pools.
 
 ### Removed (previously deprecated)
 

@@ -434,14 +434,6 @@ class Model:
         """
         self.simulation_model.add_component(component=component)
 
-    def make_pickable(self) -> None:
-        """
-        Make the model instance pickable by removing unpickable references.
-
-        This method prepares the Model instance for use with multiprocessing in the Estimator class.
-        """
-        self.simulation_model.make_pickable()
-
     def remove_component(self, component: "core.System") -> None:
         """
         Remove a component from the model.
