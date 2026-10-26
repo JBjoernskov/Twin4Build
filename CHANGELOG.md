@@ -17,6 +17,11 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - `Model.make_pickable`, `SimulationModel.make_pickable`,
   `SimulationModel.reset_torch_tensors` and `Vector.make_pickable`: they
   prepared a model for the finite-difference worker pools.
+- `Model.set_initial_values` / `SimulationModel.set_initial_values`: they
+  wrote an output port's tensor (in a shape the port does not hold), which
+  the next `initialize` overwrote, so a simulation never saw it, and they
+  set no component's state.  Use `Model.set_state` for the state the
+  simulations start from.
 
 ### Removed (previously deprecated)
 
@@ -42,8 +47,6 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - `use_spreadsheet` / `use_database` / `use_dict` → prefer `source=`
 - `Model.load(semantic_model_filename=...)` auto-translate → `SemanticModel` + `Translator.translate`; prefer `Model.load(filename=...)`
 - `Model.load(simulation_model_filename=...)` → `Model.load(filename=...)`
-- `Model.set_initial_values(dict_)` → parallel `values`, `components`, and
-  `output_names` lists
 - `Translator.translate(systems_=...)` → `systems=`
 - Public `verbose=` kwargs → configure `LOGGER.verbose` / `LOGGER.logfile`
 - `get_component_by_class(dict_, ...)` → `get_components_by_class(Cls)`

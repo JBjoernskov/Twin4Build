@@ -1288,75 +1288,6 @@ class SimulationModel:
     #     ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
     #     self._custom_initial_dict = _custom_initial_dict
 
-    def set_initial_values(
-        self,
-        values: List[Any] = None,
-        components: List[core.System] = None,
-        output_names: List[str] = None,
-        **kwargs,
-    ) -> None:
-        """
-        Set initial values for components in the model.
-
-        Args:
-            values (List[Any]): List of initial values to set.
-            components (List[core.System]): List of components to set initial values for.
-            output_names (List[str]): List of output property names corresponding to the values.
-
-        Raises:
-            AssertionError: If a component doesn't have the specified output property.
-        """
-        # Handle deprecated dict-based signature: set_initial_values(dict_)
-        # Old format: dict_ = {component_id: {output_name: value, ...}, ...}
-        old_dict = kwargs.get("dict_", None)
-        if old_dict is None and isinstance(values, dict):
-            old_dict = values
-            values = None
-
-        if old_dict is not None:
-            warnings.warn(
-                "The dict-based signature for set_initial_values(dict_) is deprecated. "
-                "Use set_initial_values(values, components, output_names) instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            # Convert old dict format to new list format
-            values = []
-            components = []
-            output_names = []
-            for component_id, outputs in old_dict.items():
-                component = self._components[component_id]
-                for output_name, value in outputs.items():
-                    values.append(value)
-                    components.append(component)
-                    output_names.append(output_name)
-
-        for v, component, output_name in zip(values, components, output_names):
-            assert (
-                output_name in component.output
-            ), f'Invalid output property "{output_name}" for component "{component.id}"'
-
-            output_obj = component.output[output_name]
-            if v is not None:
-                # Set the tensor value for Scalar or Vector types
-                if isinstance(output_obj, tps.Scalar):
-                    output_obj.tensor = (
-                        v
-                        if isinstance(v, torch.Tensor)
-                        else torch.tensor([v], dtype=tps.float_dtype())
-                    )
-                elif isinstance(output_obj, tps.Vector):
-                    output_obj.tensor = (
-                        v
-                        if isinstance(v, torch.Tensor)
-                        else torch.tensor(v, dtype=tps.float_dtype())
-                    )
-                else:
-                    raise TypeError(
-                        f'Output property "{output_name}" for component "{component.id}" '
-                        f"is not a Scalar or Vector type"
-                    )
-
     def set_parameters(
         self,
         values: List[Any],
@@ -1939,7 +1870,6 @@ class SimulationModel:
         # Validate and format as lists if needed
         # start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
 
-        # self.set_initial_values()
         for component in self._flat_execution_order:
             # for v in component.input.values():
             #     v.reset()
