@@ -20,7 +20,6 @@ Package
    twin4build.systems.saref4syst
    twin4build.systems.schedule
    twin4build.systems.sensor
-   twin4build.systems.shading_device
    twin4build.systems.space_heater
    twin4build.systems.utils
    twin4build.systems.valve

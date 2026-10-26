@@ -14,6 +14,11 @@ Unused and untested; 2.0 drops them without a deprecation period.
   they read private files and local databases and are no maintained
   examples. They moved to `scripts/research/` in the repository and are no
   longer installed with the package.
+- `ClassificationAnnControllerSystem`, `NeuralPolicyControllerSystem` and
+  `ShadingDeviceSystem`: the ANN controller could not be built (its weights
+  are not shipped), the neural policy's default policy could not step, and
+  the shading device only passed a shade position on that no component
+  reads.  The SAREF `ShadingDevice` class stays in the semantic model.
 
 ### Removed (previously deprecated)
 
