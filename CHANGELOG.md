@@ -12,6 +12,8 @@ Unused and untested; 2.0 drops them without a deprecation period.
   methods and `Estimator.estimate(n_cores=...)` (the worker pools that
   computed the Jacobian).  Every component is a torch module; use
   `method=(..., "ad")`.
+- `FmuSystem` (and its `fmuSystem` alias): FMU components and the `fmpy`
+  dependency.
 
 ### Removed (previously deprecated)
 
@@ -32,7 +34,7 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 ### Deprecated (removed in 2.1)
 
-- `*TorchSystem` / `fmuSystem` public names → prefer `*System` / `FmuSystem` / `SmoothOnOffControllerSystem`
+- `*TorchSystem` public names → prefer `*System` / `SmoothOnOffControllerSystem`
 - Schedule/controller camelCase kwargs → snake_case (`weekday_ruleset`, `is_reverse`, `date_column`, …)
 - `use_spreadsheet` / `use_database` / `use_dict` → prefer `source=`
 - `Model.load(semantic_model_filename=...)` auto-translate → `SemanticModel` + `Translator.translate`; prefer `Model.load(filename=...)`

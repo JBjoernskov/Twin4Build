@@ -72,7 +72,6 @@ _TORCH_ALIASES = {
     "SATCompensatedControllerTorchSystem": "SATCompensatedControllerSystem",
     "ControllerIdentificationTorchSystem": "ControllerIdentificationSystem",
     "ControllerIdentificationPITorchSystem": "ControllerIdentificationPISystem",
-    "fmuSystem": "FmuSystem",
 }
 
 __all__ = [

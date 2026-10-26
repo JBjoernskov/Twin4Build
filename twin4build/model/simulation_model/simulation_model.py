@@ -31,7 +31,6 @@ from twin4build.utils.dict_utils import (
     merge_dicts,
 )
 from twin4build.utils.get_main_dir import get_main_dir
-from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
@@ -614,13 +613,6 @@ class SimulationModel:
         #         output_.make_pickable()
 
         self.reset_torch_tensors()
-
-        fmus = self.get_component_by_class(self._components, systems.fmuSystem)
-        for fmu in fmus:
-            if "fmu" in get_obj_attr(fmu):
-                del fmu.fmu
-                del fmu.fmu_initial_state
-                fmu.INITIALIZED = False
 
     def reset_torch_tensors(self) -> None:
         """
