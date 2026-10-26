@@ -618,7 +618,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             # ``outdoorCo2Concentration`` falls back to a constant 400 ppmv,
             # which is the right default for buildings without a dedicated
             # outdoor CO2 sensor.  Consumers that need a real CO2 feed
-            # (e.g. ``BuildingSpace.outdoorCO2``) can be wired from a
+            # (e.g. ``BuildingSpace.outdoorCo2Concentration``) can be wired from a
             # dedicated ScheduleSystem / TimeSeriesInputSystem in the fcn
             # callback instead.
             _has_co2_source = (

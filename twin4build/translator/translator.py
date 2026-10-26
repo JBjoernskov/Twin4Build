@@ -1539,6 +1539,11 @@ class Translator:
 
                     # _map_port_indices()
 
+                    # A pattern written against a renamed input port
+                    # (``"outdoorCO2"`` of a room) connects the port that
+                    # replaced it; the candidate edge and the model hold the
+                    # current name.
+                    key = component.resolve_input_port(key)
                     if key not in required_inputs[component]:
                         required_inputs[component][key] = []
 

@@ -247,7 +247,9 @@ class OccupancySystem(core.System, nn.Module):
         self.damper_valuecolumn = damper_value_column
 
         self._input = {
-            "outdoorCo2Concentration": tps.Scalar(),
+            # 400 ppmv while unwired: at 0 ppmv the inversion books the whole
+            # indoor concentration as people
+            "outdoorCo2Concentration": tps.Scalar(400.0),
             # Measured-data ports.  Two ways to feed them:
             #  * CSV files (``co2_filename`` / ``damper_filename``): NOT
             #    connected to any producer; ``do_step`` publishes the samples
@@ -491,7 +493,7 @@ class OccupancySystem(core.System, nn.Module):
             mass_params: ``{"V", "G_occ", "m_inf"}`` -- the zone's
                 :attr:`BuildingSpaceMassSystem.PARAM_NAMES`, each ``(n_c,)``.
             inputs: the zone's ``supplyAirFlowRate`` / ``exhaustAirFlowRate``
-                / ``outdoorCO2`` ports, *untransformed*: the balanced-flow
+                / ``outdoorCo2Concentration`` ports, *untransformed*: the balanced-flow
                 transform is applied here exactly as the zone applies it.
             C_prev: CO2 at the start of the step [ppmv].
             C_now: measured CO2 at the end of the step [ppmv].
@@ -511,7 +513,7 @@ class OccupancySystem(core.System, nn.Module):
         )
         # Same transform, same slot order as BuildingSpaceMassSystem.forward.
         inputs = {**inputs, **air_balance.balanced_flow_inputs(inputs)}
-        C_out = inputs["outdoorCO2"]
+        C_out = inputs["outdoorCo2Concentration"]
         # Slot order of BuildingSpaceMassSystem.forward; the make-up stream is
         # outdoor air here (the inverse has no transfer-node port).
         u = torch.stack(
@@ -627,7 +629,7 @@ class OccupancySystem(core.System, nn.Module):
             {
                 "supplyAirFlowRate": m_sup,
                 "exhaustAirFlowRate": m_exh,
-                "outdoorCO2": C_outdoor,
+                "outdoorCo2Concentration": C_outdoor,
             },
             C_prev,
             C_indoor,

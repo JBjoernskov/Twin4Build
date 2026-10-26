@@ -64,7 +64,7 @@ class TestMassMakeUpPort(unittest.TestCase):
         inputs = {
             "supplyAirFlowRate": _t(m_sup),
             "exhaustAirFlowRate": _t(m_exh),
-            "outdoorCO2": _t(400.0),
+            "outdoorCo2Concentration": _t(400.0),
             "numberOfPeople": _t(0.0),
         }
         if make_up is not None:
