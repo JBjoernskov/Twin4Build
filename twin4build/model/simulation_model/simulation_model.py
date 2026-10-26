@@ -2487,7 +2487,8 @@ class SimulationModel:
                     json.dump(config_, f, indent=4)
             else:
                 with open(filename) as f:
-                    config = json.load(f)
+                    saved = f.read()
+                config = json.loads(saved)
 
                 comparison_result = compare_dict_structure(config_, config)
                 if not comparison_result["structures_match"]:
@@ -2518,8 +2519,12 @@ class SimulationModel:
 
                 self.set_parameters_from_config(config_, component)
 
-                with open(filename, "w") as f:
-                    json.dump(config_, f, indent=4)
+                # written back only when it changed: every load rewrote every component's file (26 Oct 2026: a
+                # setup of 2 778 components, through a network file system each write a round trip)
+                merged = json.dumps(config_, indent=4)
+                if merged != saved:
+                    with open(filename, "w") as f:
+                        f.write(merged)
 
         LOGGER.remove_level()
 

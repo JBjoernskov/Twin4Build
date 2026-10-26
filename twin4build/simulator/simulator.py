@@ -960,6 +960,9 @@ class Simulator:
             self.start_time, self.end_time, self.step_size
         )
         out: Dict[str, List[pd.DataFrame]] = {}
+        from twin4build.utils.scoring_mask import filled_downstream
+
+        filled = filled_downstream(self.model)
         for sensor in self.model.components.values():
             if not isinstance(sensor, SensorSystem):
                 continue
@@ -979,6 +982,8 @@ class Simulator:
                 scored = (
                     np.ones(n, dtype=bool) if mask is None else period_mask(mask, index, n)
                 )
+                if sensor.id in filled:
+                    scored = scored & ~np.asarray(filled[sensor.id][p], dtype=bool)[:n]
                 frames.append(
                     pd.DataFrame(
                         {
