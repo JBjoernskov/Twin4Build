@@ -32,6 +32,17 @@ carries parameters.
 Signals that are a known function of a measurement (a terminal's exhaust
 flow as a fixed ratio times its measured supply flow) count as measured
 when the caller says so through ``derived``.
+
+Grouping by influence (``scored``): an unmeasured connection ties its two
+ends only where the receiver's signals reach a *scored* sensor.  Two
+components then share a group exactly when their parameters reach a
+common scored residual through unmeasured connections; a component whose
+outputs reach no scored sensor (a storey's interior read only by
+measured stand-ins) no longer glues together the components that feed
+it.  Without ``scored`` every unmeasured connection ties its ends (the
+connected components).  A data sensor's own inputs other than
+``measuredValue`` (the signals a stand-in is derived from) tie nothing:
+the sensor replays its series.
 """
 
 from __future__ import annotations
@@ -81,7 +92,8 @@ class Partition:
     crossing: List[Edge]
     #: Measured edges inside a group: cut too, groups unchanged.
     internal: List[Edge]
-    #: Unmeasured edges, all inside groups by construction.
+    #: Unmeasured edges: inside groups by construction, except, when grouped
+    #: by influence, the edges into a component that reaches no scored sensor.
     binding: List[Edge]
     #: Component ids that carry free parameters, per group.
     free: Dict[str, List[str]] = field(default_factory=dict)
@@ -156,7 +168,8 @@ def measured_partition(
     model,
     free=None,
     measured: Optional[Iterable] = None,
-    derived: Optional[Mapping[Tuple[str, str], Tuple[SensorSystem, Optional[Callable]]]] = None,
+    derived: Optional[Mapping[tuple, Tuple[SensorSystem, Optional[Callable]]]] = None,
+    scored: Optional[Iterable] = None,
 ) -> Partition:
     """The minimal groups the measurements allow (module docstring).
 
@@ -164,13 +177,17 @@ def measured_partition(
     it only labels the groups, the partition itself is a property of the
     wiring.  ``measured`` restricts the sensors that count (by component or
     id) to those the fit will score, so a dead duplicate does not cut an
-    edge.  ``derived`` maps ``(component id, output port)`` to ``(sensor,
-    transform)``: that port equals ``transform`` of the sensor's series
-    (``None`` for identity) and counts as measured.
+    edge.  ``derived`` maps ``(component id, output port)`` -- or ``(component
+    id, output port, output slot)`` for one slot of a vector output -- to
+    ``(sensor, transform)``: that port equals ``transform`` of the sensor's
+    series (``None`` for identity) and counts as measured.  ``scored`` (by
+    component or id) groups by influence (module docstring): the sensors
+    whose residuals the fit scores; ``measured`` still decides what is cut.
     """
     allowed = None
     if measured is not None:
         allowed = {c if isinstance(c, str) else c.id for c in measured}
+    scored_ids = None if scored is None else {c if isinstance(c, str) else c.id for c in scored}
     derived = dict(derived or {})
     # data sensors by the signal they read
     readers: Dict[Signal, List[SensorSystem]] = {}
@@ -197,11 +214,14 @@ def measured_partition(
     free_ids = _free_ids(model, free)
     crossing_candidates: List[Edge] = []
     binding: List[Edge] = []
+    fusable: List[Edge] = []
     for e in _edges(model):
         r = e.receiver
         if isinstance(r, SensorSystem) and e.input_port == "measuredValue":
             union(e.sender.id, r.id)  # a sink (or a pass-through) stays with its source
             continue
+        if isinstance(r, SensorSystem) and r.has_data:
+            continue  # a data sensor replays its series: its other inputs tie nothing
         if not _has_inputs(e.sender) and e.sender.id not in free_ids:
             continue  # a leaf without parameters (data, a schedule, the weather): exogenous
         if _is_fusable(e):
@@ -211,6 +231,7 @@ def measured_partition(
             # a lagged signal and diverge.  It binds whether or not a sensor
             # reads the signal.
             binding.append(e)
+            fusable.append(e)
             union(e.sender.id, r.id)
             continue
         if _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue":
@@ -225,12 +246,39 @@ def measured_partition(
             crossing_candidates.append(e)
             continue
         key = (e.sender.id, e.output_port)
-        if key in derived:
-            e.sensor, e.transform = derived[key]
+        slot_key = (e.sender.id, e.output_port, e.output_slot)
+        if slot_key in derived or key in derived:
+            e.sensor, e.transform = derived[slot_key] if slot_key in derived else derived[key]
             crossing_candidates.append(e)
             continue
         binding.append(e)
-        union(e.sender.id, r.id)
+        if scored_ids is None:
+            union(e.sender.id, r.id)
+
+    if scored_ids is not None:
+        # Grouping by influence: an unmeasured edge ties its ends where the
+        # receiver reaches a scored sensor (through unmeasured edges, both
+        # ways along fusable arcs, which are one block).
+        upstream: Dict[str, List[str]] = {}
+        for e in binding:
+            upstream.setdefault(e.receiver.id, []).append(e.sender.id)
+        for e in fusable:
+            upstream.setdefault(e.sender.id, []).append(e.receiver.id)
+        reaches = set()
+        frontier = []
+        for e in _edges(model):
+            if e.input_port == "measuredValue" and e.receiver.id in scored_ids and e.sender.id not in reaches:
+                reaches.add(e.sender.id)
+                frontier.append(e.sender.id)
+        while frontier:
+            cid = frontier.pop()
+            for up in upstream.get(cid, ()):
+                if up not in reaches:
+                    reaches.add(up)
+                    frontier.append(up)
+        for e in binding:
+            if e.receiver.id in reaches:
+                union(e.sender.id, e.receiver.id)
 
     roots: Dict[str, int] = {}
     group_of: Dict[str, int] = {}

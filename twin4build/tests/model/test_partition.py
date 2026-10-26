@@ -332,3 +332,62 @@ class TestMeasuredPartition(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestInfluenceGrouping(unittest.TestCase):
+    """Two rooms feed a hub (a storey's interior) whose temperature only a
+    stand-in measures; the hub's temperature feeds both rooms back.  The
+    rooms' own temperature sensors are scored, the stand-in is not."""
+
+    def build(self):
+        model = tb.Model(id="partition_influence")
+        rooms = [Room(id=f"room{k}") for k in range(2)]
+        hub = Room(id="hub")
+        for k, r in enumerate(rooms):
+            model.add_connection(r, hub, "T", "flow", input_port_index=k)  # unmeasured into the hub
+            model.add_connection(hub, r, "T", "supplyT")  # measured by the stand-in
+            model.add_connection(r, data_sensor(f"T_sensor{k}"), "T", "measuredValue")
+            model.add_connection(series([0.0] * 8, id=f"flow{k}"), r, "measuredValue", "flow", input_port_index=0)
+        model.add_connection(series([20.0] * 8, id="hub_supply"), hub, "measuredValue", "supplyT")
+        model.add_connection(hub, data_sensor("stand_in"), "T", "measuredValue")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model
+
+    MEASURED = ("stand_in",)  # the rooms' sensors score; they do not cut (the rooms' outputs stay unmeasured)
+    SCORED = ("T_sensor0", "T_sensor1")
+
+    def test_connected_groups_glue_the_rooms_through_the_hub(self):
+        p = measured_partition(self.build(), measured=self.MEASURED)
+        self.assertEqual(_group(p, "room0"), {"room0", "room1", "hub", "T_sensor0", "T_sensor1", "stand_in"})
+
+    def test_influence_keeps_each_room_with_its_own_sensor(self):
+        p = measured_partition(self.build(), measured=self.MEASURED, scored=self.SCORED)
+        self.assertEqual(_group(p, "room0"), {"room0", "T_sensor0"})
+        self.assertEqual(_group(p, "room1"), {"room1", "T_sensor1"})
+        self.assertEqual(_group(p, "hub"), {"hub", "stand_in"})
+        # the hub's temperature into the rooms crosses (the stand-in's series), the rooms into the hub bind nothing
+        self.assertEqual(sorted(e.receiver.id for e in p.crossing), ["room0", "room1"])
+        self.assertEqual({e.receiver.id for e in p.binding}, {"hub"})
+
+    def test_an_influence_that_reaches_a_scored_sensor_still_binds(self):
+        """Score the hub (as if measured): now the rooms' parameters reach its
+        sensor, and all three are one group again."""
+        p = measured_partition(self.build(), measured=self.MEASURED, scored=self.SCORED + ("stand_in",))
+        self.assertEqual(_group(p, "room0"), {"room0", "room1", "hub", "T_sensor0", "T_sensor1", "stand_in"})
+
+    def test_a_derived_slot_counts_as_measured(self):
+        """One slot of a vector output declared derived: that edge crosses."""
+        model = tb.Model(id="partition_slot")
+        rooms = [Room(id=f"room{k}") for k in range(2)]
+        hub = Room(id="hub")
+        for k, r in enumerate(rooms):
+            model.add_connection(hub, r, "T", "flow", input_port_index=0)
+            model.add_connection(series([20.0] * 8, id=f"s{k}"), r, "measuredValue", "supplyT")
+            model.add_connection(r, data_sensor(f"T_sensor{k}"), "T", "measuredValue")
+        model.add_connection(series([20.0] * 8, id="hs"), hub, "measuredValue", "supplyT")
+        model.add_connection(series([0.0] * 8, id="hf"), hub, "measuredValue", "flow", input_port_index=0)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        replay = series([0.1] * 8, id="replay")
+        p = measured_partition(model, derived={("hub", "T", None): (replay, None)})
+        self.assertNotEqual(p.group_of["room0"], p.group_of["room1"])
+        self.assertEqual(len(p.crossing), 2)
