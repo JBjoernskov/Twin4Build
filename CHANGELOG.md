@@ -39,6 +39,16 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   objectives, variables and constraints, and reads (`heater.output["Power"]`),
   each with a `DeprecationWarning`; the model holds and saves `toRoomPower`
 - `twin4build.utils.print_progress` → `twin4build.utils.logger`
+- Room input `outdoorCO2` → `outdoorCo2Concentration` (#195), the name
+  `OccupancySystem` and `OutdoorEnvironmentSystem` use; both default to
+  400 ppmv while unwired (the occupancy's 0 ppmv default turned the whole
+  indoor concentration into people).  The old name still connects,
+  disconnects, reads (`room.input["outdoorCO2"]`), fills through
+  `fill_missing_inputs`, matches in signature patterns and loads from a
+  saved `instance_graph.ttl`, each with a `DeprecationWarning`
+  (`System.INPUT_PORT_ALIASES`, `System.resolve_input_port`, the input-side
+  counterparts of the output aliases); the model holds and saves the new
+  name.
 
 ### Added
 
