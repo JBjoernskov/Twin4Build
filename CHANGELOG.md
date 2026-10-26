@@ -4,6 +4,17 @@
 
 API-quality major release. Preferred forms are documented below; new soft-compat aliases warn and will be **removed in 2.1.0**.
 
+### Removed
+
+Unused and untested; 2.0 drops them without a deprecation period.
+
+- The site-specific research scripts in `twin4build/examples/` (the Mortar
+  buildings 1 and 13, BTS Site A, HTR, the ESIM 2026 calibration and
+  optimization plots, the optimization runners and a pseudo-code `ex.py`):
+  they read private files and local databases and are no maintained
+  examples. They moved to `scripts/research/` in the repository and are no
+  longer installed with the package.
+
 ### Removed (previously deprecated)
 
 - camelCase kwargs already routed through deprecation helpers (`startTime` / `endTime` / `stepSize`, `useSpreadsheet` / `useDatabase` / `usedf` / `usedict`, …)

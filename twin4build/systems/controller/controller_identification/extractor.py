@@ -16,8 +16,8 @@ components live in a different :class:`~twin4build.translator.translator.Transla
 Cross-translator wiring is done by matching BRICK-node URIs via the
 ``_sim2sem_map`` / ``_sem2sim_map`` exposed by both translators.
 
-Typical usage (see also
-:mod:`twin4build.examples.translator_example_mortar_bldg1`):
+Typical usage (see also the research script
+``scripts/research/translator_example_mortar_bldg1.py`` in the repository):
 
 .. code-block:: python
 
