@@ -16,7 +16,7 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   use `plot(..., entries=[Entry(data=..., label=...)])`
 - `CascadePIDControllerSystem` alias
 - Estimator legacy `parameters` dict (`private` / `shared`)
-- `set_parameters_from_array` → use `set_parameters`
+- `set_parameters_from_array` → use `set_parameters({(component or id, attr): value})`
 - `windows-curses` dependency (curses LOGGER TUI removed)
 - unknown public keyword arguments are rejected instead of being silently
   ignored; removed camelCase time/source keywords now raise `TypeError`
@@ -145,12 +145,18 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   setup gave those parameters.
   `Model.get_source_component_ids(component)` gives the ids of the
   components a batched meta stands for;
-  `Model.get_parameter_values(parameters)` reads the estimator's parameter
-  entries as `{(component id, attr): array}` in physical units, one key per
-  instance of a meta; `Model.set_parameter_values(values, strict=False)`
-  writes such values to the model whatever its batching (the unbatched
-  model, or a meta's instance, the other instances left alone) and returns
-  `{"applied": n, "missing": m}`.  A saved fit carries
+  One public pair reads and writes parameters:
+  `Model.get_parameters(parameters=None)` reads the estimator's parameter
+  entries (`(component or component id, attr, ...)`; `None`: every
+  parameter the components list in their configuration) as
+  `{(component id, attr): array}` in physical units, one key per instance
+  of a meta; `Model.set_parameters(values, strict=False)` writes
+  `{(component or component id, attr): values}` to the model whatever its
+  batching (the unbatched model, or a meta's instance, the other instances
+  left alone) and returns `{"applied": n, "missing": m}`.  The parallel-list
+  writer with normalization, bounds and `overwrite` is the estimator's own
+  (private).  `get_parameter_values` / `set_parameter_values`, the names
+  these had during 2.0's development, warn and are removed in 2.1.  A saved fit carries
   `parameter_instances`, `parameter_instances_x0` (the values the fit
   started from), `parameter_instance_bounds` and `component_source_ids`,
   and `load_estimation_result` applies the values by component id when the

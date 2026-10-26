@@ -397,7 +397,7 @@ def solve_collocation(estimator, method: tuple, options: Dict) -> SimpleNamespac
     x0_param_values = self._theta_to_param_values(
         torch.tensor(self._x0_norm, dtype=tps.float_dtype(), device=dev)
     )
-    self.simulator.model.set_parameters(
+    self.simulator.model._write_parameters(
         x0_param_values,
         self._flat_components,
         self._parameter_names,
@@ -854,7 +854,7 @@ def _solve_sparse_collocation(
         """Run all segments; return (scaled_mse, raw_mse, end_norm)."""
         s_phys = s_from_norm(s_norm)
         param_values = self._theta_to_param_values(theta)
-        self.simulator.model.set_parameters(
+        self.simulator.model._write_parameters(
             param_values,
             self._flat_components,
             self._parameter_names,
@@ -1768,7 +1768,7 @@ def _solve_sparse_collocation(
             # (e.g. control loops cut by frozen "captured" inputs).
             Meas_step = torch.zeros_like(Meas_nlp)
             param_values = self._theta_to_param_values(zt[:n_theta])
-            self.simulator.model.set_parameters(
+            self.simulator.model._write_parameters(
                 param_values,
                 self._flat_components,
                 self._parameter_names,

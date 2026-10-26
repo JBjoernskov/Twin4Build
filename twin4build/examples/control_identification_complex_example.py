@@ -997,18 +997,8 @@ def run_complex_identification_example():
     # =========================================================================
     print("\n   [TEST] Setting parameters to x0 and running simulation...")
 
-    # Extract x0 values and set them
-    x0_values = [x0 for (comp, attr, x0, lb, ub) in parameters]
-    components = [comp for (comp, attr, x0, lb, ub) in parameters]
-    attrs = [attr for (comp, attr, x0, lb, ub) in parameters]
-
-    # Set parameters using the same method as estimator
-    model.set_parameters(
-        values=x0_values,
-        components=components,
-        parameter_names=attrs,
-        normalized=False,  # x0 values are already in physical units
-    )
+    # Set every parameter to its x0 (physical units)
+    model.set_parameters({(comp, attr): x0 for (comp, attr, x0, lb, ub) in parameters})
 
     # Print controller params after setting x0
     print("\n   [DEBUG] Controller params AFTER setting x0:")

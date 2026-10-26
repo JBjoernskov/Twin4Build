@@ -105,7 +105,7 @@ class TestSerializeRoundTrip(unittest.TestCase):
         model.add_connection(heater, room, "toRoomPower", "heatGain")
         model.load()
         # "Fitted" values, nested and flat, written the way the estimator writes them.
-        model.simulation_model.set_parameters(
+        model.simulation_model._write_parameters(
             [4.2e6, 150.0, 37.5, 2.5e5],
             [room, room, heater, heater],
             ["thermal.C_wall", "mass.V", "UA", "thermalMassHeatCapacity"],

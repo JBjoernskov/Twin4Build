@@ -2795,7 +2795,7 @@ class Estimator:
 
         # Set initial parameters - convert flat theta to per-parameter values
         x0_param_values = self._theta_to_param_values(self._x0_norm)
-        self.simulator.model.set_parameters(
+        self.simulator.model._write_parameters(
             x0_param_values,
             self._flat_components,
             self._parameter_names,
@@ -3291,7 +3291,7 @@ class Estimator:
                 dtype=tps.float_dtype(),
                 device=self._device,
             )
-            self.simulator.model.set_parameters(
+            self.simulator.model._write_parameters(
                 self._theta_to_param_values(theta_opt),
                 self._flat_components,
                 self._parameter_names,
@@ -3382,7 +3382,7 @@ class Estimator:
             component_source_ids = [
                 list(model.get_source_component_ids(component)) for component, _ in entries
             ]
-            parameter_instances = model.get_parameter_values(entries)
+            parameter_instances = model.get_parameters(entries)
             parameter_instances_x0 = {}
             parameter_instance_bounds = {}
             for (component, attr), x0_, lb_, ub_ in zip(
@@ -3423,7 +3423,7 @@ class Estimator:
             parameter_instances_fixed = {}
             for owner, attr in held:
                 try:
-                    parameter_instances_fixed.update(model.get_parameter_values([(owner, attr)]))
+                    parameter_instances_fixed.update(model.get_parameters([(owner, attr)]))
                 except (TypeError, AttributeError):
                     continue  # not a parameter object
         except Exception as exc:  # the result is saved either way
@@ -3847,7 +3847,7 @@ class Estimator:
 
         # Convert flat theta to per-parameter values
         param_values = self._theta_to_param_values(theta)
-        self.simulator.model.set_parameters(
+        self.simulator.model._write_parameters(
             param_values,
             self._flat_components,
             self._parameter_names,
