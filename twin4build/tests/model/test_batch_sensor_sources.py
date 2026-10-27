@@ -1,7 +1,6 @@
 """Sensors on different series (database uuids or in-memory frames) with
 identical wiring must not be batched into one meta: a meta carries one data
 source, so batching them would make every member read the first's series."""
-import datetime
 import unittest
 
 import numpy as np
@@ -12,7 +11,7 @@ import twin4build as tb
 
 tb._IS_TESTING = True
 
-from twin4build.tests.simulator.test_fusion_batched import build, simulate
+from twin4build.tests.simulator.test_fusion_batched import START, build, simulate
 
 
 def _frame(start, hours, value):
@@ -24,7 +23,7 @@ class TestBatchSensorSources(unittest.TestCase):
     def test_sensors_on_their_own_frames_stay_apart(self):
         model = build(n_pairs=2, model_id="sensor_sources")
         zones = sorted(model.get_components_by_class(tb.BuildingSpaceThermalSystem), key=lambda z: z.id)
-        start = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
+        start = START  # the frames cover the simulated hours (nothing is repeated beyond a frame's readings)
         sensors = []
         for k, z in enumerate(zones):
             s = tb.SensorSystem(id=f"T_meas_{k}", df=_frame(start, 12, 20.0 + k), use_df=True)

@@ -237,30 +237,31 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
       matrices.
     * ``"batched"`` (or ``batched=True``): a batch of parameter starts,
       ``y0 (B, D_aug)``, ``theta (B, n_theta)``, one shared tape; the
-      eager vmapped batched step.
+      compiled batched step.
     * ``"windows"``: one parameter vector over a batch of windows, ``y0 (P,
       D_aug)``, ``theta (n_theta,)``, ``tape (n_t, P, n_exogenous)``; the
       compiled window step with the hoisted matrices shared.
     * ``"rows"``: rows with their own state, parameters and inputs, ``y0
-      (N, D_aug)``, ``theta (N, n_theta)``, ``tape (n_t, N, n_exogenous)``.
+      (N, D_aug)``, ``theta (N, n_theta)``, ``tape (n_t, N, n_exogenous)``;
+      the compiled rows step.
 
     The graphs are cached on the model per kind and input shapes.
     """
     functional_model.prepare_routes(theta.device)
     kind = kind or ("batched" if batched else "scalar")
+    # Step graphs run only with the compiled step (``step_graph_active``), so
+    # every kind captures a compiled step: the batched kinds compile the vmap
+    # of ``F_aug`` (correct since #241's scatter assembly), a few fused
+    # kernels per step instead of the eager vmap's thousands
     if kind == "batched":
-        # the eager vmap, not ``compiled_batched_step``: ``torch.compile``
-        # over ``vmap`` is numerically wrong on torch 2.11 (see
-        # ``FunctionalModel.window_step``); captured per step, its kernel
-        # count costs nothing at replay
-        bstep = functional_model.batched_step
+        bstep = functional_model.compiled_batched_step
 
         def step(y, th, u, constants):
             return bstep(y, th, u)
 
         leaves, spec = [], None
     elif kind == "rows":
-        rstep = functional_model.rows_step
+        rstep = functional_model.compiled_rows_step
 
         def step(y, th, u, constants):
             # a step's rows may come as (B, P, n_exogenous), one broadcast
@@ -269,7 +270,7 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
 
         leaves, spec = [], None
     elif kind == "windows":
-        step = functional_model.window_step
+        step = functional_model.compiled_window_step
         constants = functional_model.step_constants(theta)
         leaves, spec = pytree.tree_flatten(constants)
     elif kind == "scalar":

@@ -219,6 +219,13 @@ class TestBatchingIdentifiedControllers(unittest.TestCase):
         entries = {attr: x0 for _, attr, x0, _, _ in metas[0].get_estimable_parameters()}
         self.assertEqual(len(entries["gamma_gate_0"]), 9)
 
+    def test_a_loop_in_playback_has_nothing_to_estimate(self):
+        """Its output is its measured command whatever its gains: a coupled fit
+        that estimates the controllers leaves an open loop's parameters alone
+        (the functional objective refuses a parameter without influence)."""
+        self.assertTrue(_controller(0).get_estimable_parameters())
+        self.assertEqual(_controller(1, playback=True).get_estimable_parameters(), [])
+
     def test_loops_in_playback_replay_their_own_commands(self):
         """A batched controller in playback hands over every loop's measured
         command (``replayed_output_history``), each at its instance; before,

@@ -231,6 +231,41 @@ def test_batched_model_cuts_cycles_where_the_source_model_does():
     assert batched_cuts == source_cuts
 
 
+def test_cycles_cut_from_a_bounded_sample(monkeypatch):
+    """A batched model cuts where its source model cut before it searches
+    its own cycles, so with fewer cycles held at once than its graph has
+    (CYCLE_SAMPLE) it still cuts where the source model does, and ends
+    without a cycle (23 Oct 2026: the HTR ring's batched model had more
+    simple cycles than memory holds; its source model 20 713).  The source
+    model is cut with its complete cycle list: cut from samples, identical
+    zones may be cut on different signals, which no batched model can
+    reproduce."""
+    import twin4build.model.simulation_model.simulation_model as sm_module
+
+    common = _common()
+    model, parts = common.build_multizone_model(2, model_id="canonical_benchmark_small_sample")
+    common._align_repeated_roles_for_batch(model, parts["zone_parts"])
+    monkeypatch.setattr(sm_module, "CYCLE_SAMPLE", 3)
+    batched, _ = common.batch_model(model, measure=False)
+    source_cuts = set(model.simulation_model._removed_cycle_edges)
+    assert source_cuts
+    for m in (model, batched):
+        sim = m.simulation_model
+        assert not list(sim._get_simple_cycles(sim._components_no_cycles))
+
+    def source_ids(meta_id):
+        component = batched.components[meta_id]
+        return getattr(component, "_source_component_ids", (meta_id,))
+
+    batched_cuts = set()
+    for c_from, c_to in batched.simulation_model._removed_cycle_edges:
+        for a in source_ids(c_from):
+            for b in source_ids(c_to):
+                if a.split("__", 1)[0] == b.split("__", 1)[0]:  # same zone
+                    batched_cuts.add((a, b))
+    assert batched_cuts == source_cuts
+
+
 def test_batched_estimation_problem_maps_all_private_slices_and_sensors():
     common = _common()
     setup = common.batched_estimation_problem(
