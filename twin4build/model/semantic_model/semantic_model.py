@@ -6,6 +6,7 @@ import os
 import random
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import warnings
@@ -39,6 +40,25 @@ DYNAMIC_PARSING = True
 IGNORE_PARSING_FOR_NAMESPACES = ["XSD", "FPO"]
 
 
+#: Seconds a remote ontology fetch may take (connect and each read) before it
+#: fails: a namespace whose host is gone (``http://vocab.deri.ie/void``, where
+#: VoID redirects) held a reasoning step, and every test that reasons, without
+#: end.  A failed namespace is logged and skipped (``parse_namespaces``).
+REMOTE_PARSE_TIMEOUT = 15.0
+
+
+@contextmanager
+def _socket_timeout(seconds):
+    """The default socket timeout for the block (rdflib's ``urlopen`` sets
+    none of its own), restored after it."""
+    previous = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(seconds)
+    try:
+        yield
+    finally:
+        socket.setdefaulttimeout(previous)
+
+
 def parse_wrapper(graph, source=None, **kwargs):
     """
     Wrapper for rdflib.graph.parse that handles XSD namespace separately.
@@ -51,11 +71,14 @@ def parse_wrapper(graph, source=None, **kwargs):
     ``C:\\Users\\...\\graph.ttl`` gets dispatched to ``urlopen`` as a
     URL with scheme ``c``, surfacing as the famously unhelpful
     ``URLError: <urlopen error unknown url type: c>``.
+
+    A URL is fetched with a timeout (:data:`REMOTE_PARSE_TIMEOUT`).
     """
     namespaces = [
         str(getattr(core.namespace, s)) for s in IGNORE_PARSING_FOR_NAMESPACES
     ]
 
+    looks_like_url = False
     if isinstance(source, (str, URIRef)):
         source_str = str(source)
         if source_str in namespaces:  # Dont parse XSD
@@ -83,7 +106,11 @@ def parse_wrapper(graph, source=None, **kwargs):
                     "(e.g. 'https://')."
                 )
 
-    graph.parse(source, **kwargs)
+    if looks_like_url:
+        with _socket_timeout(REMOTE_PARSE_TIMEOUT):
+            graph.parse(source, **kwargs)
+    else:
+        graph.parse(source, **kwargs)
 
 
 # Layout directions Graphviz accepts for the ``rankdir`` graph attribute.

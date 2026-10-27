@@ -53,6 +53,7 @@ import torch
 
 import twin4build.utils.types as tps
 from twin4build.utils.logger import LOGGER
+from twin4build.utils.scoring_mask import filled_downstream as _filled_downstream
 from twin4build.utils.scoring_mask import period_mask as _period_mask
 from twin4build.utils.scoring_mask import to_ns as _to_ns
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
@@ -66,6 +67,21 @@ WINDOW_BATCHING = True
 #: The box of a window's initial-state variable: this fraction of the
 #: state's magnitude on either side of the recorded state.
 INITIAL_STATE_BOX = 0.25
+
+
+def _longest_run(flags) -> int:
+    """The longest run of consecutive true entries."""
+    best = run = 0
+    for flag in flags:
+        run = run + 1 if flag else 0
+        best = max(best, run)
+    return best
+
+
+#: The least range a state's continuity tolerance is taken from, as a
+#: fraction of its magnitude: a state that does not move in the rollout at
+#: the start point (``continuity_sd_rel`` of a tenth of its magnitude).
+REFERENCE_FLOOR = 0.1
 
 
 class FunctionalEstimationObjective:
@@ -163,6 +179,15 @@ class FunctionalEstimationObjective:
                 mse0 / 100.0,
                 min=torch.finfo(weighted.dtype).tiny,
             ).detach()
+            if self.n_init:
+                # the measured part is 100 by the scale; what the start point
+                # pays for continuity beyond it (none on the continuous
+                # trajectory the variables start on)
+                self.f0 = float(self.loss(x0))
+                LOGGER.config(
+                    "multiple shooting: objective at the start point %.6g (measured 100, continuity %.3g)",
+                    self.f0, self.f0 - 100.0,
+                )
 
     def _denorm(self, th_norm: torch.Tensor) -> torch.Tensor:
         # Single source of truth for the normalized->physical map
@@ -177,9 +202,13 @@ class FunctionalEstimationObjective:
         from its options:
 
         * ``sd_rel``: the continuity tolerance of a state is ``sd_rel``
-          (default 0.01) times how much the state varies over the windows'
-          starts and ends in a rollout at the start point: each state is
-          held in its own units and to its own scale.
+          (default 0.01) times its scale, in its own units: for a state a
+          scored sensor measures (:meth:`System.state_output_ports`), that
+          sensor's sd, which does not depend on the start point; for any
+          other, how much it varies over the windows (every step, not only
+          their starts and ends) in a rollout at the start point, and a tenth
+          of its magnitude (:data:`REFERENCE_FLOOR`) for one that does not
+          move there, which the log names.
         * ``energy_tol``: a state that stores heat is held to at most
           ``energy_tol / C`` (default 3.6e5 J, 0.1 kWh), ``C`` the heat
           capacity of the state (:meth:`System.state_heat_capacities` at the
@@ -196,9 +225,13 @@ class FunctionalEstimationObjective:
         buy a better fit of a window with a jump at its start.
 
         Every window gets one variable per state, the first window's too (no
-        defect column, its own first measurements pin it), normalised
-        linearly on its box: 25 % of the state's magnitude around the
-        recorded state, widened to include the end of the window before.
+        defect column, its own first measurements pin it).  The variables
+        start on one continuous trajectory at the start point: a window tied
+        to the one before it starts where that one ends, the first window of
+        a run of tied windows at its recorded state (the model's initial
+        state), so the start point pays no continuity.  Each is normalised
+        linearly on its box: 25 % of the state's magnitude around its start,
+        widened to include the recorded state.
         The defect ``Y_end[p] - Y0[p + 1]``, divided by the tolerance, joins
         the residual columns (one column per state).  The variables and the
         columns attach to the block of the state's component, so the block
@@ -239,24 +272,58 @@ class FunctionalEstimationObjective:
                 "multiple shooting: %d of %d window boundaries are gaps, not tied", sum(not t for t in ties), P - 1
             )
         # Every window's initial state is a variable, the first window's
-        # too (boxed around its recorded value and pinned by its own first
-        # measurements; no defect column, there is no window before it), so
-        # no window needs a warm-up.
-        x0 = Y0[:, index_t].detach()  # (P, n_slow) physical
-        # The scale of every selected state: the largest magnitude it takes
-        # at the windows' starts and ends in a rollout at the start point,
-        # floored at one unit -- a state recorded at zero (a controller's
-        # integral, a flow before the fan starts) must not get a vanishing
-        # tolerance or a box it cannot leave.
+        # too (pinned by its own first measurements; no defect column, there
+        # is no window before it), so no window needs a warm-up.
+        recorded = Y0[:, index_t].detach()  # (P, n_slow) physical: the model's initial state
+        # a period after a gap is not tied to the one before (continuity_gaps)
+        tied = torch.as_tensor([True] * (P - 1) if ties is None else list(ties), dtype=torch.bool, device=dev)
+        # The variables start on one continuous trajectory: a tied window
+        # where the window before it ends at the start point, one pass per
+        # window of the longest run of tied windows.  Every window recorded
+        # at the model's initial state left jumps of several kelvin (an
+        # unheated room ends a week far from 20 C) that the trust region
+        # closes a few hundredths of a kelvin per iteration: 22 Oct 2026, the
+        # rooms' air at 100-280 x its tolerance after 60 iterations.
+        passes = _longest_run(tied.tolist())
+        Y_start = Y0.clone()
         with torch.no_grad():
             theta0 = self._denorm(torch.as_tensor(np.asarray(self.est._x0_norm, dtype=np.float64), dtype=dtype, device=dev)[: self.n_theta])
-            _out, end0 = self.est.simulator.rollout_functional_windows(self.composer, Y0, theta0, _tape, return_end=True)
-        magnitude = torch.maximum(Y0[:, index_t].abs().amax(dim=0), end0[:, index_t].abs().amax(dim=0)).clamp(min=1.0)  # (n_slow,)
-        # how much each state moves over the windows' starts and ends,
-        # floored at a thousandth of its magnitude (a state that does not
-        # move at the start point must not get a vanishing tolerance)
-        both = torch.cat([Y0[:, index_t], end0[:, index_t]], dim=0)
-        reference = torch.maximum(both.amax(dim=0) - both.amin(dim=0), 1e-3 * magnitude)
+            for _ in range(passes):
+                _out, end = self.est.simulator.rollout_functional_windows(self.composer, Y_start, theta0, _tape, return_end=True)
+                Y_start[1:, index_t] = torch.where(tied.unsqueeze(-1), end[:-1, index_t], Y_start[1:, index_t])
+            # The scale of every selected state: the largest magnitude it
+            # takes anywhere in the windows on that trajectory, floored at one
+            # unit -- a state recorded at zero (a controller's integral, a flow
+            # before the fan starts) must not get a vanishing tolerance or a
+            # box it cannot leave.
+            _out, end0, low0, high0 = self.est.simulator.rollout_functional_windows(self.composer, Y_start, theta0, _tape, return_extent=True)
+        x0 = Y_start[:, index_t].detach()
+        moved_from_recorded = (x0 - recorded).abs()
+        LOGGER.config(
+            "multiple shooting: the windows start on one continuous trajectory at the start point (%d pass(es)); "
+            "the largest move from the model's initial state %.3g (state %s)",
+            passes, float(moved_from_recorded.max()),
+            self._state_names(index[[int(moved_from_recorded.amax(dim=0).argmax())]])[0],
+        )
+        self.init_x0_recorded = recorded
+        self.init_theta_start = theta0  # the parameters the tolerances are read at
+        low0, high0 = low0[:, index_t].amin(dim=0), high0[:, index_t].amax(dim=0)  # (n_slow,)
+        magnitude = torch.maximum(low0.abs(), high0.abs()).clamp(min=1.0)
+        # how much each state moves over the whole windows, not only at their
+        # starts and ends: windows that all start at the same hour of the
+        # week see a state the schedules drive (a room's CO2) at one phase,
+        # where it barely moves, and the tolerance collapsed to the floor
+        # (22 Oct 2026: room CO2 held to 0.007 ppm, 95 % of the continuity
+        # penalty).  A state that does not move in the whole rollout takes
+        # the floor, named in the log.
+        moved = high0 - low0
+        floor = REFERENCE_FLOOR * magnitude
+        # a state a scored sensor measures is scaled by that sensor's sd: what
+        # the data can tell apart, the same at every start point
+        sensor_sd = self._sensor_sd_per_state(dtype)[index].to(dev)
+        measured = torch.isfinite(sensor_sd)
+        self.init_sensor_sd = sensor_sd
+        reference = torch.where(measured, sensor_sd, torch.maximum(moved, floor))
         sd_rel = float(config.get("sd_rel", 0.01))
         energy_tol = float(config.get("energy_tol", 3.6e5))
         sd = (sd_rel * reference).clamp(min=1e-9)
@@ -265,6 +332,10 @@ class FunctionalEstimationObjective:
         by_energy = energy_tol / torch.where(holds_heat, capacity, torch.ones_like(capacity))
         sd = torch.where(holds_heat, torch.minimum(sd, by_energy), sd).clamp(min=1e-9)
         tightened = holds_heat & (by_energy < sd_rel * reference)
+        # the floor decides a tolerance only where neither a sensor nor the
+        # heat a state holds does
+        floored = (moved < floor) & ~measured & ~tightened
+        self.init_floored = floored
         LOGGER.config(
             "multiple shooting: %d of %d tied states hold heat; %d of them held to %.3g J per jump "
             "(tolerance median %.3g K, smallest %.3g K)",
@@ -272,13 +343,31 @@ class FunctionalEstimationObjective:
             float(sd[tightened].median()) if bool(tightened.any()) else float("nan"),
             float(sd[tightened].min()) if bool(tightened.any()) else float("nan"),
         )
+        by_sensor = measured & ~tightened
+        ranged = ~measured & ~tightened
+        LOGGER.config(
+            "multiple shooting: tolerances of the %d tied states: %d from their sensor's sd, %d from their heat, "
+            "%d from their range (median %.3g of their magnitude, smallest %.3g), %d of them at the floor",
+            int(index.size), int(by_sensor.sum()), int(tightened.sum()), int(ranged.sum()),
+            float((sd[ranged] / magnitude[ranged]).median()) if bool(ranged.any()) else float("nan"),
+            float((sd[ranged] / magnitude[ranged]).min()) if bool(ranged.any()) else float("nan"),
+            int(floored.sum()),
+        )
+        if bool(floored.any()):
+            names = self._state_names(index[floored.cpu().numpy()])
+            LOGGER.warning(
+                "multiple shooting: %d tied states do not move in the rollout at the start point; their "
+                "tolerance is %.3g of a tenth of their magnitude, not of their range: %s%s",
+                len(names), sd_rel, ", ".join(names[:12]), " ..." if len(names) > 12 else "",
+            )
         self.init_capacity = capacity
         half = (INITIAL_STATE_BOX * magnitude.unsqueeze(0).expand_as(x0)).clamp(min=1e-6)
-        # the box of a window's start also holds the end of the window before
-        # it at the start point: the continuous trajectory must be feasible,
-        # or a jump the box forces (a controller's integral recorded at zero
-        # and ending far from it) is indistinguishable from one the fit chose
-        low, high = x0.clone(), x0.clone()
+        # the box of a window's start also holds its recorded state and the
+        # end of the window before it at the start point: the continuous
+        # trajectory must be feasible, or a jump the box forces (a
+        # controller's integral recorded at zero and ending far from it) is
+        # indistinguishable from one the fit chose
+        low, high = torch.minimum(x0, recorded), torch.maximum(x0, recorded)
         previous_end = end0[:-1, index_t]  # the ends of windows 0 .. P-2
         if ties is not None:  # across a gap the window before belongs to another span: its end widens nothing
             previous_end = torch.where(torch.as_tensor(ties, device=dev).reshape(-1, 1), previous_end, x0[1:])
@@ -312,8 +401,8 @@ class FunctionalEstimationObjective:
 
     def _split(self, x: torch.Tensor):
         """``(theta_norm, init_norm or None)`` from a solver vector: the plain
-        theta vector (the recorded initial states then stand in for the
-        variables) or the extended one."""
+        theta vector (the variables' starts, one continuous trajectory at the
+        start point, then stand in for them) or the extended one."""
         if self.n_init == 0:
             return x, None
         if x.shape[-1] == self.n_theta:
@@ -373,10 +462,12 @@ class FunctionalEstimationObjective:
         """The jumps at the window boundaries at a solver vector, per
         executing component: ``{component id: (P-1, n_c, state_size)}``, the
         start of window ``p + 1`` minus the end of window ``p`` in physical
-        units (``NaN`` for a state that is not a variable).  A jump is the
-        part of a state the fit sets anew at a boundary instead of carrying
-        it over; the defect the objective scores is its negative over the
-        tolerance.  Empty without multiple shooting."""
+        units (``NaN`` for a state that is not a variable, and at a boundary
+        that is a gap between periods, ``continuity_gaps``: nothing ties its
+        two sides, and its difference ranked first in the summary, 22 Oct
+        2026).  A jump is the part of a state the fit sets anew at a boundary
+        instead of carrying it over; the defect the objective scores is its
+        negative over the tolerance.  Empty without multiple shooting."""
         x = torch.as_tensor(np.asarray(x, dtype=np.float64), dtype=self.init_lb.dtype if self.n_init else torch.float64, device=self.est._device) if not torch.is_tensor(x) else x
         windows = self._windows()
         if self.n_init == 0 or windows is None or x.shape[-1] != self.n_theta_ext:
@@ -389,6 +480,8 @@ class FunctionalEstimationObjective:
         jumps = torch.full_like(Y[1:], float("nan"))
         idx = self.init_index
         jumps[:, idx] = Y[1:, idx] - end[:-1, idx]
+        if getattr(self, "init_tie", None) is not None:
+            jumps[~self.init_tie.reshape(-1).bool()] = float("nan")
         return self._per_component(jumps)
 
     def continuity_tolerance(self) -> dict:
@@ -403,6 +496,48 @@ class FunctionalEstimationObjective:
         sd = torch.full_like(Y0[:1], float("nan"))
         sd[:, self.init_index] = self.init_sd.to(sd.dtype)
         return self._per_component(sd)
+
+    def _sensor_sd_per_state(self, dtype) -> torch.Tensor:
+        """``(D_aug,)``: the sd of the scored sensor that measures each state
+        (a sensor on the port that publishes it as it is,
+        :meth:`System.state_output_ports`; the smallest sd when several
+        do), ``NaN`` for a state no scored sensor measures."""
+        layout = self.layout
+        out = torch.full((int(layout.width),), float("nan"), dtype=dtype)
+        where = {}
+        for comp, (start, _stop), (n_c, ss) in zip(layout.components, layout.slices, layout.shapes):
+            if not ss:
+                continue
+            for k, port in enumerate(comp.state_output_ports()):
+                if port is not None:
+                    where[(comp.id, port)] = (start, n_c, ss, k)
+        for (_md, sd), source in zip(self.est._measurements, self.composer.meas_sources):
+            if source[0] != "fresh" or (source[1], source[2]) not in where:
+                continue
+            start, n_c, ss, k = where[(source[1], source[2])]
+            copy = 0
+            if n_c > 1:
+                # the copy the sensor reads: the sender instance of its route
+                routes = source[3]
+                sender = torch.as_tensor(routes[0][1]).reshape(-1) if len(routes) == 1 else None
+                if sender is None or sender.numel() != 1:
+                    continue
+                copy = int(sender.item())
+            i = start + copy * ss + k
+            out[i] = float(sd) if not torch.isfinite(out[i]) else min(float(out[i]), float(sd))
+        return out
+
+    def _state_names(self, flat_index) -> list:
+        """``"<component id> x<k>"`` (``[<copy>]`` after the id when the
+        component has several) for positions of the state vector."""
+        names = []
+        for i in np.asarray(flat_index, dtype=np.int64).reshape(-1):
+            for comp, (start, stop), (n_c, ss) in zip(self.layout.components, self.layout.slices, self.layout.shapes):
+                if start <= i < stop:
+                    c, k = divmod(int(i) - start, ss)
+                    names.append(f"{comp.id}{f'[{c}]' if n_c > 1 else ''} x{k}")
+                    break
+        return names
 
     def _per_component(self, flat: torch.Tensor) -> dict:
         """``(rows, D_aug)`` split into ``{component id: (rows, n_c, state_size)}``."""
@@ -436,6 +571,8 @@ class FunctionalEstimationObjective:
         self.M0 = [values[0] for values in R.measurement_tape]
         self.ACT = []
         dev = est._device
+        # the samples that rest on input steps a declared fill gave a value
+        filled = _filled_downstream(est.simulator.model)
         for p, n_t in enumerate(self.n_t):
             act = torch.zeros((n_t, len(md_list)), dtype=tps.float_dtype(), device=dev)
             for m, md in enumerate(md_list):
@@ -456,6 +593,9 @@ class FunctionalEstimationObjective:
                         _period_mask(mask, est.actual_readings[md.id][p].index, n_t), device=dev
                     )
                     act[~keep, m] = float("nan")
+                if md.id in filled:
+                    hit = np.asarray(filled[md.id][p], dtype=bool)[:n_t]
+                    act[: len(hit), m][torch.as_tensor(hit, device=dev)] = float("nan")
             self.ACT.append(act)
 
         LOGGER.config(
@@ -717,6 +857,12 @@ class FunctionalEstimationObjective:
             cached = (theta_block, column_block, n_blocks)
             self.__dict__["_parameter_structure"] = cached
         return cached
+
+    def curvature_structure(self) -> list:
+        """Per entry of the extended theta the curvature group its component
+        names (:meth:`FunctionalModel.curvature_groups`); the multiple-shooting
+        variables name none (their block's main group)."""
+        return list(self.composer.curvature_groups(self.n_theta)) + [None] * int(self.n_init)
 
     def batched_loss(self, theta_batch: torch.Tensor) -> torch.Tensor:
         if theta_batch.device.type == "cpu":

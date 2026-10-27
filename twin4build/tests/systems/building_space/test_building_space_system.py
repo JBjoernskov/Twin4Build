@@ -136,3 +136,40 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWallSlots(unittest.TestCase):
+    def test_the_wall_port_is_sized_by_its_slots_not_its_connections(self):
+        """A zone that reads batched walls gets one connection per wall meta (several slots) next to single walls on
+        their own slots: the port must reach the highest slot, not the number of connections (24 Oct 2026, a storey's
+        interior in the batched coupled model: an index past the port's end)."""
+        import twin4build as tb
+        from twin4build.tests.model.test_batching_vector_slots import Leaf
+
+        model = tb.Model(id="wall_slots")
+        space = BuildingSpaceSystem(id="interior")
+        for slot in (0, 2):  # slot 1 belongs to a connection the zone no longer has
+            model.add_connection(Leaf(p=1.0, id=f"wall_{slot}"), space, "v", "wallHeatGain", input_port_index=slot)
+        start = [datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)]
+        space.initialize(start_time=start, end_time=[start[0] + datetime.timedelta(hours=1)], step_size=[600])
+        self.assertEqual(space.thermal.n_walls, 3)
+        self.assertEqual(space.input["wallHeatGain"].get().shape[-1], 3)
+
+
+class TestForwardTraces(unittest.TestCase):
+    def _space(self):
+        space = BuildingSpaceSystem(id="interior")
+        start = [datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)]
+        space.initialize(start_time=start, end_time=[start[0] + datetime.timedelta(hours=1)], step_size=[600])
+        inputs = {k: v.get() for k, v in space.input.items()}
+        return space, space.get_state(), inputs, space._forward_params()
+
+    def test_the_forward_traces_whole_after_initialize(self):
+        """A zone's forward splits its state by the thermal width; ``initialize`` caches it, so Dynamo traces the
+        forward whole (24 Oct 2026: an unfused storey interior in the coupled model's compiled step walked
+        ``vars(...)`` on its first call)."""
+        space, x, inputs, params = self._space()
+        torch._dynamo.reset()
+        step = torch.compile(lambda x, u: space.forward(x, u, params, 600.0), backend="eager", fullgraph=True)
+        x_next, out = step(x, inputs)
+        self.assertEqual(tuple(x_next.shape), tuple(x.shape))

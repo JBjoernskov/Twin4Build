@@ -11,6 +11,9 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.rdelattr import rdelattr
+from twin4build.utils.rgetattr import rgetattr
+from twin4build.utils.rsetattr import rsetattr
 from twin4build.systems.building_space.building_space_mass_system import (
     BuildingSpaceMassSystem,
 )
@@ -93,8 +96,26 @@ class BuildingSpaceSystem(core.System, nn.Module):
        **Combined Outputs:**
           - indoorTemperature: From thermal subsystem
           - wallTemperature: From thermal subsystem
+          - surplusAirFlowRate, makeUpAirFlowRate: the air-flow imbalance of
+            the summed branches (see
+            :mod:`~twin4build.systems.building_space.air_balance`)
           - indoorCO2: From mass balance subsystem
+
+    Shared parameters:
+
+       The infiltration flow is one parameter, ``mass.m_inf``: the thermal
+       subsystem's ``m_inf`` reads it (:attr:`SHARED_UNIT_PARAMS`), so the
+       heat and the CO2 the infiltration carries come from the same flow.
     """
+
+    #: Unit parameters that read another unit's parameter, as ``{path:
+    #: source}`` relative to the component: the thermal infiltration is the
+    #: CO2 model's.  Only the source is a parameter of the component; every
+    #: execution path routes the path to it (the object path by pointing the
+    #: path at the source's parameter object in :meth:`initialize`, the
+    #: functional ones by key in :meth:`_resolve_sub_params` and
+    #: ``FusedStateSpaceSystem``).
+    SHARED_UNIT_PARAMS = {"thermal.m_inf": "mass.m_inf"}
 
     SUPPORTS_TRANSFORM_MODE = True
     #: The mass balance's renamed input (``outdoorCO2``), see
@@ -169,7 +190,9 @@ class BuildingSpaceSystem(core.System, nn.Module):
             "thermal." + s for s in self.thermal._config["parameters"]
         ]
         mass_parameters = ["mass." + s for s in self.mass._config["parameters"]]
-        all_parameters = thermal_parameters + mass_parameters
+        all_parameters = [
+            p for p in thermal_parameters + mass_parameters if p not in self.SHARED_UNIT_PARAMS
+        ]
         self._config = {"parameters": all_parameters}
         self.parameter = {k: {} for k in all_parameters}
         self.INITIALIZED = False
@@ -229,21 +252,18 @@ class BuildingSpaceSystem(core.System, nn.Module):
                 n_boundary_temperature == 0 or n_boundary_temperature == 1
             ), "Maximum one boundary temperature input is allowed"
 
-            # Find number of connected walls
-            connection_point = [
-                cp for cp in self.connects_at if cp.input_port == "wallHeatGain"
-            ]
-            n_walls = (
-                len(connection_point[0].connects_system_through)
-                if connection_point
-                else 0
-            )
+            # The walls' and openings' logical vector slots, not the connection
+            # objects (as the thermal submodel counts them): a zone that is not
+            # batched but reads batched walls (a storey's interior) gets one
+            # connection per wall meta, which carries several slots, next to its
+            # unbatched walls on their own slots -- counting connections left
+            # those slots past the port's end (24 Oct 2026, an index error).
+            from twin4build.utils.slots import wired_width
 
-            self.thermal.n_walls = n_walls
+            self.thermal.n_walls = wired_width(self, "wallHeatGain")
             self.thermal.n_boundary_temperature = n_boundary_temperature
             # Openings to other zones (the mass zone's ``wallHeatGain``).
-            cps = [cp for cp in self.connects_at if cp.input_port == "exchangeCO2Gain"]
-            self.mass.n_exchanges = len(cps[0].connects_system_through) if cps else 0
+            self.mass.n_exchanges = wired_width(self, "exchangeCO2Gain")
 
         _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
@@ -255,11 +275,28 @@ class BuildingSpaceSystem(core.System, nn.Module):
                 n_c=getattr(self, "n_c", 1) or 1,
                 n_v=self.get_n_v_from_connections(k) or 1,
             )
+        # The connections are the composite's: hand the wired ports down, so
+        # the submodels see their optional ports (makeUpAir*, supplyAirCO2).
+        wired = frozenset(cp.input_port for cp in self.connects_at if len(cp.connects_system_through) > 0)
+        self.thermal._wired_ports = wired
+        self.mass._wired_ports = wired
         self.thermal.initialize(start_time, end_time, step_size)
         self.mass.initialize(start_time, end_time, step_size)
+        # The object path reads a shared unit parameter from the source's
+        # parameter object.  Re-pointed every run: an estimator may have
+        # replaced the source object since.
+        for path, source in self.SHARED_UNIT_PARAMS.items():
+            rdelattr(self, path)
+            rsetattr(self, path, rgetattr(self, source))
         # Drop the per-params routing cache (fresh graph per run, like the
         # submodels' matrix caches).
         self._fwd_param_cache = None
+        # The forward splits its state by the thermal width: cached here, so a
+        # compiled step never walks the submodel's attributes (Dynamo cannot
+        # trace ``vars(...).values()``; 24 Oct 2026, an unfused storey interior
+        # in the coupled model's compiled step).
+        self.thermal.state_size()
+        self.mass.state_size()
         self.INITIALIZED = True
 
     @property
@@ -317,15 +354,16 @@ class BuildingSpaceSystem(core.System, nn.Module):
         the order :meth:`System.get_state` concatenates)."""
         return [("thermal", self.thermal), ("mass", self.mass)]
 
-    @staticmethod
-    def _resolve_sub_params(sub, prefix, params):
+    def _resolve_sub_params(self, sub, prefix, params):
         """Full physical-parameter dict for a submodel: estimated values from
-        ``params`` (keyed ``"<prefix>.<name>"``), the rest from the submodel's own
-        ``tps.Parameter`` defaults."""
+        ``params`` (keyed ``"<prefix>.<name>"``, a shared one by its source's
+        key, :attr:`SHARED_UNIT_PARAMS`), the rest from the ``tps.Parameter``
+        defaults."""
         out = {}
         for name in sub.PARAM_NAMES:
             key = f"{prefix}.{name}"
-            out[name] = params[key] if key in params else getattr(sub, name).get()
+            key = self.SHARED_UNIT_PARAMS.get(key, key)
+            out[name] = params[key] if key in params else rgetattr(self, key).get()
         return out
 
     def step_constants(self, params):
