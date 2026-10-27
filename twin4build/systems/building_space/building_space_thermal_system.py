@@ -13,7 +13,7 @@ import twin4build.core as core
 import twin4build.utils.constants as constants
 from twin4build.systems.building_space import air_balance
 import twin4build.utils.types as tps
-from twin4build.utils.slots import wired_width
+from twin4build.utils.slots import is_wired, wired_width
 from twin4build.systems.utils.discrete_statespace_system import (
     DiscreteStatespaceSystem,
     bilinear_onestep,
@@ -49,6 +49,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         f_wall: Radiation factor for exterior wall
         f_air: Radiation factor for air
         Q_occ_gain: Heat gain per occupant [W]
+        m_inf: Infiltration air flow [kg/s] (in a :class:`BuildingSpaceSystem`
+            the CO2 model's ``mass.m_inf``: one flow for heat and CO2)
 
     Mathematical Formulation
     ------------------------
@@ -61,7 +63,12 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
     .. math::
 
-       C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j}\dot{Q}_{wall,j} + Q_{occ} N_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) - c_p\dot{m}_{exh}T_i
+       C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j}\dot{Q}_{wall,j} + Q_{occ} N_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) + c_p\dot{m}_{mu}(T_{mu} - T_i) + c_p\dot{m}_{inf}(T_o - T_i)
+
+    The last term is the infiltration :math:`\dot{m}_{inf}`: outdoor air
+    through the envelope, balanced by room air leaving, the same flow the CO2
+    model carries.  :math:`T_{mu}` is the make-up air's temperature: outdoor,
+    or a neighbouring zone's when ``makeUpAirTemperature`` is wired.
 
     *2. Exterior Wall Temperature:*
 
@@ -110,7 +117,10 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
     *Base System Matrices:*
 
-    For a system with base thermal states (air, wall) + 1 boundary and 1 connected wall:
+    For a system with base thermal states (air, wall) + 1 boundary and 1
+    connected wall (the infiltration conductance :math:`G_{inf} = c_p
+    \dot{m}_{inf} / C_{air}` adds :math:`-G_{inf}` to :math:`A_{00}` and
+    :math:`G_{inf}` to :math:`B_{00}`, left out below):
 
     .. math::
 
@@ -245,6 +255,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         f_wall: float = 0.3,  # Radiation factor for exterior wall
         f_air: float = 0.1,  # Radiation factor for air
         Q_occ_gain: float = 100.0,  # Heat gain per occupant [W]
+        m_inf: float = 0.0,  # Infiltration air flow [kg/s]
         **kwargs,
     ):
         """
@@ -262,6 +273,9 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             f_wall: Radiation factor for exterior wall
             f_air: Radiation factor for air/internal mass
             Q_occ_gain: Heat gain per occupant [W]
+            m_inf: Infiltration air flow [kg/s]; in a
+                :class:`BuildingSpaceSystem` the CO2 model's ``mass.m_inf``
+                is used instead
             **kwargs: Additional keyword arguments passed to parent
         """
         super().__init__(**kwargs)
@@ -309,6 +323,9 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         self.Q_occ_gain = tps.Parameter(
             torch.tensor(Q_occ_gain, dtype=tps.float_dtype()), requires_grad=False
         )
+        self.m_inf = tps.Parameter(
+            torch.tensor(m_inf, dtype=tps.float_dtype()), requires_grad=False
+        )
 
         # Define inputs and outputs
         self.input = {
@@ -335,6 +352,12 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         self.output = {
             "indoorTemperature": tps.Scalar(20),  # Indoor air temperature [°C]
             "wallTemperature": tps.Scalar(20),  # Exterior wall temperature [°C]
+            # The air-flow imbalance (air_balance.py): the supply the exhaust
+            # does not take, leaving at room state [kg/s] ...
+            "surplusAirFlowRate": tps.Scalar(0.0),
+            # ... and the exhaust the supply does not cover, drawn in as
+            # make-up air [kg/s].
+            "makeUpAirFlowRate": tps.Scalar(0.0),
         }
 
         # Define parameters for calibration
@@ -350,6 +373,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             "f_wall": {"lb": 0.0, "ub": 1.0},
             "f_air": {"lb": 0.0, "ub": 1.0},
             "Q_occ_gain": {"lb": 50.0, "ub": 200.0},
+            "m_inf": {"lb": 0.0, "ub": 0.01},
         }
 
         self._config = {"parameters": list(self.parameter.keys())}
@@ -410,11 +434,9 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             self.n_c = self._n_c_batched
         else:
             self.n_c = 1
-        # Structural: does a producer feed makeUpAirTemperature?  Fixed per model.
-        self._make_up_wired = any(
-            cp.input_port == "makeUpAirTemperature" and len(cp.connects_system_through) > 0
-            for cp in self.connects_at
-        )
+        # Structural: does a producer feed makeUpAirTemperature?  Fixed per
+        # model (in a BuildingSpaceSystem: wired on the composite).
+        self._make_up_wired = is_wired(self, "makeUpAirTemperature")
 
         self.setup_variable_inputs()
         self.input["wallHeatGain"].initialize(
@@ -444,6 +466,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         self.f_wall = self.f_wall.expand_to_n_c(self.n_c)
         self.f_air = self.f_air.expand_to_n_c(self.n_c)
         self.Q_occ_gain = self.Q_occ_gain.expand_to_n_c(self.n_c)
+        self.m_inf = self.m_inf.expand_to_n_c(self.n_c)
 
         if not self.INITIALIZED:
             # First initialization
@@ -571,7 +594,27 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         "f_air",
         "f_wall",
         "Q_occ_gain",
+        "m_inf",
     )
+
+    #: The imbalance flows are no rows of the linear output equation (a
+    #: saturation of the inputs): a fused block computes them with
+    #: :meth:`_ss_derived_outputs` from the flow ports' values, like
+    #: :meth:`forward` does.
+    SS_DERIVED_OUTPUT_PORTS = ("surplusAirFlowRate", "makeUpAirFlowRate")
+    SS_DERIVED_INPUT_PORTS = ("supplyAirFlowRate", "exhaustAirFlowRate")
+    SS_DERIVED_ROW_PORTS = ()
+
+    @staticmethod
+    def _ss_derived_outputs(inputs, rows):
+        """The air-flow imbalance of the step from the supply and exhaust
+        flows (the ports' values, before the make-up transform): the surplus
+        and the make-up flow (:mod:`~twin4build.systems.building_space.air_balance`)."""
+        supply, exhaust = inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"]
+        return {
+            "surplusAirFlowRate": air_balance.surplus_air_flow(supply, exhaust),
+            "makeUpAirFlowRate": air_balance.make_up_air_flow(supply, exhaust),
+        }
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): connected
     #: WallSystem heat flows enter the linear B matrix, and
@@ -579,6 +622,9 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
     FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "heatGain"})
 
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
+    #: ``indoorTemperature`` publishes the air state as it is (see
+    #: :meth:`System.state_output_ports`).
+    STATE_OUTPUT_PORTS = {"indoorTemperature": 0}
 
     #: Base slot of ``makeUpAirTemperature`` in ``u`` (after ``heatGain``).
     MAKE_UP_TEMPERATURE_SLOT = 7
@@ -678,6 +724,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         f_air = p["f_air"]
         f_wall = p["f_wall"]
         Q_occ_gain = p["Q_occ_gain"]
+        m_inf = p["m_inf"]
         n_c = self.n_c
         # Allocate on the parameters' device/dtype: _build_matrices re-runs on
         # cache miss during stepping, outside initialize()'s device context.
@@ -687,13 +734,15 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         air_wall = 1 / (R_in * C_air)
         wall_air = 1 / (R_in * C_wall)
         wall_outdoor = 1 / (R_out * C_wall)
+        # Infiltration: outdoor air in, room air out, at a constant flow.
+        air_outdoor = constants.CP_AIR * m_inf / C_air
         if self.n_boundary_temperature == 1:
             air_boundary = 1 / (R_boundary * C_air)
             boundary_air = 1 / (R_boundary * C_boundary)
             A = torch.stack(
                 [
                     torch.stack(
-                        [-air_wall - air_boundary, air_wall, air_boundary],
+                        [-air_wall - air_boundary - air_outdoor, air_wall, air_boundary],
                         dim=-1,
                     ),
                     torch.stack([wall_air, -wall_air - wall_outdoor, zero], dim=-1),
@@ -704,7 +753,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         else:
             A = torch.stack(
                 [
-                    torch.stack([-air_wall, air_wall], dim=-1),
+                    torch.stack([-air_wall - air_outdoor, air_wall], dim=-1),
                     torch.stack([wall_air, -wall_air - wall_outdoor], dim=-1),
                 ],
                 dim=1,
@@ -712,7 +761,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
         # Base slots: [T_out, m_sup, m_mu, T_sup, irradiation, N, Q_heat, T_mu]
         air_inputs = [
-            zero,
+            air_outdoor,
             zero,
             zero,
             zero,
@@ -889,8 +938,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
         )
         self.ss_model.set_state(x_next)
-        self.output["indoorTemperature"]._set(outs["indoorTemperature"], i_t=step_index)
-        self.output["wallTemperature"]._set(outs["wallTemperature"], i_t=step_index)
+        for port in ("indoorTemperature", "wallTemperature") + self.SS_DERIVED_OUTPUT_PORTS:
+            self.output[port]._set(outs[port], i_t=step_index)
 
     def step_constants(self, params):
         """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
@@ -917,7 +966,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             sample_time: step size in seconds.
 
         Returns:
-            ``(x_next (n_c, n_states), {"indoorTemperature", "wallTemperature"})``.
+            ``(x_next (n_c, n_states), {"indoorTemperature", "wallTemperature",
+            "surplusAirFlowRate", "makeUpAirFlowRate"})``.
         """
         # The matrices depend only on params, not on (x, u): cache them per
         # params-dict identity so a sequential rollout builds them once per
@@ -937,6 +987,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             matrices = cache[1]
             disc_cache = cache[3]
         A, B, C, D, E, F = matrices
+        derived = self._ss_derived_outputs(inputs, {})
         inputs = {**inputs, **self._ss_transform_inputs(inputs)}
         cols = [
             inputs["outdoorTemperature"],
@@ -966,7 +1017,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             disc_cache=disc_cache,
             transform_mode=transform_mode,
         )
-        return x_next, {"indoorTemperature": y[..., 0], "wallTemperature": y[..., 1]}
+        return x_next, {"indoorTemperature": y[..., 0], "wallTemperature": y[..., 1], **derived}
 
 
 # Deprecated aliases (removed in twin4build 2.1)

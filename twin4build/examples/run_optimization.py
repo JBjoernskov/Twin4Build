@@ -97,7 +97,7 @@ def main():
     )
 
     price_schedule = tb.ScheduleSystem(
-        filename=elspot_clean_path, date_column=0, value_column=1, id="price_schedule"
+        filename=elspot_clean_path, date_column=0, value_column=1, id="price_schedule", fill="constant"
     )
 
     costs_sensor = tb.ScalarProductSystem(

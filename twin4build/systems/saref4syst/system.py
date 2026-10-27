@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 import datetime
 import inspect
-from typing import Any, FrozenSet, List, Tuple, Union
+from typing import Any, FrozenSet, Hashable, List, Optional, Tuple, Union
 
 # Third party imports
 import numpy as np
@@ -658,6 +658,37 @@ class System:
             )
         return caps
 
+    def state_output_ports(self) -> List[Optional[str]]:
+        """The output port that publishes each continuous state as it is,
+        one entry per state of a copy (``state_size()``) in state order;
+        ``None`` for a state no output publishes as it is.
+
+        A leaf unit declares ``STATE_OUTPUT_PORTS = {port: state index}``; a
+        composite of several state-space units (:meth:`_ss_units`)
+        concatenates its units' (it publishes their outputs under their
+        names).  A sensor on such a port measures the state, and the
+        multiple-shooting tolerance takes that sensor's sd as the state's
+        scale.
+        """
+        width = self.state_size()
+        if width == 0:
+            return []
+        own = getattr(type(self), "STATE_OUTPUT_PORTS", None)
+        if own is not None:
+            ports: List[Optional[str]] = [None] * width
+            for port, k in own.items():
+                ports[k] = port
+            return ports
+        try:
+            units = self._ss_units()
+        except NotImplementedError:
+            units = []
+        if units and not (len(units) == 1 and units[0][1] is self):
+            ports = [p for _, unit in units for p in unit.state_output_ports()]
+            if len(ports) == width:
+                return ports
+        return [None] * width
+
     def set_state(self, x: torch.Tensor) -> None:
         """Write continuous state from a ``(n_s, n_c, D)`` tensor.
 
@@ -775,6 +806,20 @@ class System:
                 continue
             out.append((self, path, x0, lb, ub))
         return out
+
+    def curvature_group(self, path: str) -> Optional[Hashable]:
+        """The curvature group of the estimable parameter at ``path``.
+
+        A solver that models the curvature of a parameter block (a quasi-Newton
+        matrix per independent block) may split the block into groups:
+        entries of one group share a dense model, different groups none.  A
+        component whose parameters are many and only locally coupled (a
+        profile's knots, day by day) names a group per parameter; ``None``
+        (the default) leaves the entry in its block's main group, with the
+        windows' initial states and every component that names none.  Labels
+        are compared within a block only.
+        """
+        return None
 
     def size_parameter(self, path: str, value=None) -> bool:
         """Mark the parameter at ``path`` as sized, its bounds relative.

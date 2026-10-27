@@ -68,6 +68,32 @@ from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.deprecation import deprecate_name, reject_unexpected_kwargs
 
+
+class _SparseRow(dict):
+    """One MILP constraint row: its nonzero coefficients by variable index
+    (``row[i] = v``, ``row[i] += v``)."""
+
+    def __missing__(self, key):
+        return 0.0
+
+
+def _stack_rows(rows, n_vars: int):
+    """The constraint matrix of ``rows`` (:class:`_SparseRow`), sparse.  The
+    rows of a model with tens of thousands of candidate connections, stacked
+    dense, take tens of GB (one row per connection, one column per
+    connection and component)."""
+    from scipy import sparse
+
+    data, row_idx, col_idx = [], [], []
+    for r, row in enumerate(rows):
+        for c, v in row.items():
+            if v != 0:
+                data.append(float(v))
+                row_idx.append(r)
+                col_idx.append(int(c))
+    return sparse.csr_array((data, (row_idx, col_idx)), shape=(len(rows), n_vars))
+
+
 # ---------------------------------------------------------------------------
 # Matcher diagnostic dump (env-var gated, zero-cost when disabled).
 #
@@ -1283,9 +1309,17 @@ class Translator:
             output_port_index,
             input_port_index,
             sm_for_index,
+            sm_for_output=None,
         ):
             """
             Resolve Node-based port indices to integer indices using group matching.
+
+            ``sm_for_output`` (default ``sm_for_index``) is the instance the
+            output side looks up, when it differs from the input side's: a
+            Vector->Vector connection whose input index is the sender and whose
+            output index is another node of the target's pattern (a box's draw
+            per source into the room the pattern models) looks up that node's
+            value, not the sender.
 
             Both output_port_index and input_port_index Nodes are from the TARGET's
             signature pattern. This function finds which *unique-value ordinal* of
@@ -1332,64 +1366,46 @@ class Translator:
                 # Scalar → Scalar: no group matching needed
                 return output_port_index, input_port_index
 
-            # Virtually expand tuple bindings into per-element scalar
-            # groups so the unique-URI-ordinal logic below can run
-            # unchanged. Parallel tuple bindings within a single group
-            # are expected to be aligned element-wise (this invariant is
-            # established by ``Translator.__broadcast_recurse``): every
-            # set-bound node in a group has the same arity, so we expand
-            # by that common arity and align by position. Mixed arities
-            # fall back to per-node independent expansion (outer
-            # product), which preserves the prior scalar-path output.
-            def _expand(groups):
-                expanded = []
-                for group in groups:
-                    tuple_items = [
-                        (sp_n, sm_v)
-                        for sp_n, sm_v in group.items()
-                        if isinstance(sm_v, tuple)
-                    ]
-                    if not tuple_items:
-                        expanded.append(group)
-                        continue
-                    lengths = {len(v) for _, v in tuple_items}
-                    if len(lengths) == 1:
-                        arity = lengths.pop()
-                        for i in range(arity):
-                            virt = dict(group)
-                            for sp_n, sm_v in tuple_items:
-                                virt[sp_n] = sm_v[i]
-                            expanded.append(virt)
-                    else:
-                        # Mixed arities: expand independently so each
-                        # tuple node contributes its elements without
-                        # implying alignment. Uncommon — most tuple
-                        # groups have consistent arity by construction.
-                        current = [dict(group)]
-                        for sp_n, sm_v in tuple_items:
-                            next_batch = []
-                            for base in current:
-                                for elem in sm_v:
-                                    copy = dict(base)
-                                    copy[sp_n] = elem
-                                    next_batch.append(copy)
-                            current = next_batch
-                        expanded.extend(current)
-                return expanded
+            # A group's set-bound (tuple) bindings are read in place, never
+            # expanded into per-element groups: a group with sets of different
+            # sizes (a unit's 238 terminals and its 51 return boxes) expanded
+            # into their outer product, tens of GB per call.  Within a group,
+            # sets of the same size are aligned by position (they come from
+            # one broadcast chain: ``damper_cmds[i]`` with ``spaces[i]``, which
+            # the outer product of a mixed group lost); a set of another size
+            # gives its first element, as the first combination of the outer
+            # product did.
+            def _elements(value):
+                if value is None:
+                    return ()
+                return value if isinstance(value, tuple) else (value,)
 
-            groups_source = _expand(groups_source)
-            groups_target = _expand(groups_target)
+            def _unique_ordered(groups, node):
+                seen: Dict[str, Any] = {}
+                for group in groups:
+                    for v in _elements(group.get(node)):
+                        seen.setdefault(str(v.uri), v)
+                return seen
+
+            def _aligned(group, node, sm):
+                """The value ``node`` takes where ``sm`` is bound in ``group`` (``None``: ``sm`` not in it)."""
+                value = group.get(node)
+                if value is None:
+                    return None
+                for bound in group.values():
+                    if isinstance(bound, tuple):
+                        if sm not in bound:
+                            continue
+                        if isinstance(value, tuple):
+                            return value[bound.index(sm)] if len(value) == len(bound) else value[0]
+                        return value
+                    if bound == sm:
+                        return value[0] if isinstance(value, tuple) else value
+                return None
 
             # Resolve each side independently so Vector->Vector connections
             # (both ``output_port_index`` and ``input_port_index`` as Nodes) get
-            # both ends resolved.  The earlier ``if/elif`` short-circuited and
-            # returned ``None`` for the un-resolved side, which then tripped the
-            # ``add_connection`` assertion "output port must be a scalar" for
-            # patterns like AHU's
-            # ``sp.add_connection(damper_cmds, "inputSignal", "supplyDamperPosition",
-            #                     output_port_index=damper_cmds, input_port_index=spaces)``
-            # where CITS.inputSignal is a Vector (one slot per actuator) and
-            # AHU.supplyDamperPosition is a Vector (one slot per zone).
+            # both ends resolved.
             resolved_output_idx: Optional[int] = (
                 output_port_index if not isinstance(output_port_index, Node) else None
             )
@@ -1398,42 +1414,15 @@ class Translator:
             )
 
             if isinstance(input_port_index, Node):
-                # Scalar->Vector or Vector->Vector input side: build ordered
-                # list of unique sm values for the indexing Node across
-                # groups_target (preserving first-seen order = natural slot
-                # order) and look up the value of ``input_port_index`` in
-                # the (expanded) target group whose bindings contain
-                # ``sm_for_index``.
-                #
-                # Using the *aligned* SM value rather than ``sm_for_index``
-                # itself matters when the source-side iteration key
-                # (e.g. ``damper_cmds``) differs from the input-side
-                # indexing key (e.g. ``spaces``).  The AHU pattern's rule
-                # chain ``vavs --feeds--> spaces`` and
-                # ``vavs --hasPart--> dampers --hasPoint--> damper_cmds``
-                # guarantees ``damper_cmds[i]`` and ``spaces[i]`` are
-                # aligned by their shared per-VAV broadcast position;
-                # ``_expand`` above turns parallel tuples into per-position
-                # scalar groups so this alignment is queryable.
-                seen_uris: Dict[str, Any] = {}
-                for group in groups_target:
-                    v = group.get(input_port_index)
-                    if v is not None:
-                        key = str(v.uri)
-                        if key not in seen_uris:
-                            seen_uris[key] = v
-
-                # Find ``sm_for_index`` (the source-side per-element URI)
-                # in one of the target groups; from that group, read the
-                # aligned input_port_index value.  Direct hit (when
-                # ``input_port_index`` IS the source-side node) reduces to
-                # ``sm_for_index == sm_for_index``.
+                # Scalar->Vector or Vector->Vector input side: the slot is the
+                # ordinal, among the indexing node's values across the target
+                # groups (first seen first), of the value aligned with
+                # ``sm_for_index`` (``sm_for_index`` itself when the indexing
+                # node is the sender).
+                seen_uris = _unique_ordered(groups_target, input_port_index)
                 aligned_sm = None
                 for group in groups_target:
-                    for sp_n, sm_v in group.items():
-                        if sm_v == sm_for_index:
-                            aligned_sm = group.get(input_port_index)
-                            break
+                    aligned_sm = _aligned(group, input_port_index, sm_for_index)
                     if aligned_sm is not None:
                         break
                 lookup_target = aligned_sm if aligned_sm is not None else sm_for_index
@@ -1455,13 +1444,15 @@ class Translator:
                     return None, None
 
             if isinstance(output_port_index, Node):
-                # Vector->Scalar or Vector->Vector output side: find which
-                # sp_node in groups_source maps to sm_for_index, then build
-                # the unique-value ordinal for that sp_node across all groups.
+                # Vector->Scalar or Vector->Vector output side: the node of the
+                # source groups that binds ``sm_for_index``, and the ordinal of
+                # ``sm_for_index`` among that node's values across the groups.
+                if sm_for_output is not None:
+                    sm_for_index = sm_for_output
                 index_sp_node = None
                 for group in groups_source:
                     for sp_node, sm_node in group.items():
-                        if sm_node == sm_for_index:
+                        if sm_node == sm_for_index or (isinstance(sm_node, tuple) and sm_for_index in sm_node):
                             index_sp_node = sp_node
                             break
                     if index_sp_node is not None:
@@ -1474,14 +1465,7 @@ class Translator:
                     )
                     return None, None
 
-                seen_uris = {}
-                for group in groups_source:
-                    v = group.get(index_sp_node)
-                    if v is not None:
-                        key = str(v.uri)
-                        if key not in seen_uris:
-                            seen_uris[key] = v
-
+                seen_uris = _unique_ordered(groups_source, index_sp_node)
                 resolved_output_idx = None
                 for ordinal, (uri_key, v) in enumerate(seen_uris.items()):
                     if v == sm_for_index:
@@ -1562,6 +1546,10 @@ class Translator:
                             ]  # Get the provider component
 
                             for provider_component in provider_components:
+                                # A component never feeds its own input: a node it models as a member of a
+                                # group (a merged meter on the points it sums) names its source, not itself.
+                                if provider_component is component:
+                                    continue
                                 p_nodes = self._sim2sem_map[provider_component]
                                 p_sps = self._sim2group_map[provider_component]
 
@@ -1661,30 +1649,68 @@ class Translator:
                                             and input_port_index is sp_subject
                                         )
                                         if not (out_is_subject or in_is_subject):
-                                            if isinstance(output_port_index, Node):
-                                                for group in groups:
-                                                    if output_port_index in group:
-                                                        raw = group[output_port_index]
-                                                        elements = (
-                                                            Translator._iter_binding(
-                                                                raw
-                                                            )
-                                                        )
-                                                        if elements:
-                                                            sm_for_index_list = list(elements)
-                                                        break
-                                            elif isinstance(input_port_index, Node):
-                                                for group in groups:
-                                                    if input_port_index in group:
-                                                        raw = group[input_port_index]
-                                                        elements = (
-                                                            Translator._iter_binding(
-                                                                raw
-                                                            )
-                                                        )
-                                                        if elements:
-                                                            sm_for_index_list = list(elements)
-                                                        break
+                                            # The index node's value (one node, or a set: one
+                                            # candidate edge per element) in the group that binds
+                                            # this sender.  Taking the first group that has the
+                                            # index node put every sender of a component with
+                                            # several groups (a box on six storeys' hallways, a
+                                            # setpoint each) on the first group's slot.
+                                            index_node = (
+                                                output_port_index if isinstance(output_port_index, Node)
+                                                else input_port_index if isinstance(input_port_index, Node)
+                                                else None
+                                            )
+                                            if index_node is not None:
+                                                with_index = [g for g in groups if index_node in g]
+                                                binding_sender = [
+                                                    g for g in with_index
+                                                    if any(
+                                                        v == sm_subject
+                                                        or (isinstance(v, tuple) and sm_subject in v)
+                                                        for v in g.values()
+                                                    )
+                                                ]
+                                                for group in (binding_sender or with_index)[:1]:
+                                                    elements = Translator._iter_binding(group[index_node])
+                                                    if elements:
+                                                        sm_for_index_list = list(elements)
+
+                                        # The input index is the sender, the output index another
+                                        # node of this pattern (``sp.add_connection(boxes,
+                                        # "sourceAirFlowRate", "exhaustAirFlowRate",
+                                        # output_port_index=space, input_port_index=boxes)``): the
+                                        # output side looks up that node's value in the group that
+                                        # binds this sender (the room), aligned with the sender
+                                        # when both are sets.  Looking up the sender put every such
+                                        # wire on slot 0 (27 Oct 2026: a box's four rooms, a central
+                                        # box's six hallways).
+                                        sm_for_output = None
+                                        if (
+                                            isinstance(output_port_index, Node)
+                                            and in_is_subject
+                                            and not out_is_subject
+                                        ):
+                                            for group in groups:
+                                                if output_port_index not in group:
+                                                    continue
+                                                bound = next(
+                                                    (
+                                                        v for v in group.values()
+                                                        if v == sm_subject
+                                                        or (isinstance(v, tuple) and sm_subject in v)
+                                                    ),
+                                                    None,
+                                                )
+                                                if bound is None:
+                                                    continue
+                                                value = group[output_port_index]
+                                                if not isinstance(value, tuple):
+                                                    sm_for_output = value
+                                                elif isinstance(bound, tuple) and len(bound) == len(value):
+                                                    sm_for_output = value[bound.index(sm_subject)]
+                                                elif len(value) == 1:
+                                                    sm_for_output = value[0]
+                                                break
 
                                         # A set-bound index node that is not the sender
                                         # (a zone's VAVs indexing the AHU's branches)
@@ -1697,6 +1723,7 @@ class Translator:
                                                     output_port_index,
                                                     input_port_index,
                                                     sm_for_index,
+                                                    sm_for_output,
                                                 )
                                             )
 
@@ -1757,7 +1784,7 @@ class Translator:
 
                     # Create a constraint: Y_i <= (E_j1 + E_j2 + ... + E_jn)
                     # This means: If component i is included, at least one provider must be active
-                    row = np.zeros(total_vars)
+                    row = _SparseRow()
                     row[N_E + component_idx] = 1  # Coefficient for component i
 
                     edge_indices = []
@@ -1789,7 +1816,7 @@ class Translator:
 
         # Convert to numpy array
         if required_input_constraints:
-            A_required = np.vstack(required_input_constraints)
+            A_required = _stack_rows(required_input_constraints, total_vars)
             b_required_l = np.full(
                 len(required_input_constraints), -np.inf
             )  # Lower bound = -inf
@@ -1812,7 +1839,7 @@ class Translator:
             source_idx = Y_component_to_idx[source_component]
 
             # Create constraint: E_j <= Y_i (connection j can only exist if source component i is included)
-            row = np.zeros(total_vars)
+            row = _SparseRow()
             row[e_idx] = 1
             row[N_E + source_idx] = -1
             conn_source_constraints.append(row)
@@ -1821,7 +1848,7 @@ class Translator:
 
         # Convert to numpy array
         if conn_source_constraints:
-            A_conn_source = np.vstack(conn_source_constraints)
+            A_conn_source = _stack_rows(conn_source_constraints, total_vars)
             b_conn_source_l = np.full(
                 len(conn_source_constraints), -np.inf
             )  # Lower bound = -inf
@@ -1844,7 +1871,7 @@ class Translator:
             target_idx = Y_component_to_idx[target_component]
 
             # Create constraint: E_j <= Y_i (connection j can only exist if target component i is included)
-            row = np.zeros(total_vars)
+            row = _SparseRow()
             row[e_idx] = 1
             row[N_E + target_idx] = -1
             conn_target_constraints.append(row)
@@ -1853,7 +1880,7 @@ class Translator:
 
         # Convert to numpy array
         if conn_target_constraints:
-            A_conn_target = np.vstack(conn_target_constraints)
+            A_conn_target = _stack_rows(conn_target_constraints, total_vars)
             b_conn_target_l = np.full(
                 len(conn_target_constraints), -np.inf
             )  # Lower bound = -inf
@@ -1893,7 +1920,7 @@ class Translator:
             if (
                 len(slot_connections) > 1
             ):  # Only need constraint if multiple potential connections to same slot
-                row = np.zeros(total_vars)
+                row = _SparseRow()
                 for e_idx in slot_connections:
                     row[e_idx] = 1
                 one_input_constraints.append(row)
@@ -1903,7 +1930,7 @@ class Translator:
 
         # Convert to numpy array
         if one_input_constraints:
-            A_one_input = np.vstack(one_input_constraints)
+            A_one_input = _stack_rows(one_input_constraints, total_vars)
             b_one_input_l = np.full(
                 len(one_input_constraints), -np.inf
             )  # Lower bound = -inf
@@ -1944,7 +1971,7 @@ class Translator:
                 continue
             first_key, *other_keys = list(by_key)
             for other_key in other_keys:
-                row = np.zeros(total_vars)
+                row = _SparseRow()
                 for e_idx in by_key[first_key]:
                     row[e_idx] += 1
                 for e_idx in by_key[other_key]:
@@ -1956,7 +1983,7 @@ class Translator:
                 )
 
         if slot_coherence_constraints:
-            A_slot_coherence = np.vstack(slot_coherence_constraints)
+            A_slot_coherence = _stack_rows(slot_coherence_constraints, total_vars)
             constraints_list.append(
                 LinearConstraint(
                     A_slot_coherence,
@@ -2007,7 +2034,7 @@ class Translator:
         for node, component_indices in node_to_components.items():
             if len(component_indices) > 1:
                 # Create a constraint: sum(Y_i for all components containing this node) <= 1
-                row = np.zeros(total_vars)
+                row = _SparseRow()
                 for idx in component_indices:
                     row[N_E + idx] = 1
                 modeled_node_constraints.append(row)
@@ -2017,7 +2044,7 @@ class Translator:
 
         for fp, component_indices in fingerprint_to_components.items():
             if len(component_indices) > 1:
-                row = np.zeros(total_vars)
+                row = _SparseRow()
                 for idx in component_indices:
                     row[N_E + idx] = 1
                 modeled_node_constraints.append(row)
@@ -2027,7 +2054,7 @@ class Translator:
 
         # Convert to numpy array and add to constraints
         if modeled_node_constraints:
-            A_modeled_node = np.vstack(modeled_node_constraints)
+            A_modeled_node = _stack_rows(modeled_node_constraints, total_vars)
             b_modeled_node_l = np.full(
                 len(modeled_node_constraints), -np.inf
             )  # Lower bound = -inf
@@ -2269,6 +2296,11 @@ class Translator:
         # ``_context_to_component[fp]``: context-addressable lookup.
         self._context_to_component: Dict[str, core.System] = {}
         self.modeled_components = set()
+        # A singleton component's id is its node's sanitized name, and two
+        # nodes can sanitize to the same id (``R00.18_VAV02``, a box, and
+        # ``R00_18_VAV02``, its setpoint point).  The first keeps the id; a
+        # later node of another URI gets a short hash of its URI appended.
+        singleton_uri_of_id: Dict[str, str] = {}
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             LOGGER.section("Class: %s", component_cls.__name__)
             LOGGER.add_level()
@@ -2322,6 +2354,12 @@ class Translator:
                     if len(modeled_match_nodes) == 1:
                         component = next(iter(modeled_match_nodes))
                         id_ = core.sanitize_id(component.get_short_name())
+                        uri = str(component.uri)
+                        if singleton_uri_of_id.setdefault(id_, uri) != uri:
+                            suffix = hashlib.blake2b(uri.encode("utf-8"), digest_size=4).hexdigest()
+                            LOGGER.info("Component id %s is taken by another node; %s gets %s_%s", id_, uri, id_, suffix)
+                            id_ = f"{id_}_{suffix}"
+                            singleton_uri_of_id.setdefault(id_, uri)
                         base_kwargs = get_predicate_object_pairs(component)
                         extension_kwargs = {"id": id_}
                     else:
@@ -3465,11 +3503,12 @@ class Translator:
                         )
                         if forbidden:
                             feasible[sp_subject].discard(sm_subject)
-                            LOGGER.debug(
-                                "Pruned (NoStepRule veto) [%s]: %s",
-                                direction.name,
-                                Translator._binding_short_name(forbidden[0]),
-                            )
+                            if LOGGER.debug_enabled:  # the names are costly: only when logged
+                                LOGGER.debug(
+                                    "Pruned (NoStepRule veto) [%s]: %s",
+                                    direction.name,
+                                    Translator._binding_short_name(forbidden[0]),
+                                )
                             if _diag_walker:
                                 _match_diag_write(
                                     f"[WALKER]   PRUNE dir={direction.name} "
@@ -3514,6 +3553,13 @@ class Translator:
                             # incident edge that triggered the broadcast
                             # is preserved as visited and per-element
                             # walks are independent.
+                            # Each candidate extends its own copies of the maps: a rule
+                            # hands every candidate the same map objects, and a branch
+                            # that binds nodes below it and is then pruned (a veto on
+                            # the way back) would leave those bindings to its siblings
+                            # (a fan's power point binding the reference node the
+                            # unit's own meter then conflicts with).
+                            maps_for_pair = [dict(m) for m in maps_for_pair]
                             if isinstance(matched_sm_object, tuple):
                                 # A bundle bound already (by another set rule on the
                                 # same node) must be the same bundle: then this rule is
@@ -6833,16 +6879,17 @@ class And(Rule):
             pairs.extend([pair for pair in pairs_b if pair[4] in indices])
             ruleset_a.update(ruleset_b)
             for pair in pairs:
-                LOGGER.debug(
-                    "Matched: %s (%s) is (%s)",
-                    pair[1].get_short_name(),
-                    (
-                        mst.get_short_name()
-                        if (mst := pair[1].get_most_specific_type()) is not None
-                        else "None"
-                    ),
-                    c,
-                )
+                if LOGGER.debug_enabled:  # the names are costly: only when logged
+                    LOGGER.debug(
+                        "Matched: %s (%s) is (%s)",
+                        pair[1].get_short_name(),
+                        (
+                            mst.get_short_name()
+                            if (mst := pair[1].get_most_specific_type()) is not None
+                            else "None"
+                        ),
+                        c,
+                    )
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
             return pairs, True, mask, ruleset_a
@@ -6920,48 +6967,51 @@ class Or(Rule):
             ruleset_a.update(ruleset_b)
 
             for pair in pairs:
-                LOGGER.debug(
-                    "Matched: %s (%s) is (%s)",
-                    pair[1].get_short_name(),
-                    (
-                        mst.get_short_name()
-                        if (mst := pair[1].get_most_specific_type()) is not None
-                        else "None"
-                    ),
-                    c,
-                )
+                if LOGGER.debug_enabled:  # the names are costly: only when logged
+                    LOGGER.debug(
+                        "Matched: %s (%s) is (%s)",
+                        pair[1].get_short_name(),
+                        (
+                            mst.get_short_name()
+                            if (mst := pair[1].get_most_specific_type()) is not None
+                            else "None"
+                        ),
+                        c,
+                    )
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
             return pairs, True, rule_applies_a_vec | rule_applies_b_vec, ruleset_a
 
         elif rule_applies_a:
             for pair in pairs_a:
-                LOGGER.debug(
-                    "Matched: %s (%s) is (%s)",
-                    pair[1].get_short_name(),
-                    (
-                        mst.get_short_name()
-                        if (mst := pair[1].get_most_specific_type()) is not None
-                        else "None"
-                    ),
-                    c,
-                )
+                if LOGGER.debug_enabled:  # the names are costly: only when logged
+                    LOGGER.debug(
+                        "Matched: %s (%s) is (%s)",
+                        pair[1].get_short_name(),
+                        (
+                            mst.get_short_name()
+                            if (mst := pair[1].get_most_specific_type()) is not None
+                            else "None"
+                        ),
+                        c,
+                    )
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
             return pairs_a, True, rule_applies_a_vec, ruleset_a
 
         elif rule_applies_b:
             for pair in pairs_b:
-                LOGGER.debug(
-                    "Matched: %s (%s) is (%s)",
-                    pair[1].get_short_name(),
-                    (
-                        mst.get_short_name()
-                        if (mst := pair[1].get_most_specific_type()) is not None
-                        else "None"
-                    ),
-                    c,
-                )
+                if LOGGER.debug_enabled:  # the names are costly: only when logged
+                    LOGGER.debug(
+                        "Matched: %s (%s) is (%s)",
+                        pair[1].get_short_name(),
+                        (
+                            mst.get_short_name()
+                            if (mst := pair[1].get_most_specific_type()) is not None
+                            else "None"
+                        ),
+                        c,
+                    )
             LOGGER.debug("Rule applies: %s", True)
             LOGGER.remove_level()
             return pairs_b, True, rule_applies_b_vec, ruleset_b
@@ -7130,16 +7180,17 @@ class NoStepRule(Rule):
 
         rule_applies = bool(np.any(rule_applies_vec))
         for pair in pairs:
-            LOGGER.debug(
-                "Matched: %s (%s) is %s",
-                pair[1].get_short_name(),
-                (
-                    mst.get_short_name()
-                    if (mst := pair[1].get_most_specific_type()) is not None
-                    else "None"
-                ),
-                far_node.cls,
-            )
+            if LOGGER.debug_enabled:  # the names are costly: only when logged
+                LOGGER.debug(
+                    "Matched: %s (%s) is %s",
+                    pair[1].get_short_name(),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
+                    far_node.cls,
+                )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
 
@@ -7333,16 +7384,17 @@ class StepRule(Rule):
 
         rule_applies = np.any(rule_applies_vec)
         for pair in pairs:
-            LOGGER.debug(
-                "Matched: %s (%s) is %s",
-                pair[1].get_short_name(),
-                (
-                    mst.get_short_name()
-                    if (mst := pair[1].get_most_specific_type()) is not None
-                    else "None"
-                ),
-                far_node.cls,
-            )
+            if LOGGER.debug_enabled:  # the names are costly: only when logged
+                LOGGER.debug(
+                    "Matched: %s (%s) is %s",
+                    pair[1].get_short_name(),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
+                    far_node.cls,
+                )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
@@ -7589,11 +7641,12 @@ class SetStepRule(StepRule):
                         far_node.cls,
                     )
                 else:
-                    LOGGER.debug(
-                        "Matched (set-bwd scalar): %s is %s",
-                        pair[1].get_short_name(),
-                        far_node.cls,
-                    )
+                    if LOGGER.debug_enabled:  # the names are costly: only when logged
+                        LOGGER.debug(
+                            "Matched (set-bwd scalar): %s is %s",
+                            pair[1].get_short_name(),
+                            far_node.cls,
+                        )
             except Exception:
                 LOGGER.debug("Matched (set): %s", pair[1])
         LOGGER.debug("Rule applies: %s", rule_applies)
@@ -7753,16 +7806,17 @@ class _SinglePath(Rule):
                 )
 
         for pair in pairs:
-            LOGGER.debug(
-                "Matched: %s (%s) is %s",
-                pair[1].get_short_name(),
-                (
-                    mst.get_short_name()
-                    if (mst := pair[1].get_most_specific_type()) is not None
-                    else "None"
-                ),
-                far_node.cls,
-            )
+            if LOGGER.debug_enabled:  # the names are costly: only when logged
+                LOGGER.debug(
+                    "Matched: %s (%s) is %s",
+                    pair[1].get_short_name(),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
+                    far_node.cls,
+                )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
@@ -8010,16 +8064,17 @@ class _MultiPath(Rule):
                 )
 
         for pair in pairs:
-            LOGGER.debug(
-                "Matched: %s (%s) is %s",
-                pair[1].get_short_name(),
-                (
-                    mst.get_short_name()
-                    if (mst := pair[1].get_most_specific_type()) is not None
-                    else "None"
-                ),
-                far_node.cls,
-            )
+            if LOGGER.debug_enabled:  # the names are costly: only when logged
+                LOGGER.debug(
+                    "Matched: %s (%s) is %s",
+                    pair[1].get_short_name(),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
+                    far_node.cls,
+                )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset
@@ -8140,16 +8195,17 @@ class OptionalRule(Rule):
 
         rule_applies = np.any(rule_applies_vec)
         for pair in pairs:
-            LOGGER.debug(
-                "Matched: %s (%s) is %s",
-                pair[1].get_short_name(),
-                (
-                    mst.get_short_name()
-                    if (mst := pair[1].get_most_specific_type()) is not None
-                    else "None"
-                ),
-                far_node.cls,
-            )
+            if LOGGER.debug_enabled:  # the names are costly: only when logged
+                LOGGER.debug(
+                    "Matched: %s (%s) is %s",
+                    pair[1].get_short_name(),
+                    (
+                        mst.get_short_name()
+                        if (mst := pair[1].get_most_specific_type()) is not None
+                        else "None"
+                    ),
+                    far_node.cls,
+                )
         LOGGER.debug("Rule applies: %s", rule_applies)
         LOGGER.remove_level()
         return pairs, rule_applies, rule_applies_vec, ruleset

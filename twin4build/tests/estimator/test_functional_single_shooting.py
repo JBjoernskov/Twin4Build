@@ -189,6 +189,27 @@ class TestFunctionalEstimationObjective(unittest.TestCase):
         if p_last > 0:
             self.assertFalse(torch.isnan(fresh.ACT[0][:, 0]).any())
 
+    def test_a_fill_blanks_only_the_sensors_it_reaches(self):
+        """The samples :func:`filled_downstream` names are blanked in the
+        reached sensor's column only: a filled step reaching the last sensor
+        leaves the step of every sensor stacked before it scored."""
+        from unittest import mock
+
+        from twin4build.estimator._single_shooting import FunctionalEstimationObjective
+
+        est = self.estimator
+        last = est._measurements[-1][0]
+        n_t = int(est._functional_objective.ACT[0].shape[0])
+        hit = np.zeros((len(est._functional_objective.ACT), n_t), dtype=bool)
+        hit[:, 10:20] = True
+        with mock.patch("twin4build.estimator._single_shooting._filled_downstream", return_value={last.id: hit}):
+            fresh = FunctionalEstimationObjective(est)
+        act = fresh.ACT[0]
+        self.assertTrue(torch.isnan(act[10:20, -1]).all())
+        self.assertFalse(torch.isnan(act[:10, -1]).any())
+        self.assertFalse(torch.isnan(act[20:, -1]).any())
+        self.assertFalse(torch.isnan(act[:, :-1]).any())
+
     def test_per_sensor_rmse_matches(self):
         est = self.estimator
         x0 = np.asarray(est._x0_norm, dtype=np.float64)

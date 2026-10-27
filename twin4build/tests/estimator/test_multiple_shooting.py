@@ -79,6 +79,30 @@ class TestMultipleShooting(unittest.TestCase):
         _cols, grad = obj.batched_column_loss_and_grad(x.unsqueeze(0))
         self.assertGreater(float(grad[0, obj.n_theta : obj.n_theta + obj.init_n_slow].abs().max()), 0.0)
 
+    def test_curvature_structure_carries_the_groups_components_name(self):
+        """``curvature_structure``: per extended theta entry the curvature group its component names
+        (``System.curvature_group``), ``None`` for the others and for the multiple-shooting variables."""
+        est = _estimator("cpu", shooting=MS)
+        obj = est._functional_objective
+        labels = obj.curvature_structure()
+        self.assertEqual(len(labels), obj.n_theta_ext)
+        self.assertTrue(all(label is None for label in labels))  # the example's components name none
+        comp = obj.composer.theta_spec[0][0]
+        owned = {}
+        for i, spec in enumerate(obj.composer.theta_spec):
+            if spec[0] is comp:
+                idx = spec[2] if len(spec) > 2 else i
+                entries = range(idx.start, idx.stop) if isinstance(idx, slice) else (
+                    idx if isinstance(idx, (list, tuple)) else [idx])
+                owned.update({int(t): spec[1] for t in entries})
+        comp.curvature_group = lambda path: ("named", path)
+        try:
+            labels = obj.curvature_structure()
+        finally:
+            del comp.curvature_group
+        self.assertEqual({t: label[1] for t, label in enumerate(labels) if label is not None}, owned)
+        self.assertTrue(all(label is None for label in labels[obj.n_theta :]))
+
     def test_result_carries_the_states_and_load_sets_the_model_state(self):
         """The result stores the estimated initial states per executing
         component and per original component; ``load_estimation_result``
@@ -118,16 +142,40 @@ class TestMultipleShooting(unittest.TestCase):
         loose = _estimator("cpu", shooting={"continuity_sd_rel": 1e15, "continuity_energy_tol": NO_ENERGY_CAP})
         p_obj, l_obj = plain._functional_objective, loose._functional_objective
         theta = torch.tensor(np.asarray(plain._x0_norm, dtype=np.float64), dtype=torch.float64)
-        x_ext = torch.cat([theta, l_obj.init_x0_norm.cpu()])
-        # the plain vector stands in for the extended one (variables at their
-        # recorded values); both objectives roll the windows out in transform
-        # mode (the eager vmapped step), so the values agree to round-off
-        # (each objective's loss scale was set on its own construction path, so
-        # compare the unscaled sums of squares)
+        # the variables at the recorded states (the plain objective's starts;
+        # the variables themselves start on the continuous trajectory)
+        recorded = ((l_obj.init_x0_recorded - l_obj.init_lb) / (l_obj.init_ub - l_obj.init_lb)).reshape(-1)
+        x_ext = torch.cat([theta, recorded.cpu()])
+        # both objectives roll the windows out in transform mode (the eager
+        # vmapped step), so the values agree to round-off (each objective's
+        # loss scale was set on its own construction path, so compare the
+        # unscaled sums of squares)
         plain_value = p_obj.loss(theta, transform_mode=True) * p_obj.loss_scale
-        torch.testing.assert_close(l_obj.loss(theta) * l_obj.loss_scale, plain_value, rtol=1e-10, atol=1e-12)
         torch.testing.assert_close(l_obj.loss(x_ext) * l_obj.loss_scale, plain_value, rtol=1e-10, atol=1e-12)
         torch.testing.assert_close(l_obj.raw_residuals(x_ext), p_obj.raw_residuals(theta, transform_mode=True), rtol=1e-10, atol=1e-12)
+        # the plain vector stands in for the extended one at the variables' starts
+        torch.testing.assert_close(l_obj.loss(theta), l_obj.loss(torch.cat([theta, l_obj.init_x0_norm.cpu()])), rtol=1e-12, atol=0)
+
+    def test_the_windows_start_on_one_continuous_trajectory(self):
+        """The variables start where the window before ends at the start
+        point (the first window at its recorded state, the model's initial
+        state), so the start point pays no continuity and its objective is
+        the measured part, 100: windows recorded at the model's initial state
+        left jumps of kelvins the trust region could not close (22 Oct 2026)."""
+        for windows in (2, 3):  # one and two passes
+            with self.subTest(windows=windows):
+                obj = _estimator("cpu", shooting=MS, windows=windows)._functional_objective
+                theta0 = obj.init_theta_start
+                init = obj._denorm_init(obj.init_x0_norm.to(theta0.dtype))
+                Ms, defects = obj._rollout(theta0, init)
+                self.assertLess(float(defects.abs().max()), 1e-6)
+                torch.testing.assert_close(init[0], obj.init_x0_recorded[0], rtol=1e-12, atol=1e-12)
+                self.assertGreater(float((init[1:] - obj.init_x0_recorded[1:]).abs().max()), 1e-6)
+                measured = torch.sum(obj._weighted(obj._raw_residuals_from_meas(Ms)).square())
+                torch.testing.assert_close(float(measured), 100.0, rtol=1e-8, atol=0)
+                self.assertLess(abs(obj.f0 - 100.0), 1e-6)  # the logged start: no continuity
+                # the box holds the recorded state too
+                self.assertTrue(bool((obj.init_lb <= obj.init_x0_recorded).all() and (obj.init_x0_recorded <= obj.init_ub).all()))
 
     def test_zero_defect_reproduces_the_continuous_rollout(self):
         est = _estimator("cpu", shooting=MS)
@@ -183,7 +231,7 @@ class TestMultipleShooting(unittest.TestCase):
         idx = obj.init_index.cpu()
         torch.testing.assert_close(flat[idx], -(defects[0].cpu() * obj.init_sd.cpu()), rtol=1e-10, atol=1e-12)
         torch.testing.assert_close(flat_sd[idx], obj.init_sd.cpu(), rtol=0, atol=0)
-        self.assertGreater(float(flat[idx].abs().max()), 0.0)  # the recorded states do not continue the rollout
+        self.assertGreater(float(flat[idx].abs().max()), 0.0)  # the start trajectory does not continue the fitted rollout
         # the end state of window 0 as window 1's start: no jump
         theta_phys = obj._denorm(theta)
         Y0, tape = obj._windows()
@@ -215,15 +263,103 @@ class TestMultipleShooting(unittest.TestCase):
 
     def test_the_tolerance_follows_how_much_a_state_varies(self):
         """Each state's tolerance is ``continuity_sd_rel`` (default 0.01) of how
-        much it moves over the windows' starts and ends, floored as
-        documented (no state reaches the energy tolerance here)."""
+        much it moves over the windows, floored as documented (no state
+        reaches the energy tolerance here)."""
         obj = _estimator("cpu", shooting={"continuity_energy_tol": NO_ENERGY_CAP})._functional_objective
         torch.testing.assert_close(obj.init_sd, torch.clamp(0.01 * obj.init_sd_reference, min=1e-9), rtol=1e-12, atol=0)
-        # the range is floored at a thousandth of the magnitude and cannot exceed twice it
-        self.assertTrue(bool((obj.init_sd_reference >= 1e-3 * obj.init_magnitude - 1e-15).all()))
-        self.assertTrue(bool((obj.init_sd_reference <= 2.0 * obj.init_magnitude + 1e-12).all()))
+        # a state no sensor measures: its range, floored at a tenth of the
+        # magnitude, and never above twice it
+        ranged = ~torch.isfinite(obj.init_sensor_sd)
+        self.assertTrue(bool(ranged.any()))
+        reference, magnitude = obj.init_sd_reference[ranged], obj.init_magnitude[ranged]
+        self.assertTrue(bool((reference >= ss.REFERENCE_FLOOR * magnitude - 1e-15).all()))
+        self.assertTrue(bool((reference <= 2.0 * magnitude + 1e-12).all()))
         # a state that barely moves is held tighter than its magnitude would hold it
-        self.assertLess(float((obj.init_sd_reference / obj.init_magnitude).min()), 1.0)
+        self.assertLess(float((reference / magnitude).min()), 1.0)
+
+    def test_a_measured_state_takes_its_sensors_sd(self):
+        """A state a scored sensor measures (the office's air temperature, sd
+        0.05 K, and CO2, sd 15 ppm, inside the office's fused block) takes
+        that sensor's sd as its scale, whatever the start point: room CO2
+        does not move at the windows' boundaries, and a range read there
+        held it to 0.007 ppm (22 Oct 2026)."""
+        est = _estimator("cpu", shooting={"continuity_energy_tol": NO_ENERGY_CAP})
+        obj = est._functional_objective
+        measured = torch.isfinite(obj.init_sensor_sd)
+        names = obj._state_names(obj.init_index.cpu().numpy())
+        by_sd = {names[i]: float(obj.init_sensor_sd[i]) for i in range(len(names)) if bool(measured[i])}
+        self.assertEqual(sorted(by_sd.values()), [0.05, 15.0], by_sd)
+        torch.testing.assert_close(obj.init_sd_reference[measured], obj.init_sensor_sd[measured], rtol=0, atol=0)
+        torch.testing.assert_close(obj.init_sd[measured], 0.01 * obj.init_sensor_sd[measured], rtol=1e-12, atol=0)
+        # the ports the two states are published on are the sensors' ports
+        ports = {}
+        for comp, (start, _stop), (n_c, ss_) in zip(obj.layout.components, obj.layout.slices, obj.layout.shapes):
+            for k, port in enumerate(comp.state_output_ports() if ss_ else []):
+                for c in range(n_c):
+                    ports[start + c * ss_ + k] = port
+        published = {ports[int(i)].split(".")[-1] for i in obj.init_index[measured].cpu()}
+        self.assertEqual(published, {"indoorTemperature", "indoorCO2"})
+
+    def test_the_range_is_read_over_every_step_not_the_boundaries(self):
+        """The range a tolerance is taken from covers every step of every
+        window at the start point, not only the windows' starts and ends:
+        windows that all start at one phase of the schedules see a state the
+        schedules drive (a room's CO2) where it barely moves, and its
+        tolerance collapsed (22 Oct 2026: 0.007 ppm).  Checked against a step
+        loop of its own; the reference is never below the boundaries' range."""
+        obj = _estimator("cpu", shooting={"continuity_energy_tol": NO_ENERGY_CAP})._functional_objective
+        Y0, tape = obj._windows()
+        Y0 = obj._Y0_with(Y0, obj.init_x0)  # the variables' starts: the continuous trajectory
+        theta0 = obj.init_theta_start  # the start point (the estimator's own vector has moved on)
+        visited = []
+
+        def recording(y_, theta_, u_, constants_, _fm=obj.composer):
+            step = torch.func.vmap(lambda y, t, u, c: _fm.F_aug(y, t, u, transform_mode=True, constants=c), in_dims=(0, None, 0, None))
+            y_next, meas = step(y_, theta_, u_, constants_)
+            visited.append(y_next)
+            return y_next, meas
+
+        from twin4build.simulator._functional import functional_rollout_windows
+
+        with torch.no_grad():
+            _out, end = functional_rollout_windows(obj.composer, Y0, theta0, tape, step=recording, return_end=True)
+        idx = obj.init_index
+        states = torch.stack([Y0] + visited)[..., idx]  # (n_t + 1, P, n_slow)
+        moved = states.amax(dim=(0, 1)) - states.amin(dim=(0, 1))
+        magnitude = states.abs().amax(dim=(0, 1)).clamp(min=1.0)
+        torch.testing.assert_close(obj.init_magnitude, magnitude, rtol=1e-12, atol=0)
+        # the states no sensor measures (a measured one takes its sensor's sd)
+        ranged = ~torch.isfinite(obj.init_sensor_sd)
+        torch.testing.assert_close(obj.init_sd_reference[ranged], torch.maximum(moved, ss.REFERENCE_FLOOR * magnitude)[ranged], rtol=1e-12, atol=0)
+        boundaries = torch.cat([Y0[:, idx], end[:, idx]], dim=0)
+        at_boundaries = boundaries.amax(dim=0) - boundaries.amin(dim=0)
+        self.assertTrue(bool((obj.init_sd_reference[ranged] >= at_boundaries[ranged] - 1e-12).all()))
+        # some state moves more inside the windows than between their ends
+        self.assertTrue(bool((moved > at_boundaries + 1e-9).any()))
+        # the floored states are the unmeasured ones that do not move, and have names
+        floored = obj.init_floored.cpu()
+        torch.testing.assert_close(floored, ((moved < ss.REFERENCE_FLOOR * magnitude) & ranged).cpu(), rtol=0, atol=0)
+        names = obj._state_names(obj.init_index.cpu().numpy())
+        self.assertEqual(len(names), int(idx.numel()))
+        self.assertTrue(all(" x" in n for n in names))
+
+    def test_the_extent_holds_the_starts_and_ends(self):
+        """``return_extent`` of the eager window rollout: the same outputs
+        and ends as ``return_end``, and a lowest and highest state of every
+        window that hold its start and end (the CUDA step graphs are checked
+        against it in :meth:`test_cuda_step_graphs_match_eager`)."""
+        obj = _estimator("cpu", shooting=MS)._functional_objective
+        Y0, tape = obj._windows()
+        theta0 = obj.init_theta_start
+        from twin4build.simulator._functional import functional_rollout_windows
+
+        with torch.no_grad():
+            out_e, end_e = functional_rollout_windows(obj.composer, Y0, theta0, tape, return_end=True)
+            out_x, end_x, low, high = functional_rollout_windows(obj.composer, Y0, theta0, tape, return_extent=True)
+        torch.testing.assert_close(out_x, out_e, rtol=0, atol=0)
+        torch.testing.assert_close(end_x, end_e, rtol=0, atol=0)
+        self.assertTrue(bool((low <= torch.minimum(Y0, end_e)).all()))
+        self.assertTrue(bool((high >= torch.maximum(Y0, end_e)).all()))
 
     def test_every_state_says_what_heat_it_holds(self):
         """``state_heat_capacities``: one entry per state of every executing
@@ -334,6 +470,10 @@ class TestMultipleShooting(unittest.TestCase):
         theta = torch.tensor(np.asarray(est._last_x_norm, dtype=np.float64), dtype=torch.float64)
         _Ms, defects = obj._rollout(obj._denorm(theta), obj._denorm_init(obj.init_x0_norm))
         self.assertEqual(float(defects.abs().max()), 0.0)
+        # a gap is no seam: its difference is not reported as a jump (it led
+        # the summary of every run with gaps, 22 Oct 2026)
+        jumps = obj.continuity_jumps(torch.cat([theta, obj.init_x0_norm.cpu()]))
+        self.assertTrue(all(bool(torch.isnan(j).all()) for j in jumps.values()))
         # contiguous periods keep every tie, with or without the option
         self.assertIsNone(getattr(_estimator("cpu", shooting=dict(MS, continuity_gaps=True))._functional_objective, "init_tie", None))
 
@@ -391,6 +531,10 @@ class TestMultipleShooting(unittest.TestCase):
         torch.testing.assert_close(results[1][1], results[0][1], rtol=1e-3, atol=1e-6)
         torch.testing.assert_close(results[1][2], results[0][2], rtol=1e-4, atol=1e-6)
         torch.testing.assert_close(results[1][3], results[0][3], rtol=1e-3, atol=1e-6)
+        # the tolerances read the windows' extent from the step graphs' states
+        # as from the eager loop
+        for name in ("init_sd_reference", "init_magnitude", "init_sd"):
+            torch.testing.assert_close(getattr(step._functional_objective, name).cpu(), getattr(eager._functional_objective, name).cpu(), rtol=1e-6, atol=1e-9, msg=name)
 
 
 if __name__ == "__main__":

@@ -65,9 +65,9 @@ class TestSizeParameter(unittest.TestCase):
 
     def test_an_unsized_size_quantity_keeps_its_bounds_and_warns_once(self):
         with mock.patch.object(system_module.LOGGER, "warning") as warning:
-            self.assertEqual(_bounds(tb.FanSystem(id="fan1"), "nominalAirFlowRate"), (0.5, 10.0))
-            _bounds(tb.FanSystem(id="fan2"), "nominalAirFlowRate")
-        named = [c for c in warning.call_args_list if c.args[1:3] == ("FanSystem", "nominalAirFlowRate")]
+            self.assertEqual(_bounds(tb.AirToAirHeatRecoverySystem(id="recovery1"), "secondaryAirFlowRateMax"), (0.5, 10.0))
+            _bounds(tb.AirToAirHeatRecoverySystem(id="recovery2"), "secondaryAirFlowRateMax")
+        named = [c for c in warning.call_args_list if c.args[1:3] == ("AirToAirHeatRecoverySystem", "secondaryAirFlowRateMax")]
         self.assertEqual(len(named), 1)
 
     def test_an_intensive_quantity_is_not_made_relative(self):
@@ -75,10 +75,28 @@ class TestSizeParameter(unittest.TestCase):
         self.assertFalse(fan.size_parameter("f_total", 0.7))
         self.assertEqual(_bounds(fan, "f_total"), (0.3, 0.9))
 
-    def test_a_value_that_is_not_positive_keeps_the_absolute_bounds(self):
+    def test_a_fan_is_sized_to_its_peak_with_its_curve_kept(self):
         fan = tb.FanSystem(id="fan")
-        self.assertFalse(fan.size_parameter("nominalAirFlowRate", 0.0))
-        self.assertEqual(_bounds(fan, "nominalAirFlowRate"), (0.5, 10.0))
+        fan.set_flow_range(2.0, 24.0)
+        shape = [fan.curve_power(m) / fan.curve_power(20.0) for m in (2.0, 10.0, 24.0)]
+        self.assertTrue(fan.size_to(20.0, 30000.0))
+        self.assertAlmostEqual(fan.curve_power(20.0), 30000.0, places=6)
+        for m, ratio in zip((2.0, 10.0, 24.0), shape):
+            self.assertAlmostEqual(fan.curve_power(m) / 30000.0, ratio, places=9)
+        beta3 = float(fan.beta3.get())
+        self.assertEqual(_bounds(fan, "beta3"), (0.0, 4.0 * beta3))
+
+    def test_a_fan_in_a_unit_lists_its_sized_bounds(self):
+        unit = tb.AirHandlingUnitCoreSystem(id="unit")
+        unit.supply_fan.set_flow_range(2.0, 24.0)
+        unit.supply_fan.size_to(20.0, 30000.0)
+        beta1 = float(unit.supply_fan.beta1.get())
+        self.assertEqual(_bounds(unit, "supply_fan.beta1"), (0.0, 4.0 * beta1))
+
+    def test_a_value_that_is_not_positive_keeps_the_absolute_bounds(self):
+        unit = tb.AirToAirHeatRecoverySystem(id="recovery")
+        self.assertFalse(unit.size_parameter("secondaryAirFlowRateMax", 0.0))
+        self.assertEqual(_bounds(unit, "secondaryAirFlowRateMax"), (0.5, 10.0))
 
 
 class TestBatchedSizing(unittest.TestCase):

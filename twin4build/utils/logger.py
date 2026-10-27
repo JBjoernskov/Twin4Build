@@ -1623,6 +1623,12 @@ class Logger:
             return False
         return self._status_filters.get(status_type.lower(), True)
 
+    @property
+    def debug_enabled(self) -> bool:
+        """Whether a debug message would be logged: guard a call whose arguments are costly to build (Python
+        evaluates them before the filter in :meth:`debug` runs)."""
+        return bool(self._status_filters.get("debug", True) or self._caller_whitelist_active)
+
     def debug(
         self, message, *args, change_status=False, ignore_no_match=False, location=None
     ):
@@ -1637,7 +1643,7 @@ class Logger:
 
         Examples:
             LOGGER.debug("Simple message")
-            LOGGER.debug("Value: %s", expensive_func())  # expensive_func() only called if debug enabled
+            LOGGER.debug("Value: %s", lambda: expensive_func())  # expensive_func() only called if debug enabled
             LOGGER.debug("Name: %s, Age: %d", name, age)
             LOGGER.debug("Result: %s", lambda: expensive_calculation())  # lambda only called if debug enabled
             LOGGER.debug(lambda: f"Complex: {expensive_func()}")  # entire message built only if debug enabled

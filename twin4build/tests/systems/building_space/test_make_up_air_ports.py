@@ -1,6 +1,7 @@
 """``makeUpAirCO2`` / ``makeUpAirTemperature``: unwired is the classic
 balance bit for bit; wired, the make-up stream carries the port's state and
-only the exhaust-deficit case can see it."""
+only the exhaust-deficit case can see it.  ``supplyAirCO2`` the same way for
+the supply stream."""
 
 # Standard library imports
 import datetime
@@ -20,7 +21,10 @@ from twin4build.systems.building_space.building_space_mass_system import (
     N_INPUTS,
     OCCUPANCY_SLOT,
     OUTDOOR_CO2_SLOT,
+    SUPPLY_CO2_SLOT,
+    mass_matrices,
 )
+from twin4build.utils import constants
 
 twin4build._IS_TESTING = True
 
@@ -97,6 +101,112 @@ class TestMassMakeUpPort(unittest.TestCase):
             self._step(0.1, 0.03, make_up=800.0, wired=True),
             places=12,
         )
+
+
+class TestMassSupplyPort(unittest.TestCase):
+    """``supplyAirCO2``: unwired the supply stream brings outdoor air (the
+    columns bit for bit); wired, it brings the port's concentration."""
+
+    def setUp(self):
+        self.room = tb.BuildingSpaceMassSystem(V=120.0, G_occ=5e-6, m_inf=0.004, id="room")
+        self.room.n_c = 1
+        self.params = {"V": _t(120.0), "G_occ": _t(5e-6), "m_inf": _t(0.004)}
+        self.x0 = torch.full((1, 1), 900.0, dtype=torch.float64)
+
+    def _step(self, m_sup, m_exh, supply=None, wired=False):
+        self.room._supply_wired = wired
+        self.room._fwd_mat_cache = None
+        inputs = {
+            "supplyAirFlowRate": _t(m_sup),
+            "exhaustAirFlowRate": _t(m_exh),
+            "outdoorCO2": _t(400.0),
+            "numberOfPeople": _t(0.0),
+        }
+        if supply is not None:
+            inputs["supplyAirCO2"] = _t(supply)
+        x1, _ = self.room.forward(self.x0, inputs, dict(self.params), DT)
+        return float(x1[0, 0])
+
+    def test_unwired_ignores_the_port(self):
+        self.assertEqual(self._step(0.1, 0.05), self._step(0.1, 0.05, supply=800.0, wired=False))
+
+    def test_wired_at_outdoor_equals_unwired(self):
+        self.assertAlmostEqual(self._step(0.1, 0.05), self._step(0.1, 0.05, supply=400.0, wired=True), places=12)
+
+    def test_wired_supply_brings_its_concentration(self):
+        c_out = self._step(0.1, 0.05, supply=400.0, wired=True)
+        c_room = self._step(0.1, 0.05, supply=800.0, wired=True)
+        self.assertGreater(c_room, c_out)
+        # linear in the supply concentration: only the supply stream changed its source
+        c_mid = self._step(0.1, 0.05, supply=600.0, wired=True)
+        self.assertAlmostEqual(c_mid - c_out, (c_room - c_out) / 2, places=9)
+        # no supply flow, no effect
+        self.assertAlmostEqual(
+            self._step(0.0, 0.05, supply=400.0, wired=True), self._step(0.0, 0.05, supply=800.0, wired=True), places=12
+        )
+
+    def test_layout_support_and_matrices(self):
+        self.room.n_exchanges = 1
+        unwired = self.room._build_matrices(dict(self.params))
+        for a, b in zip(unwired, mass_matrices(_t(120.0), _t(5e-6), _t(0.004), 1, n_exchanges=1)):
+            torch.testing.assert_close(a, b, rtol=0, atol=0)
+        self.assertEqual(unwired[1].shape[-1], N_INPUTS + 1)
+
+        self.room._supply_wired = True
+        u = [name for name, _ in self.room._ss_layout()["u"]]
+        self.assertEqual(u[SUPPLY_CO2_SLOT : SUPPLY_CO2_SLOT + 2], ["supplyAirCO2", "exchangeCO2Gain"])
+        self.assertIn((0, 0, SUPPLY_CO2_SLOT), self.room._ss_support()["F"])
+        A, B, C, D, E, F = self.room._build_matrices(dict(self.params))
+        self.assertEqual(B.shape[-1], N_INPUTS + 2)
+        self.assertEqual(float(F[0, 0, 0, OUTDOOR_CO2_SLOT]), 0.0)
+        self.assertAlmostEqual(float(F[0, 0, 0, SUPPLY_CO2_SLOT]), 1.0 / (120.0 * float(constants.RHO_AIR)), places=12)
+        # the exchange slot keeps its linear source, now one column later
+        self.assertAlmostEqual(float(B[0, 0, SUPPLY_CO2_SLOT + 1]), 1.0 / (120.0 * float(constants.RHO_AIR)), places=12)
+        self.assertEqual(float(B[0, 0, SUPPLY_CO2_SLOT]), 0.0)
+
+
+class TestCompositeWiring(unittest.TestCase):
+    """A ``BuildingSpaceSystem``'s submodels see the optional ports wired on
+    the composite (the connections are the composite's, not theirs)."""
+
+    def _room(self, wired):
+        model = tb.Model(id=f"composite_wiring_{wired}")
+        room = tb.BuildingSpaceSystem(id="Room")
+        ports = [
+            ("outdoorTemperature", 0.0),
+            ("supplyAirTemperature", 20.0),
+            ("globalIrradiation", 0.0),
+            ("numberOfPeople", 0.0),
+            ("heatGain", 0.0),
+            ("outdoorCO2", 400.0),
+        ]
+        if wired:
+            ports += [("makeUpAirTemperature", 18.0), ("makeUpAirCO2", 700.0), ("supplyAirCO2", 600.0)]
+        for port, value in ports:
+            schedule = tb.ScheduleSystem(weekday_ruleset={"ruleset_default_value": value}, id=f"S_{port}")
+            model.add_connection(schedule, room, "scheduleValue", port)
+        for port, value in (("supplyAirFlowRate", 0.1), ("exhaustAirFlowRate", 0.2)):
+            schedule = tb.ScheduleSystem(weekday_ruleset={"ruleset_default_value": value}, id=f"S_{port}")
+            model.add_connection(schedule, room, "scheduleValue", port, input_port_index=0)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        start = START.replace(tzinfo=datetime.timezone.utc)
+        tb.Simulator(model).simulate(
+            start_time=start, end_time=start + datetime.timedelta(hours=6), step_size=int(DT), show_progress_bar=False
+        )
+        return room
+
+    def test_the_submodels_see_the_wired_ports(self):
+        room = self._room(wired=True)
+        self.assertTrue(room.thermal._make_up_wired)
+        self.assertTrue(room.mass._make_up_wired)
+        self.assertTrue(room.mass._supply_wired)
+        # 0.1 kg/s at 600 ppm and 0.1 kg/s at 700 ppm (plus a little outdoor
+        # infiltration): the room settles near 650, not at the outdoor 400
+        co2 = float(room.output["indoorCO2"].get().reshape(-1)[0])
+        self.assertGreater(co2, 600.0)
+        unwired = self._room(wired=False)
+        self.assertFalse(unwired.thermal._make_up_wired or unwired.mass._make_up_wired or unwired.mass._supply_wired)
+        self.assertLess(float(unwired.output["indoorCO2"].get().reshape(-1)[0]), 450.0)
 
 
 class TestThermalMakeUpPort(unittest.TestCase):

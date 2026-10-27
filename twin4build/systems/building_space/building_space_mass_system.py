@@ -12,7 +12,7 @@ import twin4build.core as core
 import twin4build.utils.constants as constants
 from twin4build.systems.building_space import air_balance
 import twin4build.utils.types as tps
-from twin4build.utils.slots import wired_width
+from twin4build.utils.slots import is_wired, wired_width
 from twin4build.systems.utils.discrete_statespace_system import (
     DiscreteStatespaceSystem,
     bilinear_onestep,
@@ -33,6 +33,11 @@ OCCUPANCY_SLOT = 3
 #: Index of the make-up-air CO2 slot: the concentration the make-up stream
 #: brings in when the port is wired (a transfer node), else ignored.
 MAKE_UP_CO2_SLOT = 4
+#: Index of the supply-air CO2 slot, a column only when ``supplyAirCO2`` is
+#: wired (the supply stream then brings that concentration instead of the
+#: outdoor one); the ``exchangeCO2Gain`` slots follow it.  Unwired zones keep
+#: the :data:`N_INPUTS` base columns, bit for bit.
+SUPPLY_CO2_SLOT = N_INPUTS
 #: Input slots whose ``B_eff`` column is structurally nonzero: the base ``B``
 #: is nonzero only in 2 (outdoor CO2) and 3 (occupancy), and ``F`` writes only
 #: slot 2.  ``B_d = phi(A_eff dt) dt B_eff`` is linear in ``B_eff`` column by
@@ -61,7 +66,7 @@ assert tuple(range(*ACTIVE_INPUT_SLICE.indices(N_INPUTS))) == ACTIVE_INPUT_SLOTS
 )
 
 
-def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exchanges=0):
+def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exchanges=0, supply_co2=False):
     r"""``(A, B, C, D, E, F)`` of the room CO2 mass balance -- the single
     source of the matrix contract.
 
@@ -79,15 +84,21 @@ def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exc
     stream brings in: :data:`OUTDOOR_CO2_SLOT` (default; the outdoor level)
     or :data:`MAKE_UP_CO2_SLOT` when a transfer node feeds ``makeUpAirCO2``.
 
+    ``supply_co2`` appends the :data:`SUPPLY_CO2_SLOT` column, the
+    concentration the supply stream brings in (``supplyAirCO2`` wired, e.g. a
+    storey interior supplied by its rooms' surplus air); without it the supply
+    stream brings the outdoor level.
+
     ``n_exchanges`` appends one ``exchangeCO2Gain`` column per connected
     :class:`~twin4build.systems.utils.opening_system.OpeningSystem`, a linear
     source ``1/m_air`` [ppm kg/s -> ppm/s] exactly as ``wallHeatGain`` enters
     the thermal zone with ``1/C_air``.
 
-    Shapes with ``m = 5 + n_exchanges``: ``A (n_c, 1, 1)``, ``B (n_c, 1, m)``,
+    Shapes with ``m = 5 + supply_co2 + n_exchanges``: ``A (n_c, 1, 1)``, ``B (n_c, 1, m)``,
     ``C (n_c, 1, 1)``, ``D (n_c, 1, m)``, ``E (n_c, m, 1, 1)``, ``F (n_c, m, 1, m)``.
     """
-    n_states, n_inputs = N_STATES, N_INPUTS + int(n_exchanges)
+    n_supply = int(bool(supply_co2))
+    n_states, n_inputs = N_STATES, N_INPUTS + n_supply + int(n_exchanges)
     # Parameters' device/dtype: _build_matrices re-runs on cache miss
     # during stepping, outside initialize()'s device context.
     dev, dt = V.device, V.dtype
@@ -101,7 +112,10 @@ def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exc
     people_gain = (G_occ / air_mass) * (constants.M_AIR / constants.M_CO2) * 1e6
     A = (-infiltration).reshape(n_c, n_states, n_states)
     exchange_gain = [1 / air_mass] * int(n_exchanges)  # exchangeCO2Gain slots
-    B = torch.stack([zero, zero, infiltration, people_gain, zero] + exchange_gain, dim=-1).unsqueeze(1)
+    supply_slot = [zero] * n_supply  # supplyAirCO2: enters through F only
+    B = torch.stack(
+        [zero, zero, infiltration, people_gain, zero] + supply_slot + exchange_gain, dim=-1
+    ).unsqueeze(1)
 
     # Output matrix C - Identity matrix for direct observation
     # Shape: (n_c, n_states, n_states)
@@ -121,16 +135,18 @@ def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exc
     # at C_out (F, slot 2).
     # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
     E = torch.stack(
-        [-1 / air_mass, -1 / air_mass, zero, zero, zero] + [zero] * int(n_exchanges), dim=1
+        [-1 / air_mass, -1 / air_mass, zero, zero, zero] + [zero] * (n_supply + int(n_exchanges)), dim=1
     ).reshape(n_c, n_inputs, n_states, n_states)
 
     # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
-    # The supply stream brings outdoor air (slot 2); the make-up stream brings
-    # air at ``make_up_co2_slot`` -- outdoor unless a transfer node is wired.
+    # The supply stream brings air at the supply slot -- outdoor (slot 2)
+    # unless supplyAirCO2 is wired; the make-up stream brings air at
+    # ``make_up_co2_slot`` -- outdoor unless a transfer node is wired.
     input_basis = torch.eye(n_inputs, dtype=dt, device=dev)
+    supply_co2_slot = SUPPLY_CO2_SLOT if n_supply else OUTDOOR_CO2_SLOT
     F = (1 / air_mass).reshape(n_c, 1, 1, 1) * (
         input_basis[0].reshape(1, n_inputs, 1, 1)
-        * input_basis[OUTDOOR_CO2_SLOT].reshape(1, 1, 1, n_inputs)
+        * input_basis[supply_co2_slot].reshape(1, 1, 1, n_inputs)
         + input_basis[1].reshape(1, n_inputs, 1, 1)
         * input_basis[make_up_co2_slot].reshape(1, 1, 1, n_inputs)
     )
@@ -196,7 +212,10 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
        Concentrations are expressed in **ppmv** (parts per million by volume), 
        which is equivalent to **ppm-moles** (molar fraction × 10⁶) for ideal gases.
 
-    Note: Supply air CO2 concentration is assumed equal to outdoor CO2 concentration.
+    Note: the supply air's CO2 concentration is the outdoor one unless
+    ``supplyAirCO2`` is wired (a zone supplied by other zones' air, e.g. a
+    storey interior taking its rooms' surplus): then :math:`C_{out}` in the
+    supply term is that port's value.
 
     **State-Space Representation:**
 
@@ -328,12 +347,17 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             # the make-up stream is outdoor air (the classic balance).  Wired
             # from a transfer node: the corridor's concentration.
             "makeUpAirCO2": tps.Scalar(0.0, optional=True),
+            # CO2 of the supply air [ppmv].  Unwired: outdoor air (an air
+            # handling unit's supply).  Wired: the concentration of the zones
+            # whose air this zone takes.
+            "supplyAirCO2": tps.Scalar(0.0, optional=True),
             # CO2 flow from openings to other zones [ppm kg/s], one slot per
             # OpeningSystem -- the mass counterpart of the thermal zone's
             # ``wallHeatGain``.
             "exchangeCO2Gain": tps.Vector(optional=True),
         }
         self._make_up_wired = False
+        self._supply_wired = False
         self._n_exchanges = 0
         self._manual_setup_n_exchanges = False
 
@@ -368,11 +392,10 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             self.n_c = self._n_c_batched
         else:
             self.n_c = 1
-        # Structural: does a producer feed makeUpAirCO2?  Fixed per model.
-        self._make_up_wired = any(
-            cp.input_port == "makeUpAirCO2" and len(cp.connects_system_through) > 0
-            for cp in self.connects_at
-        )
+        # Structural: does a producer feed makeUpAirCO2 / supplyAirCO2?
+        # Fixed per model (in a BuildingSpaceSystem: wired on the composite).
+        self._make_up_wired = is_wired(self, "makeUpAirCO2")
+        self._supply_wired = is_wired(self, "supplyAirCO2")
         # Openings: count logical exchangeCO2Gain slots (mirrors wallHeatGain).
         if not self._manual_setup_n_exchanges:
             self._n_exchanges = wired_width(self, "exchangeCO2Gain")
@@ -440,6 +463,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("V", "G_occ", "m_inf")
+    #: ``indoorCO2`` publishes the CO2 state as it is (see
+    #: :meth:`System.state_output_ports`).
+    STATE_OUTPUT_PORTS = {"indoorCO2": 0}
 
     @property
     def n_exchanges(self) -> int:
@@ -463,18 +489,24 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             ("numberOfPeople", 1),
             ("makeUpAirCO2", 1),
         ]
+        if self._supply_wired:
+            u.append(("supplyAirCO2", 1))
         if self.n_exchanges > 0:
             u.append(("exchangeCO2Gain", self.n_exchanges))
         return {"u": u, "y": {"indoorCO2": 0}}
 
     def _ss_support(self):
         """Conservative structural support of the ``D``, ``E`` and ``F`` matrices."""
+        # Superset: the make-up stream couples with slot 2 (outdoor) or slot 4
+        # (a wired transfer node); the supply stream with slot 2 or, wired,
+        # the supply-CO2 slot.
+        F = {(0, 0, 2), (1, 0, 2), (1, 0, MAKE_UP_CO2_SLOT)}
+        if self._supply_wired:
+            F.add((0, 0, SUPPLY_CO2_SLOT))
         return {
             "D": frozenset(),
             "E": frozenset({(0, 0, 0), (1, 0, 0)}),
-            # Superset: the make-up stream couples with slot 2 (outdoor) or
-            # slot 4 (a wired transfer node).
-            "F": frozenset({(0, 0, 2), (1, 0, 2), (1, 0, MAKE_UP_CO2_SLOT)}),
+            "F": frozenset(F),
         }
 
     #: Input ports whose values :meth:`_ss_transform_inputs` reads.
@@ -502,7 +534,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         slot = MAKE_UP_CO2_SLOT if self._make_up_wired else OUTDOOR_CO2_SLOT
         return mass_matrices(
             p["V"], p["G_occ"], p["m_inf"], self.n_c,
-            make_up_co2_slot=slot, n_exchanges=self.n_exchanges,
+            make_up_co2_slot=slot, n_exchanges=self.n_exchanges, supply_co2=self._supply_wired,
         )
 
     def _create_state_space_model(self):
@@ -567,6 +599,8 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             ],
             dim=-1,
         )
+        if self._supply_wired:
+            u = torch.cat([u, inputs["supplyAirCO2"].unsqueeze(-1)], dim=-1)
         if self.n_exchanges > 0:
             u = torch.cat([u, inputs["exchangeCO2Gain"]], dim=-1)
         x_next, y = bilinear_onestep(
@@ -612,6 +646,8 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
                 "makeUpAirCO2",
             )
         }
+        if self._supply_wired:
+            inputs["supplyAirCO2"] = self.input["supplyAirCO2"].get()
         if self.n_exchanges > 0:
             inputs["exchangeCO2Gain"] = self.input["exchangeCO2Gain"].get()
         x = self.ss_model.get_state()  # (n_s, n_c, n_states)

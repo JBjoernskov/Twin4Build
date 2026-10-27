@@ -505,6 +505,10 @@ class TestCitsStructureLiterals(unittest.TestCase):
             self.assertAlmostEqual(_values(cits2.candidate_0_1.ctrl_a.Ti)[0], 300.0, places=9)
             self.assertEqual(_values(cits2.gamma_gate_0), [0.0, 1.0])
             self.assertEqual(_values(cits2.beta_0), [1.0, 0.0])
+            # the slot weights reload as the estimable parameters they were built as (a fixed
+            # TensorParameter made a controllers stage stop: "All parameters must be ... tps.Parameter")
+            for name in ("gamma_gate_0", "beta_0", "alpha_1"):
+                self.assertIsInstance(getattr(cits2, name), tps.Parameter, name)
             self.assertEqual(_values(cits2.beta_b_0), _values(cits.beta_b_0))
             self.assertEqual(cits2.on_off_signal_norm_min.tolist(), [0.0, 15.0])
             self.assertEqual(cits2.on_off_signal_norm_max.tolist(), [300.0, 25.0])
