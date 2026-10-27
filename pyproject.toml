@@ -79,7 +79,11 @@ dependencies = [
     "psycopg2",
     "pyarrow",
     "beautifulsoup4",
-    "python-dateutil",
+    # python-dateutil 3.0.0 (2026-10) breaks pandas' time-zone conversion of
+    # dateutil zones (AttributeError: 'NoneType' object has no attribute
+    # 'total_seconds' in pandas.get_dst_info, with pandas 3.0 and 3.1): every
+    # tz.gettz(...) zone fails in simulation_time._steps; stay on 2.x
+    "python-dateutil<3",
     "pytz",
     # CasADi ships IPOPT + MUMPS in a single pip wheel; used by the Estimator's
     # IPOPT backend and collocation transcription.
