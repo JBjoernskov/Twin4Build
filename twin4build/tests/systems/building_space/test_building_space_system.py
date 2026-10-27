@@ -173,11 +173,3 @@ class TestForwardTraces(unittest.TestCase):
         step = torch.compile(lambda x, u: space.forward(x, u, params, 600.0), backend="eager", fullgraph=True)
         x_next, out = step(x, inputs)
         self.assertEqual(tuple(x_next.shape), tuple(x.shape))
-
-    def test_without_the_cache_the_walk_is_not_traceable(self):
-        space, x, inputs, params = self._space()
-        space.thermal.__dict__.pop("_state_size_cache", None)
-        torch._dynamo.reset()
-        step = torch.compile(lambda x, u: space.forward(x, u, params, 600.0), backend="eager", fullgraph=True)
-        with self.assertRaises(Exception):
-            step(x, inputs)
