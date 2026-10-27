@@ -15,11 +15,14 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.utils.data_loaders.load import (
     contiguous_spans,
+    DEFAULT_DT_LIMIT,
+    RESAMPLE_METHODS,
     load_from_database,
     load_from_spreadsheet,
     sample_from_df,
 )
 from twin4build.utils.get_main_dir import get_main_dir
+from twin4build.utils.logger import LOGGER
 from twin4build.utils.deprecation import deprecate_args, deprecate_name
 
 
@@ -43,8 +46,33 @@ class TimeSeriesInputSystem(core.System):
             re-initialization. Defaults to True.
         transformation: Optional function applied to the loaded values
             (e.g. unit conversion). Defaults to None.
+        resample_method: How the readings become step values: ``"linear"``
+            (the value at the step), ``"constant"`` (the last reading at or
+            before it) or ``"mean"`` (the mean over the step).  Defaults to
+            ``"linear"``.
+        dt_limit: The longest stretch between two readings [s] a step value
+            may bridge (``None``: any gap inside the readings).  Nothing beyond
+            the first or last reading is ever filled.  Defaults to six hours.
+        fill: What fills the steps the readings do not give, for an input that
+            must have a value at every step: ``None`` (default: such a step is
+            an error), ``"linear"`` (straight lines across the gaps, never
+            beyond the readings), ``"interpolate"`` (straight lines across the
+            gaps, the nearest reading held beyond them; a period without a
+            reading as ``"constant"``), ``"constant"`` (the last value forward, the
+            first backward; a period without a reading holds the nearest one
+            outside it, up to two years away) or ``"copy_week"`` (the same step one week earlier,
+            then two, up to sixteen).  A fill is a decision about the data: the
+            steps it filled are logged and kept in :attr:`filled`, and the
+            estimator leaves every measurement they reach unscored.
         **kwargs: Additional keyword arguments
     """
+
+    #: The fills an input may declare (``None``: no fill).
+    FILLS = ("linear", "interpolate", "constant", "copy_week")
+    #: How many weeks back ``"copy_week"`` looks.
+    COPY_WEEKS = 16
+    #: How far ``"constant"`` looks for a value to hold over a period without one.
+    HOLD_WEEKS = 104
 
     def __init__(
         self,
@@ -59,6 +87,9 @@ class TimeSeriesInputSystem(core.System):
         dbconfig: Optional[Dict[str, Any]] = None,
         cache: Optional[bool] = True,
         transformation: Optional[callable] = None,
+        resample_method: str = "linear",
+        dt_limit: Optional[float] = DEFAULT_DT_LIMIT,
+        fill: Optional[str] = None,
         **kwargs,
     ) -> None:
         """Initialize the TimeSeriesInputSystem.
@@ -139,6 +170,13 @@ class TimeSeriesInputSystem(core.System):
         self._cache_root = get_main_dir()
         self._cache = cache
         self._transformation = transformation
+        assert resample_method in RESAMPLE_METHODS, f"resample_method must be one of {RESAMPLE_METHODS}, got {resample_method!r}"
+        assert fill is None or fill in self.FILLS, f"fill must be None or one of {self.FILLS}, got {fill!r}"
+        self.resample_method = resample_method
+        self.dt_limit = dt_limit
+        self.fill = fill
+        #: Per period and step, the steps a declared fill gave a value (``(n_s, n_t)`` bool), after initialize.
+        self.filled = None
 
         # Define inputs and outputs as private variables
         self._input = {}
@@ -383,6 +421,8 @@ class TimeSeriesInputSystem(core.System):
                             end_time=end_time_,
                             cache_root=self._cache_root,
                             cache=self._cache,
+                            resample_method=self.resample_method,
+                            dt_limit=self.dt_limit,
                         )
                     elif self.use_database:
                         df = load_from_database(
@@ -395,6 +435,8 @@ class TimeSeriesInputSystem(core.System):
                             fetch_span=next(
                                 (a, b) for a, b in spans if a <= start_time_ and end_time_ <= b
                             ),
+                            resample_method=self.resample_method,
+                            dt_limit=self.dt_limit,
                             **self.dbconfig,
                         )
                 else:
@@ -407,6 +449,8 @@ class TimeSeriesInputSystem(core.System):
                         step_size=step_size_,
                         start_time=start_time_,
                         end_time=end_time_,
+                        resample_method=self.resample_method,
+                        dt_limit=self.dt_limit,
                     )
                     valuename = df.columns[
                         0
@@ -420,15 +464,16 @@ class TimeSeriesInputSystem(core.System):
                     df = df.apply(self._transformation)
                 self.df.append(df)
 
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
+        _, _, max_timesteps, period_steps = core.Simulator.get_simulation_timesteps(
             start_time, end_time, step_size
         )
-        values = np.empty((len(self.df), max_timesteps))
-        values.fill(
-            0
-        )  # Before we used nan, but this caused issues with the optimizer when the optimizer tried to compute the gradient of the loss function.
+        # NaN where the data give no value: never a repeated value (the gaps are
+        # filled below only by a declared ``fill``, or left to the scoring)
+        values = np.full((len(self.df), max_timesteps), np.nan)
         for batch_index, df in enumerate(self.df):
             size = len(df.index)
+            if size == 0 and (self.fill is not None or getattr(self, "allow_missing", False)):
+                continue  # all NaN: filled below, or unscored
             if size == 0:
                 # Surface the offending sensor instead of the opaque numpy
                 # "could not broadcast input array from shape (0,0)" error
@@ -446,16 +491,33 @@ class TimeSeriesInputSystem(core.System):
                     "Check the timeseries id / table and that the point "
                     "holds numeric values in that period."
                 )
-            # OLD: Only fill actual data, leave rest as 0
-            # values[batch_index,:size] = df.values
+            n = min(size, max_timesteps)
+            values[batch_index, :n] = np.asarray(df.values, dtype=float)[:n]
 
-            # NEW: Fill actual data, then forward-fill (repeat last value) for extended timesteps
-            values[batch_index, :size] = df.values
-            if size < max_timesteps:
-                # Forward-fill: repeat the last value for extended timesteps
-                values[batch_index, size:] = df.values[-1]
+        # a period's own steps are its first ``period_steps[p]``; the rest pad a
+        # shorter period to the longest one (stepped together, never kept)
+        own = np.zeros(values.shape, dtype=bool)
+        for b, n_own in enumerate(period_steps):
+            own[b, : int(n_own)] = True
+        before = np.isnan(values) & own
+        if self.fill is not None and before.any():
+            values = np.where(own, self._fill(np.where(own, values, np.nan), start_time, end_time, step_size), values)
+        self.filled = before & ~np.isnan(values)
+        for b, n_own in enumerate(period_steps):
+            n_own = int(n_own)
+            if 0 < n_own < values.shape[1]:
+                # padding, not data: the period's last value (finite or not)
+                values[b, n_own:] = values[b, n_own - 1]
+        if self.filled.any():
+            LOGGER.warning(
+                "%s: %d step(s) without data filled by the declared fill %r (periods %s); "
+                "the measurements they reach are not scored",
+                self.id, int(self.filled.sum()), self.fill,
+                np.flatnonzero(self.filled.any(axis=1)).tolist(),
+            )
 
-        nan_mask = np.isnan(values)
+        nan_mask = np.isnan(values) & own
+        values = np.where(np.isnan(values) & ~own, 0.0, values)  # padding past a period without a last value
         if nan_mask.any() and getattr(self, "allow_missing", False):
             # A scoring sensor may carry gaps (samples the objective must not
             # score, see ``_raw_residuals_from_meas``): the frame keeps the
@@ -466,11 +528,17 @@ class TimeSeriesInputSystem(core.System):
             nan_count = int(nan_mask.sum())
             nan_pct = nan_count / values.size * 100
             batch_indices = np.where(nan_mask.any(axis=1))[0]
+            first = [
+                str(pd.Timestamp(start_time[b]) + pd.Timedelta(seconds=float(np.flatnonzero(nan_mask[b])[0]) * float(step_size[b])))
+                for b in batch_indices[:3]
+            ]
+            declared = f" (the declared fill {self.fill!r} left these)" if self.fill else ""
             raise AssertionError(
                 f"Values contain {nan_count} NaN(s) ({nan_pct:.1f}%) in "
-                f"TimeSeriesInput '{self.id}' "
-                f"(file: {self.filename}, batch indices: {batch_indices.tolist()}). "
-                f"Check the source data for missing values in the queried date range."
+                f"TimeSeriesInput '{self.id}' (uuid: {self.uuid}, file: {self.filename}, "
+                f"batch indices: {batch_indices.tolist()}, first missing steps: {first}). "
+                f"No reading within dt_limit={self.dt_limit} s, or beyond the first or last reading; "
+                f"an input with such gaps must declare a fill (one of {self.FILLS}){declared}."
             )
 
         self.n_timesteps = max_timesteps
@@ -486,6 +554,97 @@ class TimeSeriesInputSystem(core.System):
             n_c=1,
             values=self.values,
         )
+
+    def _fill(self, values: np.ndarray, start_time, end_time, step_size) -> np.ndarray:
+        """``values`` (``(n_s, n_t)``, NaN where the data give no value) with the
+        declared :attr:`fill` applied to the NaN steps only."""
+        out = values.copy()
+        for b in range(out.shape[0]):
+            row = out[b]
+            missing = np.isnan(row)
+            if not missing.any():
+                continue
+            if self.fill == "linear":
+                ok = np.flatnonzero(~missing)
+                if len(ok) >= 2:
+                    steps = np.arange(len(row))
+                    inside = missing & (steps > ok[0]) & (steps < ok[-1])
+                    row[inside] = np.interp(np.flatnonzero(inside), ok, row[ok])
+            elif self.fill == "interpolate":
+                # straight lines across the gaps, the nearest reading held at the edges, and the nearest one outside
+                # the period where it has none
+                ok = np.flatnonzero(~missing)
+                if len(ok):
+                    row[missing] = np.interp(np.flatnonzero(missing), ok, row[ok])
+                else:
+                    value = self._nearest_outside(start_time[b], end_time[b], step_size[b])
+                    if value is not None:
+                        row[:] = value
+            elif self.fill == "constant":
+                ok = np.flatnonzero(~missing)
+                if len(ok):
+                    idx = np.maximum.accumulate(np.where(~missing, np.arange(len(row)), -1))
+                    idx[idx < 0] = ok[0]  # before the first value: the first value
+                    row[missing] = row[idx[missing]]
+                else:
+                    # a period without a reading: the nearest one outside it
+                    value = self._nearest_outside(start_time[b], end_time[b], step_size[b])
+                    if value is not None:
+                        row[:] = value
+            elif self.fill == "copy_week":
+                week = datetime.timedelta(days=7)
+                for k in range(1, self.COPY_WEEKS + 1):
+                    missing = np.isnan(row)
+                    if not missing.any():
+                        break
+                    earlier = self._load_window(start_time[b] - k * week, end_time[b] - k * week, step_size[b])
+                    if earlier is None:
+                        continue
+                    m = min(len(earlier), len(row))
+                    take = missing[:m] & ~np.isnan(earlier[:m])
+                    row[:m][take] = earlier[:m][take]
+            out[b] = row
+        return out
+
+    def _nearest_outside(self, start_time, end_time, step_size) -> Optional[float]:
+        """The last value before ``start_time``, else the first after
+        ``end_time``, within :attr:`HOLD_WEEKS` weeks; ``None`` when there is none."""
+        reach = datetime.timedelta(days=7 * self.HOLD_WEEKS)
+        earlier = self._load_window(start_time - reach, start_time, step_size)
+        if earlier is not None and np.isfinite(earlier).any():
+            return float(earlier[np.flatnonzero(np.isfinite(earlier))[-1]])
+        later = self._load_window(end_time, end_time + reach, step_size)
+        if later is not None and np.isfinite(later).any():
+            return float(later[np.flatnonzero(np.isfinite(later))[0]])
+        return None
+
+    def _load_window(self, start_time, end_time, step_size):
+        """This input's values over another window (the same source, rule and
+        limit, the transformation applied), or ``None`` when it has none."""
+        try:
+            if self._df_init is not None:
+                df_ = self._df_init.copy()
+                df_.reset_index(inplace=True)
+                df = sample_from_df(df_, date_column=0, value_column=1, step_size=step_size, start_time=start_time,
+                                    end_time=end_time, resample_method=self.resample_method, dt_limit=self.dt_limit)
+                df = df[df.columns[0]]
+            elif self.use_spreadsheet:
+                df = load_from_spreadsheet(self.filename, self._date_column, self._value_column, step_size=step_size,
+                                           start_time=start_time, end_time=end_time, cache_root=self._cache_root,
+                                           cache=self._cache, resample_method=self.resample_method, dt_limit=self.dt_limit)
+            elif self.use_database:
+                df = load_from_database(step_size=step_size, start_time=start_time, end_time=end_time,
+                                        cache_root=self._cache_root, cache=self._cache, sensor_id=self.uuid,
+                                        resample_method=self.resample_method, dt_limit=self.dt_limit, **self.dbconfig)
+            else:
+                return None
+        except Exception:  # noqa: BLE001 -- no data in that window
+            return None
+        if len(df.index) == 0:
+            return None
+        if self._transformation is not None:
+            df = df.apply(self._transformation)
+        return np.asarray(df.values, dtype=float)
 
     def do_step(
         self,

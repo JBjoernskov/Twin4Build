@@ -41,8 +41,7 @@ def _exact(test):
 
 def _ahu(follows: bool, ratio: float = 0.93, n_branches: int = 2) -> AirHandlingUnitSystem:
     fan_kwargs = {
-        "nominalPowerRate": 1000.0, "nominalAirFlowRate": 1, "c1": 0, "c2": 0.2,
-        "c3": 0.8, "c4": 0, "f_total": 1.0,
+        "beta0": 0.0, "beta1": 200.0 / 3.0, "beta2": 400.0, "beta3": 1000.0, "f_total": 1.0,
     }
     return AirHandlingUnitSystem(
         id="ahu",

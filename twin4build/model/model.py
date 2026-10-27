@@ -160,6 +160,7 @@ class Model:
         "_translator",
         "_dir_conf",
         "_component_to_meta",
+        "_batch_source_model",
     )
 
     def __str__(self):
@@ -256,6 +257,8 @@ class Model:
         )
         self._translator = None
         self._component_to_meta: Dict[str, Tuple[Any, int]] = {}
+        #: On a batched model: the model it was batched from (batch_components).
+        self._batch_source_model = None
 
     @classmethod
     def from_translation(
@@ -1233,6 +1236,9 @@ class Model:
             id=f"{self.id}_batched",
             system_registry=getattr(self._simulation_model, "_system_registry", None),
         )
+        # the instance-level wiring (which input reaches which measurement),
+        # which the metas' own wiring no longer tells apart
+        batched._batch_source_model = self
         self._component_to_meta = {}
         unbatchable: set = set()
         # Fusable clusters (a zone with its radiator, a pair of zones with
@@ -1423,6 +1429,23 @@ class Model:
                 input_component_index=torch.tensor(r_ics, dtype=torch.long),
             )
 
+        # -- Phase 3: the source model's cycle cuts, as pairs of metas ---------
+        # (a fused block's: its members'); the batched load cuts these first
+        # (SimulationModel._cut_source_cuts), so its one-step lags sit where
+        # the source model's do without searching the batched graph's cycles,
+        # which batching multiplies (23 Oct 2026: more than 300 000 on the HTR
+        # ring's, past the memory).
+        source_sim = self.simulation_model
+        fused = getattr(source_sim, "_fused_components", None) or {}
+
+        def _metas(component_id):
+            block = fused.get(component_id)
+            members = [m.id for m in block._members] if block is not None else [component_id]
+            return tuple(sorted({self._component_to_meta[m][0].id for m in members if m in self._component_to_meta}))
+
+        batched._simulation_model._source_cuts = [
+            (_metas(a), _metas(b)) for a, b in getattr(source_sim, "_removed_cycle_edges", None) or []
+        ]
         return batched
 
     def unbatch_histories(self, batched: "Model") -> None:
@@ -1697,13 +1720,13 @@ class Model:
                 self._set_dotted_attr(
                     meta,
                     param_name,
+                    # n_c is the stacked values' length (TensorParameter infers it)
                     tps.TensorParameter(
                         vals,
                         min_value=mins,
                         max_value=maxs,
                         normalized=False,
                         scaling=getattr(first, "scaling", "linear"),
-                        n_c=n_c,
                     ),
                 )
 

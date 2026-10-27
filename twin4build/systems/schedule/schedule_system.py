@@ -43,6 +43,10 @@ class ScheduleSystem(core.System):
         uuid: The uuid identifying the time series in the database.
         name: The name identifying the time series in the database.
         dbconfig: The configuration of the database to read the schedule value from.
+        fill: For a schedule read from a spreadsheet or the database, the fill
+            its series input declares for the steps the readings do not give
+            (one of :attr:`TimeSeriesInputSystem.FILLS`; ``None``: none, a step
+            without a reading is an error).
 
     """
 
@@ -70,6 +74,7 @@ class ScheduleSystem(core.System):
         uuid: str = None,
         name: str = None,
         dbconfig: dict = None,
+        fill: Optional[str] = None,
         **kwargs,
     ):
         for legacy_key, new_key in (
@@ -201,6 +206,7 @@ class ScheduleSystem(core.System):
         self._uuid = uuid
         self._name = name
         self._dbconfig = dbconfig
+        self.fill = fill
 
         self.input = {}
         self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
@@ -221,6 +227,7 @@ class ScheduleSystem(core.System):
                 "use_spreadsheet",
                 "use_database",
                 "use_dict",
+                "fill",
             ],
             "spreadsheet": ["filename", "date_column", "value_column"],
             "database": ["uuid", "name", "dbconfig"],
@@ -596,6 +603,7 @@ class ScheduleSystem(core.System):
                 uuid=self.uuid,
                 name=self.name,
                 dbconfig=self.dbconfig,
+                fill=self.fill,
             )
             time_series_input.initialize(start_time, end_time, step_size)
 

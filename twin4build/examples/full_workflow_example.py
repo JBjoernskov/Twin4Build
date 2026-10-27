@@ -935,7 +935,7 @@ def main():
     print(elspot_subset.head())
 
     price_schedule = tb.ScheduleSystem(
-        filename=elspot_clean_path, date_column=0, value_column=1, id="price_schedule"
+        filename=elspot_clean_path, date_column=0, value_column=1, id="price_schedule", fill="constant"
     )
 
     # Multiplies Power (W) by price (DKK/kWh), with scale_factor converting W*s to kWh
