@@ -113,6 +113,7 @@ class TestCompiledBatchedStep(unittest.TestCase):
     def test_slots_of_one_vector_port_on_the_cpu(self):
         self._rows_agree("cpu", loops=False)
 
+    @NEEDS_CPP
     def test_the_rows_and_window_steps_on_the_cpu(self):
         for variant in ("rows", "windows"):
             with self.subTest(variant=variant):
