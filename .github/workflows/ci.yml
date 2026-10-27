@@ -34,9 +34,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      # Graphviz comes from the pygraphviz>=2.0 wheel.
+      # Graphviz comes from the pygraphviz>=2.0 wheel.  The versions are the
+      # frozen set in constraints/ci.txt, so a pull request fails only on its
+      # own changes; ci-latest.yml tests the newest releases every week.
       - name: Install package and development tools
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]" -c constraints/ci.txt
       - name: Check syntax and undefined names
         run: python -m flake8 . --count --select="E9,F63,F7,F82" --show-source --statistics
       - name: Run discovered test suite
@@ -56,7 +58,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install package and release tools
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]" build
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]" build -c constraints/ci.txt
       - name: Generate API reference
         working-directory: docs
         run: make buildapi
