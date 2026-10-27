@@ -1309,9 +1309,17 @@ class Translator:
             output_port_index,
             input_port_index,
             sm_for_index,
+            sm_for_output=None,
         ):
             """
             Resolve Node-based port indices to integer indices using group matching.
+
+            ``sm_for_output`` (default ``sm_for_index``) is the instance the
+            output side looks up, when it differs from the input side's: a
+            Vector->Vector connection whose input index is the sender and whose
+            output index is another node of the target's pattern (a box's draw
+            per source into the room the pattern models) looks up that node's
+            value, not the sender.
 
             Both output_port_index and input_port_index Nodes are from the TARGET's
             signature pattern. This function finds which *unique-value ordinal* of
@@ -1439,6 +1447,8 @@ class Translator:
                 # Vector->Scalar or Vector->Vector output side: the node of the
                 # source groups that binds ``sm_for_index``, and the ordinal of
                 # ``sm_for_index`` among that node's values across the groups.
+                if sm_for_output is not None:
+                    sm_for_index = sm_for_output
                 index_sp_node = None
                 for group in groups_source:
                     for sp_node, sm_node in group.items():
@@ -1665,6 +1675,43 @@ class Translator:
                                                     if elements:
                                                         sm_for_index_list = list(elements)
 
+                                        # The input index is the sender, the output index another
+                                        # node of this pattern (``sp.add_connection(boxes,
+                                        # "sourceAirFlowRate", "exhaustAirFlowRate",
+                                        # output_port_index=space, input_port_index=boxes)``): the
+                                        # output side looks up that node's value in the group that
+                                        # binds this sender (the room), aligned with the sender
+                                        # when both are sets.  Looking up the sender put every such
+                                        # wire on slot 0 (27 Oct 2026: a box's four rooms, a central
+                                        # box's six hallways).
+                                        sm_for_output = None
+                                        if (
+                                            isinstance(output_port_index, Node)
+                                            and in_is_subject
+                                            and not out_is_subject
+                                        ):
+                                            for group in groups:
+                                                if output_port_index not in group:
+                                                    continue
+                                                bound = next(
+                                                    (
+                                                        v for v in group.values()
+                                                        if v == sm_subject
+                                                        or (isinstance(v, tuple) and sm_subject in v)
+                                                    ),
+                                                    None,
+                                                )
+                                                if bound is None:
+                                                    continue
+                                                value = group[output_port_index]
+                                                if not isinstance(value, tuple):
+                                                    sm_for_output = value
+                                                elif isinstance(bound, tuple) and len(bound) == len(value):
+                                                    sm_for_output = value[bound.index(sm_subject)]
+                                                elif len(value) == 1:
+                                                    sm_for_output = value[0]
+                                                break
+
                                         # A set-bound index node that is not the sender
                                         # (a zone's VAVs indexing the AHU's branches)
                                         # yields one candidate edge per element.
@@ -1676,6 +1723,7 @@ class Translator:
                                                     output_port_index,
                                                     input_port_index,
                                                     sm_for_index,
+                                                    sm_for_output,
                                                 )
                                             )
 
