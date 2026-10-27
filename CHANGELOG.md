@@ -400,6 +400,17 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 ### Changed
 
+- `FanSystem`: the power curve in Bernstein form over a fixed flow range.
+  `beta0` .. `beta3` [W] (the power at the curve's control points, each
+  `>= 0`, so the power is `>= 0` over the whole range) replace
+  `nominalPowerRate`, `nominalAirFlowRate` and `c1` .. `c4`;
+  `flowRangeLower` / `flowRangeUpper` [kg/s] fix the range (not estimated).
+  `set_flow_range` re-maps the betas so the curve stays the same;
+  `polynomial_to_bernstein` / `bernstein_to_polynomial` convert between the
+  two forms (the same cubic).  The betas are size quantities:
+  `size_to(m, P)` scales the curve through the operating point and
+  `curve_power(m)` evaluates it.
+
 - A model loaded with `Model.load(filename=...)` serializes to a file that
   loads again.  The loader rebuilt the connections but the semantic model
   kept the instances it had cached while reading the file, and

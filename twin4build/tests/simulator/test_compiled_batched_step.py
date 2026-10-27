@@ -73,20 +73,35 @@ def _functional(device, loops: bool):
 class TestCompiledBatchedStep(unittest.TestCase):
     STEPS, ROWS = 4, 3
 
-    def _rows_agree(self, device, loops):
+    def _rows_agree(self, device, loops, variant="batched"):
+        """``variant``: ``"batched"`` (rows of parameters, one input row), ``"rows"`` (rows of their own state,
+        parameters and input row) or ``"windows"`` (rows of their own state and input row, one parameter vector
+        and its hoisted matrices): each compiled variant against ``F_aug`` row by row (#249)."""
         fm, y0, tape, n = _functional(device, loops)
         theta0 = torch.arange(1.0, n + 1.0, dtype=torch.float64, device=device)
         Theta = torch.stack([theta0 * (1.0 + 0.5 * b) for b in range(self.ROWS)])  # distinct rows
-        Y = y0.unsqueeze(0).expand(self.ROWS, -1).contiguous()
+        # the windows share one parameter vector: their rows differ by their start states
+        offset = torch.arange(self.ROWS, dtype=torch.float64, device=device)[:, None] if variant == "windows" else 0.0
+        Y = (y0.unsqueeze(0).expand(self.ROWS, -1) + offset).contiguous()
         rows = [Y[b] for b in range(self.ROWS)]
+        constants = fm.step_constants(theta0) if variant == "windows" else None
         with torch.no_grad():
             for t in range(self.STEPS):
                 u = tape[t]
-                Y, M = fm.compiled_batched_step(Y, Theta, u)
+                U = u.unsqueeze(0).expand(self.ROWS, -1).contiguous()
+                if variant == "batched":
+                    Y, M = fm.compiled_batched_step(Y, Theta, u)
+                elif variant == "rows":
+                    Y, M = fm.compiled_rows_step(Y, Theta, U)
+                else:
+                    Y, M = fm.compiled_window_step(Y, theta0, U, constants)
                 for b in range(self.ROWS):
-                    rows[b], m = fm.F_aug(rows[b], Theta[b], u, transform_mode=True)
-                    torch.testing.assert_close(M[b], m, rtol=1e-9, atol=1e-9, msg=f"step {t}, row {b}: outputs")
-                    torch.testing.assert_close(Y[b], rows[b], rtol=1e-9, atol=1e-9, msg=f"step {t}, row {b}: state")
+                    if variant == "windows":
+                        rows[b], m = fm.F_aug(rows[b], theta0, u, transform_mode=True, constants=constants)
+                    else:
+                        rows[b], m = fm.F_aug(rows[b], Theta[b], u, transform_mode=True)
+                    torch.testing.assert_close(M[b], m, rtol=1e-9, atol=1e-9, msg=f"{variant}, step {t}, row {b}: outputs")
+                    torch.testing.assert_close(Y[b], rows[b], rtol=1e-9, atol=1e-9, msg=f"{variant}, step {t}, row {b}: state")
         # the rows do differ, so a batch collapsed onto one row would show
         self.assertFalse(torch.allclose(rows[0], rows[-1]))
 
@@ -98,10 +113,17 @@ class TestCompiledBatchedStep(unittest.TestCase):
     def test_slots_of_one_vector_port_on_the_cpu(self):
         self._rows_agree("cpu", loops=False)
 
+    @NEEDS_CPP
+    def test_the_rows_and_window_steps_on_the_cpu(self):
+        for variant in ("rows", "windows"):
+            with self.subTest(variant=variant):
+                self._rows_agree("cpu", loops=True, variant=variant)
+
     @unittest.skipUnless(torch.cuda.is_available() and _has_triton(), "needs CUDA and Triton")
     def test_loops_through_one_vector_port_on_the_gpu(self):
-        self._rows_agree("cuda", loops=True)
-
+        for variant in ("batched", "rows", "windows"):
+            with self.subTest(variant=variant):
+                self._rows_agree("cuda", loops=True, variant=variant)
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,7 @@ import twin4build.utils.types as tps
 from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.data_loaders.load import DEFAULT_DT_LIMIT
 from twin4build.translator.translator import (
     ModeledNode,
     Node,
@@ -138,6 +139,10 @@ class SensorSystem(core.System):
         transformation_ref: Optional[str] = None,
         scoring_mask: Optional[Any] = None,
         measurement_sd: Optional[float] = None,
+        resample_method: str = "linear",
+        dt_limit: Optional[float] = DEFAULT_DT_LIMIT,
+        fill: Optional[str] = None,
+        allow_missing: Optional[bool] = None,
         **kwargs,
     ) -> None:
         """Initialize the sensor system.
@@ -163,6 +168,21 @@ class SensorSystem(core.System):
                 Defaults to None (all).
             measurement_sd: The standard deviation the sensor is scored
                 with.  Defaults to None.
+            resample_method: How the readings become step values:
+                ``"linear"`` (the value at the step), ``"constant"`` (the last
+                reading at or before it) or ``"mean"`` (the mean over the step,
+                for rates such as power or flow).  Defaults to ``"linear"``.
+            dt_limit: The longest stretch between two readings [s] a step
+                value may bridge; nothing beyond the first or last reading is
+                ever filled.  Defaults to six hours.
+            fill: For an input sensor (one whose readings drive the model):
+                what fills the steps its readings do not give (see
+                :class:`~twin4build.systems.utils.time_series_input_system.TimeSeriesInputSystem`).
+                ``None`` (default): such a step is an error.
+            allow_missing: Whether NaN readings are unscored samples rather
+                than an error.  ``None`` (default): yes for a scored sensor (one
+                that measures a model output), no for an input sensor, which
+                declares a ``fill`` instead.
             **kwargs: Additional keyword arguments passed to parent class.
 
         Note:
@@ -239,6 +259,10 @@ class SensorSystem(core.System):
         self._is_leaf = None
         self._time_series_input = None
         self._transformation = transformation
+        self.resample_method = resample_method
+        self.dt_limit = dt_limit
+        self.fill = fill
+        self.allow_missing = allow_missing
         self._scoring_mask = None
         self._measurement_sd = None
         self.scoring_mask = scoring_mask
@@ -720,9 +744,29 @@ class SensorSystem(core.System):
             if self.use_df:
                 if self.df is None:
                     raise ValueError("df must be provided when use_df=True.")
-            # ``allow_missing``: NaN samples in this sensor's series are
-            # unscored gaps, not an error (a duct sensor while the fan is off).
-            allow_missing = bool(getattr(self, "allow_missing", False))
+            # ``allow_missing``: NaN samples in a scored sensor's series are
+            # unscored gaps, not an error (a duct sensor while the fan is off,
+            # a stretch the BMS did not log).  An input sensor's NaN would
+            # become zeros driving the model: it declares a ``fill`` instead.
+            if getattr(self, "fill", None) is not None and not self.is_leaf:
+                raise ValueError(
+                    f'Sensor "{self.id}" ({self.uuid}) measures a model output: its gaps are '
+                    f"unscored samples, a fill would invent measurements to score (fill={self.fill!r})."
+                )
+            allow_missing = getattr(self, "allow_missing", None)
+            if allow_missing is None:
+                allow_missing = not self.is_leaf
+            elif allow_missing and self.is_leaf:
+                raise ValueError(
+                    f'Sensor "{self.id}" ({self.uuid}) drives the model: its gaps cannot be '
+                    f"unscored (allow_missing); declare a fill instead (fill=...)."
+                )
+            allow_missing = bool(allow_missing)
+            sampling = (
+                getattr(self, "resample_method", "linear"),
+                getattr(self, "dt_limit", DEFAULT_DT_LIMIT),
+                getattr(self, "fill", None) if self.is_leaf else None,
+            )
             # The series input is kept while its source is unchanged: it
             # caches by window (start, end, step), so initializing again over
             # the same windows (every simulate of a model) skips the load.  A
@@ -740,6 +784,7 @@ class SensorSystem(core.System):
                     self.uuid,
                     None if self.dbconfig is None else dict(self.dbconfig),
                     allow_missing,
+                    sampling,
                 ),
             )
             kept = getattr(self, "_series_source", None)
@@ -761,6 +806,9 @@ class SensorSystem(core.System):
                     uuid=self.uuid,
                     dbconfig=self.dbconfig,
                     transformation=self._transformation,
+                    resample_method=sampling[0],
+                    dt_limit=sampling[1],
+                    fill=sampling[2],
                 )
                 self.time_series_input.allow_missing = allow_missing
                 self._series_source = source

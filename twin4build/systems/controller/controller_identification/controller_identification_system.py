@@ -976,9 +976,12 @@ class ControllerIdentificationSystem(core.System, nn.Module):
 
         Returns:
             A list of parameter tuples, possibly empty when the CITS has
-            not been built yet (``self._built is False``).
+            not been built yet (``self._built is False``) or plays its
+            measured command back (``playback``: its output does not depend
+            on its parameters, so a fit has nothing to move and the
+            functional objective refuses a parameter without influence).
         """
-        if not getattr(self, "_built", False):
+        if not getattr(self, "_built", False) or getattr(self, "playback", False):
             return []
 
         params: List[Tuple[Any, str, Any, float, float]] = []

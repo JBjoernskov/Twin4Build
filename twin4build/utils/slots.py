@@ -50,6 +50,18 @@ def wired_slots(component, port: str) -> List[int]:
     ]
 
 
+def is_wired(component, port: str) -> bool:
+    """Whether a producer feeds ``component.input[port]``.
+
+    A composite's submodel (a zone's thermal or CO2 model) has no connections
+    of its own: its owner hands down the names of the ports wired on it as
+    ``_wired_ports``, and those decide."""
+    handed = getattr(component, "_wired_ports", None)
+    if handed is not None:
+        return port in handed
+    return any(cp.input_port == port and len(cp.connects_system_through) > 0 for cp in component.connects_at)
+
+
 def wired_width(component, port: str) -> int:
     """``max slot + 1`` over the wired slots (0 when nothing is wired)."""
     return max(wired_slots(component, port), default=-1) + 1

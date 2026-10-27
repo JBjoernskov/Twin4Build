@@ -1,6 +1,7 @@
 # Standard library imports
 import datetime
-from typing import Optional
+from math import comb
+from typing import Optional, Sequence
 
 # Third party imports
 import numpy as np
@@ -11,6 +12,46 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
+from twin4build.systems.utils.smooth_saturation import clamp
+
+
+def polynomial_to_bernstein(
+    nominalPowerRate, nominalAirFlowRate, c: Sequence, lower, upper
+) -> list:
+    r"""The Bernstein coefficients :math:`\beta_0 \dots \beta_3` [W] over the
+    flow range ``[lower, upper]`` [kg/s] of the polynomial fan curve
+
+    .. math::
+
+        P = P_{nom}\,(c_1 + c_2 x + c_3 x^2 + c_4 x^3), \qquad x = \dot m / \dot m_{nom}
+
+    (``c`` = ``(c1, c2, c3, c4)``).  The two forms are the same cubic, so the
+    curves agree at every flow, inside the range or not.  Plain arithmetic:
+    floats, arrays and tensors alike.
+    """
+    x0 = lower / nominalAirFlowRate
+    h = (upper - lower) / nominalAirFlowRate
+    # the monomials in t = (m - lower) / (upper - lower), from x = x0 + h t
+    a = [nominalPowerRate * sum(c[j] * comb(j, k) * x0 ** (j - k) * h**k for j in range(k, 4)) for k in range(4)]
+    return [sum(comb(i, k) / comb(3, k) * a[k] for k in range(i + 1)) for i in range(4)]
+
+
+def bernstein_to_polynomial(
+    beta: Sequence, lower, upper, nominalPowerRate=1.0, nominalAirFlowRate=1.0
+) -> list:
+    r"""The coefficients ``(c1, c2, c3, c4)`` of the polynomial fan curve
+    (:func:`polynomial_to_bernstein`) with the given ``nominalPowerRate`` [W]
+    and ``nominalAirFlowRate`` [kg/s] that is the same cubic as the Bernstein
+    coefficients ``beta`` [W] over ``[lower, upper]`` [kg/s].  The polynomial
+    form's nominal values only scale its coefficients: any choice gives the
+    same curve.  The inverse of :func:`polynomial_to_bernstein`.
+    """
+    b0, b1, b2, b3 = beta
+    a = [b0, 3 * (b1 - b0), 3 * (b2 - 2 * b1 + b0), b3 - 3 * b2 + 3 * b1 - b0]
+    # t = u0 + s x for x = m / m_nom
+    s = nominalAirFlowRate / (upper - lower)
+    u0 = -lower / (upper - lower)
+    return [sum(a[k] * comb(k, j) * u0 ** (k - j) * s**j for k in range(j, 4)) / nominalPowerRate for j in range(4)]
 
 
 class FanSystem(core.System, nn.Module):
@@ -21,29 +62,41 @@ class FanSystem(core.System, nn.Module):
     both the power consumption and the heat added to the air stream.
 
     Args:
-        nominalPowerRate : Nominal power rate [W]
-        nominalAirFlowRate : Nominal air flow rate [kg/s]
-        c1 : Constant term in power polynomial
-        c2 : Linear term coefficient in power polynomial
-        c3 : Quadratic term coefficient in power polynomial
-        c4 : Cubic term coefficient in power polynomial
+        beta0 : Power at the bottom of the flow range [W]
+        beta1 : First inner control point of the power curve [W]
+        beta2 : Second inner control point of the power curve [W]
+        beta3 : Power at the top of the flow range [W]
+        flowRangeLower : Bottom of the operating flow range [kg/s] (fixed)
+        flowRangeUpper : Top of the operating flow range [kg/s] (fixed)
         f_total : Total fan efficiency factor (0-1)
 
     Mathematical Formulation
     ------------------------
 
-    The fan power is calculated using a polynomial equation:
+    The fan power is a cubic in the air flow, written in Bernstein form over
+    the fan's operating flow range :math:`[\dot{m}_{lo}, \dot{m}_{hi}]`:
 
         .. math::
 
-            P = P_{nom} \cdot \left(c_1 + c_2\frac{\dot{m}}{\dot{m}_{nom}} + c_3\left(\frac{\dot{m}}{\dot{m}_{nom}}\right)^2 + c_4\left(\frac{\dot{m}}{\dot{m}_{nom}}\right)^3\right)
+            t = \frac{\dot{m} - \dot{m}_{lo}}{\dot{m}_{hi} - \dot{m}_{lo}}, \qquad
+            P = \beta_0 (1-t)^3 + 3\beta_1 t(1-t)^2 + 3\beta_2 t^2(1-t) + \beta_3 t^3
 
     where:
        - :math:`P` is the fan power [W]
-       - :math:`P_{nom}` is the nominal power [W]
        - :math:`\dot{m}` is the air mass flow rate [kg/s]
-       - :math:`\dot{m}_{nom}` is the nominal air mass flow rate [kg/s]
-       - :math:`c_1` to :math:`c_4` are polynomial coefficients that can be calibrated
+       - :math:`\beta_0` and :math:`\beta_3` are the powers at the bottom and the top
+         of the range, :math:`\beta_1` and :math:`\beta_2` shape the curve between them
+
+    On the range the four weights are non-negative and sum to one, so the
+    power lies between the smallest and the largest :math:`\beta`: the class
+    bound :math:`\beta_k \ge 0` keeps the curve non-negative over the whole
+    operating range, a constraint on the curve rather than on its output.
+    The polynomial form :math:`P_{nom}(c_1 + c_2 x + c_3 x^2 + c_4 x^3)`,
+    :math:`x = \dot m / \dot m_{nom}`, is the same cubic in other coordinates:
+    :func:`polynomial_to_bernstein` and :func:`bernstein_to_polynomial` map
+    between the two exactly.  The range is fixed (not estimated): a site
+    sets it to the flows its fans run at (:meth:`set_flow_range`, which keeps
+    the curve).
 
     The outlet air temperature is calculated considering the heat added by the fan:
 
@@ -60,7 +113,10 @@ class FanSystem(core.System, nn.Module):
     Notes
     -----
     Model Assumptions:
-       - Fan power follows polynomial relationship with flow rate
+       - Fan power follows a cubic in the flow; outside the operating range the
+         cubic extrapolates, floored at zero there: no fan gives power back
+         (exact in hard saturation, a smooth curve of :attr:`POWER_CURVE_START`
+         watts in the smooth mode)
        - A fraction :math:`f_{total}` of the fan power is added as heat to the air stream
        - Constant air density and specific heat capacity
        - No mechanical losses considered separately
@@ -75,79 +131,61 @@ class FanSystem(core.System, nn.Module):
 
     def __init__(
         self,
-        nominalPowerRate: float = 1000,
-        nominalAirFlowRate: float = 1.0,
-        c1: float = 0,
-        c2: float = 0.8,
-        c3: float = 0.2,
-        c4: float = 0.0,
+        beta0: float = 0.0,
+        beta1: float = 800.0 / 3.0,
+        beta2: float = 600.0,
+        beta3: float = 1000.0,
+        flowRangeLower: float = 0.0,
+        flowRangeUpper: float = 1.0,
         f_total: float = 0.9,
         **kwargs,
     ):
         """
         Initialize the fan system model.
 
+        The default curve is 1 kW at 1 kg/s, 0.8 linear plus 0.2 square in
+        the flow, over the range 0-1 kg/s.
+
         Args:
-            nominalPowerRate: Nominal power rate [W]
-            nominalAirFlowRate: Nominal air mass flow rate [kg/s]
-            c1-c4: Polynomial coefficients for power calculation
+            beta0-beta3: Bernstein coefficients of the power curve [W]
+            flowRangeLower, flowRangeUpper: Operating flow range [kg/s]
             f_total: Total fan efficiency factor
         """
         super().__init__(**kwargs)
         nn.Module.__init__(self)
+        if not flowRangeUpper > flowRangeLower:
+            raise ValueError(f"{kwargs.get('id')}: flow range [{flowRangeLower}, {flowRangeUpper}] is empty")
 
         # Store parameters as tps.Parameters for gradient tracking
-        self.nominalPowerRate = tps.Parameter(
-            torch.tensor(nominalPowerRate, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.nominalAirFlowRate = tps.Parameter(
-            torch.tensor(nominalAirFlowRate, dtype=tps.float_dtype()),
-            requires_grad=False,
-        )
-        self.c1 = tps.Parameter(
-            torch.tensor(c1, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.c2 = tps.Parameter(
-            torch.tensor(c2, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.c3 = tps.Parameter(
-            torch.tensor(c3, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.c4 = tps.Parameter(
-            torch.tensor(c4, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.f_total = tps.Parameter(
-            torch.tensor(f_total, dtype=tps.float_dtype()), requires_grad=False
-        )
+        for name, value in (
+            ("beta0", beta0),
+            ("beta1", beta1),
+            ("beta2", beta2),
+            ("beta3", beta3),
+            ("flowRangeLower", flowRangeLower),
+            ("flowRangeUpper", flowRangeUpper),
+            ("f_total", f_total),
+        ):
+            setattr(self, name, tps.Parameter(torch.tensor(value, dtype=tps.float_dtype()), requires_grad=False))
 
         # Define inputs and outputs as private variables
         self._input = {"airFlowRate": tps.Scalar(), "inletAirTemperature": tps.Scalar()}
         self._output = {"outletAirTemperature": tps.Scalar(), "Power": tps.Scalar()}
 
-        # Define parameters for calibration.  Tightened to a real AHU
-        # supply / exhaust fan operating envelope so the auto-estimator
-        # can't pin a fan to ``nominalPowerRate = 0`` (no fan, but
-        # outlet temperature still updated from cp * m * dT) or
-        # ``f_total = 0`` (zero efficiency means the model attributes
-        # *all* the shaft power to fluid heat gain, which then forces
-        # SAT past the coil's reach).
+        # Define parameters for calibration.  The flow range is not one: it
+        # gives the betas their meaning (a moved range is another curve for
+        # the same betas), and the four betas already span every cubic.
         self.parameter = {
-            # AHU fan rated power.  Spans small fan-coil supply (~ 200
-            # W) up to a 10 kW primary AHU.  Outside this range the
-            # other parameters compensate in unphysical ways.
-            "nominalPowerRate": {"lb": 200.0, "ub": 10000.0, "relative": (0.25, 4.0)},
-            # AHU air flow [kg/s].  ~ 0.5 kg/s is a small fan-coil,
-            # ~ 10 kg/s a large central handler.
-            "nominalAirFlowRate": {"lb": 0.5, "ub": 10.0, "relative": (0.25, 4.0)},
-            # Polynomial coefficients of the ``P(m)`` curve.  These
-            # can legitimately be negative (curve concavity) but
-            # values past ~ 5 in magnitude give pathological power
-            # curves that the solver loves because they let one
-            # operating point dominate the fit.
-            "c1": {"lb": -1.0, "ub": 1.0},
-            "c2": {"lb": -1.0, "ub": 1.0},
-            "c3": {"lb": -1.0, "ub": 1.0},
-            "c4": {"lb": -1.0, "ub": 1.0},
+            # Power at the curve's control points [W].  Non-negative: with
+            # every beta >= 0 the power is >= 0 over the whole range (no fan
+            # gives power back), the constraint the solver sees as bounds.
+            # 100 kW is beyond any single AHU's fans.  Size quantities: once
+            # the fan is sized (``size_to``), each bound is 0 to 4 times its
+            # sized value.
+            "beta0": {"lb": 0.0, "ub": 1e5, "relative": (0.0, 4.0)},
+            "beta1": {"lb": 0.0, "ub": 1e5, "relative": (0.0, 4.0)},
+            "beta2": {"lb": 0.0, "ub": 1e5, "relative": (0.0, 4.0)},
+            "beta3": {"lb": 0.0, "ub": 1e5, "relative": (0.0, 4.0)},
             # Total fan efficiency.  Real centrifugal AHU fans land
             # between 0.4 and 0.85; lower bound 0.3 keeps very small
             # / poorly maintained units in scope without admitting
@@ -187,6 +225,48 @@ class FanSystem(core.System, nn.Module):
         """
         return self._output
 
+    def set_flow_range(self, lower: float, upper: float) -> None:
+        """Move the operating flow range to ``[lower, upper]`` [kg/s], keeping
+        the curve: the betas are mapped onto the new range."""
+        if not upper > lower:
+            raise ValueError(f"{self.id}: flow range [{lower}, {upper}] is empty")
+        with torch.no_grad():
+            beta = [getattr(self, f"beta{k}").get() for k in range(4)]
+            old_lo, old_hi = self.flowRangeLower.get(), self.flowRangeUpper.get()
+            # watts and kg/s as the polynomial form's units: the curve itself
+            c = bernstein_to_polynomial(beta, old_lo, old_hi)
+            for k, value in enumerate(polynomial_to_bernstein(1.0, 1.0, c, lower, upper)):
+                getattr(self, f"beta{k}").set(value, normalized=False)
+            self.flowRangeLower.set(float(lower), normalized=False)
+            self.flowRangeUpper.set(float(upper), normalized=False)
+
+    def curve_power(self, m_dot: float) -> float:
+        """The power curve at the flow ``m_dot`` [kg/s] [W] (the first instance's betas; no floor)."""
+        beta = [float(getattr(self, f"beta{k}").get().detach().reshape(-1)[0]) for k in range(4)]
+        lo = float(self.flowRangeLower.get().detach().reshape(-1)[0])
+        hi = float(self.flowRangeUpper.get().detach().reshape(-1)[0])
+        t = (float(m_dot) - lo) / (hi - lo)
+        s = 1.0 - t
+        return beta[0] * s**3 + 3.0 * beta[1] * t * s**2 + 3.0 * beta[2] * t**2 * s + beta[3] * t**3
+
+    def size_to(self, m_dot: float, power: float) -> bool:
+        """Size the fan: its curve scaled, shape kept, so it draws ``power``
+        [W] at the flow ``m_dot`` [kg/s] (a fan's measured peak), and each
+        beta a size quantity anchored there (``System.size_parameter``: its
+        bounds 0 to 4 times the sized value; the bounds live in the fan's
+        spec, so they hold when a unit that carries the fan lists them).
+        Returns whether every beta was sized (a beta at zero keeps its
+        absolute bounds)."""
+        at = self.curve_power(m_dot)
+        if not (at > 0 and power > 0):
+            return False
+        factor = float(power) / at
+        sized = True
+        for k in range(4):
+            value = getattr(self, f"beta{k}").get().detach() * factor
+            sized = self.size_parameter(f"beta{k}", value) and sized
+        return sized
+
     def initialize(
         self,
         start_time: datetime.datetime,
@@ -219,49 +299,55 @@ class FanSystem(core.System, nn.Module):
             )
 
         # Expand parameters to n_c dimension for vectorization
-        self.nominalPowerRate = self.nominalPowerRate.expand_to_n_c(self.n_c)
-        self.nominalAirFlowRate = self.nominalAirFlowRate.expand_to_n_c(self.n_c)
-        self.c1 = self.c1.expand_to_n_c(self.n_c)
-        self.c2 = self.c2.expand_to_n_c(self.n_c)
-        self.c3 = self.c3.expand_to_n_c(self.n_c)
-        self.c4 = self.c4.expand_to_n_c(self.n_c)
-        self.f_total = self.f_total.expand_to_n_c(self.n_c)
+        for name in self.PARAM_NAMES:
+            setattr(self, name, getattr(self, name).expand_to_n_c(self.n_c))
 
         self.INITIALIZED = True
 
     PARAM_NAMES = (
-        "nominalPowerRate",
-        "nominalAirFlowRate",
-        "c1",
-        "c2",
-        "c3",
-        "c4",
+        "beta0",
+        "beta1",
+        "beta2",
+        "beta3",
+        "flowRangeLower",
+        "flowRangeUpper",
         "f_total",
     )
 
     #: Bound on the fan's air-temperature rise [K], see ``forward``.
     MAX_DELTA_T = 30.0
+    #: Width [W] of the smooth mode's curve where the power floors at zero.
+    POWER_CURVE_START = 10.0
 
     def forward(self, x, inputs, params, sample_time):
         """Pure one-step fan model (functorch-safe, stateless).
 
-        Fan power from the polynomial power curve:
-        ``P = P_nom * (c1 + c2*(m/m_nom) + c3*(m/m_nom)^2 + c4*(m/m_nom)^3)``,
+        Fan power from the Bernstein power curve over the flow range,
+        ``t = (m - lo)/(hi - lo)``,
+        ``P = b0 (1-t)^3 + 3 b1 t (1-t)^2 + 3 b2 t^2 (1-t) + b3 t^3``,
         outlet temperature from the heat added to the air stream:
         ``T_out = T_in + (P * f_total) / (m * c_p)``.
         """
         m_dot = inputs["airFlowRate"]
         inlet_temp = inputs["inletAirTemperature"]
 
-        # Calculate normalized flow rate
-        m_norm = m_dot / params["nominalAirFlowRate"]
+        # Position in the operating range (outside it the cubic extrapolates)
+        lo = params["flowRangeLower"]
+        t = (m_dot - lo) / (params["flowRangeUpper"] - lo)
+        s = 1.0 - t
 
-        # Calculate fan power using polynomial equation
-        power = params["nominalPowerRate"] * (
-            params["c1"]
-            + params["c2"] * m_norm
-            + params["c3"] * m_norm**2
-            + params["c4"] * m_norm**3
+        # Calculate fan power from the Bernstein form
+        power = (
+            params["beta0"] * s**3
+            + 3.0 * params["beta1"] * t * s**2
+            + 3.0 * params["beta2"] * t**2 * s
+            + params["beta3"] * t**3
+        )
+        # No fan gives power back.  Non-negative betas keep the curve >= 0 on
+        # the range; this floor guards the extrapolation outside it.
+        power = clamp(
+            power, lower=0.0, upper=1e12, curve_start=self.POWER_CURVE_START,
+            steepness=2.0, curve_type="power", power_exp=0.5,
         )
 
         # Calculate temperature rise.  Zero flow (dampers closed, fan off)

@@ -29,6 +29,12 @@ UTC = datetime.timezone.utc
 CET = datetime.timezone(datetime.timedelta(hours=1))
 
 
+def buffer(step=600):
+    """The readings fetched beyond a window's edges: three steps, or the gap
+    limit when longer (a gap up to it across an edge is interpolated)."""
+    return pd.Timedelta(seconds=max(3 * step, load_mod.DEFAULT_DT_LIMIT))
+
+
 def day(d, h=0):
     return datetime.datetime(2024, 3, d, h, tzinfo=CET)
 
@@ -98,14 +104,14 @@ class TestRawStore(unittest.TestCase):
         self.load(day(5), day(8))  # overlaps: fetches [6 Mar, 8 Mar + buffer) only
         params = self.server.fetched
         self.assertEqual(len(params), 2)
-        self.assertEqual(pd.Timestamp(params[1][1]), pd.Timestamp(day(6)) + pd.Timedelta(seconds=1800))
+        self.assertEqual(pd.Timestamp(params[1][1]), pd.Timestamp(day(6)) + buffer())
 
     def test_a_window_outside_the_span_is_fetched_alone(self):
         # A window shifted back (gap filling) under its original span's name.
         span = (day(20), day(27))
         self.load(day(6), day(7), fetch_span=span)
         a, b = self.server.fetched[-1][1:]
-        self.assertLessEqual(pd.Timestamp(b) - pd.Timestamp(a), pd.Timedelta(days=1, hours=1))
+        self.assertLessEqual(pd.Timestamp(b) - pd.Timestamp(a), pd.Timedelta(days=1) + 2 * buffer())
 
     def test_separate_periods_are_separate_spans(self):
         starts = [day(1), day(2), day(20)]

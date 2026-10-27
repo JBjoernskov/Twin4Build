@@ -3,6 +3,7 @@ from __future__ import annotations
 # Standard library imports
 import copy
 import datetime
+import itertools
 import json
 import os
 import pickle
@@ -59,6 +60,10 @@ INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
 # enabled, so we bound the id at a value that leaves headroom for the
 # project directory, class folder, and file extension.
 MAX_ID_LEN = 100
+#: The most simple cycles :meth:`SimulationModel._remove_cycles` holds at once: a
+#: graph with more is cut from that many at a time and searched again once they
+#: are used up (below it the list is complete, as one search).
+CYCLE_SAMPLE = 200_000
 
 
 def _check_id(id: str, kind: str) -> None:
@@ -335,6 +340,7 @@ class SimulationModel:
         "_required_initialization_connections",
         "_components_no_cycles",
         "_removed_cycle_edges",
+        "_source_cuts",
         "_fused_components",
         "_fusion_member_to_fused",
         "enable_fusion",
@@ -420,6 +426,7 @@ class SimulationModel:
         self._initial_state = None  # see set_state
         self._initialization_count = 0  # see initialization_count
         self._components_no_cycles = {}
+        self._source_cuts = None  # a batched model's: see _cut_source_cuts
         self._fused_components = {}
         self._fusion_member_to_fused = {}
         self._saved_parameters = {}
@@ -2487,7 +2494,8 @@ class SimulationModel:
                     json.dump(config_, f, indent=4)
             else:
                 with open(filename) as f:
-                    config = json.load(f)
+                    saved = f.read()
+                config = json.loads(saved)
 
                 comparison_result = compare_dict_structure(config_, config)
                 if not comparison_result["structures_match"]:
@@ -2518,8 +2526,12 @@ class SimulationModel:
 
                 self.set_parameters_from_config(config_, component)
 
-                with open(filename, "w") as f:
-                    json.dump(config_, f, indent=4)
+                # written back only when it changed: every load rewrote every component's file (26 Oct 2026: a
+                # setup of 2 778 components, through a network file system each write a round trip)
+                merged = json.dumps(config_, indent=4)
+                if merged != saved:
+                    with open(filename, "w") as f:
+                        f.write(merged)
 
         LOGGER.remove_level()
 
@@ -2720,6 +2732,12 @@ class SimulationModel:
                     # Later if this is part of a cycle, we will have to remove all edges between component and receiver_component.
                     simple_graph[component].add(receiver_component)
         return simple_graph
+
+    def _cycle_sample(self) -> Tuple[List[List[core.System]], bool]:
+        """The simple cycles of the graph without cycles so far, at most
+        :data:`CYCLE_SAMPLE` of them, and whether there are more."""
+        found = list(itertools.islice(self._get_simple_cycles(self._components_no_cycles), CYCLE_SAMPLE + 1))
+        return found[:CYCLE_SAMPLE], len(found) > CYCLE_SAMPLE
 
     def _get_simple_cycles(self, components: Dict) -> List[List[core.System]]:
         """
@@ -3015,13 +3033,22 @@ class SimulationModel:
         # every existing feedback loop by the star's size and the simple-cycle
         # enumeration never returns.
         self._cut_declared_lags()
+        # A batched model: the source model's cuts, before any search
+        self._cut_source_cuts()
 
         LOGGER.task("Detecting cycles")
         LOGGER.add_level()
 
-        # Calculate all cycles once at the beginning
-        cycles = list(self._get_simple_cycles(self._components_no_cycles))
-        LOGGER.info("Found %d cycles", len(cycles))
+        # The cycles, at most CYCLE_SAMPLE at a time: a batched model merges
+        # many source components into a few meta components, and the parallel
+        # paths through the components it leaves apart (one per room sensor)
+        # multiply its simple cycles past any memory (23 Oct 2026: more than
+        # 300 000 in 5 s on the HTR ring's 177-component cluster, the run killed
+        # at 29 GB).  Below the cap the list is complete, as before; above it the
+        # edges are chosen from the sample by the same rule, and the cycles are
+        # searched again once the sample is used up.
+        cycles, sampled = self._cycle_sample()
+        LOGGER.info("Found %s%d cycles", "more than " if sampled else "", len(cycles))
         if not cycles:
             LOGGER.info("No cycles found")
             LOGGER.remove_level()
@@ -3065,6 +3092,8 @@ class SimulationModel:
 
             # Update cycles list by removing cycles that contained the removed edge
             cycles = self._update_cycles_after_edge_removal(cycles, best_edge)
+            if not cycles and sampled:
+                cycles, sampled = self._cycle_sample()
 
         reached_max_iterations = iteration >= max_iterations
         if reached_max_iterations:
@@ -3199,6 +3228,34 @@ class SimulationModel:
             best_edges[0][1].id,
         )
         return best_edges[0]
+
+    def _cut_source_cuts(self) -> None:
+        """A batched model (:meth:`Model.batch_components`) cuts first where
+        its source model cut: every edge between the components that hold the
+        two sides of a source cut (``_source_cuts``, pairs of meta ids), as a
+        cycle cut, so its one-step lags sit on the source model's signals and
+        the cycles batching multiplies need no search."""
+        pairs = getattr(self, "_source_cuts", None)
+        if not pairs:
+            return
+        holder = {}
+        for component in self._components_no_cycles.values():
+            for member in getattr(component, "_members", None) or [component]:
+                holder[member.id] = component
+        cut = set()
+        for metas_from, metas_to in pairs:
+            for a_id in metas_from:
+                for b_id in metas_to:
+                    a, b = holder.get(a_id), holder.get(b_id)
+                    if a is None or b is None or a is b or (a.id, b.id) in cut:
+                        continue
+                    if not any(cp.connection_point_of is b for conn in a.connected_through for cp in conn.connects_system_at):
+                        continue
+                    LOGGER.info("Source model's cut: %s -> %s", a.id, b.id)
+                    self._remove_all_edges_between_components(a, b)
+                    self._removed_cycle_edges.append((a.id, b.id))
+                    cut.add((a.id, b.id))
+        LOGGER.info("Cut %d edges where the source model cut %d", len(cut), len(pairs))
 
     def _cut_declared_lags(self) -> None:
         """Cut every edge leaving an output named in the sender's class
@@ -4518,8 +4575,13 @@ class SimulationModel:
                 if isinstance(current, (tps.Parameter, tps.TensorParameter)):
                     # A per-branch (n_c > 1) literal replaces the freshly
                     # built scalar parameter with one of that width -- the
-                    # owner's initialize then finds it already expanded.
+                    # owner's initialize then finds it already expanded.  A
+                    # parameter built that wide already (a controller's slot
+                    # weights) only takes the values: replaced, it would turn
+                    # into a fixed TensorParameter the estimator refuses.
                     per_branch = isinstance(value, list) and len(value) > 1
+                    if per_branch and isinstance(current, tps.Parameter):
+                        per_branch = int(torch.as_tensor(current.get()).numel()) != len(value)
                     try:
                         self.set_parameters(
                             [value], [component], [key], overwrite=per_branch

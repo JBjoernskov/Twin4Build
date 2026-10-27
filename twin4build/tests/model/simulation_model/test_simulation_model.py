@@ -93,12 +93,6 @@ class TestSimulationModel(unittest.TestCase):
         supply_flow_junction = SupplyFlowJunctionSystem(id="supply_flow_junction")
         fan = FanSystem(
             id="fan",
-            nominalPowerRate=1000,
-            nominalAirFlowRate=1.0,
-            c1=0.0,
-            c2=0.8,
-            c3=0.2,
-            c4=0.0,
             f_total=0.8,
         )
 

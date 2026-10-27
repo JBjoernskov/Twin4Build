@@ -32,6 +32,89 @@ def parseDateStr(s):
         return np.datetime64("NaT")
 
 
+#: The resampling methods: ``"linear"`` interpolates linearly between the two
+#: readings around a step, ``"constant"`` holds the last reading at or before
+#: it, ``"mean"`` is the time-weighted mean of the linear interpolant over the
+#: step ``[t, t + step_size)``.
+RESAMPLE_METHODS = ("constant", "linear", "mean")
+
+#: The longest stretch between two readings [s] a resampled value may bridge
+#: (six hours).  A step in a longer gap is NaN, as is a step before the first
+#: or after the last reading: nothing is extrapolated, nothing repeated.
+DEFAULT_DT_LIMIT = 6 * 3600.0
+
+
+def _seconds(index: pd.DatetimeIndex) -> np.ndarray:
+    """A DatetimeIndex as float seconds since the epoch (UTC), whatever its unit."""
+    idx = index.tz_convert("UTC").tz_localize(None) if index.tz is not None else index
+    return idx.as_unit("ns").asi8 / 1e9
+
+
+def _interval_means(t: np.ndarray, y: np.ndarray, grid: np.ndarray, step: float, limit: float):
+    """The time-weighted means of the linear interpolant of ``(t, y)`` over ``[g, g + step)`` for every ``g`` in
+    ``grid``, and where they are defined: the whole step lies within the readings and no stretch between two
+    readings that overlaps it is longer than ``limit``."""
+    n = len(t)
+    if n < 2:
+        return np.full(len(grid), np.nan), np.zeros(len(grid), dtype=bool)
+    # the integral of the interpolant from t[0] to every reading, and from there to any time inside the readings
+    cum = np.concatenate([[0.0], np.cumsum(0.5 * (y[1:] + y[:-1]) * np.diff(t))])
+
+    def integral(tau):
+        k = np.clip(np.searchsorted(t, tau, side="right") - 1, 0, n - 2)
+        frac = np.where(t[k + 1] > t[k], (tau - t[k]) / (t[k + 1] - t[k]), 0.0)
+        y_tau = y[k] + frac * (y[k + 1] - y[k])
+        return cum[k] + 0.5 * (y[k] + y_tau) * (tau - t[k])
+
+    lo, hi = grid, grid + step
+    ok = (lo >= t[0]) & (hi <= t[-1])
+    means = np.full(len(grid), np.nan)
+    means[ok] = (integral(hi[ok]) - integral(lo[ok])) / step
+    gaps = np.flatnonzero(np.diff(t) > limit)
+    for j in gaps:  # a stretch without readings longer than the limit: every step it overlaps is undefined
+        ok &= ~((lo < t[j + 1]) & (hi > t[j]))
+    return means, ok
+
+
+def sample_on_grid(df, start_time, end_time, step_size, method="linear", dt_limit=DEFAULT_DT_LIMIT) -> pd.DataFrame:
+    """Every column of ``df`` (time-indexed readings) on the steps ``start_time + k * step_size`` up to
+    ``end_time``, by ``method`` (:data:`RESAMPLE_METHODS`).
+
+    A step gets a value only from readings around it: NaN before the first reading, after the last one, and where
+    the readings that would give it are more than ``dt_limit`` seconds apart (``"linear"``: the readings on either
+    side; ``"constant"``: the last reading before it; ``"mean"``: any stretch without readings the step overlaps).
+    ``dt_limit=None`` bridges any gap inside the readings, never the edges.  Returns a DataFrame on the steps.
+    """
+    nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
+    grid = _seconds(nidx)
+    limit = np.inf if dt_limit is None else float(dt_limit)
+    out = {}
+    for col in df.columns:
+        s = df[col].dropna()
+        if len(s) == 0:
+            out[col] = np.full(len(nidx), np.nan)
+            continue
+        t, y = _seconds(pd.DatetimeIndex(s.index)), s.to_numpy(dtype=float)
+        if method == "mean":
+            values, ok = _interval_means(t, y, grid, float(step_size), limit)
+        else:
+            n = len(t)
+            prev = np.searchsorted(t, grid, side="right") - 1  # the last reading at or before each step
+            nxt = np.searchsorted(t, grid, side="left")  # the first reading at or after it
+            inside = (prev >= 0) & (nxt < n)  # never before the first or after the last reading
+            pi, ni = np.clip(prev, 0, n - 1), np.clip(nxt, 0, n - 1)
+            if method == "constant":
+                values = y[pi]
+                ok = inside & (grid - t[pi] <= limit)
+            else:  # linear
+                span = t[ni] - t[pi]
+                w = np.where(span > 0, (grid - t[pi]) / np.where(span > 0, span, 1.0), 0.0)
+                values = y[pi] + w * (y[ni] - y[pi])
+                ok = inside & (span <= limit)
+        out[col] = np.where(ok, values, np.nan)
+    return pd.DataFrame(out, index=nidx)
+
+
 def sample_from_df(
     df,
     date_column=0,
@@ -44,6 +127,7 @@ def sample_from_df(
     clip=True,
     tz=datetime.timezone.utc,
     preserve_order=True,
+    dt_limit=DEFAULT_DT_LIMIT,
 ):
     r"""
     Sample and process time series data from a DataFrame with various resampling options.
@@ -62,7 +146,7 @@ def sample_from_df(
 
        y(t) = y(t_{last})
 
-    where :math:`t_{last}` is the last available data point before :math:`t`.
+    where :math:`t_{last}` is the last available data point at or before :math:`t`.
 
     Linear resampling -- for each time step :math:`t`:
 
@@ -70,8 +154,21 @@ def sample_from_df(
 
        y(t) = y(t_1) + \frac{t - t_1}{t_2 - t_1} \cdot (y(t_2) - y(t_1))
 
-    where :math:`t_1` is the last available data point before :math:`t` and
-    :math:`t_2` is the first available data point after :math:`t`.
+    where :math:`t_1` is the last available data point at or before :math:`t` and
+    :math:`t_2` is the first available data point at or after :math:`t`.
+
+    Mean resampling -- for each time step :math:`t` of length :math:`\Delta t`:
+
+    .. math::
+
+       y(t) = \frac{1}{\Delta t} \int_t^{t + \Delta t} \hat y(\tau) \, d\tau
+
+    where :math:`\hat y` is the linear interpolant of the readings (for rates
+    such as power or flow, whose model value at a step stands for the step).
+
+    Nothing is extrapolated: a step before the first reading or after the last
+    one is NaN, and so is a step whose readings are more than ``dt_limit``
+    seconds apart (:func:`sample_on_grid`).
 
     **2. Time Zone Conversion**
 
@@ -103,10 +200,13 @@ def sample_from_df(
         start_time (date_time, optional): Start time for data extraction
         end_time (date_time, optional): End time for data extraction
         resample (bool): Whether to resample data to regular intervals
-        resample_method (str): Resampling method ("linear" or "constant")
+        resample_method (str): Resampling method ("linear", "constant" or "mean")
         clip (bool): Whether to clip data to specified time range
         tz (str): Timezone for data processing
         preserve_order (bool): Whether to preserve original data order
+        dt_limit (float, optional): The longest stretch between two readings [s]
+            a resampled value may bridge; ``None`` bridges any gap inside the
+            readings (never the edges).  Defaults to :data:`DEFAULT_DT_LIMIT`.
 
     Returns:
         pandas.DataFrame: Processed DataFrame with resampled time series data
@@ -135,15 +235,23 @@ def sample_from_df(
         # DST change (psycopg2 gives timestamptz in the session's time zone);
         # pandas parses mixed offsets only as UTC, which the next lines
         # convert every aware column to anyway.
-        aware = df["date_time"].map(lambda x: getattr(x, "tzinfo", None) is not None).any()
-        df["date_time"] = pd.to_datetime(df["date_time"], utc=bool(aware))
-        if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
+        # Vectorised (26 Oct 2026): the per-element apply over every
+        # timestamp (the tz test, the conversion of each Timestamp, the list
+        # of zones) was most of a series' load (a translation loads
+        # thousands).  Aware when the column's dtype is, or -- an object
+        # column (Python datetimes, strings) -- any of its values is, as before.
+        column = df["date_time"]
+        if isinstance(column.dtype, pd.DatetimeTZDtype):
+            aware = True
+        elif column.dtype == object:
+            aware = bool(column.map(lambda x: getattr(x, "tzinfo", None) is not None).any())
+        else:
+            aware = False
+        df["date_time"] = pd.to_datetime(column, utc=aware)
+        if isinstance(df["date_time"].dtype, pd.DatetimeTZDtype):
             has_tz = True
-            df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
-            LOGGER.info(
-                "Dataframe has timezone information %s, converting to UTC",
-                df["date_time"].apply(lambda x: x.tzinfo).unique(),
-            )
+            df["date_time"] = df["date_time"].dt.tz_convert("UTC")
+            LOGGER.info("Dataframe has timezone information %s, converting to UTC", df["date_time"].dt.tz)
 
         else:
             has_tz = False
@@ -215,17 +323,10 @@ def sample_from_df(
             LOGGER.info("End time had no timezone, converted to %s", tz)
 
         if resample:
-            allowable_resample_methods = ["constant", "linear"]
             assert (
-                resample_method in allowable_resample_methods
-            ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
-            if resample_method == "constant":
-                df = df.resample(f"{step_size}s", origin=start_time).ffill().bfill()
-            elif resample_method == "linear":
-                oidx = df.index
-                nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
-                df = df.reindex(oidx.union(nidx)).interpolate("index").reindex(nidx)
-                df = df.ffill().bfill()
+                resample_method in RESAMPLE_METHODS
+            ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(RESAMPLE_METHODS)}"
+            df = sample_on_grid(df, start_time, end_time, step_size, resample_method, dt_limit)
 
         if clip:
             df = df[
@@ -254,6 +355,8 @@ def load_from_spreadsheet(
     cache=True,
     cache_root=None,
     preserve_order=True,
+    resample_method="linear",
+    dt_limit=DEFAULT_DT_LIMIT,
 ):
     """
     This function loads a spead either in .csv or .xlsx format.
@@ -298,7 +401,7 @@ def load_from_spreadsheet(
                 "utf-8", "replace"
             )
         ).hexdigest()[:12]
-        cached_filename = f"name({os.path.basename(name)})_dir({_dir_key})_src({_stamp})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str}){col_suffix}_cached.pickle"
+        cached_filename = f"name({os.path.basename(name)})_dir({_dir_key})_src({_stamp})_stepSize({str(step_size)})_method({resample_method})_dtlimit({dt_limit})_start_time({startTime_str})_end_time({endTime_str}){col_suffix}_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
@@ -334,9 +437,11 @@ def load_from_spreadsheet(
             start_time=start_time,
             end_time=end_time,
             resample=resample,
+            resample_method=resample_method,
             clip=clip,
             tz=start_time.tzinfo,
             preserve_order=preserve_order,
+            dt_limit=dt_limit,
         )
 
         if value_column is not None:
@@ -676,6 +781,7 @@ def load_from_database(
     db_user=None,
     db_password=None,
     fetch_span=None,
+    dt_limit=DEFAULT_DT_LIMIT,
 ):
     r"""
     Load time series data from TimescaleDB database for building sensor data.
@@ -848,7 +954,7 @@ def load_from_database(
         )
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S") if end_time else "None"
         sensor_filter = f"sensor_{sensor_id}" if sensor_id else "all_sensors"
-        cached_filename = f"db_{table_name}_{sensor_filter}_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
+        cached_filename = f"db_{table_name}_{sensor_filter}_stepSize({str(step_size)})_method({resample_method})_dtlimit({dt_limit})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
@@ -864,8 +970,9 @@ def load_from_database(
     else:
         conn_string = f"host={db_host} port={db_port} dbname={db_name} user={db_user}"
 
-    # Get data for +/- 3 steps of buffer
-    buffer = datetime.timedelta(seconds=3 * step_size)
+    # Readings beyond the window's edges: +/- 3 steps, or dt_limit when longer, so a gap up to dt_limit across
+    # an edge is bridged from real readings on both sides (nothing beyond the readings is ever extrapolated)
+    buffer = datetime.timedelta(seconds=max(3 * step_size, 0.0 if dt_limit is None else float(dt_limit)))
     query_start_time = start_time - buffer
     query_end_time = end_time + buffer
     where_clause = f"{id_column} = %s AND {time_column} >= %s AND {time_column} < %s"
@@ -928,6 +1035,7 @@ def load_from_database(
         clip=clip,
         tz=start_time.tzinfo,
         preserve_order=preserve_order,
+        dt_limit=dt_limit,
     )
 
     df = df["value"]
