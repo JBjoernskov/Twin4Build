@@ -1515,6 +1515,29 @@ class FunctionalModel:
         self.__dict__["_coupling"] = (parent, find, dict(roots))
         return theta_block, column_block, len(roots)
 
+    def curvature_groups(self, n_theta: int) -> List[object]:
+        """Per theta entry the curvature group its component names for it
+        (:meth:`System.curvature_group`), ``None`` where it names none.  A
+        shared entry (several ``(comp, attr)`` pairs routed to one index)
+        keeps the first label."""
+        labels: List[object] = [None] * int(n_theta)
+        named = [False] * int(n_theta)
+        for i, spec in enumerate(self.theta_spec):
+            comp, attr = spec[0], spec[1]
+            idx = spec[2] if len(spec) > 2 else i
+            if isinstance(idx, slice):
+                entries = range(idx.start, idx.stop)
+            elif isinstance(idx, (list, tuple)):
+                entries = [int(t) for t in idx]
+            else:
+                entries = [int(idx)]
+            hook = getattr(comp, "curvature_group", None)
+            label = hook(attr) if callable(hook) else None
+            for t in entries:
+                if 0 <= t < n_theta and not named[t]:
+                    labels[t], named[t] = label, True
+        return labels
+
     def state_blocks(self, layout) -> np.ndarray:
         """The block id (:meth:`index_coupling`) of every entry of the flat
         state vector of ``layout`` (``(D,)``), ``-1`` where the state's
@@ -1953,14 +1976,17 @@ def functional_rollout_batched(functional_model, Y0, Theta, exogenous_tape, *, s
     return torch.stack(rows, dim=1)
 
 
-def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, step=None, return_end=False):
+def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, step=None, return_end=False, return_extent=False):
     """Roll ONE parameter vector over a batch of windows at once.
 
     ``Y0 (P, D_aug)`` per-window initial states, ``theta (n_theta,)``,
     ``exogenous_tape (n_t, P, n_exogenous)`` per-window inputs (every window
     the same length); returns ``(P, n_t, n_meas)``, or with ``return_end``
     ``(outputs, Y_end (P, D_aug))``: the state after the last step of every
-    window (the continuity defects of multiple shooting read it).  The
+    window (the continuity defects of multiple shooting read it), or with
+    ``return_extent`` ``(outputs, Y_end, Y_min, Y_max)``: also the lowest and
+    highest value of every state in every window, its start and end included
+    (the multiple-shooting tolerances read them).  The
     theta-only matrices are hoisted once (:meth:`FunctionalModel.step_constants`)
     and shared by the windows.  ``step`` defaults to
     :attr:`FunctionalModel.window_step` (the eager vmap of the transform-mode
@@ -1974,14 +2000,19 @@ def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, s
 
         step = torch.func.vmap(base, in_dims=(0, None, 0, None))
     Y = Y0
+    low = high = Y0
     rows = []
     for t in range(exogenous_tape.shape[0]):
         Y, meas = step(Y, theta, exogenous_tape[t], constants)
         rows.append(meas)
+        if return_extent:
+            low, high = torch.minimum(low, Y), torch.maximum(high, Y)
     if not rows:
         out = torch.zeros((Y0.shape[0], 0, functional_model.n_meas), dtype=exogenous_tape.dtype, device=exogenous_tape.device)
     else:
         out = torch.stack(rows, dim=1)
+    if return_extent:
+        return out, Y, low, high
     return (out, Y) if return_end else out
 
 
