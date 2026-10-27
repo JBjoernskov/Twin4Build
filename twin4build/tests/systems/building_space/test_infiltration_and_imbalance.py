@@ -201,7 +201,7 @@ class TestOneInfiltrationParameter(unittest.TestCase):
         _simulate(model)
         self.assertIs(room.thermal.m_inf, room.mass.m_inf)
         before = _series(room.output["indoorTemperature"])
-        model.set_parameters([0.012], [room], ["mass.m_inf"], overwrite=True)
+        model._write_parameters([0.012], [room], ["mass.m_inf"], overwrite=True)
         _simulate(model)
         self.assertIs(room.thermal.m_inf, room.mass.m_inf)
         after = _series(room.output["indoorTemperature"])
