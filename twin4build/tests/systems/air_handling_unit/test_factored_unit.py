@@ -42,8 +42,7 @@ END = START + datetime.timedelta(hours=1)
 STEP = 600
 RATIO = 0.9
 FAN_KWARGS = {
-    "nominalPowerRate": 1000.0, "nominalAirFlowRate": 1.0, "c1": 0.0, "c2": 0.2,
-    "c3": 0.8, "c4": 0.0, "f_total": 1.0,
+    "beta0": 0.0, "beta1": 200.0 / 3.0, "beta2": 400.0, "beta3": 1000.0, "f_total": 1.0,
 }
 HR_KWARGS = {
     "eps_75_h": 0.7, "eps_100_h": 0.75, "eps_75_c": 0.65, "eps_100_c": 0.7,

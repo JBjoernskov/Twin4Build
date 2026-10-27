@@ -36,10 +36,21 @@ The room models keep their ``supplyAirFlowRate`` / ``exhaustAirFlowRate``
 ports; :func:`make_up_air_flow` is applied to the exhaust slot at input
 assembly time (object, functional and fused execution paths alike).
 
-The constant infiltration :math:`\dot m_{inf}` (a parameter of both models)
-is *additive* to the make-up flow, the EnergyPlus convention: it models
-wind- and stack-driven exchange that exists regardless of the mechanical
-imbalance, and is balanced by an equal outflow at room state.
+The constant infiltration :math:`\dot m_{inf}` (one parameter shared by both
+models of a :class:`BuildingSpaceSystem`) is *additive* to the make-up flow,
+the EnergyPlus convention: it models wind- and stack-driven exchange that
+exists regardless of the mechanical imbalance, always arrives at outdoor
+state (also when the make-up stream comes from a neighbouring zone), and is
+balanced by an equal outflow at room state.
+
+The room publishes the two imbalance flows as outputs, so a neighbouring
+zone can take them: the **surplus flow**
+:math:`\dot m_{sur} = \max(\dot m_{sup} - \dot m_{exh}, 0)`, the supply the
+exhaust does not take, which leaves the room at room state, and the make-up
+flow.  :func:`surplus_air_flow` computes it as
+:math:`\dot m_{sup} - \dot m_{exh} + \dot m_{mu}`, so the room's mechanical
+streams balance exactly in either saturation mode:
+:math:`\dot m_{sup} + \dot m_{mu} = \dot m_{exh} + \dot m_{sur}`.
 
 The :math:`\max(\cdot, 0)` is the library's saturation
 (:func:`~twin4build.systems.utils.smooth_saturation.clamp`), so it follows
@@ -97,6 +108,15 @@ def make_up_air_flow(supply: torch.Tensor, exhaust: torch.Tensor) -> torch.Tenso
     the supply covers the exhaust in the hard saturation mode, a small flow
     in the smooth one).  Traceable under functorch/cuda graphs."""
     return positive_flow(exhaust - supply)
+
+
+def surplus_air_flow(supply: torch.Tensor, exhaust: torch.Tensor) -> torch.Tensor:
+    r"""Surplus flow :math:`\max(\dot m_{sup} - \dot m_{exh}, 0)` [kg/s] -- the
+    supply the exhaust does not take, leaving the room at room state.  Computed
+    as :math:`\dot m_{sup} - \dot m_{exh} + \dot m_{mu}` (:func:`make_up_air_flow`),
+    the exact max in the hard saturation mode and the flow that closes the
+    room's mass balance in the smooth one."""
+    return supply - exhaust + make_up_air_flow(supply, exhaust)
 
 
 def balanced_flow_inputs(inputs: dict) -> dict:

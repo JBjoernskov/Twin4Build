@@ -69,7 +69,9 @@ access):
   see one stateful component with the concatenated member state.
 * Parameters are routed by prefixed names (``"<member_key>.<unit>.<name>"``),
   mirroring the composite-component convention; non-estimated entries fall
-  back to the owning member's ``tps.Parameter`` defaults.
+  back to the owning member's ``tps.Parameter`` defaults.  A unit parameter
+  the member declares shared (``SHARED_UNIT_PARAMS``, e.g. a zone's thermal
+  infiltration reading ``mass.m_inf``) is routed by its source's name.
 
 Published diagnostic outputs with feedthrough (e.g. the wall's heat flows)
 are evaluated at the end-of-step state with held external inputs; this can
@@ -264,6 +266,17 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             )
         return caps
 
+    def state_output_ports(self):
+        """The members' units' state outputs in the block's state order,
+        under the block's namespaced names (``"<member id>.<port>"``)."""
+        ports = [
+            None if port is None else f"{m.id}.{port}"
+            for m in self._members
+            for _prefix, unit in m._ss_units()
+            for port in unit.state_output_ports()
+        ]
+        return ports if len(ports) == self.state_size() else [None] * self.state_size()
+
     def initialize(
         self,
         start_time: datetime.datetime = None,
@@ -281,14 +294,22 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         self._units = []
         for m in self._members:
             key = self._member_keys[m.id]
+            shared = getattr(m, "SHARED_UNIT_PARAMS", None) or {}
             for prefix, unit in m._ss_units():
                 param_prefix = f"{key}.{prefix}" if prefix else key
+                # name -> member-relative parameter path (a shared one: its source)
+                paths = {}
+                for name in unit.PARAM_NAMES:
+                    path = f"{prefix}.{name}" if prefix else name
+                    paths[name] = shared.get(path, path)
                 self._units.append(
                     {
                         "member": m,
                         "unit": unit,
                         "layout": unit._ss_layout(),
                         "param_prefix": param_prefix,
+                        "param_paths": paths,
+                        "member_key": key,
                     }
                 )
 
@@ -515,10 +536,13 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             for k in range(len(entry["cols"])):
                 visit_input(i, k)
         self._input_order = tuple(input_order)
+        # A shared parameter is one name, however many units read it.
         self.PARAM_NAMES = tuple(
-            f"{entry['param_prefix']}.{name}"
-            for entry in self._units
-            for name in entry["unit"].PARAM_NAMES
+            dict.fromkeys(
+                f"{entry['member_key']}.{path}"
+                for entry in self._units
+                for path in entry["param_paths"].values()
+            )
         )
 
         self._fwd_mat_cache = None
@@ -531,14 +555,14 @@ class FusedStateSpaceSystem(core.System, nn.Module):
 
     def _unit_params(self, entry, params):
         """Physical-parameter dict for one unit: estimated entries from the
-        prefixed ``params`` (``"<member_key>.<unit>.<name>"``), the rest from
-        the unit's own ``tps.Parameter`` defaults."""
-        unit = entry["unit"]
-        prefix = entry["param_prefix"]
+        prefixed ``params`` (``"<member_key>.<unit>.<name>"``, a shared one by
+        its source's name), the rest from the member's ``tps.Parameter``
+        defaults."""
+        member = entry["member"]
         out = {}
-        for name in unit.PARAM_NAMES:
-            key = f"{prefix}.{name}"
-            out[name] = params[key] if key in params else rgetattr(unit, name).get()
+        for name, path in entry["param_paths"].items():
+            key = f"{entry['member_key']}.{path}"
+            out[name] = params[key] if key in params else rgetattr(member, path).get()
         return out
 
     def _assemble(self, params):
@@ -729,11 +753,11 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             ref = next(v for v in inputs.values() if v.dim() == n_lead)
             inputs = dict(inputs)
             inputs.update({name: torch.zeros_like(ref) for name in missing})
-        summed = {
+        port_values = {
             name: (inputs[name].sum(dim=-1) if inputs[name].dim() > n_lead else inputs[name])
             for name in self._ext_names
         }
-        summed = self._transform_inputs(summed)
+        summed = self._transform_inputs(port_values)
         u = torch.stack([summed[name] for name in self._ext_names], dim=-1)
         x_next, y = bilinear_onestep(
             A,
@@ -749,9 +773,11 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             transform_mode=transform_mode,
         )
         outputs = {name: y[..., p] for p, name in enumerate(self._out_names)}
+        # Derived outputs read the ports' values, not the transformed matrix
+        # columns (a zone's imbalance needs its exhaust, not its make-up flow).
         for member_id, derive, in_ports, row_ports, out_ports in self._derived_outputs:
             derived = derive(
-                {port: summed[f"{member_id}.{port}"] for port in in_ports},
+                {port: port_values[f"{member_id}.{port}"] for port in in_ports},
                 {port: outputs[f"{member_id}.{port}"] for port in row_ports},
             )
             for port in out_ports:
@@ -784,11 +810,9 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         params = self._do_step_params
         if params is None:
             params = {
-                f"{entry['param_prefix']}.{name}": rgetattr(
-                    entry["unit"], name
-                ).get()
+                f"{entry['member_key']}.{path}": rgetattr(entry["member"], path).get()
                 for entry in self._units
-                for name in entry["unit"].PARAM_NAMES
+                for path in entry["param_paths"].values()
             }
             self._do_step_params = params
         return params
