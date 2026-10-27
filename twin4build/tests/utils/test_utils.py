@@ -1402,6 +1402,35 @@ class TestSimpleCycle(unittest.TestCase):
         cycles = list(simple_cycles(graph))
         self.assertGreaterEqual(len(cycles), 1)
 
+    def test_cycles_come_in_the_graphs_order_not_the_hashes(self):
+        """The same graph gives its cycles in the same order whatever the
+        vertices' hashes: components hash by their addresses, which change
+        between processes, and the simulation model cuts on the first cycles
+        found when there are too many to list."""
+
+        class Vertex:
+            def __init__(self, name, hashed):
+                self.name, self.hashed = name, hashed
+
+            def __hash__(self):
+                return self.hashed
+
+        def cycles(hashes):
+            v = {name: Vertex(name, h) for name, h in zip("abcde", hashes)}
+            graph = {
+                v["a"]: {v["b"], v["c"], v["d"]},
+                v["b"]: {v["a"], v["e"]},
+                v["c"]: {v["a"], v["e"]},
+                v["d"]: {v["a"]},
+                v["e"]: {v["a"], v["b"], v["c"]},
+            }
+            return [[vertex.name for vertex in cycle] for cycle in simple_cycles(graph)]
+
+        first = cycles([1, 2, 3, 4, 5])
+        self.assertEqual(len(first), 9)
+        self.assertEqual(cycles([5, 4, 3, 2, 1]), first)
+        self.assertEqual(cycles([3, 5, 1, 4, 2]), first)
+
 
 class TestConstants(unittest.TestCase):
     def test_constants_import(self):

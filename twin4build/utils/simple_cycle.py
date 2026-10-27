@@ -44,7 +44,13 @@ def simple_cycles(G):
                 B[node].clear()
 
     G = {v: set(nbrs) for (v, nbrs) in G.items()}  # make a copy of the graph
-    sccs = strongly_connected_components(G)
+    # Vertices are visited in G's own order, not in the order of the sets that
+    # hold them: a set of objects iterates by their hashes (their addresses),
+    # so the cycles came in another order in every process, and a caller that
+    # takes only the first cycles (SimulationModel's CYCLE_SAMPLE) cut a
+    # different model each time.
+    rank = {v: i for i, v in enumerate(G)}.__getitem__
+    sccs = strongly_connected_components(G, key=rank)
     while sccs:
         scc = sccs.pop()
         startnode = scc.pop()
@@ -53,7 +59,7 @@ def simple_cycles(G):
         closed = set()
         blocked.add(startnode)
         B = defaultdict(set)
-        stack = [(startnode, list(G[startnode]))]
+        stack = [(startnode, sorted(G[startnode], key=rank))]
         while stack:
             thisnode, nbrs = stack[-1]
             if nbrs:
@@ -63,7 +69,7 @@ def simple_cycles(G):
                     closed.update(path)
                 elif nextnode not in blocked:
                     path.append(nextnode)
-                    stack.append((nextnode, list(G[nextnode])))
+                    stack.append((nextnode, sorted(G[nextnode], key=rank)))
                     closed.discard(nextnode)
                     blocked.add(nextnode)
                     continue
@@ -77,15 +83,16 @@ def simple_cycles(G):
                 stack.pop()
                 path.pop()
         remove_node(G, startnode)
-        H = subgraph(G, set(scc))
-        sccs.extend(strongly_connected_components(H))
+        H = subgraph(G, set(scc), key=rank)
+        sccs.extend(strongly_connected_components(H, key=rank))
 
 
-def strongly_connected_components(graph):
+def strongly_connected_components(graph, key=None):
     # Tarjan's algorithm for finding SCC's
     # Robert Tarjan. "Depth-first search and linear graph algorithms." SIAM journal on computing. 1972.
     # Code by Dries Verdegem, November 2012
     # Downloaded from http://www.logarithmic.net/pfh/blog/01208083168
+    # key: the order successors are visited in (default: their set's order)
 
     index_counter = [0]
     stack = []
@@ -99,7 +106,7 @@ def strongly_connected_components(graph):
         index_counter[0] += 1
         stack.append(node)
 
-        successors = graph[node]
+        successors = graph[node] if key is None else sorted(graph[node], key=key)
         for successor in successors:
             if successor not in index:
                 _strong_connect(successor)
@@ -132,7 +139,8 @@ def remove_node(G, target):
         nbrs.discard(target)
 
 
-def subgraph(G, vertices):
+def subgraph(G, vertices, key=None):
     # Get the subgraph of G induced by set vertices
     # Expects values of G to be sets
-    return {v: G[v] & vertices for v in vertices}
+    # key: the order of the subgraph's vertices (default: the set's order)
+    return {v: G[v] & vertices for v in (vertices if key is None else sorted(vertices, key=key))}
