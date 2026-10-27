@@ -42,6 +42,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, 
 
 
 from twin4build.systems.sensor.sensor_system import SensorSystem
+from twin4build.utils.data_loaders.load import DEFAULT_DT_LIMIT
 from twin4build.utils.slots import slot_pairs
 
 LOGGER = logging.getLogger(__name__)
@@ -272,6 +273,8 @@ def replay_leaf(sensor: SensorSystem, leaf_id: str, transform: Optional[Callable
         datecolumn=getattr(sensor, "_datecolumn", 0),
         valuecolumn=getattr(sensor, "_valuecolumn", 1),
         transformation=transformation,
+        resample_method=getattr(sensor, "resample_method", "linear"),
+        dt_limit=getattr(sensor, "dt_limit", DEFAULT_DT_LIMIT),
     )
 
 

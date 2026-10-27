@@ -53,6 +53,7 @@ import torch
 
 import twin4build.utils.types as tps
 from twin4build.utils.logger import LOGGER
+from twin4build.utils.scoring_mask import filled_downstream as _filled_downstream
 from twin4build.utils.scoring_mask import period_mask as _period_mask
 from twin4build.utils.scoring_mask import to_ns as _to_ns
 from twin4build.utils.types import denormalize_unit, theta_bound_tensors
@@ -570,6 +571,8 @@ class FunctionalEstimationObjective:
         self.M0 = [values[0] for values in R.measurement_tape]
         self.ACT = []
         dev = est._device
+        # the samples that rest on input steps a declared fill gave a value
+        filled = _filled_downstream(est.simulator.model)
         for p, n_t in enumerate(self.n_t):
             act = torch.zeros((n_t, len(md_list)), dtype=tps.float_dtype(), device=dev)
             for m, md in enumerate(md_list):
@@ -590,6 +593,9 @@ class FunctionalEstimationObjective:
                         _period_mask(mask, est.actual_readings[md.id][p].index, n_t), device=dev
                     )
                     act[~keep, m] = float("nan")
+                if md.id in filled:
+                    hit = np.asarray(filled[md.id][p], dtype=bool)[:n_t]
+                    act[: len(hit), m][torch.as_tensor(hit, device=dev)] = float("nan")
             self.ACT.append(act)
 
         LOGGER.config(
