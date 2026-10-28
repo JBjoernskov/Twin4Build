@@ -57,7 +57,11 @@ def _schedule(value, sid):
 
 
 def _room(sid="room"):
-    return tb.BuildingSpaceSystem(id=sid, C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02, airVolume=100.0)
+    return tb.BuildingSpaceSystem(
+        id=sid,
+        thermal_kwargs=dict(C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02),
+        mass_kwargs=dict(V=100.0),
+    )
 
 
 def _series(port):
