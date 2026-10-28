@@ -1,9 +1,9 @@
 """Parameters by component id, across batchings.
 
 A batched model keeps the parameters of its components stacked on metas
-whose ids depend on the batching.  ``Model.get_parameter_values`` reads them
+whose ids depend on the batching.  ``Model.get_parameters`` reads them
 by the ids of the components the model was built from and
-``Model.set_parameter_values`` writes them to any batching of the model, or
+``Model.set_parameters`` writes them to any batching of the model, or
 to the unbatched model.  A saved fit carries its parameters that way
 (``parameter_instances``, ``parameter_instances_x0``,
 ``parameter_instance_bounds``), so ``load_estimation_result`` loads it onto
@@ -125,11 +125,11 @@ class TestSourceComponentIds(unittest.TestCase):
         self.assertEqual(model.get_source_component_ids(model.components["Radiator1"]), ("Radiator1",))
 
 
-class TestGetParameterValues(unittest.TestCase):
+class TestGetParameters(unittest.TestCase):
     def test_a_batched_meta_gives_one_key_per_component(self):
         model = build(n_pairs=3, model_id="pv_get")
         batched = batch(model)
-        values = batched.get_parameter_values(heater_parameters(batched))
+        values = batched.get_parameters(heater_parameters(batched))
         self.assertEqual(
             set(values),
             {(f"Radiator{k}", attr) for k in range(3) for attr in ("UA", "thermalMassHeatCapacity")},
@@ -142,7 +142,7 @@ class TestGetParameterValues(unittest.TestCase):
                 float(values[(f"Radiator{k}", "thermalMassHeatCapacity")]) / (5e4 * (1 + 0.1 * k)), 1.0
             )
         # the same values as the unbatched model's, under the same keys
-        unbatched = model.get_parameter_values(heater_parameters(model))
+        unbatched = model.get_parameters(heater_parameters(model))
         self.assertEqual(set(unbatched), set(values))
         for key in values:
             np.testing.assert_allclose(unbatched[key], values[key], rtol=1e-12)
@@ -153,7 +153,7 @@ class TestGetParameterValues(unittest.TestCase):
         model = build(n_pairs=2, model_id="pv_entries")
         zones = [model.components[f"Zone{k}"] for k in range(2)]
         heater = model.components["Radiator0"]
-        values = model.get_parameter_values(
+        values = model.get_parameters(
             [(zones, "C_air", 2e6, 1e5, 1e7, "shared"), (heater, "UA", None, 1.0, 500.0)]
         )
         self.assertEqual(set(values), {("Zone0", "C_air"), ("Zone1", "C_air"), ("Radiator0", "UA")})
@@ -163,9 +163,9 @@ class TestGetParameterValues(unittest.TestCase):
         model = build(n_pairs=1, model_id="pv_refused")
         heater = model.components["Radiator0"]
         with self.assertRaises(TypeError):
-            model.get_parameter_values([(heater, "nelements")])
+            model.get_parameters([(heater, "nelements")])
         with self.assertRaises(TypeError):
-            model.get_parameter_values([(heater, "no_such_parameter")])
+            model.get_parameters([(heater, "no_such_parameter")])
 
     def test_rows_and_shared_values_of_a_meta(self):
         """A meta whose parameter holds several values per instance gives
@@ -176,7 +176,7 @@ class TestGetParameterValues(unittest.TestCase):
         single = Rows([7.0, 8.0], 0.25, id="single")
         model.add_component(meta)
         model.add_component(single)
-        values = model.get_parameter_values([(meta, "w"), (meta, "g"), (single, "w"), (single, "g")])
+        values = model.get_parameters([(meta, "w"), (meta, "g"), (single, "w"), (single, "g")])
         np.testing.assert_allclose(values[("a", "w")], [1.0, 2.0, 3.0])
         np.testing.assert_allclose(values[("b", "w")], [4.0, 5.0, 6.0])
         self.assertAlmostEqual(float(values[("a", "g")]), 0.5)
@@ -184,7 +184,7 @@ class TestGetParameterValues(unittest.TestCase):
         np.testing.assert_allclose(values[("single", "w")], [7.0, 8.0])
         self.assertEqual(values[("single", "g")].shape, ())
 
-        counts = model.set_parameter_values(
+        counts = model.set_parameters(
             {
                 ("b", "w"): [40.0, 50.0, 60.0],  # one instance's row
                 ("a", "g"): 0.75,  # the value the instances share
@@ -199,17 +199,17 @@ class TestGetParameterValues(unittest.TestCase):
         np.testing.assert_allclose(single.w.get().numpy(), [70.0, 80.0])
         self.assertAlmostEqual(float(single.g.get()), 0.125)
         # one value for a vector parameter of a component fills it
-        self.assertEqual(model.set_parameter_values({("single", "w"): 9.0}), {"applied": 1, "missing": 0})
+        self.assertEqual(model.set_parameters({("single", "w"): 9.0}), {"applied": 1, "missing": 0})
         np.testing.assert_allclose(single.w.get().numpy(), [9.0, 9.0])
 
 
-class TestSetParameterValues(unittest.TestCase):
+class TestSetParameters(unittest.TestCase):
     def test_an_instance_is_written_and_the_others_are_left_alone(self):
         model = build(n_pairs=3, model_id="pv_set")
         batched = batch(model)
         meta, i_c = model.get_batched_component_info("Radiator1")
         self.assertEqual(i_c, 1)
-        counts = batched.set_parameter_values({("Radiator1", "UA"): 123.0})
+        counts = batched.set_parameters({("Radiator1", "UA"): 123.0})
         self.assertEqual(counts, {"applied": 1, "missing": 0})
         np.testing.assert_allclose(meta.UA.get().detach().numpy(), [40.0, 123.0, 50.0])
         np.testing.assert_allclose(
@@ -220,14 +220,14 @@ class TestSetParameterValues(unittest.TestCase):
         model = build(n_pairs=3, model_id="pv_meta_id")
         batched = batch(model)
         meta, _ = model.get_batched_component_info("Radiator0")
-        counts = batched.set_parameter_values({(meta.id, "UA"): [10.0, 20.0, 30.0]})
+        counts = batched.set_parameters({(meta.id, "UA"): [10.0, 20.0, 30.0]})
         self.assertEqual(counts, {"applied": 1, "missing": 0})
         np.testing.assert_allclose(meta.UA.get().detach().numpy(), [10.0, 20.0, 30.0])
 
     def test_what_the_model_does_not_have_is_counted(self):
         model = build(n_pairs=2, model_id="pv_missing")
         batched = batch(model)
-        counts = batched.set_parameter_values(
+        counts = batched.set_parameters(
             {
                 ("Radiator0", "UA"): 60.0,
                 ("Radiator7", "UA"): 60.0,  # no such component
@@ -245,10 +245,10 @@ class TestSetParameterValues(unittest.TestCase):
         batched = batch(model)
         meta, _ = model.get_batched_component_info("Radiator0")
         with self.assertRaises(KeyError):
-            batched.set_parameter_values({("Radiator0", "UA"): 60.0, ("Radiator7", "UA"): 60.0}, strict=True)
+            batched.set_parameters({("Radiator0", "UA"): 60.0, ("Radiator7", "UA"): 60.0}, strict=True)
         np.testing.assert_allclose(meta.UA.get().detach().numpy(), [40.0, 45.0])
         self.assertEqual(
-            batched.set_parameter_values({("Radiator0", "UA"): 60.0}, strict=True), {"applied": 1, "missing": 0}
+            batched.set_parameters({("Radiator0", "UA"): 60.0}, strict=True), {"applied": 1, "missing": 0}
         )
 
     def test_a_sub_object_with_an_id_of_its_own_and_a_dotted_attribute(self):
@@ -264,13 +264,13 @@ class TestSetParameterValues(unittest.TestCase):
             set_main_dir(main_dir)
         damper = model.components["office_occupancy"].supply_damper
         self.assertNotIn(damper.id, model.components)
-        counts = model.set_parameter_values({(damper.id, "nominalAirFlowRate"): 0.25})
+        counts = model.set_parameters({(damper.id, "nominalAirFlowRate"): 0.25})
         self.assertEqual(counts, {"applied": 1, "missing": 0})
         self.assertAlmostEqual(float(damper.nominalAirFlowRate.get().reshape(-1)[0]), 0.25)
         office = model.components["office"]
-        self.assertEqual(model.set_parameter_values({("office", "thermal.C_air"): 3e6}), {"applied": 1, "missing": 0})
+        self.assertEqual(model.set_parameters({("office", "thermal.C_air"): 3e6}), {"applied": 1, "missing": 0})
         self.assertAlmostEqual(float(office.thermal.C_air.get().reshape(-1)[0]), 3e6)
-        values = model.get_parameter_values([(office, "thermal.C_air"), (damper, "nominalAirFlowRate")])
+        values = model.get_parameters([(office, "thermal.C_air"), (damper, "nominalAirFlowRate")])
         self.assertAlmostEqual(float(values[("office", "thermal.C_air")]), 3e6)
         self.assertAlmostEqual(float(values[(damper.id, "nominalAirFlowRate")]), 0.25)
 
@@ -279,8 +279,8 @@ class TestSetParameterValues(unittest.TestCase):
         and to another batching: the three simulate alike."""
         source = build(n_pairs=3, model_id="pv_round_source")
         batched = batch(source)
-        self.assertEqual(batched.set_parameter_values(VALUES), {"applied": 6, "missing": 0})
-        values = batched.get_parameter_values(heater_parameters(batched))
+        self.assertEqual(batched.set_parameters(VALUES), {"applied": 6, "missing": 0})
+        values = batched.get_parameters(heater_parameters(batched))
         self.assertEqual(set(values), set(VALUES))
         for key in VALUES:
             np.testing.assert_allclose(values[key], VALUES[key], rtol=1e-12)
@@ -293,7 +293,7 @@ class TestSetParameterValues(unittest.TestCase):
         self.assertGreater(float((temperatures(untouched)[2] - reference[2]).abs().max()), 1e-2)
 
         unbatched = build(n_pairs=3, model_id="pv_round_unbatched")
-        self.assertEqual(unbatched.set_parameter_values(values), {"applied": 6, "missing": 0})
+        self.assertEqual(unbatched.set_parameters(values), {"applied": 6, "missing": 0})
         simulate(unbatched, hours=HOURS)
         for k, t in enumerate(temperatures(unbatched)):
             torch.testing.assert_close(t, reference[k], rtol=1e-9, atol=1e-9, msg=f"Zone{k}")
@@ -303,7 +303,7 @@ class TestSetParameterValues(unittest.TestCase):
         other_batched = batch(other)
         meta, _ = other.get_batched_component_info("Radiator0")
         self.assertEqual(other_batched.get_source_component_ids(meta), ("Radiator0", "Radiator1"))
-        self.assertEqual(other_batched.set_parameter_values(values), {"applied": 6, "missing": 0})
+        self.assertEqual(other_batched.set_parameters(values), {"applied": 6, "missing": 0})
         simulate(other_batched, hours=HOURS)
         for k, t in enumerate(temperatures(other, other_batched)):
             torch.testing.assert_close(t, reference[k], rtol=1e-9, atol=1e-9, msg=f"Zone{k}")
@@ -311,10 +311,67 @@ class TestSetParameterValues(unittest.TestCase):
         # a smaller model takes what it has
         small = build(n_pairs=2, model_id="pv_round_small")
         small_batched = batch(small)
-        self.assertEqual(small_batched.set_parameter_values(values), {"applied": 4, "missing": 2})
+        self.assertEqual(small_batched.set_parameters(values), {"applied": 4, "missing": 2})
         simulate(small_batched, hours=HOURS)
         for k, t in enumerate(temperatures(small, small_batched, n=2)):
             torch.testing.assert_close(t, reference[k], rtol=1e-9, atol=1e-9, msg=f"Zone{k}")
+
+
+class TestOneParameterPair(unittest.TestCase):
+    """``get_parameters`` / ``set_parameters`` are the model's one public
+    pair: keys by component or by id, every configured parameter when no
+    entries are given; the 2.0 development names warn."""
+
+    def test_a_component_object_is_a_key_like_its_id(self):
+        model = build(n_pairs=2, model_id="pv_object_key")
+        heater = model.components["Radiator1"]
+        self.assertEqual(model.set_parameters({(heater, "UA"): 77.0}), {"applied": 1, "missing": 0})
+        self.assertAlmostEqual(float(model.get_parameters([(heater, "UA")])[("Radiator1", "UA")]), 77.0)
+        self.assertAlmostEqual(float(model.get_parameters([("Radiator1", "UA")])[("Radiator1", "UA")]), 77.0)
+
+    def test_none_leaves_the_parameter_as_it_is(self):
+        """An estimator entry whose x0 the component computes (``None``)
+        writes nothing: the full-workflow notebook passes the radiator's UA so."""
+        model = build(n_pairs=2, model_id="pv_none")
+        heater = model.components["Radiator0"]
+        before = float(heater.UA.get())
+        self.assertEqual(model.set_parameters({(heater, "UA"): None, (heater, "thermalMassHeatCapacity"): 6e4}),
+                         {"applied": 1, "missing": 0})
+        self.assertEqual(float(heater.UA.get()), before)
+
+    def test_an_id_reads_one_instance_of_a_batched_meta(self):
+        model = build(n_pairs=3, model_id="pv_id_get")
+        batched = batch(model)
+        values = batched.get_parameters([("Radiator2", "UA")])
+        self.assertEqual(set(values), {("Radiator2", "UA")})
+        self.assertAlmostEqual(float(values[("Radiator2", "UA")]), 50.0)
+        with self.assertRaises(KeyError):
+            batched.get_parameters([("NoSuchComponent", "UA")])
+
+    def test_without_entries_every_configured_parameter(self):
+        model = build(n_pairs=2, model_id="pv_all")
+        values = model.get_parameters()
+        for k in range(2):
+            self.assertIn((f"Radiator{k}", "UA"), values)
+            self.assertIn((f"Radiator{k}", "thermalMassHeatCapacity"), values)
+        # what it reads, it writes back unchanged
+        self.assertEqual(model.set_parameters(values)["missing"], 0)
+
+    def test_the_development_names_warn_and_delegate(self):
+        model = build(n_pairs=2, model_id="pv_aliases")
+        with self.assertWarns(DeprecationWarning):
+            values = model.get_parameter_values([(model.components["Radiator0"], "UA")])
+        with self.assertWarns(DeprecationWarning):
+            counts = model.set_parameter_values({key: 2 * value for key, value in values.items()})
+        self.assertEqual(counts, {"applied": 1, "missing": 0})
+        self.assertAlmostEqual(float(model.get_parameters([("Radiator0", "UA")])[("Radiator0", "UA")]), 80.0)
+
+    def test_the_list_form_is_not_public(self):
+        model = build(n_pairs=2, model_id="pv_list_form")
+        with self.assertRaises(TypeError):
+            model.set_parameters([60.0], [model.components["Radiator0"]], ["UA"])
+        with self.assertRaises(TypeError):
+            model.simulation_model.set_parameters([60.0])
 
 
 class TestFitAcrossBatchings(unittest.TestCase):
@@ -326,7 +383,7 @@ class TestFitAcrossBatchings(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp()
         set_main_dir(cls.tmp)
         truth = build(n_pairs=3, model_id="pv_fit_truth")
-        truth.set_parameter_values(VALUES)
+        truth.set_parameters(VALUES)
         simulate(truth, hours=HOURS)
         cls.data = [t.numpy() for t in temperatures(truth)]
 
@@ -382,7 +439,7 @@ class TestFitAcrossBatchings(unittest.TestCase):
             self.assertEqual(set(bounds), keys)
             self.assertEqual(result["component_source_ids"], [["Radiator0", "Radiator1", "Radiator2"]] * 2)
             # the fitted values are the model's and the result's
-            now = self.batched.get_parameter_values(self.parameters)
+            now = self.batched.get_parameters(self.parameters)
             for k in range(3):
                 np.testing.assert_allclose(fitted[(f"Radiator{k}", "UA")], now[(f"Radiator{k}", "UA")], rtol=1e-9)
                 np.testing.assert_allclose(fitted[(f"Radiator{k}", "UA")], result["result_x"][k], rtol=1e-9)
@@ -466,15 +523,15 @@ class TestFitAcrossBatchings(unittest.TestCase):
 
         def fresh(model_id):
             model = self.with_sensors(build(n_pairs=3, model_id=model_id))
-            model.set_parameter_values({key: 3.0 * fitted_value})  # a setup of its own
+            model.set_parameters({key: 3.0 * fitted_value})  # a setup of its own
             return model
 
         model = fresh("pv_fit_held")
         model.load_estimation_result(filename=self.filename)
-        np.testing.assert_allclose(model.get_parameter_values([(model.components["Zone0"], "Q_occ_gain")])[key], fitted_value, rtol=1e-12)
+        np.testing.assert_allclose(model.get_parameters([(model.components["Zone0"], "Q_occ_gain")])[key], fitted_value, rtol=1e-12)
         model = fresh("pv_fit_held_off")
         model.load_estimation_result(filename=self.filename, fixed=False)
-        np.testing.assert_allclose(model.get_parameter_values([(model.components["Zone0"], "Q_occ_gain")])[key], 3.0 * fitted_value, rtol=1e-12)
+        np.testing.assert_allclose(model.get_parameters([(model.components["Zone0"], "Q_occ_gain")])[key], 3.0 * fitted_value, rtol=1e-12)
 
     def test_a_result_without_the_values_by_component_loads_as_before(self):
         """A result saved before the values by component existed is set by

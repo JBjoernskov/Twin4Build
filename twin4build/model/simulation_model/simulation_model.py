@@ -1298,7 +1298,7 @@ class SimulationModel:
     #     ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
     #     self._custom_initial_dict = _custom_initial_dict
 
-    def set_parameters(
+    def _write_parameters(
         self,
         values: List[Any],
         components: List[core.System],
@@ -1310,7 +1310,10 @@ class SimulationModel:
         save_original: bool = False,
     ) -> None:
         """
-        Set parameters for components from an array.
+        Write parameter values given as parallel lists: the estimator's writer
+        (normalized values, bounds, replacing a parameter object and saving
+        the original for :meth:`restore_parameters`).  The public setter is
+        :meth:`set_parameters`.
 
         Args:
             values (List[Any]): List of parameter values.
@@ -1424,7 +1427,7 @@ class SimulationModel:
 
     def restore_parameters(self, keep_values: bool = True) -> None:
         """
-        Restore parameter objects previously saved by set_parameters
+        Restore parameter objects previously saved by :meth:`_write_parameters`
         (called with save_original=True).
 
         Args:
@@ -1796,7 +1799,7 @@ class SimulationModel:
             if cond:
                 self.set_parameters_from_config(entry, component)
             else:
-                self.set_parameters([entry], [component], [key])
+                self._write_parameters([entry], [component], [key])
         return
 
     def cache(
@@ -3174,7 +3177,7 @@ class SimulationModel:
             return None
         return obj
 
-    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+    def get_parameters(self, parameters=None) -> Dict[Tuple[str, str], np.ndarray]:
         """The current values of parameters, by the ids of the components
         the model was built from.
 
@@ -3183,9 +3186,11 @@ class SimulationModel:
                 parameter entries of
                 :meth:`~twin4build.estimator.estimator.Estimator.estimate`
                 (what follows ``attr`` is ignored).  ``component`` is a
-                component or a list of components, ``attr`` the name of a
-                parameter, dotted for a parameter of a sub-model
-                (``"thermal.C_air"``).
+                component, its id, or a list of components; ``attr`` the
+                name of a parameter, dotted for a parameter of a sub-model
+                (``"thermal.C_air"``).  ``None`` (default): every parameter
+                each component lists in its configuration
+                (``config["parameters"]``) that is a parameter object.
 
         Returns:
             ``{(component id, attr): values}`` in physical units.  A batched
@@ -3194,17 +3199,36 @@ class SimulationModel:
             any other component gives one.  The values of a scalar
             parameter are a 0-d array, those of a vector parameter a 1-d
             array.  Keyed this way the values do not depend on how the
-            model was batched: :meth:`set_parameter_values` writes them to
-            the unbatched model or to any batching of it.
+            model was batched: :meth:`set_parameters` writes them to the
+            unbatched model or to any batching of it.
 
         Raises:
             TypeError: If ``attr`` is not a parameter of ``component``.
+            KeyError: If an id names no component of the model.
         """
+        if parameters is None:
+            parameters = [
+                (component, attr)
+                for component in self._components.values()
+                for attr in (getattr(component, "config", None) or {}).get("parameters", [])
+                if self._parameter_object(component, attr) is not None
+            ]
+        lookup = instances = None
         out: Dict[Tuple[str, str], np.ndarray] = {}
         for entry in parameters:
             component_s, attr = entry[0], str(entry[1])
             components = component_s if isinstance(component_s, (list, tuple)) else [component_s]
             for component in components:
+                only = None
+                if isinstance(component, str):
+                    if lookup is None:
+                        lookup, instances = self._component_lookup(), self._instances_by_id()
+                    if component in lookup:
+                        component = lookup[component]
+                    elif component in instances:
+                        only, component = component, instances[component][0]
+                    else:
+                        raise KeyError(f"'{component}' names no component of the model '{self._id}'")
                 param = self._parameter_object(component, attr)
                 if param is None:
                     raise TypeError(
@@ -3213,8 +3237,25 @@ class SimulationModel:
                     )
                 values = param.get().detach().cpu().numpy()
                 for cid, v in self._split_instances(component, values):
-                    out[(cid, attr)] = v
+                    if only is None or cid == only:
+                        out[(cid, attr)] = v
         return out
+
+    def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
+        """Deprecated name of :meth:`get_parameters` (removed in 2.1)."""
+        deprecate_name("get_parameter_values", "get_parameters")
+        return self.get_parameters(parameters)
+
+    def _instances_by_id(self) -> Dict[str, Tuple[Any, int, int]]:
+        """``{source component id: (component, instance, n instances)}``:
+        each component the model's components stand for (a batched meta's
+        instances, any other component itself)."""
+        instances: Dict[str, Tuple[Any, int, int]] = {}
+        for comp in self._components.values():
+            ids = self._instance_ids(comp)
+            for i_c, cid in enumerate(ids):
+                instances.setdefault(cid, (comp, i_c, len(ids)))
+        return instances
 
     def _component_lookup(self) -> Dict[str, Any]:
         """The model's components by id, with the nested sub-objects that
@@ -3237,19 +3278,23 @@ class SimulationModel:
                         lookup[attr_val.id] = attr_val
         return lookup
 
-    def set_parameter_values(
-        self, values: Dict[Tuple[str, str], Any], strict: bool = False
+    def set_parameters(
+        self, values: Dict[Tuple[Any, str], Any], strict: bool = False
     ) -> Dict[str, int]:
-        """Set parameters from values keyed by component id.
+        """Set parameters from values keyed by component (or its id) and
+        attribute.
 
         Args:
-            values: ``{(component id, attr): values}`` in physical units, as
-                returned by :meth:`get_parameter_values`.  The id names a
-                component of this model (or a sub-object of one that
-                carries an id of its own), or a component one of this
+            values: ``{(component or component id, attr): values}`` in
+                physical units, as returned by :meth:`get_parameters`.  The
+                id names a component of this model (or a sub-object of one
+                that carries an id of its own), or a component one of this
                 model's batched metas stands for.  For the latter the
                 values are written at that instance of the meta's
-                parameter and the other instances keep theirs.
+                parameter and the other instances keep theirs.  A component
+                (or sub-object) given as an object is written itself, also
+                where another object carries the same id.  A value of
+                ``None`` leaves its parameter as it is.
             strict: Raise on a key that names no parameter of this model.
                 ``False`` (default) counts it as missing.
 
@@ -3261,18 +3306,29 @@ class SimulationModel:
         Raises:
             KeyError: With ``strict``, on the first key that names no
                 parameter of this model; nothing is written then.
+            TypeError: If ``values`` is not a mapping (the parallel-list form
+                of 2.0's development versions is the estimator's private
+                writer now).
         """
+        if not isinstance(values, dict):
+            raise TypeError(
+                "set_parameters takes {(component or component id, attr): values}, "
+                f"not {type(values).__name__}"
+            )
         lookup = self._component_lookup()
-        instances: Dict[str, Tuple[Any, int, int]] = {}
-        for comp in self._components.values():
-            ids = self._instance_ids(comp)
-            for i_c, cid in enumerate(ids):
-                instances.setdefault(cid, (comp, i_c, len(ids)))
+        instances = self._instances_by_id()
         staged: Dict[Tuple[int, str], Tuple[Any, np.ndarray]] = {}
         counts = {"applied": 0, "missing": 0}
         for (cid, attr), value in values.items():
-            cid, attr = str(cid), str(attr)
-            if cid in lookup:
+            if value is None:
+                continue  # left as it is (an estimator entry whose x0 the component computes)
+            attr = str(attr)
+            if not isinstance(cid, str):
+                # an object names itself: a sub-object may share its id with
+                # a component (an occupancy's copy of a damper)
+                owner, i_c, n = cid, 0, 1
+                cid = str(getattr(cid, "id", cid))
+            elif cid in lookup:
                 owner, i_c, n = lookup[cid], 0, 1
             else:
                 owner, i_c, n = instances.get(cid, (None, 0, 1))
@@ -3315,6 +3371,13 @@ class SimulationModel:
                     normalized=False,
                 )
         return counts
+
+    def set_parameter_values(
+        self, values: Dict[Tuple[Any, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Deprecated name of :meth:`set_parameters` (removed in 2.1)."""
+        deprecate_name("set_parameter_values", "set_parameters")
+        return self.set_parameters(values, strict=strict)
 
     def set_state(
         self,
@@ -3496,7 +3559,7 @@ class SimulationModel:
         that stand for other components; the parameters are then set from
         the values the result carries by the ids of the components the
         model was built from (``parameter_instances``, see
-        :meth:`set_parameter_values`), and the numbers applied and missing
+        :meth:`set_parameters`), and the numbers applied and missing
         are logged.  The parameters' bounds are left as they are in that
         case.
 
@@ -3548,7 +3611,7 @@ class SimulationModel:
             return
         held = self._result.get("parameter_instances_fixed") if fixed else None
         if held:
-            counts = self.set_parameter_values(held)
+            counts = self.set_parameters(held)
             LOGGER.info(
                 "Load estimation result: %d parameters the fit held fixed set to its values, %d not in this model",
                 counts["applied"],
@@ -3568,7 +3631,7 @@ class SimulationModel:
         # load onto any batching.
         instance_values = self._result.get("parameter_instances")
         if instance_values and not self._result_names_this_model(component_lookup):
-            counts = self.set_parameter_values(instance_values)
+            counts = self.set_parameters(instance_values)
             LOGGER.info(
                 "Load estimation result: the result was fitted on another batching of the "
                 "model; %d parameter values applied by component id, %d missing",
@@ -3600,7 +3663,7 @@ class SimulationModel:
             min_values.append(lb[start:end][sel])
             max_values.append(ub[start:end][sel])
 
-        self.set_parameters(
+        self._write_parameters(
             values,
             flat_components,
             flat_attr_list,
@@ -4357,7 +4420,7 @@ class SimulationModel:
                     if per_branch and isinstance(current, tps.Parameter):
                         per_branch = int(torch.as_tensor(current.get()).numel()) != len(value)
                     try:
-                        self.set_parameters(
+                        self._write_parameters(
                             [value], [component], [key], overwrite=per_branch
                         )
                     except Exception as exc:  # noqa: BLE001

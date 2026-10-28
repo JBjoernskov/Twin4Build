@@ -562,37 +562,38 @@ class Model:
     #         custom_initial_dict=custom_initial_dict
     #     )
 
+    def get_parameters(self, parameters=None) -> Dict[Tuple[str, str], np.ndarray]:
+        """The current values of parameters in physical units,
+        ``{(component id, attr): values}``, by the ids of the components the
+        model was built from: a batched meta of ``n_c`` instances gives
+        ``n_c`` keys.  ``parameters`` is an iterable of ``(component or
+        component id, attr, ...)`` tuples (the estimator's parameter
+        entries); ``None`` (default) reads every parameter the components
+        list in their configuration.  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_parameters`.
+
+        Example:
+            >>> values = model.get_parameters([(room, "thermal.C_air")])
+            >>> model.set_parameters({k: 2 * v for k, v in values.items()})
+        """
+        return self.simulation_model.get_parameters(parameters)
+
     def set_parameters(
-        self,
-        values: List[Any],
-        components: List["core.System"],
-        parameter_names: List[str],
-        normalized: List[bool] = None,
-        overwrite: bool = False,
-        save_original: bool = False,
-    ) -> None:
-        """
-        Set parameters for components from an array.
+        self, values: Dict[Tuple[Any, str], Any], strict: bool = False
+    ) -> Dict[str, int]:
+        """Set parameters from ``{(component or component id, attr):
+        values}`` in physical units (:meth:`get_parameters`), on this model
+        whatever its batching: an id names a component of the model or a
+        component one of its batched metas stands for.  Returns
+        ``{"applied": n, "missing": m}``; with ``strict`` a key that names no
+        parameter raises ``KeyError`` and nothing is written.  See
+        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_parameters`."""
+        return self.simulation_model.set_parameters(values, strict=strict)
 
-        Args:
-            values (List[Any]): List of parameter values.
-            components (List[core.System]): List of components to set parameters for.
-            parameter_names (List[str]): List of attribute names corresponding to the parameters.
-            normalized (List[bool]): List of booleans indicating if values are normalized.
-            overwrite (bool): Whether to overwrite existing parameters.
-            save_original (bool): Whether to save original parameters for later restoration.
-
-        Raises:
-            AssertionError: If a component doesn't have the specified attribute.
-        """
-        self.simulation_model.set_parameters(
-            values=values,
-            components=components,
-            parameter_names=parameter_names,
-            normalized=normalized,
-            overwrite=overwrite,
-            save_original=save_original,
-        )
+    def _write_parameters(self, *args, **kwargs) -> None:
+        """The estimator's writer (parallel lists, normalized values,
+        bounds); see :meth:`SimulationModel._write_parameters`."""
+        self.simulation_model._write_parameters(*args, **kwargs)
 
     def restore_parameters(self, keep_values: bool = True) -> None:
         """
@@ -1062,24 +1063,16 @@ class Model:
         return core.SimulationModel.get_source_component_ids(component)
 
     def get_parameter_values(self, parameters) -> Dict[Tuple[str, str], np.ndarray]:
-        """The current values of parameters in physical units,
-        ``{(component id, attr): values}``, by the ids of the components the
-        model was built from: a batched meta of ``n_c`` instances gives
-        ``n_c`` keys.  ``parameters`` is an iterable of ``(component, attr,
-        ...)`` tuples (the estimator's parameter entries).  See
-        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.get_parameter_values`."""
-        return self.simulation_model.get_parameter_values(parameters)
+        """Deprecated name of :meth:`get_parameters` (removed in 2.1)."""
+        deprecate_name("get_parameter_values", "get_parameters")
+        return self.simulation_model.get_parameters(parameters)
 
     def set_parameter_values(
-        self, values: Dict[Tuple[str, str], Any], strict: bool = False
+        self, values: Dict[Tuple[Any, str], Any], strict: bool = False
     ) -> Dict[str, int]:
-        """Set parameters from ``{(component id, attr): values}``
-        (:meth:`get_parameter_values`), on this model whatever its batching:
-        an id names a component of the model or a component one of its
-        batched metas stands for.  Returns ``{"applied": n, "missing": m}``.
-        See
-        :meth:`~twin4build.model.simulation_model.simulation_model.SimulationModel.set_parameter_values`."""
-        return self.simulation_model.set_parameter_values(values, strict=strict)
+        """Deprecated name of :meth:`set_parameters` (removed in 2.1)."""
+        deprecate_name("set_parameter_values", "set_parameters")
+        return self.simulation_model.set_parameters(values, strict=strict)
 
     def load_estimation_result(
         self,

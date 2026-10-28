@@ -437,22 +437,21 @@ class TestModelAdvanced(unittest.TestCase):
         self.model = Model(id="test_advanced_model")
 
     def test_set_parameters(self):
-        """Test set_parameters method."""
+        """set_parameters takes {(component or id, attr): value} in physical
+        units; the parallel-list form is the estimator's private writer."""
         # Local application imports
 
         damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
         self.model.add_component(damper)
         self.model.load()
 
-        self.model.set_parameters(
-            values=[0.8],
-            components=[damper],
-            parameter_names=["nominalAirFlowRate"],
-            normalized=[False],
-            save_original=True,
-        )
-
-        self.assertAlmostEqual(damper.nominalAirFlowRate.get().item(), 0.8, places=2)
+        counts = self.model.set_parameters({(damper, "nominalAirFlowRate"): 0.8})
+        self.assertEqual(counts, {"applied": 1, "missing": 0})
+        self.assertAlmostEqual(damper.nominalAirFlowRate.get().item(), 0.8, places=6)
+        self.model.set_parameters({("damper", "nominalAirFlowRate"): 0.6})
+        self.assertAlmostEqual(damper.nominalAirFlowRate.get().item(), 0.6, places=6)
+        with self.assertRaises(TypeError):
+            self.model.set_parameters([0.8], [damper], ["nominalAirFlowRate"])
 
     def test_restore_parameters(self):
         """Test restore_parameters method."""
@@ -462,15 +461,17 @@ class TestModelAdvanced(unittest.TestCase):
         self.model.add_component(damper)
         self.model.load()
 
-        self.model.set_parameters(
+        self.model._write_parameters(
             values=[0.5],
             components=[damper],
             parameter_names=["nominalAirFlowRate"],
             normalized=[False],
+            overwrite=True,
             save_original=True,
         )
 
         self.model.restore_parameters(keep_values=False)
+        self.assertAlmostEqual(damper.nominalAirFlowRate.get().item(), 1.0, places=6)
 
 
 if __name__ == "__main__":

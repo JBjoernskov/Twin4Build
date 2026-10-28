@@ -10,7 +10,7 @@ declares, their own attributes, registered ``nn.Module`` children and owned
 sub-systems (connected components live in connection objects, never as
 attributes, so they are not followed), and what ``get_estimable_parameters``
 reports.  The lookup does not depend on a parameter's state (frozen,
-unbuilt, a ``TensorParameter`` left by ``set_parameters(overwrite=True)``).
+unbuilt, a ``TensorParameter`` left by ``_write_parameters(overwrite=True)``).
 An output port is found among the components' ``output`` ports.
 
 Default bounds are the ones the component declares for the attribute

@@ -523,11 +523,7 @@ def main():
             x0_min.append(lo)
             x0_max.append(hi)
 
-    model.set_parameters(
-        values=x0_values,
-        components=x0_components,
-        parameter_names=x0_names,
-    )
+    model.set_parameters({(c, n): v for v, c, n in zip(x0_values, x0_components, x0_names)})
     print(f"Set {len(x0_values)} initial parameter values.")
 
     simulator.simulate(step_size=step_size, start_time=start_time, end_time=end_time)

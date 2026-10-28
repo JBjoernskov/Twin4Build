@@ -867,7 +867,7 @@ class System:
 
         def extract_value(value):
             # ``tps.Parameter`` (an nn.Parameter) and ``tps.TensorParameter``
-            # (what ``set_parameters(overwrite=True)`` -- the estimator's
+            # (what ``_write_parameters(overwrite=True)`` -- the estimator's
             # write path -- leaves behind) both publish their physical value
             # through ``get()``; serializing anything else would write the
             # object's repr into the graph.

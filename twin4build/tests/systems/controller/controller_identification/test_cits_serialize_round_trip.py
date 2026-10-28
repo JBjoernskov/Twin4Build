@@ -166,10 +166,10 @@ def set_fitted_values(model):
     """Values as Stage 1 leaves them: the gains written the way the
     estimator writes them, the others in place."""
     cits = model.components["cits"]
-    model.simulation_model.set_parameters(
+    model.simulation_model._write_parameters(
         [0.8, 2456.3], [cits] * 2, ["candidate_0_0.kp", "candidate_0_0.Ti"], overwrite=True
     )
-    model.simulation_model.set_parameters(
+    model.simulation_model._write_parameters(
         [0.1, 0.9, 0.05, 0.4, 0.7],
         [cits] * 5,
         ["candidate_0_0.output_min", "candidate_0_0.output_max", "default_output_0", "gate_0.threshold", "gate_0.band"],
@@ -472,7 +472,7 @@ class TestCitsStructureLiterals(unittest.TestCase):
             cits.on_off_signal_norm_min = [0.0, 15.0]
             cits.on_off_signal_norm_max = [300.0, 25.0]
             # The second actuator differs from the first in every group.
-            model.simulation_model.set_parameters(
+            model.simulation_model._write_parameters(
                 [0.9, 0.25, 0.2, 0.3, [0.2, 0.8]],
                 [cits] * 5,
                 ["candidate_1_0.kp", "alpha_gate_1", "default_output_1", "gate_1.threshold", "alpha_1"],
