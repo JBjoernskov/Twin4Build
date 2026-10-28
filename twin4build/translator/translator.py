@@ -1586,21 +1586,36 @@ class Translator:
                                     # ``node``). The resulting edge fails at
                                     # ``sim_model.add_connection`` with an ``AssertionError``
                                     # about an invalid output port.
+                                    #
+                                    # The node the provider is reached through decides first: a
+                                    # provider modelling several nodes (a wall on its two faces)
+                                    # names the port of that node's class, not of whichever of
+                                    # its nodes comes first.  Its other nodes are the fallback
+                                    # (a single-node provider: the same node either way).
                                     for source_class, source_key in source_keys.items():
-                                        for modeled_match_node in p_nodes:
-                                            if not modeled_match_node.isinstance(
-                                                source_class
-                                            ):
-                                                continue
-                                            if (
-                                                source_key
-                                                not in provider_component.output
-                                            ):
-                                                continue
+                                        if (
+                                            sm_subject in p_nodes
+                                            and sm_subject.isinstance(source_class)
+                                            and source_key in provider_component.output
+                                        ):
                                             b = True
                                             break
-                                        if b:
-                                            break
+                                    if not b:
+                                        for source_class, source_key in source_keys.items():
+                                            for modeled_match_node in p_nodes:
+                                                if not modeled_match_node.isinstance(
+                                                    source_class
+                                                ):
+                                                    continue
+                                                if (
+                                                    source_key
+                                                    not in provider_component.output
+                                                ):
+                                                    continue
+                                                b = True
+                                                break
+                                            if b:
+                                                break
 
                                     if b:
                                         # A pattern written against a renamed
