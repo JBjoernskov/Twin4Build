@@ -936,8 +936,9 @@ class SimulationModel:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
 
-        A deprecated output port name (``System.OUTPUT_PORT_ALIASES``)
-        connects as the name that replaced it, with a ``DeprecationWarning``:
+        A deprecated output or input port name (``System.OUTPUT_PORT_ALIASES``,
+        ``System.INPUT_PORT_ALIASES``) connects as the name that replaced it,
+        with a ``DeprecationWarning``:
         the connection and its serialized literals hold the current name, so
         a model saved with the old name loads and saves the new one.
         """
@@ -945,6 +946,7 @@ class SimulationModel:
             components = self._components
 
         output_port = sender_component.resolve_output_port(output_port)
+        input_port = receiver_component.resolve_input_port(input_port)
         self.add_component(sender_component, components=components)
         self.add_component(receiver_component, components=components)
 
@@ -1245,6 +1247,7 @@ class SimulationModel:
             components = self._components
 
         output_port = sender_component.resolve_output_port(output_port)
+        input_port = receiver_component.resolve_input_port(input_port)
         sender_component_connection = None
         for connection in sender_component.connected_through:
             if connection.output_port == output_port:
@@ -1764,7 +1767,7 @@ class SimulationModel:
         -------------------
         Component-scoped entries always win over port-only entries on
         the same port; this lets a project-wide constant (e.g.
-        ``"outdoorCO2": 400.0``) coexist with a per-component override
+        ``"outdoorCo2Concentration": 400.0``) coexist with a per-component override
         (e.g. ``(ahu02, "supplyAirTemperatureSetpoint"): leaf_sensor``)
         without the user having to maintain two parallel dicts.  If
         the same ``(component_id, port_name)`` pair appears twice the
@@ -1873,6 +1876,9 @@ class SimulationModel:
                         "fill_missing_inputs: component-scoped key's "
                         f"port_name must be a str, got {type(port_name).__name__}."
                     )
+                consumer = self._components.get(comp_id)
+                if consumer is not None:
+                    port_name = consumer.resolve_input_port(port_name)
                 comp_defaults[(comp_id, port_name)] = spec
                 continue
             raise TypeError(
@@ -1881,20 +1887,22 @@ class SimulationModel:
                 "tuple."
             )
 
-        # ---- Pass 1: port-only fan-out, skipping component-scoped overrides
+        # ---- Pass 1: port-only fan-out, skipping component-scoped overrides.
+        # A deprecated port name (``System.INPUT_PORT_ALIASES``) fills the
+        # port that replaced it, so a port named twice is wired once.
         for port_name, spec in port_defaults.items():
-            consumers = [
-                comp
-                for comp in list(self._components.values())
-                if port_name in getattr(comp, "input", {})
-                and not _has_incoming(comp, port_name)
-                and (comp.id, port_name) not in comp_defaults
-            ]
+            consumers = []
+            for comp in list(self._components.values()):
+                if port_name not in getattr(comp, "input", {}):
+                    continue
+                name = comp.resolve_input_port(port_name)
+                if not _has_incoming(comp, name) and (comp.id, name) not in comp_defaults:
+                    consumers.append((comp, name))
             if not consumers:
                 continue
             provider, out_port = _resolve_spec(spec, f"_sched_{port_name}")
-            for consumer in consumers:
-                self.add_connection(provider, consumer, out_port, port_name)
+            for consumer, name in consumers:
+                self.add_connection(provider, consumer, out_port, name)
 
         # ---- Pass 2: per-component overrides
         for (comp_id, port_name), spec in comp_defaults.items():
