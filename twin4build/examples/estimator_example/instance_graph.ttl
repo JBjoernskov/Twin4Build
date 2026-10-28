@@ -29,8 +29,6 @@ t4b:OccupancyDetectorSystem rdfs:subClassOf s4syst:System .
 
 t4b:OccupancySystem rdfs:subClassOf s4syst:System .
 
-t4b:OnOffControllerTorchSystem rdfs:subClassOf s4syst:System .
-
 t4b:OutdoorEnvironmentSystem rdfs:subClassOf s4syst:System .
 
 t4b:PiecewiseLinearScheduleSystem rdfs:subClassOf s4syst:System .
@@ -120,7 +118,7 @@ t4b:office_occupancy_controller_setpoint a t4b:ScheduleSystem ;
     t4b:uuid "None" ;
     t4b:valuecolumn 1 ;
     t4b:wednesdayRulesetDict "None" ;
-    t4b:weekDayRulesetDict "{\"ruleset_default_value\": 0.5, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    t4b:weekDayRulesetDict "{\"ruleset_default_value\": 0.45, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
     t4b:weekendRulesetDict "None" ;
     s4syst:connectedThrough t4b:136778883437 .
 
@@ -687,11 +685,13 @@ t4b:office_co2_controller a t4b:PIDControllerSystem ;
     s4syst:connectsAt t4b:136778860882,
         t4b:136778860915 .
 
-t4b:office_occupancy_controller a t4b:OnOffControllerTorchSystem ;
+t4b:office_occupancy_controller a t4b:PIDControllerSystem ;
+    t4b:Td "[0.0]"^^rdf:JSON ;
+    t4b:Ti "[1000000000000.0]"^^rdf:JSON ;
     t4b:isReverse false ;
-    t4b:offValue "[0.0]"^^rdf:JSON ;
-    t4b:onValue "[0.3]"^^rdf:JSON ;
-    t4b:steepness "[10.0]"^^rdf:JSON ;
+    t4b:kp "[3.0]"^^rdf:JSON ;
+    t4b:output_max "[0.3]"^^rdf:JSON ;
+    t4b:output_min "[0.0]"^^rdf:JSON ;
     s4syst:connectedThrough t4b:136778860612 ;
     s4syst:connectsAt t4b:136778873755,
         t4b:136778883452 .

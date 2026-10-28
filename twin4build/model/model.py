@@ -1800,10 +1800,6 @@ class Model:
         "twin4build.systems.thermal_mass.thermal_mass_node_system.ThermalMassNodeSystem": ("T_init",),
         "twin4build.systems.controller.setpoint_controller.pid_controller"
         ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
-        "twin4build.systems.controller.rulebased_controller.on_off_controller"
-        ".on_off_controller_system.OnOffControllerSystem": ("is_reverse",),
-        "twin4build.systems.controller.rulebased_controller.on_off_controller"
-        ".smooth_on_off_controller_system.SmoothOnOffControllerSystem": ("is_reverse",),
     }
 
     @staticmethod

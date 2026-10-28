@@ -67,7 +67,6 @@ _TORCH_ALIASES = {
     "SpaceHeaterTorchSystem": "SpaceHeaterSystem",
     "FanCoilUnitTorchSystem": "FanCoilUnitSystem",
     "AirHandlingUnitTorchSystem": "AirHandlingUnitSystem",
-    "OnOffControllerTorchSystem": "SmoothOnOffControllerSystem",
     "ScheduleSwitchControllerTorchSystem": "ScheduleSwitchControllerSystem",
     "SATCompensatedControllerTorchSystem": "SATCompensatedControllerSystem",
     "ControllerIdentificationTorchSystem": "ControllerIdentificationSystem",
