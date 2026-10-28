@@ -505,7 +505,6 @@ class TestEstimator(unittest.TestCase):
                 measurements=measurements,
                 n_warmup=5,  # Reduced for faster testing
                 method=("scipy", "SLSQP", "ad"),
-                n_cores=1,  # Use 1 core to avoid issues in CI
                 options={"maxiter": 2},  # Limit iterations for testing
             )
 

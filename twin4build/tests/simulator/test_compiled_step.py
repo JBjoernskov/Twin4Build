@@ -88,7 +88,7 @@ def test_compiled_rollout_matches_eager_step():
     class Done(Exception):
         pass
 
-    def _probe(self, method, n_cores, options):
+    def _probe(self, method, options):
         obj = self._functional_objective
         theta = torch.as_tensor(
             self._x0_norm, dtype=tps.float_dtype(), device=self._device

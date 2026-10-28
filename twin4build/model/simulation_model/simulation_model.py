@@ -32,7 +32,6 @@ from twin4build.utils.dict_utils import (
     merge_dicts,
 )
 from twin4build.utils.get_main_dir import get_main_dir
-from twin4build.utils.get_obj_attr import get_obj_attr
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.rdelattr import rdelattr
@@ -604,169 +603,6 @@ class SimulationModel:
             self._update_literals([component])
 
         self._is_loaded = False
-
-    def make_pickable(self) -> None:
-        """
-        Make the model instance pickable by removing unpickable references.
-
-        This method prepares the Model instance for use with multiprocessing, e.g. in the Estimator class.
-        """
-        # for c in self._components.values():
-        #     print(f"Making {c.id} pickable")
-        #     for k, input_ in c.input.items():
-        #         print(f"Making {k} of pickable")
-        #         input_.make_pickable()
-        #     for k, output_ in c.output.items():
-        #         print(f"Making {k} of pickable")
-        #         output_.make_pickable()
-
-        self.reset_torch_tensors()
-
-        fmus = self.get_component_by_class(self._components, systems.fmuSystem)
-        for fmu in fmus:
-            if "fmu" in get_obj_attr(fmu):
-                del fmu.fmu
-                del fmu.fmu_initial_state
-                fmu.INITIALIZED = False
-
-    def reset_torch_tensors(self) -> None:
-        """
-        Reset all torch.Tensor objects in the model to remove TensorWrapper references.
-
-        This method iterates through all components and their attributes to find torch.Tensor
-        objects that might contain TensorWrapper (which causes pickling issues). It creates
-        new tensors with the same values but without gradient tracking.
-
-        This is particularly useful when switching from AD (automatic differentiation) to
-        FD (finite difference) methods in the Estimator, as AD methods create gradient-tracking
-        tensors that cannot be pickled for multiprocessing.
-        """
-
-        def reset_tensor(tensor):
-            """
-            Reset a torch tensor if it contains TensorWrapper or has gradient tracking.
-
-            Args:
-                tensor: The tensor to check and potentially reset
-                path: Path for debugging purposes
-
-            Returns:
-                The original tensor or a new tensor without gradient tracking
-            """
-            assert isinstance(
-                tensor, torch.Tensor
-            ), f"The tensor must be of type {torch.Tensor.__name__}"
-
-            # First handle special cases
-            if isinstance(tensor, tps.Parameter):
-                tensor = tps.Parameter(
-                    tensor.get(),
-                    min_value=tensor._min_value,
-                    max_value=tensor._max_value,
-                    requires_grad=False,
-                )
-            elif isinstance(tensor, tps.TensorParameter):
-                tensor = tps.TensorParameter(
-                    tensor.get(),
-                    min_value=tensor._min_value,
-                    max_value=tensor._max_value,
-                    normalized=False,
-                )
-            elif isinstance(tensor, torch.Tensor):
-                tensor = (
-                    tensor.detach()
-                    .clone()
-                    .requires_grad_(False)
-                    .type(
-                        tps.float_dtype()
-                        if tensor.is_floating_point()
-                        else tensor.dtype
-                    )
-                )
-
-            return tensor
-
-        def reset_object_tensors(obj, obj_path="", visited=None):
-            """
-            Recursively reset tensors in an object and its attributes.
-
-            Args:
-                obj: The object to process
-                obj_path: Path for debugging purposes
-                visited: Set of already visited object IDs to prevent infinite recursion
-            """
-            if obj is None:
-                return
-
-            # Initialize visited set if not provided
-            if visited is None:
-                visited = set()
-
-            # Create a unique identifier for this object to prevent infinite recursion
-            obj_id = id(obj)
-            if obj_id in visited:
-                return
-            visited.add(obj_id)
-
-            # print(f"Current object: {obj_path}")
-
-            # Handle different types of objects
-            if isinstance(obj, torch.Tensor):
-                # Direct tensor - reset if needed
-                return reset_tensor(obj)
-
-            elif isinstance(obj, (list, tuple)):
-                # Container - process each element
-                for i, item in enumerate(obj):
-                    item_path = f"{obj_path}[{i}]"
-                    if isinstance(item, torch.Tensor):
-                        new_item = reset_tensor(item)
-                        if new_item is not item:
-                            obj[i] = new_item
-                    else:
-                        # Recursively process non-tensor items
-                        reset_object_tensors(item, item_path, visited)
-
-            elif isinstance(obj, dict):
-                # Dictionary - process each value
-                for key, value in obj.items():
-                    value_path = f"{obj_path}.{key}"
-                    if isinstance(value, torch.Tensor):
-                        new_value = reset_tensor(value)
-                        if new_value is not value:
-                            obj[key] = new_value
-                    else:
-                        # Recursively process non-tensor values
-                        reset_object_tensors(value, value_path, visited)
-
-            elif hasattr(obj, "__dict__"):
-                # Object with attributes - process each attribute
-                for attr_name, attr_value in obj.__dict__.items():
-                    attr_path = f"{obj_path}.{attr_name}"
-                    if isinstance(attr_value, torch.Tensor):
-                        new_value = reset_tensor(attr_value)
-                        if new_value is not attr_value:
-                            setattr(obj, attr_name, new_value)
-                    else:
-                        # Recursively process non-tensor attributes
-                        reset_object_tensors(attr_value, attr_path, visited)
-
-        # print("Resetting torch tensors in model components...")
-
-        # Process each component
-        for comp_id, component in self._components.items():
-            # print(f"Processing component: {comp_id}")
-
-            # Reset tensors in the component itself
-            reset_object_tensors(component, f"component.{comp_id}")
-
-            # Reset tensors in component properties (input, output, parameters)
-            # for prop_name in ['input', 'output', 'parameters']:
-            #     if hasattr(component, prop_name):
-            #         prop_value = getattr(component, prop_name)
-            #         reset_object_tensors(prop_value, f"component.{comp_id}.{prop_name}")
-
-        # print("Torch tensor reset complete.")
 
     def remove_component(
         self, component: core.System, components: Dict[str, core.System] = None
@@ -1462,75 +1298,6 @@ class SimulationModel:
     #     ), f'Unknown component id(s) provided in "_custom_initial_dict": {np_custom_initial_dict_ids[legal_ids==False]}'
     #     self._custom_initial_dict = _custom_initial_dict
 
-    def set_initial_values(
-        self,
-        values: List[Any] = None,
-        components: List[core.System] = None,
-        output_names: List[str] = None,
-        **kwargs,
-    ) -> None:
-        """
-        Set initial values for components in the model.
-
-        Args:
-            values (List[Any]): List of initial values to set.
-            components (List[core.System]): List of components to set initial values for.
-            output_names (List[str]): List of output property names corresponding to the values.
-
-        Raises:
-            AssertionError: If a component doesn't have the specified output property.
-        """
-        # Handle deprecated dict-based signature: set_initial_values(dict_)
-        # Old format: dict_ = {component_id: {output_name: value, ...}, ...}
-        old_dict = kwargs.get("dict_", None)
-        if old_dict is None and isinstance(values, dict):
-            old_dict = values
-            values = None
-
-        if old_dict is not None:
-            warnings.warn(
-                "The dict-based signature for set_initial_values(dict_) is deprecated. "
-                "Use set_initial_values(values, components, output_names) instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            # Convert old dict format to new list format
-            values = []
-            components = []
-            output_names = []
-            for component_id, outputs in old_dict.items():
-                component = self._components[component_id]
-                for output_name, value in outputs.items():
-                    values.append(value)
-                    components.append(component)
-                    output_names.append(output_name)
-
-        for v, component, output_name in zip(values, components, output_names):
-            assert (
-                output_name in component.output
-            ), f'Invalid output property "{output_name}" for component "{component.id}"'
-
-            output_obj = component.output[output_name]
-            if v is not None:
-                # Set the tensor value for Scalar or Vector types
-                if isinstance(output_obj, tps.Scalar):
-                    output_obj.tensor = (
-                        v
-                        if isinstance(v, torch.Tensor)
-                        else torch.tensor([v], dtype=tps.float_dtype())
-                    )
-                elif isinstance(output_obj, tps.Vector):
-                    output_obj.tensor = (
-                        v
-                        if isinstance(v, torch.Tensor)
-                        else torch.tensor(v, dtype=tps.float_dtype())
-                    )
-                else:
-                    raise TypeError(
-                        f'Output property "{output_name}" for component "{component.id}" '
-                        f"is not a Scalar or Vector type"
-                    )
-
     def set_parameters(
         self,
         values: List[Any],
@@ -2118,7 +1885,6 @@ class SimulationModel:
         # Validate and format as lists if needed
         # start_time, end_time, step_size = validate_period(start_time, end_time, step_size)
 
-        # self.set_initial_values()
         for component in self._flat_execution_order:
             # for v in component.input.values():
             #     v.reset()

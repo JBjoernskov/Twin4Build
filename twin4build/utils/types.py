@@ -256,17 +256,6 @@ class Vector:
             self._history.requires_grad = requires_grad
         self._requires_reinittialization = not requires_grad
 
-    def make_pickable(self):
-        if self.tensor is not None:
-            if self.n_v > 0:
-                self.tensor = torch.tensor(
-                    [self.tensor.item()], dtype=float_dtype(), requires_grad=False
-                )
-            else:
-                self.tensor = torch.tensor([], dtype=float_dtype(), requires_grad=False)
-
-        # _init_value is already a simple float/int, nothing to do
-
     def __getitem__(self, key: int) -> float:
         """Get value at specified index.
 

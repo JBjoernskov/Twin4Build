@@ -12,14 +12,6 @@ twin4build.systems.utils.discrete\_statespace\_system module
    :show-inheritance:
    :undoc-members:
 
-twin4build.systems.utils.fmu\_system module
--------------------------------------------
-
-.. automodule:: twin4build.systems.utils.fmu_system
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 twin4build.systems.utils.function\_system module
 ------------------------------------------------
 

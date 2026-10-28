@@ -333,28 +333,6 @@ class TestSimulationModel(unittest.TestCase):
         str_repr = str(self.sim_model)
         self.assertIsNotNone(str_repr)
 
-    def test_make_pickable(self):
-        """Test make_pickable method."""
-        self.sim_model.add_connection(
-            self.schedule, self.damper, "scheduleValue", "damperPosition"
-        )
-        self.sim_model.load()
-
-        # Should not raise any errors
-        self.sim_model.make_pickable()
-        self.assertTrue(True)
-
-    def test_reset_torch_tensors(self):
-        """Test reset_torch_tensors method."""
-        self.sim_model.add_connection(
-            self.schedule, self.damper, "scheduleValue", "damperPosition"
-        )
-        self.sim_model.load()
-
-        # Should not raise any errors
-        self.sim_model.reset_torch_tensors()
-        self.assertTrue(True)
-
     def test_add_duplicate_component(self):
         """Test adding the same component twice."""
         self.sim_model.add_connection(

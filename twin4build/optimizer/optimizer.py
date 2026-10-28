@@ -506,7 +506,7 @@ class Optimizer:
                 ``(library, optimizer, mode)`` where ``library`` is
                 ``"scipy"`` (currently the only supported library),
                 ``optimizer`` is the algorithm name, and ``mode`` is ``"ad"``
-                (automatic differentiation) or ``"fd"`` (finite difference).
+                (automatic differentiation).
 
                 Supported SciPy optimizers:
 
@@ -802,9 +802,7 @@ class Optimizer:
                     f"These objectives conflict with each other."
                 )
 
-        # allowed_methods = [("scipy", "trf", "fd"),
-        #                     ("scipy", "dogbox", "fd"),
-        #                     ("scipy", "trf", "ad"),
+        # allowed_methods = [("scipy", "trf", "ad"),
         #                     ("scipy", "dogbox", "ad"),
         #                     ("scipy", "L-BFGS-B", "ad"),
         #                     ("scipy", "TNC", "ad"),
@@ -1195,9 +1193,8 @@ class Optimizer:
         Perform optimization using SciPy's optimization algorithms.
 
         This method uses SciPy's optimization library to solve constrained and unconstrained
-        optimization problems. It supports both automatic differentiation (AD) and finite
-        difference (FD) modes for gradient computation. The method automatically handles
-        constraint formulation and bounds specification.
+        optimization problems, with the gradients by automatic differentiation (AD). The
+        method automatically handles constraint formulation and bounds specification.
 
         Args:
             method: Tuple of (library, optimizer, mode) specifying the optimization method:
@@ -1210,8 +1207,7 @@ class Optimizer:
                     - "trf": Trust Region Reflective - specialized for least-squares problems
                     - "dogbox": Dogleg algorithm - alternative for least-squares problems
                 - mode: Differentiation mode:
-                    - "ad": Automatic differentiation using PyTorch (recommended)
-                    - "fd": Finite difference (not yet implemented)
+                    - "ad": Automatic differentiation using PyTorch
             **options: Additional options passed to the SciPy optimizer:
                 - "constraint_penalty": Penalty weight for soft constraint violations.
                   Higher values enforce constraints more strictly at the cost of slower

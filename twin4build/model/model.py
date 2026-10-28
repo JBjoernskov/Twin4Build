@@ -437,14 +437,6 @@ class Model:
         """
         self.simulation_model.add_component(component=component)
 
-    def make_pickable(self) -> None:
-        """
-        Make the model instance pickable by removing unpickable references.
-
-        This method prepares the Model instance for use with multiprocessing in the Estimator class.
-        """
-        self.simulation_model.make_pickable()
-
     def remove_component(self, component: "core.System") -> None:
         """
         Remove a component from the model.
@@ -569,48 +561,6 @@ class Model:
     #     self.simulation_model.set_custom_initial_dict(
     #         custom_initial_dict=custom_initial_dict
     #     )
-
-    def set_initial_values(
-        self,
-        values: List[Any] = None,
-        components: List["core.System"] = None,
-        output_names: List[str] = None,
-        **kwargs,
-    ) -> None:
-        """
-        Set initial values for components in the model.
-
-        Args:
-            values (List[Any]): List of initial values to set.
-            components (List[core.System]): List of components to set initial values for.
-            output_names (List[str]): List of output property names corresponding to the values.
-
-        Raises:
-            AssertionError: If a component doesn't have the specified output property.
-        """
-        # Handle deprecated dict-based signature: set_initial_values(dict_)
-        # Old format: dict_ = {component_id: {output_name: value, ...}, ...}
-        old_dict = kwargs.get("dict_", None)
-        if old_dict is None and isinstance(values, dict):
-            old_dict = values
-            values = None
-
-        if old_dict is not None:
-            warnings.warn(
-                "The dict-based signature for set_initial_values(dict_) is deprecated. "
-                "Use set_initial_values(values, components, output_names) instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            # Pass the old dict to simulation_model which will handle conversion
-            self.simulation_model.set_initial_values(dict_=old_dict)
-            return
-
-        self.simulation_model.set_initial_values(
-            values=values,
-            components=components,
-            output_names=output_names,
-        )
 
     def set_parameters(
         self,
