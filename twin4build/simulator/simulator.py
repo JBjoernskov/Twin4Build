@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import torch
-from fmpy.fmi1 import FMICallException
 from tqdm import tqdm
 
 # Local application imports
@@ -422,7 +421,6 @@ class Simulator:
         order, ensuring proper propagation of information through the system. It:
         1. Executes components in groups based on dependencies
         2. Updates component states after all executions
-        3. Handles both FMU and non-FMU components
 
         The iteration method (gauss-seidel or jacobi) determines how inputs are assigned:
         - gauss-seidel: Inputs are assigned immediately before each component executes,
@@ -565,7 +563,6 @@ class Simulator:
 
         Raises:
             AssertionError: If input parameters are invalid or missing timezone info.
-            FMICallException: If the FMU simulation fails.
         """
         mode = self.execution_mode if execution_mode is None else execution_mode
         backend = (

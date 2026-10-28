@@ -22,7 +22,7 @@ from twin4build.systems.utils.discrete_statespace_system import (
 #: Matrix contract of the CO2 mass balance, shared with every model that has
 #: to speak it (see :func:`mass_matrices`).
 N_STATES = 1
-#: ``u = [supplyAirFlowRate, makeUpAirFlow, outdoorCO2, numberOfPeople, makeUpAirCO2]``
+#: ``u = [supplyAirFlowRate, makeUpAirFlow, outdoorCo2Concentration, numberOfPeople, makeUpAirCO2]``
 N_INPUTS = 5
 #: Index of the outdoor-CO2 slot: the concentration the supply stream and,
 #: when ``makeUpAirCO2`` is unwired, the make-up stream bring in.
@@ -338,24 +338,29 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         )
 
         # Define inputs and outputs
-        self.input = {
-            "supplyAirFlowRate": tps.Scalar(),  # Supply air flow rate [kg/s]
-            "exhaustAirFlowRate": tps.Scalar(),  # Exhaust air flow rate [kg/s]
-            "outdoorCO2": tps.Scalar(),  # Outdoor CO2 concentration [ppmv]
-            "numberOfPeople": tps.Scalar(),  # Number of occupants
-            # CO2 of the make-up air the exhaust deficit draws in.  Unwired:
-            # the make-up stream is outdoor air (the classic balance).  Wired
-            # from a transfer node: the corridor's concentration.
-            "makeUpAirCO2": tps.Scalar(0.0, optional=True),
-            # CO2 of the supply air [ppmv].  Unwired: outdoor air (an air
-            # handling unit's supply).  Wired: the concentration of the zones
-            # whose air this zone takes.
-            "supplyAirCO2": tps.Scalar(0.0, optional=True),
-            # CO2 flow from openings to other zones [ppm kg/s], one slot per
-            # OpeningSystem -- the mass counterpart of the thermal zone's
-            # ``wallHeatGain``.
-            "exchangeCO2Gain": tps.Vector(optional=True),
-        }
+        self.input = core.AliasedPorts(
+            {
+                "supplyAirFlowRate": tps.Scalar(),  # Supply air flow rate [kg/s]
+                "exhaustAirFlowRate": tps.Scalar(),  # Exhaust air flow rate [kg/s]
+                # Outdoor CO2 concentration [ppmv]; 400 ppmv while unwired
+                "outdoorCo2Concentration": tps.Scalar(400.0),
+                "numberOfPeople": tps.Scalar(),  # Number of occupants
+                # CO2 of the make-up air the exhaust deficit draws in.  Unwired:
+                # the make-up stream is outdoor air (the classic balance).  Wired
+                # from a transfer node: the corridor's concentration.
+                "makeUpAirCO2": tps.Scalar(0.0, optional=True),
+                # CO2 of the supply air [ppmv].  Unwired: outdoor air (an air
+                # handling unit's supply).  Wired: the concentration of the zones
+                # whose air this zone takes.
+                "supplyAirCO2": tps.Scalar(0.0, optional=True),
+                # CO2 flow from openings to other zones [ppm kg/s], one slot per
+                # OpeningSystem -- the mass counterpart of the thermal zone's
+                # ``wallHeatGain``.
+                "exchangeCO2Gain": tps.Vector(optional=True),
+            },
+            aliases=self.INPUT_PORT_ALIASES,
+            owner=type(self).__name__,
+        )
         self._make_up_wired = False
         self._supply_wired = False
         self._n_exchanges = 0
@@ -463,6 +468,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("V", "G_occ", "m_inf")
+    #: ``outdoorCO2`` is the deprecated name of ``outdoorCo2Concentration``
+    #: (removed in 2.1; see ``System.INPUT_PORT_ALIASES``).
+    INPUT_PORT_ALIASES = {"outdoorCO2": "outdoorCo2Concentration"}
     #: ``indoorCO2`` publishes the CO2 state as it is (see
     #: :meth:`System.state_output_ports`).
     STATE_OUTPUT_PORTS = {"indoorCO2": 0}
@@ -479,13 +487,13 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
     def _ss_layout(self):
         """Port <-> matrix index map, mirroring :meth:`forward` exactly:
-        ``u = [supplyAirFlowRate, exhaustAirFlowRate, outdoorCO2,
+        ``u = [supplyAirFlowRate, exhaustAirFlowRate, outdoorCo2Concentration,
         numberOfPeople]`` (the exhaust slot holds the make-up flow after
         :meth:`_ss_transform_inputs`); single output row ``indoorCO2``."""
         u = [
             ("supplyAirFlowRate", 1),
             ("exhaustAirFlowRate", 1),
-            ("outdoorCO2", 1),
+            ("outdoorCo2Concentration", 1),
             ("numberOfPeople", 1),
             ("makeUpAirCO2", 1),
         ]
@@ -568,7 +576,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
         Functorch-compatible re-expression of :meth:`do_step`; ``inputs`` is a dict
         of resolved input-port values assembled here in do_step order
-        ``[supplyAirFlowRate, exhaustAirFlowRate, outdoorCO2, numberOfPeople]``,
+        ``[supplyAirFlowRate, exhaustAirFlowRate, outdoorCo2Concentration, numberOfPeople]``,
         ``params`` a dict for :attr:`PARAM_NAMES`.  Returns ``(x_next, {"indoorCO2"})``.
         """
         # Params-only matrices, cached per params-dict identity (rebuilt once
@@ -593,9 +601,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             [
                 inputs["supplyAirFlowRate"],
                 inputs["exhaustAirFlowRate"],
-                inputs["outdoorCO2"],
+                inputs["outdoorCo2Concentration"],
                 inputs["numberOfPeople"],
-                inputs.get("makeUpAirCO2", inputs["outdoorCO2"]),
+                inputs.get("makeUpAirCO2", inputs["outdoorCo2Concentration"]),
             ],
             dim=-1,
         )
@@ -641,7 +649,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             for port in (
                 "supplyAirFlowRate",
                 "exhaustAirFlowRate",
-                "outdoorCO2",
+                "outdoorCo2Concentration",
                 "numberOfPeople",
                 "makeUpAirCO2",
             )

@@ -71,7 +71,7 @@ def saref_signature_pattern_sensor():
     sp.add_input("heatGain", node4, "toRoomPower")
     sp.add_input("numberOfPeople", node5, "scheduleValue")
     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-    sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
+    sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
     sp.add_input("supplyAirTemperature", node7, "measuredValue")
     # Interzonal/boundary coupling is modeled by a separate WallSystem
@@ -141,7 +141,7 @@ def saref_signature_pattern():
     sp.add_input("heatGain", node4, "toRoomPower")
     sp.add_input("numberOfPeople", node5, "scheduleValue")
     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-    sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
+    sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
     sp.add_input(
         "supplyAirTemperature",

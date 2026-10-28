@@ -46,7 +46,7 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         self.space.input["supplyAirTemperature"].set(torch.tensor([22.0]), i_t=0)
         self.space.input["numberOfPeople"].set(torch.tensor([3.0]), i_t=0)
         self.space.input["heatGain"].set(torch.tensor([0.0]), i_t=0)
-        self.space.input["outdoorCO2"].set(torch.tensor([400.0]), i_t=0)
+        self.space.input["outdoorCo2Concentration"].set(torch.tensor([400.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)
@@ -88,7 +88,7 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         space_batch.input["supplyAirTemperature"].set(torch.tensor([22.0, 23.0]), i_t=0)
         space_batch.input["numberOfPeople"].set(torch.tensor([3.0, 5.0]), i_t=0)
         space_batch.input["heatGain"].set(torch.tensor([0.0, 0.0]), i_t=0)
-        space_batch.input["outdoorCO2"].set(torch.tensor([400.0, 410.0]), i_t=0)
+        space_batch.input["outdoorCo2Concentration"].set(torch.tensor([400.0, 410.0]), i_t=0)
 
         # Execute a time step
         datetime_val = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)

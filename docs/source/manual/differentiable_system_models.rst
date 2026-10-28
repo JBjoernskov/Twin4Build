@@ -43,7 +43,7 @@ batched SQP parallel solver requires functional execution and fails rather
 than silently dropping a derivative path.
 
 The object-graph materialization pass remains responsible for complete port
-and history population, including data-driven and FMU components. Pure
+and history population, including data-driven components. Pure
 rollouts reuse the captured exogenous tensors and must keep shapes static;
 this is required for start-axis ``vmap`` and direct CUDA Graph replay.
 

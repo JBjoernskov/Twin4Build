@@ -160,6 +160,13 @@ class System:
     #: :meth:`resolve_output_port`).  Empty on the base class.
     OUTPUT_PORT_ALIASES: dict = {}
 
+    #: Deprecated input port names and the names that replaced them
+    #: (``{"old": "new"}``), the input-side counterpart of
+    #: :attr:`OUTPUT_PORT_ALIASES`: a class that renames an input port lists
+    #: the old name here and holds its inputs in an :class:`AliasedPorts`
+    #: (see :meth:`resolve_input_port`).  Empty on the base class.
+    INPUT_PORT_ALIASES: dict = {}
+
     #: Deprecated constructor keywords the class translates itself
     #: (``{"old": "new"}``, ``None`` for one that is only dropped), with a
     #: ``DeprecationWarning`` (``deprecate_args``).  Part of
@@ -387,6 +394,32 @@ class System:
             return output_port
         name = type(self).__name__
         deprecate_name(f"{name}.{output_port}", f"{name}.{new}", stacklevel=stacklevel + 1)
+        return new
+
+    def resolve_input_port(self, input_port: str, stacklevel: int = 3) -> str:
+        """
+        The current name of an input port of the system.
+
+        A deprecated name (a key of :attr:`INPUT_PORT_ALIASES`) is replaced
+        by the name that stands for it, with a ``DeprecationWarning``; any
+        other name is returned unchanged.  Everything that takes a
+        ``(component, input port)`` pair from the user (connections,
+        ``fill_missing_inputs``, signature patterns) resolves the name here
+        first, so the model holds the current name only.
+
+        Args:
+            input_port: The name of the input port, current or deprecated.
+            stacklevel: The frame the warning points at, counted from this
+                method (``2`` is its caller, ``3`` the caller of the caller).
+
+        Returns:
+            str: The current name of the input port.
+        """
+        new = self.INPUT_PORT_ALIASES.get(input_port) if isinstance(input_port, str) else None
+        if new is None or dict.__contains__(self.input, input_port):
+            return input_port
+        name = type(self).__name__
+        deprecate_name(f"{name}.{input_port}", f"{name}.{new}", stacklevel=stacklevel + 1)
         return new
 
     @property

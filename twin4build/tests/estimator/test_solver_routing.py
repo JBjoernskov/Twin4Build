@@ -20,7 +20,7 @@ def test_dispatch_routes_to_backend_owner(method, owner):
     estimator._solve_ipopt = Mock(return_value="ipopt")
     estimator._solve_custom = Mock(return_value="custom")
 
-    result = estimator._dispatch_solve(method, 2, {"maxiter": 3})
+    result = estimator._dispatch_solve(method, {"maxiter": 3})
 
     selected = getattr(estimator, owner)
     selected.assert_called_once()
@@ -33,7 +33,7 @@ def test_dispatch_routes_to_backend_owner(method, owner):
 def test_dispatch_rejects_unknown_backend():
     estimator = object.__new__(Estimator)
     with pytest.raises(ValueError, match="Unsupported estimator backend"):
-        estimator._dispatch_solve(("other", "solver", "ad"), None, {})
+        estimator._dispatch_solve(("other", "solver", "ad"), {})
 
 
 @pytest.mark.parametrize(
@@ -48,16 +48,8 @@ def test_cross_backend_hessian_option_is_rejected(owner, method):
     estimator = object.__new__(Estimator)
     estimator._transcription = "single_shooting"
     estimator._functional_objective = object()
-    args = (
-        (method, None, {"hessian": "exact"})
-        if owner == "_solve_scipy"
-        else (
-            method,
-            {"hessian": "exact"},
-        )
-    )
     with pytest.raises(TypeError, match="hessian"):
-        getattr(estimator, owner)(*args)
+        getattr(estimator, owner)(method, {"hessian": "exact"})
 
 
 class _PlugIn:
@@ -83,7 +75,7 @@ def _bare_estimator():
 def test_dispatch_prefers_a_solver_instance():
     estimator = _bare_estimator()
     estimator._solver_instance = _PlugIn()
-    assert estimator._dispatch_solve(("custom", "batched-sqp", "ad"), None, {"maxiter": 3}) == "plugin"
+    assert estimator._dispatch_solve(("custom", "batched-sqp", "ad"), {"maxiter": 3}) == "plugin"
     assert estimator._solver_instance.calls == [("problem", {"maxiter": 3})]
     estimator._solve_custom.assert_not_called()
 
@@ -95,8 +87,8 @@ def test_dispatch_finds_a_registered_solver_and_it_shadows_a_built_in():
     plugin.method = ("custom", "batched-sqp", "ad")
     register_solver(plugin)
     try:
-        assert estimator._dispatch_solve(plugin.method, None, {}) == "plugin"
+        assert estimator._dispatch_solve(plugin.method, {}) == "plugin"
         estimator._solve_custom.assert_not_called()
     finally:
         unregister_solver(plugin.method)
-    assert estimator._dispatch_solve(plugin.method, None, {}) == "custom"
+    assert estimator._dispatch_solve(plugin.method, {}) == "custom"
