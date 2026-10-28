@@ -361,8 +361,9 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
                 # OpeningSystem -- the mass counterpart of the thermal zone's
                 # ``wallHeatGain``.
                 "exchangeCO2Gain": tps.Vector(optional=True),
-                # The envelope's inflow at outdoor state [kg/s] (air_balance.INFILTRATION_PORT): counts as supply and
-                # enters with the make-up stream at the outdoor level.  Unwired: zero.  The u column is the last one.
+                # The envelope's inflow at outdoor state [kg/s] (air_balance.INFILTRATION_PORT): enters with the
+                # make-up stream at the outdoor level and leaves at room state.  Unwired: zero.  The u column is the
+                # last one.
                 "infiltrationAirFlowRate": tps.Scalar(0.0, optional=True),
             },
             aliases=self.INPUT_PORT_ALIASES,

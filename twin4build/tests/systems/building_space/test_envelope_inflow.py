@@ -1,15 +1,14 @@
 """The envelope's inflow (``infiltrationAirFlowRate``, 28 Oct 2026): air an envelope-leakage component lets into a
-room at outdoor state, counted as supply in the room's air balance and entering with the make-up stream.
+room at outdoor state, leaving it again at room state (a time-varying infiltration), no part of the room's
+mechanical balance.
 
-1. the transform: the deficit the inflow leaves plus the inflow on the make-up slot, at their mixed state; a zero
-   inflow leaves the inputs bit for bit;
-2. without a deficit, an inflow ``f`` is exactly the constant infiltration ``m_inf = f`` (outdoor air in, room air
-   out), fused and unfused;
-3. in a deficit the inflow replaces make-up air instead of adding to it (sub-additive), and the make-up output
-   drops by it;
-4. with a wired make-up temperature (a hallway) the inflow mixes in: the same as one make-up stream at the
+1. the transform: the make-up flow plus the inflow on the make-up slot, at their mixed state; a zero inflow leaves
+   the inputs bit for bit;
+2. an inflow ``f`` is exactly the constant infiltration ``m_inf = f`` (outdoor air in, room air out), with a surplus
+   or a deficit, fused and unfused; the published surplus and make-up flows do not see it;
+3. with a wired make-up temperature (a hallway) the inflow mixes in: the same as one make-up stream at the
    flow-weighted temperature;
-5. object and functional paths agree with an inflow, fused and unfused (smooth mode).
+4. object and functional paths agree with an inflow, fused and unfused (smooth mode).
 """
 import datetime
 import functools
@@ -93,8 +92,8 @@ class TestTransform(unittest.TestCase):
             {"supplyAirFlowRate": _t(0.1), "exhaustAirFlowRate": _t(0.3), "infiltrationAirFlowRate": _t(0.05),
              "makeUpAirTemperature": _t(20.0), "outdoorTemperature": _t(0.0)},
             "makeUpAirTemperature", "outdoorTemperature")
-        self.assertAlmostEqual(float(out["exhaustAirFlowRate"]), 0.2, places=12)  # deficit 0.15 + inflow 0.05
-        self.assertAlmostEqual(float(out["makeUpAirTemperature"]), (0.15 * 20.0 + 0.05 * 0.0) / 0.2, places=12)
+        self.assertAlmostEqual(float(out["exhaustAirFlowRate"]), 0.25, places=12)  # deficit 0.2 + inflow 0.05
+        self.assertAlmostEqual(float(out["makeUpAirTemperature"]), (0.2 * 20.0 + 0.05 * 0.0) / 0.25, places=12)
 
     @_exact
     def test_surplus(self):
@@ -104,8 +103,8 @@ class TestTransform(unittest.TestCase):
             "makeUpAirTemperature", "outdoorTemperature")
         self.assertAlmostEqual(float(out["exhaustAirFlowRate"]), 0.05, places=12)  # the inflow alone
         self.assertAlmostEqual(float(out["makeUpAirTemperature"]), 0.0, places=12)  # outdoor air
-        surplus, make_up = air_balance.imbalance_flows(_t(0.3), _t(0.1), _t(0.05))
-        self.assertAlmostEqual(float(surplus), 0.25, places=12)
+        surplus, make_up = air_balance.imbalance_flows(_t(0.3), _t(0.1))
+        self.assertAlmostEqual(float(surplus), 0.2, places=12)
         self.assertAlmostEqual(float(make_up), 0.0, places=12)
 
     def test_zero_inflow_is_bit_for_bit(self):
@@ -120,27 +119,20 @@ class TestTransform(unittest.TestCase):
 
 class TestRoom(unittest.TestCase):
     @_exact
-    def test_without_a_deficit_the_inflow_is_the_constant_infiltration(self):
-        for fuse in (True, False):
-            a = _run(fuse=fuse, m_inf=0.02, model_id=f"m_inf_{fuse}")
-            b = _run(fuse=fuse, m_inf=0.0, inflow=0.02, model_id=f"inflow_{fuse}")
-            for port in ("indoorTemperature", "indoorCO2"):
-                torch.testing.assert_close(a[port], b[port], rtol=0, atol=1e-8, msg=f"{port}, fused {fuse}")
-            torch.testing.assert_close(b["surplusAirFlowRate"], a["surplusAirFlowRate"] + 0.02, rtol=0, atol=1e-12)
-
-    @_exact
-    def test_in_a_deficit_the_inflow_replaces_make_up_air(self):
-        # supply 0.15, exhaust 0.25: a deficit of 0.10 from outdoors either way; the inflow is part of it
-        a = _run(exhaust=0.25, model_id="deficit")
-        b = _run(exhaust=0.25, inflow=0.04, model_id="deficit_inflow")
-        for port in ("indoorTemperature", "indoorCO2"):
-            torch.testing.assert_close(a[port], b[port], rtol=0, atol=1e-8, msg=port)
-        torch.testing.assert_close(a["makeUpAirFlowRate"], b["makeUpAirFlowRate"] + 0.04, rtol=0, atol=1e-12)
+    def test_the_inflow_is_the_constant_infiltration(self):
+        for exhaust in (0.05, 0.25):  # a surplus, a deficit
+            for fuse in (True, False):
+                a = _run(fuse=fuse, exhaust=exhaust, m_inf=0.02, model_id=f"m_inf_{fuse}_{int(exhaust * 100)}")
+                b = _run(fuse=fuse, exhaust=exhaust, m_inf=0.0, inflow=0.02, model_id=f"inflow_{fuse}_{int(exhaust * 100)}")
+                for port in ("indoorTemperature", "indoorCO2"):
+                    torch.testing.assert_close(a[port], b[port], rtol=0, atol=1e-8, msg=f"{port}, fused {fuse}")
+                for port in ("surplusAirFlowRate", "makeUpAirFlowRate"):  # the mechanical balance only
+                    torch.testing.assert_close(a[port], b[port], rtol=0, atol=1e-12, msg=f"{port}, fused {fuse}")
 
     @_exact
     def test_a_wired_make_up_temperature_mixes_with_the_inflow(self):
-        # 0.06 from the hallway at 20 C and 0.04 from outdoors at 0 C = 0.10 at 12 C
-        a = _run(exhaust=0.25, make_up_temperature=12.0, model_id="mixed_reference")
+        # 0.10 from the hallway at 20 C and 0.04 from outdoors at 0 C = 0.14 at 100/7 C
+        a = _run(exhaust=0.29, make_up_temperature=100.0 / 7.0, model_id="mixed_reference")
         b = _run(exhaust=0.25, make_up_temperature=20.0, inflow=0.04, model_id="mixed_inflow")
         torch.testing.assert_close(a["indoorTemperature"], b["indoorTemperature"], rtol=0, atol=1e-8)
 

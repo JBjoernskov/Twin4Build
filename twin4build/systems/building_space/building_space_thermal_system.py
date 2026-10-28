@@ -347,9 +347,10 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
                 optional=True
             ),  # Heat flow from connected WallSystem components [W], optional
             # The envelope's inflow at outdoor state [kg/s] (an envelope-leakage
-            # component's share): counts as supply in the air balance and
-            # enters with the make-up stream (air_balance.INFILTRATION_PORT).
-            # Unwired: zero.  The u column is the last one.
+            # component's share): enters with the make-up stream and leaves at
+            # room state, no part of the published imbalance
+            # (air_balance.INFILTRATION_PORT).  Unwired: zero.  The u column is
+            # the last one.
             "infiltrationAirFlowRate": tps.Scalar(0.0, optional=True),
         }
 
@@ -607,18 +608,16 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
     #: :meth:`_ss_derived_outputs` from the flow ports' values, like
     #: :meth:`forward` does.
     SS_DERIVED_OUTPUT_PORTS = ("surplusAirFlowRate", "makeUpAirFlowRate")
-    SS_DERIVED_INPUT_PORTS = ("supplyAirFlowRate", "exhaustAirFlowRate", air_balance.INFILTRATION_PORT)
+    SS_DERIVED_INPUT_PORTS = ("supplyAirFlowRate", "exhaustAirFlowRate")
     SS_DERIVED_ROW_PORTS = ()
 
     @staticmethod
     def _ss_derived_outputs(inputs, rows):
         """The air-flow imbalance of the step from the supply and exhaust
-        flows (the ports' values, before the make-up transform), the envelope
-        inflow counted as supply: the surplus and the make-up flow
+        flows (the ports' values, before the make-up transform): the surplus
+        and the make-up flow
         (:mod:`~twin4build.systems.building_space.air_balance`)."""
-        surplus, make_up = air_balance.imbalance_flows(
-            inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"], inputs.get(air_balance.INFILTRATION_PORT)
-        )
+        surplus, make_up = air_balance.imbalance_flows(inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"])
         return {"surplusAirFlowRate": surplus, "makeUpAirFlowRate": make_up}
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): connected
