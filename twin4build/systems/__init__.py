@@ -30,8 +30,6 @@ Key Components:
         - ScheduleSwitchControllerSystem: Schedule-based switching controller
         - SATLinearRuleSystem / SATCompensatedControllerSystem: Supply air
           temperature compensation rules
-        - ClassificationAnnControllerSystem: ANN-based classification control
-        - NeuralPolicyControllerSystem: Neural network policy control
         - ControllerIdentificationSystem / ControllerIdentificationPISystem:
           Controller identification models
 
@@ -42,7 +40,6 @@ Key Components:
 
     Environmental:
         - OutdoorEnvironmentSystem: External environmental conditions
-        - ShadingDeviceSystem: Solar shading control
 
     Utility Systems:
         - SupplyFlowJunctionSystem: Supply flow distribution
@@ -88,8 +85,6 @@ __all__ = [
     "ScheduleSwitchControllerSystem",
     "SATLinearRuleSystem",
     "SATCompensatedControllerSystem",
-    "ClassificationAnnControllerSystem",
-    "NeuralPolicyControllerSystem",
     "ControllerIdentificationSystem",
     "ControllerIdentificationPISystem",
     "RewireReport",
@@ -118,8 +113,6 @@ __all__ = [
     "DamperSystem",
     # Fan
     "FanSystem",
-    # Shading
-    "ShadingDeviceSystem",
     # Utils
     "PiecewiseLinearSystem",
     "TimeSeriesInputSystem",
@@ -144,7 +137,6 @@ _MODULES = {
     "BuildingSpaceSystem": "building_space.building_space_system",
     "CoilSystem": "coil.coil_system",
     "FanCoilUnitSystem": "fan_coil_unit.fan_coil_unit_system",
-    "ClassificationAnnControllerSystem": "controller.classification_ann_controller.classification_ann_controller_system",
     "ControllerIdentificationSystem": "controller.controller_identification.controller_identification_system",
     "ControllerIdentificationPISystem": "controller.controller_identification.controller_identification_pi_system",
     "ActuatorSeeds": "controller.controller_identification.loop_classifier",
@@ -153,7 +145,6 @@ _MODULES = {
     "derive_actuator_seeds": "controller.controller_identification.loop_classifier",
     "score_pair": "controller.controller_identification.loop_classifier",
     "RewireReport": "controller.controller_identification.pi_loop_rewire",
-    "NeuralPolicyControllerSystem": "controller.neural_policy_controller.neural_policy_controller_system",
     "SATCompensatedControllerSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
     "SATLinearRuleSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
     "ScheduleSwitchControllerSystem": "controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_system",
@@ -167,7 +158,6 @@ _MODULES = {
     "PiecewiseLinearScheduleSystem": "schedule.piecewise_linear_schedule_system",
     "ScheduleSystem": "schedule.schedule_system",
     "SensorSystem": "sensor.sensor_system",
-    "ShadingDeviceSystem": "shading_device.shading_device_system",
     "SpaceHeaterSystem": "space_heater.space_heater_system",
     "DiscreteStatespaceSystem": "utils.discrete_statespace_system",
     "MaxSystem": "utils.max_system",

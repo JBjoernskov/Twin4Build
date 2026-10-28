@@ -22,6 +22,17 @@ Unused and untested; 2.0 drops them without a deprecation period.
   the next `initialize` overwrote, so a simulation never saw it, and they
   set no component's state.  Use `Model.set_state` for the state the
   simulations start from.
+- The site-specific research scripts in `twin4build/examples/` (the Mortar
+  buildings 1 and 13, BTS Site A, HTR, the ESIM 2026 calibration and
+  optimization plots, the optimization runners and a pseudo-code `ex.py`):
+  they read private files and local databases and are no maintained
+  examples. They moved to `scripts/research/` in the repository and are no
+  longer installed with the package.
+- `ClassificationAnnControllerSystem`, `NeuralPolicyControllerSystem` and
+  `ShadingDeviceSystem`: the ANN controller could not be built (its weights
+  are not shipped), the neural policy's default policy could not step, and
+  the shading device only passed a shade position on that no component
+  reads.  The SAREF `ShadingDevice` class stays in the semantic model.
 - The on-off controllers `OnOffControllerSystem` and
   `SmoothOnOffControllerSystem` (with its deprecated alias
   `OnOffControllerTorchSystem`).  On-off control is a proportional loop

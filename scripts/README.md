@@ -1,6 +1,7 @@
 # Twin4Build Development Scripts
 
-This directory contains scripts to help with Twin4Build development.
+This directory contains scripts to help with Twin4Build development. `research/` holds site-specific research
+scripts kept for reference (see its README); they are not maintained, tested or installed.
 
 ## Scripts
 
