@@ -22,6 +22,17 @@ Unused and untested; 2.0 drops them without a deprecation period.
   the next `initialize` overwrote, so a simulation never saw it, and they
   set no component's state.  Use `Model.set_state` for the state the
   simulations start from.
+- The on-off controllers `OnOffControllerSystem` and
+  `SmoothOnOffControllerSystem` (with its deprecated alias
+  `OnOffControllerTorchSystem`).  On-off control is a proportional loop
+  saturated to the off and on values: `PIDControllerSystem(kp=k, Ti=1e12,
+  output_min=off, output_max=on)`, `u = clamp(k * e, off, on)`.  The removed
+  smooth controller with steepness `s` about setpoint `sp` is exactly
+  `kp = (on - off) * s` about `sp - 0.5 / s` (as `full_workflow_example`
+  and the estimator example's saved model now do).  A serialized model that
+  names one of the removed classes no longer loads; replace that node with
+  a `PIDControllerSystem`.  The controller identification's `onOffSignal`
+  gate input is unchanged.
 
 ### Removed (previously deprecated)
 
@@ -42,7 +53,7 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 ### Deprecated (removed in 2.1)
 
-- `*TorchSystem` public names → prefer `*System` / `SmoothOnOffControllerSystem`
+- `*TorchSystem` public names → prefer `*System`
 - Schedule/controller camelCase kwargs → snake_case (`weekday_ruleset`, `is_reverse`, `date_column`, …)
 - `use_spreadsheet` / `use_database` / `use_dict` → prefer `source=`
 - `Model.load(semantic_model_filename=...)` auto-translate → `SemanticModel` + `Translator.translate`; prefer `Model.load(filename=...)`
@@ -540,8 +551,8 @@ Unused and untested; 2.0 drops them without a deprecation period.
   (the rule is exposed as `twin4build.solvers.ipopt.early_stopping_step`);
   cold starts were being cut mid-descent at their first feasible incumbent.
 
-- Preferred system names without `Torch` suffix; `OnOffControllerTorchSystem` → `SmoothOnOffControllerSystem`
-- Module files renamed accordingly (`*_torch_system.py` → `*_system.py`; smooth on-off → `smooth_on_off_controller_system.py`)
+- Preferred system names without `Torch` suffix
+- Module files renamed accordingly (`*_torch_system.py` → `*_system.py`)
 - `Model.load(..., enable_fusion=True)` first-class
 - Simulation policy has independent dimensions: `execution_mode` is `object`
   or `functional`, while `execution_backend` is `eager` (default) or
