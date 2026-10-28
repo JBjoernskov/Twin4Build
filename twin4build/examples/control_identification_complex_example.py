@@ -4,8 +4,8 @@ Controller Identification Example - Complex Case with Multiple Actuators
 This example stress-tests the controller identification system with:
 - 7 sensors (2 true indoor temps, 5 decoys)
 - 6 setpoints (1 true, 5 decoys)
-- 2 actuators (one PI-controlled, one On-Off-controlled)
-- 2 controller candidates: PID vs On-Off
+- 2 actuators (one PI-controlled, one on-off-controlled)
+- 2 controller candidates: a PID and a PID tuned as an on-off controller
 
 The optimizer must learn:
 - Which sensor provides feedback (beta weights)
@@ -15,7 +15,8 @@ The optimizer must learn:
 
 True controllers:
 - Actuator 0: PI with Kp=0.15, Ti=8.0 → PID candidate learns Td=0
-- Actuator 1: On-Off with off_value=0, on_value=1, steepness=10
+- Actuator 1: on-off between 0 and 1, i.e. a proportional loop saturated
+  to output_min=0, output_max=1 with no integral (``ON_OFF_PI_KWARGS``)
 """
 
 # Standard library imports
@@ -36,12 +37,22 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
-from twin4build.systems.controller.rulebased_controller.on_off_controller.smooth_on_off_controller_system import (
-    SmoothOnOffControllerSystem,
-)
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
+
+# On-off control as a special case of the PID: a proportional loop
+# saturated to [output_min, output_max] = [off, on], u = clamp(kp * e), with
+# no integral (Ti -> infinity).  kp = 10 switches it fully over 0.1 K of
+# error.
+ON_OFF_PI_KWARGS = {
+    "kp": 10.0,
+    "Ti": 1e12,
+    "Td": 0.0,
+    "output_min": 0.0,
+    "output_max": 1.0,
+    "is_reverse": True,
+}
 
 
 def create_weather_data(
@@ -107,7 +118,6 @@ def generate_single_controller_data(
     controller_type: str,  # "pi" or "onoff"
     pi_kp: float = 0.15,
     pi_Ti: float = 8.0,
-    onoff_steepness: float = 10.0,
 ):
     """
     Generate data for a single controller type.
@@ -152,13 +162,7 @@ def generate_single_controller_data(
             kp=pi_kp, Ti=pi_Ti, Td=0.0, is_reverse=True, id="controller"
         )
     else:  # onoff
-        controller = SmoothOnOffControllerSystem(
-            off_value=0.0,
-            on_value=1.0,
-            steepness=onoff_steepness,
-            is_reverse=True,
-            id="controller",
-        )
+        controller = tb.PIDControllerSystem(**ON_OFF_PI_KWARGS, id="controller")
 
     # Schedules
     outdoor_temp_schedule = tb.ScheduleSystem(
@@ -274,8 +278,6 @@ def generate_dual_actuator_data(
     # PI controller parameters (actuator 0)
     pi_kp: float = 0.15,
     pi_Ti: float = 8.0,
-    # On-Off controller parameters (actuator 1)
-    onoff_steepness: float = 10.0,
 ):
     """
     Generate synthetic data for TWO actuators using twin4build components.
@@ -311,7 +313,6 @@ def generate_dual_actuator_data(
         step_size=step_size,
         weather=weather,
         controller_type="onoff",
-        onoff_steepness=onoff_steepness,
     )
 
     # Return both temperatures - each actuator was seeing its own temperature
@@ -339,7 +340,7 @@ def generate_dual_actuator_data(
 
     true_params = {
         "pi": {"kp": pi_kp, "Ti": pi_Ti},
-        "onoff": {"off_value": 0.0, "on_value": 1.0, "steepness": onoff_steepness},
+        "onoff": dict(ON_OFF_PI_KWARGS),
     }
 
     return (
@@ -503,29 +504,29 @@ def create_complex_decoy_signals(df_temp_pi, df_temp_onoff, df_setpoint, weather
 
 def create_controller_candidates():
     """
-    Define controller candidates: PID vs On-Off.
+    Define controller candidates: PID vs on-off (a PID tuned as on-off).
 
     CANDIDATES (2 total):
         0: PID controller - general form (P, PI, PD, or PID depending on parameters)
-        1: On-Off controller - bang-bang control
+        1: On-off controller - a saturated P loop (``ON_OFF_PI_KWARGS``)
 
     The optimizer should learn:
         - Actuator 0 (true=PI): Select PID (α₀,₀ ≈ 1) with Td → 0
-        - Actuator 1 (true=On-Off): Select On-Off (α₁,₁ ≈ 1)
+        - Actuator 1 (true=on-off): Select the on-off PID (α₁,₁ ≈ 1)
 
     Returns:
         Tuple of (controller_classes, controller_kwargs)
     """
     controller_classes = [
         PIDControllerSystem,  # Candidate 0: PID (true for actuator 0, will learn Td=0)
-        SmoothOnOffControllerSystem,  # Candidate 1: On-Off (true for actuator 1)
+        PIDControllerSystem,  # Candidate 1: on-off (true for actuator 1)
     ]
 
     controller_kwargs = [
         # Candidate 0: PID - will learn Kp, Ti, Td (Td should go to 0 for PI behavior)
         {"kp": 1e-3, "Ti": 10.0, "Td": 0.0, "is_reverse": True},
-        # Candidate 1: On-Off controller (differentiable version)
-        {"off_value": 0.0, "on_value": 1.0, "steepness": 10.0, "is_reverse": True},
+        # Candidate 1: on-off controller as a saturated P loop
+        dict(ON_OFF_PI_KWARGS),
     ]
 
     return controller_classes, controller_kwargs
@@ -561,10 +562,9 @@ def run_complex_identification_example():
     # True controller parameters
     true_pi_kp = 1e-3
     true_pi_Ti = 8.0
-    true_onoff_steepness = 100
 
     print(f"\n   Actuator 0: PI controller with Kp={true_pi_kp}, Ti={true_pi_Ti}s")
-    print(f"   Actuator 1: On-Off controller with steepness={true_onoff_steepness}")
+    print(f"   Actuator 1: on-off controller (saturated P loop {ON_OFF_PI_KWARGS})")
 
     (
         df_temp_pi,
@@ -580,7 +580,6 @@ def run_complex_identification_example():
         step_size=step_size,
         pi_kp=true_pi_kp,
         pi_Ti=true_pi_Ti,
-        onoff_steepness=true_onoff_steepness,
     )
 
     # =========================================================================
@@ -614,15 +613,9 @@ def run_complex_identification_example():
         "On-Off (true for Act.1)",
     ]
     for i, (desc, kwargs) in enumerate(zip(candidate_descriptions, controller_kwargs)):
-        ctrl_type = "On-Off" if i == 1 else "PID"
-        if ctrl_type == "PID":
-            print(
-                f"     [{i}] {desc}: Kp={kwargs['kp']}, Ti={kwargs['Ti']}, Td={kwargs['Td']}"
-            )
-        else:
-            print(
-                f"     [{i}] {desc}: off={kwargs['offValue']}, on={kwargs['onValue']}, k={kwargs['steepness']}"
-            )
+        print(
+            f"     [{i}] {desc}: Kp={kwargs['kp']}, Ti={kwargs['Ti']}, Td={kwargs['Td']}"
+        )
 
     print("\n   Expected identification:")
     print("     - beta_0 + beta_1 ≈ 1.0 (both indoor temps are TRUE), others ≈ 0")
@@ -853,7 +846,7 @@ def run_complex_identification_example():
     parameters = controller.get_estimator_parameters()
 
     # Override x0 values to be VERY CLOSE to optimal solution for debugging
-    # Expected optimal (per-actuator) - from true_pi_kp, true_pi_Ti, true_onoff_steepness:
+    # Expected optimal (per-actuator) - from true_pi_kp, true_pi_Ti, ON_OFF_PI_KWARGS:
     #   - alpha_0: [1.0, 0.0] (PI for actuator 0)
     #   - beta_0: [1.0, 0, 0, 0, 0, 0, 0] (sensor 0 = PI_TRUE for actuator 0)
     #   - gamma_0: [1.0, 0, 0, 0, 0, 0] (TRUE setpoint)
@@ -861,7 +854,7 @@ def run_complex_identification_example():
     #   - beta_1: [0, 1.0, 0, 0, 0, 0, 0] (sensor 1 = ONOFF_TRUE for actuator 1)
     #   - gamma_1: [1.0, 0, 0, 0, 0, 0] (TRUE setpoint)
     #   - PI params: kp=0.001, Ti=8.0, Td=0.0  (kp is at lower bound!)
-    #   - On-Off params: off_value=0.0, on_value=1.0, steepness=100
+    #   - on-off params: ON_OFF_PI_KWARGS (kp=10, no integral, output 0..1)
 
     parameters_exact_optimal = []
     for comp, attr, x0, lb, ub, *_ in parameters:
@@ -883,12 +876,6 @@ def run_complex_identification_example():
             x0 = true_pi_Ti / 2  # EXACT: 8.0
         elif "Td" in attr:
             x0 = 0.0  # EXACT: 0
-        elif "off_value" in attr:
-            x0 = 0.0  # EXACT: 0
-        elif "on_value" in attr:
-            x0 = 1.0  # EXACT: 1
-        elif "steepness" in attr:
-            x0 = true_onoff_steepness / 2  # EXACT: 100
         parameters_exact_optimal.append((comp, attr, x0, lb, ub))
 
     # Initialize weights at 0.5 as per the formulation
@@ -1026,10 +1013,6 @@ def run_complex_identification_example():
     print(f"       kp = {ctrl_pi_0.kp.get().item():.6f}")
     print(f"       Ti = {ctrl_pi_0.Ti.get().item():.6f}")
     print(f"       Td = {ctrl_pi_0.Td.get().item():.6f}")
-    # print(f"     OnOff Controller (Act.1, Cand.1):")
-    # print(f"       offValue = {ctrl_onoff_1.offValue.get().item():.6f}")
-    # print(f"       onValue = {ctrl_onoff_1.onValue.get().item():.6f}")
-    # print(f"       steepness = {ctrl_onoff_1.steepness.get().item():.6f}")
 
     # Run simulation with x0 parameters
     print("\n   Running simulation with x0 parameters...")
@@ -1051,15 +1034,15 @@ def run_complex_identification_example():
     mse_onoff = np.mean((x0_pred_onoff - actual_onoff) ** 2)
     print(f"\n   [TEST RESULTS] MSE with x0 parameters:")
     print(f"     Actuator 0 (PI):    {mse_pi:.6f}")
-    print(f"     Actuator 1 (OnOff): {mse_onoff:.6f}")
+    print(f"     Actuator 1 (On-Off): {mse_onoff:.6f}")
     print(f"     Total MSE:          {mse_pi + mse_onoff:.6f}")
 
     # Print predictions vs actual
     print(f"\n   [TEST] Predictions vs Actual (first 20 timesteps):")
     print(f"     Act.0 (PI) pred:   {x0_pred_pi[:20]}")
     print(f"     Act.0 (PI) actual: {actual_pi[:20]}")
-    print(f"     Act.1 (OnOff) pred:   {x0_pred_onoff[:20]}")
-    print(f"     Act.1 (OnOff) actual: {actual_onoff[:20]}")
+    print(f"     Act.1 (On-Off) pred:   {x0_pred_onoff[:20]}")
+    print(f"     Act.1 (On-Off) actual: {actual_onoff[:20]}")
 
     # Plot x0 test results
     fig, axes = plt.subplots(2, 1, figsize=(12, 8))
@@ -1074,7 +1057,7 @@ def run_complex_identification_example():
 
     axes[1].plot(time_hours, actual_onoff, "b-", label="Actual", linewidth=2)
     axes[1].plot(time_hours, x0_pred_onoff, "r--", label="Prediction (x0)", linewidth=2)
-    axes[1].set_ylabel("Actuator 1 (OnOff)")
+    axes[1].set_ylabel("Actuator 1 (On-Off)")
     axes[1].set_xlabel("Time (hours)")
     axes[1].set_title(f"Actuator 1: MSE = {mse_onoff:.6f}")
     axes[1].legend()
@@ -1147,14 +1130,14 @@ def run_complex_identification_example():
             )
             print(f"    Actuator 0 (PI) predictions:     {pred_pi[:20]}")
             print(f"    Actuator 0 (PI) actual:          {actual_pi[:20]}")
-            print(f"    Actuator 1 (OnOff) predictions:  {pred_onoff[:20]}")
-            print(f"    Actuator 1 (OnOff) actual:       {actual_onoff[:20]}")
+            print(f"    Actuator 1 (On-Off) predictions:  {pred_onoff[:20]}")
+            print(f"    Actuator 1 (On-Off) actual:       {actual_onoff[:20]}")
 
             # Print MSE for each actuator
             mse_pi = np.mean((pred_pi - actual_pi) ** 2)
             mse_onoff = np.mean((pred_onoff - actual_onoff) ** 2)
             print(f"\n    MSE Actuator 0 (PI):    {mse_pi:.6f}")
-            print(f"    MSE Actuator 1 (OnOff): {mse_onoff:.6f}")
+            print(f"    MSE Actuator 1 (On-Off): {mse_onoff:.6f}")
             print(f"    Total MSE:              {mse_pi + mse_onoff:.6f}")
 
             # Print the weighted signals being fed to controllers
@@ -1323,23 +1306,13 @@ def run_complex_identification_example():
                 print(f"     Candidate {c} ({ctrl.__class__.__name__}, α={alpha:.3f}):")
                 # PID controller parameters
                 if hasattr(ctrl, "kp"):
-                    true_kp = true_params["pi"]["kp"] if a == 0 else "N/A"
+                    true_kp = true_params["pi" if a == 0 else "onoff"]["kp"]
                     print(f"       kp = {ctrl.kp.get().item():.6f} (true: {true_kp})")
                 if hasattr(ctrl, "Ti"):
-                    true_Ti = true_params["pi"]["Ti"] if a == 0 else "N/A"
+                    true_Ti = true_params["pi" if a == 0 else "onoff"]["Ti"]
                     print(f"       Ti = {ctrl.Ti.get().item():.6f} (true: {true_Ti})")
                 if hasattr(ctrl, "Td"):
                     print(f"       Td = {ctrl.Td.get().item():.6f}")
-                # On-Off controller parameters
-                # if hasattr(ctrl, 'offValue'):
-                #     true_off = true_params['onoff']['offValue'] if a == 1 else "N/A"
-                #     print(f"       offValue = {ctrl.offValue.get().item():.6f} (true: {true_off})")
-                # if hasattr(ctrl, 'onValue'):
-                #     true_on = true_params['onoff']['onValue'] if a == 1 else "N/A"
-                #     print(f"       onValue = {ctrl.onValue.get().item():.6f} (true: {true_on})")
-                # if hasattr(ctrl, 'steepness'):
-                #     true_k = true_params['onoff']['steepness'] if a == 1 else "N/A"
-                #     print(f"       steepness = {ctrl.steepness.get().item():.6f} (true: {true_k})")
 
     # =========================================================================
     # Plot Results

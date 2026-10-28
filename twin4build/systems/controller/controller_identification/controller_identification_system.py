@@ -22,9 +22,6 @@ from twin4build.systems.controller.setpoint_controller.cascade_controller.cascad
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
-from twin4build.systems.controller.rulebased_controller.on_off_controller.smooth_on_off_controller_system import (
-    SmoothOnOffControllerSystem,
-)
 from twin4build.systems.utils.sigmoid_gate import BandGate, SigmoidGate
 from twin4build.translator.translator import (
     StepRule,
@@ -120,10 +117,20 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         n_sensors: Number of candidate feedback sensors (default: 1)
         n_setpoints: Number of candidate setpoint signals (default: 1)
         n_actuators: Number of actuator outputs (default: 1)
-        candidate_controllers: List of controller System classes to use as candidates.
-            If None, uses default PIDControllerSystem with different configurations.
-        candidate_controller_kwargs: List of kwargs dicts for each candidate controller.
-            If None, uses default configurations.
+        n_on_off_signals: Number of candidate gate signals on the
+            ``onOffSignal`` port; read from the connections at
+            ``initialize()`` when not given.
+        setpoint_controllers: Controller System classes used as setpoint
+            (PI-type) candidates.  If neither this nor
+            ``cascade_controllers`` is given, the defaults are a
+            reverse-acting and a direct-acting PIDControllerSystem plus one
+            CascadeControllerSystem.
+        setpoint_controller_kwargs: One kwargs dict per entry of
+            ``setpoint_controllers``.
+        cascade_controllers: Controller System classes used as cascade
+            candidates.
+        cascade_controller_kwargs: One kwargs dict per entry of
+            ``cascade_controllers``.
         max_controllers: Controller classes of the ``"max"`` candidates
             (loops on their own feedback and setpoint whose output joins the
             others' by max); none by default.
@@ -155,8 +162,8 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         >>>
         >>> # Custom candidates
         >>> controller = ControllerIdentificationSystem(
-        ...     candidate_controllers=[PIDControllerSystem, PIDControllerSystem],
-        ...     candidate_controller_kwargs=[
+        ...     setpoint_controllers=[PIDControllerSystem, PIDControllerSystem],
+        ...     setpoint_controller_kwargs=[
         ...         {"kp": 0.1, "Ti": 100, "Td": 0},  # PI
         ...         {"kp": 0.1, "Ti": 100, "Td": 10}, # PID
         ...     ],
@@ -1112,8 +1119,8 @@ class ControllerIdentificationSystem(core.System, nn.Module):
     def _append_pid_params(self, params: list, ctrl: core.System, prefix: str) -> None:
         """Append estimable PID-like parameters from *ctrl* to *params*.
 
-        Works for PIDControllerSystem, On-Off controllers, and any other
-        controller that exposes the standard attrs.
+        Works for PIDControllerSystem and any other controller that exposes
+        the standard attrs.
         """
         target = ctrl
         target_prefix = prefix
@@ -1128,16 +1135,6 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             params.append(
                 (self, f"{target_prefix}.output_min", 0.5, 0.0, 1.0, "private")
             )
-        if hasattr(target, "off_value"):
-            params.append((self, f"{target_prefix}.off_value", 0.0, 0, 1.0, "private"))
-        if hasattr(target, "on_value"):
-            params.append((self, f"{target_prefix}.on_value", 1.0, 0.0, 1.0, "private"))
-        # ``steepness`` is intentionally NOT estimated.  It is a numerical
-        # hyperparameter that controls the smoothness of the soft on/off
-        # transition; the underlying physical behavior is binary.  The
-        # value is set at construction time and (optionally) annealed
-        # globally via the saturation_mode / steepness_override helpers
-        # in ``smooth_saturation.py``.
 
     @staticmethod
     def _summary_pid_params(lines: list, ctrl: core.System, indent: int = 6) -> None:
@@ -1148,17 +1145,13 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                 lines.append(f"{pad}{attr}: {getattr(ctrl, attr).get().item():.6f}")
         if hasattr(ctrl, "is_reverse"):
             lines.append(f"{pad}isReverse: {ctrl.isReverse}")
-        for attr in ("off_value", "on_value", "steepness"):
-            if hasattr(ctrl, attr):
-                lines.append(f"{pad}{attr}: {getattr(ctrl, attr).get().item():.6f}")
 
     @staticmethod
     def _append_pid_scales(scales: list, ctrl: core.System) -> None:
         """Append 1.0 gradient scales for each PID-like parameter on *ctrl*."""
         target = ctrl.pid if hasattr(ctrl, "pid") else ctrl
         # Keep this list in sync with ``_append_pid_params`` above.
-        # ``steepness`` is intentionally excluded (hyperparameter, not estimated).
-        for attr in ("kp", "Ti", "Td", "output_min", "off_value", "on_value"):
+        for attr in ("kp", "Ti", "Td", "output_min"):
             if hasattr(target, attr):
                 scales.append(1.0)
 
@@ -2005,7 +1998,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                                     )
                                 )
                 else:
-                    # Standard setpoint controllers (PID, on-off, etc.)
+                    # Standard setpoint controllers (PID, etc.)
                     self._append_pid_params(params, ctrl, prefix)
 
         return params
