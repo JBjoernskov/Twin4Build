@@ -111,10 +111,10 @@ TRANSFORMATIONS = {
 # :func:`_build_measured_sat_overrides`, which sources it from the BMS
 # Supply_Air_Temp measurement via a leaf sensor (no feedback loop).
 PHYSICS_DEFAULTS = {
-    "numberOfPeople":         0.0,
-    "heatGain":               0.0,
-    "outdoorCO2":             400.0,
-    "supplyWaterTemperature": 60.0,
+    "numberOfPeople":          0.0,
+    "heatGain":                0.0,
+    "outdoorCo2Concentration": 400.0,
+    "supplyWaterTemperature":  60.0,
 }
 
 

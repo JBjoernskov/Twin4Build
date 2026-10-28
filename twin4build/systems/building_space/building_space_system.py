@@ -85,7 +85,8 @@ class BuildingSpaceSystem(core.System, nn.Module):
           - exhaustAirFlowRate: Used by both thermal (heat removal) and mass (CO2 removal)
           - numberOfPeople: Used by both thermal (heat gain) and mass (CO2 generation)
           - outdoorTemperature: Used by thermal model
-          - outdoorCO2: Used by mass balance model
+          - outdoorCo2Concentration: Used by mass balance model (400 ppmv while unwired;
+            ``outdoorCO2`` is its deprecated name)
 
        **Thermal-Only Inputs:**
           - supplyAirTemperature, globalIrradiation, heatGain
@@ -117,6 +118,9 @@ class BuildingSpaceSystem(core.System, nn.Module):
     SHARED_UNIT_PARAMS = {"thermal.m_inf": "mass.m_inf"}
 
     SUPPORTS_TRANSFORM_MODE = True
+    #: The mass balance's renamed input (``outdoorCO2``), see
+    #: ``System.INPUT_PORT_ALIASES``.
+    INPUT_PORT_ALIASES = BuildingSpaceMassSystem.INPUT_PORT_ALIASES
 
     def __init__(self, thermal_kwargs: dict = None, mass_kwargs: dict = None, **kwargs):
         """Initialize the combined building space system."""
@@ -161,7 +165,11 @@ class BuildingSpaceSystem(core.System, nn.Module):
         # in do_step" code (still preserved below as a comment) became
         # unnecessary once the merge was assumed to be alias-preserving;
         # this restores that invariant for collision keys as well.
-        self._input = {**self.thermal.input, **self.mass.input}
+        self._input = core.AliasedPorts(
+            {**self.thermal.input, **self.mass.input},
+            aliases=self.INPUT_PORT_ALIASES,
+            owner=type(self).__name__,
+        )
         for k in set(self.thermal.input) & set(self.mass.input):
             shared = self._input[k]
             self.thermal.input[k] = shared

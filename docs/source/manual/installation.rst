@@ -85,7 +85,6 @@ Core dependencies (automatically installed):
 - pydot
 - pygraphviz (bundles Graphviz for model drawing)
 - tqdm
-- fmpy
 - scipy
 - numpy
 - prettytable

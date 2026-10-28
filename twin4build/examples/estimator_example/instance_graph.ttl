@@ -178,7 +178,7 @@ t4b:136775009366 a s4syst:ConnectionPoint,
 
 t4b:136775010056 a s4syst:ConnectionPoint,
         <n9411526c0c9c4b9f9fea134fb6f03758b3> ;
-    t4b:input_port "outdoorCO2" ;
+    t4b:input_port "outdoorCo2Concentration" ;
     t4b:input_port_index "{\"136777942750\": null}"^^rdf:JSON ;
     t4b:output_port_index "{\"136777942750\": null}"^^rdf:JSON ;
     s4syst:connectionPointOf t4b:office ;
