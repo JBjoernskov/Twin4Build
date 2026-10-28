@@ -23,7 +23,7 @@ def _attrs(entries):
 
 class TestInactiveBoundaryParameters(unittest.TestCase):
     def test_unwired_boundary_is_skipped_on_the_composite(self):
-        space = tb.BuildingSpaceSystem(id="room", airVolume=100.0)
+        space = tb.BuildingSpaceSystem(id="room", mass_kwargs=dict(V=100.0))
         attrs = _attrs(space.get_estimable_parameters())
         self.assertIn("thermal.C_air", attrs)
         self.assertIn("thermal.R_out", attrs)

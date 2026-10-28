@@ -33,7 +33,7 @@ class TestAirHandlingUnitTorchSystem(unittest.TestCase):
         }
         self.ahu = AirHandlingUnitSystem(
             id="test_ahu",
-            damper_kwargs=damper_kwargs,
+            supply_damper_kwargs=damper_kwargs, exhaust_damper_kwargs=damper_kwargs,
             heat_recovery_kwargs=heat_recovery_kwargs,
             supply_fan_kwargs=fan_kwargs,
             exhaust_fan_kwargs=fan_kwargs,

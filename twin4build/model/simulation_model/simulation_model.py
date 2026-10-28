@@ -4381,15 +4381,20 @@ class SimulationModel:
                 sm_instance.get_short_name(),
                 class_name,
             )
-            component = cls(id=sm_instance.get_short_name(), **attributes)
             # The literals are the flattened ``populate_config()`` of the
             # serialized component, so a nested parameter arrives as a
             # dotted key (``mass.V``, ``supply_damper.a``) that no
             # constructor takes, and a class may not expose every parameter
-            # as a constructor argument.  Constructors only see the
-            # keyword-shaped literals; every literal that resolves to a
+            # as a constructor argument (or no longer takes a key an older
+            # model recorded).  The constructor gets its own keywords only
+            # (a component rejects any other); every literal that resolves to a
             # ``tps.Parameter`` on the built component is written to it here,
             # so a serialized model reloads with its (fitted) values.
+            keywords = cls.constructor_keywords()
+            component = cls(
+                id=sm_instance.get_short_name(),
+                **{k: v for k, v in attributes.items() if k in keywords and k != "id"},
+            )
             # Bounds first (``candidate_0_0.kp.min_value``): a parameter
             # stores its value relative to its bounds, so they have to be
             # the serialized ones before the value is written.

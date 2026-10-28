@@ -551,7 +551,6 @@ class FanCoilUnitSystem(core.System, nn.Module):
             state_names=[f"T_w_{i+1}" for i in range(n)],
             E=E,
             F=F,
-            add_noise=False,
             id=f"ss_model_{self.id}",
         )
 

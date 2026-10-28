@@ -33,8 +33,8 @@ def build_model(model_id: str):
     model = tb.Model(id=model_id)
     space = tb.BuildingSpaceThermalTorchSystem(
         C_air=2e6, C_wall=1e7, R_out=0.005, R_in=0.005, f_wall=0, f_air=0,
-        Q_occ_gain=100.0, CO2_occ_gain=0.004, CO2_start=400.0, infiltrationRate=0.0,
-        airVolume=100.0, id="BuildingSpace",
+        Q_occ_gain=100.0,
+        id="BuildingSpace",
     )
     heater = tb.SpaceHeaterTorchSystem(
         Q_flow_nominal_sh=2000.0, T_a_nominal_sh=60.0, T_b_nominal_sh=30.0,

@@ -63,6 +63,13 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     # records its output per step (theta-independent by construction).
     forward = None
 
+    #: Deprecated keyword names and the ones that replaced them (see
+    #: ``System.DEPRECATED_KEYWORDS``).
+    DEPRECATED_KEYWORDS = {
+        "defaultX": "default_x",
+        "defaultY": "default_y",
+    }
+
     def __init__(
         self,
         default_x: Optional[List[float]] = None,
@@ -70,9 +77,9 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         **kwargs,
     ) -> None:
         legacy = deprecate_args(
-            ["defaultX", "defaultY"],
-            ["default_x", "default_y"],
-            [None, None],
+            list(PiecewiseLinearScheduleSystem.DEPRECATED_KEYWORDS),
+            list(PiecewiseLinearScheduleSystem.DEPRECATED_KEYWORDS.values()),
+            [None] * len(PiecewiseLinearScheduleSystem.DEPRECATED_KEYWORDS),
             kwargs,
         )
         default_x = legacy.get("default_x", default_x)

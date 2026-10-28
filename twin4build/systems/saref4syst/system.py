@@ -2,7 +2,8 @@ from __future__ import annotations
 
 # Standard library imports
 import datetime
-from typing import Any, Hashable, List, Optional, Tuple, Union
+import inspect
+from typing import Any, FrozenSet, Hashable, List, Optional, Tuple, Union
 
 # Third party imports
 import numpy as np
@@ -15,7 +16,7 @@ from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.utils.types as tps
-from twin4build.utils.deprecation import deprecate_name
+from twin4build.utils.deprecation import deprecate_name, reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
@@ -166,6 +167,50 @@ class System:
     #: (see :meth:`resolve_input_port`).  Empty on the base class.
     INPUT_PORT_ALIASES: dict = {}
 
+    #: Deprecated constructor keywords the class translates itself
+    #: (``{"old": "new"}``, ``None`` for one that is only dropped), with a
+    #: ``DeprecationWarning`` (``deprecate_args``).  Part of
+    #: :meth:`constructor_keywords`, so a model saved with an old name loads.
+    #: Empty on the base class.
+    DEPRECATED_KEYWORDS: dict = {}
+
+    #: Per class, the keyword arguments its constructor takes (see
+    #: :meth:`constructor_keywords`).
+    _CONSTRUCTOR_KEYWORDS: dict = {}
+
+    @classmethod
+    def constructor_keywords(cls) -> FrozenSet[str]:
+        """The keyword arguments the constructor of the class takes.
+
+        The named parameters of every ``__init__`` along the class's MRO
+        that hands its ``**kwargs`` on, down to :class:`System`'s own, which
+        rejects the rest, and the deprecated names each of those classes
+        translates (:attr:`DEPRECATED_KEYWORDS`).  The translator and the model loader build a
+        component from a node's literals, which also name properties the
+        class does not take; they pass only these.
+
+        Returns:
+            FrozenSet[str]: The keyword names.
+        """
+        cached = System._CONSTRUCTOR_KEYWORDS.get(cls)
+        if cached is not None:
+            return cached
+        names = set()
+        for klass in cls.__mro__:
+            init = klass.__dict__.get("__init__")
+            if init is None:
+                continue
+            params = list(inspect.signature(init).parameters.values())
+            names.update(
+                p.name for p in params if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+            )
+            names.update(klass.__dict__.get("DEPRECATED_KEYWORDS", {}))
+            if klass is System or not any(p.kind is p.VAR_KEYWORD for p in params):
+                break
+        names.discard("self")
+        System._CONSTRUCTOR_KEYWORDS[cls] = frozenset(names)
+        return System._CONSTRUCTOR_KEYWORDS[cls]
+
     def __str__(self):
         t = PrettyTable(field_names=["input", "output"], divider=True)
         title = f"Component overview    id: {self.id}"
@@ -198,7 +243,13 @@ class System:
             input: A dictionary of inputs to the system.
             output: A dictionary of outputs from the system.
             id: The id of the system.
+
+        Raises:
+            TypeError: On a keyword argument that neither the component's
+                class nor :class:`System` takes (a misspelled keyword would
+                otherwise be dropped without a word).
         """
+        reject_unexpected_kwargs(type(self).__name__, kwargs)
         assert isinstance(connects_at, list) or connects_at is None, (
             'Attribute "connects_at" is of type "'
             + str(type(connects_at))

@@ -60,7 +60,14 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - `set_parameters_from_array` → use `set_parameters({(component or id, attr): value})`
 - `windows-curses` dependency (curses LOGGER TUI removed)
 - unknown public keyword arguments are rejected instead of being silently
-  ignored; removed camelCase time/source keywords now raise `TypeError`
+  ignored, component constructors included (`System.__init__` dropped any
+  keyword it did not know: `PIDControllerSystem(isReverse=True)` built a
+  direct-acting loop, `BuildingSpaceSystem(C_air=...)` kept the default; the
+  room's submodel values go in `thermal_kwargs` / `mass_kwargs`); removed
+  camelCase time/source keywords now raise `TypeError`.  The translator and the
+  model loader pass a component only the keywords its constructor takes
+  (`System.constructor_keywords`), so a graph's other literals and keys an
+  older saved model recorded are left out
 
 ### Deprecated (removed in 2.1)
 

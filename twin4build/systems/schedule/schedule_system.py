@@ -50,6 +50,22 @@ class ScheduleSystem(core.System):
 
     """
 
+    #: Deprecated keyword names and the ones that replaced them (see
+    #: ``System.DEPRECATED_KEYWORDS``).
+    DEPRECATED_KEYWORDS = {
+        "weekDayRulesetDict": "weekday_ruleset",
+        "weekendRulesetDict": "weekend_ruleset",
+        "mondayRulesetDict": "monday_ruleset",
+        "tuesdayRulesetDict": "tuesday_ruleset",
+        "wednesdayRulesetDict": "wednesday_ruleset",
+        "thursdayRulesetDict": "thursday_ruleset",
+        "fridayRulesetDict": "friday_ruleset",
+        "saturdayRulesetDict": "saturday_ruleset",
+        "sundayRulesetDict": "sunday_ruleset",
+        "datecolumn": "date_column",
+        "valuecolumn": "value_column",
+    }
+
     def __init__(
         self,
         weekday_ruleset: dict = None,
@@ -88,33 +104,9 @@ class ScheduleSystem(core.System):
                 )
 
         legacy_map = deprecate_args(
-            [
-                "weekDayRulesetDict",
-                "weekendRulesetDict",
-                "mondayRulesetDict",
-                "tuesdayRulesetDict",
-                "wednesdayRulesetDict",
-                "thursdayRulesetDict",
-                "fridayRulesetDict",
-                "saturdayRulesetDict",
-                "sundayRulesetDict",
-                "datecolumn",
-                "valuecolumn",
-            ],
-            [
-                "weekday_ruleset",
-                "weekend_ruleset",
-                "monday_ruleset",
-                "tuesday_ruleset",
-                "wednesday_ruleset",
-                "thursday_ruleset",
-                "friday_ruleset",
-                "saturday_ruleset",
-                "sunday_ruleset",
-                "date_column",
-                "value_column",
-            ],
-            [None] * 11,
+            list(ScheduleSystem.DEPRECATED_KEYWORDS),
+            list(ScheduleSystem.DEPRECATED_KEYWORDS.values()),
+            [None] * len(ScheduleSystem.DEPRECATED_KEYWORDS),
             kwargs,
         )
         weekday_ruleset = legacy_map.get("weekday_ruleset", weekday_ruleset)
@@ -601,7 +593,6 @@ class ScheduleSystem(core.System):
                 use_spreadsheet=self.use_spreadsheet,
                 use_database=self.use_database,
                 uuid=self.uuid,
-                name=self.name,
                 dbconfig=self.dbconfig,
                 fill=self.fill,
             )

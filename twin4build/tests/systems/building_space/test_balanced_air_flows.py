@@ -138,8 +138,6 @@ class TestThermalBalance(_HardSaturation):
             f_wall=0.0,
             f_air=0.0,
             Q_occ_gain=0.0,
-            T_air_start=self.T_I,
-            T_wall_start=self.T_I,
             id="zone",
         )
         self.zone.initialize(

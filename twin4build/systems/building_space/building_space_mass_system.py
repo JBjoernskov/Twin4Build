@@ -561,7 +561,6 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             D=D,
             x0=x0,
             state_names=None,
-            add_noise=False,
             id=f"ss_mass_model_{self.id}",
             E=E,
             F=F,

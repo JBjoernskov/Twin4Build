@@ -69,7 +69,7 @@ class TestDiscreteStatespaceSystem(unittest.TestCase):
         x0 = torch.tensor([0.0], dtype=torch.float64)
 
         self.system = DiscreteStatespaceSystem(
-            id="test_ss", A=A, B=B, C=C, D=D, x0=x0, is_discrete=True
+            id="test_ss", A=A, B=B, C=C, D=D, x0=x0
         )
 
     def test_initialization(self):

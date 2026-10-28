@@ -171,6 +171,15 @@ class OccupancySystem(core.System, nn.Module):
 
     SUPPORTS_TRANSFORM_MODE = True
 
+    #: Deprecated keyword names and the ones that replaced them (see
+    #: ``System.DEPRECATED_KEYWORDS``).
+    DEPRECATED_KEYWORDS = {
+        "co2_datecolumn": "co2_date_column",
+        "co2_valuecolumn": "co2_value_column",
+        "damper_datecolumn": "damper_date_column",
+        "damper_valuecolumn": "damper_value_column",
+    }
+
     def __init__(
         self,
         V: float = 100,
@@ -193,19 +202,9 @@ class OccupancySystem(core.System, nn.Module):
     ):
 
         legacy = deprecate_args(
-            [
-                "co2_datecolumn",
-                "co2_valuecolumn",
-                "damper_datecolumn",
-                "damper_valuecolumn",
-            ],
-            [
-                "co2_date_column",
-                "co2_value_column",
-                "damper_date_column",
-                "damper_value_column",
-            ],
-            [None, None, None, None],
+            list(OccupancySystem.DEPRECATED_KEYWORDS),
+            list(OccupancySystem.DEPRECATED_KEYWORDS.values()),
+            [None] * len(OccupancySystem.DEPRECATED_KEYWORDS),
             kwargs,
         )
         co2_date_column = legacy.get("co2_date_column", co2_date_column)
