@@ -266,25 +266,6 @@ class TestModelMethods(unittest.TestCase):
     def setUp(self):
         self.model = Model(id="test_methods_model")
 
-    def test_make_pickable(self):
-        """Test make_pickable method."""
-        schedule = ScheduleSystem(
-            weekday_ruleset={
-                "ruleset_start_minute": [0],
-                "ruleset_end_minute": [0],
-                "ruleset_start_hour": [0],
-                "ruleset_end_hour": [1],
-                "ruleset_value": [0.5],
-                "ruleset_default_value": 0,
-            },
-            id="schedule",
-        )
-        self.model.add_component(schedule)
-        self.model.load()
-
-        # Should not raise any errors
-        self.model.make_pickable()
-
     def test_remove_component(self):
         """Test remove_component method."""
         schedule = ScheduleSystem(
@@ -328,29 +309,6 @@ class TestModelMethods(unittest.TestCase):
             schedule, damper, "scheduleValue", "damperPosition"
         )
         # The method should execute without error
-
-    def test_set_initial_values(self):
-        """Test set_initial_values method."""
-        schedule = ScheduleSystem(
-            weekday_ruleset={
-                "ruleset_start_minute": [0],
-                "ruleset_end_minute": [0],
-                "ruleset_start_hour": [0],
-                "ruleset_end_hour": [1],
-                "ruleset_value": [0.5],
-                "ruleset_default_value": 0,
-            },
-            id="schedule",
-        )
-        self.model.add_component(schedule)
-        self.model.load()
-
-        # Test setting initial values with new signature
-        self.model.set_initial_values(
-            values=[0.5],
-            components=[schedule],
-            output_names=["scheduleValue"],
-        )
 
     def test_validate(self):
         """Test validate method."""

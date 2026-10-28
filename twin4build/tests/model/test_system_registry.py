@@ -306,7 +306,9 @@ class TestSystemRegistry(unittest.TestCase):
             registry.register(tb.SensorSystem, type_id="acme:SensorSystem@1")
         self.assertIs(registry.resolve(class_name="SensorSystem"), tb.SensorSystem)
         # The deprecated aliases of the built-in classes stay resolvable.
-        self.assertIs(registry.resolve(class_name="fmuSystem"), tb.FmuSystem)
+        self.assertIs(
+            registry.resolve(class_name="AirHandlingUnitTorchSystem"), tb.AirHandlingUnitSystem
+        )
 
     def test_names_that_are_not_systems_do_not_resolve(self):
         registry = SystemRegistry()

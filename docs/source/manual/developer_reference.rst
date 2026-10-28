@@ -228,7 +228,7 @@ preferred. Use ``start_time``, ``end_time``, ``step_size``,
 ``weekday_ruleset``, and other snake_case parameters.
 
 Use the 2.0 system class names such as ``BuildingSpaceSystem``,
-``DamperSystem``, ``WallSystem``, and ``FmuSystem``. Names ending in
+``DamperSystem`` and ``WallSystem``. Names ending in
 ``TorchSystem`` are migration aliases scheduled for removal and must not be
 introduced in new examples or documentation.
 

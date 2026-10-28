@@ -219,7 +219,7 @@ class TestMassBalance(_HardSaturation):
         inputs = {
             "supplyAirFlowRate": _t(m_sup),
             "exhaustAirFlowRate": _t(m_exh),
-            "outdoorCO2": _t(self.C_OUT),
+            "outdoorCo2Concentration": _t(self.C_OUT),
             "numberOfPeople": _t(0.0),
         }
         x_next, _ = self.room.forward(self.x0, inputs, self.params, DT)

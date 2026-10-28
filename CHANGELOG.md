@@ -4,6 +4,25 @@
 
 API-quality major release. Preferred forms are documented below; new soft-compat aliases warn and will be **removed in 2.1.0**.
 
+### Removed
+
+Unused and untested; 2.0 drops them without a deprecation period.
+
+- The estimator's finite-difference route: the `("scipy", <optimizer>, "fd")`
+  methods and `Estimator.estimate(n_cores=...)` (the worker pools that
+  computed the Jacobian).  Every component is a torch module; use
+  `method=(..., "ad")`.
+- `FmuSystem` (and its `fmuSystem` alias): FMU components and the `fmpy`
+  dependency.
+- `Model.make_pickable`, `SimulationModel.make_pickable`,
+  `SimulationModel.reset_torch_tensors` and `Vector.make_pickable`: they
+  prepared a model for the finite-difference worker pools.
+- `Model.set_initial_values` / `SimulationModel.set_initial_values`: they
+  wrote an output port's tensor (in a shape the port does not hold), which
+  the next `initialize` overwrote, so a simulation never saw it, and they
+  set no component's state.  Use `Model.set_state` for the state the
+  simulations start from.
+
 ### Removed (previously deprecated)
 
 - camelCase kwargs already routed through deprecation helpers (`startTime` / `endTime` / `stepSize`, `useSpreadsheet` / `useDatabase` / `usedf` / `usedict`, …)
@@ -23,13 +42,11 @@ API-quality major release. Preferred forms are documented below; new soft-compat
 
 ### Deprecated (removed in 2.1)
 
-- `*TorchSystem` / `fmuSystem` public names → prefer `*System` / `FmuSystem` / `SmoothOnOffControllerSystem`
+- `*TorchSystem` public names → prefer `*System` / `SmoothOnOffControllerSystem`
 - Schedule/controller camelCase kwargs → snake_case (`weekday_ruleset`, `is_reverse`, `date_column`, …)
 - `use_spreadsheet` / `use_database` / `use_dict` → prefer `source=`
 - `Model.load(semantic_model_filename=...)` auto-translate → `SemanticModel` + `Translator.translate`; prefer `Model.load(filename=...)`
 - `Model.load(simulation_model_filename=...)` → `Model.load(filename=...)`
-- `Model.set_initial_values(dict_)` → parallel `values`, `components`, and
-  `output_names` lists
 - `Translator.translate(systems_=...)` → `systems=`
 - Public `verbose=` kwargs → configure `LOGGER.verbose` / `LOGGER.logfile`
 - `get_component_by_class(dict_, ...)` → `get_components_by_class(Cls)`
@@ -39,6 +56,16 @@ API-quality major release. Preferred forms are documented below; new soft-compat
   objectives, variables and constraints, and reads (`heater.output["Power"]`),
   each with a `DeprecationWarning`; the model holds and saves `toRoomPower`
 - `twin4build.utils.print_progress` → `twin4build.utils.logger`
+- Room input `outdoorCO2` → `outdoorCo2Concentration` (#195), the name
+  `OccupancySystem` and `OutdoorEnvironmentSystem` use; both default to
+  400 ppmv while unwired (the occupancy's 0 ppmv default turned the whole
+  indoor concentration into people).  The old name still connects,
+  disconnects, reads (`room.input["outdoorCO2"]`), fills through
+  `fill_missing_inputs`, matches in signature patterns and loads from a
+  saved `instance_graph.ttl`, each with a `DeprecationWarning`
+  (`System.INPUT_PORT_ALIASES`, `System.resolve_input_port`, the input-side
+  counterparts of the output aliases); the model holds and saves the new
+  name.
 
 ### Added
 
