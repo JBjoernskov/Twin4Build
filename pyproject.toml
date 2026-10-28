@@ -57,7 +57,6 @@ dependencies = [
     "pydot<=2.0.0",
     "pygraphviz>=2.0.1",
     "tqdm",
-    "fmpy",
     "scipy",
     "numpy",
     "prettytable",

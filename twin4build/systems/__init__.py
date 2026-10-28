@@ -44,7 +44,6 @@ Key Components:
         - OutdoorEnvironmentSystem: External environmental conditions
 
     Utility Systems:
-        - FmuSystem: FMU-based system
         - SupplyFlowJunctionSystem: Supply flow distribution
         - ReturnFlowJunctionSystem: Return flow collection
         - PiecewiseLinearSystem: Piecewise linear interpolation
@@ -59,8 +58,8 @@ Key Components:
         - SigmoidGate: Smooth gating function
 
 Note:
-    Most systems are implemented using PyTorch for efficient computation and
-    optimization. FMUs can still be wrapped via FmuSystem.
+    The systems are implemented using PyTorch for efficient computation and
+    optimization.
 """
 
 import importlib
@@ -119,8 +118,6 @@ __all__ = [
     # Fan
     "FanSystem",
     # Utils
-    "FmuSystem",
-    "fmuSystem",  # deprecated alias until 2.1
     "PiecewiseLinearSystem",
     "TimeSeriesInputSystem",
     "MaxSystem",
@@ -169,7 +166,6 @@ _MODULES = {
     "SensorSystem": "sensor.sensor_system",
     "SpaceHeaterSystem": "space_heater.space_heater_system",
     "DiscreteStatespaceSystem": "utils.discrete_statespace_system",
-    "FmuSystem": "utils.fmu_system",
     "MaxSystem": "utils.max_system",
     "WeightedSumSystem": "utils.weighted_sum_system",
     "OccupancyDetectorSystem": "utils.occupancy_detector_system",
@@ -202,7 +198,6 @@ _ALIASES = {
     "SATCompensatedControllerTorchSystem": "SATCompensatedControllerSystem",
     "ControllerIdentificationTorchSystem": "ControllerIdentificationSystem",
     "ControllerIdentificationPITorchSystem": "ControllerIdentificationPISystem",
-    "fmuSystem": "FmuSystem",
 }
 
 

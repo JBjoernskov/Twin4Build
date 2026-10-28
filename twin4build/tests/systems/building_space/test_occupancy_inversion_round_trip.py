@@ -65,7 +65,7 @@ def _invert_raw(m_sup, m_exh, c_prev, c_now, dt=DT, transform_mode=None):
         {
             "supplyAirFlowRate": _t(m_sup),
             "exhaustAirFlowRate": _t(m_exh),
-            "outdoorCO2": _t(C_OUT),
+            "outdoorCo2Concentration": _t(C_OUT),
         },
         _t(c_prev),
         _t(c_now),
@@ -110,7 +110,7 @@ def _forward_step(m_sup, m_exh, c_prev, n_people, dt=DT, transform_mode=None):
     params = {"V": _t(V), "G_occ": _t(G_OCC), "m_inf": _t(M_INF)}
     inputs = {
         "supplyAirFlowRate": _t(m_sup), "exhaustAirFlowRate": _t(m_exh),
-        "outdoorCO2": _t(C_OUT), "numberOfPeople": _t(n_people),
+        "outdoorCo2Concentration": _t(C_OUT), "numberOfPeople": _t(n_people),
     }
     x0 = torch.full((1, 1), c_prev, dtype=torch.float64)
     x1, _ = room.forward(x0, inputs, params, dt, transform_mode=transform_mode)
@@ -284,7 +284,7 @@ class TestInversionRoundTrip(unittest.TestCase):
         flows = {
             "supplyAirFlowRate": m_sup,
             "exhaustAirFlowRate": m_exh,
-            "outdoorCO2": c_out,
+            "outdoorCo2Concentration": c_out,
         }
 
         room = tb.BuildingSpaceMassSystem(V=V, G_occ=G_OCC, m_inf=M_INF, id="room")
@@ -318,7 +318,7 @@ class TestInversionRoundTrip(unittest.TestCase):
                 {
                     "supplyAirFlowRate": m_sup,
                     "exhaustAirFlowRate": m_exh,
-                    "outdoorCO2": C_out,
+                    "outdoorCo2Concentration": C_out,
                 },
                 C_prev,
                 C_now,
@@ -359,7 +359,7 @@ class TestInversionRoundTrip(unittest.TestCase):
             {
                 "supplyAirFlowRate": _t(0.0),
                 "exhaustAirFlowRate": _t(0.0),
-                "outdoorCO2": _t(C_OUT),
+                "outdoorCo2Concentration": _t(C_OUT),
             },
             _t(c_prev),
             _t(c_now),
