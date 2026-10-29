@@ -165,6 +165,129 @@ def _free_ids(model, free) -> Dict[str, List[str]]:
     return {cid: ["*"] for cid in free}
 
 
+@dataclass
+class _Classified:
+    """Every edge of a model classified for the partition (:func:`_classify`)."""
+
+    #: (sender id, sensor id): a data sensor stays with the signal it reads.
+    sinks: List[Tuple[str, str]]
+    #: Unmeasured edges (fusable arcs among them).
+    binding: List[Edge]
+    fusable: List[Edge]
+    #: Measured edges (by a sensor or ``derived``): what a cut replays.
+    measured: List[Edge]
+    readers: Dict[Signal, List[SensorSystem]]
+    free_ids: Dict[str, List[str]]
+    scored_ids: Optional[Set[str]]
+    #: Components whose signals reach a scored sensor (grouping by influence; ``None`` without ``scored``).
+    reaches: Optional[Set[str]]
+
+
+def _classify(model, free=None, measured=None, derived=None, scored=None) -> _Classified:
+    """The edges of ``model`` by what they do to the partition (arguments as :func:`measured_partition`)."""
+    allowed = None
+    if measured is not None:
+        allowed = {c if isinstance(c, str) else c.id for c in measured}
+    scored_ids = None if scored is None else {c if isinstance(c, str) else c.id for c in scored}
+    derived = dict(derived or {})
+    edges = _edges(model)
+    # data sensors by the signal they read
+    readers: Dict[Signal, List[SensorSystem]] = {}
+    for e in edges:
+        if e.input_port == "measuredValue" and _is_data_sensor(e.receiver, allowed):
+            readers.setdefault(e.signal, []).append(e.receiver)
+    free_ids = _free_ids(model, free)
+    sinks: List[Tuple[str, str]] = []
+    measured_edges: List[Edge] = []
+    binding: List[Edge] = []
+    fusable: List[Edge] = []
+    for e in edges:
+        r = e.receiver
+        if isinstance(r, SensorSystem) and e.input_port == "measuredValue":
+            sinks.append((e.sender.id, r.id))  # a sink (or a pass-through) stays with its source
+            continue
+        if isinstance(r, SensorSystem) and r.has_data:
+            continue  # a data sensor replays its series: its other inputs tie nothing
+        if not _has_inputs(e.sender) and e.sender.id not in free_ids:
+            continue  # a leaf without parameters (data, a schedule, the weather): exogenous
+        if _is_fusable(e):
+            # A fusable arc (a zone and its wall, opening or radiator) is a
+            # stiff algebraic coupling that the fused block eliminates
+            # exactly; replayed, the receiver would step explicitly against
+            # a lagged signal and diverge.  It binds whether or not a sensor
+            # reads the signal.
+            binding.append(e)
+            fusable.append(e)
+            continue
+        if _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue":
+            # the sender is a data sensor passing its reading on: its own
+            # series stands for the signal (the sensor stays with its source)
+            e.sensor = e.sender
+            measured_edges.append(e)
+            continue
+        sensors = readers.get(e.signal) or readers.get((e.sender.id, e.output_port, None))
+        if sensors:
+            e.sensor = sensors[0]
+            measured_edges.append(e)
+            continue
+        key = (e.sender.id, e.output_port)
+        slot_key = (e.sender.id, e.output_port, e.output_slot)
+        if slot_key in derived or key in derived:
+            e.sensor, e.transform = derived[slot_key] if slot_key in derived else derived[key]
+            measured_edges.append(e)
+            continue
+        binding.append(e)
+    reaches = None
+    if scored_ids is not None:
+        # Grouping by influence: an unmeasured edge ties its ends where the
+        # receiver reaches a scored sensor (through unmeasured edges, both
+        # ways along fusable arcs, which are one block).
+        upstream: Dict[str, List[str]] = {}
+        for e in binding:
+            upstream.setdefault(e.receiver.id, []).append(e.sender.id)
+        for e in fusable:
+            upstream.setdefault(e.sender.id, []).append(e.receiver.id)
+        reaches = set()
+        frontier = []
+        for e in edges:
+            if e.input_port == "measuredValue" and e.receiver.id in scored_ids and e.sender.id not in reaches:
+                reaches.add(e.sender.id)
+                frontier.append(e.sender.id)
+        while frontier:
+            cid = frontier.pop()
+            for up in upstream.get(cid, ()):
+                if up not in reaches:
+                    reaches.add(up)
+                    frontier.append(up)
+    return _Classified(sinks, binding, fusable, measured_edges, readers, free_ids, scored_ids, reaches)
+
+
+def _ties(c: _Classified, e: Edge) -> bool:
+    """Whether the unmeasured edge ``e`` ties its two ends into one group."""
+    if _is_fusable(e) or c.reaches is None:
+        return True
+    return e.receiver.id in c.reaches
+
+
+def _union_find(ids: Iterable[str]):
+    """``(find, union)`` over ``ids``."""
+    parent: Dict[str, str] = {cid: cid for cid in ids}
+
+    def find(a):
+        parent.setdefault(a, a)
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    return find, union
+
+
 def measured_partition(
     model,
     free=None,
@@ -185,101 +308,13 @@ def measured_partition(
     component or id) groups by influence (module docstring): the sensors
     whose residuals the fit scores; ``measured`` still decides what is cut.
     """
-    allowed = None
-    if measured is not None:
-        allowed = {c if isinstance(c, str) else c.id for c in measured}
-    scored_ids = None if scored is None else {c if isinstance(c, str) else c.id for c in scored}
-    derived = dict(derived or {})
-    # data sensors by the signal they read
-    readers: Dict[Signal, List[SensorSystem]] = {}
-    for e in _edges(model):
-        if e.input_port == "measuredValue" and _is_data_sensor(e.receiver, allowed):
-            readers.setdefault(e.signal, []).append(e.receiver)
-
-    parent: Dict[str, str] = {}
-
-    def find(a):
-        parent.setdefault(a, a)
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-
-    for cid in model.components:
-        find(cid)
-    free_ids = _free_ids(model, free)
-    crossing_candidates: List[Edge] = []
-    binding: List[Edge] = []
-    fusable: List[Edge] = []
-    for e in _edges(model):
-        r = e.receiver
-        if isinstance(r, SensorSystem) and e.input_port == "measuredValue":
-            union(e.sender.id, r.id)  # a sink (or a pass-through) stays with its source
-            continue
-        if isinstance(r, SensorSystem) and r.has_data:
-            continue  # a data sensor replays its series: its other inputs tie nothing
-        if not _has_inputs(e.sender) and e.sender.id not in free_ids:
-            continue  # a leaf without parameters (data, a schedule, the weather): exogenous
-        if _is_fusable(e):
-            # A fusable arc (a zone and its wall, opening or radiator) is a
-            # stiff algebraic coupling that the fused block eliminates
-            # exactly; replayed, the receiver would step explicitly against
-            # a lagged signal and diverge.  It binds whether or not a sensor
-            # reads the signal.
-            binding.append(e)
-            fusable.append(e)
-            union(e.sender.id, r.id)
-            continue
-        if _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue":
-            # the sender is a data sensor passing its reading on: its own
-            # series stands for the signal (the sensor stays with its source)
-            e.sensor = e.sender
-            crossing_candidates.append(e)
-            continue
-        sensors = readers.get(e.signal) or readers.get((e.sender.id, e.output_port, None))
-        if sensors:
-            e.sensor = sensors[0]
-            crossing_candidates.append(e)
-            continue
-        key = (e.sender.id, e.output_port)
-        slot_key = (e.sender.id, e.output_port, e.output_slot)
-        if slot_key in derived or key in derived:
-            e.sensor, e.transform = derived[slot_key] if slot_key in derived else derived[key]
-            crossing_candidates.append(e)
-            continue
-        binding.append(e)
-        if scored_ids is None:
-            union(e.sender.id, r.id)
-
-    if scored_ids is not None:
-        # Grouping by influence: an unmeasured edge ties its ends where the
-        # receiver reaches a scored sensor (through unmeasured edges, both
-        # ways along fusable arcs, which are one block).
-        upstream: Dict[str, List[str]] = {}
-        for e in binding:
-            upstream.setdefault(e.receiver.id, []).append(e.sender.id)
-        for e in fusable:
-            upstream.setdefault(e.sender.id, []).append(e.receiver.id)
-        reaches = set()
-        frontier = []
-        for e in _edges(model):
-            if e.input_port == "measuredValue" and e.receiver.id in scored_ids and e.sender.id not in reaches:
-                reaches.add(e.sender.id)
-                frontier.append(e.sender.id)
-        while frontier:
-            cid = frontier.pop()
-            for up in upstream.get(cid, ()):
-                if up not in reaches:
-                    reaches.add(up)
-                    frontier.append(up)
-        for e in binding:
-            if e.receiver.id in reaches:
-                union(e.sender.id, e.receiver.id)
+    c = _classify(model, free, measured, derived, scored)
+    find, union = _union_find(model.components)
+    for a, b in c.sinks:
+        union(a, b)
+    for e in c.binding:
+        if _ties(c, e):
+            union(e.sender.id, e.receiver.id)
 
     roots: Dict[str, int] = {}
     group_of: Dict[str, int] = {}
@@ -293,9 +328,214 @@ def measured_partition(
         groups[roots[root]].append(cid)
     for g in groups:
         g.sort()
-    crossing = [e for e in crossing_candidates if group_of[e.sender.id] != group_of[e.receiver.id]]
-    internal = [e for e in crossing_candidates if group_of[e.sender.id] == group_of[e.receiver.id]]
-    return Partition(groups, group_of, crossing, internal, binding, free_ids)
+    crossing = [e for e in c.measured if group_of[e.sender.id] != group_of[e.receiver.id]]
+    internal = [e for e in c.measured if group_of[e.sender.id] == group_of[e.receiver.id]]
+    return Partition(groups, group_of, crossing, internal, c.binding, c.free_ids)
+
+
+@dataclass
+class Worlds:
+    """What :func:`split_worlds` did: the components it duplicated and the parameters their copies share."""
+
+    #: ``{component id: [ids of its copies]}`` (the component keeps one world, each copy another).
+    copies: Dict[str, List[str]] = field(default_factory=dict)
+    #: ``{(component id, attr): [(component or copy id, attr), ...]}``: the copies of each free parameter of a
+    #: duplicated component, the component's own first.  A fit keeps them in agreement (consensus).
+    shared: Dict[Tuple[str, str], List[Tuple[str, str]]] = field(default_factory=dict)
+    #: Components that more than one world reads but that an unmeasured input from another world keeps whole:
+    #: ``{component id: the worlds' representative components merged for it}``.
+    merged: Dict[str, List[str]] = field(default_factory=dict)
+
+
+def _clone(model, comp, new_id: str):
+    """A copy of ``comp`` (its ports, parameters and sub-models) under ``new_id``, wired to nothing: everything
+    else in ``model`` (the other components, the model itself) is referred to, never copied."""
+    import copy as _copy
+
+    memo = {id(other): other for other in model.components.values() if other is not comp}
+    memo[id(model)] = model
+    for name in ("simulation_model", "semantic_model"):
+        if getattr(model, name, None) is not None:
+            memo[id(getattr(model, name))] = getattr(model, name)
+    through, at = comp.connected_through, comp.connects_at
+    comp.connected_through, comp.connects_at = [], []
+    try:
+        clone = _copy.deepcopy(comp, memo)
+    finally:
+        comp.connected_through, comp.connects_at = through, at
+    clone.connected_through, clone.connects_at = [], []
+    clone.id = new_id
+    return clone
+
+
+def split_worlds(
+    model,
+    free=None,
+    measured: Optional[Iterable] = None,
+    derived: Optional[Mapping[tuple, Tuple[SensorSystem, Optional[Callable]]]] = None,
+    scored: Optional[Iterable] = None,
+    replay_suffix: str = "__world_replay",
+) -> Worlds:
+    """Give each group of the partition its own world (in place, before :func:`measured_partition`).
+
+    A group is fitted in a world where its own states are simulated and everything outside it is measured.  A
+    component that reaches the scored sensors of more than one group (a wall between two measured rooms, an
+    envelope component that feeds every room) belongs to every one of those worlds: it is evaluated once per world,
+    each evaluation reading its own world's signals simulated and the other worlds' signals as their measurements.
+    The component keeps the first world and a copy (:func:`_clone`) takes each other one; a copy sends only to its
+    own world's receivers.  Where an input from another world is not measured, the worlds cannot be told apart and
+    are merged instead (the component stays whole).  Which components these are follows from the wiring and the
+    measurements alone; their class does not enter.
+
+    A duplicated component's free parameters are one parameter evaluated in several worlds: :attr:`Worlds.shared`
+    lists, per parameter, its copies, for the fit to keep in agreement (consensus).  A component without free
+    parameters needs nothing more: its copies are functions of data.  Arguments as :func:`measured_partition`;
+    ``free`` also decides which parameters are shared.  Call :func:`measured_partition` on the model afterwards.
+    """
+    c = _classify(model, free, measured, derived, scored)
+    out_edges: Dict[str, List[Edge]] = {}
+    in_edges: Dict[str, List[Edge]] = {}
+    for e in c.binding:
+        out_edges.setdefault(e.sender.id, []).append(e)
+        in_edges.setdefault(e.receiver.id, []).append(e)
+    scored_of = {a for a, b in c.sinks if c.scored_ids is None or b in c.scored_ids}
+
+    def reaching(e: Edge) -> bool:
+        return c.reaches is None or e.receiver.id in c.reaches
+
+    # candidates: no scored sensor of their own, their outputs reaching two receivers or more
+    candidates = set()
+    for cid, es in out_edges.items():
+        comp = model.components[cid]
+        if isinstance(comp, SensorSystem) or cid in scored_of:
+            continue
+        if len({e.receiver.id for e in es if reaching(e)}) >= 2:
+            candidates.add(cid)
+    forced: List[Tuple[str, str]] = []  # unions an unmeasured input from another world forces
+    merged_for: Dict[str, Set[str]] = {}  # the component that forced them, and the worlds' members it joined
+
+    def measurement(e: Edge):
+        sensors = c.readers.get(e.signal) or c.readers.get((e.sender.id, e.output_port, None))
+        return (sensors[0], None) if sensors else None
+
+    while True:
+        find, union = _union_find(model.components)
+        for a, b in c.sinks:
+            union(a, b)
+        for e in c.binding:
+            if e.sender.id in candidates or e.receiver.id in candidates:
+                continue
+            if _ties(c, e):
+                union(e.sender.id, e.receiver.id)
+        for a, b in forced:
+            union(a, b)
+        changed = False
+        for cid in sorted(candidates):
+            worlds = {find(e.receiver.id) for e in out_edges[cid] if reaching(e) and e.receiver.id not in candidates}
+            if len(worlds) < 2:
+                candidates.discard(cid)  # one world reads it: it joins that world as any component does
+                changed = True
+                continue
+            for e in in_edges.get(cid, ()):
+                if e.sender.id in candidates:
+                    continue
+                home = find(e.sender.id)
+                if any(w != home for w in worlds) and measurement(e) is None:
+                    # read by a world that would need the sender simulated: those worlds are one
+                    for w in worlds:
+                        if w != home:
+                            other = next(r.receiver.id for r in out_edges[cid] if find(r.receiver.id) == w)
+                            forced.append((e.sender.id, other))
+                            merged_for.setdefault(cid, set()).update({e.sender.id, other})
+                    changed = True
+        if not changed:
+            break
+    result = Worlds()
+    binding_keys = {_edge_key(e): True for e in c.binding}
+    leaves: Dict[str, SensorSystem] = {}
+
+    def replay(sensor: SensorSystem) -> SensorSystem:
+        if sensor.id not in leaves:
+            leaves[sensor.id] = replay_leaf(sensor, f"{sensor.id}{replay_suffix}")
+            model.add_component(leaves[sensor.id])
+        return leaves[sensor.id]
+
+    def wire(sender, receiver, e: Edge):
+        kwargs = {}
+        if e.output_slot is not None and getattr(sender.output.get(e.output_port), "__class__", None).__name__ == "Vector":
+            kwargs["output_port_index"] = e.output_slot
+        if e.input_slot is not None:
+            kwargs["input_port_index"] = e.input_slot
+        model.add_connection(sender, receiver, e.output_port if sender is e.sender else "measuredValue", e.input_port, **kwargs)
+
+    for cid in sorted(candidates):
+        comp = model.components[cid]
+        by_world: Dict[str, List[Edge]] = {}
+        for e in out_edges[cid]:
+            if reaching(e) and e.receiver.id not in candidates:
+                by_world.setdefault(find(e.receiver.id), []).append(e)
+        order = sorted(by_world, key=lambda w: min(e.receiver.id for e in by_world[w]))
+        members = {order[0]: comp}
+        for w in order[1:]:
+            anchor = min(e.receiver.id for e in by_world[w])
+            members[w] = _clone(model, comp, f"{cid}__in_{anchor}")
+            model.add_component(members[w])
+        # inputs: each member reads its own world's senders and, along a binding edge from another world, that
+        # signal's measurement (the loop above merged the worlds where there is none); a measured or exogenous input
+        # is wired to every member as it is (the cut replays a measured one as usual)
+        ins = [e for cp in comp.connects_at for conn in cp.connects_system_through
+               for e in _edges_between(conn.connects_system, comp, conn, cp)]
+        removed = set()
+        for e in ins:
+            foreign = binding_keys.get(_edge_key(e), False)
+            home = find(e.sender.id)
+            for w, member in members.items():
+                if not foreign or home == w:
+                    if member is not comp:
+                        wire(e.sender, member, e)
+                    continue
+                sensor = measurement(e)[0]
+                if member is comp and e.pairing not in removed:
+                    model.remove_connection(e.sender, comp, e.output_port, e.input_port)
+                    removed.add(e.pairing)
+                wire(replay(sensor), member, e)
+        # outputs: each world's receivers read their own member
+        for w in order[1:]:
+            moved = set()
+            for e in by_world[w]:
+                if e.pairing not in moved:
+                    model.remove_connection(comp, e.receiver, e.output_port, e.input_port)
+                    moved.add(e.pairing)
+                wire_out = {}
+                if e.output_slot is not None:
+                    wire_out["output_port_index"] = e.output_slot
+                if e.input_slot is not None:
+                    wire_out["input_port_index"] = e.input_slot
+                model.add_connection(members[w], e.receiver, e.output_port, e.input_port, **wire_out)
+        copies = [members[w].id for w in order[1:]]
+        result.copies[cid] = copies
+        for attr in c.free_ids.get(cid, ()):
+            if attr == "*":
+                getter = getattr(comp, "get_estimable_parameters", None)
+                attrs = [str(p[1]) for p in getter()] if callable(getter) else []
+            else:
+                attrs = [attr]
+            for a in attrs:
+                result.shared[(cid, a)] = [(cid, a)] + [(copy_id, a) for copy_id in copies]
+    result.merged = {cid: sorted(ids) for cid, ids in merged_for.items()}
+    LOGGER.info("partition: %d components split into worlds (%d copies), %d shared parameters",
+                len(result.copies), sum(len(v) for v in result.copies.values()), len(result.shared))
+    return result
+
+
+def _edge_key(e: Edge) -> tuple:
+    return (e.sender.id, e.output_port, e.output_slot, e.receiver.id, e.input_port, e.input_slot)
+
+
+def _edges_between(sender, receiver, conn, cp) -> List[Edge]:
+    """The slot pairs of one connection as edges."""
+    return [Edge(sender, conn.output_port, _slot(out_v), receiver, cp.input_port, _slot(in_v))
+            for _, _, out_v, in_v in slot_pairs(cp, conn)]
 
 
 def replay_leaf(sensor: SensorSystem, leaf_id: str, transform: Optional[Callable] = None) -> SensorSystem:
