@@ -15,7 +15,9 @@ minimal groups the measurements allow.  A data-bearing sensor that reads a
 port is a sink and stays with its source (it carries that group's residual
 columns); what the sensor itself sends on (a controller reading it) is
 measured too, by its own series.  A leaf with no inputs (weather,
-schedules, replayed commands) is exogenous and joins nothing.
+schedules, replayed commands) is exogenous and joins nothing; so is any
+component without free parameters that reads only data sensors' series
+and other exogenous components.
 :func:`cut_measured_edges` then replaces every measured connection by a
 replay leaf, one per sensor.  The connections that cross between groups
 make the groups separable; the measured connections inside a group leave
@@ -146,6 +148,39 @@ def _has_inputs(comp) -> bool:
     return any(cp.connects_system_through for cp in comp.connects_at)
 
 
+def _exogenous(model, edges, free_ids, allowed=None) -> Set[str]:
+    """The components that are functions of data: without free parameters, and every input of theirs a data
+    sensor's series or the output of another such component.  A leaf without parameters (the weather, a schedule, a
+    replayed command) is the simplest case; a component that reads only replay leaves is the next (2 Nov 2026: the
+    envelope leakage at a fixed prior, read by every room, which :func:`split_worlds` evaluates once on replays).
+    A signal that a sensor merely measures is still the simulated signal here: the rule never hands a component a
+    measurement in place of what it reads.  Their outputs tie nothing: every group reads them as it reads data."""
+    ins: Dict[str, List[Edge]] = {}
+    for e in edges:
+        ins.setdefault(e.receiver.id, []).append(e)
+
+    def data_input(e: Edge) -> bool:
+        return _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue"
+
+    out: Set[str] = set()
+    pending = []
+    for cid, comp in model.components.items():
+        if cid in free_ids:
+            continue
+        if not _has_inputs(comp):
+            out.add(cid)
+        elif not isinstance(comp, SensorSystem):
+            pending.append(cid)
+    changed = True
+    while changed:
+        changed = False
+        for cid in pending:
+            if cid not in out and all(e.sender.id in out or data_input(e) for e in ins.get(cid, ())):
+                out.add(cid)
+                changed = True
+    return out
+
+
 def _free_ids(model, free) -> Dict[str, List[str]]:
     """``{component id: [free attrs]}`` from ``free``: a mapping of ids to
     attrs, an iterable of ids, a predicate, or None (every component's
@@ -197,6 +232,7 @@ def _classify(model, free=None, measured=None, derived=None, scored=None) -> _Cl
         if e.input_port == "measuredValue" and _is_data_sensor(e.receiver, allowed):
             readers.setdefault(e.signal, []).append(e.receiver)
     free_ids = _free_ids(model, free)
+    exogenous = _exogenous(model, edges, free_ids, allowed)
     sinks: List[Tuple[str, str]] = []
     measured_edges: List[Edge] = []
     binding: List[Edge] = []
@@ -208,8 +244,8 @@ def _classify(model, free=None, measured=None, derived=None, scored=None) -> _Cl
             continue
         if isinstance(r, SensorSystem) and r.has_data:
             continue  # a data sensor replays its series: its other inputs tie nothing
-        if not _has_inputs(e.sender) and e.sender.id not in free_ids:
-            continue  # a leaf without parameters (data, a schedule, the weather): exogenous
+        if e.sender.id in exogenous:
+            continue  # a function of data without parameters (a schedule, the weather, ...): exogenous
         if _is_fusable(e):
             # A fusable arc (a zone and its wall, opening or radiator) is a
             # stiff algebraic coupling that the fused block eliminates
@@ -345,6 +381,9 @@ class Worlds:
     #: Components that more than one world reads but that an unmeasured input from another world keeps whole:
     #: ``{component id: the worlds' representative components merged for it}``.
     merged: Dict[str, List[str]] = field(default_factory=dict)
+    #: Components that several worlds read but that have no free parameters and read nothing from any world:
+    #: evaluated once, on the replays of what they read (exogenous afterwards), not copied.
+    once: List[str] = field(default_factory=list)
 
 
 def _clone(model, comp, new_id: str):
@@ -389,7 +428,9 @@ def split_worlds(
 
     A duplicated component's free parameters are one parameter evaluated in several worlds: :attr:`Worlds.shared`
     lists, per parameter, its copies, for the fit to keep in agreement (consensus).  A component without free
-    parameters needs nothing more: its copies are functions of data.  Arguments as :func:`measured_partition`;
+    parameters needs no consensus; one that also reads nothing from any world (only measured or exogenous signals)
+    is not copied at all: every world would evaluate the same function of measurements, so it is evaluated once on
+    their replays (:attr:`Worlds.once`) and is exogenous afterwards.  Arguments as :func:`measured_partition`;
     ``free`` also decides which parameters are shared.  Call :func:`measured_partition` on the model afterwards.
     """
     c = _classify(model, free, measured, derived, scored)
@@ -468,8 +509,26 @@ def split_worlds(
             kwargs["input_port_index"] = e.input_slot
         model.add_connection(sender, receiver, e.output_port if sender is e.sender else "measuredValue", e.input_port, **kwargs)
 
+    measured_keys = {_edge_key(e) for e in c.measured}
     for cid in sorted(candidates):
         comp = model.components[cid]
+        if cid not in c.free_ids and not in_edges.get(cid):
+            # no free parameters, and nothing read from any world (every input measured or exogenous): each world
+            # would evaluate the same function of measurements.  It is evaluated once, on their replays, and is
+            # exogenous from here on (2 Nov 2026: the leakage at a fixed prior, copied into every room's world with
+            # its whole inflow vector, filled the GPU).
+            ins = [e for cp in comp.connects_at for conn in cp.connects_system_through
+                   for e in _edges_between(conn.connects_system, comp, conn, cp)]
+            replayed = [e for e in ins if _edge_key(e) in measured_keys]
+            if all(measurement(e) is not None for e in replayed):  # a derived input keeps the copies
+                done = set()
+                for e in replayed:
+                    if e.pairing not in done:
+                        model.remove_connection(e.sender, comp, e.output_port, e.input_port)
+                        done.add(e.pairing)
+                    wire(replay(measurement(e)[0]), comp, e)
+                result.once.append(cid)
+                continue
         by_world: Dict[str, List[Edge]] = {}
         for e in out_edges[cid]:
             if reaching(e) and e.receiver.id not in candidates:
@@ -732,15 +791,22 @@ def keep_groups(
                     kept_groups.add(g)
                     frontier.add(g)
     keep = {cid for cid, g in partition.group_of.items() if g in kept_groups and cid in model.components}
-    for cid, comp in model.components.items():
-        if cid in keep or _has_inputs(comp):
-            continue
-        if any(
-            cp.connection_point_of.id in keep
-            for conn in comp.connected_through
-            for cp in conn.connects_system_at
-        ):
-            keep.add(cid)
+    # the functions of data that feed what is kept (a leaf, or a component that reads only replays), and theirs
+    exogenous = _exogenous(model, _edges(model), partition.free)
+    exogenous |= {cid for cid, comp in model.components.items() if not _has_inputs(comp)}  # every leaf, as before
+    changed = True
+    while changed:
+        changed = False
+        for cid in exogenous:
+            if cid in keep or cid not in model.components:
+                continue
+            if any(
+                cp.connection_point_of.id in keep
+                for conn in model.components[cid].connected_through
+                for cp in conn.connects_system_at
+            ):
+                keep.add(cid)
+                changed = True
     removed = [cid for cid in model.components if cid not in keep]
     for cid in removed:
         model.remove_component(model.components[cid])
