@@ -104,7 +104,7 @@ class TestTheModule(unittest.TestCase):
                                                     "parameters": ("nominalAirFlowRate", "a", "c")})
 
         damper = initialized(Narrow(id="narrow"))
-        starting = {"damperPosition": s(0.5), "fanSpeed": s(0.05), "exhaustRatioScale": s(1.1)}
+        starting = {"damperPosition": s(0.5), "fanSpeed": s(0.05)}
         deps, _ = sd.derive(damper, [starting])
         self.assertIn("airFlowRate", sd.check(damper, deps, tight=False))
         # from a starting fan the bump (x3 + 1) runs it: the flow moves (from a running one it would stay at the gate's
@@ -121,8 +121,8 @@ class TestTheModule(unittest.TestCase):
 
 class TestDamper(DeclarationCase):
     def test_declarations(self):
-        running = {"damperPosition": s(0.5), "fanSpeed": s(0.8), "exhaustRatioScale": s(1.1)}
-        starting = {"damperPosition": s(0.5), "fanSpeed": s(0.05), "exhaustRatioScale": s(1.1)}
+        running = {"damperPosition": s(0.5), "fanSpeed": s(0.8)}
+        starting = {"damperPosition": s(0.5), "fanSpeed": s(0.05)}
         tied = initialized(tb.DamperSystem(id="tied"))
         untied = initialized(tb.DamperSystem(id="untied", c=-0.5))
         union = self.assertDeclarations([(tied, [running, starting]), (untied, [running, starting])])
@@ -137,7 +137,7 @@ class TestRoom(DeclarationCase):
     INPUTS = {"outdoorTemperature": s(2.0), "supplyAirFlowRate": vec(0.05, 0.04), "exhaustAirFlowRate": vec(0.06),
               "supplyAirTemperature": s(19.0), "globalIrradiation": s(100.0), "numberOfPeople": s(3.0),
               "heatGain": s(200.0), "makeUpAirTemperature": s(21.0), "boundaryTemperature": s(20.0),
-              "wallHeatGain": s(50.0), "infiltrationAirFlowRate": s(0.01), "outdoorCO2": s(420.0),
+              "wallHeatGain": s(50.0), "infiltrationAirFlowRate": s(0.01), "outdoorCo2Concentration": s(420.0),
               "makeUpAirCO2": s(600.0), "supplyAirCO2": s(430.0), "exchangeCO2Gain": s(0.0)}
 
     def regimes(self, ports=None):

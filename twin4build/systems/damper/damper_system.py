@@ -333,7 +333,7 @@ class DamperSystem(core.System, nn.Module):
     OUTPUT_DEPENDENCIES = {
         "damperPosition": {"inputs": ("damperPosition",)},
         "airFlowRate": {"inputs": ("damperPosition", "fanSpeed"), "parameters": ("nominalAirFlowRate", "a", "c")},
-        "exhaustAirFlowRate": {"inputs": ("damperPosition", "fanSpeed", "exhaustRatioScale"),
+        "exhaustAirFlowRate": {"inputs": ("damperPosition", "fanSpeed"),
                                "parameters": ("nominalAirFlowRate", "a", "c", "exhaustFlowRatio")},
     }
 

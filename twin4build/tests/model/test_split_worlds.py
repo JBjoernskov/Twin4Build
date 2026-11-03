@@ -41,7 +41,7 @@ def _room(model, rid, temperature_sensor=True, skip=()):
         id=rid,
     )
     for port, value in (("outdoorTemperature", 0.0), ("supplyAirTemperature", 20.0), ("globalIrradiation", 0.0),
-                        ("numberOfPeople", 0.0), ("heatGain", 500.0), ("outdoorCO2", 400.0)):
+                        ("numberOfPeople", 0.0), ("heatGain", 500.0), ("outdoorCo2Concentration", 400.0)):
         if port in skip:
             continue
         model.add_connection(_sched(value, f"{rid}_{port}"), room, "scheduleValue", port)

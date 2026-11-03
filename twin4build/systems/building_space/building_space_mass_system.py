@@ -527,7 +527,11 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         }
 
     #: Input ports whose values :meth:`_ss_transform_inputs` reads.
-    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS + (air_balance.INFILTRATION_PORT, "outdoorCO2", "makeUpAirCO2")
+    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS + (
+        air_balance.INFILTRATION_PORT,
+        "outdoorCo2Concentration",
+        "makeUpAirCO2",
+    )
 
     @staticmethod
     def _ss_transform_inputs(inputs):
@@ -536,7 +540,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         ``exhaustAirFlowRate`` slot carries the outdoor make-up flow
         ``max(m_exh - m_sup, 0)``.  Pure function of the original inputs;
         applied by :meth:`forward` and by the fused block."""
-        return air_balance.balanced_flow_inputs(inputs, "makeUpAirCO2", "outdoorCO2")
+        return air_balance.balanced_flow_inputs(inputs, "makeUpAirCO2", "outdoorCo2Concentration")
 
     def _build_matrices(self, p=None):
         """Build the CO2 mass-balance matrices ``(A, B, C, D, E, F)`` from the

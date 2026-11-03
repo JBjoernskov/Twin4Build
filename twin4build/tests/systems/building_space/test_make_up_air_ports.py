@@ -179,7 +179,7 @@ class TestCompositeWiring(unittest.TestCase):
             ("globalIrradiation", 0.0),
             ("numberOfPeople", 0.0),
             ("heatGain", 0.0),
-            ("outdoorCO2", 400.0),
+            ("outdoorCo2Concentration", 400.0),
         ]
         if wired:
             ports += [("makeUpAirTemperature", 18.0), ("makeUpAirCO2", 700.0), ("supplyAirCO2", 600.0)]

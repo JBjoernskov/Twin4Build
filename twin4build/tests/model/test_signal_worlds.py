@@ -33,7 +33,7 @@ def _room(model, rid):
         id=rid,
     )
     for port, value in (("outdoorTemperature", 0.0), ("supplyAirTemperature", 20.0), ("globalIrradiation", 0.0),
-                        ("numberOfPeople", 0.0), ("heatGain", 500.0), ("outdoorCO2", 400.0)):
+                        ("numberOfPeople", 0.0), ("heatGain", 500.0), ("outdoorCo2Concentration", 400.0)):
         model.add_connection(_sched(value, f"{rid}_{port}"), room, "scheduleValue", port)
     model.add_connection(_sched(0.02, f"{rid}_exh"), room, "scheduleValue", "exhaustAirFlowRate", input_port_index=0)
     damper = tb.DamperSystem(nominalAirFlowRate=0.1, id=f"{rid}_damper")
@@ -53,7 +53,7 @@ def build_hallway(model_id):
         sensors += s
     hallway = tb.BuildingSpaceSystem(id="H")
     for port, value in (("outdoorTemperature", 0.0), ("supplyAirTemperature", 20.0), ("globalIrradiation", 0.0),
-                        ("numberOfPeople", 0.0), ("heatGain", 0.0), ("outdoorCO2", 400.0)):
+                        ("numberOfPeople", 0.0), ("heatGain", 0.0), ("outdoorCo2Concentration", 400.0)):
         model.add_connection(_sched(value, f"H_{port}"), hallway, "scheduleValue", port)
     for k, rid in enumerate(("A", "B")):
         model.add_connection(model.components[rid], hallway, "surplusAirFlowRate", "supplyAirFlowRate", input_port_index=k)

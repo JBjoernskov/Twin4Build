@@ -53,7 +53,7 @@ def _model(fuse=True, m_inf=0.0, inflow=None, supply=0.15, exhaust=0.05, make_up
         id="Room",
     )
     for port, value in (("outdoorTemperature", 0.0), ("supplyAirTemperature", 20.0), ("globalIrradiation", 0.0),
-                        ("numberOfPeople", 2.0), ("heatGain", 500.0), ("outdoorCO2", 400.0)):
+                        ("numberOfPeople", 2.0), ("heatGain", 500.0), ("outdoorCo2Concentration", 400.0)):
         model.add_connection(_schedule(value, f"S_{port}"), room, "scheduleValue", port)
     model.add_connection(_schedule(supply, "Supply"), room, "scheduleValue", "supplyAirFlowRate", input_port_index=0)
     model.add_connection(_schedule(exhaust, "Exhaust"), room, "scheduleValue", "exhaustAirFlowRate", input_port_index=0)
