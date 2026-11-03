@@ -15,10 +15,11 @@ import datetime
 import unittest
 
 import pandas as pd
+import torch
 from dateutil import tz
 
 import twin4build as tb
-from twin4build.model.partition import measured_partition, split_worlds
+from twin4build.model.partition import cut_measured_edges, measured_partition, split_worlds
 
 tb._IS_TESTING = True
 START = datetime.datetime(2024, 1, 1, tzinfo=tz.UTC)
@@ -189,9 +190,7 @@ class TestDataCouplesNoBlocks(unittest.TestCase):
     sends on: M, evaluated once on data, feeds A and B, and A and B stay separate blocks of the solver."""
 
     def test_rooms_fed_by_one_function_of_data_are_separate_blocks(self):
-        import torch
 
-        from twin4build.model.partition import cut_measured_edges
 
         model, sensors = build_data("data_blocks")
         split_worlds(model, measured=sensors, scored=sensors)

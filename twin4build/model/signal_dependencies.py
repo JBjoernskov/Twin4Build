@@ -43,6 +43,10 @@ from typing import Any, Dict, FrozenSet, Iterable, Mapping, Optional, Tuple
 
 import torch
 
+import twin4build as tb
+from twin4build.systems.utils.smooth_saturation import saturation_mode
+from twin4build.utils.rgetattr import rgetattr
+
 #: The keys a declaration may hold.
 _KEYS = frozenset({"inputs", "state", "parameters"})
 
@@ -80,7 +84,6 @@ def parameter_names(component) -> Tuple[str, ...]:
 
 def forward_params(component) -> Dict[str, torch.Tensor]:
     """The component's ``forward`` params at their current values (:func:`parameter_names`)."""
-    from twin4build.utils.rgetattr import rgetattr
 
     if getattr(component, "PARAM_NAMES", None) is not None:
         return dict(component._forward_params())
@@ -173,7 +176,6 @@ def projection(component, port: str) -> Optional[type]:
     if cls is None:
         return None
     if isinstance(cls, str):
-        import twin4build as tb
 
         cls = getattr(tb, cls)
     dep = declared(component)[port]
@@ -246,7 +248,6 @@ def derive(
 
     Returns ``(dependencies, slots)``: ``{output: Dependency}`` and, for every vector input,
     ``{(output, input): {output slot: input slots with a nonzero gradient}}`` (a scalar output has slot 0)."""
-    from twin4build.systems.utils.smooth_saturation import saturation_mode
 
     generator = torch.Generator().manual_seed(seed)
     templates = [inputs] if isinstance(inputs, Mapping) else list(inputs)

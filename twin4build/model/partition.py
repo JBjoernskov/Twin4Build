@@ -49,11 +49,14 @@ the sensor replays its series.
 
 from __future__ import annotations
 
+import copy as _copy
 import logging
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 
+from twin4build.model import signal_dependencies as sd
+from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.utils.data_loaders.load import DEFAULT_DT_LIMIT
 from twin4build.utils.slots import slot_pairs
@@ -392,7 +395,6 @@ class Worlds:
 def _clone(model, comp, new_id: str):
     """A copy of ``comp`` (its ports, parameters and sub-models) under ``new_id``, wired to nothing: everything
     else in ``model`` (the other components, the model itself) is referred to, never copied."""
-    import copy as _copy
 
     memo = {id(other): other for other in model.components.values() if other is not comp}
     memo[id(model)] = model
@@ -444,7 +446,6 @@ def split_worlds(
     measurements and the classes' declarations; no class is named.  Arguments as :func:`measured_partition`; ``free``
     also decides which parameters are shared.  Call :func:`measured_partition` on the model afterwards.
     """
-    from twin4build.model import signal_dependencies as sd
 
     c = _classify(model, free, measured, derived, scored)
     edges = _edges(model)
@@ -563,7 +564,6 @@ def split_worlds(
         return model.components[leaf_id]
 
     def zero_leaf():
-        from twin4build.systems.schedule.schedule_system import ScheduleSystem
 
         return new_leaf("__world_zero", lambda i: ScheduleSystem(weekday_ruleset={"ruleset_default_value": 0.0}, id=i))
 
