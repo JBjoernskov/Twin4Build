@@ -179,5 +179,37 @@ class TestDataIsNotSplit(unittest.TestCase):
         self.assertEqual(worlds.shared, {})
 
 
+def _first_entry(functional_model, cid):
+    idx = next(iter(functional_model.theta_by_comp[cid].values()))
+    return idx.start if isinstance(idx, slice) else (int(idx[0]) if isinstance(idx, (list, tuple)) else int(idx))
+
+
+class TestDataCouplesNoBlocks(unittest.TestCase):
+    """2 Nov 2026: the estimator's structure walk (index_coupling) leaves out what a component no parameter reaches
+    sends on: M, evaluated once on data, feeds A and B, and A and B stay separate blocks of the solver."""
+
+    def test_rooms_fed_by_one_function_of_data_are_separate_blocks(self):
+        import torch
+
+        from twin4build.model.partition import cut_measured_edges
+
+        model, sensors = build_data("data_blocks")
+        split_worlds(model, measured=sensors, scored=sensors)
+        cut_measured_edges(model, measured_partition(model, measured=sensors, scored=sensors))
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        model.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=STEP)
+        theta_spec = [(model.components[cid], attr) for cid in ("A", "B")
+                      for _, attr, _, _, _ in model.components[cid].get_estimable_parameters()]
+        measurements = [s for s in sensors if s.id in model.components]
+        simulator = tb.Simulator(model, execution_mode="functional", execution_backend="eager")
+        _, functional_model = simulator.build_functional_model(theta_spec=theta_spec, measurements=measurements,
+                                                               step_size=STEP)
+        functional_model.prepare_routes(torch.device("cpu"))
+        theta_block, _column_block, n_blocks = functional_model.index_coupling()
+        self.assertGreaterEqual(n_blocks, 2)
+        self.assertNotEqual(theta_block[_first_entry(functional_model, "A")],
+                            theta_block[_first_entry(functional_model, "B")])
+
+
 if __name__ == "__main__":
     unittest.main()
