@@ -549,19 +549,43 @@ def split_worlds(
         return min(s for s in seeds if find(s) == w)
 
     leaves: Dict[str, SensorSystem] = {}
-    zero = {"leaf": None}
+    # the leaves this split adds (replays, the zero) by id -> the id of their family's first; a scalar leaf reaches
+    # one slot of a port per connection, so a second slot of the same port takes a sibling (as cut_measured_edges)
+    family: Dict[str, str] = {}
+    makers: Dict[str, Callable[[str], object]] = {}
+    wired: Set[Tuple[str, str, str, str]] = set()
+
+    def new_leaf(leaf_id: str, make: Callable[[str], object]):
+        if leaf_id not in model.components:
+            model.add_component(make(leaf_id))
+            family[leaf_id] = leaf_id
+            makers[leaf_id] = make
+        return model.components[leaf_id]
 
     def zero_leaf():
-        if zero["leaf"] is None:
-            from twin4build.systems.schedule.schedule_system import ScheduleSystem
+        from twin4build.systems.schedule.schedule_system import ScheduleSystem
 
-            zero["leaf"] = ScheduleSystem(weekday_ruleset={"ruleset_default_value": 0.0}, id="__world_zero")
-            model.add_component(zero["leaf"])
-        return zero["leaf"]
+        return new_leaf("__world_zero", lambda i: ScheduleSystem(weekday_ruleset={"ruleset_default_value": 0.0}, id=i))
+
+    def replay_of(sensor):
+        leaf_id = f"{sensor.id}{replay_suffix}"
+        leaf = new_leaf(leaf_id, lambda i, _s=sensor: replay_leaf(_s, i))
+        leaves[leaf_id] = leaf
+        return leaf
 
     def wire(sender, receiver, e: Edge, output_port: Optional[str] = None):
         kwargs = {}
         out_port = output_port or e.output_port
+        if (sender.id, receiver.id, out_port, e.input_port) in wired and sender.id in family:
+            base, k = family[sender.id], 1
+            while (f"{base}{k}", receiver.id, out_port, e.input_port) in wired:
+                k += 1
+            sibling_id = f"{base}{k}"
+            if sibling_id not in model.components:
+                model.add_component(makers[base](sibling_id))
+                family[sibling_id] = base
+            sender = model.components[sibling_id]
+        wired.add((sender.id, receiver.id, out_port, e.input_port))
         out_spec = getattr(sender, "output", {}).get(out_port)
         if e.output_slot is not None and getattr(out_spec, "__class__", None).__name__ == "Vector":
             kwargs["output_port_index"] = e.output_slot
@@ -583,11 +607,7 @@ def split_worlds(
             if e.pairing not in done:
                 model.remove_connection(e.sender, comp, e.output_port, e.input_port)
                 done.add(e.pairing)
-            leaf_id = f"{s[0].id}{replay_suffix}"
-            if leaf_id not in leaves:
-                leaves[leaf_id] = replay_leaf(s[0], leaf_id)
-                model.add_component(leaves[leaf_id])
-            wire(leaves[leaf_id], comp, e, output_port="measuredValue")
+            wire(replay_of(s[0]), comp, e, output_port="measuredValue")
         result.once.append(cid)
         del worlds_of[cid]
 
@@ -638,11 +658,7 @@ def split_worlds(
         sensors = c.readers.get(e.signal) or c.readers.get((e.sender.id, e.output_port, None))
         if not sensors:
             return None  # derived: the cut replays it
-        leaf_id = f"{sensors[0].id}{replay_suffix}"
-        if leaf_id not in leaves:
-            leaves[leaf_id] = replay_leaf(sensors[0], leaf_id)
-            model.add_component(leaves[leaf_id])
-        return leaves[leaf_id]
+        return replay_of(sensors[0])
 
     # wiring: every member reads its own world's members, measurements and exogenous signals
     for cid in sorted(members):
