@@ -44,7 +44,7 @@ import time  # ##
 import warnings
 from dataclasses import dataclass
 from itertools import count
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 # Third party imports
 import numpy as np
@@ -2454,8 +2454,7 @@ class Translator:
                             # Get all parameters for the component
                             for key, node in sp.parameters.items():
                                 if group[node] is not None:
-                                    value = group[node]
-                                    value = value.uri.value
+                                    value = sp.parameter_value(key, group[node])
                                     obj = rgetattr(component, key)
                                     LOGGER.config("%s: %s", key, value)
 
@@ -2515,8 +2514,7 @@ class Translator:
                                 if group[node] is not None:
                                     current_val = rgetattr(component, key)
                                     if current_val is None:
-                                        value = group[node]
-                                        value = value.uri.value
+                                        value = sp.parameter_value(key, group[node])
                                         obj = rgetattr(component, key)
                                         LOGGER.config(
                                             "Backfilling parameter %s=%s for %s",
@@ -5893,6 +5891,8 @@ class SignaturePattern:
         self._ruleset = {}
         self._rules = []
         self._parameters = {}
+        # key -> callable converting the bound literal (add_parameter)
+        self._parameter_transformations: Dict[str, Callable[[Any], Any]] = {}
         # Nodes whose binding at match time is a *tuple* of semantic-model
         # objects rather than a single object. Registered by :class:`SetStepRule`
         # and propagated via :meth:`_propagate_set_bound` (fixed-point closure
@@ -5924,6 +5924,11 @@ class SignaturePattern:
     @property
     def parameters(self):
         return self._parameters
+
+    @property
+    def parameter_transformations(self) -> Dict[str, Callable[[Any], Any]]:
+        """``{key: transformation}`` of the parameters bound with one (:meth:`add_parameter`)."""
+        return self._parameter_transformations
 
     @property
     def nodes(self):
@@ -6396,7 +6401,19 @@ class SignaturePattern:
         if node in self._nodes:
             self._nodes.remove(node)
 
-    def add_parameter(self, key, node):
+    def add_parameter(self, key, node, transformation: Optional[Callable[[Any], Any]] = None):
+        """Bind the literal at ``node`` to the component attribute ``key`` (a
+        dotted path such as ``"mass.V"``).
+
+        ``transformation`` converts the literal before it is set, as a
+        sensor's ``transformation`` converts its series: a callable taking the
+        graph's value and returning the component's (a unit conversion, say
+        m3/h to kg/s).  ``None`` sets the literal as it is.  A parameter is
+        sized on the converted value (:meth:`System.size_parameter`).  Prefer
+        a module-level function: like a sensor's, it can then be named by
+        import path."""
+        if transformation is not None and not callable(transformation):
+            raise TypeError(f"transformation of parameter {key!r} must be callable, got {type(transformation).__name__}")
         self._add_node(node, optional=True, _lock=False)
         assert node not in self._set_bound_nodes, (
             f"Cannot register set-bound node {node.id!r} as parameter {key!r}: "
@@ -6418,6 +6435,18 @@ class SignaturePattern:
         ), f"The class of the \"node\" argument must be a subclass of {', '.join([c.get_short_name() for c in allowed_classes])} - {', '.join([c.get_short_name() for c in cls])} was provided."
         # assert any(issubclass(n, allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
         self._parameters[key] = node
+        if transformation is None:
+            self._parameter_transformations.pop(key, None)
+        else:
+            self._parameter_transformations[key] = transformation
+
+    def parameter_value(self, key, match):
+        """The value ``key`` takes from a matched literal ``match`` (a
+        semantic-model node): the literal, converted by the parameter's
+        ``transformation`` when it has one (:meth:`add_parameter`)."""
+        value = match.uri.value
+        fn = self._parameter_transformations.get(key)
+        return value if fn is None else fn(value)
 
     def add_modeled_node(self, node):
         """Register ``node`` as a modeled identity.
