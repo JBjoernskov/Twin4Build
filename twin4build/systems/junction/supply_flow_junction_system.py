@@ -135,6 +135,9 @@ class SupplyFlowJunctionSystem(core.System):
 
     PARAM_NAMES = ()  # airFlowRateBias is a plain number (structural constant)
 
+    #: The sum of the branches (:mod:`twin4build.model.signal_dependencies`): every slot.
+    OUTPUT_DEPENDENCIES = {"airFlowRateIn": {"inputs": ("airFlowRateOut",)}}
+
     def forward(self, x, inputs, params, sample_time):
         """Pure one-step flow summation (functorch-safe, stateless).
 

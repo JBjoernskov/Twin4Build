@@ -611,6 +611,16 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
     SS_DERIVED_INPUT_PORTS = ("supplyAirFlowRate", "exhaustAirFlowRate")
     SS_DERIVED_ROW_PORTS = ()
 
+    #: The imbalance flows depend on the flow ports alone, not on the state or a parameter
+    #: (:mod:`twin4build.model.signal_dependencies`); the temperatures are undeclared (everything).
+    OUTPUT_DEPENDENCIES = {
+        "surplusAirFlowRate": {"inputs": ("supplyAirFlowRate", "exhaustAirFlowRate")},
+        "makeUpAirFlowRate": {"inputs": ("supplyAirFlowRate", "exhaustAirFlowRate")},
+    }
+    #: The class that computes those state-free outputs on its own, from the same ports: a world that needs them
+    #: without the room gets it in the room's place (:mod:`twin4build.model.signal_dependencies`).
+    OUTPUT_PROJECTIONS = {"surplusAirFlowRate": "AirImbalanceSystem", "makeUpAirFlowRate": "AirImbalanceSystem"}
+
     @staticmethod
     def _ss_derived_outputs(inputs, rows):
         """The air-flow imbalance of the step from the supply and exhaust

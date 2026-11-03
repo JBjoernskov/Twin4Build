@@ -183,6 +183,12 @@ class ReturnFlowJunctionSystem(core.System):
 
     PARAM_NAMES = ()  # airFlowRateBias is a plain number (structural constant)
 
+    #: The streams' sum and their flow-weighted temperature (:mod:`twin4build.model.signal_dependencies`): every slot.
+    OUTPUT_DEPENDENCIES = {
+        "airFlowRateOut": {"inputs": ("airFlowRateIn",)},
+        "airTemperatureOut": {"inputs": ("airFlowRateIn", "airTemperatureIn")},
+    }
+
     def forward(self, x, inputs, params, sample_time):
         """Pure one-step flow mixing (functorch-safe, stateless).
 

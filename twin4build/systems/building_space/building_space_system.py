@@ -345,6 +345,17 @@ class BuildingSpaceSystem(core.System, nn.Module):
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): delegated to the
     #: thermal submodel, which owns the wall coupling.
+    #: The imbalance flows depend on the flow ports alone, not on the state or a parameter
+    #: (:mod:`twin4build.model.signal_dependencies`): a world that needs a room's surplus needs its terminals, not
+    #: the room.  The temperatures and the CO2 are undeclared (everything).
+    OUTPUT_DEPENDENCIES = {
+        "surplusAirFlowRate": {"inputs": ("supplyAirFlowRate", "exhaustAirFlowRate")},
+        "makeUpAirFlowRate": {"inputs": ("supplyAirFlowRate", "exhaustAirFlowRate")},
+    }
+    #: The class that computes those state-free outputs on its own, from the same ports: a world that needs them
+    #: without the room gets it in the room's place (:mod:`twin4build.model.signal_dependencies`).
+    OUTPUT_PROJECTIONS = {"surplusAirFlowRate": "AirImbalanceSystem", "makeUpAirFlowRate": "AirImbalanceSystem"}
+
     FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeCO2Gain", "heatGain"})
 
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature", "indoorCO2"})

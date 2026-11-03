@@ -68,6 +68,7 @@ __all__ = [
     "BuildingSpaceSystem",
     "BuildingSpaceMassSystem",
     "BuildingSpaceThermalSystem",
+    "AirImbalanceSystem",
     # Wall
     "WallSystem",
     "ThermalMassNodeSystem",
@@ -135,6 +136,7 @@ _MODULES = {
     "BuildingSpaceMassSystem": "building_space.building_space_mass_system",
     "BuildingSpaceThermalSystem": "building_space.building_space_thermal_system",
     "BuildingSpaceSystem": "building_space.building_space_system",
+    "AirImbalanceSystem": "building_space.air_imbalance_system",
     "CoilSystem": "coil.coil_system",
     "FanCoilUnitSystem": "fan_coil_unit.fan_coil_unit_system",
     "ControllerIdentificationSystem": "controller.controller_identification.controller_identification_system",
