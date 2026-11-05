@@ -13,6 +13,7 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.data_loaders.sources import reader_from_keywords
 from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.translator.translator import (
@@ -573,40 +574,34 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             # ``a*x+b`` correction on the canonical-unit signal.
             time_series_temp = TimeSeriesInputSystem(
                 id=f"time series input - outdoorTemperature - {self.id}",
-                df=df_temp,
-                filename=self.filename_outdoorTemperature,
-                date_column=self.datecolumn_outdoorTemperature,
-                value_column=(
-                    "outdoorTemperature"
-                    if self.use_df
-                    else self.valuecolumn_outdoorTemperature
+                source=reader_from_keywords(
+                    df=df_temp,
+                    filename=self.filename_outdoorTemperature,
+                    date_column=self.datecolumn_outdoorTemperature,
+                    value_column=self.valuecolumn_outdoorTemperature,
+                    use_spreadsheet=self.use_spreadsheet,
+                    use_database=self.use_database,
+                    uuid=self.uuid_outdoorTemperature,
+                    dbconfig=self.dbconfig_outdoorTemperature,
                 ),
-                use_spreadsheet=self.use_spreadsheet,
-                use_database=self.use_database,
-                uuid=self.uuid_outdoorTemperature,
-                dbconfig=self.dbconfig_outdoorTemperature,
                 transformation=self._transformation_outdoorTemperature,
-                # cache=False,  # Cache is disabled for outdoor temperature data to avoid loading the same column multiple times form the same file
             )
 
             time_series_temp.initialize(start_time, end_time, step_size)
 
             time_series_irrad = TimeSeriesInputSystem(
                 id=f"time series input - globalIrradiation - {self.id}",
-                df=df_irrad,
-                filename=self.filename_globalIrradiation,
-                date_column=self.datecolumn_globalIrradiation,
-                value_column=(
-                    "globalIrradiation"
-                    if self.use_df
-                    else self.valuecolumn_globalIrradiation
+                source=reader_from_keywords(
+                    df=df_irrad,
+                    filename=self.filename_globalIrradiation,
+                    date_column=self.datecolumn_globalIrradiation,
+                    value_column=self.valuecolumn_globalIrradiation,
+                    use_spreadsheet=self.use_spreadsheet,
+                    use_database=self.use_database,
+                    uuid=self.uuid_globalIrradiation,
+                    dbconfig=self.dbconfig_globalIrradiation,
                 ),
-                use_spreadsheet=self.use_spreadsheet,
-                use_database=self.use_database,
-                uuid=self.uuid_globalIrradiation,
-                dbconfig=self.dbconfig_globalIrradiation,
                 transformation=self._transformation_globalIrradiation,
-                # cache=False,
             )
             time_series_irrad.initialize(start_time, end_time, step_size)
 
@@ -636,19 +631,16 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             if _has_co2_source:
                 time_series_co2 = TimeSeriesInputSystem(
                     id=f"time series input - outdoorCo2Concentration - {self.id}",
-                    df=df_co2,
-                    filename=self.filename_outdoorCo2Concentration,
-                    date_column=self.datecolumn_outdoorCo2Concentration,
-                    value_column=(
-                        "outdoorCo2Concentration"
-                        if self.use_df
-                        else self.valuecolumn_outdoorCo2Concentration
+                    source=reader_from_keywords(
+                        df=df_co2,
+                        filename=self.filename_outdoorCo2Concentration,
+                        date_column=self.datecolumn_outdoorCo2Concentration,
+                        value_column=self.valuecolumn_outdoorCo2Concentration,
+                        use_spreadsheet=self.use_spreadsheet,
+                        use_database=self.use_database,
+                        uuid=self.uuid_outdoorCo2Concentration,
+                        dbconfig=self.dbconfig_outdoorCo2Concentration,
                     ),
-                    use_spreadsheet=self.use_spreadsheet,
-                    use_database=self.use_database,
-                    uuid=self.uuid_outdoorCo2Concentration,
-                    dbconfig=self.dbconfig_outdoorCo2Concentration,
-                    # cache=False,
                 )
                 time_series_co2.initialize(start_time, end_time, step_size)
             else:
