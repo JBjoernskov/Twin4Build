@@ -346,6 +346,14 @@ class System(nn.Module, metaclass=SystemMeta):
         if isinstance(getattr(type(self), name, None), property):
             object.__setattr__(self, name, value)
             return
+        # Replacing a registered parameter or child with something torch does
+        # not register (a ``TensorParameter`` -- what ``set_parameters`` leaves
+        # on a parameter that is set but not estimated -- or a plain value)
+        # unregisters the name, as on a System that is no module.
+        for registry, kind in (("_parameters", nn.Parameter), ("_modules", nn.Module)):
+            registered = self.__dict__.get(registry)
+            if registered is not None and name in registered and value is not None and not isinstance(value, kind):
+                del registered[name]
         super().__setattr__(name, value)
 
     # -- Declared Systems (ADR 0001) ------------------------------------------
