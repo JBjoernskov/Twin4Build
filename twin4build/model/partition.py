@@ -15,7 +15,9 @@ minimal groups the measurements allow.  A data-bearing sensor that reads a
 port is a sink and stays with its source (it carries that group's residual
 columns); what the sensor itself sends on (a controller reading it) is
 measured too, by its own series.  A leaf with no inputs (weather,
-schedules, replayed commands) is exogenous and joins nothing.
+schedules, replayed commands) is exogenous and joins nothing; so is any
+component without free parameters that reads only data sensors' series
+and other exogenous components.
 :func:`cut_measured_edges` then replaces every measured connection by a
 replay leaf, one per sensor.  The connections that cross between groups
 make the groups separable; the measured connections inside a group leave
@@ -47,11 +49,14 @@ the sensor replays its series.
 
 from __future__ import annotations
 
+import copy as _copy
 import logging
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 
+from twin4build.model import signal_dependencies as sd
+from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.utils.data_loaders.load import DEFAULT_DT_LIMIT
 from twin4build.utils.slots import slot_pairs
@@ -146,6 +151,39 @@ def _has_inputs(comp) -> bool:
     return any(cp.connects_system_through for cp in comp.connects_at)
 
 
+def _exogenous(model, edges, free_ids, allowed=None) -> Set[str]:
+    """The components that are functions of data: without free parameters, and every input of theirs a data
+    sensor's series or the output of another such component.  A leaf without parameters (the weather, a schedule, a
+    replayed command) is the simplest case; a component that reads only replay leaves is the next (2 Nov 2026: the
+    envelope leakage at a fixed prior, read by every room, which :func:`split_worlds` evaluates once on replays).
+    A signal that a sensor merely measures is still the simulated signal here: the rule never hands a component a
+    measurement in place of what it reads.  Their outputs tie nothing: every group reads them as it reads data."""
+    ins: Dict[str, List[Edge]] = {}
+    for e in edges:
+        ins.setdefault(e.receiver.id, []).append(e)
+
+    def data_input(e: Edge) -> bool:
+        return _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue"
+
+    out: Set[str] = set()
+    pending = []
+    for cid, comp in model.components.items():
+        if cid in free_ids:
+            continue
+        if not _has_inputs(comp):
+            out.add(cid)
+        elif not isinstance(comp, SensorSystem):
+            pending.append(cid)
+    changed = True
+    while changed:
+        changed = False
+        for cid in pending:
+            if cid not in out and all(e.sender.id in out or data_input(e) for e in ins.get(cid, ())):
+                out.add(cid)
+                changed = True
+    return out
+
+
 def _free_ids(model, free) -> Dict[str, List[str]]:
     """``{component id: [free attrs]}`` from ``free``: a mapping of ids to
     attrs, an iterable of ids, a predicate, or None (every component's
@@ -163,6 +201,130 @@ def _free_ids(model, free) -> Dict[str, List[str]]:
     if callable(free):
         return {c.id: ["*"] for c in model.components.values() if free(c)}
     return {cid: ["*"] for cid in free}
+
+
+@dataclass
+class _Classified:
+    """Every edge of a model classified for the partition (:func:`_classify`)."""
+
+    #: (sender id, sensor id): a data sensor stays with the signal it reads.
+    sinks: List[Tuple[str, str]]
+    #: Unmeasured edges (fusable arcs among them).
+    binding: List[Edge]
+    fusable: List[Edge]
+    #: Measured edges (by a sensor or ``derived``): what a cut replays.
+    measured: List[Edge]
+    readers: Dict[Signal, List[SensorSystem]]
+    free_ids: Dict[str, List[str]]
+    scored_ids: Optional[Set[str]]
+    #: Components whose signals reach a scored sensor (grouping by influence; ``None`` without ``scored``).
+    reaches: Optional[Set[str]]
+
+
+def _classify(model, free=None, measured=None, derived=None, scored=None) -> _Classified:
+    """The edges of ``model`` by what they do to the partition (arguments as :func:`measured_partition`)."""
+    allowed = None
+    if measured is not None:
+        allowed = {c if isinstance(c, str) else c.id for c in measured}
+    scored_ids = None if scored is None else {c if isinstance(c, str) else c.id for c in scored}
+    derived = dict(derived or {})
+    edges = _edges(model)
+    # data sensors by the signal they read
+    readers: Dict[Signal, List[SensorSystem]] = {}
+    for e in edges:
+        if e.input_port == "measuredValue" and _is_data_sensor(e.receiver, allowed):
+            readers.setdefault(e.signal, []).append(e.receiver)
+    free_ids = _free_ids(model, free)
+    exogenous = _exogenous(model, edges, free_ids, allowed)
+    sinks: List[Tuple[str, str]] = []
+    measured_edges: List[Edge] = []
+    binding: List[Edge] = []
+    fusable: List[Edge] = []
+    for e in edges:
+        r = e.receiver
+        if isinstance(r, SensorSystem) and e.input_port == "measuredValue":
+            sinks.append((e.sender.id, r.id))  # a sink (or a pass-through) stays with its source
+            continue
+        if isinstance(r, SensorSystem) and r.has_data:
+            continue  # a data sensor replays its series: its other inputs tie nothing
+        if e.sender.id in exogenous:
+            continue  # a function of data without parameters (a schedule, the weather, ...): exogenous
+        if _is_fusable(e):
+            # A fusable arc (a zone and its wall, opening or radiator) is a
+            # stiff algebraic coupling that the fused block eliminates
+            # exactly; replayed, the receiver would step explicitly against
+            # a lagged signal and diverge.  It binds whether or not a sensor
+            # reads the signal.
+            binding.append(e)
+            fusable.append(e)
+            continue
+        if _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue":
+            # the sender is a data sensor passing its reading on: its own
+            # series stands for the signal (the sensor stays with its source)
+            e.sensor = e.sender
+            measured_edges.append(e)
+            continue
+        sensors = readers.get(e.signal) or readers.get((e.sender.id, e.output_port, None))
+        if sensors:
+            e.sensor = sensors[0]
+            measured_edges.append(e)
+            continue
+        key = (e.sender.id, e.output_port)
+        slot_key = (e.sender.id, e.output_port, e.output_slot)
+        if slot_key in derived or key in derived:
+            e.sensor, e.transform = derived[slot_key] if slot_key in derived else derived[key]
+            measured_edges.append(e)
+            continue
+        binding.append(e)
+    reaches = None
+    if scored_ids is not None:
+        # Grouping by influence: an unmeasured edge ties its ends where the
+        # receiver reaches a scored sensor (through unmeasured edges, both
+        # ways along fusable arcs, which are one block).
+        upstream: Dict[str, List[str]] = {}
+        for e in binding:
+            upstream.setdefault(e.receiver.id, []).append(e.sender.id)
+        for e in fusable:
+            upstream.setdefault(e.sender.id, []).append(e.receiver.id)
+        reaches = set()
+        frontier = []
+        for e in edges:
+            if e.input_port == "measuredValue" and e.receiver.id in scored_ids and e.sender.id not in reaches:
+                reaches.add(e.sender.id)
+                frontier.append(e.sender.id)
+        while frontier:
+            cid = frontier.pop()
+            for up in upstream.get(cid, ()):
+                if up not in reaches:
+                    reaches.add(up)
+                    frontier.append(up)
+    return _Classified(sinks, binding, fusable, measured_edges, readers, free_ids, scored_ids, reaches)
+
+
+def _ties(c: _Classified, e: Edge) -> bool:
+    """Whether the unmeasured edge ``e`` ties its two ends into one group."""
+    if _is_fusable(e) or c.reaches is None:
+        return True
+    return e.receiver.id in c.reaches
+
+
+def _union_find(ids: Iterable[str]):
+    """``(find, union)`` over ``ids``."""
+    parent: Dict[str, str] = {cid: cid for cid in ids}
+
+    def find(a):
+        parent.setdefault(a, a)
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    return find, union
 
 
 def measured_partition(
@@ -185,101 +347,13 @@ def measured_partition(
     component or id) groups by influence (module docstring): the sensors
     whose residuals the fit scores; ``measured`` still decides what is cut.
     """
-    allowed = None
-    if measured is not None:
-        allowed = {c if isinstance(c, str) else c.id for c in measured}
-    scored_ids = None if scored is None else {c if isinstance(c, str) else c.id for c in scored}
-    derived = dict(derived or {})
-    # data sensors by the signal they read
-    readers: Dict[Signal, List[SensorSystem]] = {}
-    for e in _edges(model):
-        if e.input_port == "measuredValue" and _is_data_sensor(e.receiver, allowed):
-            readers.setdefault(e.signal, []).append(e.receiver)
-
-    parent: Dict[str, str] = {}
-
-    def find(a):
-        parent.setdefault(a, a)
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-
-    for cid in model.components:
-        find(cid)
-    free_ids = _free_ids(model, free)
-    crossing_candidates: List[Edge] = []
-    binding: List[Edge] = []
-    fusable: List[Edge] = []
-    for e in _edges(model):
-        r = e.receiver
-        if isinstance(r, SensorSystem) and e.input_port == "measuredValue":
-            union(e.sender.id, r.id)  # a sink (or a pass-through) stays with its source
-            continue
-        if isinstance(r, SensorSystem) and r.has_data:
-            continue  # a data sensor replays its series: its other inputs tie nothing
-        if not _has_inputs(e.sender) and e.sender.id not in free_ids:
-            continue  # a leaf without parameters (data, a schedule, the weather): exogenous
-        if _is_fusable(e):
-            # A fusable arc (a zone and its wall, opening or radiator) is a
-            # stiff algebraic coupling that the fused block eliminates
-            # exactly; replayed, the receiver would step explicitly against
-            # a lagged signal and diverge.  It binds whether or not a sensor
-            # reads the signal.
-            binding.append(e)
-            fusable.append(e)
-            union(e.sender.id, r.id)
-            continue
-        if _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue":
-            # the sender is a data sensor passing its reading on: its own
-            # series stands for the signal (the sensor stays with its source)
-            e.sensor = e.sender
-            crossing_candidates.append(e)
-            continue
-        sensors = readers.get(e.signal) or readers.get((e.sender.id, e.output_port, None))
-        if sensors:
-            e.sensor = sensors[0]
-            crossing_candidates.append(e)
-            continue
-        key = (e.sender.id, e.output_port)
-        slot_key = (e.sender.id, e.output_port, e.output_slot)
-        if slot_key in derived or key in derived:
-            e.sensor, e.transform = derived[slot_key] if slot_key in derived else derived[key]
-            crossing_candidates.append(e)
-            continue
-        binding.append(e)
-        if scored_ids is None:
-            union(e.sender.id, r.id)
-
-    if scored_ids is not None:
-        # Grouping by influence: an unmeasured edge ties its ends where the
-        # receiver reaches a scored sensor (through unmeasured edges, both
-        # ways along fusable arcs, which are one block).
-        upstream: Dict[str, List[str]] = {}
-        for e in binding:
-            upstream.setdefault(e.receiver.id, []).append(e.sender.id)
-        for e in fusable:
-            upstream.setdefault(e.sender.id, []).append(e.receiver.id)
-        reaches = set()
-        frontier = []
-        for e in _edges(model):
-            if e.input_port == "measuredValue" and e.receiver.id in scored_ids and e.sender.id not in reaches:
-                reaches.add(e.sender.id)
-                frontier.append(e.sender.id)
-        while frontier:
-            cid = frontier.pop()
-            for up in upstream.get(cid, ()):
-                if up not in reaches:
-                    reaches.add(up)
-                    frontier.append(up)
-        for e in binding:
-            if e.receiver.id in reaches:
-                union(e.sender.id, e.receiver.id)
+    c = _classify(model, free, measured, derived, scored)
+    find, union = _union_find(model.components)
+    for a, b in c.sinks:
+        union(a, b)
+    for e in c.binding:
+        if _ties(c, e):
+            union(e.sender.id, e.receiver.id)
 
     roots: Dict[str, int] = {}
     group_of: Dict[str, int] = {}
@@ -293,9 +367,383 @@ def measured_partition(
         groups[roots[root]].append(cid)
     for g in groups:
         g.sort()
-    crossing = [e for e in crossing_candidates if group_of[e.sender.id] != group_of[e.receiver.id]]
-    internal = [e for e in crossing_candidates if group_of[e.sender.id] == group_of[e.receiver.id]]
-    return Partition(groups, group_of, crossing, internal, binding, free_ids)
+    crossing = [e for e in c.measured if group_of[e.sender.id] != group_of[e.receiver.id]]
+    internal = [e for e in c.measured if group_of[e.sender.id] == group_of[e.receiver.id]]
+    return Partition(groups, group_of, crossing, internal, c.binding, c.free_ids)
+
+
+@dataclass
+class Worlds:
+    """What :func:`split_worlds` did: the components it duplicated and the parameters their copies share."""
+
+    #: ``{component id: [ids of its copies]}`` (the component keeps one world, each copy another).
+    copies: Dict[str, List[str]] = field(default_factory=dict)
+    #: ``{(component id, attr): [(component or copy id, attr), ...]}``: the copies of each free parameter of a
+    #: duplicated component, the component's own first.  A fit keeps them in agreement (consensus).
+    shared: Dict[Tuple[str, str], List[Tuple[str, str]]] = field(default_factory=dict)
+    #: Components that more than one world reads but that an unmeasured input from another world keeps whole:
+    #: ``{component id: the worlds' representative components merged for it}``.
+    merged: Dict[str, List[str]] = field(default_factory=dict)
+    #: Components that several worlds read but that have no free parameters and read nothing from any world:
+    #: evaluated once, on the replays of what they read (exogenous afterwards), not copied.
+    once: List[str] = field(default_factory=list)
+    #: ``{component id: [ids of its projections]}``: a component with a state whose state-free outputs another world
+    #: needs, computed there by the class's projection (``OUTPUT_PROJECTIONS``) from that world's members.
+    projections: Dict[str, List[str]] = field(default_factory=dict)
+
+
+def _clone(model, comp, new_id: str):
+    """A copy of ``comp`` (its ports, parameters and sub-models) under ``new_id``, wired to nothing: everything
+    else in ``model`` (the other components, the model itself) is referred to, never copied."""
+
+    memo = {id(other): other for other in model.components.values() if other is not comp}
+    memo[id(model)] = model
+    for name in ("simulation_model", "semantic_model"):
+        if getattr(model, name, None) is not None:
+            memo[id(getattr(model, name))] = getattr(model, name)
+    through, at = comp.connected_through, comp.connects_at
+    comp.connected_through, comp.connects_at = [], []
+    try:
+        clone = _copy.deepcopy(comp, memo)
+    finally:
+        comp.connected_through, comp.connects_at = through, at
+    clone.connected_through, clone.connects_at = [], []
+    clone.id = new_id
+    return clone
+
+
+def split_worlds(
+    model,
+    free=None,
+    measured: Optional[Iterable] = None,
+    derived: Optional[Mapping[tuple, Tuple[SensorSystem, Optional[Callable]]]] = None,
+    scored: Optional[Iterable] = None,
+    replay_suffix: str = "__world_replay",
+) -> Worlds:
+    """Give each group of the partition its own world (in place, before :func:`measured_partition`).
+
+    A world is fitted with its own states simulated and everything outside it measured.  The worlds follow signals,
+    not components (:mod:`twin4build.model.signal_dependencies`): from each scored sensor the walk goes upstream,
+    output by output, through what each output depends on (its inputs, slot by slot where the instance says so, and,
+    when it reads the component's state, what the state update reads), and stops at a measured or exogenous signal.
+
+    * A component with scored sensors of its own is its world's.  A world that needs a signal of it that depends on
+      its state (unmeasured) cannot be told apart from it: the two merge (:attr:`Worlds.merged` names the
+      component and the worlds' members).  A signal that depends on neither its state nor a parameter is computed
+      in the other world by the class's projection (``OUTPUT_PROJECTIONS``), from that world's copies of what it
+      reads; without a projection the worlds merge.
+    * Any other component is evaluated once per world that needs it: the original in one, a copy (:func:`_clone`)
+      in each other, state and all (a wall between two measured rooms), or the projection where only state-free
+      outputs are needed.  The free parameters the copied signals depend on are one parameter evaluated in several
+      worlds: :attr:`Worlds.shared` lists their copies for the fit to keep in agreement (consensus).
+    * A component without free parameters that reads nothing from any world (only measured or exogenous signals)
+      is not copied: every world would evaluate the same function of measurements, so it is evaluated once on their
+      replays (:attr:`Worlds.once`) and is exogenous afterwards.
+
+    Every member reads from its own world, from measurements (cut by :func:`cut_measured_edges` as usual) or from
+    exogenous signals; the slots of a copy's vector inputs that its world does not need read zero, so a copy keeps
+    its original's widths (and batches with it).  Which components these are follows from the wiring, the
+    measurements and the classes' declarations; no class is named.  Arguments as :func:`measured_partition`; ``free``
+    also decides which parameters are shared.  Call :func:`measured_partition` on the model afterwards.
+    """
+
+    c = _classify(model, free, measured, derived, scored)
+    edges = _edges(model)
+    binding_keys = {_edge_key(e) for e in c.binding}
+    measured_keys = {_edge_key(e) for e in c.measured}
+    binding_in: Dict[str, Dict[str, List[Edge]]] = {}
+    for e in c.binding:
+        binding_in.setdefault(e.receiver.id, {}).setdefault(e.input_port, []).append(e)
+    in_edges: Dict[str, List[Edge]] = {}
+    for e in edges:
+        in_edges.setdefault(e.receiver.id, []).append(e)
+
+    # the seeds: each scored sensor's source, with the signals it scores
+    seeds: Dict[str, Set[Tuple[str, Optional[int]]]] = {}
+    for e in edges:
+        if e.input_port != "measuredValue" or not isinstance(e.receiver, SensorSystem):
+            continue
+        if not _is_data_sensor(e.receiver, None if measured is None else
+                               {m if isinstance(m, str) else m.id for m in measured}):
+            continue
+        if c.scored_ids is not None and e.receiver.id not in c.scored_ids:
+            continue
+        if isinstance(e.sender, SensorSystem):
+            continue
+        seeds.setdefault(e.sender.id, set()).add((e.output_port, e.output_slot))
+
+    table_cache: Dict[str, Dict[str, "sd.Dependency"]] = {}
+
+    def deps(cid: str) -> Dict[str, "sd.Dependency"]:
+        if cid not in table_cache:
+            table_cache[cid] = sd.declared(model.components[cid])
+        return table_cache[cid]
+
+    def dependency(cid: str, port: str) -> "sd.Dependency":
+        table = deps(cid)
+        return table[port] if port in table else sd.everything(model.components[cid])
+
+    def projectable(cid: str, port: str) -> bool:
+        comp = model.components[cid]
+        return not sd.has_state(comp) or sd.projection(comp, port) is not None
+
+    def upstream(cid: str, port: str, slot: Optional[int], dep: "sd.Dependency"):
+        """The binding edges an output (slot) of ``cid`` reads."""
+        comp = model.components[cid]
+        for inp in dep.inputs:
+            allowed = None if port == sd.STATE or slot is None else sd.slots(comp, port, inp)
+            for e in binding_in.get(cid, {}).get(inp, ()):
+                if allowed is not None and e.input_slot is not None and e.input_slot not in allowed.get(slot, ()):
+                    continue
+                yield e
+
+    def measured_signal(cid: str, port: str, slot: Optional[int]) -> bool:
+        return bool(c.readers.get((cid, port, slot)) or c.readers.get((cid, port, None)))
+
+    find, union = _union_find(seeds)
+    merged_for: Dict[str, Set[str]] = {}
+    while True:
+        # needs[world][cid] = {"ports": {(port, slot)}, "state": bool}
+        needs: Dict[str, Dict[str, Dict]] = {}
+        merges: List[Tuple[str, str, str, str]] = []
+        for seed in sorted(seeds):
+            w = find(seed)
+            world = needs.setdefault(w, {})
+            stack = [(seed, port, slot, seed) for port, slot in sorted(seeds[seed], key=lambda t: (t[0], -1 if t[1] is None else t[1]))]
+            seen: Set[Tuple[str, str, Optional[int]]] = set()
+            while stack:
+                cid, port, slot, reader = stack.pop()
+                if (cid, port, slot) in seen:
+                    continue
+                seen.add((cid, port, slot))
+                dep = dependency(cid, port)
+                foreign = cid in seeds and find(cid) != w
+                if foreign and port != sd.STATE and measured_signal(cid, port, slot):
+                    continue  # another world's measured signal (a fusable arc's far room): replayed in this world
+                if foreign and (dep.state or (port != sd.STATE and not projectable(cid, port))):
+                    merges.append((w, find(cid), reader, port))
+                    continue
+                state_needed = dep.state or (port != sd.STATE and not projectable(cid, port))
+                entry = world.setdefault(cid, {"ports": set(), "state": False})
+                entry["ports"].add((port, slot))
+                if state_needed and not foreign:
+                    entry["state"] = True
+                    if port != sd.STATE:
+                        stack.append((cid, sd.STATE, None, cid))
+                for e in upstream(cid, port, slot, dep):
+                    stack.append((e.sender.id, e.output_port, e.output_slot, cid))
+        if not merges:
+            break
+        for a, b, reader, _port in merges:
+            if find(a) != find(b):
+                merged_for.setdefault(reader, set()).update({a, b})
+                union(a, b)
+
+    result = Worlds()
+    worlds_of: Dict[str, Dict[str, Dict]] = {}
+    for w, comps in needs.items():
+        for cid, entry in comps.items():
+            worlds_of.setdefault(cid, {})[w] = entry
+
+    def anchor(w: str) -> str:
+        """A world's name in its copies' ids: its smallest seed."""
+        return min(s for s in seeds if find(s) == w)
+
+    leaves: Dict[str, SensorSystem] = {}
+    # the leaves this split adds (replays, the zero) by id -> the id of their family's first; a scalar leaf reaches
+    # one slot of a port per connection, so a second slot of the same port takes a sibling (as cut_measured_edges)
+    family: Dict[str, str] = {}
+    makers: Dict[str, Callable[[str], object]] = {}
+    wired: Set[Tuple[str, str, str, str]] = set()
+
+    def new_leaf(leaf_id: str, make: Callable[[str], object]):
+        if leaf_id not in model.components:
+            model.add_component(make(leaf_id))
+            family[leaf_id] = leaf_id
+            makers[leaf_id] = make
+        return model.components[leaf_id]
+
+    def zero_leaf():
+
+        return new_leaf("__world_zero", lambda i: ScheduleSystem(weekday_ruleset={"ruleset_default_value": 0.0}, id=i))
+
+    def replay_of(sensor):
+        leaf_id = f"{sensor.id}{replay_suffix}"
+        leaf = new_leaf(leaf_id, lambda i, _s=sensor: replay_leaf(_s, i))
+        leaves[leaf_id] = leaf
+        return leaf
+
+    def wire(sender, receiver, e: Edge, output_port: Optional[str] = None):
+        kwargs = {}
+        out_port = output_port or e.output_port
+        if (sender.id, receiver.id, out_port, e.input_port) in wired and sender.id in family:
+            base, k = family[sender.id], 1
+            while (f"{base}{k}", receiver.id, out_port, e.input_port) in wired:
+                k += 1
+            sibling_id = f"{base}{k}"
+            if sibling_id not in model.components:
+                model.add_component(makers[base](sibling_id))
+                family[sibling_id] = base
+            sender = model.components[sibling_id]
+        wired.add((sender.id, receiver.id, out_port, e.input_port))
+        out_spec = getattr(sender, "output", {}).get(out_port)
+        if e.output_slot is not None and getattr(out_spec, "__class__", None).__name__ == "Vector":
+            kwargs["output_port_index"] = e.output_slot
+        if e.input_slot is not None:
+            kwargs["input_port_index"] = e.input_slot
+        model.add_connection(sender, receiver, out_port, e.input_port, **kwargs)
+
+    # once: no free parameters, nothing read from any world
+    for cid in sorted(worlds_of):
+        comp = model.components[cid]
+        if cid in seeds or cid in c.free_ids or binding_in.get(cid) or len(worlds_of[cid]) < 2:
+            continue
+        replayed = [e for e in in_edges.get(cid, ()) if _edge_key(e) in measured_keys]
+        sensors = [c.readers.get(e.signal) or c.readers.get((e.sender.id, e.output_port, None)) for e in replayed]
+        if any(not s for s in sensors):
+            continue  # a derived input keeps the copies
+        done = set()
+        for e, s in zip(replayed, sensors):
+            if e.pairing not in done:
+                model.remove_connection(e.sender, comp, e.output_port, e.input_port)
+                done.add(e.pairing)
+            wire(replay_of(s[0]), comp, e, output_port="measuredValue")
+        result.once.append(cid)
+        del worlds_of[cid]
+
+    once = set(result.once)
+
+    # members: who holds the original, who gets a copy or a projection
+    members: Dict[str, Dict[str, object]] = {}
+    kind: Dict[Tuple[str, str], str] = {}  # (cid, world) -> "original" | "copy" | "projection"
+    for cid in sorted(worlds_of):
+        comp = model.components[cid]
+        by_world = worlds_of[cid]
+        order = sorted(by_world, key=anchor)
+        if cid in seeds:
+            home = find(cid)
+        else:
+            stateful_worlds = [w for w in order if by_world[w]["state"]]
+            home = (stateful_worlds or order)[0]
+        members[cid] = {home: comp}
+        kind[(cid, home)] = "original"
+        for w in order:
+            if w == home:
+                continue
+            entry = by_world[w]
+            ports = {p for p, _ in entry["ports"] if p != sd.STATE}
+            if sd.has_state(comp) and not entry["state"] and ports:
+                classes = {sd.projection(comp, p) for p in ports}
+                if len(classes) == 1 and None not in classes:
+                    member = next(iter(classes))(id=f"{cid}__projection_in_{anchor(w)}")
+                    model.add_component(member)
+                    members[cid][w] = member
+                    kind[(cid, w)] = "projection"
+                    result.projections.setdefault(cid, []).append(member.id)
+                    continue
+            member = _clone(model, comp, f"{cid}__in_{anchor(w)}")
+            model.add_component(member)
+            members[cid][w] = member
+            kind[(cid, w)] = "copy"
+            result.copies.setdefault(cid, []).append(member.id)
+
+    def foreign_measurement(e: Edge, w: str):
+        """The replay leaf for a measured input whose sender is another world's member, else None."""
+        if _edge_key(e) not in measured_keys and not (_edge_key(e) in binding_keys and measured_signal(
+                e.sender.id, e.output_port, e.output_slot)):
+            return None
+        held = members.get(e.sender.id)
+        if held is None or w in held:
+            return None
+        sensors = c.readers.get(e.signal) or c.readers.get((e.sender.id, e.output_port, None))
+        if not sensors:
+            return None  # derived: the cut replays it
+        return replay_of(sensors[0])
+
+    # wiring: every member reads its own world's members, measurements and exogenous signals
+    for cid in sorted(members):
+        comp = model.components[cid]
+        for w, member in members[cid].items():
+            k = kind[(cid, w)]
+            ins = in_edges.get(cid, ())
+            if k == "original":
+                removed, keep = set(), []
+                for e in ins:
+                    leaf = foreign_measurement(e, w)
+                    if leaf is not None:
+                        if e.pairing not in removed:
+                            keep.extend(x for x in ins if x.pairing == e.pairing and x is not e)
+                            model.remove_connection(e.sender, comp, e.output_port, e.input_port)
+                            removed.add(e.pairing)
+                        wire(leaf, comp, e, output_port="measuredValue")
+                        continue
+                    if _edge_key(e) not in binding_keys or e.sender.id in once:
+                        continue  # measured (the cut replays it), exogenous, or evaluated once: as it is
+                    source = members.get(e.sender.id, {}).get(w)
+                    if source is e.sender:
+                        continue  # same world, the original: as it is
+                    if e.pairing not in removed:
+                        # rewire the whole connection: its other slots are put back below
+                        keep.extend(x for x in ins if x.pairing == e.pairing and x is not e)
+                        model.remove_connection(e.sender, comp, e.output_port, e.input_port)
+                        removed.add(e.pairing)
+                    if source is not None:
+                        wire(source, comp, e)
+                    elif e.input_slot is not None:
+                        wire(zero_leaf(), comp, e, output_port="scheduleValue")
+                for x in keep:
+                    if (_edge_key(x) in binding_keys and x.sender.id not in once) or foreign_measurement(x, w) is not None:
+                        continue  # handled above (each such slot on its own)
+                    wire(x.sender, comp, x)
+                continue
+            for e in ins:
+                if k == "projection" and e.input_port not in member.input:
+                    continue
+                leaf = foreign_measurement(e, w)
+                if leaf is not None:  # another world's measured signal: its replay
+                    wire(leaf, member, e, output_port="measuredValue")
+                elif _edge_key(e) in binding_keys and e.sender.id not in once:
+                    source = members.get(e.sender.id, {}).get(w)
+                    if source is not None:
+                        wire(source, member, e)
+                    elif e.input_slot is not None:
+                        wire(zero_leaf(), member, e, output_port="scheduleValue")
+                else:  # measured (the cut replays it) or exogenous: as it is
+                    wire(e.sender, member, e)
+        copies = [m.id for w, m in members[cid].items() if kind[(cid, w)] == "copy"]
+        if not copies:
+            continue
+        needed_params: Set[str] = set()
+        for w, entry in worlds_of[cid].items():
+            for port, _ in entry["ports"]:
+                if port != sd.STATE:
+                    needed_params |= set(dependency(cid, port).parameters)
+            if entry["state"]:
+                needed_params |= set(dependency(cid, sd.STATE).parameters)
+        for attr in c.free_ids.get(cid, ()):
+            if attr == "*":
+                getter = getattr(comp, "get_estimable_parameters", None)
+                attrs = [str(p[1]) for p in getter()] if callable(getter) else []
+            else:
+                attrs = [attr]
+            for a in attrs:
+                if a in needed_params or a not in sd.parameter_names(comp):
+                    result.shared[(cid, a)] = [(cid, a)] + [(copy_id, a) for copy_id in copies]
+    result.merged = {cid: sorted(ids) for cid, ids in merged_for.items()}
+    LOGGER.info("partition: %d components split into worlds (%d copies, %d projections), %d shared parameters, %d merged",
+                len(result.copies), sum(len(v) for v in result.copies.values()),
+                sum(len(v) for v in result.projections.values()), len(result.shared), len(result.merged))
+    return result
+
+
+def _edge_key(e: Edge) -> tuple:
+    return (e.sender.id, e.output_port, e.output_slot, e.receiver.id, e.input_port, e.input_slot)
+
+
+def _edges_between(sender, receiver, conn, cp) -> List[Edge]:
+    """The slot pairs of one connection as edges."""
+    return [Edge(sender, conn.output_port, _slot(out_v), receiver, cp.input_port, _slot(in_v))
+            for _, _, out_v, in_v in slot_pairs(cp, conn)]
 
 
 def replay_leaf(sensor: SensorSystem, leaf_id: str, transform: Optional[Callable] = None) -> SensorSystem:
@@ -492,15 +940,22 @@ def keep_groups(
                     kept_groups.add(g)
                     frontier.add(g)
     keep = {cid for cid, g in partition.group_of.items() if g in kept_groups and cid in model.components}
-    for cid, comp in model.components.items():
-        if cid in keep or _has_inputs(comp):
-            continue
-        if any(
-            cp.connection_point_of.id in keep
-            for conn in comp.connected_through
-            for cp in conn.connects_system_at
-        ):
-            keep.add(cid)
+    # the functions of data that feed what is kept (a leaf, or a component that reads only replays), and theirs
+    exogenous = _exogenous(model, _edges(model), partition.free)
+    exogenous |= {cid for cid, comp in model.components.items() if not _has_inputs(comp)}  # every leaf, as before
+    changed = True
+    while changed:
+        changed = False
+        for cid in exogenous:
+            if cid in keep or cid not in model.components:
+                continue
+            if any(
+                cp.connection_point_of.id in keep
+                for conn in model.components[cid].connected_through
+                for cp in conn.connects_system_at
+            ):
+                keep.add(cid)
+                changed = True
     removed = [cid for cid in model.components if cid not in keep]
     for cid in removed:
         model.remove_component(model.components[cid])

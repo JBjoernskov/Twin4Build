@@ -146,10 +146,40 @@ class TestTranslatorSizing(unittest.TestCase):
         """Two rooms with their volumes (``brick:volume [ brick:value x ]``)
         and a data-bound point each that feeds the room (so the translator
         keeps it); the volume mapped onto ``mass.V`` sizes it."""
+        model = self._translate((21.0, 22.0))
+        spaces = sorted(model.get_components_by_class(tb.BuildingSpaceSystem), key=lambda c: c.id)
+        self.assertEqual(len(spaces), 2)
+        for space_component, volume in zip(spaces, (21.0, 22.0)):
+            self.assertAlmostEqual(float(space_component.mass.V.get()), volume)
+            self.assertEqual(_bounds(space_component, "mass.V"), (0.5 * volume, 2.0 * volume))
+
+    def test_a_transformation_converts_the_value_before_it_sizes(self):
+        """``add_parameter(..., transformation=...)`` converts the literal as a
+        sensor's ``transformation`` converts its series: the graph's volumes in
+        litres become cubic metres on ``mass.V``, and the bounds are relative
+        to the converted value."""
+        model = self._translate((21000.0, 22000.0), transformation=litres_to_cubic_metres)
+        spaces = sorted(model.get_components_by_class(tb.BuildingSpaceSystem), key=lambda c: c.id)
+        self.assertEqual(len(spaces), 2)
+        for space_component, volume in zip(spaces, (21.0, 22.0)):
+            self.assertAlmostEqual(float(space_component.mass.V.get()), volume)
+            self.assertEqual(_bounds(space_component, "mass.V"), (0.5 * volume, 2.0 * volume))
+
+    def test_a_transformation_must_be_callable(self):
+        sp = SignaturePattern(id="test_size_parameter_bad_transformation", system=tb.BuildingSpaceSystem)
+        value = Node(cls=(core.namespace.XSD.float,))
+        with self.assertRaises(TypeError):
+            sp.add_parameter("mass.V", value, transformation=1000.0)
+        sp.add_parameter("mass.V", value, transformation=litres_to_cubic_metres)
+        self.assertIs(sp.parameter_transformations["mass.V"], litres_to_cubic_metres)
+        sp.add_parameter("mass.V", value)  # bound again without one: the literal as it is
+        self.assertNotIn("mass.V", sp.parameter_transformations)
+
+    def _translate(self, volumes, transformation=None):
         BRICK, REF, EX = core.namespace.BRICK, core.namespace.BRICKREF, core.namespace.T4B
         sm = SemanticModel(id=self.MODEL_ID)
         g = sm.instance_graph
-        for i, volume in ((1, 21.0), (2, 22.0)):
+        for i, volume in enumerate(volumes, start=1):
             room, point, ref, holder = EX[f"R0{i}"], EX[f"R0{i}_T"], BNode(), BNode()
             g.add((room, RDF.type, core.namespace.REC.Room))
             g.add((room, BRICK.volume, holder))
@@ -167,16 +197,17 @@ class TestTranslatorSizing(unittest.TestCase):
         sp.add_rule(StepRule(subject=space, object=point, predicate=BRICK.hasPoint))
         sp.add_rule(StepRule(subject=space, object=holder, predicate=BRICK.volume))
         sp.add_rule(StepRule(subject=holder, object=value, predicate=BRICK.value))
-        sp.add_parameter("mass.V", value)
+        sp.add_parameter("mass.V", value, transformation=transformation)
         sp.add_connection(sender_node=point, output_port="measuredValue", input_port="outdoorTemperature")
         sp.add_modeled_node(holder)
         sp.add_modeled_node(space)
-        model = Translator().translate(sm, patterns=[leaf_sensor_pattern(), sp], id=self.MODEL_ID)
-        spaces = sorted(model.get_components_by_class(tb.BuildingSpaceSystem), key=lambda c: c.id)
-        self.assertEqual(len(spaces), 2)
-        for space_component, volume in zip(spaces, (21.0, 22.0)):
-            self.assertAlmostEqual(float(space_component.mass.V.get()), volume)
-            self.assertEqual(_bounds(space_component, "mass.V"), (0.5 * volume, 2.0 * volume))
+        return Translator().translate(sm, patterns=[leaf_sensor_pattern(), sp], id=self.MODEL_ID)
+
+
+def litres_to_cubic_metres(value):
+    """A unit conversion at module level (nameable by import path, as a sensor's transformation)."""
+    return float(value) / 1000.0
+
 
 if __name__ == "__main__":
     unittest.main()

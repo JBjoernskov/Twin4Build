@@ -346,6 +346,12 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             "wallHeatGain": tps.Vector(
                 optional=True
             ),  # Heat flow from connected WallSystem components [W], optional
+            # The envelope's inflow at outdoor state [kg/s] (an envelope-leakage
+            # component's share): enters with the make-up stream and leaves at
+            # room state, no part of the published imbalance
+            # (air_balance.INFILTRATION_PORT).  Unwired: zero.  The u column is
+            # the last one.
+            "infiltrationAirFlowRate": tps.Scalar(0.0, optional=True),
         }
 
         # Define outputs
@@ -605,16 +611,24 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
     SS_DERIVED_INPUT_PORTS = ("supplyAirFlowRate", "exhaustAirFlowRate")
     SS_DERIVED_ROW_PORTS = ()
 
+    #: The imbalance flows depend on the flow ports alone, not on the state or a parameter
+    #: (:mod:`twin4build.model.signal_dependencies`); the temperatures are undeclared (everything).
+    OUTPUT_DEPENDENCIES = {
+        "surplusAirFlowRate": {"inputs": ("supplyAirFlowRate", "exhaustAirFlowRate")},
+        "makeUpAirFlowRate": {"inputs": ("supplyAirFlowRate", "exhaustAirFlowRate")},
+    }
+    #: The class that computes those state-free outputs on its own, from the same ports: a world that needs them
+    #: without the room gets it in the room's place (:mod:`twin4build.model.signal_dependencies`).
+    OUTPUT_PROJECTIONS = {"surplusAirFlowRate": "AirImbalanceSystem", "makeUpAirFlowRate": "AirImbalanceSystem"}
+
     @staticmethod
     def _ss_derived_outputs(inputs, rows):
         """The air-flow imbalance of the step from the supply and exhaust
         flows (the ports' values, before the make-up transform): the surplus
-        and the make-up flow (:mod:`~twin4build.systems.building_space.air_balance`)."""
-        supply, exhaust = inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"]
-        return {
-            "surplusAirFlowRate": air_balance.surplus_air_flow(supply, exhaust),
-            "makeUpAirFlowRate": air_balance.make_up_air_flow(supply, exhaust),
-        }
+        and the make-up flow
+        (:mod:`~twin4build.systems.building_space.air_balance`)."""
+        surplus, make_up = air_balance.imbalance_flows(inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"])
+        return {"surplusAirFlowRate": surplus, "makeUpAirFlowRate": make_up}
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): connected
     #: WallSystem heat flows enter the linear B matrix, and
@@ -655,6 +669,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             u.append(("boundaryTemperature", 1))
         if self.n_walls > 0:
             u.append(("wallHeatGain", self.n_walls))
+        u.append((air_balance.INFILTRATION_PORT, 1))  # last: it acts through the transform only
         return {"u": u, "y": {"indoorTemperature": 0, "wallTemperature": 1}}
 
     def _ss_support(self):
@@ -674,16 +689,20 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         }
 
     #: Input ports whose values :meth:`_ss_transform_inputs` reads.
-    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS
+    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS + (
+        air_balance.INFILTRATION_PORT, "outdoorTemperature", "makeUpAirTemperature"
+    )
 
     @staticmethod
     def _ss_transform_inputs(inputs):
         """Balanced-ventilation input transform (see
         :mod:`~twin4build.systems.building_space.air_balance`): the
         ``exhaustAirFlowRate`` slot carries the outdoor make-up flow
-        ``max(m_exh - m_sup, 0)``.  Pure function of the original inputs;
+        ``max(m_exh - m_sup, 0)``, with an envelope inflow the deficit it
+        leaves plus the inflow, at their mixed temperature on the
+        ``makeUpAirTemperature`` slot.  Pure function of the original inputs;
         applied by :meth:`forward` and by the fused block."""
-        return air_balance.balanced_flow_inputs(inputs)
+        return air_balance.balanced_flow_inputs(inputs, "makeUpAirTemperature", "outdoorTemperature")
 
     def _build_matrices(self, p=None):
         """Build the RC state-space matrices ``(A, B, C, D, E, F)`` from the
@@ -785,6 +804,10 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             wall_inputs.append(zero)
         air_inputs.extend([1 / C_air] * self.n_walls)
         wall_inputs.extend([zero] * self.n_walls)
+        # the envelope inflow's column (last, in len(self.input)): it acts
+        # through the input transform, on the make-up slot, not through B
+        air_inputs.append(zero)
+        wall_inputs.append(zero)
         b_rows = [
             torch.stack(air_inputs, dim=-1),
             torch.stack(wall_inputs, dim=-1),
@@ -925,6 +948,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
                 "numberOfPeople",
                 "heatGain",
                 "makeUpAirTemperature",
+                air_balance.INFILTRATION_PORT,
             )
         }
         if self.n_boundary_temperature == 1:
@@ -1004,6 +1028,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         u = torch.stack(cols, dim=-1)  # (n_c, n_base_inputs)
         if self.n_walls > 0:
             u = torch.cat([u, inputs["wallHeatGain"]], dim=-1)
+        inflow = inputs.get(air_balance.INFILTRATION_PORT)
+        u = torch.cat([u, (torch.zeros_like(inputs["supplyAirFlowRate"]) if inflow is None else inflow).unsqueeze(-1)], dim=-1)
         x_next, y = bilinear_onestep(
             A,
             B,

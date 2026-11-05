@@ -328,6 +328,15 @@ class DamperSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     PARAM_NAMES = ("nominalAirFlowRate", "a", "c", "exhaustFlowRatio")
 
+    #: What each output depends on (:mod:`twin4build.model.signal_dependencies`); ``c`` counts once untied, the
+    #: union of the two configurations.  Stateless.
+    OUTPUT_DEPENDENCIES = {
+        "damperPosition": {"inputs": ("damperPosition",)},
+        "airFlowRate": {"inputs": ("damperPosition", "fanSpeed"), "parameters": ("nominalAirFlowRate", "a", "c")},
+        "exhaustAirFlowRate": {"inputs": ("damperPosition", "fanSpeed"),
+                               "parameters": ("nominalAirFlowRate", "a", "c", "exhaustFlowRatio")},
+    }
+
     #: Fan speed (0-1) above which the fan is fully "on" for the branch flow.
     FAN_ON_SPEED = 0.1
 

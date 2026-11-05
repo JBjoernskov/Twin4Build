@@ -65,6 +65,8 @@ the hard mode (``saturation_mode("hard")``, the refinement stage) is the
 exact max.
 """
 
+from typing import Optional, Tuple
+
 import torch
 
 from twin4build.systems.utils.smooth_saturation import clamp
@@ -119,15 +121,49 @@ def surplus_air_flow(supply: torch.Tensor, exhaust: torch.Tensor) -> torch.Tenso
     return supply - exhaust + make_up_air_flow(supply, exhaust)
 
 
-def balanced_flow_inputs(inputs: dict) -> dict:
+#: The envelope's inflow at outdoor state [kg/s] (an envelope-leakage
+#: component's share for the room): outdoor air that enters the room and
+#: leaves it again at room state, a time-varying infiltration (the EnergyPlus
+#: convention: additive to the make-up flow).  It is no part of the room's
+#: mechanical balance: the surplus and make-up flows the room publishes, which
+#: the extract boxes follow, stay those of its supply and exhaust (28 Oct 2026:
+#: counted as supply, it travelled up the surplus chain and the boxes drew it).
+#: Unwired it is zero and the balance is the one above, bit for bit.
+INFILTRATION_PORT = "infiltrationAirFlowRate"
+
+
+def mixed_state(flow_a: torch.Tensor, state_a: torch.Tensor, flow_b: torch.Tensor, state_b: torch.Tensor) -> torch.Tensor:
+    """The flow-weighted state (temperature, concentration) of two streams, written as the first stream's state
+    plus the second's share of the difference: exactly ``state_a`` when ``flow_b`` is zero (an unconnected inflow
+    leaves the model bit for bit), and ``state_a`` where no air flows at all (it multiplies a zero flow)."""
+    total = (flow_a + flow_b).clamp_min(1e-12)
+    return state_a + (flow_b / total) * (state_b - state_a)
+
+
+def imbalance_flows(supply: torch.Tensor, exhaust: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """``(surplus, make-up)`` of a room's mechanical balance (the envelope inflow is no part of it)."""
+    return surplus_air_flow(supply, exhaust), make_up_air_flow(supply, exhaust)
+
+
+def balanced_flow_inputs(inputs: dict, state_port: Optional[str] = None, outdoor_port: Optional[str] = None) -> dict:
     """Input transform of the room air models: replace the value on the
     ``exhaustAirFlowRate`` slot by the make-up flow.  Pure function of the
     *original* inputs; returns only the replaced entries (empty when a flow
-    port is absent, e.g. a partially wired unit)."""
-    if all(port in inputs for port in TRANSFORM_PORTS):
-        return {
-            "exhaustAirFlowRate": make_up_air_flow(
-                inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"]
-            )
-        }
-    return {}
+    port is absent, e.g. a partially wired unit).
+
+    With an envelope inflow (:data:`INFILTRATION_PORT`) the slot carries the
+    make-up flow plus the inflow, at their flow-weighted state: ``state_port``
+    (the make-up stream's temperature or CO2) mixed with ``outdoor_port`` (the
+    inflow's).  A model whose make-up stream is outdoor air ignores
+    ``state_port``'s slot: the mix is outdoor air then."""
+    if not all(port in inputs for port in TRANSFORM_PORTS):
+        return {}
+    supply, exhaust = inputs["supplyAirFlowRate"], inputs["exhaustAirFlowRate"]
+    inflow = inputs.get(INFILTRATION_PORT)
+    if inflow is None:
+        return {"exhaustAirFlowRate": make_up_air_flow(supply, exhaust)}
+    make_up = make_up_air_flow(supply, exhaust)
+    out = {"exhaustAirFlowRate": make_up + inflow}
+    if state_port in inputs and outdoor_port in inputs:
+        out[state_port] = mixed_state(make_up, inputs[state_port], inflow, inputs[outdoor_port])
+    return out

@@ -66,7 +66,8 @@ assert tuple(range(*ACTIVE_INPUT_SLICE.indices(N_INPUTS))) == ACTIVE_INPUT_SLOTS
 )
 
 
-def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exchanges=0, supply_co2=False):
+def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exchanges=0, supply_co2=False,
+                  infiltration_column=False):
     r"""``(A, B, C, D, E, F)`` of the room CO2 mass balance -- the single
     source of the matrix contract.
 
@@ -98,7 +99,10 @@ def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exc
     ``C (n_c, 1, 1)``, ``D (n_c, 1, m)``, ``E (n_c, m, 1, 1)``, ``F (n_c, m, 1, m)``.
     """
     n_supply = int(bool(supply_co2))
-    n_states, n_inputs = N_STATES, N_INPUTS + n_supply + int(n_exchanges)
+    # infiltration_column: the envelope inflow's column, last (it acts through the input transform, on the
+    # make-up slot, not through B); the room model has it, the occupancy inversion does not
+    n_inflow = int(bool(infiltration_column))
+    n_states, n_inputs = N_STATES, N_INPUTS + n_supply + int(n_exchanges) + n_inflow
     # Parameters' device/dtype: _build_matrices re-runs on cache miss
     # during stepping, outside initialize()'s device context.
     dev, dt = V.device, V.dtype
@@ -114,7 +118,7 @@ def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exc
     exchange_gain = [1 / air_mass] * int(n_exchanges)  # exchangeCO2Gain slots
     supply_slot = [zero] * n_supply  # supplyAirCO2: enters through F only
     B = torch.stack(
-        [zero, zero, infiltration, people_gain, zero] + supply_slot + exchange_gain, dim=-1
+        [zero, zero, infiltration, people_gain, zero] + supply_slot + exchange_gain + [zero] * n_inflow, dim=-1
     ).unsqueeze(1)
 
     # Output matrix C - Identity matrix for direct observation
@@ -135,7 +139,7 @@ def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exc
     # at C_out (F, slot 2).
     # E matrix for input-state coupling: shape (n_c, n_inputs, n_states, n_states)
     E = torch.stack(
-        [-1 / air_mass, -1 / air_mass, zero, zero, zero] + [zero] * (n_supply + int(n_exchanges)), dim=1
+        [-1 / air_mass, -1 / air_mass, zero, zero, zero] + [zero] * (n_supply + int(n_exchanges) + n_inflow), dim=1
     ).reshape(n_c, n_inputs, n_states, n_states)
 
     # F matrix for input-input coupling: shape (n_c, n_inputs, n_states, n_inputs)
@@ -357,6 +361,10 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
                 # OpeningSystem -- the mass counterpart of the thermal zone's
                 # ``wallHeatGain``.
                 "exchangeCO2Gain": tps.Vector(optional=True),
+                # The envelope's inflow at outdoor state [kg/s] (air_balance.INFILTRATION_PORT): enters with the
+                # make-up stream at the outdoor level and leaves at room state.  Unwired: zero.  The u column is the
+                # last one.
+                "infiltrationAirFlowRate": tps.Scalar(0.0, optional=True),
             },
             aliases=self.INPUT_PORT_ALIASES,
             owner=type(self).__name__,
@@ -501,6 +509,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             u.append(("supplyAirCO2", 1))
         if self.n_exchanges > 0:
             u.append(("exchangeCO2Gain", self.n_exchanges))
+        u.append((air_balance.INFILTRATION_PORT, 1))  # last: it acts through the transform only
         return {"u": u, "y": {"indoorCO2": 0}}
 
     def _ss_support(self):
@@ -518,7 +527,11 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         }
 
     #: Input ports whose values :meth:`_ss_transform_inputs` reads.
-    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS
+    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS + (
+        air_balance.INFILTRATION_PORT,
+        "outdoorCo2Concentration",
+        "makeUpAirCO2",
+    )
 
     @staticmethod
     def _ss_transform_inputs(inputs):
@@ -527,7 +540,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         ``exhaustAirFlowRate`` slot carries the outdoor make-up flow
         ``max(m_exh - m_sup, 0)``.  Pure function of the original inputs;
         applied by :meth:`forward` and by the fused block."""
-        return air_balance.balanced_flow_inputs(inputs)
+        return air_balance.balanced_flow_inputs(inputs, "makeUpAirCO2", "outdoorCo2Concentration")
 
     def _build_matrices(self, p=None):
         """Build the CO2 mass-balance matrices ``(A, B, C, D, E, F)`` from the
@@ -543,6 +556,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
         return mass_matrices(
             p["V"], p["G_occ"], p["m_inf"], self.n_c,
             make_up_co2_slot=slot, n_exchanges=self.n_exchanges, supply_co2=self._supply_wired,
+            infiltration_column=True,
         )
 
     def _create_state_space_model(self):
@@ -611,6 +625,8 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
             u = torch.cat([u, inputs["supplyAirCO2"].unsqueeze(-1)], dim=-1)
         if self.n_exchanges > 0:
             u = torch.cat([u, inputs["exchangeCO2Gain"]], dim=-1)
+        inflow = inputs.get(air_balance.INFILTRATION_PORT)
+        u = torch.cat([u, (torch.zeros_like(inputs["supplyAirFlowRate"]) if inflow is None else inflow).unsqueeze(-1)], dim=-1)
         x_next, y = bilinear_onestep(
             A,
             B,
@@ -652,6 +668,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
                 "outdoorCo2Concentration",
                 "numberOfPeople",
                 "makeUpAirCO2",
+                air_balance.INFILTRATION_PORT,
             )
         }
         if self._supply_wired:

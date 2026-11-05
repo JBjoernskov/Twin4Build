@@ -148,16 +148,17 @@ class TestMassSupplyPort(unittest.TestCase):
     def test_layout_support_and_matrices(self):
         self.room.n_exchanges = 1
         unwired = self.room._build_matrices(dict(self.params))
-        for a, b in zip(unwired, mass_matrices(_t(120.0), _t(5e-6), _t(0.004), 1, n_exchanges=1)):
+        # the room model's matrices carry the envelope inflow's column, last (28 Oct 2026)
+        for a, b in zip(unwired, mass_matrices(_t(120.0), _t(5e-6), _t(0.004), 1, n_exchanges=1, infiltration_column=True)):
             torch.testing.assert_close(a, b, rtol=0, atol=0)
-        self.assertEqual(unwired[1].shape[-1], N_INPUTS + 1)
+        self.assertEqual(unwired[1].shape[-1], N_INPUTS + 2)
 
         self.room._supply_wired = True
         u = [name for name, _ in self.room._ss_layout()["u"]]
         self.assertEqual(u[SUPPLY_CO2_SLOT : SUPPLY_CO2_SLOT + 2], ["supplyAirCO2", "exchangeCO2Gain"])
         self.assertIn((0, 0, SUPPLY_CO2_SLOT), self.room._ss_support()["F"])
         A, B, C, D, E, F = self.room._build_matrices(dict(self.params))
-        self.assertEqual(B.shape[-1], N_INPUTS + 2)
+        self.assertEqual(B.shape[-1], N_INPUTS + 3)
         self.assertEqual(float(F[0, 0, 0, OUTDOOR_CO2_SLOT]), 0.0)
         self.assertAlmostEqual(float(F[0, 0, 0, SUPPLY_CO2_SLOT]), 1.0 / (120.0 * float(constants.RHO_AIR)), places=12)
         # the exchange slot keeps its linear source, now one column later
@@ -178,7 +179,7 @@ class TestCompositeWiring(unittest.TestCase):
             ("globalIrradiation", 0.0),
             ("numberOfPeople", 0.0),
             ("heatGain", 0.0),
-            ("outdoorCO2", 400.0),
+            ("outdoorCo2Concentration", 400.0),
         ]
         if wired:
             ports += [("makeUpAirTemperature", 18.0), ("makeUpAirCO2", 700.0), ("supplyAirCO2", 600.0)]

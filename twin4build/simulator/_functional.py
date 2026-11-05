@@ -52,7 +52,7 @@ from __future__ import annotations
 
 import hashlib
 from types import SimpleNamespace
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import os
@@ -1422,9 +1422,44 @@ class FunctionalModel:
                     merged[slot].update((src[0].id, i) for i in idxs)
             fb_owner.extend([sorted(m) for m in merged])
 
+        # Components no theta entry reaches (no parameter of their own, none upstream through the wiring) are
+        # functions of data: what they send couples nothing, as an exogenous input does not.  Influence runs from a
+        # parameter downstream only, so leaving their connections out never separates two entries that reach a
+        # common residual (2 Nov 2026: one envelope leakage at a fixed prior, reading replays only, feeds every room
+        # and joined them all into one block whose dense curvature filled the GPU).
+        def producer_ids(spec) -> Set[str]:
+            kind = spec[0]
+            if kind == "fresh":
+                return {src[0].id for src in spec[1]}
+            if kind == "feedback":
+                sl = spec[1]
+                return {node[0] for pos in range(sl.start, sl.stop) if pos < len(fb_owner) for node in fb_owner[pos]}
+            if kind in ("mixed", "vector"):
+                return set().union(*(producer_ids(part) for part in spec[1])) if spec[1] else set()
+            if kind == "vector_grouped":
+                _, _n_c, _n_v, groups, _exo, leftovers = spec
+                out = {g[0] for g in groups}
+                for _rows, _slot, slot_spec in leftovers:
+                    out |= producer_ids(slot_spec)
+                return out
+            return set()  # "exogenous"
+
+        upstream = {cid: set().union(*(producer_ids(spec) for _port, spec in ports)) if ports else set()
+                    for cid, ports in self.wiring.items()}
+        reached: Set[str] = {cid for cid, attrs in self.theta_by_comp.items() if attrs}
+        changed = True
+        while changed:
+            changed = False
+            for cid, ups in upstream.items():
+                if cid not in reached and ups & reached:
+                    reached.add(cid)
+                    changed = True
+
         def bind(consumer_id, spec):
             if spec[0] == "fresh":
                 for src in spec[1]:
+                    if src[0].id not in reached:
+                        continue  # a function of data
                     for slot, idxs in enumerate(owners(src[0], src[1], src[2])):
                         for i in idxs:
                             union((consumer_id, slot), (src[0].id, i))
@@ -1433,7 +1468,8 @@ class FunctionalModel:
                 for slot, pos in enumerate(range(sl.start, sl.stop)):
                     if pos < len(fb_owner):
                         for node in fb_owner[pos]:
-                            union((consumer_id, slot), node)
+                            if node[0] in reached:
+                                union((consumer_id, slot), node)
             elif spec[0] == "mixed":
                 for part in spec[1]:
                     bind(consumer_id, part)
@@ -1446,6 +1482,8 @@ class FunctionalModel:
                 # the exogenous slots (no coupling), and per-slot leftovers
                 _, _n_c, _n_v, groups, _exo, leftovers = spec
                 for pid, _pport, _is_vector, s_ic, _out_v, r_ic, _in_v in groups:
+                    if pid not in reached:
+                        continue  # a function of data
                     for s_i, r_i in zip(s_ic.reshape(-1).tolist(), r_ic.reshape(-1).tolist()):
                         union((consumer_id, int(r_i)), (pid, int(s_i)))
                 for _rows, _slot, slot_spec in leftovers:
