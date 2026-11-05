@@ -64,7 +64,7 @@ class AirImbalanceSystem(core.System):
             output.initialize(n_t=max_timesteps, n_s=n_s)
         self.INITIALIZED = True
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure algebraic map: the vectors summed, the extract added to the exhaust, the two imbalance flows."""
         supply = inputs["supplyAirFlowRate"].sum(dim=-1)
         exhaust = supply * 0.0
@@ -77,6 +77,6 @@ class AirImbalanceSystem(core.System):
 
     def do_step(self, second_time=None, date_time=None, step_size=None, step_index=None) -> None:
         inputs = {port: self.input[port].get() for port in FLOW_PORTS}
-        _, outs = self.forward(None, inputs, {}, self._scalar_sample_time(step_size))
+        _, outs = self.forward(None, inputs, {}, self._scalar_step_size(step_size))
         for port, value in outs.items():
             self.output[port]._set(value, step_index)

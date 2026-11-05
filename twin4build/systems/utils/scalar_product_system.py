@@ -102,7 +102,7 @@ class ScalarProductSystem(core.System):
     #: ``scale_factor`` is a fixed constant read from the instance.
     PARAM_NAMES = ()
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
 
         ``output = input_1 * input_2 * scale_factor``.  Functorch-compatible;

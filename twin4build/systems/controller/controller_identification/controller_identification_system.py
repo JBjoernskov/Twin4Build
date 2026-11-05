@@ -1296,9 +1296,9 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             gate = self._get_gate(a)
             gate.n_c = n_c
             gate.initialize(start_time, end_time, step_size)
-        # Identity-stable sample time for ``forward``'s coefficient caches
-        # (the candidates key their caches on the sample-time object).
-        self._sample_time = self._scalar_sample_time(step_size)
+        # Identity-stable step size for ``forward``'s coefficient caches
+        # (the candidates key their caches on the step-size object).
+        self._step_size = self._scalar_step_size(step_size)
         self._state_slices = self._compute_state_slices()
         self.INITIALIZED = True
 
@@ -1363,7 +1363,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             inputs["actuatorMeasured"] = self.input["actuatorMeasured"].get()
         x = self.get_state() if self.state_size() > 0 else None
         x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._sample_time
+            x, inputs, self._forward_params(), self._step_size
         )
         if x_next is not None:
             self.set_state(x_next)
@@ -1453,7 +1453,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         weights = weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
         return sum(weights[:, c] * outputs[c] for c in range(k))
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step controller identification
         ``(state, inputs, params) -> (new_state, outputs)``.
 
@@ -1526,7 +1526,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                     else {}
                 )
                 x_c_next, out_c = ctrl.forward(
-                    x_c, ctrl_inputs, sub[(a, c)], sample_time, **kwargs
+                    x_c, ctrl_inputs, sub[(a, c)], step_size, **kwargs
                 )
                 if width:
                     new_state_parts.append((offset, x_c_next))
@@ -1539,7 +1539,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             gate_input = torch.sum(gamma_gate_norm * on_off_norm, dim=-1)
             gate = self._get_gate(a)
             _, gate_out = gate.forward(
-                None, {gate.INPUT_PORT: gate_input}, sub[("gate", a)], sample_time
+                None, {gate.INPUT_PORT: gate_input}, sub[("gate", a)], step_size
             )
             gate_signal = gate_out[gate.OUTPUT_PORT]
             alpha_g = params[f"alpha_gate_{a}"]

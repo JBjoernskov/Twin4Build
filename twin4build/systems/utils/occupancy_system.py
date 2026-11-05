@@ -453,7 +453,7 @@ class OccupancySystem(core.System, nn.Module):
         inputs,
         C_prev,
         C_now,
-        sample_time,
+        step_size,
         n_c=1,
         transform_mode=None,
     ):
@@ -496,7 +496,7 @@ class OccupancySystem(core.System, nn.Module):
                 transform is applied here exactly as the zone applies it.
             C_prev: CO2 at the start of the step [ppmv].
             C_now: measured CO2 at the end of the step [ppmv].
-            sample_time: step length [s].
+            step_size: step length [s].
             n_c: parallel-component count of the matrices.
             transform_mode: passed through to the discretization (``True``
                 selects ``_expm_ss`` / ``_expm_ss_fused``, as under vmap and
@@ -536,7 +536,7 @@ class OccupancySystem(core.System, nn.Module):
             None,
             None,
             u_r,
-            sample_time,
+            step_size,
             transform_mode=transform_mode,
         )
         # bilinear_onestep's x_next, with the occupancy slot zeroed out.
@@ -548,7 +548,7 @@ class OccupancySystem(core.System, nn.Module):
             ..., 0, OCCUPANCY_SLOT_ACTIVE
         ]
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step occupancy estimate (functorch-safe, stateless).
 
         Inverts the zone CO2 balance: all data enters through ``inputs``
@@ -632,7 +632,7 @@ class OccupancySystem(core.System, nn.Module):
             },
             C_prev,
             C_indoor,
-            sample_time,
+            step_size,
             n_c=self.n_c,
             transform_mode=transform_mode,
         )
@@ -675,7 +675,7 @@ class OccupancySystem(core.System, nn.Module):
             )
             inputs["damperPositionMeasured"] = damper_pos
         x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         if x_next is not None and self.state_size() > 0:
             self.set_state(x_next)

@@ -94,7 +94,7 @@ class AcmeGainSystem(core.System):
         for port in (*self.input.values(), *self.output.values()):
             port.initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         return x, {"y": inputs["x"] * self.gain.get()}
 
     def do_step(self, second_time, date_time, step_size, step_index):

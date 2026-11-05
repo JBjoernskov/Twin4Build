@@ -51,7 +51,7 @@ class Replayer(core.System):
 
     PARAM_NAMES = ()
 
-    def forward(self, x, inputs, params, sample_time):  # never traced: replays
+    def forward(self, x, inputs, params, step_size):  # never traced: replays
         raise AssertionError("a replaying component is not traced")
 
     def do_step(self, second_time, date_time, step_size, step_index):

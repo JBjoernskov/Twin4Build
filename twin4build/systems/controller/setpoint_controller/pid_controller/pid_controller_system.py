@@ -303,7 +303,7 @@ class PIDControllerSystem(core.System, nn.Module):
     SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("kp", "Ti", "Td", "output_min", "output_max")
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step PID ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``x`` is the memory
@@ -313,21 +313,21 @@ class PIDControllerSystem(core.System, nn.Module):
         """
         # Params-only coefficients, cached per params-dict identity (computed
         # once per theta in a sequential rollout, not once per step).  The
-        # sample-time check is by identity too: ``do_step`` passes the stable
+        # step-size check is by identity too: ``do_step`` passes the stable
         # ``_step_size_tensor`` (a ``!=`` on a batched tensor would be
         # ambiguous), the composer a stable float.
         if transform_mode:
             coefficients = self._compute_pid_coefficients(
-                params["kp"], params["Ti"], params["Td"], sample_time
+                params["kp"], params["Ti"], params["Td"], step_size
             )
         else:
             cache = getattr(self, "_fwd_coef_cache", None)
-            if cache is None or cache[0] is not params or cache[1] is not sample_time:
+            if cache is None or cache[0] is not params or cache[1] is not step_size:
                 cache = (
                     params,
-                    sample_time,
+                    step_size,
                     self._compute_pid_coefficients(
-                        params["kp"], params["Ti"], params["Td"], sample_time
+                        params["kp"], params["Ti"], params["Td"], step_size
                     ),
                 )
                 self._fwd_coef_cache = cache

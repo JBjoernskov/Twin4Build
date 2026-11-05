@@ -384,7 +384,7 @@ class BuildingSpaceSystem(core.System, nn.Module):
             "mass": self.mass._build_matrices(self._resolve_sub_params(self.mass, "mass", params)),
         }
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step of the composite = thermal ++ mass.
 
         State is ``[thermal_state | mass_state]`` (the order
@@ -428,10 +428,10 @@ class BuildingSpaceSystem(core.System, nn.Module):
                 self._fwd_param_cache = cache
             _, p_th, p_ma = cache
         x_th_n, out_th = self.thermal.forward(
-            x_th, inputs, p_th, sample_time, transform_mode=transform_mode
+            x_th, inputs, p_th, step_size, transform_mode=transform_mode
         )
         x_ma_n, out_ma = self.mass.forward(
-            x_ma, inputs, p_ma, sample_time, transform_mode=transform_mode
+            x_ma, inputs, p_ma, step_size, transform_mode=transform_mode
         )
         return torch.cat([x_th_n, x_ma_n], dim=-1), {**out_th, **out_ma}
 

@@ -347,7 +347,7 @@ class DamperSystem(core.System, nn.Module):
         fan runs, and nothing moves when it does not."""
         return torch.clamp(speed / cls.FAN_ON_SPEED, 0.0, 1.0)
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure algebraic map ``(inputs, params) -> outputs`` (stateless).
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` provides

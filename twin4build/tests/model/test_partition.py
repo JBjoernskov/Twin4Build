@@ -93,7 +93,7 @@ class Room(core.System):
 
     PARAM_NAMES = ("k",)
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         k = params["k"].reshape(-1, 1)
         x_next = x + k * inputs["flow"].sum(dim=-1, keepdim=True) + 0.01 * (inputs["supplyT"].reshape(-1, 1) - x)
         return x_next, {"T": x_next[..., 0]}
@@ -128,7 +128,7 @@ class Gain(core.System):
 
     PARAM_NAMES = ("g",)
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         u = params["g"].reshape(-1) * (21.0 - inputs["T"].reshape(-1))
         return x, {"u": u}
 

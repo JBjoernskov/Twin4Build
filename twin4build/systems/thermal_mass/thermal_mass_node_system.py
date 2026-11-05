@@ -219,7 +219,7 @@ class ThermalMassNodeSystem(core.System, nn.Module):
         """The theta-only matrices for one rollout (see ``StepParams``)."""
         return self._build_matrices(params)
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step node dynamics ``(state, inputs, params) -> (new_state, outputs)``.
         ``inputs["heatFlowRate"]`` has shape ``(n_c, n_flows)``."""
         if transform_mode:
@@ -229,15 +229,15 @@ class ThermalMassNodeSystem(core.System, nn.Module):
             disc_cache = None
         else:
             cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != sample_time:
-                cache = (params, self._build_matrices(params), sample_time, {})
+            if cache is None or cache[0] is not params or cache[2] != step_size:
+                cache = (params, self._build_matrices(params), step_size, {})
                 self._fwd_mat_cache = cache
             matrices = cache[1]
             disc_cache = cache[3]
         A, B, C_out, D, E, F = matrices
         u = inputs["heatFlowRate"]
         x_next, y = bilinear_onestep(
-            A, B, C_out, D, E, F, x, u, sample_time, disc_cache=disc_cache, transform_mode=transform_mode
+            A, B, C_out, D, E, F, x, u, step_size, disc_cache=disc_cache, transform_mode=transform_mode
         )
         return x_next, {"temperature": y[..., 0]}
 
@@ -252,7 +252,7 @@ class ThermalMassNodeSystem(core.System, nn.Module):
         inputs = {"heatFlowRate": self.input["heatFlowRate"].get()}  # (n_s, n_c, n_v)
         x = self.ss_model.get_state()
         x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.ss_model.set_state(x_next)
         self.output["temperature"]._set(outs["temperature"], i_t=step_index)

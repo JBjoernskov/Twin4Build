@@ -58,9 +58,9 @@ class TestFunctionalSimulationCudaGraph(unittest.TestCase):
             if hasattr(component, "forward") and component.output.get("w") is not None:
                 original = component.forward
 
-                def forward(x, inputs, params, sample_time, _c=component, _f=original):
+                def forward(x, inputs, params, step_size, _c=component, _f=original):
                     _c.state_size()
-                    return _f(x, inputs, params, sample_time)
+                    return _f(x, inputs, params, step_size)
 
                 component.forward = forward
         kwargs = dict(start_time=START, end_time=END, step_size=STEP, show_progress_bar=False)

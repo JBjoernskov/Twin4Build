@@ -221,13 +221,13 @@ def effective_matrices(A, B, E, F, u):
     return A_eff, B_eff
 
 
-def _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
+def _discretize_onestep(A, B, E, F, u, step_size, transform_mode=None):
     """Effective-matrix ZOH discretization: ``(Ad, Bd)`` for the current ``u``."""
     A_eff, B_eff = effective_matrices(A, B, E, F, u)
 
     n = A.shape[-1]
     m = B.shape[-1]
-    T = sample_time
+    T = step_size
     if transform_mode is None:
         transform_mode = _functorch_active()
     if transform_mode and ZOH_EXPM == "phi1":
@@ -266,7 +266,7 @@ def bilinear_onestep(
     F,
     x,
     u,
-    sample_time,
+    step_size,
     disc_cache=None,
     transform_mode=None,
 ):
@@ -305,7 +305,7 @@ def bilinear_onestep(
         transform_mode = _functorch_active()
     if disc_cache is None or transform_mode:
         Ad, Bd = _discretize_onestep(
-            A, B, E, F, u, sample_time, transform_mode=transform_mode
+            A, B, E, F, u, step_size, transform_mode=transform_mode
         )
     else:
         mask = disc_cache.get("mask")
@@ -326,7 +326,7 @@ def bilinear_onestep(
             # Differentiable bilinear inputs: gradient must flow through THIS
             # step's discretization -- no reuse.
             Ad, Bd = _discretize_onestep(
-                A, B, E, F, u, sample_time, transform_mode=False
+                A, B, E, F, u, step_size, transform_mode=False
             )
         elif _functorch_transform_active():
             # Under vmap/grad transforms the cache is both unusable
@@ -335,7 +335,7 @@ def bilinear_onestep(
             # value-only batched evaluation lands here -- it has no gradient,
             # so it would otherwise take the caching branch below.
             Ad, Bd = _discretize_onestep(
-                A, B, E, F, u, sample_time, transform_mode=False
+                A, B, E, F, u, step_size, transform_mode=False
             )
         else:
             u_rel = u_rel_live.detach()
@@ -348,7 +348,7 @@ def bilinear_onestep(
                 Ad, Bd = disc_cache["Ad"], disc_cache["Bd"]
             else:
                 Ad, Bd = _discretize_onestep(
-                    A, B, E, F, u, sample_time, transform_mode=False
+                    A, B, E, F, u, step_size, transform_mode=False
                 )
                 disc_cache.update(u_rel=u_rel.clone(), Ad=Ad, Bd=Bd)
 
@@ -406,7 +406,7 @@ class DiscreteStatespaceSystem(core.System):
         B: Control input matrix of shape (batch_size, N, M) or (N, M)
         C: Output matrix of shape (batch_size, P, N) or (P, N)
         D: Feedthrough matrix of shape (batch_size, P, M) or (P, M). Optional.
-        sample_time: Sampling time for discretization
+        step_size: Sampling time for discretization
         x0: Initial state vector of shape (batch_size, N) or (N,)
         state_names: Names for system states
         E: Bilinear state-input tensor of shape (batch_size, M, N, N) or (M, N, N). Optional.
@@ -507,7 +507,7 @@ class DiscreteStatespaceSystem(core.System):
 
        \mathbf{y}[k] = \mathbf{C}\mathbf{x}[k] + \mathbf{D}\mathbf{u}[k]
 
-    where :math:`T_s` is the sampling time. This approach ensures that the bilinear coupling
+    where :math:`T_s` is the step size. This approach ensures that the bilinear coupling
     effects are properly incorporated into the discrete-time dynamics while preserving
     numerical accuracy through the matrix exponential method.
 
@@ -575,7 +575,7 @@ class DiscreteStatespaceSystem(core.System):
     >>>
     >>> # Create system (automatically adds batch dimension)
     >>> system = tb.DiscreteStatespaceSystem(
-    ...     A=A, B=B, C=C, x0=x0, sample_time=3600.0,
+    ...     A=A, B=B, C=C, x0=x0, step_size=3600.0,
     ...     state_names=["T_air", "T_wall"]
     ... )
     >>> # Resulting tensors: A(1,2,2), B(1,2,1), C(1,1,2), x0(1,2)
@@ -591,7 +591,7 @@ class DiscreteStatespaceSystem(core.System):
     >>>
     >>> # Create batch system
     >>> batch_system = tb.DiscreteStatespaceSystem(
-    ...     A=A_batch, B=B_batch, C=C_batch, x0=x0_batch, sample_time=3600.0,
+    ...     A=A_batch, B=B_batch, C=C_batch, x0=x0_batch, step_size=3600.0,
     ...     state_names=["T_air", "T_wall"]
     ... )
 
@@ -601,7 +601,7 @@ class DiscreteStatespaceSystem(core.System):
     >>> A_batch = torch.randn(2, 2, 2, dtype=torch.float64)  # 2 different A matrices
     >>> B_batch = torch.randn(2, 2, 1, dtype=torch.float64)  # 2 different B matrices  
     >>> C_batch = torch.randn(2, 1, 2, dtype=torch.float64)  # 2 different C matrices
-    >>> system = tb.DiscreteStatespaceSystem(A=A_batch, B=B_batch, C=C_batch, sample_time=3600.0)
+    >>> system = tb.DiscreteStatespaceSystem(A=A_batch, B=B_batch, C=C_batch, step_size=3600.0)
     >>> print(f"System batch size: {system.system_batch_size}")  # 2
     >>> print(f"Sim batch size: {system.sim_batch_size}")      # 1
     >>> print(f"Total batch size: {system.batch_size}")        # 2
@@ -620,7 +620,7 @@ class DiscreteStatespaceSystem(core.System):
     >>>
     >>> # Create bilinear system
     >>> bilinear_system = tb.DiscreteStatespaceSystem(
-    ...     A=A, B=B, C=C, E=E, x0=x0, sample_time=3600.0,
+    ...     A=A, B=B, C=C, E=E, x0=x0, step_size=3600.0,
     ...     state_names=["T_air", "T_wall"]
     ... )
 
@@ -632,7 +632,7 @@ class DiscreteStatespaceSystem(core.System):
     >>>
     >>> # Create system with F matrices
     >>> coupled_system = tb.DiscreteStatespaceSystem(
-    ...     A=A, B=B, C=C, F=F, x0=x0, sample_time=3600.0,
+    ...     A=A, B=B, C=C, F=F, x0=x0, step_size=3600.0,
     ...     state_names=["T_air", "T_wall"]
     ... )
     """
@@ -723,7 +723,7 @@ class DiscreteStatespaceSystem(core.System):
         B: torch.Tensor = None,  # Continuous input matrix
         C: torch.Tensor = None,  # Continuous output matrix
         D: torch.Tensor = None,  # Continuous feedthrough matrix
-        sample_time: float = 1.0,  # Sampling time for discretization
+        step_size: float = 1.0,  # Sampling time for discretization
         x0: torch.Tensor = None,  # Initial state vector
         state_names: List[str] = None,  # Names of states
         E: torch.Tensor = None,  # State-input coupling (n_c, M, N, N)
@@ -742,7 +742,7 @@ class DiscreteStatespaceSystem(core.System):
             B: Control input matrix of shape (n_c, N, M) or (N, M)
             C: Output matrix of shape (n_c, P, N) or (P, N)
             D: Feedthrough matrix of shape (n_c, P, M) or (P, M). Optional.
-            sample_time: Sampling time for discretization
+            step_size: Sampling time for discretization
             x0: Initial state vector of shape (n_c, N) or (N,)
             state_names: Names for system states
             E: Bilinear state-input tensor of shape (n_c, M, N, N) or (M, N, N). Optional.
@@ -806,8 +806,8 @@ class DiscreteStatespaceSystem(core.System):
         else:
             raise ValueError("System matrices A, B, and C must be provided")
 
-        # Store sample time
-        self.sample_time = sample_time
+        # Store the step size
+        self.step_size = step_size
 
         # Handle initial state - can be (n_states,), (n_c, n_states), or (n_s, n_c, n_states)
         # We store the original x0 and expand it during initialize() when n_s is known
@@ -954,7 +954,7 @@ class DiscreteStatespaceSystem(core.System):
             Ad: Discretized A matrix, shape (n_s, n_c, n_states, n_states)
             Bd: Discretized B matrix, shape (n_s, n_c, n_states, n_inputs)
         """
-        T = self.sample_time
+        T = self.step_size
         n_s, n_c, n, _ = A_eff.shape
         m = self.n_inputs
 
@@ -1026,7 +1026,7 @@ class DiscreteStatespaceSystem(core.System):
 
     PARAM_NAMES = ()  # the state-space matrices are structural constructor data
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one ZOH step ``(state, inputs) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`, delegating to
@@ -1038,8 +1038,8 @@ class DiscreteStatespaceSystem(core.System):
         that recomputes whenever the bilinear-relevant inputs carry grad.
         """
         cache = getattr(self, "_fwd_disc_cache", None)
-        if cache is None or cache[0] != sample_time:
-            cache = (sample_time, {})
+        if cache is None or cache[0] != step_size:
+            cache = (step_size, {})
             self._fwd_disc_cache = cache
         x_next, y = bilinear_onestep(
             self._A_base,
@@ -1050,7 +1050,7 @@ class DiscreteStatespaceSystem(core.System):
             self._F,
             x,
             inputs["u"],
-            sample_time,
+            step_size,
             disc_cache=cache[1],
         )
         return x_next, {"y": y}
@@ -1080,8 +1080,8 @@ class DiscreteStatespaceSystem(core.System):
         ), "DiscreteStatespaceSystem currently only supports a single step size."
         step_size = step_size[0]
 
-        if step_size != self.sample_time:
-            self.sample_time = step_size
+        if step_size != self.step_size:
+            self.step_size = step_size
 
         u = self.input["u"].get()  # (n_s, n_c, n_inputs)
         x_next, outs = self.forward(self.x, {"u": u}, {}, float(step_size))
@@ -1089,7 +1089,7 @@ class DiscreteStatespaceSystem(core.System):
         self.output["y"]._set(outs["y"], i_t=step_index)
 
     @classmethod
-    def from_matrices(cls, A, B, C, D=None, sample_time=1.0, **kwargs):
+    def from_matrices(cls, A, B, C, D=None, step_size=1.0, **kwargs):
         """
         Create a DiscreteStatespaceSystem from continuous-time matrices.
 
@@ -1098,23 +1098,23 @@ class DiscreteStatespaceSystem(core.System):
             B: Control input matrix
             C: Output matrix
             D: Feedthrough matrix (optional)
-            sample_time: Sampling time for discretization
+            step_size: Sampling time for discretization
             **kwargs: Additional arguments to pass to constructor
 
         Returns:
             DiscreteStatespaceSystem: Initialized system
         """
-        return cls(A=A, B=B, C=C, D=D, sample_time=sample_time, **kwargs)
+        return cls(A=A, B=B, C=C, D=D, step_size=step_size, **kwargs)
 
     @classmethod
-    def from_transfer_function(cls, num, den, sample_time=1.0, **kwargs):
+    def from_transfer_function(cls, num, den, step_size=1.0, **kwargs):
         """
         Create a DiscreteStatespaceSystem from a transfer function.
 
         Args:
             num: Transfer function numerator polynomial coefficients
             den: Transfer function denominator polynomial coefficients
-            sample_time: Sampling time for discretization
+            step_size: Sampling time for discretization
             **kwargs: Additional arguments to pass to constructor
 
         Returns:
@@ -1124,7 +1124,7 @@ class DiscreteStatespaceSystem(core.System):
         # Third party imports
 
         A, B, C, D = signal.tf2ss(num, den)
-        return cls(A=A, B=B, C=C, D=D, sample_time=sample_time, **kwargs)
+        return cls(A=A, B=B, C=C, D=D, step_size=step_size, **kwargs)
 
     @property
     def x(self):
@@ -1175,7 +1175,7 @@ class DiscreteStatespaceSystem(core.System):
         self.x = x
 
 
-def discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
+def discretize_onestep(A, B, E, F, u, step_size, transform_mode=None):
     """The exact discretization of a bilinear state-space model over one
     step, for an input held constant over the step (zero-order hold).
 
@@ -1192,7 +1192,7 @@ def discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
         E: The state-input coupling, ``(..., m, n, n)``, or ``None``.
         F: The input-input coupling, ``(..., m, n, m)``, or ``None``.
         u: The input held over the step, ``(..., m)``.
-        sample_time: The step in seconds.
+        step_size: The step in seconds.
         transform_mode: Use the matrix exponential that ``torch.func``
             transforms can batch (``True``) or ``torch.matrix_exp``
             (``False``).  ``None`` (default) chooses by whether a transform
@@ -1201,4 +1201,4 @@ def discretize_onestep(A, B, E, F, u, sample_time, transform_mode=None):
     Returns:
         ``(Ad, Bd)``, shaped ``(..., n, n)`` and ``(..., n, m)``.
     """
-    return _discretize_onestep(A, B, E, F, u, sample_time, transform_mode=transform_mode)
+    return _discretize_onestep(A, B, E, F, u, step_size, transform_mode=transform_mode)

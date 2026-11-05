@@ -229,7 +229,7 @@ def derive(
     *,
     state: Optional[torch.Tensor] = None,
     params: Optional[Mapping[str, torch.Tensor]] = None,
-    sample_time: float = 600.0,
+    step_size: float = 600.0,
     points: int = 4,
     spread: float = 0.4,
     seed: int = 0,
@@ -262,7 +262,7 @@ def derive(
         p_in = {k: _perturbed(v, generator, spread).requires_grad_(True) for k, v in params.items()}
         x0 = None if state is None else (_perturbed(state, generator, spread).requires_grad_(True))
         with saturation_mode("smooth"):
-            x_next, outs = component.forward(x0, dict(x_in), dict(p_in), sample_time, **(forward_kwargs or {}))
+            x_next, outs = component.forward(x0, dict(x_in), dict(p_in), step_size, **(forward_kwargs or {}))
         outs = dict(outs)
         if x0 is not None and isinstance(x_next, torch.Tensor):
             outs[STATE] = x_next
@@ -305,7 +305,7 @@ def independence_violations(
     *,
     state: Optional[torch.Tensor] = None,
     params: Optional[Mapping[str, torch.Tensor]] = None,
-    sample_time: float = 600.0,
+    step_size: float = 600.0,
     forward_kwargs: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, list]:
     """The declarations checked without derivatives: every input, parameter and the state that a declared output
@@ -317,7 +317,7 @@ def independence_violations(
         state = component.get_state()
 
     def run(x_in, p_in, x0):
-        x_next, outs = component.forward(x0, dict(x_in), dict(p_in), sample_time, **(forward_kwargs or {}))
+        x_next, outs = component.forward(x0, dict(x_in), dict(p_in), step_size, **(forward_kwargs or {}))
         outs = dict(outs)
         if x0 is not None and isinstance(x_next, torch.Tensor):
             outs[STATE] = x_next

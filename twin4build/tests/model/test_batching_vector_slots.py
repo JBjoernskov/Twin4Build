@@ -52,7 +52,7 @@ class Leaf(core.System):
 
     PARAM_NAMES = ("p",)
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         return x, {"v": params["p"].reshape(-1)}
 
     def do_step(self, second_time, date_time, step_size, step_index):
@@ -87,7 +87,7 @@ class Hub(core.System):
 
     PARAM_NAMES = ()
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         return x, {"y": 2.0 * inputs["x"]}
 
     def do_step(self, second_time, date_time, step_size, step_index):
@@ -126,7 +126,7 @@ class Sink(core.System):
 
     PARAM_NAMES = ()
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         x_next = x + 3.0 * inputs["u"].sum(dim=-1, keepdim=True)
         return x_next, {"w": x_next[..., 0]}
 

@@ -147,7 +147,7 @@ class PiecewiseLinearSystem(core.System):
 
     PARAM_NAMES = ("Y",)  # the X coordinates are structural, the Y points a parameter
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step piecewise-linear interpolation (functorch-safe,
         stateless).  The interpolation table is fixed (structural) data, so
         :meth:`_get_Y` is a pure function of the input."""
@@ -175,6 +175,6 @@ class PiecewiseLinearSystem(core.System):
         """
         inputs = {"x": self.input["x"].get()}
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["y"]._set(outs["y"], i_t=step_index)

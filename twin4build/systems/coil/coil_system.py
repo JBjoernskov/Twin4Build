@@ -191,7 +191,7 @@ class CoilSystem(core.System, nn.Module):
 
     PARAM_NAMES = ()
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step ideal-coil model (functorch-safe, stateless).
 
         Heating/cooling power from the air-side energy balance with a
@@ -248,7 +248,7 @@ class CoilSystem(core.System, nn.Module):
             "airFlowRate": self.input["airFlowRate"].get(),
         }
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["heatingPower"]._set(outs["heatingPower"], i_t=step_index)
         self.output["coolingPower"]._set(outs["coolingPower"], i_t=step_index)

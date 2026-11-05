@@ -446,6 +446,12 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 ### Changed
 
+- The time between two steps is `step_size` everywhere: the fourth argument
+  of every `forward` (`forward(x, inputs, p, step_size)`, was
+  `sample_time`), `DiscreteStatespaceSystem(step_size=...)` and its
+  `from_matrices` / `from_transfer_function`, and the `signal_dependencies`
+  probes.  `forward` is called positionally, so a System that still names
+  the argument `sample_time` keeps working.
 - `FanSystem`: the power curve in Bernstein form over a fixed flow range.
   `beta0` .. `beta3` [W] (the power at the curve's control points, each
   `>= 0`, so the power is `>= 0` over the whole range) replace

@@ -240,7 +240,7 @@ class ValveSystem(core.System, nn.Module):
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
     PARAM_NAMES = ("waterFlowRateMax", "valveAuthority")
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure algebraic map ``(inputs, params) -> outputs`` (stateless).
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` provides

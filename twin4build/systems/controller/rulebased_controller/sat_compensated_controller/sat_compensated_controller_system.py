@@ -165,7 +165,7 @@ class SATLinearRuleSystem(core.System, nn.Module):
 
     PARAM_NAMES = ("base_position", "sat_design", "gain", "output_min", "output_max")
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step linear SAT compensation (functorch-safe, stateless).
 
         ``output = clamp(base_position + gain * (SAT - sat_design),
@@ -192,7 +192,7 @@ class SATLinearRuleSystem(core.System, nn.Module):
         """
         inputs = {"supplyAirTemp": self.input["supplyAirTemp"].get()}
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["inputSignal"].set(outs["inputSignal"], step_index)
 

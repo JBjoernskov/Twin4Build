@@ -292,7 +292,7 @@ class ScheduleSwitchControllerSystem(core.System, nn.Module):
     # Simulation step
     # ------------------------------------------------------------------
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step schedule blend (functorch-safe, stateless).
 
         Computes ``output = s * input + (1 - s) * override_value`` where *s*
@@ -379,7 +379,7 @@ class ScheduleSwitchControllerSystem(core.System, nn.Module):
             "dayOfWeek": day_t,
         }
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["inputSignal"].set(outs["inputSignal"], step_index)
 

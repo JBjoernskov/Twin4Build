@@ -296,7 +296,7 @@ class CascadeControllerSystem(core.System, nn.Module):
 
     SUPPORTS_TRANSFORM_MODE = True
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step of the composite cascade = ctrl_a -> ctrl_b.
 
         State is ``[ctrl_a_state | ctrl_b_state]`` (the order
@@ -333,7 +333,7 @@ class CascadeControllerSystem(core.System, nn.Module):
             if getattr(self.ctrl_a, "SUPPORTS_TRANSFORM_MODE", False)
             else {}
         )
-        x_a_n, out_a = self.ctrl_a.forward(x_a, in_a, p_a, sample_time, **kwargs_a)
+        x_a_n, out_a = self.ctrl_a.forward(x_a, in_a, p_a, step_size, **kwargs_a)
 
         in_b = self._route_forward_inputs(
             self.ctrl_b, out_a["inputSignal"], inputs["actualValue_b"]
@@ -343,6 +343,6 @@ class CascadeControllerSystem(core.System, nn.Module):
             if getattr(self.ctrl_b, "SUPPORTS_TRANSFORM_MODE", False)
             else {}
         )
-        x_b_n, out_b = self.ctrl_b.forward(x_b, in_b, p_b, sample_time, **kwargs_b)
+        x_b_n, out_b = self.ctrl_b.forward(x_b, in_b, p_b, step_size, **kwargs_b)
 
         return torch.cat([x_a_n, x_b_n], dim=-1), {"inputSignal": out_b["inputSignal"]}
