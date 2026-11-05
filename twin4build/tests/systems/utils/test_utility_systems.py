@@ -170,7 +170,6 @@ class TestWeightedSumSystem(unittest.TestCase):
     def test_one_weight_round_trips_as_a_scalar(self):
         """A saved one-slot weight list comes back as a scalar literal."""
         system = WeightedSumSystem(weights=2.0, id="single")
-        self.assertEqual(system.weights, [2.0])
         self.assertAlmostEqual(self._step(system, [4.0]), 8.0)
 
     def test_weight_count_must_match_the_slots(self):

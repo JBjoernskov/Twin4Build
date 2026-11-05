@@ -1,15 +1,9 @@
-# Standard library imports
-import datetime
-from typing import Optional
-
 # Third party imports
-import numpy as np
 import torch
-import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
 from twin4build.translator.translator import (
     StepRule,
     AnyPathRule,
@@ -20,7 +14,7 @@ from twin4build.translator.translator import (
 )
 
 
-class ValveSystem(core.System, nn.Module):
+class ValveSystem(core.System):
     r"""
     A valve system model implemented with PyTorch for gradient-based optimization.
 
@@ -72,187 +66,25 @@ class ValveSystem(core.System, nn.Module):
        - :math:`0 < a < 1`: intermediate distortion of the linear characteristic
 
     Implementation Details:
-       - The model uses PyTorch tensors for gradient-based optimization
-       - All parameters are stored as non-trainable PyTorch parameters
-         (calibratable via the Estimator)
        - The model assumes ideal valve behavior (no hysteresis or deadband)
     """
 
-    def __init__(
-        self,
-        waterFlowRateMax: Optional[float] = 1000
-        / (
-            (60 - 45) * 4180
-        ),  # Provide 1000 W of heating power when cooling from 60 to 45 degrees
-        valveAuthority: Optional[float] = 1,  # Linear relation by default
-        **kwargs,
-    ):
-        """
-        Initialize the valve system model.
+    valvePosition = Input(doc="Valve position (0-1)")
+    valvePosition = Output(doc="Valve position (0-1)")
+    waterFlowRate = Output(doc="Water flow rate [kg/s]")
+    # 1000 W of heating when the water cools from 60 to 45 degrees.
+    waterFlowRateMax = Parameter(
+        1000 / ((60 - 45) * 4180), lb=5e-3, ub=1.0, relative=(0.25, 4.0), scaling="log",
+        doc="Maximum water flow rate [kg/s]",
+    )
+    valveAuthority = Parameter(1.0, lb=0.3, ub=1.0, doc="Valve authority (0-1); 1 is linear")
 
-        Args:
-            waterFlowRateMax: Maximum water flow rate [kg/s]
-            valveAuthority: Valve authority (0-1)
-        """
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-
-        # Store parameters as tps.Parameters for gradient tracking
-        self.waterFlowRateMax = tps.Parameter(
-            torch.tensor(waterFlowRateMax, dtype=tps.float_dtype()),
-            requires_grad=False,
-            scaling="log",
-        )
-        self.valveAuthority = tps.Parameter(
-            torch.tensor(valveAuthority, dtype=tps.float_dtype()), requires_grad=False
-        )
-
-        # Define inputs and outputs as private variables
-        self._input = {"valvePosition": tps.Scalar()}
-        self._output = {"valvePosition": tps.Scalar(), "waterFlowRate": tps.Scalar(0)}
-
-        # Define parameters for calibration.  Physically realistic
-        # ranges for an FCU / VAV reheat valve -- wider bounds give the
-        # auto-estimator useless feasible space and let it pin
-        # ``valveAuthority`` to 0 (valve has *no* effect on flow) or
-        # ``waterFlowRateMax`` to ridiculous 10 kg/s.  ``Valve`` is
-        # always wired downstream of a single coil in the supported
-        # topology, so loop-level sizing fits inside the bounds below.
-        #
-        # ``waterFlowRateMax`` is log-scaled (see ``tps.Parameter``
-        # constructor above), so its lower bound MUST be > 0 -- the
-        # normalisation otherwise hits a ``log(0)`` assertion inside
-        # :class:`tps.TensorParameter`.
-        self.parameter = {
-            # FCU / VAV reheat valve: typical 0.01 - 0.5 kg/s.  Lower
-            # cap at 5e-3 still allows a very small zone; below that
-            # the valve cannot deliver enough water to register a
-            # measurable supply-air rise.
-            "waterFlowRateMax": {"lb": 5e-3, "ub": 1.0, "relative": (0.25, 4.0)},
-            # Authority < 0.3 in this characteristic (see class
-            # docstring: ``u_norm = u / sqrt(u^2*(1-a) + a)``) makes
-            # the valve barely affect flow over much of its travel and
-            # the resulting hydraulic loop is uncontrollable in
-            # practice, so estimates that low are not physical.  Upper
-            # bound 1.0 is the ideal linear-flow limit.
-            "valveAuthority": {"lb": 0.3, "ub": 1.0},
-        }
-
-        self._config = {"parameters": list(self.parameter.keys())}
-        self.INITIALIZED = False
-
-    @property
-    def config(self):
-        """Get the configuration of the valve system."""
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the valve system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "valvePosition": Valve position (0-1)
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the valve system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "valvePosition": Valve position (0-1)
-                - "waterFlowRate": Water flow rate [kg/s]
-        """
-        return self._output
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        """Initialize the valve system."""
-        # Initialize I/O
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-
-        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
-            self.n_c = self._n_c_batched
-        else:
-            self.n_c = 1
-
-        for input in self.input.values():
-            input.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-                n_c=self.n_c,
-            )
-        for output in self.output.values():
-            output.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-                n_c=self.n_c,
-            )
-
-        # Expand parameters to n_c dimension for vectorization
-        self.waterFlowRateMax = self.waterFlowRateMax.expand_to_n_c(self.n_c)
-        self.valveAuthority = self.valveAuthority.expand_to_n_c(self.n_c)
-
-        self.INITIALIZED = True
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """
-        Perform one step of the valve system simulation.
-
-        The valve characteristic is calculated using the valve authority equation:
-        u_norm = u / sqrt(u^2 * (1-a) + a)
-        where:
-        - u is the valve position (0-1)
-        - a is the valve authority (0-1)
-        - u_norm is the normalized valve position
-
-        The water flow rate is then calculated as:
-        m_w = u_norm * waterFlowRateMax
-
-        Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the math).
-        """
-        # Clone to detach from the input _tensor's storage, preventing
-        # version-counter conflicts with jacrev when _tensor is overwritten
-        # at the next timestep by _assign_component_inputs.
-        inputs = {"valvePosition": self.input["valvePosition"].get().clone()}
-        _, outs = self.forward(None, inputs, self._forward_params(), step_size)
-        self.output["valvePosition"]._set(outs["valvePosition"], i_t=step_index)
-        self.output["waterFlowRate"]._set(outs["waterFlowRate"], i_t=step_index)
-
-    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    PARAM_NAMES = ("waterFlowRateMax", "valveAuthority")
-
-    def forward(self, x, inputs, params, step_size):
-        """Pure algebraic map ``(inputs, params) -> outputs`` (stateless).
-
-        Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` provides
-        ``valvePosition``; ``params`` a dict for :attr:`PARAM_NAMES`.  ``x`` (an
-        empty state) is passed through.  Returns
-        ``(x, {"valvePosition", "waterFlowRate"})``.
-        """
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: ``(inputs, p) -> outputs``."""
         vp = inputs["valvePosition"]
-        a = params["valveAuthority"]
+        a = p["valveAuthority"]
         u_norm = vp / torch.sqrt(vp**2 * (1 - a) + a)
-        m_w = u_norm * params["waterFlowRateMax"]
-        return x, {"valvePosition": vp, "waterFlowRate": m_w}
+        return x, {"valvePosition": vp, "waterFlowRate": u_norm * p["waterFlowRateMax"]}
 
 
 # Deprecated aliases (removed in twin4build 2.1)

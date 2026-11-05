@@ -1,13 +1,9 @@
-# Standard library imports
-import datetime
-from typing import List, Optional, Sequence, Union
-
 # Third party imports
 import torch
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output, Setting
 
 
 class WeightedSumSystem(core.System):
@@ -39,100 +35,21 @@ class WeightedSumSystem(core.System):
         **kwargs: Additional keyword arguments
     """
 
-    def __init__(self, weights: Optional[Union[Sequence[float], float]] = None, **kwargs):
-        super().__init__(**kwargs)
-        self.input = {"inputs": tps.Vector()}
-        self.output = {"value": tps.Scalar()}
-        self.weights = weights
-        self._config = {"parameters": ["weights"]}
+    weights = Setting(None, doc="One weight per slot of inputs, in slot order; None sums unweighted")
+    inputs = Input(size="wired", doc="Values to sum, one slot per connection")
+    value = Output(doc="The weighted sum of the input values")
 
-    @property
-    def config(self):
-        return self._config
+    def _weight_list(self):
+        # A one-slot weight list comes back from a saved model as a scalar.
+        return [float(w) for w in torch.as_tensor(self.weights, dtype=torch.float64).reshape(-1)]
 
-    @property
-    def weights(self) -> Optional[List[float]]:
-        """The weights in slot order, or ``None`` for a plain sum."""
-        return self._weights
-
-    @weights.setter
-    def weights(self, value: Optional[Union[Sequence[float], float]]) -> None:
-        if value is None:
-            self._weights = None
-        else:
-            # A one-slot weight list comes back from a saved model as a
-            # scalar literal.
-            value = torch.as_tensor(value, dtype=torch.float64).reshape(-1)
-            self._weights = [float(v) for v in value]
-        self._w = None
-        # Batching builds a meta from the constructor's arguments: declared here, the weights both keep sums with
-        # different weights apart (they enter the batching signature) and reach the meta of sums that share them.
-        self._batch_init_kwargs = {"weights": None if self._weights is None else list(self._weights)}
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-        self.n_c = int(getattr(self, "_n_c_batched", 1))
-        # Logical slots, not connection objects: a batched meta feeds many
-        # slots through ONE connection carrying a tensor of indices (the
-        # zones' overheating terms into one area-weighted sum).
-        from twin4build.utils.slots import wired_width
-
-        n_v = wired_width(self, "inputs")
-        if n_v == 0 and self.input["inputs"].n_v:
-            # Preserve an explicitly configured standalone vector. Compiled
-            # graph instances infer the width from their connections above.
-            n_v = self.input["inputs"].n_v
-        if self._weights is not None and len(self._weights) != n_v:
-            raise ValueError(
-                f"{self.id}: {len(self._weights)} weights for {n_v} input slots"
-            )
-        self._w = (
-            None
-            if self._weights is None
-            else torch.tensor(self._weights, dtype=tps.float_dtype())
-        )
-        self.input["inputs"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_c=self.n_c, n_v=n_v
-        )
-        for output in self.output.values():
-            output.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the math)."""
-        _, outs = self.forward(
-            None, {"inputs": self.input["inputs"].get()}, {}, step_size
-        )
-        self.output["value"]._set(outs["value"], step_index)
-
-    #: No physical parameters (the ``forward`` theta contract); the weights
-    #: are fixed constants read from the instance.
-    PARAM_NAMES = ()
-
-    def forward(self, x, inputs, params, step_size):
-        """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
-
-        ``inputs`` provides ``inputs`` with the vector of values along the
-        last dim; the weighted sum reduces that dim, so the result keeps
-        whatever batch dims the input carried (``(1,)`` under the composer,
-        ``(n_s, n_c)`` under ``do_step``).  Returns ``(x, {"value"})``.
-        """
-        vals = inputs["inputs"]
-        if self._w is None:
-            return x, {"value": vals.sum(dim=-1)}
-        w = self._w.to(device=vals.device, dtype=vals.dtype)
-        return x, {"value": (vals * w).sum(dim=-1)}
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: the weighted sum over the slots of ``inputs``."""
+        values = inputs["inputs"]
+        if self.weights is None:
+            return x, {"value": values.sum(dim=-1)}
+        weights = self._weight_list()
+        if len(weights) != values.shape[-1]:
+            raise ValueError(f"{self.id}: {len(weights)} weights for {values.shape[-1]} input slots")
+        w = torch.tensor(weights, dtype=values.dtype, device=values.device)
+        return x, {"value": (values * w).sum(dim=-1)}
