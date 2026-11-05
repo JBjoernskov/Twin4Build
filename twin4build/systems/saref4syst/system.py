@@ -555,8 +555,8 @@ class System(nn.Module, metaclass=SystemMeta):
 
     @property
     def config(self) -> dict:
-        """What the System saves with the model: ``{"parameters": [attribute
-        paths]}``."""
+        """What the System saves with the model: the attribute paths under
+        ``"parameters"``."""
         return self._config
 
     @config.setter
