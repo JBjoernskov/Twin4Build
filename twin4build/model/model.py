@@ -467,8 +467,12 @@ class Model:
             input_port (str): Name of the receiver property.
             output_port_index (Optional[Union[int, torch.Tensor]]): Index into the sender's
                 output port when it is a vector port. Defaults to None (scalar ports).
-            input_port_index (Optional[Union[int, torch.Tensor]]): Index into the receiver's
-                input port when it is a vector port. Defaults to None (scalar ports).
+            input_port_index (Optional[Union[int, Sequence[int], torch.Tensor]]): Index into
+                the receiver's input port when it is a vector port. Defaults to None (scalar
+                ports). From a scalar output, a list of slots puts the one value in each of
+                them (``input_port_index=[1, 2]``: a room's temperature on both AHU branches
+                serving it); wiring the same pair again on other slots adds them to the same
+                connection.
             output_component_index, input_component_index: For batched meta
                 components, the sender / receiver instance (``i_c``) of each
                 pair the connection carries, aligned element-wise with the

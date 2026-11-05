@@ -652,6 +652,7 @@ class SimulationModel:
         this_port_name: str,
         other_port_name: str,
         paired: bool = False,
+        fan_out: bool = False,
     ) -> Optional[Union[int, torch.Tensor]]:
         """
         Validate and resolve a port index for connections.
@@ -661,6 +662,9 @@ class SimulationModel:
         ``paired`` marks a batched connection whose tensor indices are
         aligned with component indices: a tensor of slots may then face a
         scalar port on the other side (one slot per instance).
+        ``fan_out`` marks the input side of a connection: a tensor of slots
+        there may face a scalar output, whose one value then fills every
+        listed slot (a room's temperature on each AHU branch serving it).
         """
         if port_index is not None:
             assert isinstance(
@@ -670,10 +674,15 @@ class SimulationModel:
                 port_index, (torch.Tensor, int)
             ), f"If {this_port_name} port index is set, it must either be an integer or a torch.Tensor"
             if isinstance(port_index, torch.Tensor):
-                assert paired or isinstance(other_port, tps.Vector), (
+                assert paired or fan_out or isinstance(other_port, tps.Vector), (
                     f"If {this_port_name} port index is set and is a torch.Tensor, "
                     f"{other_port_name} port must be a vector"
                 )
+                if fan_out and not paired and isinstance(other_port, tps.Scalar):
+                    slots = port_index.reshape(-1)
+                    assert slots.numel() == torch.unique(slots).numel(), (
+                        f"{this_port_name} port index {slots.tolist()} lists a slot twice"
+                    )
             else:
                 # ``int`` ``port_index`` selects one slot of this Vector port.
                 # The opposite side may be either a Scalar (slot value flows
@@ -717,27 +726,34 @@ class SimulationModel:
         input_port_index,
         message,
     ) -> None:
-        """Append one more slot pair to an existing Vector -> Vector connection."""
+        """Append more slots to an existing connection into a Vector input.
+
+        Vector -> Vector: one more (output slot, input slot) pair per call.
+        Scalar -> Vector: more input slots, each filled with the scalar's one
+        value (a room's temperature on every AHU branch serving it)."""
         this_out = sender_component.output[output_port]
         this_in = receiver_component.input[input_port]
-        assert (
-            isinstance(this_out, tps.Vector)
-            and isinstance(this_in, tps.Vector)
-            and output_port_index is not None
-            and input_port_index is not None
-        ), message
+        assert isinstance(this_in, tps.Vector) and input_port_index is not None, message
 
         def _as_1d(index):
             return torch.as_tensor(index, dtype=torch.long).reshape(-1)
 
         old_in = _as_1d(connection_point.input_port_index[connection])
-        old_out = _as_1d(connection_point.output_port_index[connection])
         new_in = _as_1d(input_port_index)
-        new_out = _as_1d(output_port_index)
-        assert new_in.numel() == new_out.numel(), message
+        assert new_in.numel() == torch.unique(new_in).numel(), (
+            f"{message} (input port index {new_in.tolist()} lists a slot twice)"
+        )
         assert not bool(torch.isin(new_in, old_in).any()), (
             f"{message} (slot {new_in.tolist()} of {input_port} is already wired)"
         )
+        if isinstance(this_out, tps.Scalar):
+            assert output_port_index is None, message
+            connection_point.set_input_port_index(connection, torch.cat([old_in, new_in]))
+            return
+        assert isinstance(this_out, tps.Vector) and output_port_index is not None, message
+        old_out = _as_1d(connection_point.output_port_index[connection])
+        new_out = _as_1d(output_port_index)
+        assert new_in.numel() == new_out.numel(), message
         connection_point.set_input_port_index(connection, torch.cat([old_in, new_in]))
         connection_point.set_output_port_index(connection, torch.cat([old_out, new_out]))
 
@@ -763,8 +779,11 @@ class SimulationModel:
             input_port (str): Name of the receiver property.
             output_port_index (Optional[Union[int, torch.Tensor]]): Index into the sender's
                 output port when it is a vector port. Defaults to None (scalar ports).
-            input_port_index (Optional[Union[int, torch.Tensor]]): Index into the receiver's
-                input port when it is a vector port. Defaults to None (scalar ports).
+            input_port_index (Optional[Union[int, Sequence[int], torch.Tensor]]): Index into
+                the receiver's input port when it is a vector port. Defaults to None (scalar
+                ports). From a scalar output, a list of slots puts the one value in each of
+                them (``input_port_index=[1, 2]``); wiring the same pair again on other
+                slots adds them to the same connection.
             components (Optional[Dict[str, core.System]]): Component dictionary to operate on.
                 Defaults to the model's own component dictionary.
 
@@ -780,6 +799,10 @@ class SimulationModel:
         """
         if components is None:
             components = self._components
+        if isinstance(input_port_index, (list, tuple)):
+            input_port_index = torch.tensor(input_port_index, dtype=torch.long)
+        if isinstance(output_port_index, (list, tuple)):
+            output_port_index = torch.tensor(output_port_index, dtype=torch.long)
 
         output_port = sender_component.resolve_output_port(output_port)
         input_port = receiver_component.resolve_input_port(input_port)
@@ -872,6 +895,7 @@ class SimulationModel:
             "input",
             "output",
             paired=paired,
+            fan_out=True,
         )
         receiver_component_connection_point.set_input_port_index(
             sender_obj_connection, input_idx
