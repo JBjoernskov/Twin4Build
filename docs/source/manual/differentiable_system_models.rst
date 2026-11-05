@@ -67,13 +67,15 @@ be explicit tensor arguments rather than values discovered through module or
 .. code-block:: python
 
    class MySystem(core.System):
-       SUPPORTS_TRANSFORM_MODE = True
        PARAM_NAMES = ("capacity", "conductance")
 
-       def forward(
-           self, state, inputs, parameters, step_size, transform_mode=None
-       ):
+       def derive(self, parameters, step_size):
+           # Work that depends on the parameters and the step size alone.
+           return {"matrices": self._build_matrices(parameters)}
+
+       def forward(self, state, inputs, parameters, step_size):
            # Tensor-only mathematics; no port or module mutation.
+           A, B, C, D, E, F = parameters["matrices"]
            next_state = ...
            return next_state, {"temperature": next_state[..., 0]}
 
@@ -81,7 +83,7 @@ be explicit tensor arguments rather than values discovered through module or
            state = self.get_state()
            inputs = {name: port.get() for name, port in self.input.items()}
            next_state, outputs = self.forward(
-               state, inputs, self._forward_params(), step_size
+               state, inputs, self._forward_params(step_size), step_size
            )
            self.set_state(next_state)
            for name, value in outputs.items():
@@ -163,36 +165,33 @@ In-place mutation of inputs, parameters, buffers, cached tensors, or returned
 static graph outputs is forbidden. Use in-place operations only on local
 tensors when their transform behavior is explicitly tested.
 
-Caching and ``transform_mode``
-------------------------------
+Derived values: ``derive``
+--------------------------
 
-Ordinary sequential simulation may cache expensive parameter-only work using
-the identity of the parameter dictionary and static values such as
-``step_size``. A transformed call must bypass those caches:
+``forward`` caches nothing.  Work that depends on the parameters and the step
+size alone -- a state-space System's matrices, a PID's discrete gains, a
+composite's routing of parameters to its children -- goes in
+``derive(self, parameters, step_size)``, which returns a dictionary.  The
+caller evaluates it, inside autograd, and hands the result to ``forward`` in
+``parameters``:
 
-.. code-block:: python
+* in object mode, once per run (``_forward_params(step_size)`` derives at the
+  first step and the run start forgets it);
+* in the functional engine, once per rollout
+  (:meth:`~twin4build.simulator._functional.FunctionalModel.derived_values`),
+  or once per parameter vector where a step is called on its own.
 
-   if transform_mode:
-       matrices = self._build_matrices(parameters)
-       discretization_cache = None
-   else:
-       cache = getattr(self, "_forward_cache", None)
-       if cache is None or cache[0] is not parameters:
-           cache = (parameters, self._build_matrices(parameters))
-           self._forward_cache = cache
-       matrices = cache[1]
+A composite's ``derive`` hands each child its full parameters with
+``child.full_params(child_parameters, step_size)``; a test that calls
+``forward`` directly does the same with ``system.full_params(parameters,
+step_size)``.
 
-Set ``SUPPORTS_TRANSFORM_MODE = True`` only when ``forward`` accepts the
-argument and the complete call tree respects it. Composite systems must pass
-``transform_mode`` to supporting children and resolve child parameter
-dictionaries without identity caches. Do not detect active transforms through
-private PyTorch state inside a captured call; the composer supplies this mode
-explicitly.
-
-A transformed call must not populate, invalidate, or otherwise mutate an eager
-cache. Cached tensors that depend on differentiated inputs can retain stale
-values or old autograd graphs and must never be shared between optimizer
-iterations.
+The choice of matrix exponential is the engine's, not the System's: within a
+step the engine traces, captures or transforms, the discretisation uses the
+matmul-only exponential; elsewhere ``torch.matrix_exp``.  Do not detect active
+transforms through private PyTorch state inside ``forward``.
+:func:`~twin4build.systems.utils.discrete_statespace_system.traceable` sets the
+same choice for a block of code (tests).
 
 State-space systems and fusion
 ------------------------------
@@ -318,8 +317,8 @@ A new or modified tensor component should test all applicable levels:
 #. ``vmap`` output agrees with an explicit loop.
 #. First derivatives and, when used by exact-Hessian estimation, second
    derivatives agree with finite differences or a trusted formulation.
-#. Eager and ``transform_mode=True`` values and derivatives agree.
-#. A transformed call does not mutate eager caches.
+#. Eager values and derivatives agree with those of the traced, captured or transformed step.
+#. ``forward`` writes no attribute: it caches nothing (see ``derive``).
 #. State-space support contains every observed nonzero at zero-valued,
    boundary, and randomized interior parameter points.
 #. The full functional model can be traced with ``torch.compile(...,

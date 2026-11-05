@@ -169,7 +169,6 @@ class OccupancySystem(core.System, nn.Module):
             ``damper_datecolumn`` / ``damper_valuecolumn`` until 2.1.
     """
 
-    SUPPORTS_TRANSFORM_MODE = True
 
     #: Deprecated keyword names and the ones that replaced them (see
     #: ``System.DEPRECATED_KEYWORDS``).
@@ -548,7 +547,7 @@ class OccupancySystem(core.System, nn.Module):
             ..., 0, OCCUPANCY_SLOT_ACTIVE
         ]
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step occupancy estimate (functorch-safe, stateless).
 
         Inverts the zone CO2 balance: all data enters through ``inputs``
@@ -634,7 +633,6 @@ class OccupancySystem(core.System, nn.Module):
             C_indoor,
             step_size,
             n_c=self.n_c,
-            transform_mode=transform_mode,
         )
         if self.smoothing > 0:
             j = 1 if self._co2_from_sensor else 0

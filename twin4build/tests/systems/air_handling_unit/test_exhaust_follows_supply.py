@@ -87,10 +87,12 @@ class TestExhaustFollowsSupply(unittest.TestCase):
             "supplyAirTemperatureSetpoint": torch.tensor([18.0], dtype=torch.float64),
             "outdoorAirTemperature": torch.tensor([5.0], dtype=torch.float64),
         }
-        _, out = ahu.forward(None, inputs, {}, 600.0)
+        _, out = ahu.forward(None, inputs, ahu.full_params({}, 600.0), 600.0)
         torch.testing.assert_close(out["exhaustAirFlowRate"], exh[0])
         # an estimated ratio arrives through params
-        _, out2 = ahu.forward(None, inputs, {"exhaustFlowRatio": torch.tensor([0.5], dtype=torch.float64)}, 600.0)
+        _, out2 = ahu.forward(
+            None, inputs, ahu.full_params({"exhaustFlowRatio": torch.tensor([0.5], dtype=torch.float64)}, 600.0), 600.0
+        )
         torch.testing.assert_close(out2["exhaustAirFlowRate"], 0.5 * out2["supplyAirFlowRate"])
 
     def test_preheat_temperature_output(self):

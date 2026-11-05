@@ -570,7 +570,6 @@ class AirHandlingUnitSystem(core.System, nn.Module):
 
     # -- composed-map support (mirrors BuildingSpaceSystem) -------------
 
-    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ()  # all parameters live on the owned submodels (prefixed)
 
     _SUB_NAMES = (
@@ -623,7 +622,17 @@ class AirHandlingUnitSystem(core.System, nn.Module):
 
     _resolve_sub_params = staticmethod(resolve_sub_params)
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def derive(self, p, step_size):
+        """The submodels' parameters (estimated values from ``p``, the rest the
+        submodels' own), resolved once per run or rollout."""
+        return {
+            "sub_params": {
+                n: getattr(self, n).full_params(self._resolve_sub_params(getattr(self, n), n, p), step_size)
+                for n in self._SUB_NAMES
+            }
+        }
+
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step of the composite AHU (functorch-safe, stateless).
 
         Chains the submodels' pure ``forward``s in exactly the order
@@ -632,25 +641,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         composite attr path (``"supply_damper.a"``, ``"coil..."``, ...);
         non-estimated entries fall back to the submodels' defaults.
         """
-        # Identity-keyed cache: a sequential rollout re-calls forward with the
-        # SAME params dict every step (see OneStepComposer._params_for).
-        if transform_mode:
-            P = {
-                n: self._resolve_sub_params(getattr(self, n), n, params)
-                for n in self._SUB_NAMES
-            }
-        else:
-            cache = getattr(self, "_fwd_param_cache", None)
-            if cache is None or cache[0] is not params:
-                cache = (
-                    params,
-                    {
-                        n: self._resolve_sub_params(getattr(self, n), n, params)
-                        for n in self._SUB_NAMES
-                    },
-                )
-                self._fwd_param_cache = cache
-            P = cache[1]
+        P = params["sub_params"]
 
         # 1) Supply damper: vectorized position -> flow calculation
         supply_pos_vec = inputs["supplyDamperPosition"]

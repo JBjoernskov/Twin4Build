@@ -88,7 +88,7 @@ class TestPIDControllerSystem(unittest.TestCase):
             output.shape[0], batch_size
         )  # Output batch matches input batch
 
-    def test_transform_path_bypasses_identity_cache_and_compiles(self):
+    def test_forward_with_derived_gains_compiles(self):
         x = torch.tensor([[0.2, -0.1]], dtype=torch.float64)
         inputs = {
             "setpointValue": torch.tensor([22.0], dtype=torch.float64),
@@ -102,21 +102,17 @@ class TestPIDControllerSystem(unittest.TestCase):
             "output_max": torch.tensor([1.0], dtype=torch.float64),
         }
 
-        self.controller._fwd_coef_cache = None
-
         def transformed(x_, kp):
             live_params = dict(params)
             live_params["kp"] = kp
             return self.controller.forward(
                 x_,
                 inputs,
-                live_params,
+                self.controller.full_params(live_params, 600.0),
                 600.0,
-                transform_mode=True,
             )[0]
 
         expected = transformed(x, params["kp"])
-        self.assertIsNone(self.controller._fwd_coef_cache)
         if hasattr(torch, "compile"):
             compiled = torch.compile(
                 transformed, backend="aot_eager", fullgraph=True, dynamic=False
@@ -134,6 +130,7 @@ def _run(controller, setpoint, actual, kp, Ti, Td=0.0, step=600.0):
         "output_min": torch.tensor(0.0, dtype=torch.float64),
         "output_max": torch.tensor(1.0, dtype=torch.float64),
     }
+    params = controller.full_params(params, step)
     x = torch.zeros(2, dtype=torch.float64)
     out = []
     with saturation_mode("hard"):
@@ -143,7 +140,6 @@ def _run(controller, setpoint, actual, kp, Ti, Td=0.0, step=600.0):
                 {"setpointValue": torch.tensor(float(sp), dtype=torch.float64), "actualValue": torch.tensor(float(y), dtype=torch.float64)},
                 params,
                 step,
-                transform_mode=True,
             )
             out.append(float(o["inputSignal"]))
     return np.array(out)

@@ -60,7 +60,7 @@ import os
 import torch
 import torch.utils.checkpoint
 
-from twin4build.systems.utils.discrete_statespace_system import StepParams
+import twin4build.systems.utils.discrete_statespace_system as _dss
 import torch.nn as nn
 
 import twin4build.systems as systems
@@ -424,6 +424,7 @@ class FunctionalModel:
         # reference sim.  Lets F return the modelled measured outputs for the
         # data-fit objective.
         self._theta_param_cache = None  # (theta_ref, {comp_id: params dict})
+        self._theta_derived_cache = None  # (theta_ref, {comp_id: derived values})
 
         self.meas_sources: List[tuple] = []
         self.meas_slices: List[slice] = []
@@ -1173,21 +1174,55 @@ class FunctionalModel:
             cache[1][comp.id] = p
         return p
 
-    def step_constants(self, theta):
-        """Every state-space meta's theta-only matrices, built once per
-        rollout (``{meta id: what its step_constants returns}``): the
-        rollouts pass this into the step and :meth:`F` hands each meta its
-        entry, so the matrices are one tensor for the whole rollout instead
-        of one per step on the autograd tape."""
+    def derived_values(self, theta):
+        """What every component that defines ``derive(p, step_size)`` derives
+        from its parameters, once per rollout (``{component id: derived
+        values}``): the rollouts pass this into the step and :meth:`F` merges
+        each component's entry into its params, so the derived values are one
+        tensor for the whole rollout instead of one per step on the autograd
+        tape."""
         out = {}
         for c in self.cone:
-            build = getattr(c, "step_constants", None)
-            if build is None or not getattr(c, "SUPPORTS_TRANSFORM_MODE", False):
+            if getattr(type(c), "derive", None) is None:
                 continue
-            out[c.id] = build(self._params_for(c, theta, use_cache=False))
+            out[c.id] = c.derive(self._params_for(c, theta, use_cache=False), self.step_size)
         return out
 
+    def _with_derived(self, c, params, theta, constants, use_cache):
+        """``params`` plus what ``c`` derives from them: the rollout's entry,
+        else derived here (once per theta while the cache is on)."""
+        if getattr(type(c), "derive", None) is None:
+            return params
+        derived = constants.get(c.id) if constants else None
+        if derived is None:
+            cache = None
+            if use_cache:
+                cache = self._theta_derived_cache
+                if cache is None or cache[0] is not theta:
+                    cache = (theta, {})
+                    self._theta_derived_cache = cache
+                derived = cache[1].get(c.id)
+            if derived is None:
+                derived = c.derive(params, self.step_size)
+                if cache is not None:
+                    cache[1][c.id] = derived
+        return {**params, **derived}
+
     def F(self, states_flat, theta, exogenous, feedback=None, transform_mode=None, constants=None):
+        """One pure step for a single segment (see :meth:`_F`).
+
+        ``transform_mode`` tells the discretisation of the state-space
+        components to use the matmul-only matrix exponential (the step is
+        traced, captured or transformed); the flag is set for the step only.
+        """
+        previous = _dss.TRACEABLE
+        _dss.TRACEABLE = bool(transform_mode)
+        try:
+            return self._F(states_flat, theta, exogenous, feedback, transform_mode, constants)
+        finally:
+            _dss.TRACEABLE = previous
+
+    def _F(self, states_flat, theta, exogenous, feedback=None, transform_mode=None, constants=None):
         """One pure step for a single segment.
 
         Args:
@@ -1286,22 +1321,9 @@ class FunctionalModel:
                 else:
                     inputs[port] = _input_value(spec)
             params = self._params_for(c, theta, use_cache=not transform_mode)
-            if constants:
-                mats = constants.get(c.id)
-                if mats is not None:
-                    params = StepParams(params)
-                    params.matrices = mats
+            params = self._with_derived(c, params, theta, constants, use_cache=not transform_mode)
             st = states.get(c.id, None)
-            if getattr(c, "SUPPORTS_TRANSFORM_MODE", False):
-                x_next_c, outs = c.forward(
-                    st,
-                    inputs,
-                    params,
-                    self.step_size,
-                    transform_mode=transform_mode,
-                )
-            else:
-                x_next_c, outs = c.forward(st, inputs, params, self.step_size)
+            x_next_c, outs = c.forward(st, inputs, params, self.step_size)
             produced[c.id] = outs
             if c.id in self.state_index:
                 x_next_parts[self.state_index[c.id]] = x_next_c.reshape(-1)
@@ -1622,7 +1644,7 @@ class FunctionalModel:
         """``vmap`` of the transform-mode ``F_aug`` over a batch of WINDOWS:
         ``step(Y, theta, U, constants) -> (Y_next, meas)`` with ``Y (P,
         D_aug)`` and ``U (P, n_exogenous)`` per window, ``theta (n_theta,)``
-        and the hoisted matrices (:meth:`step_constants`) shared.  One
+        and the hoisted matrices (:meth:`derived_values`) shared.  One
         rollout then advances every shooting window of one parameter vector
         at once (:func:`functional_rollout_windows`).
 
@@ -1969,7 +1991,7 @@ def functional_rollout(
     functional_model.prepare_routes(theta.device)
     y = y0
     rows = []
-    constants = functional_model.step_constants(theta) if (transform_mode or step is not None) else None
+    constants = functional_model.derived_values(theta) if (transform_mode or step is not None) else None
     if step is None:
         def step(y_, theta_, u_, constants_, _fm=functional_model, _tm=transform_mode):
             return _fm.F_aug(y_, theta_, u_, transform_mode=_tm, constants=constants_)
@@ -2025,13 +2047,13 @@ def functional_rollout_windows(functional_model, Y0, theta, exogenous_tape, *, s
     ``return_extent`` ``(outputs, Y_end, Y_min, Y_max)``: also the lowest and
     highest value of every state in every window, its start and end included
     (the multiple-shooting tolerances read them).  The
-    theta-only matrices are hoisted once (:meth:`FunctionalModel.step_constants`)
+    theta-only matrices are hoisted once (:meth:`FunctionalModel.derived_values`)
     and shared by the windows.  ``step`` defaults to
     :attr:`FunctionalModel.window_step` (the eager vmap of the transform-mode
     ``F_aug`` over the windows).  Differentiable w.r.t. ``theta`` and ``Y0``.
     """
     functional_model.prepare_routes(theta.device)
-    constants = functional_model.step_constants(theta)
+    constants = functional_model.derived_values(theta)
     if step is None:
         def base(y_, theta_, u_, constants_, _fm=functional_model):
             return _fm.F_aug(y_, theta_, u_, transform_mode=True, constants=constants_)
@@ -2121,7 +2143,7 @@ def functional_rollout_tape(
     if step is None:
         def step(y_, theta_, u_, constants_, _fm=functional_model, _tm=transform_mode):
             return _fm.F_aug(y_, theta_, u_, transform_mode=_tm, constants=constants_)
-    constants = functional_model.step_constants(theta) if (transform_mode or compiled) else None
+    constants = functional_model.derived_values(theta) if (transform_mode or compiled) else None
     for t in range(exogenous_tape.shape[0]):
         y, row = _step_call(step, y, theta, exogenous_tape[t], constants)
         states.append(y)
