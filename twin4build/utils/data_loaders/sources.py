@@ -51,15 +51,11 @@ HOLD_WEEKS = 104
 
 @dataclass
 class Reading:
-    """What :meth:`Source.read` gives for a run.
-
-    Attributes:
-        values: ``(n_s, n_t)`` floats on the run's grid; a period's steps past
-            its own end hold its last value.
-        filled: ``(n_s, n_t)`` booleans: the steps the declared fill supplied.
-        raw: One series per period, as read (NaN where the data give nothing).
-        n_t: The number of steps of the longest period.
-    """
+    """What :meth:`Source.read` gives for a run: ``values``, ``(n_s, n_t)``
+    floats on the run's grid (a period's steps past its own end hold its last
+    value); ``filled``, ``(n_s, n_t)`` booleans, the steps the declared fill
+    supplied; ``raw``, one series per period as read (NaN where the data give
+    nothing); and ``n_t``, the number of steps of the longest period."""
 
     values: np.ndarray
     filled: np.ndarray
