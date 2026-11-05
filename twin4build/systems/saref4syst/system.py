@@ -338,6 +338,16 @@ class System(nn.Module, metaclass=SystemMeta):
         if declared_values is not None:
             self._build_declared(declared_values)
 
+    def __setattr__(self, name, value):
+        # A property of the class runs its setter, as on any Python object.
+        # nn.Module would otherwise register a module or parameter value under
+        # the property's name and skip the setter (a sensor's
+        # ``time_series_input``).
+        if isinstance(getattr(type(self), name, None), property):
+            object.__setattr__(self, name, value)
+            return
+        super().__setattr__(name, value)
+
     # -- Declared Systems (ADR 0001) ------------------------------------------
 
     def _take_declared_values(self, kwargs: dict) -> dict:
