@@ -55,7 +55,8 @@ inputs: outdoor environment, schedules, time-series inputs, the time-of-day
 basis of an occupancy profile, and the recorded series of a sensor. It defines
 `series(timestamps, step_size)`, which the base calls at run start with the
 run's `(n_s, n_t)` timestamps and step size and which returns each output's
-values for the whole run; nothing steps it. Measured data that another System needs reaches it through a connection
+values for the whole run; nothing steps it.  A shorter period's row of
+timestamps ends in `None`; the base holds the period's last value there. Measured data that another System needs reaches it through a connection
 from a data source. A System never reads files for its own inputs.
 _Avoid_: self-fed input, publisher, exogenous producer.
 
