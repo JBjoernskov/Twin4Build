@@ -6,6 +6,7 @@ import shutil
 
 # Third party imports
 from dateutil import tz
+import pandas as pd
 import torch
 
 # Local application imports
@@ -14,9 +15,20 @@ import twin4build
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.model.model import Model
 import twin4build as tb
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 twin4build._IS_TESTING = True
 
+
+
+RULES = {
+    "ruleset_start_minute": [0],
+    "ruleset_end_minute": [0],
+    "ruleset_start_hour": [0],
+    "ruleset_end_hour": [1],
+    "ruleset_value": [20],
+    "ruleset_default_value": 0,
+}
 
 class TestScheduleSystem(unittest.TestCase):
     def setUp(self):
@@ -87,22 +99,9 @@ class TestScheduleSystem(unittest.TestCase):
         output = schedule_batch.output["scheduleValue"].get()
         self.assertIsNotNone(output)
 
-    def test_auto_detect_use_dict(self):
-        """Test that use_dict is auto-detected when weekDayRulesetDict is provided."""
-        schedule = ScheduleSystem(
-            id="test_auto_dict",
-            weekday_ruleset={
-                "ruleset_start_minute": [0],
-                "ruleset_end_minute": [0],
-                "ruleset_start_hour": [0],
-                "ruleset_end_hour": [1],
-                "ruleset_value": [20],
-                "ruleset_default_value": 0,
-            },
-        )
-        self.assertTrue(schedule.use_dict)
-        self.assertFalse(schedule.use_spreadsheet)
-        self.assertFalse(schedule.use_database)
+    def test_a_ruleset_schedule_has_no_source(self):
+        schedule = ScheduleSystem(id="test_rules", weekday_ruleset=RULES)
+        self.assertIsNone(schedule.source)
 
     def test_removed_usedict_constructor_raises(self):
         """Old camelCase constructor kwargs are hard-removed."""
@@ -129,14 +128,41 @@ class TestScheduleSystem(unittest.TestCase):
         with self.assertRaises(AttributeError):
             _ = self.schedule.useDatabase
 
-    def test_only_one_flag_allowed(self):
-        """Test that only one of use_spreadsheet, use_database, use_dict can be True."""
-        with self.assertRaises(AssertionError):
-            ScheduleSystem(
-                id="test_multiple_flags",
-                use_dict=True,
-                use_spreadsheet=True,
-            )
+    def test_the_old_source_flags_are_unknown_keywords(self):
+        for flag in ("use_dict", "use_spreadsheet", "use_database"):
+            with self.subTest(flag), self.assertRaisesRegex(TypeError, flag):
+                ScheduleSystem(id="test_flags", weekday_ruleset=RULES, **{flag: True})
+
+    def test_a_schedule_from_a_reader(self):
+        index = pd.date_range("2023-01-01", periods=7, freq="10min", tz="UTC")
+        schedule = ScheduleSystem(id="test_reader", source=DataFrameSource(pd.Series(range(7), index=index, dtype=float)))
+        start = datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)
+        schedule.initialize([start], [start + datetime.timedelta(hours=1)], [600])
+        torch.testing.assert_close(
+            schedule.output["scheduleValue"].history().reshape(-1), torch.arange(6, dtype=torch.float64)
+        )
+
+    def test_a_day_without_a_ruleset_raises(self):
+        schedule = ScheduleSystem(id="test_weekend_only", weekend_ruleset=RULES)
+        start = datetime.datetime(2023, 1, 2, tzinfo=tz.UTC)  # a Monday
+        with self.assertRaisesRegex(ValueError, "monday"):
+            schedule.initialize([start], [start + datetime.timedelta(hours=1)], [600])
+
+    def test_the_rulesets_are_left_as_given(self):
+        rules = {"ruleset_default_value": 3.0}
+        schedule = ScheduleSystem(id="test_unchanged", weekday_ruleset=rules)
+        start = datetime.datetime(2023, 1, 2, tzinfo=tz.UTC)
+        schedule.initialize([start], [start + datetime.timedelta(hours=1)], [600])
+        self.assertEqual(rules, {"ruleset_default_value": 3.0})
+        self.assertIsNone(schedule.monday_ruleset)
+        schedule.weekday_ruleset = {"ruleset_default_value": 5.0}
+        schedule.initialize([start], [start + datetime.timedelta(hours=1)], [600])
+        self.assertEqual(float(schedule.output["scheduleValue"].history().reshape(-1)[0]), 5.0)
+
+    def test_a_deprecated_keyword_still_works_with_a_warning(self):
+        with self.assertWarns(DeprecationWarning):
+            schedule = ScheduleSystem(id="test_old_name", weekDayRulesetDict=RULES)
+        self.assertEqual(schedule.weekday_ruleset, RULES)
 
     def test_caching_with_different_datetime_instances(self):
         """Test that caching works reliably with different datetime instances having same values."""

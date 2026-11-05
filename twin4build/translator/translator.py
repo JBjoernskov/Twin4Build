@@ -2550,6 +2550,10 @@ class Translator:
         whose ``measuredValue`` input is optional.
         """
         if len(getattr(component, "input", None) or {}) == 0:
+            has_data = getattr(component, "has_data", None)
+            if isinstance(has_data, bool):
+                # a data source that says whether it has something to give
+                return has_data
             # A source component with no inputs still needs something to
             # emit.  A ScheduleSystem the translator instantiated from a
             # semantic node alone has none of its source flags set and

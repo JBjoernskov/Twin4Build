@@ -30,6 +30,7 @@ from dateutil import tz
 import twin4build as tb
 import twin4build.examples.utils as utils
 from twin4build.utils.rgetattr import rgetattr
+from twin4build.utils.data_loaders.sources import CsvSource
 
 # ---------------------------------------------------------------------------
 # Part 1: Semantic Model -> Simulation Model (Translator)
@@ -46,9 +47,9 @@ def fcn(self):
     - Control setpoints
     - Outdoor environment data
     """
-    supply_water_schedule = tb.PiecewiseLinearScheduleSystem(
-        default_x=[-12, 5, 20],
-        default_y=[60, 50, 20],
+    supply_water_schedule = tb.PiecewiseLinearSystem(
+        X=[-12, 5, 20],
+        Y=[60, 50, 20],
         id="supply_water_schedule",
     )
 
@@ -110,7 +111,7 @@ def fcn(self):
     self.add_connection(
         supply_water_schedule,
         self.components["office_space_heater"],
-        "scheduleValue",
+        "y",
         "supplyWaterTemperature",
     )
 
@@ -298,11 +299,9 @@ def fcn(self):
         "measuredValue",
     )
 
-    self.components["office_temperature_heating_setpoint"].filename = utils.get_path(
+    self.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(
         ["full_workflow_example", "temperature_heating_setpoint.csv"]
-    )
-    self.components["office_temperature_heating_setpoint"].datecolumn = 2
-    self.components["office_temperature_heating_setpoint"].valuecolumn = 4
+    ), date_column=2, value_column=4)
 
     self.components["outdoor_environment"].use_spreadsheet = True
     self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(
@@ -938,9 +937,7 @@ def main():
     )
     print(elspot_subset.head())
 
-    price_schedule = tb.ScheduleSystem(
-        filename=elspot_clean_path, date_column=0, value_column=1, id="price_schedule", fill="constant"
-    )
+    price_schedule = tb.ScheduleSystem(id="price_schedule", source=CsvSource(elspot_clean_path, date_column=0, value_column=1, fill="constant"))
 
     # Multiplies Power (W) by price (DKK/kWh), with scale_factor converting W*s to kWh
     costs_sensor = tb.ScalarProductSystem(

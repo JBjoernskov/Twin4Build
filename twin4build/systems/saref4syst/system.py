@@ -236,6 +236,10 @@ class System(nn.Module, metaclass=SystemMeta):
         declared = getattr(cls, "_declarations", {})
         for kind in ("setting", "parameter", "child"):
             names.update(declared.get(kind, {}))
+        if getattr(cls, "_is_declared", False):
+            # a declared class has no __init__ of its own: the base
+            # translates its deprecated names
+            names.update(getattr(cls, "DEPRECATED_KEYWORDS", {}))
         System._CONSTRUCTOR_KEYWORDS[cls] = frozenset(names)
         return System._CONSTRUCTOR_KEYWORDS[cls]
 
@@ -333,7 +337,21 @@ class System(nn.Module, metaclass=SystemMeta):
         if declared_values is not None:
             self._build_declared(declared_values)
 
+    #: Attributes a class no longer has, and what replaced them: reading or
+    #: setting one raises with the replacement (setting it would otherwise
+    #: quietly do nothing).
+    REMOVED_ATTRIBUTES: dict = {}
+
+    def __getattr__(self, name):
+        removed = type(self).REMOVED_ATTRIBUTES.get(name)
+        if removed is not None:
+            raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
+        return super().__getattr__(name)
+
     def __setattr__(self, name, value):
+        removed = type(self).REMOVED_ATTRIBUTES.get(name)
+        if removed is not None:
+            raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
         # A property of the class runs its setter, as on any Python object.
         # nn.Module would otherwise register a module or parameter value under
         # the property's name and skip the setter (a sensor's
@@ -365,6 +383,13 @@ class System(nn.Module, metaclass=SystemMeta):
         """Pop the declared settings, parameter values and child overrides
         from the constructor's keywords; a missing required setting raises."""
         declared = type(self)._declarations
+        for old, new in getattr(type(self), "DEPRECATED_KEYWORDS", {}).items():
+            if old in kwargs:
+                value = kwargs.pop(old)
+                cls_name = type(self).__name__
+                if new is not None:
+                    deprecate_name(f"{cls_name}({old}=...)", f"{cls_name}({new}=...)", stacklevel=4)
+                    kwargs.setdefault(new, value)
         values = {"setting": {}, "parameter": {}, "child": {}}
         for name, decl in declared["setting"].items():
             if name in kwargs:
