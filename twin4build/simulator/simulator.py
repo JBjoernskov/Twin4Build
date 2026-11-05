@@ -14,6 +14,7 @@ from tqdm import tqdm
 # Local application imports
 import twin4build.core as core
 import twin4build.systems as systems
+import twin4build.utils.types as tps
 def _has_triton() -> bool:
     """Inductor's CUDA backend needs Triton; absent on Windows torch wheels."""
     try:
@@ -339,12 +340,22 @@ class Simulator:
                 input_component_index = connection_point.input_component_index.get(
                     connection, slice(None)
                 )
+                output = connected_component.output[connection.output_port]
                 try:
+                    value = output.get(i_v=output_port_index, i_c=output_component_index)
+                    if (
+                        isinstance(input_port_index, torch.Tensor)
+                        and input_port_index.ndim > 0
+                        and not isinstance(output, tps.Vector)
+                        and not isinstance(output_component_index, torch.Tensor)
+                        and not isinstance(input_component_index, torch.Tensor)
+                    ):
+                        # One scalar value into several slots (a room's
+                        # temperature on each AHU branch serving it): give it
+                        # the slot dimension to broadcast over.
+                        value = value.unsqueeze(-1)
                     component.input[connection_point.input_port]._set(
-                        connected_component.output[connection.output_port].get(
-                            i_v=output_port_index,
-                            i_c=output_component_index,
-                        ),
+                        value,
                         i_t=step_index,
                         i_v=input_port_index,
                         i_c=input_component_index,

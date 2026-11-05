@@ -788,6 +788,13 @@ class FunctionalSimulationSession:
             slices[component_dimension] = component_index
             destination = target[tuple(slices)]
             if target.ndim == component_dimension + 2:
+                if (
+                    isinstance(vector_index, torch.Tensor)
+                    and vector_index.ndim > 0
+                    and value.ndim == destination.ndim - 1
+                ):
+                    # One scalar value into several slots: broadcast over them.
+                    value = value.unsqueeze(-1)
                 destination[..., vector_index] = value
             else:
                 destination.copy_(value)
