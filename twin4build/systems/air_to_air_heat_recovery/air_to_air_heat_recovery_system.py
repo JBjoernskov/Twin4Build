@@ -246,7 +246,7 @@ class AirToAirHeatRecoverySystem(core.System):
         "secondaryAirFlowRateMax",
     )
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step heat-recovery model (functorch-safe, stateless).
 
         Effectiveness interpolated between the 75%/100% reference points,
@@ -360,7 +360,7 @@ class AirToAirHeatRecoverySystem(core.System):
         """
         inputs = {name: port.get() for name, port in self.input.items()}
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["primaryTemperatureOut"]._set(
             outs["primaryTemperatureOut"], i_t=step_index

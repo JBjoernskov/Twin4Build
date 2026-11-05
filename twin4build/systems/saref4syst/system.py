@@ -557,10 +557,10 @@ class System:
         return len(self.collect_states()) > 0
 
     @staticmethod
-    def _scalar_sample_time(step_size) -> float:
-        """Scalar sample time from the simulator's per-simulation step-size list.
+    def _scalar_step_size(step_size) -> float:
+        """Scalar step size from the simulator's per-simulation step-size list.
 
-        Components whose ``forward`` discretizes with a single sample time
+        Components whose ``forward`` discretizes with a single step size
         cannot batch simulations with different step sizes; keep the explicit
         guard the old state-space ``do_step`` had.
         """
@@ -570,6 +570,10 @@ class System:
             ), "Component supports only a single step size across batched simulations."
             return float(step_size[0])
         return float(step_size)
+
+    # The old name, for the Roomwise extension's do_step overrides until they
+    # become forward-only Systems; removed with do_step (ADR 0001).
+    _scalar_sample_time = _scalar_step_size
 
     def _forward_params(self) -> dict:
         """Own physical parameters as the ``forward`` params dict.

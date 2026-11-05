@@ -123,7 +123,7 @@ class FunctionSystem(core.System):
     #: the transformation is a fixed user-supplied callable.
     PARAM_NAMES = ()
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
 
         ``output = fn(inputs)``.  Functorch-compatible as long as ``fn`` is

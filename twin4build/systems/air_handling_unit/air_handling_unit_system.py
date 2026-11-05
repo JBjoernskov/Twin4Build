@@ -623,7 +623,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
 
     _resolve_sub_params = staticmethod(resolve_sub_params)
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step of the composite AHU (functorch-safe, stateless).
 
         Chains the submodels' pure ``forward``s in exactly the order
@@ -656,7 +656,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         supply_pos_vec = inputs["supplyDamperPosition"]
         supply_pos_flat = supply_pos_vec.reshape(supply_pos_vec.shape[0], -1)
         _, d_sup = self.supply_damper.forward(
-            None, {"damperPosition": supply_pos_flat}, P["supply_damper"], sample_time
+            None, {"damperPosition": supply_pos_flat}, P["supply_damper"], step_size
         )
         supply_flow_vec = d_sup["airFlowRate"].reshape(supply_pos_vec.shape)
         if inputs.get("supplyFanSpeed") is not None:
@@ -667,7 +667,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         # 2) Supply junction: sum branch flows
         _, j_sup = self.supply_junction.forward(
             None, {"airFlowRateOut": supply_flow_vec}, P["supply_junction"],
-            sample_time,
+            step_size,
         )
         supply_flow_total = j_sup["airFlowRateIn"]
 
@@ -684,7 +684,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             exhaust_pos_flat = exhaust_pos_vec.reshape(exhaust_pos_vec.shape[0], -1)
             _, d_exh = self.exhaust_damper.forward(
                 None, {"damperPosition": exhaust_pos_flat}, P["exhaust_damper"],
-                sample_time,
+                step_size,
             )
             exhaust_flow_vec = d_exh["airFlowRate"].reshape(exhaust_pos_vec.shape)
             if inputs.get("exhaustFanSpeed") is not None:
@@ -702,7 +702,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
                 ),
             },
             P["return_junction"],
-            sample_time,
+            step_size,
         )
         secondary_flow = j_ret["airFlowRateOut"]
         return_temp = j_ret["airTemperatureOut"]
@@ -717,7 +717,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             return_temp,
             inputs["outdoorAirTemperature"],
             inputs["supplyAirTemperatureSetpoint"],
-            sample_time,
+            step_size,
         )
         outs["supplyAirFlowRate"] = supply_flow_vec
         outs["exhaustAirFlowRate"] = exhaust_flow_vec

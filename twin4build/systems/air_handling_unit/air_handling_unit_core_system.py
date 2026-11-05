@@ -66,7 +66,7 @@ def unit_chain(
     return_temp,
     outdoor_temperature,
     supply_setpoint,
-    sample_time,
+    step_size,
 ):
     """One step of the device on its totals (functorch-safe, stateless).
 
@@ -79,7 +79,7 @@ def unit_chain(
         None,
         {"airFlowRate": secondary_flow, "inletAirTemperature": return_temp},
         P["exhaust_fan"],
-        sample_time,
+        step_size,
     )
     _, hr = subs["heat_recovery"].forward(
         None,
@@ -91,7 +91,7 @@ def unit_chain(
             "primaryTemperatureOutSetpoint": supply_setpoint,
         },
         P["heat_recovery"],
-        sample_time,
+        step_size,
     )
     _, coil = subs["coil"].forward(
         None,
@@ -101,7 +101,7 @@ def unit_chain(
             "airFlowRate": supply_flow_total,
         },
         P["coil"],
-        sample_time,
+        step_size,
     )
     _, f_sup = subs["supply_fan"].forward(
         None,
@@ -110,7 +110,7 @@ def unit_chain(
             "inletAirTemperature": coil["outletAirTemperature"],
         },
         P["supply_fan"],
-        sample_time,
+        step_size,
     )
     return {
         "totalSupplyAirFlowRate": supply_flow_total,
@@ -280,7 +280,7 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
             self._fwd_param_cache = cache
         return cache[1]
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step of the device (functorch-safe, stateless): the
         :func:`unit_chain` on the scalar inputs.  ``params`` is keyed by the
         composite attr path (``"coil.<name>"``, ...); non-estimated entries
@@ -295,7 +295,7 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
             inputs["returnAirTemperature"],
             inputs["outdoorAirTemperature"],
             inputs["supplyAirTemperatureSetpoint"],
-            sample_time,
+            step_size,
         )
         return x, outs
 
@@ -309,7 +309,7 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
         """Thin port-I/O wrapper around :meth:`forward`."""
         inputs = {name: port.get() for name, port in self.input.items()}
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         for name, value in outs.items():
             self.output[name]._set(value, i_t=step_index)

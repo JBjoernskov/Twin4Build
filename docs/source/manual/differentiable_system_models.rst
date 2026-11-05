@@ -22,7 +22,7 @@ Twin4Build has two component execution paths:
 
 * ``do_step`` integrates a component into the object-graph simulator. It reads
   and writes ports and histories.
-* ``forward(state, inputs, parameters, sample_time, ...)`` is used by
+* ``forward(state, inputs, parameters, step_size, ...)`` is used by
   ``Simulator(..., execution_mode="functional")`` for estimation and
   collocation maps. PyTorch may call it under ``vmap``,
   ``jacrev``, higher-order differentiation, or CUDA Graph capture.
@@ -71,7 +71,7 @@ be explicit tensor arguments rather than values discovered through module or
        PARAM_NAMES = ("capacity", "conductance")
 
        def forward(
-           self, state, inputs, parameters, sample_time, transform_mode=None
+           self, state, inputs, parameters, step_size, transform_mode=None
        ):
            # Tensor-only mathematics; no port or module mutation.
            next_state = ...
@@ -156,7 +156,7 @@ batch dimension that the destination does not have.
 .. code-block:: python
 
    # Preferred: transformed batch dimensions propagate through every operand.
-   top = torch.cat([A * sample_time, B * sample_time], dim=-1)
+   top = torch.cat([A * step_size, B * step_size], dim=-1)
    block = torch.nn.functional.pad(top, (0, 0, 0, B.shape[-1]))
 
 In-place mutation of inputs, parameters, buffers, cached tensors, or returned
@@ -168,7 +168,7 @@ Caching and ``transform_mode``
 
 Ordinary sequential simulation may cache expensive parameter-only work using
 the identity of the parameter dictionary and static values such as
-``sample_time``. A transformed call must bypass those caches:
+``step_size``. A transformed call must bypass those caches:
 
 .. code-block:: python
 

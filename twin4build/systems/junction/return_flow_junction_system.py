@@ -189,7 +189,7 @@ class ReturnFlowJunctionSystem(core.System):
         "airTemperatureOut": {"inputs": ("airFlowRateIn", "airTemperatureIn")},
     }
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step flow mixing (functorch-safe, stateless).
 
         Total flow is the sum of the input flows plus the bias; the output
@@ -248,7 +248,7 @@ class ReturnFlowJunctionSystem(core.System):
             "airTemperatureIn": self.input["airTemperatureIn"].get(),
         }
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["airFlowRateOut"]._set(outs["airFlowRateOut"], i_t=step_index)
         self.output["airTemperatureOut"]._set(outs["airTemperatureOut"], i_t=step_index)

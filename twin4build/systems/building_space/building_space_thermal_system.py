@@ -959,7 +959,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
         x = self.ss_model.get_state()  # (n_s, n_c, n_states)
         x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.ss_model.set_state(x_next)
         for port in ("indoorTemperature", "wallTemperature") + self.SS_DERIVED_OUTPUT_PORTS:
@@ -970,7 +970,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
         return self._build_matrices(params)
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step dynamics: ``(state, inputs, params) -> (new_state, outputs)``.
 
         The functorch-compatible re-expression of :meth:`do_step` -- it rebuilds
@@ -987,7 +987,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
                 ``(n_c, n_v)`` for ``wallHeatGain``).  Assembled here
                 into the ``do_step`` input order.
             params: dict of *physical* parameter values (:attr:`PARAM_NAMES`).
-            sample_time: step size in seconds.
+            step_size: step size in seconds.
 
         Returns:
             ``(x_next (n_c, n_states), {"indoorTemperature", "wallTemperature",
@@ -996,7 +996,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         # The matrices depend only on params, not on (x, u): cache them per
         # params-dict identity so a sequential rollout builds them once per
         # theta instead of once per step (see OneStepComposer._params_for /
-        # System._forward_params).  sample_time is part of the key because the
+        # System._forward_params).  step_size is part of the key because the
         # attached disc_cache holds (Ad, Bd) discretized at a specific T.
         if transform_mode:
             matrices = getattr(params, "matrices", None)
@@ -1005,8 +1005,8 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             disc_cache = None
         else:
             cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != sample_time:
-                cache = (params, self._build_matrices(params), sample_time, {})
+            if cache is None or cache[0] is not params or cache[2] != step_size:
+                cache = (params, self._build_matrices(params), step_size, {})
                 self._fwd_mat_cache = cache
             matrices = cache[1]
             disc_cache = cache[3]
@@ -1039,7 +1039,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             F,
             x,
             u,
-            sample_time,
+            step_size,
             disc_cache=disc_cache,
             transform_mode=transform_mode,
         )

@@ -303,7 +303,7 @@ class FunctionalModel:
         entries carry it explicitly, so several entries may point at the SAME
         theta slot -- that is how *shared* parameters (one decision variable
         driving the same attribute on several components) are functional.
-    sample_time : float
+    step_size : float
         Segment step size in seconds.
     measurements : list, optional
         Measuring devices whose modelled ``measuredValue`` the map must return
@@ -324,12 +324,12 @@ class FunctionalModel:
         model,
         stateful,
         theta_spec,
-        sample_time,
+        step_size,
         measurements=None,
         outputs=None,
     ):
         self.model = model
-        self.sample_time = float(sample_time)
+        self.step_size = float(step_size)
         # Accept either the SimulationModel (``_flat_execution_order``) or the
         # Model wrapper (``flat_execution_order`` property).
         order = getattr(model, "_flat_execution_order", None)
@@ -1297,11 +1297,11 @@ class FunctionalModel:
                     st,
                     inputs,
                     params,
-                    self.sample_time,
+                    self.step_size,
                     transform_mode=transform_mode,
                 )
             else:
-                x_next_c, outs = c.forward(st, inputs, params, self.sample_time)
+                x_next_c, outs = c.forward(st, inputs, params, self.step_size)
             produced[c.id] = outs
             if c.id in self.state_index:
                 x_next_parts[self.state_index[c.id]] = x_next_c.reshape(-1)

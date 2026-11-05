@@ -711,7 +711,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         """The joint theta-only ``(A, B, C, D, E, F)`` for one rollout."""
         return self._assemble(params)
 
-    def forward(self, x, inputs, params, sample_time, transform_mode=None):
+    def forward(self, x, inputs, params, step_size, transform_mode=None):
         """Pure one-step of the fused cluster: ``(state, inputs, params) ->
         (new_state, outputs)``.
 
@@ -729,8 +729,8 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             disc_cache = None
         else:
             cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != sample_time:
-                cache = (params, self._assemble(params), sample_time, {})
+            if cache is None or cache[0] is not params or cache[2] != step_size:
+                cache = (params, self._assemble(params), step_size, {})
                 self._fwd_mat_cache = cache
             matrices = cache[1]
             disc_cache = cache[3]
@@ -768,7 +768,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             F,
             x,
             u,
-            sample_time,
+            step_size,
             disc_cache=disc_cache,
             transform_mode=transform_mode,
         )
@@ -837,7 +837,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         inputs = {name: self._input[name].get() for name in self._ext_names}
         x = self.get_state()  # (n_s, n_c, N) via the members' own states
         x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.set_state(x_next)
         for name, value in outs.items():

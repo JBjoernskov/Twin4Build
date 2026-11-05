@@ -44,7 +44,7 @@ class PassInputToOutput(core.System):
 
     PARAM_NAMES = ()
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step pass-through (functorch-safe, stateless)."""
         return x, {"value": inputs["value"]}
 
@@ -57,6 +57,6 @@ class PassInputToOutput(core.System):
     ) -> None:
         inputs = {"value": self.input["value"].get()}
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["value"]._set(outs["value"], i_t=step_index)

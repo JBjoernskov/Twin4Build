@@ -83,7 +83,7 @@ class MaxSystem(core.System):
     #: No physical parameters (the ``forward`` theta contract).
     PARAM_NAMES = ()
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
 
         ``inputs`` provides ``inputs`` with the vector of values along the

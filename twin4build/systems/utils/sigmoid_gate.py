@@ -173,7 +173,7 @@ class SigmoidGate(core.System, nn.Module):
             x, self.threshold.get(), self.steepness.get(), self.polarity.get()
         )
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step gate (functorch-safe, stateless).
 
         Reads the input from ``inputs[self.INPUT_PORT]`` (subclasses rename
@@ -207,7 +207,7 @@ class SigmoidGate(core.System, nn.Module):
         if self._controller_wired:
             inputs["controllerSignal"] = self.input["controllerSignal"].get()
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output[self.OUTPUT_PORT]._set(outs[self.OUTPUT_PORT], i_t=step_index)
 
@@ -348,7 +348,7 @@ class BandGate(SigmoidGate):
             x, self.threshold.get(), self.band.get(), self.steepness.get()
         )
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step band gate (functorch-safe, stateless)."""
         gate = self._band_gate(
             inputs[self.INPUT_PORT],

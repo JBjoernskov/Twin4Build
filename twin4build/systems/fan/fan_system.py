@@ -319,7 +319,7 @@ class FanSystem(core.System, nn.Module):
     #: Width [W] of the smooth mode's curve where the power floors at zero.
     POWER_CURVE_START = 10.0
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step fan model (functorch-safe, stateless).
 
         Fan power from the Bernstein power curve over the flow range,
@@ -385,7 +385,7 @@ class FanSystem(core.System, nn.Module):
             "inletAirTemperature": self.input["inletAirTemperature"].get(),
         }
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["outletAirTemperature"]._set(
             outs["outletAirTemperature"], i_t=step_index

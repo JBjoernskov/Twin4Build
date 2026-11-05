@@ -58,7 +58,7 @@ class OnOffSystem(core.System):
 
     PARAM_NAMES = ()  # threshold / is_off_value are plain numbers (structural)
 
-    def forward(self, x, inputs, params, sample_time):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step gate (functorch-safe, stateless).
 
         ``threshold`` and ``is_off_value`` are plain (non-estimable) numbers,
@@ -87,6 +87,6 @@ class OnOffSystem(core.System):
             "criteriaValue": self.input["criteriaValue"].get(),
         }
         _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_sample_time(step_size)
+            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
         )
         self.output["value"]._set(outs["value"], i_t=step_index)
