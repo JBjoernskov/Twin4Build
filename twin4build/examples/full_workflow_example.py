@@ -303,24 +303,13 @@ def fcn(self):
         ["full_workflow_example", "temperature_heating_setpoint.csv"]
     ), date_column=2, value_column=4)
 
-    self.components["outdoor_environment"].use_spreadsheet = True
-    self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(
+    self.components["outdoor_environment"].outdoorTemperature_source = CsvSource(utils.get_path(
         ["estimator_example", "outdoor_environment.csv"]
-    )
-    self.components["outdoor_environment"].datecolumn_outdoorTemperature = 0
-    self.components["outdoor_environment"].valuecolumn_outdoorTemperature = 1
-
-    self.components["outdoor_environment"].filename_globalIrradiation = utils.get_path(
+    ), date_column=0, value_column=1)
+    self.components["outdoor_environment"].globalIrradiation_source = CsvSource(utils.get_path(
         ["estimator_example", "outdoor_environment.csv"]
-    )
-    self.components["outdoor_environment"].datecolumn_globalIrradiation = 0
-    self.components["outdoor_environment"].valuecolumn_globalIrradiation = 2
-
-    self.components["outdoor_environment"].filename_outdoorCo2Concentration = (
-        utils.get_path(["estimator_example", "outdoor_environment.csv"])
-    )
-    self.components["outdoor_environment"].datecolumn_outdoorCo2Concentration = 0
-    self.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 3
+    ), date_column=0, value_column=2)
+    self.components["outdoor_environment"].outdoorCo2Concentration_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=3)
 
     # Space heater UA is computed from nominal conditions during initialize()
     # (initialize_UA=True). Omit x0 so estimation starts from that solved value.
