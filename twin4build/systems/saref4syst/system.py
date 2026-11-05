@@ -5,9 +5,12 @@ import datetime
 import inspect
 from typing import Any, FrozenSet, Hashable, List, Optional, Tuple, Union
 
+import copy
+
 # Third party imports
 import numpy as np
 import torch
+import torch.nn as nn
 
 import twin4build.utils.types as tps
 
@@ -16,6 +19,7 @@ from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import REQUIRED, SystemMeta
 from twin4build.utils.deprecation import deprecate_name, reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
@@ -97,6 +101,15 @@ class AliasedPorts(dict):
             return dict.__getitem__(self, self.resolve(name))
         return default
 
+    def __getattr__(self, name):
+        # Attribute access to a port (``damper.output.airFlowRate``); only
+        # reached when no dict attribute has the name.
+        if name.startswith("__") or name in ("aliases", "owner"):
+            raise AttributeError(name)
+        if name in self:
+            return self[name]
+        raise AttributeError(f"{self.owner or 'ports'} has no port {name!r}")
+
 
 def _concatenate_capacities(parts, n_c):
     """Units' ``(n_c | 1, width)`` capacities side by side, ``(n_c, sum)``;
@@ -129,10 +142,27 @@ def _warn_unsized(owner, leaf: str) -> None:
     )
 
 
-class System:
+class System(nn.Module, metaclass=SystemMeta):
     """
     A base-class representing a component model used as part of a simulation model.
-    The methods :func:`~twin4build.systems.saref4syst.system.System.initialize`, :func:`~twin4build.systems.saref4syst.system.System.do_step` must be implemented by the subclass.
+
+    A System is written as class-level declarations plus one ``forward``
+    (ADR 0001)::
+
+        class ValveSystem(System):
+            valvePosition = Input()
+            valvePosition = Output()
+            waterFlowRate = Output()
+            waterFlowRateMax = Parameter(0.016, lb=5e-3, ub=1.0, scaling="log")
+
+            def forward(self, x, inputs, p, step_size):
+                ...
+
+    See :mod:`twin4build.systems.saref4syst.declarations`.  The base builds
+    the ports, parameters, settings, states and children from the
+    declarations, sizes the vector ports, and steps the System through
+    ``forward``.  Systems written the old way, with their own ``__init__``,
+    ``initialize`` and ``do_step``, keep working until they are converted.
 
     Tensor-based subclasses should also implement one pure ``forward`` function
     and delegate ``do_step`` mathematics to it. See
@@ -208,6 +238,9 @@ class System:
             if klass is System or not any(p.kind is p.VAR_KEYWORD for p in params):
                 break
         names.discard("self")
+        declared = getattr(cls, "_declarations", {})
+        for kind in ("setting", "parameter", "child"):
+            names.update(declared.get(kind, {}))
         System._CONSTRUCTOR_KEYWORDS[cls] = frozenset(names)
         return System._CONSTRUCTOR_KEYWORDS[cls]
 
@@ -249,6 +282,9 @@ class System:
                 class nor :class:`System` takes (a misspelled keyword would
                 otherwise be dropped without a word).
         """
+        if "_parameters" not in self.__dict__:
+            nn.Module.__init__(self)
+        declared_values = self._take_declared_values(kwargs) if type(self)._is_declared else None
         reject_unexpected_kwargs(type(self).__name__, kwargs)
         assert isinstance(connects_at, list) or connects_at is None, (
             'Attribute "connects_at" is of type "'
@@ -299,6 +335,231 @@ class System:
         self._output = output
         self._id = id
         self._n_c = 1  # Number of parallel components (for vectorization)
+        if declared_values is not None:
+            self._build_declared(declared_values)
+
+    # -- Declared Systems (ADR 0001) ------------------------------------------
+
+    def _take_declared_values(self, kwargs: dict) -> dict:
+        """Pop the declared settings, parameter values and child overrides
+        from the constructor's keywords; a missing required setting raises."""
+        declared = type(self)._declarations
+        values = {"setting": {}, "parameter": {}, "child": {}}
+        for name, decl in declared["setting"].items():
+            if name in kwargs:
+                values["setting"][name] = kwargs.pop(name)
+            elif decl.default is REQUIRED:
+                raise TypeError(f"{type(self).__name__}() needs the setting {name!r}")
+            else:
+                values["setting"][name] = copy.deepcopy(decl.default)
+        for name, decl in declared["parameter"].items():
+            values["parameter"][name] = kwargs.pop(name, decl.value)
+        for name in declared["child"]:
+            override = kwargs.pop(name, None)
+            if override is not None and not isinstance(override, dict):
+                raise TypeError(
+                    f"{type(self).__name__}(): {name}= takes a dict of the child's values, got {override!r}"
+                )
+            values["child"][name] = override or {}
+        return values
+
+    def _build_declared(self, values: dict) -> None:
+        """Build the runtime settings, ports, parameters, states and
+        children from the class's declarations."""
+        cls = type(self)
+        declared = cls._declarations
+        for name, value in values["setting"].items():
+            setattr(self, name, value)
+        self._input = AliasedPorts(
+            {name: self._declared_port(decl) for name, decl in declared["input"].items()},
+            aliases={d.alias: n for n, d in declared["input"].items() if d.alias},
+            owner=cls.__name__,
+        )
+        self._output = AliasedPorts(
+            {name: self._declared_port(decl) for name, decl in declared["output"].items()},
+            aliases={d.alias: n for n, d in declared["output"].items() if d.alias},
+            owner=cls.__name__,
+        )
+        bounds = {}
+        for name, decl in declared["parameter"].items():
+            value = values["parameter"][name]
+            if isinstance(value, tps.Parameter):
+                data = value.get().detach().clone()
+            else:
+                data = torch.as_tensor(value, dtype=tps.float_dtype()).clone()
+            setattr(
+                self,
+                name,
+                tps.Parameter(data.to(tps.float_dtype()), requires_grad=False, scaling=decl.scaling),
+            )
+            spec = decl.bounds()
+            if spec is not None:
+                bounds[name] = spec
+        self.parameter = bounds
+        for name, decl in declared["state"].items():
+            size = decl.size if isinstance(decl.size, int) else None
+            if size is None and getattr(decl.size, "kind", None) == "setting":
+                size = self._setting_size(decl.size.name)
+            setattr(
+                self,
+                name,
+                tps.State(n_v=size, init_value=decl.init, lb=decl.lb, ub=decl.ub, names=decl.names),
+            )
+        config = list(declared["setting"]) + list(declared["parameter"])
+        self._child_overrides = {k: v for k, v in values["child"].items() if v}
+        for name, decl in declared["child"].items():
+            child = decl.cls(id=f"{self._id}_{name}", **{**decl.values, **values["child"][name]})
+            setattr(self, name, child)
+            config.extend(f"{name}.{sub}" for sub in child.config.get("parameters", ()))
+        self._config = {"parameters": config}
+        self.INITIALIZED = False
+
+    @staticmethod
+    def _declared_port(decl):
+        default = getattr(decl, "default", None)
+        if decl.size is None:
+            return tps.Scalar(default, optional=default is not None)
+        n_v = decl.size if isinstance(decl.size, int) else None
+        return tps.Vector(default, n_v=n_v, optional=default is not None)
+
+    def _setting_size(self, name: str) -> int:
+        value = getattr(self, name)
+        if value is None:
+            return 0
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        return len(value)
+
+    def declared_size(self, kind: str, name: str, _seen=None) -> Optional[int]:
+        """The width of a declared vector port (``kind`` ``"input"`` or
+        ``"output"``) or state, from its ``size=`` and the connections;
+        ``None`` for a scalar port."""
+        decl = type(self)._declarations[kind][name]
+        size = decl.size
+        if size is None:
+            return None
+        if isinstance(size, int):
+            return size
+        if size == "wired":
+            from twin4build.utils.slots import wired_width
+
+            if kind != "input":
+                return 0
+            # Nothing wired: keep a width set by hand (a System stepped on its own).
+            return wired_width(self, name) or (self.input[name]._n_v or 0)
+        if size.kind == "setting":
+            return self._setting_size(size.name)
+        seen = set() if _seen is None else _seen
+        key = (size.kind, size.name)
+        if key in seen:
+            raise TypeError(f"{type(self).__name__}.{name}: size= refers to itself through {size.name!r}")
+        seen.add(key)
+        width = self.declared_size(size.kind, size.name, seen)
+        return 0 if width is None else width
+
+    def size_declared_ports(self) -> None:
+        """Set the width of every declared vector port and state from its
+        ``size=`` and the connections, and check that the wiring fits: an
+        input's wired slots lie within its size."""
+        from twin4build.utils.slots import wired_width
+
+        declared = type(self)._declarations
+        for kind, ports in (("input", self.input), ("output", self.output)):
+            for name, decl in declared[kind].items():
+                if decl.size is None:
+                    continue
+                n_v = self.declared_size(kind, name)
+                if kind == "input" and decl.size != "wired":
+                    wired = wired_width(self, name)
+                    if wired > n_v:
+                        raise ValueError(
+                            f"{type(self).__name__} '{self.id}': input {name!r} is wired up to slot "
+                            f"{wired - 1}, but its size is {n_v}"
+                        )
+                ports[name]._n_v = n_v
+        for name, decl in declared["state"].items():
+            if not isinstance(decl.size, int):
+                getattr(self, name)._n_v = self.declared_size("state", name)
+        self.__dict__.pop("_state_size_cache", None)
+
+    def _initialize_declared(self, n_t: int, n_s: int, n_c: int) -> None:
+        """Run start of a declared System: size and allocate the ports,
+        expand the parameters to one value per copy, start the states."""
+        self.n_c = n_c
+        self.size_declared_ports()
+        for ports in (self.input, self.output):
+            for port in ports.values():
+                if isinstance(port, tps.Vector):
+                    port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, n_v=port._n_v)
+                else:
+                    port.initialize(n_t=n_t, n_s=n_s, n_c=n_c)
+        declared = type(self)._declarations
+        for name in declared["parameter"]:
+            setattr(self, name, getattr(self, name).expand_to_n_c(n_c))
+        for name in declared["state"]:
+            getattr(self, name).initialize(n_s=n_s, n_c=n_c, component=self, force=True)
+        for name in declared["child"]:
+            child = getattr(self, name)
+            if type(child)._is_declared:
+                child._initialize_declared(n_t, n_s, n_c)
+        self.INITIALIZED = True
+
+    @staticmethod
+    def _fold(value: torch.Tensor, n_s: int, n_c: int) -> torch.Tensor:
+        """``(n_s, n_c, ...)`` -> ``(n_s * n_c, ...)``: the one form
+        ``forward`` sees, its first dimension the copies being stepped."""
+        return value.reshape(n_s * n_c, *value.shape[2:])
+
+    @staticmethod
+    def _fold_parameter(value: torch.Tensor, n_s: int, n_c: int) -> torch.Tensor:
+        """A parameter of one value per copy, ``(n_c, ...)``, repeated for
+        every simulation: ``(n_s * n_c, ...)``. A shared value is left as is."""
+        if n_s == 1 or value.dim() == 0 or value.shape[0] != n_c:
+            return value
+        return value.unsqueeze(0).expand(n_s, *value.shape).reshape(n_s * n_c, *value.shape[1:])
+
+    def _declared_do_step(self, step_size, step_index: int) -> None:
+        """One object-mode step of a declared System through ``forward``."""
+        n_c = self.n_c
+        n_s = next(iter({**self.input, **self.output}.values())).n_s
+        inputs = {name: self._fold(port.get(), n_s, n_c) for name, port in self.input.items()}
+        params = {
+            name: self._fold_parameter(rgetattr(self, name).get(), n_s, n_c) for name in self.PARAM_NAMES
+        }
+        stateful = bool(self.collect_states())
+        x = self._fold(self.get_state(), n_s, n_c) if stateful else None
+        x_next, outs = self.forward(x, inputs, params, self._scalar_step_size(step_size))
+        for name, port in self.output.items():
+            value = outs[name]
+            port._set(value.reshape(n_s, n_c, *value.shape[1:]), i_t=step_index)
+        if stateful:
+            self.set_state(x_next.reshape(n_s, n_c, x_next.shape[-1]))
+
+    @property
+    def config(self) -> dict:
+        """What the System saves with the model: ``{"parameters": [attribute
+        paths]}``."""
+        return self._config
+
+    @config.setter
+    def config(self, value: dict) -> None:
+        self._config = value
+
+    @property
+    def _batch_init_kwargs(self) -> dict:
+        """The constructor values a batched copy is built with: a declared
+        System's settings and child overrides."""
+        if type(self)._is_declared:
+            values = {name: getattr(self, name) for name in type(self)._declarations["setting"]}
+            values.update(self.__dict__.get("_child_overrides", {}))
+            return values
+        if "_batch_init_kwargs_value" in self.__dict__:
+            return self.__dict__["_batch_init_kwargs_value"]
+        raise AttributeError("_batch_init_kwargs")
+
+    @_batch_init_kwargs.setter
+    def _batch_init_kwargs(self, value: dict) -> None:
+        self.__dict__["_batch_init_kwargs_value"] = value
 
     @property
     def connects_at(self) -> list:
@@ -486,6 +747,10 @@ class System:
             start_time, end_time, step_size
         )
         batch_size = len(start_time)
+        if type(self)._is_declared:
+            n_c = int(getattr(self, "_n_c_batched", 1) or 1)
+            self._initialize_declared(max_timesteps, batch_size, max(n_c, self.n_c))
+            return
         for input in self.input.values():
             input.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
         for output in self.output.values():
@@ -507,7 +772,8 @@ class System:
             step_size (List[int]): The step size of the simulation in seconds.
             step_index (int): The current step index.
         """
-        pass
+        if type(self)._is_declared:
+            self._declared_do_step(step_size, step_index)
 
     # -- Continuous state (multiple-shooting / collocation estimation) --------
     # State is a first-class ``tps.State`` member (declared next to parameters /

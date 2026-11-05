@@ -14,6 +14,9 @@ Re-exported classes:
       NoStepRule, SetStepRule, OptionalRule, PathRule, AnyPathRule
     - SAREF4SYST base classes: System, Connection, ConnectionPoint, and
       AliasedPorts (the ports of a System that renamed some of them)
+    - The declarations a System is written with (ADR 0001): Input, Output,
+      State, Parameter, Setting, Child and REQUIRED.  ``core.Parameter``
+      declares a parameter; ``twin4build.Parameter`` is the runtime value.
 
 Defined here:
     - BlankNode: Sentinel for matching untyped RDF blank nodes in signature patterns
@@ -176,6 +179,13 @@ _PUBLIC_MODULES = {
     "ConnectionPoint": "twin4build.systems.saref4syst.connection_point",
     "System": "twin4build.systems.saref4syst.system",
     "AliasedPorts": "twin4build.systems.saref4syst.system",
+    "Input": "twin4build.systems.saref4syst.declarations",
+    "Output": "twin4build.systems.saref4syst.declarations",
+    "State": "twin4build.systems.saref4syst.declarations",
+    "Parameter": "twin4build.systems.saref4syst.declarations",
+    "Setting": "twin4build.systems.saref4syst.declarations",
+    "Child": "twin4build.systems.saref4syst.declarations",
+    "REQUIRED": "twin4build.systems.saref4syst.declarations",
     "Translator": "twin4build.translator.translator",
     "SignaturePattern": "twin4build.translator.translator",
     "Diff": "twin4build.translator.translator",
