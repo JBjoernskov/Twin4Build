@@ -148,7 +148,7 @@ def fcn(self):
     self.components["supply_air_temperature_sensor"].datecolumn = 2
     self.components["supply_air_temperature_sensor"].valuecolumn = 4
 
-    self.components["office_co2_setpoint"].weekDayRulesetDict = {
+    self.components["office_co2_setpoint"].weekday_ruleset = {
         "ruleset_default_value": 900,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
