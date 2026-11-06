@@ -372,21 +372,14 @@ def _clone_candidate(
         # matches the default CITS cascade candidate
         # (PID + PID).  Non-PID cascade members would need bespoke
         # cloning here; we fall back to re-using the same class.
-        return CascadeControllerSystem(
-            kp_a=_to_float(a.kp),
-            Ti_a=_to_float(a.Ti),
-            Td_a=_to_float(a.Td),
-            output_min_a=_to_float(a.output_min),
-            output_max_a=_to_float(a.output_max),
-            isReverse_a=bool(a.isReverse),
-            kp_b=_to_float(b.kp),
-            Ti_b=_to_float(b.Ti),
-            Td_b=_to_float(b.Td),
-            output_min_b=_to_float(b.output_min),
-            output_max_b=_to_float(b.output_max),
-            isReverse_b=bool(b.isReverse),
-            id=new_id,
-        )
+        def values(pid):
+            return {
+                "kp": _to_float(pid.kp), "Ti": _to_float(pid.Ti), "Td": _to_float(pid.Td),
+                "output_min": _to_float(pid.output_min), "output_max": _to_float(pid.output_max),
+                "is_reverse": bool(pid.is_reverse),
+            }
+
+        return CascadeControllerSystem(ctrl_a=values(a), ctrl_b=values(b), id=new_id)
 
     raise ValueError(
         f"Unsupported CITS candidate type '{candidate_type}' "

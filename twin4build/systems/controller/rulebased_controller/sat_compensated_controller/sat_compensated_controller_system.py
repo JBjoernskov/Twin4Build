@@ -6,7 +6,7 @@ from twin4build.systems.controller.setpoint_controller.cascade_controller.cascad
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
-from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
+from twin4build.systems.saref4syst.declarations import Child, Input, Output, Parameter
 from twin4build.systems.utils.smooth_saturation import clamp
 
 
@@ -122,65 +122,24 @@ class SATCompensatedControllerSystem(CascadeControllerSystem):
         - ``inputSignal``: Damper position command (0-1)
 
     Args:
-        base_position: Output at design SAT for SAT rule (default: 0.3)
-        sat_design: Design supply air temperature °C (default: 13.0)
-        gain: SAT compensation gain (default: 0.05)
-        output_min_a: Minimum flow setpoint from SAT rule (default: 0.0)
-        output_max_a: Maximum flow setpoint from SAT rule (default: 1.0)
-        kp_b: Proportional gain for inner PID (default: 0.5)
-        Ti_b: Integral time constant for inner PID (default: 5.0)
-        Td_b: Derivative time constant for inner PID (default: 0.0)
-        output_min_b: Minimum damper position (default: 0.0)
-        output_max_b: Maximum damper position (default: 1.0)
-        isReverse_b: Error direction for inner PID (default: True;
-            excess flow → close damper)
-        **kwargs: Additional keyword arguments (must include ``id``)
+        ctrl_a: The SAT rule's values, a dict (``base_position``,
+            ``sat_design``, ``gain``, ``output_min``, ``output_max``).
+        ctrl_b: The inner PID's values, a dict (``is_reverse`` True by
+            default: excess flow closes the damper).
 
     Example:
         >>> controller = SATCompensatedControllerSystem(
-        ...     base_position=0.3, sat_design=13.0, gain=0.05,
-        ...     kp_b=0.5, Ti_b=5.0, isReverse_b=True,
+        ...     ctrl_a=dict(base_position=0.3, sat_design=13.0, gain=0.05),
+        ...     ctrl_b=dict(kp=0.5, Ti=5.0, is_reverse=True),
         ...     id="sat_cascade_ctrl"
         ... )
     """
 
-    def __init__(
-        self,
-        # SAT rule parameters (ctrl_a)
-        base_position: float = 0.3,
-        sat_design: float = 13.0,
-        gain: float = 0.05,
-        output_min_a: float = 0.0,
-        output_max_a: float = 1.0,
-        # Inner PID parameters (ctrl_b)
-        kp_b: float = 0.5,
-        Ti_b: float = 5.0,
-        Td_b: float = 0.0,
-        output_min_b: float = 0.0,
-        output_max_b: float = 1.0,
-        isReverse_b: bool = True,
-        **kwargs,
-    ):
-        super().__init__(
-            controller_a=SATLinearRuleSystem,
-            controller_a_kwargs={
-                "base_position": base_position,
-                "sat_design": sat_design,
-                "gain": gain,
-                "output_min": output_min_a,
-                "output_max": output_max_a,
-            },
-            controller_b=PIDControllerSystem,
-            controller_b_kwargs={
-                "kp": kp_b,
-                "Ti": Ti_b,
-                "Td": Td_b,
-                "output_min": output_min_b,
-                "output_max": output_max_b,
-                "is_reverse": isReverse_b,
-            },
-            **kwargs,
-        )
+    #: The old flat names of the children's values (removed in 2.1).
+    DEPRECATED_KEYWORDS = {'base_position': 'ctrl_a.base_position', 'sat_design': 'ctrl_a.sat_design', 'gain': 'ctrl_a.gain', 'output_min_a': 'ctrl_a.output_min', 'output_max_a': 'ctrl_a.output_max', 'kp_b': 'ctrl_b.kp', 'Ti_b': 'ctrl_b.Ti', 'Td_b': 'ctrl_b.Td', 'output_min_b': 'ctrl_b.output_min', 'output_max_b': 'ctrl_b.output_max', 'isReverse_b': 'ctrl_b.is_reverse'}
+
+    ctrl_a = Child(SATLinearRuleSystem)
+    ctrl_b = Child(PIDControllerSystem, kp=0.5, Ti=5.0, Td=0.0, is_reverse=True)
 
 
 # Deprecated aliases (removed in twin4build 2.1)
