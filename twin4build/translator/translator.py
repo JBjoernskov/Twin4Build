@@ -1304,6 +1304,7 @@ class Translator:
                 LOGGER.debug("%s", row)
 
         def resolve_port_indices(
+            signature_pattern,
             groups_source,
             groups_target,
             output_port_index,
@@ -1313,6 +1314,9 @@ class Translator:
         ):
             """
             Resolve Node-based port indices to integer indices using group matching.
+
+            ``signature_pattern`` is the target's pattern (the one the index
+            Nodes belong to); it says which of its lists are paired.
 
             ``sm_for_output`` (default ``sm_for_index``) is the instance the
             output side looks up, when it differs from the input side's: a
@@ -1388,20 +1392,44 @@ class Translator:
                 return seen
 
             def _aligned(group, node, sm):
-                """The value ``node`` takes where ``sm`` is bound in ``group`` (``None``: ``sm`` not in it)."""
+                """The value ``node`` takes where ``sm`` is bound in ``group`` (``None``: ``sm`` not in it).
+
+                ``sm`` in a list the pattern pairs with ``node``
+                (:meth:`SignaturePattern._paired`) gives ``node``'s value at
+                ``sm``'s position.  Otherwise ``node`` must hold one value
+                there: a list of several says nothing about which one is
+                ``sm``'s, and raises (it used to give the first)."""
                 value = group.get(node)
                 if value is None:
                     return None
-                for bound in group.values():
-                    if isinstance(bound, tuple):
-                        if sm not in bound:
-                            continue
-                        if isinstance(value, tuple):
-                            return value[bound.index(sm)] if len(value) == len(bound) else value[0]
-                        return value
-                    if bound == sm:
-                        return value[0] if isinstance(value, tuple) else value
-                return None
+                holders = [
+                    (sp_node, bound)
+                    for sp_node, bound in group.items()
+                    if (isinstance(bound, tuple) and sm in bound)
+                    or (not isinstance(bound, tuple) and bound == sm)
+                ]
+                if not holders:
+                    return None
+                if not isinstance(value, tuple):
+                    return value
+                for sp_node, bound in holders:
+                    if isinstance(bound, tuple) and signature_pattern._paired(sp_node, node):
+                        if len(bound) != len(value):
+                            raise ValueError(
+                                f"Signature pattern {signature_pattern.id!r}: {sp_node.id!r} has "
+                                f"{len(bound)} values and {node.id!r} {len(value)} in one match, "
+                                "though the pattern pairs them position by position."
+                            )
+                        return value[bound.index(sm)]
+                distinct = [v for i, v in enumerate(value) if v not in value[:i]]
+                if len(distinct) == 1:
+                    return distinct[0]
+                raise ValueError(
+                    f"Signature pattern {signature_pattern.id!r}: the slot of {sm} is read "
+                    f"from {node.id!r}, a list of {len(distinct)} values that the pattern's "
+                    f"rules do not pair with {', '.join(repr(n.id) for n, _ in holders)} "
+                    "(where it is bound), so which value is its slot is undefined."
+                )
 
             # Resolve each side independently so Vector->Vector connections
             # (both ``output_port_index`` and ``input_port_index`` as Nodes) get
@@ -1682,6 +1710,16 @@ class Translator:
                                             )
                                             if index_node is not None:
                                                 with_index = [g for g in groups if index_node in g]
+                                                # A list sender indexed by another list
+                                                # (``spaces`` by ``vavs`` in an AHU's
+                                                # match): this sender takes the index
+                                                # values at its own positions only.
+                                                sender_lists = [
+                                                    g for g in with_index
+                                                    if isinstance(g.get(sp_subject), tuple)
+                                                    and sm_subject in g[sp_subject]
+                                                    and isinstance(g[index_node], tuple)
+                                                ]
                                                 binding_sender = [
                                                     g for g in with_index
                                                     if any(
@@ -1690,10 +1728,15 @@ class Translator:
                                                         for v in g.values()
                                                     )
                                                 ]
-                                                for group in (binding_sender or with_index)[:1]:
-                                                    elements = Translator._iter_binding(group[index_node])
-                                                    if elements:
-                                                        sm_for_index_list = list(elements)
+                                                if sender_lists:
+                                                    sm_for_index_list = Translator._paired_elements(
+                                                        sp, sp_subject, index_node, sm_subject, sender_lists
+                                                    )
+                                                else:
+                                                    for group in (binding_sender or with_index)[:1]:
+                                                        elements = Translator._iter_binding(group[index_node])
+                                                        if elements:
+                                                            sm_for_index_list = list(elements)
 
                                         # The input index is the sender, the output index another
                                         # node of this pattern (``sp.add_connection(boxes,
@@ -1733,11 +1776,15 @@ class Translator:
                                                 break
 
                                         # A set-bound index node that is not the sender
-                                        # (a zone's VAVs indexing the AHU's branches)
-                                        # yields one candidate edge per element.
+                                        # yields one candidate edge per element: all of
+                                        # them for a single sender (a zone's VAVs
+                                        # indexing the AHU's branches), the ones at its
+                                        # own positions for a list sender (a room's
+                                        # VAVs among an AHU's, _paired_elements).
                                         for sm_for_index in sm_for_index_list:
                                             resolved_output_idx, resolved_input_idx = (
                                                 resolve_port_indices(
+                                                    sp,
                                                     p_groups,
                                                     groups,
                                                     output_port_index,
@@ -2880,6 +2927,52 @@ class Translator:
         if isinstance(value, (tuple, list)):
             return tuple(value)
         return (value,)
+
+    @staticmethod
+    def _paired_elements(signature_pattern, sender_node, index_node, sender, groups) -> List[Any]:
+        """The values of ``index_node`` at the positions where ``sender_node``
+        holds ``sender``, over ``groups`` (first seen first, no repeats).
+
+        Both nodes are lists in these groups.  In an AHU's match ``vavs`` is
+        every VAV the unit feeds and ``spaces``, reached from it by
+        ``StepRule(subject=vavs, object=spaces)``, the room of each VAV:
+
+        ========  ===========  ===========
+        position  vavs         spaces
+        ========  ===========  ===========
+        0         VAV_R1_0     R1
+        1         VAV_R1_1     R1
+        2         VAV_R2_0     R2
+        ========  ===========  ===========
+
+        so ``sp.add_connection(spaces, "indoorTemperature",
+        "exhaustTemperature", input_port_index=vavs)`` puts R1 on the slots of
+        VAV_R1_0 and VAV_R1_1 and R2 on VAV_R2_0's.  Two lists the pattern
+        does not pair (:meth:`SignaturePattern._paired`) say nothing about
+        which value belongs to which sender, and raise.
+        """
+        if not signature_pattern._paired(sender_node, index_node):
+            raise ValueError(
+                f"Signature pattern {signature_pattern.id!r}: a connection from "
+                f"{sender_node.id!r} takes its slots from {index_node.id!r}, and both are "
+                "lists that the pattern's rules do not pair (neither is reached from the "
+                "other by a rule), so which slot belongs to which sender is undefined.  "
+                f"Index the slots by {sender_node.id!r} itself, or by a node a rule links "
+                "it to."
+            )
+        elements: List[Any] = []
+        for group in groups:
+            senders, values = group[sender_node], group[index_node]
+            if len(values) != len(senders):
+                raise ValueError(
+                    f"Signature pattern {signature_pattern.id!r}: {sender_node.id!r} has "
+                    f"{len(senders)} values and {index_node.id!r} {len(values)} in one match, "
+                    "though the pattern pairs them position by position."
+                )
+            for s, v in zip(senders, values):
+                if s == sender and v is not None and v not in elements:
+                    elements.append(v)
+        return elements
 
     @staticmethod
     def _binding_short_name(value) -> Optional[str]:
@@ -5902,6 +5995,10 @@ class SignaturePattern:
         # and propagated via :meth:`_propagate_set_bound` (fixed-point closure
         # over downstream rule subjects).
         self._set_bound_nodes: set = set()
+        # The objects of the set rules themselves, and for each set-bound
+        # node the set rule object its list comes from (see ``_paired``).
+        self._set_rule_objects: set = set()
+        self._set_roots: Dict[Node, Optional[Node]] = {}
         # self._pedantic = pedantic
         self._has_equivalent = []
         self._is_equivalent_of = []
@@ -6149,6 +6246,7 @@ class SignaturePattern:
         for sub_rule in rule.rules:
             if isinstance(sub_rule, SetStepRule):
                 self._set_bound_nodes.add(sub_rule.object)
+                self._set_rule_objects.add(sub_rule.object)
         self._propagate_set_bound()
 
     def add_triple(self, rule):
@@ -6182,6 +6280,38 @@ class SignaturePattern:
                 if subj in self._set_bound_nodes and obj not in self._set_bound_nodes:
                     self._set_bound_nodes.add(obj)
                     changed = True
+
+        # Which set rule each list comes from.  A set rule's object starts a
+        # list of its own; a node reached from a list by a step is filled once
+        # per element of that list, in its order, so it is paired with it
+        # (``spaces`` reached from ``vavs`` is "the room of each VAV").  A
+        # node reached from two different lists is paired with neither.
+        roots: Dict[Node, Optional[Node]] = {n: n for n in self._set_rule_objects}
+        changed = True
+        while changed:
+            changed = False
+            for (subj, _pred, obj), _rule in self._ruleset.items():
+                if subj not in roots or obj in self._set_rule_objects:
+                    continue
+                root = roots[subj]
+                if obj not in roots:
+                    roots[obj] = root
+                    changed = True
+                elif roots[obj] is not None and roots[obj] is not root:
+                    roots[obj] = None
+                    changed = True
+        self._set_roots = roots
+
+    def _paired(self, a: Node, b: Node) -> bool:
+        """Whether the lists bound to ``a`` and ``b`` line up position by
+        position in every match: the same node, or two nodes filled from the
+        same set rule (``vavs`` and ``spaces`` in
+        ``StepRule(subject=vavs, object=spaces)``).  Lists that merely have
+        the same length are not paired."""
+        if a is b:
+            return True
+        root = self._set_roots.get(a)
+        return root is not None and root is self._set_roots.get(b)
 
     def add_connection(
         self,
@@ -6236,7 +6366,12 @@ class SignaturePattern:
               be from this (target) signature pattern. The index/indices are
               determined by the ordering of groups matching this Node. This is the
               primary way to specify index mapping as it directly relates to the
-              target component's structure.
+              target component's structure.  When the sender is a list too
+              and the Node is another list, the two must be paired: filled
+              from the same set rule, one reached from the other by a rule
+              (:meth:`_paired`).  Each sender then fills the slots at its own
+              positions, several of them for a sender that appears more than
+              once; lists the pattern does not pair raise ``ValueError``.
             - torch.Tensor: Fill multiple slots at these indices
 
         Connection Type Summary
@@ -6256,6 +6391,14 @@ class SignaturePattern:
 
         >>> sp.add_connection(spaces, "indoorTemperature", "exhaustTemperature",
         ...                   input_port_index=spaces)
+
+        One slot per VAV, each room on the slots of its own VAVs (``spaces`` is
+        the room of each VAV, so the two lists are paired):
+
+        >>> sp.add_rule(SetStepRule(subject=ahu, object=vavs, predicate=BRICK.feeds))
+        >>> sp.add_rule(StepRule(subject=vavs, object=spaces, predicate=BRICK.feeds))
+        >>> sp.add_connection(spaces, "indoorTemperature", "exhaustTemperature",
+        ...                   input_port_index=vavs)
 
         Vector to scalar - pick element corresponding to a specific space:
 

@@ -98,6 +98,15 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 ### Added
 
+- One scalar output can fill several slots of a Vector input:
+  `model.add_connection(room, ahu, "indoorTemperature", "exhaustTemperature",
+  input_port_index=[1, 2])` puts the room's temperature on the exhaust slot of
+  both AHU branches serving it, as one connection (wiring the same pair again
+  on other slots adds them to it; a slot listed twice is an error).  Both
+  engines route it, the port is sized by its highest slot, and it serializes
+  as a list.  A Vector input can then be wired one slot per branch where it
+  used to be one slot per room (the AHU's branch -> room map is then not
+  needed: it comes out `None`).
 - `SpaceHeaterSystem.toRadiatorPower`: the heat the radiator takes from the
   heating circuit, `waterFlowRate * c_p * (supplyWaterTemperature -
   outletWaterTemperature)`, which is what a heat meter on the circuit
@@ -446,6 +455,19 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 ### Changed
 
+- Translator: a list sender whose slots come from another list of the same
+  match takes the slots at its own positions.  In an AHU's pattern,
+  `vavs` is every VAV the unit feeds and `spaces`, reached by
+  `StepRule(subject=vavs, object=spaces)`, the room of each VAV; with
+  `sp.add_connection(spaces, "indoorTemperature", "exhaustTemperature",
+  input_port_index=vavs)` each room lands on the slots of its own VAVs, the
+  same slots the VAVs' damper commands take.  Every room used to get every
+  VAV's slot, and one of them kept all of them.  Two lists are paired when
+  they are filled from the same set rule (`SignaturePattern._paired`), not
+  when they have the same length; a connection between lists the pattern
+  does not pair raises `ValueError`, as does a slot read from a list of
+  several values with nothing pairing it to the sender (it used to take the
+  first).
 - `FanSystem`: the power curve in Bernstein form over a fixed flow range.
   `beta0` .. `beta3` [W] (the power at the curve's control points, each
   `>= 0`, so the power is `>= 0` over the whole range) replace
