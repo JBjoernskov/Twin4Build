@@ -205,7 +205,6 @@ def test_truth_values_are_physical_after_replication():
     )
     # untouched by the truth: still the canonical example's values
     assert float(comps["zone_0__office_occupancy_detector"].steepness.get()) == 10.0
-    assert float(comps["zone_0__office"].thermal.C_boundary.get()) == pytest.approx(1e6, rel=1e-6)
 
 
 def test_batched_model_cuts_cycles_where_the_source_model_does():

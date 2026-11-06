@@ -809,7 +809,12 @@ class FunctionalModel:
         skipped.
         """
         specs = []
+        defaults = comp.input_defaults() if hasattr(comp, "input_defaults") else {}
         for port in comp.input.keys():
+            if port in defaults:  # unwired, it reads another input
+                sources = self._trace_sources(comp, defaults[port])
+                specs.append((port, self._classify_sources(comp, (comp.id, defaults[port]), sources)))
+                continue
             if isinstance(comp.input[port], tps.Vector):
                 populated = dict(self._vector_slot_sources(comp, port))
                 n_v = int(getattr(comp.input[port], "n_v", 0) or 0)

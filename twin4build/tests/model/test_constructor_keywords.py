@@ -57,19 +57,22 @@ class TestUnknownKeywords(unittest.TestCase):
     def test_an_unknown_keyword_raises_naming_it(self):
         with self.assertRaisesRegex(TypeError, r"PIDControllerSystem.*'isReverse'"):
             tb.PIDControllerSystem(id="pid", isReverse=True)
-        # the composite room takes its submodels' values through thermal_kwargs / mass_kwargs only
+        # the composite room takes its children's values as dicts only
         with self.assertRaisesRegex(TypeError, r"BuildingSpaceSystem.*'C_air'"):
             tb.BuildingSpaceSystem(id="room", C_air=1e5)
-        room = tb.BuildingSpaceSystem(id="room", thermal_kwargs={"C_air": 1e5})
+        room = tb.BuildingSpaceSystem(id="room", thermal={"C_air": 1e5})
         self.assertAlmostEqual(float(room.thermal.C_air.get()), 1e5, delta=1e-6)
+        with self.assertWarns(DeprecationWarning):  # the old name, until 2.1
+            room = tb.BuildingSpaceSystem(id="room", thermal_kwargs={"C_air": 2e5})
+        self.assertAlmostEqual(float(room.thermal.C_air.get()), 2e5, delta=1e-6)
 
     def test_constructor_keywords_follow_the_chain(self):
         pid = tb.PIDControllerSystem.constructor_keywords()
         self.assertTrue({"kp", "Ti", "Td", "is_reverse", "id"} <= pid)
         self.assertNotIn("isReverse", pid)
         self.assertEqual(
-            tb.BuildingSpaceSystem.constructor_keywords() & {"thermal_kwargs", "mass_kwargs", "id"},
-            {"thermal_kwargs", "mass_kwargs", "id"},
+            tb.BuildingSpaceSystem.constructor_keywords() & {"thermal", "mass", "thermal_kwargs", "mass_kwargs", "id"},
+            {"thermal", "mass", "thermal_kwargs", "mass_kwargs", "id"},
         )
 
     def test_a_deprecated_keyword_a_class_translates_still_works(self):

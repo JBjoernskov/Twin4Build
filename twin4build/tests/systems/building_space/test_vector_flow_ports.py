@@ -40,8 +40,8 @@ def _schedule(id_, value):
 def _zone(id_):
     return BuildingSpaceSystem(
         id=id_,
-        thermal_kwargs=dict(C_wall=1e6, C_air=1e4, C_boundary=5e5, R_out=0.01, R_in=0.02, R_boundary=0.03, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
-        mass_kwargs=dict(V=100.0),
+        thermal=dict(C_wall=1e6, C_air=1e4, R_out=0.01, R_in=0.02, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
+        mass=dict(V=100.0),
     )
 
 
@@ -183,11 +183,8 @@ class TestVectorFlowPorts(unittest.TestCase):
         # lag), so slot k of zone B at step t is branch k+1 at step t-1.
         torch.testing.assert_close(zone_b_slots[1:, ..., 0], branch_flows[:-1, ..., 1])
         torch.testing.assert_close(zone_b_slots[1:, ..., 1], branch_flows[:-1, ..., 2])
-        # The submodels see the total.
-        torch.testing.assert_close(
-            zones["B"].thermal.input["supplyAirFlowRate"]._history.reshape(zone_b_slots.shape[:-1]),
-            zone_b_slots.sum(dim=-1),
-        )
+        # The submodels see the total: the room's forward sums the slots for
+        # them (a child's own ports are never written).
         # Branches 1 and 2 carry more air than branch 0 (dampers 0.4 + 0.6 > 0.8),
         # so zone B must be ventilated harder than zone A.
         self.assertGreater(float(zone_b_slots.sum(dim=-1).mean()), float(branch_flows[..., 0].mean()))

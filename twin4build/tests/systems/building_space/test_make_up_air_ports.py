@@ -1,7 +1,7 @@
-"""``makeUpAirCO2`` / ``makeUpAirTemperature``: unwired is the classic
-balance bit for bit; wired, the make-up stream carries the port's state and
-only the exhaust-deficit case can see it.  ``supplyAirCO2`` the same way for
-the supply stream."""
+"""``makeUpAirCO2`` / ``makeUpAirTemperature``: unwired, the port reads the
+outdoor value (``Input(default=...)``), the classic balance; wired, the
+make-up stream carries the port's state and only the exhaust-deficit case
+can see it.  ``supplyAirCO2`` the same way for the supply stream."""
 
 # Standard library imports
 import datetime
@@ -63,16 +63,15 @@ class TestMassMakeUpPort(unittest.TestCase):
         self.x0 = torch.full((1, 1), 900.0, dtype=torch.float64)
 
     def _step(self, m_sup, m_exh, make_up=None, wired=False):
-        self.room._make_up_wired = wired
         inputs = {
             "supplyAirFlowRate": _t(m_sup),
             "exhaustAirFlowRate": _t(m_exh),
             "outdoorCo2Concentration": _t(400.0),
             "numberOfPeople": _t(0.0),
         }
-        if make_up is not None:
+        if make_up is not None and wired:  # unwired, the engine passes the outdoor value
             inputs["makeUpAirCO2"] = _t(make_up)
-        x1, _ = self.room.forward(self.x0, inputs, self.room.full_params(dict(self.params), DT), DT)
+        x1, _ = self.room.forward(self.x0, self.room.with_defaults(inputs), self.room.full_params(dict(self.params), DT), DT)
         return float(x1[0, 0])
 
     def test_unwired_ignores_the_port(self):
@@ -103,8 +102,8 @@ class TestMassMakeUpPort(unittest.TestCase):
 
 
 class TestMassSupplyPort(unittest.TestCase):
-    """``supplyAirCO2``: unwired the supply stream brings outdoor air (the
-    columns bit for bit); wired, it brings the port's concentration."""
+    """``supplyAirCO2``: unwired the supply stream brings outdoor air; wired,
+    it brings the port's concentration."""
 
     def setUp(self):
         self.room = tb.BuildingSpaceMassSystem(V=120.0, G_occ=5e-6, m_inf=0.004, id="room")
@@ -113,16 +112,15 @@ class TestMassSupplyPort(unittest.TestCase):
         self.x0 = torch.full((1, 1), 900.0, dtype=torch.float64)
 
     def _step(self, m_sup, m_exh, supply=None, wired=False):
-        self.room._supply_wired = wired
         inputs = {
             "supplyAirFlowRate": _t(m_sup),
             "exhaustAirFlowRate": _t(m_exh),
             "outdoorCo2Concentration": _t(400.0),
             "numberOfPeople": _t(0.0),
         }
-        if supply is not None:
+        if supply is not None and wired:  # unwired, the engine passes the outdoor value
             inputs["supplyAirCO2"] = _t(supply)
-        x1, _ = self.room.forward(self.x0, inputs, self.room.full_params(dict(self.params), DT), DT)
+        x1, _ = self.room.forward(self.x0, self.room.with_defaults(inputs), self.room.full_params(dict(self.params), DT), DT)
         return float(x1[0, 0])
 
     def test_unwired_ignores_the_port(self):
@@ -145,13 +143,16 @@ class TestMassSupplyPort(unittest.TestCase):
 
     def test_layout_support_and_matrices(self):
         self.room.n_exchanges = 1
-        unwired = self.room._build_matrices(dict(self.params))
-        # the room model's matrices carry the envelope inflow's column, last (28 Oct 2026)
-        for a, b in zip(unwired, mass_matrices(_t(120.0), _t(5e-6), _t(0.004), 1, n_exchanges=1, infiltration_column=True)):
+        built = self.room._build_matrices(dict(self.params))
+        # the make-up and supply CO2 columns are always there (unwired, they
+        # read the outdoor CO2); the envelope inflow's column is last
+        expected = mass_matrices(
+            _t(120.0), _t(5e-6), _t(0.004), 1, make_up_co2_slot=MAKE_UP_CO2_SLOT, n_exchanges=1, supply_co2=True,
+            infiltration_column=True,
+        )
+        for a, b in zip(built, expected):
             torch.testing.assert_close(a, b, rtol=0, atol=0)
-        self.assertEqual(unwired[1].shape[-1], N_INPUTS + 2)
 
-        self.room._supply_wired = True
         u = [name for name, _ in self.room._ss_layout()["u"]]
         self.assertEqual(u[SUPPLY_CO2_SLOT : SUPPLY_CO2_SLOT + 2], ["supplyAirCO2", "exchangeCO2Gain"])
         self.assertIn((0, 0, SUPPLY_CO2_SLOT), self.room._ss_support()["F"])
@@ -196,15 +197,17 @@ class TestCompositeWiring(unittest.TestCase):
 
     def test_the_submodels_see_the_wired_ports(self):
         room = self._room(wired=True)
-        self.assertTrue(room.thermal._make_up_wired)
-        self.assertTrue(room.mass._make_up_wired)
-        self.assertTrue(room.mass._supply_wired)
+        self.assertEqual(room.input_defaults(), {})
         # 0.1 kg/s at 600 ppm and 0.1 kg/s at 700 ppm (plus a little outdoor
         # infiltration): the room settles near 650, not at the outdoor 400
         co2 = float(room.output["indoorCO2"].get().reshape(-1)[0])
         self.assertGreater(co2, 600.0)
         unwired = self._room(wired=False)
-        self.assertFalse(unwired.thermal._make_up_wired or unwired.mass._make_up_wired or unwired.mass._supply_wired)
+        self.assertEqual(
+            unwired.input_defaults(),
+            {"makeUpAirTemperature": "outdoorTemperature", "makeUpAirCO2": "outdoorCo2Concentration",
+             "supplyAirCO2": "outdoorCo2Concentration"},
+        )
         self.assertLess(float(unwired.output["indoorCO2"].get().reshape(-1)[0]), 450.0)
 
 
@@ -218,10 +221,9 @@ class TestThermalMakeUpPort(unittest.TestCase):
         )
         self.zone.initialize([START], [START + datetime.timedelta(hours=1)], [DT])
         self.params = self.zone._forward_params()
-        self.x0 = self.zone.ss_model.get_state()
+        self.x0 = self.zone.get_state()
 
     def _step(self, m_sup, m_exh, make_up=None, wired=False):
-        self.zone._make_up_wired = wired
         inputs = {
             "outdoorTemperature": _t(self.T_O),
             "supplyAirFlowRate": _t(m_sup),
@@ -231,9 +233,9 @@ class TestThermalMakeUpPort(unittest.TestCase):
             "numberOfPeople": _t(0.0),
             "heatGain": _t(0.0),
         }
-        if make_up is not None:
+        if make_up is not None and wired:  # unwired, the engine passes the outdoor value
             inputs["makeUpAirTemperature"] = _t(make_up)
-        x1, _ = self.zone.forward(self.x0, inputs, self.zone.full_params(dict(self.params), DT), DT)
+        x1, _ = self.zone.forward(self.x0, self.zone.with_defaults(inputs), self.zone.full_params(dict(self.params), DT), DT)
         return float(x1[..., 0].reshape(-1)[0])
 
     def test_unwired_ignores_the_port(self):

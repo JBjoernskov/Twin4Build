@@ -1782,9 +1782,9 @@ class Model:
     # Keyed by fully-qualified class name.  Supports dotted paths for
     # composite components (e.g. ``"thermal.some_attr"``).
     _INIT_ATTRS_TO_COPY: Dict[str, Tuple[str, ...]] = {
-        # A declared System's settings build its meta (``_batch_init_kwargs``):
-        # the wall, the node, the radiator and the fan-coil need no entry.
-        "twin4build.systems.building_space.building_space_system.BuildingSpaceSystem": (),
+        # A declared System's settings build its meta (``_batch_init_kwargs``)
+        # and its wiring sizes its ports: the wall, the node, the radiator,
+        # the fan-coil and the room need no entry.
         "twin4build.systems.controller.setpoint_controller.pid_controller"
         ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
     }
@@ -1815,11 +1815,6 @@ class Model:
         has the correct structural values (e.g. ``nelements``) even though
         ``_batch_parameters`` only handles ``tps.Parameter`` objects.
         Supports dotted paths for composite components.
-
-        Additionally, for composite building-space components, topology
-        values (``n_walls``, ``n_boundary_temperature``) are
-        computed from the source component's connection graph -- which is
-        available even before ``initialize()`` has been called.
         """
         fqn = f"{source.__class__.__module__}.{source.__class__.__name__}"
         attrs = self._INIT_ATTRS_TO_COPY.get(fqn, ())
@@ -1827,26 +1822,6 @@ class Model:
             val = self._resolve_dotted_attr(source, attr)
             if val is not None:
                 self._set_dotted_attr(meta, attr, val)
-
-        # For BuildingSpaceSystem: derive topology from the source
-        # component's connects_at (populated by model.load()) and push
-        # it through the thermal sub-model's setter so the manual flag
-        # is set and initialize() skips its own connects_at discovery.
-        if source.__class__.__name__ == "BuildingSpaceSystem":
-            cp_boundary = [
-                cp
-                for cp in source.connects_at
-                if cp.input_port == "boundaryTemperature"
-            ]
-            n_boundary = (
-                len(cp_boundary[0].connects_system_through) if cp_boundary else 0
-            )
-            cp_wall = [
-                cp for cp in source.connects_at if cp.input_port == "wallHeatGain"
-            ]
-            n_walls = len(cp_wall[0].connects_system_through) if cp_wall else 0
-            meta.thermal.n_walls = n_walls
-            meta.thermal.n_boundary_temperature = n_boundary
 
     # -- signature helpers ------------------------------------------------
 

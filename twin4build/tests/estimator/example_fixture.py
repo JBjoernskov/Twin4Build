@@ -78,10 +78,8 @@ def example_parameters(model):
     return [
         (space, "thermal.C_air", 2e6, 1e6, 1e7),
         (space, "thermal.C_wall", 2e6, 1e6, 1e7),
-        (space, "thermal.C_boundary", 5e5, 1e4, 1e6),
         (space, "thermal.R_out", 0.01, 1e-3, 0.1),
         (space, "thermal.R_in", 0.05, 1e-3, 0.5),
-        (space, "thermal.R_boundary", 0.05, 1e-3, 0.5),
         (space, "thermal.f_wall", 0.5, 0.01, 0.99),
         (space, "thermal.f_air", 0.5, 0.01, 0.99),
         (space, "mass.V", 80, 10, 300),

@@ -110,7 +110,7 @@ def _forward_step(m_sup, m_exh, c_prev, n_people, dt=DT, transform_mode=None):
     }
     x0 = torch.full((1, 1), c_prev, dtype=torch.float64)
     with traceable(bool(transform_mode)):
-        x1, _ = room.forward(x0, inputs, room.full_params(params, dt), dt)
+        x1, _ = room.forward(x0, room.with_defaults(inputs), room.full_params(params, dt), dt)
     return float(x1[0, 0])
 
 
@@ -289,7 +289,7 @@ class TestInversionRoundTrip(unittest.TestCase):
         with traceable():
             x1, _ = room.forward(
                 c_prev.unsqueeze(-1),
-                {**flows, "numberOfPeople": people},
+                room.with_defaults({**flows, "numberOfPeople": people}),
                 room.full_params(mass_params, DT_AHU),
                 DT_AHU,
             )

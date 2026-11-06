@@ -802,6 +802,17 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             self._do_step_params = params
         return params
 
+    def input_defaults(self) -> dict:
+        """The members' unwired inputs that read another of their inputs,
+        by their namespaced names (``"<member>.<input>"``)."""
+        out = {}
+        for m in self._members:
+            for port, source in m.input_defaults().items():
+                name, read = f"{m.id}.{port}", f"{m.id}.{source}"
+                if name in self._input and read in self._input:
+                    out[name] = read
+        return out
+
     def do_step(
         self,
         second_time=None,
@@ -820,6 +831,9 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         ``wallHeatGain`` from a wall) keeps the value and history it had
         before fusion."""
         inputs = {name: self._input[name].get() for name in self._ext_names}
+        for name, source in self.input_defaults().items():
+            if name in inputs:
+                inputs[name] = self._input[source].get()
         x = self.get_state()  # (n_s, n_c, N) via the members' own states
         x_next, outs = self.forward(
             x, inputs, self._forward_params(step_size), self._scalar_step_size(step_size)
