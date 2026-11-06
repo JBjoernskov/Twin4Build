@@ -54,7 +54,10 @@ def resolve_sub_params(sub, prefix, params):
     out = {}
     for name in sub.PARAM_NAMES:
         key = f"{prefix}.{name}"
-        out[name] = params[key] if key in params else getattr(sub, name).get()
+        if key in params:
+            out[name] = params[key]
+        elif getattr(sub, name) is not None:  # an absent (optional) parameter stays out
+            out[name] = getattr(sub, name).get()
     return out
 
 

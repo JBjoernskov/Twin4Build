@@ -1868,6 +1868,16 @@ class Model:
                 else getattr(component, "config", {}).get("parameters", ())
             )
         )
+        # Copies of a class with an optional parameter batch only with copies
+        # that have it, or that lack it, too (their parameter sets differ).
+        absent = []
+        for name in getattr(component, "PARAM_NAMES", ()):
+            try:
+                if rgetattr(component, name) is None:
+                    absent.append(name)
+            except AttributeError:
+                pass
+        parameter_keys = parameter_keys + (("absent",) + tuple(absent) if absent else ())
 
         # A component that only replays recorded data (a controller in
         # playback) is exogenous to the functional composer while its

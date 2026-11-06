@@ -74,8 +74,9 @@ def session_signature(model, step_size, max_t, n_periods, date_time_steps):
             )
         )
         for name in getattr(component, "PARAM_NAMES", ()):
-            value = rgetattr(component, name).get()
-            parameters.append((component.id, name, _tensor_signature(value)))
+            value = rgetattr(component, name)
+            # an absent optional parameter is part of the signature as None
+            parameters.append((component.id, name, None if value is None else _tensor_signature(value.get())))
     sim_model = getattr(model, "_simulation_model", None) or model
     return (
         tuple(topology),
@@ -215,7 +216,9 @@ class FunctionalSimulationSession:
         for component in self.functional_model.cone:
             stable = self.functional_model._default_params[component.id]
             for name in getattr(component, "PARAM_NAMES", ()):
-                stable[name].copy_(rgetattr(component, name).get())
+                value = rgetattr(component, name)
+                if value is not None:  # an absent optional parameter has no default
+                    stable[name].copy_(value.get())
         self.functional_model._theta_param_cache = None
 
     def _exogenous_sources(self, component, key):

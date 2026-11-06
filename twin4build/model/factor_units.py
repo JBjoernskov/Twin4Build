@@ -174,7 +174,7 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
                 id=f"{unit_id}_terminal{b}",
                 a=_per_branch(sd.a, b, n),
                 nominalAirFlowRate=_per_branch(sd.nominalAirFlowRate, b, n),
-                c=None if sd.c_tied else _per_branch(sd.c, b, n),
+                c=None if sd.c is None else _per_branch(sd.c, b, n),
                 exhaustFlowRatio=ratio if follows else 1.0,
             )
         )
@@ -185,7 +185,7 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
                     id=f"{unit_id}_exhaust_terminal{b}",
                     a=_per_branch(ed.a, b, n),
                     nominalAirFlowRate=_per_branch(ed.nominalAirFlowRate, b, n),
-                    c=None if ed.c_tied else _per_branch(ed.c, b, n),
+                    c=None if ed.c is None else _per_branch(ed.c, b, n),
                 )
             )
     supply_junction = SupplyFlowJunctionSystem(id=f"{unit_id}_supply_junction")

@@ -145,7 +145,7 @@ class TestVectorFlowPorts(unittest.TestCase):
         import shutil
 
         model, ahu, zones = build_model("vector_flow_ports_offset")
-        ahu.supply_damper.set_c(0.02 - float(ahu.supply_damper.a.get().reshape(-1)[0]))
+        ahu.supply_damper.c = 0.02 - float(ahu.supply_damper.a.get().reshape(-1)[0])
         model.load()
         tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
         reference = ahu.output["supplyAirFlowRate"]._history.detach().clone()
@@ -158,8 +158,8 @@ class TestVectorFlowPorts(unittest.TestCase):
             reloaded = tb.Model(id="vector_flow_ports_offset_reloaded")
             reloaded.load(filename=path)
             ahu2 = reloaded.components["ahu"]
-            self.assertFalse(ahu2.supply_damper.c_tied)
-            self.assertTrue(ahu2.exhaust_damper.c_tied)
+            self.assertIsNotNone(ahu2.supply_damper.c)
+            self.assertIsNone(ahu2.exhaust_damper.c)
             for mode in ("object", "functional"):
                 tb.Simulator(reloaded, execution_mode=mode).simulate(**self._kwargs())
                 torch.testing.assert_close(ahu2.output["supplyAirFlowRate"]._history, reference, msg=mode)

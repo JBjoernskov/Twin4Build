@@ -146,8 +146,9 @@ def recording_parameter_signature(model):
     signature = []
     for component in order:
         for name in getattr(component, "PARAM_NAMES", ()):
+            value = rgetattr(component, name)
             signature.append(
-                (component.id, name, _content_signature(rgetattr(component, name).get()))
+                (component.id, name, None if value is None else _content_signature(value.get()))
             )
     return tuple(signature)
 
@@ -386,6 +387,7 @@ class FunctionalModel:
             comp.id: {
                 name: rgetattr(comp, name).get()
                 for name in getattr(comp, "PARAM_NAMES", ())
+                if rgetattr(comp, name) is not None  # an absent (optional) parameter
             }
             for comp in self.cone
         }
@@ -1164,7 +1166,7 @@ class FunctionalModel:
             for name in comp.PARAM_NAMES:
                 if name in est:
                     p[name] = theta[est[name]].reshape(-1)
-                else:
+                elif name in self._default_params[comp.id]:
                     p[name] = self._default_params[comp.id][name]
         # Prefixed estimated params (composite: "thermal.C_air") -> pass through.
         for attr, idx in est.items():

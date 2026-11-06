@@ -88,7 +88,7 @@ class TestDamperTorchSystem(unittest.TestCase):
             return damper.output["airFlowRate"].get().item()
 
         tied = DamperSystem(id="tied", a=1.0, nominalAirFlowRate=0.5)
-        self.assertTrue(tied.c_tied)
+        self.assertIsNone(tied.c)
         self.assertNotIn("c", [e[1] for e in tied.get_estimable_parameters()])
         self.assertAlmostEqual(flow(tied, 0.0), 0.0)
         tied.a = twin4build.utils.types.Parameter(torch.tensor(2.0), requires_grad=False, scaling="log")
@@ -96,14 +96,14 @@ class TestDamperTorchSystem(unittest.TestCase):
         self.assertAlmostEqual(flow(tied, 1.0), 0.5, places=6)
 
         free = DamperSystem(id="free", a=1.0, nominalAirFlowRate=0.5, c=-0.9)
-        self.assertFalse(free.c_tied)
+        self.assertIsNotNone(free.c)
         self.assertIn("c", [e[1] for e in free.get_estimable_parameters()])
         self.assertAlmostEqual(flow(free, 0.0), 0.1, places=6)   # minimum flow a + c
         self.assertAlmostEqual(flow(free, 1.0), 0.5, places=6)   # still the nominal flow
 
         untied = DamperSystem(id="untied", a=1.0, nominalAirFlowRate=0.5)
-        untied.set_c(-1.2)  # below -a: a dead band, never a negative flow
-        self.assertFalse(untied.c_tied)
+        untied.c = -1.2  # below -a: a dead band, never a negative flow
+        self.assertIsNotNone(untied.c)
         self.assertAlmostEqual(flow(untied, 0.0), 0.0)
         self.assertAlmostEqual(flow(untied, 1.0), 0.5, places=6)
 

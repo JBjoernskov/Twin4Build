@@ -591,7 +591,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         for entry in super().get_estimable_parameters():
             attr = str(entry[1])
             prefix, _, leaf = attr.rpartition(".")
-            if leaf == "c" and getattr(getattr(self, prefix, None), "c_tied", False):
+            if leaf == "c" and getattr(getattr(self, prefix, None), "c", 0) is None:
                 continue
             if leaf == "exhaustFlowRatio" and prefix.endswith("damper"):
                 continue
