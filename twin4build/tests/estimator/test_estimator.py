@@ -23,6 +23,7 @@ tb._IS_TESTING = True
 # Local application imports
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
+from twin4build.utils.data_loaders.sources import CsvSource
 
 
 class TestEstimator(unittest.TestCase):
@@ -389,25 +390,13 @@ class TestEstimator(unittest.TestCase):
                 )
                 model.components[sensor_id].datecolumn = 2
                 model.components[sensor_id].valuecolumn = 3
-            model.components["office_temperature_heating_setpoint"].filename = (
-                utils.get_path(
+            model.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(
                     ["estimator_example", "temperature_heating_setpoint.csv"]
-                )
-            )
-            model.components["office_temperature_heating_setpoint"].datecolumn = 2
-            model.components["office_temperature_heating_setpoint"].valuecolumn = 3
-            model.components["outdoor_environment"].filename_outdoorTemperature = (
-                utils.get_path(["estimator_example", "outdoor_environment.csv"])
-            )
-            model.components["outdoor_environment"].filename_globalIrradiation = (
-                utils.get_path(["estimator_example", "outdoor_environment.csv"])
-            )
-            model.components[
-                "outdoor_environment"
-            ].valuecolumn_outdoorCo2Concentration = 2
-            model.components["outdoor_environment"].filename_outdoorCo2Concentration = (
-                utils.get_path(["estimator_example", "outdoor_environment.csv"])
-            )
+                ), date_column=2, value_column=3)
+            model.components["outdoor_environment"].outdoorTemperature_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=1)
+            model.components["outdoor_environment"].globalIrradiation_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=2)
+            
+            model.components["outdoor_environment"].outdoorCo2Concentration_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=3)
 
             # OccupancySystem reads CO2 / damper time series directly from disk;
             # redirect to the example CSVs so the test runs on any machine.
@@ -547,27 +536,16 @@ class TestEstimator(unittest.TestCase):
                 )
                 model2.components[sensor_id].datecolumn = 2
                 model2.components[sensor_id].valuecolumn = 3
-            model2.components["office_temperature_heating_setpoint"].filename = (
-                utils.get_path(
+            model2.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(
                     ["estimator_example", "temperature_heating_setpoint.csv"]
-                )
-            )
-            model2.components["office_temperature_heating_setpoint"].datecolumn = 2
-            model2.components["office_temperature_heating_setpoint"].valuecolumn = 3
-            model2.components["outdoor_environment"].filename_outdoorTemperature = (
-                utils.get_path(["estimator_example", "outdoor_environment.csv"])
-            )
-            model2.components["outdoor_environment"].filename_globalIrradiation = (
-                utils.get_path(["estimator_example", "outdoor_environment.csv"])
-            )
+                ), date_column=2, value_column=3)
+            model2.components["outdoor_environment"].outdoorTemperature_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=1)
+            model2.components["outdoor_environment"].globalIrradiation_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=2)
             model2.components[
                 "outdoor_environment"
-            ].valuecolumn_outdoorCo2Concentration = 2
-            model2.components[
-                "outdoor_environment"
-            ].filename_outdoorCo2Concentration = utils.get_path(
+            ].outdoorCo2Concentration_source = CsvSource(utils.get_path(
                 ["estimator_example", "outdoor_environment.csv"]
-            )
+            ), date_column=0, value_column=2)
             model2.components["office_occupancy"].co2_filename = utils.get_path(
                 ["estimator_example", "co2_sensor.csv"]
             )

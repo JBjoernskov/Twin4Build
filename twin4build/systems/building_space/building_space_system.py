@@ -5,7 +5,6 @@ from typing import Optional
 # Third party imports
 import torch
 
-from twin4build.systems.utils.discrete_statespace_system import StepParams
 import torch.nn as nn
 
 # Local application imports
@@ -117,7 +116,6 @@ class BuildingSpaceSystem(core.System, nn.Module):
     #: ``FusedStateSpaceSystem``).
     SHARED_UNIT_PARAMS = {"thermal.m_inf": "mass.m_inf"}
 
-    SUPPORTS_TRANSFORM_MODE = True
     #: The mass balance's renamed input (``outdoorCO2``), see
     #: ``System.INPUT_PORT_ALIASES``.
     INPUT_PORT_ALIASES = BuildingSpaceMassSystem.INPUT_PORT_ALIASES
@@ -290,7 +288,6 @@ class BuildingSpaceSystem(core.System, nn.Module):
             rsetattr(self, path, rgetattr(self, source))
         # Drop the per-params routing cache (fresh graph per run, like the
         # submodels' matrix caches).
-        self._fwd_param_cache = None
         # The forward splits its state by the thermal width: cached here, so a
         # compiled step never walks the submodel's attributes (Dynamo cannot
         # trace ``vars(...).values()``; 24 Oct 2026, an unfused storey interior
@@ -377,20 +374,23 @@ class BuildingSpaceSystem(core.System, nn.Module):
             out[name] = params[key] if key in params else rgetattr(self, key).get()
         return out
 
-    def step_constants(self, params):
-        """The two units' theta-only matrices for one rollout, by unit."""
+    def derive(self, p, step_size):
+        """Each unit's parameters (estimated values from ``p``, the rest the
+        unit's own) together with what the unit derives from them."""
+        p_th = self._resolve_sub_params(self.thermal, "thermal", p)
+        p_ma = self._resolve_sub_params(self.mass, "mass", p)
         return {
-            "thermal": self.thermal._build_matrices(self._resolve_sub_params(self.thermal, "thermal", params)),
-            "mass": self.mass._build_matrices(self._resolve_sub_params(self.mass, "mass", params)),
+            "thermal_params": self.thermal.full_params(p_th, step_size),
+            "mass_params": self.mass.full_params(p_ma, step_size),
         }
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step of the composite = thermal ++ mass.
 
         State is ``[thermal_state | mass_state]`` (the order
         :meth:`System.get_state` produces).  ``params`` is keyed by the composite
         attr path (``"thermal.C_air"``, ``"mass.V"``, ...); it is routed to the two
-        submodels, filling non-estimated entries from their defaults.  Both
+        submodels as :meth:`derive` resolved them.  Both
         submodels read the shared ``inputs`` dict (they pick the ports they need).
 
         Returns ``(x_next, {**thermal_outputs, **mass_outputs})`` -- i.e.
@@ -406,33 +406,9 @@ class BuildingSpaceSystem(core.System, nn.Module):
             v = inputs.get(k)
             if v is not None and v.dim() > ref_dim:
                 inputs[k] = v.sum(dim=-1)
-        # Identity-keyed cache: a sequential rollout re-calls forward with the
-        # SAME params dict every step (see OneStepComposer._params_for), so
-        # the sub-param routing -- and, downstream, the submodels' state-space
-        # matrix builds -- are theta-only work that can be done once per theta.
-        if transform_mode:
-            p_th = self._resolve_sub_params(self.thermal, "thermal", params)
-            p_ma = self._resolve_sub_params(self.mass, "mass", params)
-            mats = getattr(params, "matrices", None)
-            if mats is not None:
-                p_th, p_ma = StepParams(p_th), StepParams(p_ma)
-                p_th.matrices, p_ma.matrices = mats["thermal"], mats["mass"]
-        else:
-            cache = getattr(self, "_fwd_param_cache", None)
-            if cache is None or cache[0] is not params:
-                cache = (
-                    params,
-                    self._resolve_sub_params(self.thermal, "thermal", params),
-                    self._resolve_sub_params(self.mass, "mass", params),
-                )
-                self._fwd_param_cache = cache
-            _, p_th, p_ma = cache
-        x_th_n, out_th = self.thermal.forward(
-            x_th, inputs, p_th, step_size, transform_mode=transform_mode
-        )
-        x_ma_n, out_ma = self.mass.forward(
-            x_ma, inputs, p_ma, step_size, transform_mode=transform_mode
-        )
+        p_th, p_ma = params["thermal_params"], params["mass_params"]
+        x_th_n, out_th = self.thermal.forward(x_th, inputs, p_th, step_size)
+        x_ma_n, out_ma = self.mass.forward(x_ma, inputs, p_ma, step_size)
         return torch.cat([x_th_n, x_ma_n], dim=-1), {**out_th, **out_ma}
 
 

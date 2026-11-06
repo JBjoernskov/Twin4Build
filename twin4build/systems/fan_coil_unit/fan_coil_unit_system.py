@@ -461,7 +461,6 @@ class FanCoilUnitSystem(core.System, nn.Module):
             x0[:, :, i] = t_outlet
         return x0
 
-    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = (
         "thermalMassHeatCapacity",
         "UA",
@@ -554,12 +553,11 @@ class FanCoilUnitSystem(core.System, nn.Module):
             id=f"ss_model_{self.id}",
         )
 
-    def step_constants(self, params):
-        """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
-        :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
-        return self._build_matrices(params)
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step FCU dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible single source of truth for :meth:`do_step`.
@@ -582,21 +580,7 @@ class FanCoilUnitSystem(core.System, nn.Module):
         )
         waterFlowRate = v_out["waterFlowRate"]
 
-        # Params-only matrices, cached per params-dict identity (rebuilt once
-        # per theta in a sequential rollout, not once per step).
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._build_matrices(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._build_matrices(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C_out, D, E, F = matrices
+        A, B, C_out, D, E, F = params["matrices"]
 
         u = torch.stack(
             [
@@ -616,8 +600,6 @@ class FanCoilUnitSystem(core.System, nn.Module):
             x,
             u,
             step_size,
-            disc_cache=disc_cache,
-            transform_mode=transform_mode,
         )
         outletWaterTemperature = y[..., 0]
 

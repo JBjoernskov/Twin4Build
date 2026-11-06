@@ -23,7 +23,7 @@ cotangent (#236); the forward graph is the same either way.
 
 The step is the compiled transform-mode step (:meth:`FunctionalModel.compiled_step`,
 or the compiled batched step for a batch of parameter vectors); the
-theta-only matrices the rollout hoists (:meth:`FunctionalModel.step_constants`)
+theta-only matrices the rollout hoists (:meth:`FunctionalModel.derived_values`)
 enter the graphs as static inputs set once per rollout, and their cotangents
 come back out, so the outer autograd continues from them to theta.
 """
@@ -271,11 +271,11 @@ def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = Fal
         leaves, spec = [], None
     elif kind == "windows":
         step = functional_model.compiled_window_step
-        constants = functional_model.step_constants(theta)
+        constants = functional_model.derived_values(theta)
         leaves, spec = pytree.tree_flatten(constants)
     elif kind == "scalar":
         step = functional_model.compiled_step
-        constants = functional_model.step_constants(theta)
+        constants = functional_model.derived_values(theta)
         leaves, spec = pytree.tree_flatten(constants)
     else:
         raise ValueError(f"unknown step kind {kind!r}")

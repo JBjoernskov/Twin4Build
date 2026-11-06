@@ -40,6 +40,7 @@ import twin4build as tb
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
+from twin4build.utils.data_loaders.sources import CsvSource
 
 # On-off control as a special case of the PID: a proportional loop
 # saturated to [output_min, output_max] = [off, on], u = clamp(kp * e), with
@@ -165,25 +166,13 @@ def generate_single_controller_data(
         controller = tb.PIDControllerSystem(**ON_OFF_PI_KWARGS, id="controller")
 
     # Schedules
-    outdoor_temp_schedule = tb.ScheduleSystem(
-        filename=file_paths["outdoor_temp"], id="outdoor_temp"
-    )
-    solar_schedule = tb.ScheduleSystem(filename=file_paths["solar"], id="solar")
-    occupancy_schedule = tb.ScheduleSystem(
-        filename=file_paths["occupancy"], id="occupancy"
-    )
-    setpoint_schedule = tb.ScheduleSystem(
-        filename=file_paths["setpoint"], id="setpoint"
-    )
-    supply_flow_schedule = tb.ScheduleSystem(
-        filename=file_paths["supply_flow"], id="supply_flow"
-    )
-    exhaust_flow_schedule = tb.ScheduleSystem(
-        filename=file_paths["exhaust_flow"], id="exhaust_flow"
-    )
-    supply_temp_schedule = tb.ScheduleSystem(
-        filename=file_paths["supply_temp"], id="supply_temp"
-    )
+    outdoor_temp_schedule = tb.ScheduleSystem(id="outdoor_temp", source=CsvSource(file_paths["outdoor_temp"]))
+    solar_schedule = tb.ScheduleSystem(id="solar", source=CsvSource(file_paths["solar"]))
+    occupancy_schedule = tb.ScheduleSystem(id="occupancy", source=CsvSource(file_paths["occupancy"]))
+    setpoint_schedule = tb.ScheduleSystem(id="setpoint", source=CsvSource(file_paths["setpoint"]))
+    supply_flow_schedule = tb.ScheduleSystem(id="supply_flow", source=CsvSource(file_paths["supply_flow"]))
+    exhaust_flow_schedule = tb.ScheduleSystem(id="exhaust_flow", source=CsvSource(file_paths["exhaust_flow"]))
+    supply_temp_schedule = tb.ScheduleSystem(id="supply_temp", source=CsvSource(file_paths["supply_temp"]))
 
     supply_water_temp_data = pd.DataFrame(
         {
@@ -193,9 +182,7 @@ def generate_single_controller_data(
     )
     supply_water_temp_file = os.path.join(temp_dir, "supply_water_temp.csv")
     supply_water_temp_data.to_csv(supply_water_temp_file, index=False)
-    supply_water_temp_schedule = tb.ScheduleSystem(
-        filename=supply_water_temp_file, id="supply_water_temp"
-    )
+    supply_water_temp_schedule = tb.ScheduleSystem(id="supply_water_temp", source=CsvSource(supply_water_temp_file))
 
     # Add components
     for comp in [
@@ -777,14 +764,14 @@ def run_complex_identification_example():
     # Create ScheduleSystems for all sensors
     sensor_schedules = []
     for i, path in enumerate(sensor_files):
-        sched = tb.ScheduleSystem(filename=path, id=f"sensor_{i}_{sensors[i][1]}")
+        sched = tb.ScheduleSystem(id=f"sensor_{i}_{sensors[i][1]}", source=CsvSource(path))
         sensor_schedules.append(sched)
         model.add_component(sched)
 
     # Create ScheduleSystems for all setpoints
     setpoint_schedules = []
     for i, path in enumerate(setpoint_files):
-        sched = tb.ScheduleSystem(filename=path, id=f"setpoint_{i}_{setpoints[i][1]}")
+        sched = tb.ScheduleSystem(id=f"setpoint_{i}_{setpoints[i][1]}", source=CsvSource(path))
         setpoint_schedules.append(sched)
         model.add_component(sched)
 

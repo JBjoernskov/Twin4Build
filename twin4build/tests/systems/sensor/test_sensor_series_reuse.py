@@ -19,7 +19,7 @@ import torch
 
 # Local application imports
 import twin4build
-import twin4build.systems.utils.time_series_input_system as tsi_mod
+import twin4build.utils.data_loaders.sources as tsi_mod  # where the readers call the loaders
 from twin4build.systems.sensor.sensor_system import SensorSystem
 
 twin4build._IS_TESTING = True
