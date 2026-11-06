@@ -407,7 +407,17 @@ class System(nn.Module, metaclass=SystemMeta):
                 data = value.detach().clone()
             else:
                 data = torch.as_tensor(value, dtype=tps.float_dtype()).clone()
-            value = tps.Parameter(data.to(tps.float_dtype()), requires_grad=False, scaling=parameter.scaling)
+            # normalized over the declared range, when it is one the scaling admits
+            bounded = parameter.lb is not None and parameter.ub is not None and (
+                parameter.scaling != "log" or parameter.lb > 0
+            )
+            value = tps.Parameter(
+                data.to(tps.float_dtype()),
+                min_value=parameter.lb if bounded else None,
+                max_value=parameter.ub if bounded else None,
+                requires_grad=False,
+                scaling=parameter.scaling,
+            )
         # Replacing a registered parameter or child with something torch does
         # not register (a ``TensorParameter`` -- what ``set_parameters`` leaves
         # on a parameter that is set but not estimated -- or a plain value)
@@ -1205,7 +1215,9 @@ class System(nn.Module, metaclass=SystemMeta):
     def full_params(self, p: dict, step_size) -> dict:
         """``p`` plus what this System derives from it (``derive``): the
         params its ``forward`` expects.  A composite's ``derive`` hands each
-        child its full params this way."""
+        child its full params this way.  The value settings come along
+        (:meth:`value_settings`), unless ``p`` holds them already."""
+        p = {**self.value_setting_params(), **p}
         if getattr(type(self), "derive", None) is None:
             return p
         return {**p, **self.derive(p, step_size)}
