@@ -109,6 +109,11 @@ class Source:
     def _own_config(self) -> Dict[str, Any]:
         return {}
 
+    def signature(self) -> tuple:
+        """What the reader reads, for comparing two readers by value (batching
+        merges data sources that read the same data)."""
+        return (self.TYPE, self.resample_method, self.dt_limit, self.fill)
+
     def __deepcopy__(self, memo):
         new = copy.copy(self)
         new._last = None
@@ -314,6 +319,10 @@ class CsvSource(Source):
     def _own_config(self):
         return {"path": self.path, "date_column": self.date_column, "value_column": self.value_column}
 
+    def signature(self) -> tuple:
+        path = os.path.normcase(os.path.abspath(self.resolved_path))
+        return super().signature() + (path, self.date_column, self.value_column)
+
     def window(self, start_time, end_time, step_size, fetch_span=None) -> pd.Series:
         return load_from_spreadsheet(
             self.resolved_path, self.date_column, self.value_column, step_size=step_size,
@@ -340,6 +349,9 @@ class DataFrameSource(Source):
 
     def describe(self) -> str:
         return "a DataFrame"
+
+    def signature(self) -> tuple:
+        return super().signature() + (id(self.df),)
 
     def window(self, start_time, end_time, step_size, fetch_span=None) -> pd.Series:
         if self.df is None:
@@ -377,6 +389,11 @@ class DatabaseSource(Source):
 
     def _own_config(self):
         return {"uuid": self.uuid}
+
+    def signature(self) -> tuple:
+        config = self.dbconfig
+        connection = tuple(sorted((str(k), repr(v)) for k, v in config.items())) if isinstance(config, dict) else None
+        return super().signature() + (self.uuid, connection)
 
     def window(self, start_time, end_time, step_size, fetch_span=None) -> pd.Series:
         if self.dbconfig is None:
