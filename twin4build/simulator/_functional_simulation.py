@@ -219,6 +219,10 @@ class FunctionalSimulationSession:
                 value = rgetattr(component, name)
                 if value is not None:  # an absent optional parameter has no default
                     stable[name].copy_(value.get())
+            settings = getattr(component, "value_setting_params", None)
+            for name, value in (settings() if callable(settings) else {}).items():
+                if name in stable and stable[name].shape == value.shape:
+                    stable[name].copy_(value)
         self.functional_model._theta_param_cache = None
 
     def _exogenous_sources(self, component, key):

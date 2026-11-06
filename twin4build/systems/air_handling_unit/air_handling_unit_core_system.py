@@ -43,8 +43,9 @@ CORE_SUB_NAMES = ("coil", "heat_recovery", "supply_fan", "exhaust_fan")
 def resolve_sub_params(sub, prefix, params):
     """Full physical-parameter dict for a submodel: estimated values from
     ``params`` (keyed ``"<prefix>.<name>"``), the rest from the submodel's
-    own values; an absent (optional) parameter stays out."""
-    out = {}
+    own values; an absent (optional) parameter stays out.  The submodel's
+    value settings come along (its ``forward`` reads them from ``p``)."""
+    out = sub.value_setting_params() if hasattr(sub, "value_setting_params") else {}
     for name in sub.PARAM_NAMES:
         key = f"{prefix}.{name}"
         if key in params:

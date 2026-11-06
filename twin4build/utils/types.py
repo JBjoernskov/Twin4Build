@@ -771,6 +771,9 @@ class Scalar:
         # Create tensor with shape (n_s, n_c) from _init_value
         if self._init_value is None:
             self._tensor = torch.zeros((self.n_s, self.n_c), dtype=float_dtype())
+        elif isinstance(self._init_value, torch.Tensor) and self._init_value.numel() == self.n_c:
+            # one start per copy (a batched System's value setting)
+            self._tensor = self._init_value.to(float_dtype()).reshape(1, self.n_c).expand(self.n_s, self.n_c).clone()
         else:
             # Broadcast init_value to full tensor
             self._tensor = torch.full(
@@ -1494,6 +1497,8 @@ class State(StateMarker):
             v = v.reshape(1, 1, n_v).expand(n_s, n_c, n_v).clone()
         elif v.dim() == 2 and v.shape == (n_c, n_v):  # (n_c, n_v)
             v = v.reshape(1, n_c, n_v).expand(n_s, n_c, n_v).clone()
+        elif v.dim() == 2 and v.shape == (n_c, 1):  # one value per copy
+            v = v.reshape(1, n_c, 1).expand(n_s, n_c, n_v).clone()
         elif v.dim() == 3 and v.shape == (n_s, n_c, n_v):
             v = v.clone()
         elif v.dim() == 0:
