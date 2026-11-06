@@ -177,11 +177,6 @@ class System(nn.Module, metaclass=SystemMeta):
         id: The id of the system.
     """
 
-    #: Opt in only when ``forward`` accepts ``transform_mode`` and its complete
-    #: call tree bypasses mutable caches and tensor-dependent Python behavior.
-    #: See :doc:`/manual/differentiable_system_models`.
-    SUPPORTS_TRANSFORM_MODE = False
-
     #: Deprecated output port names and the names that replaced them
     #: (``{"old": "new"}``).  A class that renames an output port lists the
     #: old name here and holds its outputs in an :class:`AliasedPorts`; the
@@ -241,6 +236,10 @@ class System(nn.Module, metaclass=SystemMeta):
         declared = getattr(cls, "_declarations", {})
         for kind in ("setting", "parameter", "child"):
             names.update(declared.get(kind, {}))
+        if getattr(cls, "_is_declared", False):
+            # a declared class has no __init__ of its own: the base
+            # translates its deprecated names
+            names.update(getattr(cls, "DEPRECATED_KEYWORDS", {}))
         System._CONSTRUCTOR_KEYWORDS[cls] = frozenset(names)
         return System._CONSTRUCTOR_KEYWORDS[cls]
 
@@ -338,7 +337,46 @@ class System(nn.Module, metaclass=SystemMeta):
         if declared_values is not None:
             self._build_declared(declared_values)
 
+    #: Attributes a class no longer has, and what replaced them: reading or
+    #: setting one raises with the replacement (setting it would otherwise
+    #: quietly do nothing).
+    REMOVED_ATTRIBUTES: dict = {}
+
+    def _renamed(self, name: str):
+        """The current name of a declared System's attribute ``name`` when it
+        is an old keyword the class still translates (``DEPRECATED_KEYWORDS``),
+        with a ``DeprecationWarning``; else ``None``."""
+        if not getattr(type(self), "_is_declared", False):
+            return None
+        new = getattr(type(self), "DEPRECATED_KEYWORDS", {}).get(name)
+        if not new or "." in new:
+            return None
+        cls_name = type(self).__name__
+        deprecate_name(f"{cls_name}.{name}", f"{cls_name}.{new}", stacklevel=4)
+        return new
+
+    def __getattr__(self, name):
+        removed = type(self).REMOVED_ATTRIBUTES.get(name)
+        if removed is not None:
+            raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
+        try:
+            # registered parameters and children first: a traced forward
+            # reaches its children this way (``self.thermal``)
+            return super().__getattr__(name)
+        except AttributeError:
+            new = None if name.startswith("_") else self._renamed(name)
+            if new is None:
+                raise
+        return getattr(self, new)  # an old name reads the current one
+
     def __setattr__(self, name, value):
+        removed = type(self).REMOVED_ATTRIBUTES.get(name)
+        if removed is not None:
+            raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
+        if not name.startswith("_"):
+            new = self._renamed(name)
+            if new is not None:  # an old name sets the current one (it set nothing before)
+                name = new
         # A property of the class runs its setter, as on any Python object.
         # nn.Module would otherwise register a module or parameter value under
         # the property's name and skip the setter (a sensor's
@@ -346,6 +384,25 @@ class System(nn.Module, metaclass=SystemMeta):
         if isinstance(getattr(type(self), name, None), property):
             object.__setattr__(self, name, value)
             return
+        # A declared setting converts every value it is given (a reader from
+        # the dict a saved model's parameter file holds).
+        setting = type(self).__dict__.get("_declarations", type(self)._declarations)["setting"].get(name)
+        if setting is not None and setting.convert is not None:
+            current = self.__dict__.get(name)
+            if isinstance(value, dict) and hasattr(current, "to_config") and current.to_config() == value:
+                return  # the reader it already holds (a DataFrame reader's dict has no data)
+            value = setting.convert(value)
+        parameter = type(self)._declarations["parameter"].get(name)
+        if parameter is not None and value is not None and not isinstance(
+            value, (tps.Parameter, tps.TensorParameter)
+        ):
+            # a number for a declared parameter (``damper.c = -1.9``): the
+            # parameter, with its declared scaling
+            if isinstance(value, torch.Tensor):
+                data = value.detach().clone()
+            else:
+                data = torch.as_tensor(value, dtype=tps.float_dtype()).clone()
+            value = tps.Parameter(data.to(tps.float_dtype()), requires_grad=False, scaling=parameter.scaling)
         # Replacing a registered parameter or child with something torch does
         # not register (a ``TensorParameter`` -- what ``set_parameters`` leaves
         # on a parameter that is set but not estimated -- or a plain value)
@@ -362,6 +419,13 @@ class System(nn.Module, metaclass=SystemMeta):
         """Pop the declared settings, parameter values and child overrides
         from the constructor's keywords; a missing required setting raises."""
         declared = type(self)._declarations
+        for old, new in getattr(type(self), "DEPRECATED_KEYWORDS", {}).items():
+            if old in kwargs:
+                value = kwargs.pop(old)
+                cls_name = type(self).__name__
+                if new is not None:
+                    deprecate_name(f"{cls_name}({old}=...)", f"{cls_name}({new}=...)", stacklevel=4)
+                    kwargs.setdefault(new, value)
         values = {"setting": {}, "parameter": {}, "child": {}}
         for name, decl in declared["setting"].items():
             if name in kwargs:
@@ -370,6 +434,8 @@ class System(nn.Module, metaclass=SystemMeta):
                 raise TypeError(f"{type(self).__name__}() needs the setting {name!r}")
             else:
                 values["setting"][name] = copy.deepcopy(decl.default)
+            if decl.convert is not None:
+                values["setting"][name] = decl.convert(values["setting"][name])
         for name, decl in declared["parameter"].items():
             values["parameter"][name] = kwargs.pop(name, decl.value)
         for name in declared["child"]:
@@ -393,23 +459,15 @@ class System(nn.Module, metaclass=SystemMeta):
             aliases={d.alias: n for n, d in declared["input"].items() if d.alias},
             owner=cls.__name__,
         )
+        series_outputs = cls._is_data_source()
         self._output = AliasedPorts(
-            {name: self._declared_port(decl) for name, decl in declared["output"].items()},
+            {name: self._declared_port(decl, leaf=series_outputs) for name, decl in declared["output"].items()},
             aliases={d.alias: n for n, d in declared["output"].items() if d.alias},
             owner=cls.__name__,
         )
         bounds = {}
         for name, decl in declared["parameter"].items():
-            value = values["parameter"][name]
-            if isinstance(value, tps.Parameter):
-                data = value.get().detach().clone()
-            else:
-                data = torch.as_tensor(value, dtype=tps.float_dtype()).clone()
-            setattr(
-                self,
-                name,
-                tps.Parameter(data.to(tps.float_dtype()), requires_grad=False, scaling=decl.scaling),
-            )
+            setattr(self, name, values["parameter"][name])  # None: absent until given
             spec = decl.bounds()
             if spec is not None:
                 bounds[name] = spec
@@ -423,7 +481,7 @@ class System(nn.Module, metaclass=SystemMeta):
                 name,
                 tps.State(n_v=size, init_value=decl.init, lb=decl.lb, ub=decl.ub, names=decl.names),
             )
-        config = list(declared["setting"]) + list(declared["parameter"])
+        config = [n for n, d in declared["setting"].items() if d.save] + list(declared["parameter"])
         self._child_overrides = {k: v for k, v in values["child"].items() if v}
         for name, decl in declared["child"].items():
             child = decl.cls(id=f"{self._id}_{name}", **{**decl.values, **values["child"][name]})
@@ -432,13 +490,19 @@ class System(nn.Module, metaclass=SystemMeta):
         self._config = {"parameters": config}
         self.INITIALIZED = False
 
+    @classmethod
+    def _is_data_source(cls) -> bool:
+        """A System whose outputs are a series known before the run: it
+        defines ``series(timestamps, step_size)`` and no ``forward``."""
+        return getattr(cls, "series", None) is not None and getattr(cls, "forward", None) is nn.Module.forward
+
     @staticmethod
-    def _declared_port(decl):
+    def _declared_port(decl, leaf: bool = False):
         default = getattr(decl, "default", None)
         if decl.size is None:
-            return tps.Scalar(default, optional=default is not None)
+            return tps.Scalar(default, optional=default is not None, is_leaf=leaf)
         n_v = decl.size if isinstance(decl.size, int) else None
-        return tps.Vector(default, n_v=n_v, optional=default is not None)
+        return tps.Vector(default, n_v=n_v, optional=default is not None, is_leaf=leaf)
 
     def _setting_size(self, name: str) -> int:
         value = getattr(self, name)
@@ -500,32 +564,95 @@ class System(nn.Module, metaclass=SystemMeta):
                 getattr(self, name)._n_v = self.declared_size("state", name)
         self.__dict__.pop("_state_size_cache", None)
 
-    def _initialize_declared(self, n_t: int, n_s: int, n_c: int) -> None:
+    def _initialize_declared(self, n_t: int, n_s: int, n_c: int, run=None) -> None:
         """Run start of a declared System: size and allocate the ports,
-        expand the parameters to one value per copy, start the states."""
+        expand the parameters to one value per copy, start the states, and
+        fill a data source's outputs from its ``series`` (``run`` is the
+        run's ``(timestamps, own steps per period, step size)``)."""
         self.n_c = n_c
         self.size_declared_ports()
+        data_source = type(self)._is_data_source()
         for ports in (self.input, self.output):
             for port in ports.values():
+                if data_source and ports is self.output:
+                    continue  # filled from ``series`` below
                 if isinstance(port, tps.Vector):
                     port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, n_v=port._n_v)
                 else:
                     port.initialize(n_t=n_t, n_s=n_s, n_c=n_c)
         declared = type(self)._declarations
         for name in declared["parameter"]:
-            setattr(self, name, getattr(self, name).expand_to_n_c(n_c))
+            value = getattr(self, name)
+            if value is not None:
+                setattr(self, name, value.expand_to_n_c(n_c))
         for name in declared["state"]:
             getattr(self, name).initialize(n_s=n_s, n_c=n_c, component=self, force=True)
         for name in declared["child"]:
             child = getattr(self, name)
             if type(child)._is_declared:
-                child._initialize_declared(n_t, n_s, n_c)
+                child._initialize_declared(n_t, n_s, n_c, run)
+        if data_source:
+            self._fill_from_series(n_t, n_s, n_c, *run)
         self.INITIALIZED = True
+
+    def _fill_from_series(self, n_t, n_s, n_c, timestamps, own_steps, step_size) -> None:
+        """Call ``series`` and fill every output with its values for the whole
+        run. A period's steps past its own end hold its last value."""
+        values = self.series(timestamps, step_size)
+        for name, port in self.output.items():
+            if name not in values:
+                raise KeyError(f"{type(self).__name__} '{self.id}': series() gave no values for the output {name!r}")
+            v = values[name]
+            v = v.to(tps.float_dtype()) if isinstance(v, torch.Tensor) else torch.as_tensor(
+                np.asarray(v, dtype=float), dtype=tps.float_dtype()
+            )
+            v = v.clone()
+            if v.shape[:2] != (n_s, n_t):
+                raise ValueError(
+                    f"{type(self).__name__} '{self.id}': series() gave {name!r} of shape {tuple(v.shape)}, "
+                    f"expected ({n_s}, {n_t}, ...)"
+                )
+            for b, own in enumerate(own_steps):
+                own = int(own)
+                if 0 < own < n_t:
+                    v[b, own:] = v[b, own - 1]
+            if isinstance(port, tps.Vector):
+                n_v = v.shape[2] if v.dim() == 3 else 1
+                v = v.reshape(n_s, n_t, n_v).permute(1, 0, 2).unsqueeze(2).expand(n_t, n_s, n_c, n_v)
+                port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, n_v=n_v, values=v)
+            else:
+                port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, values=v.T.unsqueeze(-1).expand(n_t, n_s, n_c))
+
+    @staticmethod
+    def run_timestamps(start_time, end_time, step_size):
+        """The ``(n_s, n_t)`` timestamps ``series`` is called with, the own
+        steps of each period and the step size: a shorter period's row ends
+        in ``None`` after its last step."""
+        _, date_steps, n_t, own_steps = get_simulation_timesteps(start_time, end_time, step_size)
+        timestamps = np.array(date_steps, dtype=object).reshape(len(start_time), n_t)
+        for b, own in enumerate(own_steps):
+            timestamps[b, int(own):] = None
+        return timestamps, [int(n) for n in own_steps], System._scalar_step_size(step_size)
+
+    @staticmethod
+    def periods(timestamps, step_size):
+        """The ``(start_time, end_time, step_size)`` lists of the periods in
+        ``timestamps`` (as ``series`` gets them): a period ends one step after
+        its last timestamp."""
+        starts, ends = [], []
+        for row in timestamps:
+            own = [t for t in row if t is not None]
+            starts.append(own[0])
+            ends.append(own[-1] + datetime.timedelta(seconds=float(step_size)))
+        return starts, ends, [step_size] * len(starts)
 
     @staticmethod
     def _fold(value: torch.Tensor, n_s: int, n_c: int) -> torch.Tensor:
         """``(n_s, n_c, ...)`` -> ``(n_s * n_c, ...)``: the one form
-        ``forward`` sees, its first dimension the copies being stepped."""
+        ``forward`` sees, its first dimension the copies being stepped.  A
+        port held once for every simulation or copy is broadcast."""
+        if value.shape[0] != n_s or value.shape[1] != n_c:
+            value = value.expand(n_s, n_c, *value.shape[2:])
         return value.reshape(n_s * n_c, *value.shape[2:])
 
     @staticmethod
@@ -536,14 +663,23 @@ class System(nn.Module, metaclass=SystemMeta):
             return value
         return value.unsqueeze(0).expand(n_s, *value.shape).reshape(n_s * n_c, *value.shape[1:])
 
+    @classmethod
+    def _fold_tree(cls, value, n_s: int, n_c: int):
+        """:meth:`_fold_parameter` on every tensor of a dict / tuple / list."""
+        if isinstance(value, torch.Tensor):
+            return cls._fold_parameter(value, n_s, n_c)
+        if isinstance(value, dict):
+            return {k: cls._fold_tree(v, n_s, n_c) for k, v in value.items()}
+        if isinstance(value, (tuple, list)):
+            return type(value)(cls._fold_tree(v, n_s, n_c) for v in value)
+        return value
+
     def _declared_do_step(self, step_size, step_index: int) -> None:
         """One object-mode step of a declared System through ``forward``."""
         n_c = self.n_c
         n_s = next(iter({**self.input, **self.output}.values())).n_s
         inputs = {name: self._fold(port.get(), n_s, n_c) for name, port in self.input.items()}
-        params = {
-            name: self._fold_parameter(rgetattr(self, name).get(), n_s, n_c) for name in self.PARAM_NAMES
-        }
+        params = self._fold_tree(self._forward_params(step_size), n_s, n_c)
         stateful = bool(self.collect_states())
         x = self._fold(self.get_state(), n_s, n_c) if stateful else None
         x_next, outs = self.forward(x, inputs, params, self._scalar_step_size(step_size))
@@ -767,7 +903,9 @@ class System(nn.Module, metaclass=SystemMeta):
         batch_size = len(start_time)
         if type(self)._is_declared:
             n_c = int(getattr(self, "_n_c_batched", 1) or 1)
-            self._initialize_declared(max_timesteps, batch_size, max(n_c, self.n_c))
+            run = self.run_timestamps(start_time, end_time, step_size) if type(self)._is_data_source() else None
+            self._initialize_declared(max_timesteps, batch_size, max(n_c, self.n_c), run)
+            self._start_run(step_size)
             return
         for input in self.input.values():
             input.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
@@ -790,7 +928,10 @@ class System(nn.Module, metaclass=SystemMeta):
             step_size (List[int]): The step size of the simulation in seconds.
             step_index (int): The current step index.
         """
-        if type(self)._is_declared:
+        if type(self)._is_data_source():
+            for port in self.output.values():
+                port._set(i_t=step_index)
+        elif type(self)._is_declared:
             self._declared_do_step(step_size, step_index)
 
     # -- Continuous state (multiple-shooting / collocation estimation) --------
@@ -859,31 +1000,72 @@ class System(nn.Module, metaclass=SystemMeta):
     # become forward-only Systems; removed with do_step (ADR 0001).
     _scalar_sample_time = _scalar_step_size
 
-    def _forward_params(self) -> dict:
-        """Own physical parameters as the ``forward`` params dict.
+    def _forward_params(self, step_size=None) -> dict:
+        """The ``forward`` params dict in object mode: the System's own
+        parameter values (:attr:`PARAM_NAMES`; dotted paths reach into owned
+        sub-objects) and, for a System that defines ``derive(p, step_size)``,
+        what it derives from them.
 
-        The single-source-of-truth contract: ``do_step`` is a thin port-I/O
-        wrapper that DELEGATES the math to ``forward`` (so the two can never
-        drift apart), and this helper supplies the params dict for that call
-        from the component's own ``tps.Parameter`` values (:attr:`PARAM_NAMES`).
-
-        Identity-stable: returns the SAME dict object for as long as every
-        underlying parameter tensor is unchanged, so the identity-keyed caches
-        inside ``forward`` (state-space matrices, PID coefficients, ...) keep
-        hitting across steps and the delegation costs nothing per step.  A
-        parameter write (estimation) swaps the tensor ``get()`` returns, which
-        invalidates the dict -- and, downstream, those caches -- automatically.
+        The derived values are computed once per run, at the first step
+        (``forward`` caches nothing; ADR 0001, decision 5): the run start
+        forgets the last run's (:meth:`_start_run`).
         """
         names = getattr(self, "PARAM_NAMES", ())
-        # rgetattr: PARAM_NAMES may contain dotted paths into owned
-        # sub-objects (e.g. OccupancySystem's "supply_damper.a").
-        vals = tuple(rgetattr(self, n).get() for n in names)
-        cache = getattr(self, "_forward_params_cache", None)
-        if cache is not None and all(a is b for a, b in zip(cache[0], vals)):
-            return cache[1]
-        d = dict(zip(names, vals))
-        self._forward_params_cache = (vals, d)
-        return d
+        params = {}
+        for name in names:
+            value = rgetattr(self, name)
+            if value is not None:  # an absent (optional) parameter
+                params[name] = value.get()
+        if getattr(type(self), "derive", None) is None:
+            return params
+        derived = self.__dict__.get("_derived")
+        if derived is None:
+            if step_size is None:
+                step_size = self.__dict__.get("_run_step_size")
+            elif not isinstance(step_size, (int, float)):
+                step_size = self._scalar_step_size(step_size)
+            derived = self.derive(params, step_size)
+            self.__dict__["_derived"] = derived
+        return {**params, **derived}
+
+    def full_params(self, p: dict, step_size) -> dict:
+        """``p`` plus what this System derives from it (``derive``): the
+        params its ``forward`` expects.  A composite's ``derive`` hands each
+        child its full params this way."""
+        if getattr(type(self), "derive", None) is None:
+            return p
+        return {**p, **self.derive(p, step_size)}
+
+    def _start_run(self, step_size) -> None:
+        """Run start, as far as the base is concerned for a System written the
+        old way: record the run's step size and forget the derived values of
+        the last run, for this System and every System it owns."""
+        if step_size is not None and not isinstance(step_size, torch.Tensor):
+            try:
+                self.__dict__["_run_step_size"] = self._scalar_step_size(step_size)
+            except (AssertionError, TypeError, ValueError):
+                self.__dict__.pop("_run_step_size", None)
+        self.__dict__.pop("_derived", None)
+        for owned in self._owned_systems():
+            owned.__dict__.pop("_derived", None)
+            if step_size is not None and "_run_step_size" in self.__dict__:
+                owned.__dict__["_run_step_size"] = self.__dict__["_run_step_size"]
+
+    def _owned_systems(self, _visited=None) -> list:
+        """Every System this one owns (attributes and registered children),
+        recursively; connected Systems are never followed."""
+        if _visited is None:
+            _visited = {id(self)}
+        out = []
+        candidates = [v for v in vars(self).values() if isinstance(v, System)]
+        candidates.extend(child for _, child in self.named_children() if isinstance(child, System))
+        for sub in candidates:
+            if id(sub) in _visited:
+                continue
+            _visited.add(id(sub))
+            out.append(sub)
+            out.extend(sub._owned_systems(_visited))
+        return out
 
     #: Ports through which this component may be fused into a monolithic
     #: state-space block (see ``FusedStateSpaceSystem``).  A connection is
@@ -1210,6 +1392,16 @@ class System(nn.Module, metaclass=SystemMeta):
             # write path -- leaves behind) both publish their physical value
             # through ``get()``; serializing anything else would write the
             # object's repr into the graph.
+            if hasattr(value, "to_config"):
+                # A reader (a data source's ``source``): the dict it is
+                # rebuilt from.
+                return value.to_config()
+            if callable(value) and not isinstance(value, (torch.nn.Module, type)):
+                # A function (a transformation): its module:qualname
+                # reference (None for one that cannot be imported again).
+                from twin4build.utils.callable_ref import callable_to_ref
+
+                return callable_to_ref(value, f"|CLASS: {type(self).__name__}|ID: {self.id}|")
             if isinstance(value, (tps.Parameter, tps.TensorParameter)) or (
                 hasattr(value, "get") and hasattr(value, "detach")
             ):

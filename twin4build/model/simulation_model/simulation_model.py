@@ -2268,6 +2268,24 @@ class SimulationModel:
                     LOGGER.remove_level()
         return (validated, validated, validated)
 
+    @staticmethod
+    def _absent_optional_parameters(component, config: dict) -> list:
+        """The keys of ``config["parameters"]`` that name an optional parameter
+        (declared with ``Parameter(None)``) the component does not have."""
+        keys = []
+        for attr, value in (config.get("parameters") or {}).items():
+            if value is not None or not isinstance(attr, str):
+                continue
+            owner_path, _, leaf = attr.rpartition(".")
+            try:
+                owner = rgetattr(component, owner_path) if owner_path else component
+            except AttributeError:
+                continue
+            declared = getattr(type(owner), "_declarations", {}).get("parameter", {}).get(leaf)
+            if declared is not None and declared.value is None:
+                keys.append(attr)
+        return keys
+
     def _load_parameters(self, force_config_overwrite: bool = False) -> None:
         """
         Load parameters for all components from configuration files.
@@ -2318,12 +2336,17 @@ class SimulationModel:
                         )
                     LOGGER.remove_level()
 
+                absent = self._absent_optional_parameters(component, config_)
                 if force_config_overwrite:
                     config_ = merge_dicts(config_, config, prioritize="dict2")
                 else:
                     config_ = merge_dicts(
                         config_, config, prioritize="dict1"
                     )  # Prioritize config_ over config to allow user to change stuff in the fcn function (programatically)
+                # An absent optional parameter stays absent: ``None`` means
+                # "not given", not "fill in from the file".
+                for key in absent:
+                    config_["parameters"][key] = None
 
                 self.set_parameters_from_config(config_, component)
 
@@ -4457,6 +4480,10 @@ class SimulationModel:
                             f"cannot restore parameter {key}={value!r} on "
                             f"{class_name} '{component.id}' from {rdf_file}: {exc}"
                         ) from exc
+                elif current is None and self._absent_optional_parameters(component, {"parameters": {key: None}}):
+                    # a saved value of an optional parameter (``supply_damper.c``):
+                    # the owner builds the parameter from it
+                    rsetattr(component, key, value)
                 elif "." in key and isinstance(current, bool) and isinstance(value, bool):
                     # A nested flag (``supply_damper.c_tied``): no constructor
                     # takes the dotted key, so it is written to the owner.

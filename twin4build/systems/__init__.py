@@ -36,7 +36,6 @@ Key Components:
     Monitoring & Measurement:
         - SensorSystem: Generic sensor system
         - ScheduleSystem: Time-based scheduling system
-        - PiecewiseLinearScheduleSystem: Schedule with piecewise linear interpolation
 
     Environmental:
         - OutdoorEnvironmentSystem: External environmental conditions
@@ -51,7 +50,6 @@ Key Components:
         - OnOffSystem: Binary state system
         - DiscreteStatespaceSystem: General-purpose discrete state-space model
         - ScalarProductSystem: Elementwise scalar product
-        - FunctionSystem: User-supplied transformation of named inputs
         - OccupancySystem / OccupancyDetectorSystem: Occupancy modeling and detection
         - SigmoidGate: Smooth gating function
 
@@ -98,7 +96,6 @@ __all__ = [
     "SensorSystem",
     # Schedules
     "ScheduleSystem",
-    "PiecewiseLinearScheduleSystem",
     # Outdoor Environment
     "OutdoorEnvironmentSystem",
     # Junction
@@ -122,7 +119,6 @@ __all__ = [
     "OnOffSystem",
     "DiscreteStatespaceSystem",
     "ScalarProductSystem",
-    "FunctionSystem",
     "OccupancySystem",
     "OccupancyDetectorSystem",
     "SigmoidGate",
@@ -157,7 +153,6 @@ _MODULES = {
     "ReturnFlowJunctionSystem": "junction.return_flow_junction_system",
     "SupplyFlowJunctionSystem": "junction.supply_flow_junction_system",
     "OutdoorEnvironmentSystem": "outdoor_environment.outdoor_environment_system",
-    "PiecewiseLinearScheduleSystem": "schedule.piecewise_linear_schedule_system",
     "ScheduleSystem": "schedule.schedule_system",
     "SensorSystem": "sensor.sensor_system",
     "SpaceHeaterSystem": "space_heater.space_heater_system",
@@ -169,7 +164,6 @@ _MODULES = {
     "OccupancySystem": "utils.occupancy_system",
     "OnOffSystem": "utils.on_off_system",
     "PiecewiseLinearSystem": "utils.piecewise_linear_system",
-    "FunctionSystem": "utils.function_system",
     "ScalarProductSystem": "utils.scalar_product_system",
     "TimeSeriesInputSystem": "utils.time_series_input_system",
     "ValveSystem": "valve.valve_system",

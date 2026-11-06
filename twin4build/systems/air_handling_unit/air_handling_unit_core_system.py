@@ -54,7 +54,10 @@ def resolve_sub_params(sub, prefix, params):
     out = {}
     for name in sub.PARAM_NAMES:
         key = f"{prefix}.{name}"
-        out[name] = params[key] if key in params else getattr(sub, name).get()
+        if key in params:
+            out[name] = params[key]
+        elif getattr(sub, name) is not None:  # an absent (optional) parameter stays out
+            out[name] = getattr(sub, name).get()
     return out
 
 
@@ -158,7 +161,6 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
         ``"exhaust_fan.<name>"``).
     """
 
-    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ()  # all parameters live on the owned submodels (prefixed)
     _SUB_NAMES = CORE_SUB_NAMES
 
@@ -259,33 +261,22 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
             getattr(self, sub_name).initialize(start_time, end_time, step_size)
         self.INITIALIZED = True
 
-    def _sub_params(self, params, transform_mode=None):
-        """The submodels' resolved parameter dicts, identity-cached on
-        ``params`` (a sequential rollout re-calls ``forward`` with the same
-        dict every step)."""
-        if transform_mode:
-            return {
-                n: resolve_sub_params(getattr(self, n), n, params)
+    def derive(self, p, step_size):
+        """The submodels' parameters (estimated values from ``p``, the rest the
+        submodels' own), resolved once per run or rollout."""
+        return {
+            "sub_params": {
+                n: getattr(self, n).full_params(resolve_sub_params(getattr(self, n), n, p), step_size)
                 for n in self._SUB_NAMES
             }
-        cache = getattr(self, "_fwd_param_cache", None)
-        if cache is None or cache[0] is not params:
-            cache = (
-                params,
-                {
-                    n: resolve_sub_params(getattr(self, n), n, params)
-                    for n in self._SUB_NAMES
-                },
-            )
-            self._fwd_param_cache = cache
-        return cache[1]
+        }
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step of the device (functorch-safe, stateless): the
         :func:`unit_chain` on the scalar inputs.  ``params`` is keyed by the
         composite attr path (``"coil.<name>"``, ...); non-estimated entries
         fall back to the submodels' defaults."""
-        P = self._sub_params(params, transform_mode)
+        P = params["sub_params"]
         subs = {n: getattr(self, n) for n in self._SUB_NAMES}
         outs = unit_chain(
             subs,

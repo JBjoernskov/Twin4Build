@@ -473,8 +473,6 @@ class SpaceHeaterSystem(core.System, nn.Module):
 
         # Drop per-params forward caches: a fresh simulation must not reuse
         # matrices (or their autograd graph) from a previous run.
-        self._fwd_mat_cache = None
-        self._forward_params_cache = None
 
         self.INITIALIZED = True
 
@@ -554,7 +552,6 @@ class SpaceHeaterSystem(core.System, nn.Module):
         return x0
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("thermalMassHeatCapacity", "UA")
     #: ``Power`` was renamed when the water-side power became an output of
     #: its own (see ``System.OUTPUT_PORT_ALIASES``).
@@ -717,12 +714,11 @@ class SpaceHeaterSystem(core.System, nn.Module):
             id=f"ss_model_{self.id}",
         )
 
-    def step_constants(self, params):
-        """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
-        :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
-        return self._build_matrices(params)
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step radiator dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` is a
@@ -735,23 +731,7 @@ class SpaceHeaterSystem(core.System, nn.Module):
         * (supplyWaterTemperature - outletWaterTemperature), the heat taken
         from the heating circuit.  Both at the end-of-step state.
         """
-        # Params-only matrices, cached per params-dict identity (rebuilt once
-        # per theta in a sequential rollout, not once per step).  step_size
-        # is part of the key: the attached disc_cache holds (Ad, Bd)
-        # discretized at a specific T.
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._build_matrices(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._build_matrices(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C_out, D, E, F = matrices
+        A, B, C_out, D, E, F = params["matrices"]
         u = torch.stack(
             [
                 inputs["supplyWaterTemperature"],
@@ -770,8 +750,6 @@ class SpaceHeaterSystem(core.System, nn.Module):
             x,
             u,
             step_size,
-            disc_cache=disc_cache,
-            transform_mode=transform_mode,
         )
         outlet = y[..., 0]
         # the power row: UA/n * sum_i (T_i - T_zone) at the end-of-step state

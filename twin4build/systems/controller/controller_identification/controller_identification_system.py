@@ -1375,7 +1375,6 @@ class ControllerIdentificationSystem(core.System, nn.Module):
     # the gates are stateless.  ``forward`` is functorch-safe: it only reads
     # ``params`` (never ``self.<parameter>``) and the structural attributes
     # fixed at ``initialize`` (candidate types, state slices, gate wiring).
-    SUPPORTS_TRANSFORM_MODE = True
 
     def _compute_state_slices(self) -> Dict[Tuple[int, int], Tuple[int, int]]:
         """``(actuator, candidate) -> (offset, width)`` into the concatenated
@@ -1411,24 +1410,20 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             out[name] = params[key] if key in params else rgetattr(sub, name).get()
         return out
 
-    def _resolve_forward_params(self, params: dict, transform_mode) -> dict:
-        """Per-sub-system params dicts, identity-cached on ``params`` so the
-        candidates' own identity-keyed caches (PID coefficients) keep hitting
-        across a sequential rollout."""
-        if not transform_mode:
-            cache = getattr(self, "_fwd_sub_cache", None)
-            if cache is not None and cache[0] is params:
-                return cache[1]
+    def derive(self, p, step_size):
+        """Each gate's and candidate's parameters (estimated values from
+        ``p``, the rest the sub-system's own) and what it derives from them
+        (a PID candidate's gains)."""
         sub = {}
         for a in range(self.n_actuators):
-            sub[("gate", a)] = self._sub_params(self._get_gate(a), f"gate_{a}", params)
+            gate = self._get_gate(a)
+            sub[("gate", a)] = gate.full_params(self._sub_params(gate, f"gate_{a}", p), step_size)
             for c in range(self.n_candidates):
-                sub[(a, c)] = self._sub_params(
-                    self._get_candidate(a, c), f"candidate_{a}_{c}", params
+                candidate = self._get_candidate(a, c)
+                sub[(a, c)] = candidate.full_params(
+                    self._sub_params(candidate, f"candidate_{a}_{c}", p), step_size
                 )
-        if not transform_mode:
-            self._fwd_sub_cache = (params, sub)
-        return sub
+        return {"sub_params": sub}
 
     def _selection(self, weights: torch.Tensor, width: int) -> torch.Tensor:
         """Selection weights normalised to one over their ``width`` slots:
@@ -1453,7 +1448,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
         weights = weights / (torch.sum(weights, dim=-1, keepdim=True) + 1e-8)
         return sum(weights[:, c] * outputs[c] for c in range(k))
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step controller identification
         ``(state, inputs, params) -> (new_state, outputs)``.
 
@@ -1476,7 +1471,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             return x, {"inputSignal": inputs["actuatorMeasured"]}
         if self._state_slices is None:
             self._state_slices = self._compute_state_slices()
-        sub = self._resolve_forward_params(params, transform_mode)
+        sub = params["sub_params"]
         sensor_values = inputs["sensorValue"]
         setpoint_values = inputs["setpointValue"]
         on_off = inputs["onOffSignal"]
@@ -1520,14 +1515,7 @@ class ControllerIdentificationSystem(core.System, nn.Module):
                     }
                 offset, width = self._state_slices[(a, c)]
                 x_c = x[..., offset : offset + width] if (x is not None and width) else None
-                kwargs = (
-                    {"transform_mode": transform_mode}
-                    if getattr(ctrl, "SUPPORTS_TRANSFORM_MODE", False)
-                    else {}
-                )
-                x_c_next, out_c = ctrl.forward(
-                    x_c, ctrl_inputs, sub[(a, c)], step_size, **kwargs
-                )
+                x_c_next, out_c = ctrl.forward(x_c, ctrl_inputs, sub[(a, c)], step_size)
                 if width:
                     new_state_parts.append((offset, x_c_next))
                 candidate_outputs.append(out_c["inputSignal"])

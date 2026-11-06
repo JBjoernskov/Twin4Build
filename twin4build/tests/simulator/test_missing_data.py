@@ -34,6 +34,7 @@ tb._IS_TESTING = True
 
 from twin4build.tests.simulator.test_fusion_batched import START, STEP, build  # noqa: E402
 from twin4build.tests.simulator.test_measurement_errors import HOURS, N, OFFSETS, frame, simulate, truth  # noqa: E402
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 GAP = slice(10, 30)  # 200 minutes without a supply-water reading
 
@@ -80,61 +81,60 @@ class TestTimeSeriesInput(unittest.TestCase):
         return tsi.values[:, 0, 0].numpy()
 
     def test_no_value_is_repeated_past_the_data(self):
-        tsi = TimeSeriesInputSystem(id="t", df=self.series(range(0, 61, 10), np.arange(7)))
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series(range(0, 61, 10), np.arange(7))))
         tsi.allow_missing = True
         self.initialize(tsi)
         self.assertEqual(int(np.isnan(tsi.df[0].to_numpy(float)).sum()), 5)  # 70 .. 110 min: after the last reading
         np.testing.assert_allclose(tsi.df[0].to_numpy(float)[:7], np.arange(7))
 
     def test_an_input_with_a_gap_is_an_error(self):
-        tsi = TimeSeriesInputSystem(id="t", df=self.series(range(0, 121, 10), np.arange(13)), dt_limit=None)
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series(range(0, 121, 10), np.arange(13)), dt_limit=None))
         tsi.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=2)], step_size=[STEP])  # no gap
-        tsi = TimeSeriesInputSystem(id="t", df=self.series([0, 10, 100, 110, 120], [0, 1, 10, 11, 12]), dt_limit=1800)
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series([0, 10, 100, 110, 120], [0, 1, 10, 11, 12]), dt_limit=1800))
         with self.assertRaisesRegex(AssertionError, "declare a fill"):
             self.initialize(tsi)
 
     def test_linear_fill_bridges_the_gap_and_says_so(self):
-        tsi = TimeSeriesInputSystem(id="t", df=self.series([0, 10, 100, 110, 120], [0, 1, 10, 11, 12]),
-                                    dt_limit=1800, fill="linear")
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series([0, 10, 100, 110, 120], [0, 1, 10, 11, 12]), dt_limit=1800, fill="linear"))
         v = self.initialize(tsi)
         np.testing.assert_allclose(v, np.arange(12))
         np.testing.assert_array_equal(np.flatnonzero(tsi.filled[0]), np.arange(2, 10))
 
     def test_linear_fill_never_reaches_beyond_the_readings(self):
-        tsi = TimeSeriesInputSystem(id="t", df=self.series([30, 40, 50], [3, 4, 5]), fill="linear")
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series([30, 40, 50], [3, 4, 5]), fill="linear"))
         with self.assertRaisesRegex(AssertionError, "left these"):
             self.initialize(tsi)
 
     def test_interpolate_fill_bridges_gaps_and_holds_beyond_the_readings(self):
         """Straight lines inside, the nearest reading held at the edges; a period without a reading as ``constant``
         (23 Oct 2026: room temperatures a cut replays into exhaust boxes, some dead for a week)."""
-        tsi = TimeSeriesInputSystem(id="t", df=self.series([30, 40, 70, 80], [3, 4, 7, 8]), dt_limit=1200, fill="interpolate")
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series([30, 40, 70, 80], [3, 4, 7, 8]), dt_limit=1200, fill="interpolate"))
         v = self.initialize(tsi)
         np.testing.assert_allclose(v, [3, 3, 3, 3, 4, 5, 6, 7, 8, 8, 8, 8])
         np.testing.assert_array_equal(np.flatnonzero(tsi.filled[0]), [0, 1, 2, 5, 6, 9, 10, 11])
-        tsi = TimeSeriesInputSystem(id="t", df=self.series([-600, -590, 300], [7, 8, 9]), dt_limit=1800, fill="interpolate")
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series([-600, -590, 300], [7, 8, 9]), dt_limit=1800, fill="interpolate"))
         np.testing.assert_allclose(self.initialize(tsi), np.full(12, 8.0))
 
     def test_constant_fill_holds_both_ways(self):
-        tsi = TimeSeriesInputSystem(id="t", df=self.series([30, 40, 50], [3, 4, 5]), fill="constant")
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series([30, 40, 50], [3, 4, 5]), fill="constant"))
         v = self.initialize(tsi)
         np.testing.assert_allclose(v, [3, 3, 3, 3, 4, 5, 5, 5, 5, 5, 5, 5])
         self.assertEqual(int(tsi.filled.sum()), 9)
 
     def test_constant_fill_holds_the_nearest_reading_over_a_period_without_one(self):
         """No reading in the period: the last one before it; none before, the first after it."""
-        tsi = TimeSeriesInputSystem(id="t", df=self.series([-600, -590, 300], [7, 8, 9]), dt_limit=1800, fill="constant")
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series([-600, -590, 300], [7, 8, 9]), dt_limit=1800, fill="constant"))
         v = self.initialize(tsi)
         np.testing.assert_allclose(v, np.full(12, 8.0))
         self.assertTrue(tsi.filled[0].all())
-        tsi = TimeSeriesInputSystem(id="t", df=self.series([300, 310], [9, 10]), dt_limit=1800, fill="constant")
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series([300, 310], [9, 10]), dt_limit=1800, fill="constant"))
         np.testing.assert_allclose(self.initialize(tsi), np.full(12, 9.0))
 
     def test_copy_week_takes_the_same_steps_a_week_earlier(self):
         week = 7 * 24 * 60
         minutes = list(range(-week, -week + 121, 10)) + [0, 10, 100, 110, 120]
         values = list(np.arange(13) + 100.0) + [0, 1, 10, 11, 12]
-        tsi = TimeSeriesInputSystem(id="t", df=self.series(minutes, values), dt_limit=1800, fill="copy_week")
+        tsi = TimeSeriesInputSystem(id="t", source=DataFrameSource(self.series(minutes, values), dt_limit=1800, fill="copy_week"))
         v = self.initialize(tsi)
         np.testing.assert_allclose(v[[0, 1, 10, 11]], [0, 1, 10, 11])
         np.testing.assert_allclose(v[2:10], np.arange(2, 10) + 100.0)  # the week before
