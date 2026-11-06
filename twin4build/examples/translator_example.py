@@ -103,7 +103,7 @@ def fcn(self):
     )
 
     # Configure control setpoints
-    self.components["office_co2_setpoint"].weekDayRulesetDict = {
+    self.components["office_co2_setpoint"].weekday_ruleset = {
         "ruleset_default_value": 900,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
@@ -112,7 +112,7 @@ def fcn(self):
         "ruleset_value": [],
     }
 
-    self.components["office_occupancy_profile"].weekDayRulesetDict = {
+    self.components["office_occupancy_profile"].weekday_ruleset = {
         "ruleset_default_value": 0,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
