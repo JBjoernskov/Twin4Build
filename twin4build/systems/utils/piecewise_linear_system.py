@@ -1,180 +1,66 @@
-# Standard library imports
-import datetime
-from typing import Dict, List, Optional, Tuple
-
 # Third party imports
 import torch
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import REQUIRED, Input, Output, Parameter, Setting
+
+
+def _increasing(X) -> tuple:
+    """The x of the points as a tuple of floats; they must increase."""
+    points = tuple(float(v) for v in torch.as_tensor(X, dtype=torch.float64).reshape(-1).tolist())
+    if len(points) < 2:
+        raise ValueError(f"PiecewiseLinearSystem: X needs at least two points, got {list(points)}")
+    if any(b <= a for a, b in zip(points, points[1:])):
+        raise ValueError(f"PiecewiseLinearSystem: X must increase, got {list(points)}")
+    return points
 
 
 class PiecewiseLinearSystem(core.System):
-    """A system implementing piecewise linear interpolation functionality.
+    """``y(x)`` through the points ``(X, Y)``: linear between two points,
+    constant beyond the first and the last.
 
-    This class provides core functionality for systems that need to perform piecewise
-    linear interpolation between data points. It supports both direct point-to-point
-    interpolation and fitting of piecewise linear functions to data.
+    ``X`` is a setting: the points' positions are fixed.  ``Y`` is a
+    parameter of one value per point, so it can be estimated or optimized
+    (the supply temperatures of an outdoor temperature compensation curve).
+    Its range is the run's: ``tb.Variable(curve.Y, lb=12.0, ub=24.0)``.
 
-    Args:
-        X: X coordinates
-        Y: Y coordinates
-        **kwargs: Additional keyword arguments
+    Example::
 
-    Note:
-        When X and Y are provided during initialization, the system automatically
-        calculates the piecewise linear coefficients.
+        curve = tb.PiecewiseLinearSystem(X=[-12, 5, 20], Y=[60, 50, 20], id="curve")
     """
 
-    def __init__(
-        self,
-        X: Optional[torch.Tensor] = None,
-        Y: Optional[torch.Tensor] = None,
-        Y_bounds: Optional[Tuple[float, float]] = None,
-        **kwargs,
-    ) -> None:
-        """Initialize the piecewise linear system.
+    REMOVED_ATTRIBUTES = {
+        "Y_bounds": "give the range with the run's variable: tb.Variable(curve.Y, lb=..., ub=...)",
+    }
 
-        Args:
-            X: X coordinates. Defaults to None.
-            Y: Y coordinates. Defaults to None.
-            **kwargs: Additional keyword arguments passed to parent class.
-        """
-        super().__init__(**kwargs)
-
-        self.input = {
-            "x": tps.Scalar(),
-        }
-        self.output = {
-            "y": tps.Scalar(),
-        }
-
-        # The X coordinates are structural data (sorted, fixed); the Y
-        # coordinates are a ``tps.Parameter`` so they can be estimated or
-        # optimized (e.g. the supply-temperature points of an outdoor
-        # temperature compensation curve).  ``Y_bounds`` makes them
-        # estimable through ``get_estimable_parameters``.
-        self._X = None
-        self._Y = None
-        if X is not None and Y is not None:
-            X = torch.as_tensor(X, dtype=tps.float_dtype())
-            Y = torch.as_tensor(Y, dtype=tps.float_dtype())
-            order = torch.argsort(X)
-            self._X = X[order].detach().clone()
-            Y = Y[order].detach().clone()
-            if Y_bounds:
-                lo, hi = float(Y_bounds[0]), float(Y_bounds[1])
-            else:  # a generous range around the points, for normalization only
-                span = max(1.0, float(Y.max() - Y.min()))
-                lo, hi = float(Y.min()) - span, float(Y.max()) + span
-            self._Y = tps.Parameter(
-                Y, min_value=torch.full_like(Y, lo), max_value=torch.full_like(Y, hi), requires_grad=False
-            )
-        self.parameter = {"Y": {"lb": float(Y_bounds[0]), "ub": float(Y_bounds[1])}} if Y_bounds else {}
-        self._config = {"parameters": ["Y"]}
-
-    @property
-    def config(self) -> Dict[str, List[str]]:
-        """Get the configuration parameters.
-
-        Returns:
-            Dict[str, List[str]]: Dictionary containing configuration parameter names.
-        """
-        return self._config
-
-    @property
-    def X(self) -> Optional[torch.Tensor]:
-        """
-        Get the X coordinates of the interpolation points.
-        """
-        return self._X
-
-    @X.setter
-    def X(self, value: Optional[torch.Tensor]) -> None:
-        """
-        Set the X coordinates of the interpolation points.
-        """
-        self._X = value
-
-    @property
-    def Y(self) -> Optional[tps.Parameter]:
-        """
-        Get the Y coordinates of the interpolation points.
-        """
-        return self._Y
-
-    @Y.setter
-    def Y(self, value: Optional[torch.Tensor]) -> None:
-        """
-        Set the Y coordinates of the interpolation points.
-        """
-        self._Y = value
+    X = Setting(REQUIRED, convert=_increasing, doc="The x of the points, increasing")
+    x = Input(doc="The value to look up")
+    y = Output(doc="y(x)")
+    Y = Parameter(REQUIRED, size=X, doc="The y of the points, one per x")
 
     @staticmethod
     def interpolate(x: torch.Tensor, X: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
-        """Piecewise-linear ``y(x)`` through the points ``(X, Y)``, ``X``
-        sorted; constant beyond the first and last point.  Differentiable
-        in ``Y`` (and in ``x``), which is what estimation and optimization
-        of the points need."""
+        """``y(x)`` through the points ``(X, Y)``, ``X`` increasing; constant
+        beyond the first and the last point.  ``Y`` is one row of points
+        ``(n,)``, or one row per copy ``(m, n)`` for an ``x`` of ``m`` rows
+        or a multiple of them (every simulation of a copy reads its row).
+        Differentiable in ``Y`` and in ``x``."""
         x = torch.as_tensor(x)
         shape = x.shape
         x = x.reshape(-1)
-        X = X.to(dtype=x.dtype, device=x.device)
-        Y = Y.to(dtype=x.dtype, device=x.device).reshape(-1)
-        slope = (Y[1:] - Y[:-1]) / (X[1:] - X[:-1])
-        intercept = Y[:-1] - slope * X[:-1]
-        segment = torch.clamp(torch.searchsorted(X.contiguous(), x) - 1, 0, slope.numel() - 1)
-        y = slope[segment] * x + intercept[segment]
-        y = torch.where(x <= X[0], Y[0].expand_as(x), torch.where(x >= X[-1], Y[-1].expand_as(x), y))
+        X = torch.as_tensor(X).to(dtype=x.dtype, device=x.device)
+        Y = torch.as_tensor(Y).to(dtype=x.dtype, device=x.device).reshape(-1, X.numel())
+        if Y.shape[0] != x.shape[0]:
+            Y = Y.repeat(x.shape[0] // Y.shape[0], 1)
+        slope = (Y[:, 1:] - Y[:, :-1]) / (X[1:] - X[:-1])
+        intercept = Y[:, :-1] - slope * X[:-1]
+        segment = torch.clamp(torch.searchsorted(X.contiguous(), x.contiguous()) - 1, 0, X.numel() - 2).unsqueeze(-1)
+        y = torch.gather(slope, 1, segment).squeeze(-1) * x + torch.gather(intercept, 1, segment).squeeze(-1)
+        y = torch.where(x <= X[0], Y[:, 0], torch.where(x >= X[-1], Y[:, -1], y))
         return y.reshape(shape)
 
-    def _points_Y(self) -> torch.Tensor:
-        """The current Y points as a tensor: a ``tps.Parameter`` when the
-        table was given at construction, a plain tensor when a subclass
-        sets the table itself (the schedule resolves its points per step)."""
-        return self._Y.get() if hasattr(self._Y, "get") else self._Y
-
-    def _get_a_b_vectors(self) -> None:
-        """Kept for subclasses that set ``_X`` / ``_Y`` directly and call
-        this to refresh the table: the interpolation reads the points as
-        they are, so there is nothing to derive."""
-        return None
-
-    def _get_Y(self, X: torch.Tensor) -> torch.Tensor:
-        """Interpolated Y at ``X`` with the component's current points."""
-        return self.interpolate(X, self._X, self._points_Y())
-
-    PARAM_NAMES = ("Y",)  # the X coordinates are structural, the Y points a parameter
-
-    def forward(self, x, inputs, params, step_size):
-        """Pure one-step piecewise-linear interpolation (functorch-safe,
-        stateless).  The interpolation table is fixed (structural) data, so
-        :meth:`_get_Y` is a pure function of the input."""
-        Y = params["Y"] if "Y" in params else self._points_Y()
-        return x, {"y": self.interpolate(inputs["x"], self._X, Y)}
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """Perform a single interpolation step.
-
-        Thin port-I/O wrapper delegating the math to :meth:`forward`.
-
-        Args:
-            second_time (Optional[float], optional): Current simulation time in seconds.
-                Defaults to None.
-            date_time (Optional[datetime.datetime], optional): Current simulation date_time.
-                Defaults to None.
-            step_size (Optional[float], optional): Time step size in seconds.
-                Defaults to None.
-        """
-        inputs = {"x": self.input["x"].get()}
-        _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.output["y"]._set(outs["y"], i_t=step_index)
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: the curve at the input, each copy on its own points."""
+        u = inputs["x"]
+        return x, {"y": self.interpolate(u, torch.as_tensor(self.X, dtype=u.dtype, device=u.device), p["Y"])}

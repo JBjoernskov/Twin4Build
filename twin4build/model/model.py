@@ -1292,6 +1292,13 @@ class Model:
                 # Components sharing a batch share those values;
                 # _component_signature keeps differing ones apart.
                 init_kwargs = dict(getattr(comps[0], "_batch_init_kwargs", None) or {})
+                if getattr(cls, "_is_declared", False):
+                    # a parameter the constructor must be given (a curve's
+                    # points): the first copy's, until the stacked values
+                    # replace it
+                    for name, decl in cls._declarations["parameter"].items():
+                        if decl.value is core.REQUIRED and getattr(comps[0], name, None) is not None:
+                            init_kwargs.setdefault(name, getattr(comps[0], name).get().detach().clone())
                 if n_c == 1:
                     # A singleton joins as a shallow copy with fresh wiring
                     # (the cycle-free load copies components the same way):
@@ -1659,8 +1666,14 @@ class Model:
         attributes whose names appear in ``components[0].parameter`` (or its
         saved config) are batched.  Each original component contributes one
         slice along ``n_c``.
+
+        A declared parameter of several values per copy
+        (:meth:`System.values_per_copy`: a curve's points, a value per branch,
+        a child per branch) is laid out flat, one copy's values after
+        another; a copy holding one value fills its places with it.
         """
-        if getattr(type(components[0]), "_is_declared", False):
+        declared = getattr(type(components[0]), "_is_declared", False)
+        if declared:
             parameter_names = list(type(components[0]).PARAM_NAMES)
         else:
             param_dict = getattr(components[0], "parameter", None)
@@ -1682,6 +1695,11 @@ class Model:
 
             first = originals[0]
             self._stack_parameter_spec(meta, components, param_name)
+
+            width = components[0].values_per_copy(param_name) if declared else 1
+            if width > 1:
+                self._set_dotted_attr(meta, param_name, self._flat_per_copy(originals, width, param_name))
+                continue
 
             if isinstance(first, tps.Parameter):
                 if first.get().numel() > 1 and getattr(components[0], "_batch_flat_vectors", False):
@@ -1734,6 +1752,38 @@ class Model:
                         scaling=getattr(first, "scaling", "linear"),
                     ),
                 )
+
+    @staticmethod
+    def _flat_per_copy(originals, width: int, name: str):
+        """The parameters ``originals`` (``width`` values per copy each, or
+        one) as one parameter of ``len(originals) * width`` values, one copy
+        after another."""
+
+        def per_copy(t):
+            t = torch.as_tensor(t).reshape(-1)
+            if t.numel() == 1:
+                return t.expand(width)
+            if t.numel() != width:
+                raise ValueError(f"{name}: a copy holds {t.numel()} values, not {width}")
+            return t
+
+        first = originals[0]
+        values = torch.cat([per_copy(p.get().detach()) for p in originals])
+        scaling = getattr(first, "scaling", "linear")
+        if isinstance(first, tps.TensorParameter):
+            bounds = [
+                None if getattr(first, attr) is None else torch.cat([per_copy(getattr(p, attr)) for p in originals])
+                for attr in ("min_value", "max_value")
+            ]
+            return tps.TensorParameter(values, min_value=bounds[0], max_value=bounds[1], normalized=False, scaling=scaling)
+        return tps.Parameter(
+            values,
+            min_value=torch.cat([per_copy(p.min_value) for p in originals]),
+            max_value=torch.cat([per_copy(p.max_value) for p in originals]),
+            requires_grad=first.requires_grad,
+            n_c=int(values.numel()),
+            scaling=scaling,
+        )
 
     @staticmethod
     def _stack_parameter_spec(meta, components, param_name) -> None:
@@ -1864,6 +1914,16 @@ class Model:
             except AttributeError:
                 pass
         parameter_keys = parameter_keys + (("absent",) + tuple(absent) if absent else ())
+        # A declared System's values per copy (a curve's points, a value or a
+        # child per branch) must agree: two units with different branch
+        # counts cannot share one layout.
+        if getattr(type(component), "_is_declared", False):
+            children = type(component)._declarations["child"]
+            parameter_keys = parameter_keys + (
+                ("per_copy",)
+                + tuple(component.values_per_copy(name) for name in getattr(component, "PARAM_NAMES", ()))
+                + tuple(component.slots_per_copy(decl) for decl in children.values()),
+            )
 
         # A component that only replays recorded data (a controller in
         # playback) is exogenous to the functional composer while its

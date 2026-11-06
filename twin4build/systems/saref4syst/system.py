@@ -487,6 +487,8 @@ class System(nn.Module, metaclass=SystemMeta):
                 values["setting"][name] = decl.convert(values["setting"][name])
         for name, decl in declared["parameter"].items():
             values["parameter"][name] = kwargs.pop(name, decl.value)
+            if values["parameter"][name] is REQUIRED:
+                raise TypeError(f"{type(self).__name__}() needs the parameter {name!r}")
         for name in declared["child"]:
             override = kwargs.pop(name, None)
             if override is not None and not isinstance(override, dict):
@@ -528,6 +530,9 @@ class System(nn.Module, metaclass=SystemMeta):
         self.parameter = bounds
         for name, compute in computed:
             setattr(self, name, compute(self))
+        for name, decl in declared["parameter"].items():
+            if decl.size is not None:
+                self._fill_sized(name, decl, 1)
         for name, decl in declared["state"].items():
             size = decl.size if isinstance(decl.size, int) else None
             if size is None and getattr(decl.size, "kind", None) == "setting":
@@ -598,6 +603,9 @@ class System(nn.Module, metaclass=SystemMeta):
                 for decl in declared[kind].values():
                     if getattr(decl, "per_slot_if", None) is not None:
                         sizing.add(decl.per_slot_if.name)
+                    ref = getattr(decl, "size", None) if kind == "parameter" else None
+                    if isinstance(ref, Declaration) and ref.kind == "setting":
+                        sizing.add(ref.name)
             names = tuple(
                 name for name, decl in declared["setting"].items()
                 if not decl.structural and name not in sizing
@@ -706,6 +714,8 @@ class System(nn.Module, metaclass=SystemMeta):
                     port.initialize(n_t=n_t, n_s=n_s, n_c=n_c)
         declared = type(self)._declarations
         for name, decl in declared["parameter"].items():
+            if decl.size is not None:
+                self._fill_sized(name, decl, n_c)
             value = getattr(self, name)
             if value is not None:
                 setattr(self, name, value.expand_to_n_c(n_c * self.slots_per_copy(decl)))
@@ -795,14 +805,50 @@ class System(nn.Module, metaclass=SystemMeta):
 
     def slots_per_copy(self, decl) -> int:
         """How many values a declared parameter, or copies a declared child,
-        one copy of this System holds: the width of its ``per_slot`` input
-        (while its ``per_slot_if`` setting is true), else 1.  Read once the
-        ports are sized."""
+        one copy of this System holds: its ``size=``, or the width of its
+        ``per_slot`` input (while its ``per_slot_if`` setting is true), else
+        1.  The width comes from the wiring, so the batcher can read it
+        before a run."""
+        size = getattr(decl, "size", None) if decl.kind == "parameter" else None
+        if size is not None:
+            return size if isinstance(size, int) else max(self._setting_size(size.name), 1)
         port = getattr(decl, "per_slot", None)
         condition = getattr(decl, "per_slot_if", None)
         if port is None or (condition is not None and not getattr(self, condition.name)):
             return 1
-        return max(int(self.input[port.name]._n_v or 0), 1)
+        return max(int(self.declared_size("input", port.name) or 0), 1)
+
+    def values_per_copy(self, path: str) -> int:
+        """How many values one copy of this System holds of the parameter at
+        ``path`` (a dotted path reaches into a child: a child stepped per slot
+        multiplies by its slots).  1 for a System written the old way."""
+        if not getattr(type(self), "_is_declared", False):
+            return 1
+        head, _, rest = path.partition(".")
+        declared = type(self)._declarations
+        if rest:
+            decl = declared["child"].get(head)
+            if decl is None:
+                return 1
+            return self.slots_per_copy(decl) * getattr(self, head).values_per_copy(rest)
+        decl = declared["parameter"].get(head)
+        return 1 if decl is None else self.slots_per_copy(decl)
+
+    def _fill_sized(self, name: str, decl, n_c: int) -> None:
+        """A parameter of ``size=`` values per copy holds them all: one value
+        given fills every place; any other count than ``size`` (or ``n_c *
+        size``, a batched copy's) raises."""
+        value = getattr(self, name)
+        if value is None:
+            return
+        size = self.slots_per_copy(decl)
+        held = value.get().numel()
+        if held == 1 and size > 1:
+            setattr(self, name, value.get().detach().reshape(-1).expand(size).clone())
+        elif held not in (size, n_c * size):
+            raise ValueError(
+                f"{type(self).__name__} '{self.id}': {name} holds {held} values, but its size is {size}"
+            )
 
     def _fill_from_series(self, n_t, n_s, n_c, timestamps, own_steps, step_size) -> None:
         """Call ``series`` and fill every output with its values for the whole
