@@ -146,8 +146,6 @@ class ThermalMassNodeSystem(core.System, nn.Module):
         self.ss_model.initialize(start_time, end_time, step_size)
         self.ss_model.set_state(self._get_initial_state_tensor())
 
-        self._fwd_mat_cache = None
-        self._forward_params_cache = None
 
         self.INITIALIZED = True
 
@@ -159,7 +157,6 @@ class ThermalMassNodeSystem(core.System, nn.Module):
         return x0
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("C",)
 
     def _state_heat_capacities(self):
@@ -215,29 +212,17 @@ class ThermalMassNodeSystem(core.System, nn.Module):
             id=f"ss_model_{self.id}",
         )
 
-    def step_constants(self, params):
-        """The theta-only matrices for one rollout (see ``StepParams``)."""
-        return self._build_matrices(params)
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step node dynamics ``(state, inputs, params) -> (new_state, outputs)``.
         ``inputs["heatFlowRate"]`` has shape ``(n_c, n_flows)``."""
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._build_matrices(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._build_matrices(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C_out, D, E, F = matrices
+        A, B, C_out, D, E, F = params["matrices"]
         u = inputs["heatFlowRate"]
         x_next, y = bilinear_onestep(
-            A, B, C_out, D, E, F, x, u, step_size, disc_cache=disc_cache, transform_mode=transform_mode
+            A, B, C_out, D, E, F, x, u, step_size
         )
         return x_next, {"temperature": y[..., 0]}
 

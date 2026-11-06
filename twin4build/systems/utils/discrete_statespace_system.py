@@ -1,4 +1,5 @@
 # Standard library imports
+import contextlib
 import datetime
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -29,14 +30,39 @@ ZOH_EXPM = os.environ.get("T4B_ZOH_EXPM", "phi1").strip().lower()
 EXPM_CHECKPOINT = os.environ.get("T4B_EXPM_CHECKPOINT", "0").strip().lower() in {"1", "true", "yes"}
 
 
-class StepParams(dict):
-    """A component's params dict for one functional step, carrying the
-    theta-only state-space matrices the rollout built once
-    (:meth:`FunctionalModel.step_constants`) in ``matrices``; a unit's
-    transform-mode ``forward`` uses them instead of rebuilding per step, so
-    an unrolled rollout's autograd tape holds one copy of them."""
+#: Set by the functional engine for the length of a step it traces, captures
+#: or transforms (``FunctionalModel.F``): the discretisation then uses the
+#: matmul-only matrix exponential and never asks torch whether a transform is
+#: active (a query that has no place in a captured graph).
+TRACEABLE = False
 
-    matrices = None
+
+@contextlib.contextmanager
+def traceable(flag: bool = True):
+    """Within the block, discretise with the matmul-only matrix exponential
+    (or, with ``flag=False``, leave the choice to detection), as the
+    functional engine does for a step it traces, captures or transforms."""
+    global TRACEABLE
+    previous = TRACEABLE
+    TRACEABLE = bool(flag)
+    try:
+        yield
+    finally:
+        TRACEABLE = previous
+
+
+def _traceable() -> bool:
+    """Whether the discretisation must use the matmul-only exponential: the
+    engine says so, ``torch.compile`` is tracing, or a ``torch.func``
+    transform is active."""
+    if TRACEABLE:
+        return True
+    try:
+        if torch.compiler.is_compiling():
+            return True
+    except AttributeError:  # pragma: no cover - very old torch
+        pass
+    return _functorch_active()
 
 
 def _functorch_transform_active() -> bool:
@@ -229,7 +255,7 @@ def _discretize_onestep(A, B, E, F, u, step_size, transform_mode=None):
     m = B.shape[-1]
     T = step_size
     if transform_mode is None:
-        transform_mode = _functorch_active()
+        transform_mode = _traceable()
     if transform_mode and ZOH_EXPM == "phi1":
         X = A_eff * T
         if EXPM_CHECKPOINT:
@@ -302,7 +328,7 @@ def bilinear_onestep(
     functorch bypasses the cache).
     """
     if transform_mode is None:
-        transform_mode = _functorch_active()
+        transform_mode = _traceable()
     if disc_cache is None or transform_mode:
         Ad, Bd = _discretize_onestep(
             A, B, E, F, u, step_size, transform_mode=transform_mode
@@ -1037,10 +1063,6 @@ class DiscreteStatespaceSystem(core.System):
         stepwise path has always had -- including the gradient-safety guard
         that recomputes whenever the bilinear-relevant inputs carry grad.
         """
-        cache = getattr(self, "_fwd_disc_cache", None)
-        if cache is None or cache[0] != step_size:
-            cache = (step_size, {})
-            self._fwd_disc_cache = cache
         x_next, y = bilinear_onestep(
             self._A_base,
             self._B_base,
@@ -1051,7 +1073,6 @@ class DiscreteStatespaceSystem(core.System):
             x,
             inputs["u"],
             step_size,
-            disc_cache=cache[1],
         )
         return x_next, {"y": y}
 

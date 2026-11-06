@@ -173,14 +173,13 @@ class TestInfiltrationHeat(unittest.TestCase):
             "heatGain": _t(0.0),
         }
         x0 = torch.tensor([[20.0, 20.0]], dtype=torch.float64)
-        x1, out = zone.forward(x0, inputs, params, DT)
+        x1, out = zone.forward(x0, inputs, zone.full_params(params, DT), DT)
         expected = 20.0 * math.exp(-float(constants.CP_AIR) * m_inf / C_air * DT)
         self.assertAlmostEqual(float(x1[0, 0]), expected, places=9)
         self.assertEqual(float(out["surplusAirFlowRate"]), 0.0)
         self.assertEqual(float(out["makeUpAirFlowRate"]), 0.0)
         # without infiltration the decoupled air node holds its temperature
-        zone._fwd_mat_cache = None
-        x1, _ = zone.forward(x0, inputs, {**params, "m_inf": _t(0.0)}, DT)
+        x1, _ = zone.forward(x0, inputs, zone.full_params({**params, "m_inf": _t(0.0)}, DT), DT)
         self.assertAlmostEqual(float(x1[0, 0]), 20.0, places=9)
 
 
