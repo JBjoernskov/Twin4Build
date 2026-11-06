@@ -180,8 +180,11 @@ class Parameter(Declaration):
     """A value of the System that can be estimated.
 
     Args:
-        value: The default value; ``None``: the parameter is absent until it is
-            given (``System(c=...)`` or ``system.c = ...``).  An absent
+        value: The default value, or a function of the System that computes it
+            once the System has its settings and its other parameters (a
+            radiator's UA from its nominal power).  ``None``: the parameter is
+            absent until it is given (``System(c=...)`` or ``system.c = ...``).
+            An absent
             parameter is not in ``forward``'s ``p``, is not estimated and is not
             saved; the System says what follows from its absence in ``derive``.
         lb, ub: The range the estimator searches. A parameter without both is
@@ -415,4 +418,10 @@ class SystemMeta(type):
                 for sub in getattr(child.cls, "PARAM_NAMES", ()):
                     names.append(f"{child_name}.{sub}")
             cls.PARAM_NAMES = tuple(names)
+        # A renamed port's old name connects through the class's alias tables
+        # (``System.resolve_output_port`` / ``resolve_input_port``).
+        for kind, table in (("output", "OUTPUT_PORT_ALIASES"), ("input", "INPUT_PORT_ALIASES")):
+            aliases = {decl.alias: name for name, decl in merged[kind].items() if decl.alias}
+            if aliases and table not in cls.__dict__:
+                setattr(cls, table, aliases)
         return cls

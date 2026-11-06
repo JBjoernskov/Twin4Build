@@ -311,9 +311,8 @@ def fcn(self):
     ), date_column=0, value_column=2)
     self.components["outdoor_environment"].outdoorCo2Concentration_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=3)
 
-    # Space heater UA is computed from nominal conditions during initialize()
-    # (initialize_UA=True). Omit x0 so estimation starts from that solved value.
-    self.components["office_space_heater"].initialize_UA = True
+    # The space heater's UA is solved from its nominal conditions when it is
+    # built; the estimation omits x0 to start from that value.
 
 
 def main():
@@ -413,7 +412,7 @@ def main():
         (space, "thermal.Q_occ_gain", 100.0, 10, 200),
         # Space heater parameters
         (space_heater, "thermalMassHeatCapacity", 1e4, 1e3, 2e5),
-        (space_heater, "UA", None, 1, 100),  # x0 from initialize_UA
+        (space_heater, "UA", None, 1, 100),  # x0: the UA solved from the nominal ratings
         # Controller PID parameters (private = each controller gets its own values)
         (heating_controller, "kp", 0.005, 1e-5, 1, "private"),
         (co2_controller, "kp", 0.0001, 1e-5, 1, "private"),

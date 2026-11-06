@@ -925,7 +925,6 @@ def _set_truth(roles: dict[str, Any], values: dict[str, float]) -> None:
     ):
         for name in names:
             rgetattr(obj, name).set(values[f"{prefix}.{name}"], normalized=False)
-    heater.initialize_UA = False
     for damper, internal, prefix in (
         (supply, occupancy.supply_damper, "supply_damper"),
         (exhaust, occupancy.exhaust_damper, "exhaust_damper"),

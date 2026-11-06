@@ -1,30 +1,23 @@
-# Standard library imports
-import datetime
-from typing import Dict, List, Optional
-
 # Third party imports
 import torch
-import torch.nn as nn
 from scipy.optimize import fsolve
 
 # Local application imports
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build import core
-from twin4build.systems.utils.discrete_statespace_system import (
-    DiscreteStatespaceSystem,
-    bilinear_onestep,
-)
+from twin4build.systems.saref4syst.declarations import Child, Input, Output, Parameter, Setting, State
+from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
 from twin4build.systems.valve.valve_system import ValveSystem
-from twin4build.translator.translator import (
-    StepRule,
-    Node,
-    OptionalRule,
-    SignaturePattern,
-)
 
 
-class FanCoilUnitSystem(core.System, nn.Module):
+def _ua_at_nominal(unit) -> float:
+    """``UA``'s default: the UA at which the coil meets its nominal sizing
+    (:meth:`FanCoilUnitSystem.solve_UA`)."""
+    return unit.solve_UA()
+
+
+class FanCoilUnitSystem(core.System):
     r"""
     Fan Coil Unit (FCU) Model with Finite Element Discretization.
 
@@ -45,9 +38,11 @@ class FanCoilUnitSystem(core.System, nn.Module):
         T_air_in_nominal: Nominal inlet air temperature [°C]
         thermalMassHeatCapacity: Total water-side thermal mass heat capacity [J/K]
         nelements: Number of finite elements along the water path
-        initialize_UA: If True (default), UA is computed via fsolve to match nominal
-            conditions on first initialization. If False, the UA value is used as-is,
-            which is useful when UA is being estimated/calibrated.
+        UA: Overall heat transfer coefficient [W/K]; by default the UA at which
+            the coil delivers its nominal power at its nominal temperatures
+            (:meth:`solve_UA`), computed when the unit is built
+        valve: The water valve's values, ``valve=dict(waterFlowRateMax=...,
+            valveAuthority=...)``
 
     Mathematical Formulation
     ------------------------
@@ -214,187 +209,39 @@ class FanCoilUnitSystem(core.System, nn.Module):
        - Air outlet temperature is computed post-state-update via energy balance
     """
 
-    def __init__(
-        self,
-        Q_flow_nominal: float = 2000,
-        T_w_supply_nominal: float = 60,
-        T_w_return_nominal: float = 45,
-        T_air_in_nominal: float = 21,
-        thermalMassHeatCapacity: float = 100000,
-        nelements: int = 3,
-        initialize_UA: bool = True,
-        waterFlowRateMax: float = 1000 / ((60 - 45) * 4180),
-        valveAuthority: float = 1.0,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-        self.Q_flow_nominal = Q_flow_nominal
-        self.T_w_supply_nominal = T_w_supply_nominal
-        self.T_w_return_nominal = T_w_return_nominal
-        self.T_air_in_nominal = T_air_in_nominal
-        self.nelements = nelements
-        self.initialize_UA = initialize_UA
-        # Placeholder ``UA`` value -- recomputed by ``fsolve`` at the
-        # first ``initialize`` call from ``Q_flow_nominal``,
-        # ``T_w_return_nominal`` and ``T_air_in_nominal`` (giving
-        # ~ 80 W/K for the default 2 kW / 24 K nominal).  Set inside
-        # the auto-estimator bound range so ``get_estimable_parameters``
-        # captures a valid ``x0`` even when called before the parent
-        # ``SimulationModel.initialize`` has run fsolve on this FCU.
-        self.UA = tps.Parameter(
-            torch.tensor(100.0, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.thermalMassHeatCapacity = tps.Parameter(
-            torch.tensor(thermalMassHeatCapacity, dtype=tps.float_dtype()),
-            requires_grad=False,
-            scaling="log",
-        )
-        self._valve = ValveSystem(
-            waterFlowRateMax=waterFlowRateMax,
-            valveAuthority=valveAuthority,
-            id=f"_valve_{self.id}",
-        )
+    #: The valve's values went to the valve (removed in 2.1).
+    DEPRECATED_KEYWORDS = {
+        "waterFlowRateMax": "valve.waterFlowRateMax",
+        "valveAuthority": "valve.valveAuthority",
+    }
+    REMOVED_ATTRIBUTES = {
+        "initialize_UA": "UA starts at the nominal solve; give UA= to start elsewhere, "
+        "or unit.UA = unit.solve_UA() to solve again after a nominal changed",
+        "_valve": "the valve is the child unit.valve",
+    }
 
-        self._input = {
-            "supplyWaterTemperature": tps.Scalar(),
-            "valvePosition": self._valve.input["valvePosition"],  # shared with internal valve
-            "airFlowRate": tps.Scalar(),
-            "inletAirTemperature": tps.Scalar(),
-        }
-        self._output = {
-            "outletWaterTemperature": tps.Scalar(21),
-            "outletAirTemperature": tps.Scalar(21),
-            "waterFlowRate": tps.Scalar(0),
-            "Power": tps.Scalar(0),
-        }
-        # Per-leaf bounds for the auto-estimator (see
-        # :meth:`twin4build.core.System.get_estimable_parameters`).
-        # Empty dicts mark attributes that are stored as plain Python
-        # floats on the FCU (construction nominals) -- they are NOT
-        # ``tps.Parameter`` instances and so are skipped by the
-        # auto-estimator regardless of any bounds entry.  ``UA`` and
-        # ``thermalMassHeatCapacity`` are tunable ``tps.Parameter`` s,
-        # so they get real bounds here; the ``_valve.*`` paths
-        # delegate via attribute walk to the valve sub-system's own
-        # ``parameter`` map.
-        # Physically-realistic bounds for the auto-estimator.  An FCU
-        # / VAV reheat-coil sits roughly inside these ranges; widening
-        # them just hands the solver useless feasible space and yields
-        # estimates pinned to the limit (UA = 0.1 W/K is essentially
-        # "no coil", UA = 1000 W/K an industrial-grade unit).  See
-        # ``self._valve.parameter`` for the source-of-truth on the
-        # ``_valve.*`` paths -- the duplicates below MUST stay in sync.
-        self.parameter = {
-            "Q_flow_nominal": {},
-            "T_w_supply_nominal": {},
-            "T_w_return_nominal": {},
-            "T_air_in_nominal": {},
-            # log-scaled (lb > 0 mandatory); spans copper coil + water
-            # mass of small fan-coil to large reheat unit (~kg of metal
-            # times c_p ~ 385 J/kgK plus ~kg of water times c_p ~ 4180).
-            "thermalMassHeatCapacity": {"lb": 5e3, "ub": 5e5},
-            # linear; VAV reheat coil ~ 50 - 500 W/K, dedicated FCU
-            # coil up to ~ 2 kW/K.  Lower bound at 20 W/K still allows
-            # very small zones; below that the coil cannot heat at all.
-            "UA": {"lb": 20.0, "ub": 2000.0},
-            "initialize_UA": {},
-            # Duplicates the bounds on the inner valve sub-system; see
-            # comment above ``self.parameter`` for the rule and check
-            # ``self._valve.parameter`` for the rationale.
-            "_valve.waterFlowRateMax": {"lb": 5e-5, "ub": 1.0},
-            "_valve.valveAuthority": {"lb": 0.3, "ub": 1.0},
-        }
-        self._config = {"parameters": list(self.parameter.keys())}
-        self.INITIALIZED = False
-
-    @property
-    def config(self) -> Dict[str, List[str]]:
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the fan coil unit system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "supplyWaterTemperature": Supply water temperature [°C]
-                - "valvePosition": Water-side valve opening in [0, 1] (drives the
-                  internal valve, which converts it to a water mass flow rate).
-                - "airFlowRate": Air mass flow rate [kg/s]
-                - "inletAirTemperature": Inlet air temperature [°C]
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the fan coil unit system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "outletWaterTemperature": Outlet water temperature [°C]
-                - "outletAirTemperature": Outlet air temperature [°C]
-                - "Power": Heat transfer rate to air [W] (positive=heating, negative=cooling)
-        """
-        return self._output
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        """Initialize the fan coil unit system for simulation.
-
-        Performs the following steps:
-
-        1. If ``initialize_UA`` is True and this is the first call, numerically solves
-           for the UA value that matches the nominal heat output
-        2. Initializes input/output data structures
-        3. Creates or reinitializes the bilinear state-space model
-
-        Args:
-            start_time: Start time of the simulation period.
-            end_time: End time of the simulation period.
-            step_size: Time step size in seconds.
-        """
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-        for input in self.input.values():
-            input.initialize(n_t=max_timesteps, n_s=batch_size)
-        for output in self.output.values():
-            output.initialize(n_t=max_timesteps, n_s=batch_size)
-
-        self.UA = self.UA.expand_to_n_c(self.n_c)
-        self.thermalMassHeatCapacity = self.thermalMassHeatCapacity.expand_to_n_c(
-            self.n_c
-        )
-        self._valve.n_c = self.n_c
-        self._valve.initialize(start_time, end_time, step_size)
-
-        if not self.INITIALIZED and self.initialize_UA:
-            UA0 = float(
-                abs(self.Q_flow_nominal)
-                / abs(self.T_w_return_nominal - self.T_air_in_nominal)
-            )
-            root = fsolve(self._ua_residual, UA0, full_output=True)
-            UA_val = float(root[0][0])
-            # Write the physical UA through ``set`` so normalization is applied.
-            # ``data.fill_(UA_val)`` would store the physical value in the
-            # normalized slot and make ``get()`` return a scaled-up value.
-            self.UA.set(UA_val, normalized=False)
-
-        self._create_state_space_model()
-        self.ss_model.initialize(start_time, end_time, step_size)
-
-        x0_tensor = self._get_initial_state_tensor()
-        self.ss_model.set_state(x0_tensor)
-
-        self.INITIALIZED = True
+    Q_flow_nominal = Setting(2000.0, doc="Nominal heat output [W]")
+    T_w_supply_nominal = Setting(60.0, doc="Nominal supply water temperature [degC]")
+    T_w_return_nominal = Setting(45.0, doc="Nominal return water temperature [degC]")
+    T_air_in_nominal = Setting(21.0, doc="Nominal inlet air temperature [degC]")
+    nelements = Setting(3, doc="Number of elements along the water path")
+    supplyWaterTemperature = Input(doc="Supply water temperature [degC]")
+    valvePosition = Input(doc="Water valve opening (0-1)")
+    airFlowRate = Input(doc="Air flow rate [kg/s]")
+    inletAirTemperature = Input(doc="Inlet air temperature [degC]")
+    elements = State(size=nelements, init=21.0, doc="Element water temperatures [degC], along the flow")
+    outletWaterTemperature = Output(init=elements, doc="Outlet water temperature [degC]")
+    outletAirTemperature = Output(init=21.0, doc="Outlet air temperature [degC]")
+    waterFlowRate = Output(doc="Water flow rate [kg/s]")
+    Power = Output(doc="Heat transfer rate to the air [W] (positive heats)")
+    # A copper coil and its water, small fan-coil to large reheat unit.
+    thermalMassHeatCapacity = Parameter(
+        100000.0, lb=5e3, ub=5e5, scaling="log", doc="Water-side thermal mass heat capacity [J/K]"
+    )
+    # VAV reheat coil ~ 50 - 500 W/K, dedicated FCU coil up to ~ 2 kW/K; below
+    # 20 W/K the coil cannot heat at all.
+    UA = Parameter(_ua_at_nominal, lb=20.0, ub=2000.0, doc="Overall heat transfer coefficient [W/K]; default: the nominal solve")
+    valve = Child(ValveSystem)
 
     def _ua_residual(self, UA_candidate):
         """Calculate the residual for UA optimization.
@@ -448,26 +295,6 @@ class FanCoilUnitSystem(core.System, nn.Module):
         power = UA_elem * float(torch.sum(x_ss - t_air_in).item())
         return power - q_nom
 
-    def _get_initial_state_tensor(self):
-        t_outlet = self.output["outletWaterTemperature"].get()
-        n_s = t_outlet.shape[0]
-        n_c = t_outlet.shape[1]
-        x0 = torch.zeros(
-            (n_s, n_c, self.nelements),
-            dtype=t_outlet.dtype,
-            device=t_outlet.device,
-        )
-        for i in range(self.nelements):
-            x0[:, :, i] = t_outlet
-        return x0
-
-    PARAM_NAMES = (
-        "thermalMassHeatCapacity",
-        "UA",
-        "_valve.waterFlowRateMax",
-        "_valve.valveAuthority",
-    )
-
     def _build_matrices(self, p=None):
         """Build the coil state-space matrices ``(A, B, C, D, E, F)`` from the
         physical parameters -- a pure function of ``p`` (a dict of physical
@@ -477,10 +304,7 @@ class FanCoilUnitSystem(core.System, nn.Module):
         temperature in the zone-temperature role.
         """
         if p is None:
-            p = {
-                "thermalMassHeatCapacity": self.thermalMassHeatCapacity.get(),
-                "UA": self.UA.get(),
-            }
+            p = {name: getattr(self, name).get() for name in ("thermalMassHeatCapacity", "UA")}
 
         n = self.nelements
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, inletAirTemperature]
@@ -532,52 +356,24 @@ class FanCoilUnitSystem(core.System, nn.Module):
 
         return A, B, C_out, D, E, F
 
-    def _create_state_space_model(self):
-        """Create the bilinear state-space model for the fan coil unit from
-        the matrices built by :meth:`_build_matrices`."""
-        n = self.nelements
-        A, B, C_out, D, E, F = self._build_matrices()
-
-        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[0, :, :]  # (n_c, n_states)
-
-        self.ss_model = DiscreteStatespaceSystem(
-            A=A,
-            B=B,
-            C=C_out,
-            D=D,
-            x0=x0,
-            state_names=[f"T_w_{i+1}" for i in range(n)],
-            E=E,
-            F=F,
-            id=f"ss_model_{self.id}",
-        )
-
     def derive(self, p, step_size):
-        """The state-space matrices, which depend on the parameters alone."""
-        return {"matrices": self._build_matrices(p)}
+        """The state-space matrices, which depend on the parameters alone, and
+        the valve's parameters."""
+        valve = {k.partition(".")[2]: v for k, v in p.items() if k.startswith("valve.")}
+        return {"matrices": self._build_matrices(p), "valve": self.valve.full_params(valve, step_size)}
 
     def forward(self, x, inputs, params, step_size):
         """Pure one-step FCU dynamics ``(state, inputs, params) -> (new_state, outputs)``.
 
-        Functorch-compatible single source of truth for :meth:`do_step`.
         The internal valve's pure ``forward`` converts ``valvePosition`` to a
-        water flow (its params come from the dotted ``_valve.*`` entries),
+        water flow (its params come from the dotted ``valve.*`` entries),
         the bilinear state-space advances the water elements, and the
         air side uses the effectiveness-NTU formulation (see the class
         docstring for the physics and limiting behavior).
         """
         # Valve: position -> water flow (delegates to the valve's own pure
         # forward -- single source of truth for the valve characteristic).
-        _, v_out = self._valve.forward(
-            None,
-            {"valvePosition": inputs["valvePosition"]},
-            {
-                "waterFlowRateMax": params["_valve.waterFlowRateMax"],
-                "valveAuthority": params["_valve.valveAuthority"],
-            },
-            step_size,
-        )
+        _, v_out = self.valve.forward(None, {"valvePosition": inputs["valvePosition"]}, params["valve"], step_size)
         waterFlowRate = v_out["waterFlowRate"]
 
         A, B, C_out, D, E, F = params["matrices"]
@@ -637,67 +433,19 @@ class FanCoilUnitSystem(core.System, nn.Module):
             "Power": Power,
         }
 
-    def do_step(
-        self,
-        second_time=None,
-        date_time=None,
-        step_size=None,
-        step_index: Optional[int] = None,
-    ):
-        """Perform one simulation step.
+    def solve_UA(self) -> float:
+        """The ``UA`` that meets the coil's nominal sizing: in steady state at
+        its nominal temperatures it delivers ``Q_flow_nominal``.  It is
+        ``UA``'s default; the unit is not changed.  After a nominal changed,
+        solve again: ``unit.UA = unit.solve_UA()``.
 
-        Advances the water-side state-space model by one timestep, then computes:
-        - Outlet water temperature (last element state)
-        - Total heat transfer rate (Power)
-        - Outlet air temperature from energy balance on the air side
-
-        Args:
-            second_time: Current simulation time in seconds.
-            date_time: Current simulation date and time.
-            step_size: Time step size in seconds.
-            step_index: Current simulation step index.
+        Returns:
+            The heat transfer coefficient [W/K].
         """
-        # Thin port-I/O wrapper around :meth:`forward` (the single source of
-        # truth for the valve characteristic, water-side dynamics and
-        # effectiveness-NTU air side); the inner ``ss_model`` only carries
-        # the state between steps.
-        inputs = {
-            "supplyWaterTemperature": self.input["supplyWaterTemperature"].get(),
-            "valvePosition": self.input["valvePosition"].get(),
-            "airFlowRate": self.input["airFlowRate"].get(),
-            "inletAirTemperature": self.input["inletAirTemperature"].get(),
-        }
-        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
-        x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.ss_model.set_state(x_next)
+        UA0 = float(abs(self.Q_flow_nominal) / abs(self.T_w_return_nominal - self.T_air_in_nominal))
+        root = fsolve(self._ua_residual, UA0, full_output=True)
+        return float(root[0][0])
 
-        self.output["outletWaterTemperature"]._set(
-            outs["outletWaterTemperature"], i_t=step_index
-        )
-        self.output["outletAirTemperature"]._set(
-            outs["outletAirTemperature"], i_t=step_index
-        )
-        self.output["waterFlowRate"]._set(outs["waterFlowRate"], i_t=step_index)
-        self.output["Power"]._set(outs["Power"], i_t=step_index)
-
-
-# NOTE: A SAREF signature pattern was deliberately *not* registered for
-# ``FanCoilUnitSystem``.  SAREF4BLDG has no ``FanCoilUnit`` class --
-# the closest concept is ``S4BLDG.SpaceHeater`` -- and any pattern keyed
-# on ``SpaceHeater`` + ``Valve`` + ``BuildingSpace`` would be
-# structurally identical to ``SpaceHeaterSystem.saref_signature_pattern``.
-# Both classes would then claim the same entity in every SAREF model, the
-# MILP would have no way to tell them apart, and the alphabetical
-# tie-breaker would silently route plain radiator/space-heater models
-# through the FCU physics (forced-air bilinear coil, ``Q_flow_nominal``,
-# ``T_w_supply_nominal``, ``inletAirTemperature``, ...) instead of the
-# quasi-static space-heater physics that ``S4BLDG.SpaceHeater`` is
-# intended to represent.  FCU therefore only registers BRICK patterns:
-# BRICK has a dedicated ``Fan_Coil_Unit`` class and the VAV/AHU
-# topology, both of which carry the air-side wiring that genuinely
-# distinguishes an FCU from a radiator.
 
 # Deprecated aliases (removed in twin4build 2.1)
 FanCoilUnitTorchSystem = FanCoilUnitSystem
