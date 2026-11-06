@@ -27,10 +27,33 @@ except ImportError:  # pragma: no cover - depends on optional installation
 
 # Local application imports
 import twin4build as tb
+from twin4build.core import Input, Output, System
 from twin4build.optimizer._pareto import _EpsSubproblem, _pareto_mask
 from twin4build.optimizer._pareto_collocation import ParetoCollocation
 from twin4build.solvers.ipopt import solve_ipopt_constrained
 from benchmarks.common import batch_model
+
+
+class UnderheatingSystem(System):
+    """relu(setpoint - measured): the underheating below the setpoint [K]."""
+
+    setpoint = Input()
+    measured = Input()
+    output = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"output": torch.relu(inputs["setpoint"] - inputs["measured"])}
+
+
+class SquareSystem(System):
+    """x squared: a nonlinear derived signal."""
+
+    x = Input()
+    output = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"output": inputs["x"].square()}
+
 
 tb._IS_TESTING = True
 
@@ -494,10 +517,10 @@ class TestParetoFront(unittest.TestCase):
             )
 
 
-class TestParetoWithFunctionSystem(unittest.TestCase):
-    """Energy-vs-discomfort front where f2 is a FunctionSystem residual
+class TestParetoWithDerivedSignal(unittest.TestCase):
+    """Energy-vs-discomfort front where f2 is a small System's residual
     ``relu(setpoint - T_zone)`` -- the realistic comfort formulation (and a
-    regression check that FunctionSystem composes into the fast objective
+    regression check that such a System composes into the fast objective
     and the batched prepass)."""
 
     @classmethod
@@ -557,11 +580,7 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
         setpoint = tb.ScheduleSystem(
             weekDayRulesetDict={"ruleset_default_value": 21.0}, id="Setpoint"
         )
-        discomfort = tb.FunctionSystem(
-            inputs=["setpoint", "measured"],
-            fn=lambda d: torch.relu(d["setpoint"] - d["measured"]),
-            id="Discomfort",
-        )
+        discomfort = UnderheatingSystem(id="Discomfort")
 
         model.add_connection(zero, space, "scheduleValue", "numberOfPeople")
         model.add_connection(outdoor, space, "scheduleValue", "outdoorTemperature")
@@ -605,7 +624,7 @@ class TestParetoWithFunctionSystem(unittest.TestCase):
             options={"maxiter": 20},
         )
 
-        # The FunctionSystem output composed into the fast objective.
+        # The derived signal composed into the fast objective.
         self.assertIsNotNone(optimizer._functional_objective)
 
         # Physical sanity: discomfort is nonnegative, best at the f2 anchor,
@@ -830,11 +849,7 @@ class TestBatchedParetoCollocation(unittest.TestCase):
         model, zones, _, _, heaters = build_chain_model(
             1, "test_pareto_collocation_cuda"
         )
-        nonlinear = tb.FunctionSystem(
-            inputs=["x"],
-            fn=lambda values: values["x"].square(),
-            id="SquaredTemperature",
-        )
+        nonlinear = SquareSystem(id="SquaredTemperature")
         model.add_connection(zones[0], nonlinear, "indoorTemperature", "x")
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         model.to("cuda", torch.float64)
