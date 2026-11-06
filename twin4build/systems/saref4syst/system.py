@@ -351,16 +351,37 @@ class System(nn.Module, metaclass=SystemMeta):
     #: quietly do nothing).
     REMOVED_ATTRIBUTES: dict = {}
 
+    def _renamed(self, name: str):
+        """The current name of a declared System's attribute ``name`` when it
+        is an old keyword the class still translates (``DEPRECATED_KEYWORDS``),
+        with a ``DeprecationWarning``; else ``None``."""
+        if not type(self).__dict__.get("_is_declared", getattr(type(self), "_is_declared", False)):
+            return None
+        new = getattr(type(self), "DEPRECATED_KEYWORDS", {}).get(name)
+        if not new or "." in new:
+            return None
+        cls_name = type(self).__name__
+        deprecate_name(f"{cls_name}.{name}", f"{cls_name}.{new}", stacklevel=4)
+        return new
+
     def __getattr__(self, name):
         removed = type(self).REMOVED_ATTRIBUTES.get(name)
         if removed is not None:
             raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
+        if not name.startswith("_"):
+            new = self._renamed(name)
+            if new is not None:  # an old name reads the current one
+                return getattr(self, new)
         return super().__getattr__(name)
 
     def __setattr__(self, name, value):
         removed = type(self).REMOVED_ATTRIBUTES.get(name)
         if removed is not None:
             raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
+        if not name.startswith("_"):
+            new = self._renamed(name)
+            if new is not None:  # an old name sets the current one (it set nothing before)
+                name = new
         # A property of the class runs its setter, as on any Python object.
         # nn.Module would otherwise register a module or parameter value under
         # the property's name and skip the setter (a sensor's
