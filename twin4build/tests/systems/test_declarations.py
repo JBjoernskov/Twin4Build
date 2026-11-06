@@ -381,6 +381,30 @@ class TestStepping(unittest.TestCase):
             torch.testing.assert_close(got, _history(separate, f"lag{k}"), rtol=1e-12, atol=1e-12)
             torch.testing.assert_close(got, _closed_form(separate, tau), rtol=1e-12, atol=1e-12)
 
+    def test_batching_stacks_every_declared_parameter(self):
+        """A fan's flow range has no bounds (it is not estimated) and is
+        still one value per copy once batched."""
+        model = tb.Model(id="test_declared_batch_fans")
+        fans = []
+        for k, (lo, hi) in enumerate(((0.0, 1.0), (0.5, 3.0))):
+            fan = tb.FanSystem(id=f"fan{k}")
+            fan.set_flow_range(lo, hi)
+            fans.append(fan)
+            model.add_connection(_signal(f"flow{k}"), fan, "scheduleValue", "airFlowRate")
+            model.add_connection(_signal(f"temperature{k}"), fan, "scheduleValue", "inletAirTemperature")
+            model.add_connection(fan, LagSystem(id=f"lag{k}"), "Power", "u")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["fan0"]
+        self.assertIs(model._component_to_meta["fan1"][0], meta)
+        torch.testing.assert_close(meta.flowRangeLower.get().reshape(-1).cpu(), torch.tensor([0.0, 0.5], dtype=torch.float64))
+        torch.testing.assert_close(meta.flowRangeUpper.get().reshape(-1).cpu(), torch.tensor([1.0, 3.0], dtype=torch.float64))
+        torch.testing.assert_close(
+            meta.beta3.get().reshape(-1).cpu(),
+            torch.stack([f.beta3.get().reshape(-1)[0] for f in fans]).cpu(),
+        )
+        _remove("test_declared_batch_fans", batched.id)
+
 
 class TestSaveAndReload(unittest.TestCase):
     MODEL_ID = "test_declared_saved"

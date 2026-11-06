@@ -1651,19 +1651,23 @@ class Model:
 
         """Stack calibration parameters along the ``n_c`` dimension.
 
-        Only ``tps.Parameter`` and ``tps.TensorParameter`` attributes whose
-        names appear in ``components[0].parameter`` are batched.  Each
-        original component contributes one slice along ``n_c``.
-
-        Supports dotted parameter names (e.g. ``"thermal.C_air"``) for
-        composite components that wrap sub-models.
+        A declared System's parameters are all its declared ones, its
+        children's by their dotted paths (``PARAM_NAMES``), bounded or not:
+        a fan's fixed flow range is one value per copy like its estimated
+        betas.  Otherwise the ``tps.Parameter`` and ``tps.TensorParameter``
+        attributes whose names appear in ``components[0].parameter`` (or its
+        saved config) are batched.  Each original component contributes one
+        slice along ``n_c``.
         """
-        param_dict = getattr(components[0], "parameter", None)
-        parameter_names = (
-            list(param_dict)
-            if param_dict
-            else list(getattr(components[0], "config", {}).get("parameters", ()))
-        )
+        if getattr(type(components[0]), "_is_declared", False):
+            parameter_names = list(type(components[0]).PARAM_NAMES)
+        else:
+            param_dict = getattr(components[0], "parameter", None)
+            parameter_names = (
+                list(param_dict)
+                if param_dict
+                else list(getattr(components[0], "config", {}).get("parameters", ()))
+            )
         if not parameter_names:
             return
 
