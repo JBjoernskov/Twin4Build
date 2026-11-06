@@ -84,7 +84,7 @@ class TestCompiledBatchedStep(unittest.TestCase):
         offset = torch.arange(self.ROWS, dtype=torch.float64, device=device)[:, None] if variant == "windows" else 0.0
         Y = (y0.unsqueeze(0).expand(self.ROWS, -1) + offset).contiguous()
         rows = [Y[b] for b in range(self.ROWS)]
-        constants = fm.step_constants(theta0) if variant == "windows" else None
+        constants = fm.derived_values(theta0) if variant == "windows" else None
         with torch.no_grad():
             for t in range(self.STEPS):
                 u = tape[t]
