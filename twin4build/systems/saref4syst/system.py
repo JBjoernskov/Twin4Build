@@ -19,13 +19,22 @@ from prettytable import PrettyTable
 
 # Local application imports
 import twin4build.utils.types as tps
-from twin4build.systems.saref4syst.declarations import REQUIRED, SystemMeta
+from twin4build.systems.saref4syst.declarations import REQUIRED, Declaration, SystemMeta
 from twin4build.utils.deprecation import deprecate_name, reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.simulation_time import get_simulation_timesteps
 from twin4build.utils.state_marker import StateMarker
+
+
+def _setting_reader(name: str):
+    """A state's ``init_fn`` reading its initial value from the setting ``name``."""
+
+    def read(component):
+        return torch.as_tensor(getattr(component, name), dtype=tps.float_dtype())
+
+    return read
 
 
 class AliasedPorts(dict):
@@ -451,10 +460,18 @@ class System(nn.Module, metaclass=SystemMeta):
             size = decl.size if isinstance(decl.size, int) else None
             if size is None and getattr(decl.size, "kind", None) == "setting":
                 size = self._setting_size(decl.size.name)
+            from_setting = isinstance(decl.init, Declaration)
             setattr(
                 self,
                 name,
-                tps.State(n_v=size, init_value=decl.init, lb=decl.lb, ub=decl.ub, names=decl.names),
+                tps.State(
+                    n_v=size,
+                    init_value=0.0 if from_setting else decl.init,
+                    init_fn=_setting_reader(decl.init.name) if from_setting else None,
+                    lb=decl.lb,
+                    ub=decl.ub,
+                    names=decl.names,
+                ),
             )
         config = [n for n, d in declared["setting"].items() if d.save] + list(declared["parameter"])
         self._child_overrides = {k: v for k, v in values["child"].items() if v}
@@ -547,6 +564,9 @@ class System(nn.Module, metaclass=SystemMeta):
         self.n_c = n_c
         self.size_declared_ports()
         data_source = type(self)._is_data_source()
+        for name, decl in type(self)._declarations["output"].items():
+            if decl.init is not None:
+                self.output[name].init_value = self._initial_value(decl.init)
         for ports in (self.input, self.output):
             for port in ports.values():
                 if data_source and ports is self.output:
@@ -569,6 +589,20 @@ class System(nn.Module, metaclass=SystemMeta):
         if data_source:
             self._fill_from_series(n_t, n_s, n_c, *run)
         self.INITIALIZED = True
+
+    def _initial_value(self, init) -> float:
+        """An output's ``init=``: a number, a setting's value, or a state's
+        initial value (one number)."""
+        if isinstance(init, Declaration) and init.kind == "state":
+            init = init.init
+        if isinstance(init, Declaration):
+            init = getattr(self, init.name)
+        value = torch.as_tensor(init, dtype=tps.float_dtype()).reshape(-1)
+        if value.numel() != 1:
+            raise ValueError(
+                f"{type(self).__name__} '{self.id}': an output starts at one number, got {value.numel()} values"
+            )
+        return float(value[0])
 
     def slots_per_copy(self, decl) -> int:
         """How many values a declared parameter, or copies a declared child,
@@ -900,10 +934,10 @@ class System(nn.Module, metaclass=SystemMeta):
 
     def do_step(
         self,
-        second_time: List[float],
-        date_time: List[datetime.datetime],
-        step_size: List[int],
-        step_index: int,
+        second_time: Optional[List[float]] = None,
+        date_time: Optional[List[datetime.datetime]] = None,
+        step_size: Optional[List[int]] = None,
+        step_index: int = 0,
     ) -> None:
         """
         Do a single step of the system.

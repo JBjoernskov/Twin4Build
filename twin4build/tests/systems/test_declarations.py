@@ -18,6 +18,8 @@ Covered:
 6. a saved model reloads with the same parameters and settings;
 7. a composite's children: overrides, dotted parameter paths, a child and a
    parameter per slot of an input;
+9. initial values: a state and an output start at a setting, an output at its
+   state's start;
 8. the converted valve keeps its constructor keywords, bounds and flow.
 """
 
@@ -120,6 +122,18 @@ class BranchesSystem(core.System):
 
     def forward(self, x, inputs, p, step_size):
         return x, {"y": inputs["u"]}
+
+
+class TankSystem(core.System):
+    """A level that holds: the state and both outputs start at ``start``."""
+
+    start = Setting(5.0)
+    stored = State(init=start)
+    level = Output(init=start)
+    reading = Output(init=stored)
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"level": x[..., 0], "reading": x[..., 0]}
 
 
 def _signal(sid="signal"):
@@ -395,6 +409,28 @@ class TestPerSlot(unittest.TestCase):
             Parameter(1.0, per_slot=Setting(3))
         with self.assertRaisesRegex(TypeError, "per_slot_if"):
             Parameter(1.0, per_slot_if=Setting(False))
+
+
+class TestInitialValues(unittest.TestCase):
+    def test_a_state_and_its_outputs_start_at_a_setting(self):
+        tank = TankSystem(id="tank", start=7.0)
+        tank.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        self.assertEqual(float(tank.get_state().reshape(-1)[0]), 7.0)
+        self.assertEqual(tank.output["level"].init_value, 7.0)
+        self.assertEqual(tank.output["reading"].init_value, 7.0)
+        self.assertEqual(float(tank.output["reading"].get().reshape(-1)[0]), 7.0)
+        tank.start = 3.0  # the next run starts at the new value
+        tank.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        self.assertEqual(float(tank.get_state().reshape(-1)[0]), 3.0)
+
+    def test_init_takes_a_number_a_setting_or_a_state(self):
+        with self.assertRaisesRegex(TypeError, "init="):
+            State(init="warm")
+        with self.assertRaisesRegex(TypeError, "init="):
+            State(init=State())
+        with self.assertRaisesRegex(TypeError, "init="):
+            class Stray(core.System):
+                level = Output(init=Setting(1.0))
 
 
 class TestConvertedValve(unittest.TestCase):
