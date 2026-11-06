@@ -28,6 +28,7 @@ runtime ports, parameters, states and children from them.
 from __future__ import annotations
 
 # Standard library imports
+import functools
 import itertools
 from typing import Any, Dict, Optional, Sequence
 
@@ -196,14 +197,20 @@ class Setting(Declaration):
     Args:
         default: The value when the constructor is not given one.
             :data:`REQUIRED` (the default): the constructor must be given it.
+        convert: Applied to the value the constructor is given (a reader from
+            the dict a saved model holds, ...).
+        save: Whether a saved model holds the value (``False`` for a value
+            that cannot be written down, such as a function).
         doc: What the setting chooses.
     """
 
     kind = "setting"
 
-    def __init__(self, default=REQUIRED, doc: str = ""):
+    def __init__(self, default=REQUIRED, convert=None, save: bool = True, doc: str = ""):
         super().__init__(doc)
         self.default = default
+        self.convert = convert
+        self.save = save
 
 
 class Child(Declaration):
@@ -304,6 +311,24 @@ def _check_references(cls, merged) -> None:
                 )
 
 
+def _starts_a_run(initialize):
+    """Wrap a System's own ``initialize`` (a System written the old way): after
+    it, the base starts the run -- it records the step size and forgets the
+    derived values of the last run (see ``System._forward_params``)."""
+    if getattr(initialize, "_starts_a_run", False):
+        return initialize
+
+    @functools.wraps(initialize)
+    def wrapper(self, *args, **kwargs):
+        result = initialize(self, *args, **kwargs)
+        step_size = kwargs.get("step_size", args[2] if len(args) > 2 else None)
+        self._start_run(step_size)
+        return result
+
+    wrapper._starts_a_run = True
+    return wrapper
+
+
 class SystemMeta(type):
     """The metaclass of :class:`System`: files class-level declarations into
     registries (see the module docstring)."""
@@ -314,6 +339,10 @@ class SystemMeta(type):
 
     def __new__(mcls, name, bases, namespace, **kwargs):
         declarations = getattr(namespace, "declarations", None)
+        own_initialize = namespace.get("initialize") if "initialize" in namespace else None
+        if callable(own_initialize) and bases:
+            namespace = dict(namespace)
+            namespace["initialize"] = _starts_a_run(own_initialize)
         cls = super().__new__(mcls, name, bases, dict(namespace), **kwargs)
         cls._own_declarations = {k: dict(v) for k, v in (declarations or {}).items() if v}
         merged = _merge(cls)

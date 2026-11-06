@@ -1927,6 +1927,9 @@ class Model:
                 # a literal (an identified controller's candidate structure):
                 # equal contents are the same structure
                 return tuple(sorted((str(k), _declared_signature(v)) for k, v in value.items()))
+            if callable(getattr(value, "signature", None)) and hasattr(value, "to_config"):
+                # A reader: two readers of the same data are the same source.
+                return ("source",) + tuple(value.signature())
             # A callable (or any other object) counts as identity: two
             # separately created functions are two transformations as far as
             # batching is concerned, even if their source is identical.
