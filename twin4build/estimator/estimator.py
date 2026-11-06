@@ -447,11 +447,10 @@ class Estimator:
                 value).
 
                 Omitting ``x0`` (``None``) is useful when a component already
-                computes a sensible starting value during ``initialize`` —
-                for example a space heater with ``initialize_UA=True`` solves
-                for ``UA`` from the nominal heat-flow / temperature setpoints,
-                and that solved value can be used as the estimation start
-                without hard-coding it::
+                holds a sensible starting value -- for example a space heater's
+                ``UA``, solved from its nominal heat flow and temperatures when
+                it is built -- so the estimation starts there without
+                hard-coding it::
 
                     parameters = [
                         (space_heater, "UA", None, 1, 100),  # use initialized UA
@@ -1566,8 +1565,8 @@ class Estimator:
         ``x0`` is ``None``.
 
         This is intended for parameters that already have a meaningful value
-        after ``model.initialize`` (for example space-heater ``UA`` computed
-        from nominal conditions when ``initialize_UA=True``).
+        (for example a space heater's ``UA``, solved from its nominal
+        conditions when it is built).
         """
         if x0 is not None:
             return x0

@@ -1,21 +1,13 @@
-# Standard library imports
-import datetime
-from typing import Dict, List, Optional
-
 # Third party imports
 import torch
-import torch.nn as nn
 
 # Local application imports
-import twin4build.utils.types as tps
 from twin4build import core
-from twin4build.systems.utils.discrete_statespace_system import (
-    DiscreteStatespaceSystem,
-    bilinear_onestep,
-)
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, Setting, State
+from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
 
 
-class WallSystem(core.System, nn.Module):
+class WallSystem(core.System):
     r"""
     Wall Model (2R1C) for Energy-Consistent Heat Transfer Between Two Zones.
 
@@ -26,12 +18,6 @@ class WallSystem(core.System, nn.Module):
     are computed from the SAME wall state, so the interzonal energy balance
     holds by construction -- unlike modeling the partition inside each zone,
     which duplicates the wall and breaks conservation.
-
-    Args:
-        C: Thermal capacitance of the wall [J/K]
-        R_a: Thermal resistance between side-A temperature and the wall node [K/W]
-        R_b: Thermal resistance between side-B temperature and the wall node [K/W]
-        T_init: Initial wall temperature [degC]
 
     Mathematical Formulation
     ------------------------
@@ -126,8 +112,8 @@ class WallSystem(core.System, nn.Module):
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Parameter Estimation:** C, R_a and R_b available for calibration
-       - **Composability:** ``do_step`` delegates to a pure ``forward``, so the
-         component participates in the fast estimation/optimization paths
+       - **Composability:** the wall is one pure ``forward``, so it
+         takes part in the fast estimation and optimization paths
 
     Examples
     --------
@@ -147,148 +133,18 @@ class WallSystem(core.System, nn.Module):
     >>> # corridor_schedule.scheduleValue -> wall.temperatureB
     """
 
-    def __init__(
-        self,
-        C: float = 1e5,
-        R_a: float = 0.05,
-        R_b: float = 0.05,
-        T_init: float = 20.0,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-
-        self.C = tps.Parameter(
-            torch.tensor(C, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
-        )
-        self.R_a = tps.Parameter(
-            torch.tensor(R_a, dtype=tps.float_dtype()),
-            requires_grad=False,
-            scaling="log",
-        )
-        self.R_b = tps.Parameter(
-            torch.tensor(R_b, dtype=tps.float_dtype()),
-            requires_grad=False,
-            scaling="log",
-        )
-        self.T_init = T_init
-
-        self._input = {
-            "temperatureA": tps.Scalar(),  # Side-A temperature [degC]
-            "temperatureB": tps.Scalar(),  # Side-B temperature [degC]
-        }
-        self._output = {
-            "heatFlowRateA": tps.Scalar(0),  # Heat flow into side A [W]
-            "heatFlowRateB": tps.Scalar(0),  # Heat flow into side B [W]
-            "wallTemperature": tps.Scalar(T_init),  # Wall temperature [degC]
-        }
-        self.parameter = {
-            "C": {"lb": 1e3, "ub": 1e8, "relative": (0.1, 10.0)},
-            "R_a": {"lb": 1e-4, "ub": 10.0, "relative": (0.1, 10.0)},
-            "R_b": {"lb": 1e-4, "ub": 10.0, "relative": (0.1, 10.0)},
-        }
-        self._config = {"parameters": list(self.parameter.keys())}
-        self.INITIALIZED = False
-
-    @property
-    def config(self) -> Dict[str, List[str]]:
-        """Get the configuration parameters.
-
-        Returns:
-            Dict[str, List[str]]: Dictionary containing configuration parameter names.
-        """
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the wall system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "temperatureA": Side-A temperature [degC]
-                - "temperatureB": Side-B temperature [degC]
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the wall system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "heatFlowRateA": Heat flow into side A [W]
-                - "heatFlowRateB": Heat flow into side B [W]
-                - "wallTemperature": Wall temperature [degC]
-        """
-        return self._output
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        """Initialize the wall system for simulation.
-
-        This method performs the following initialization steps:
-
-        1. Initializes input/output data structures
-        2. Creates or reinitializes the internal state-space model
-        3. Sets the initial wall temperature
-
-        Args:
-            start_time (datetime.datetime): Start time of the simulation period.
-            end_time (datetime.datetime): End time of the simulation period.
-            step_size (int): Time step size in seconds.
-        """
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-
-        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
-            self.n_c = self._n_c_batched
-        else:
-            self.n_c = 1
-
-        # ``T_init`` is applied here, not only in ``__init__``: a batched meta
-        # is built with the class defaults and gets ``T_init`` copied
-        # afterwards (``Model._INIT_ATTRS_TO_COPY``).
-        self.output["wallTemperature"].init_value = float(self.T_init)
-        for input in self.input.values():
-            input.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-        for output in self.output.values():
-            output.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-
-        # Expand parameters to n_c dimension for vectorization
-        self.C = self.C.expand_to_n_c(self.n_c)
-        self.R_a = self.R_a.expand_to_n_c(self.n_c)
-        self.R_b = self.R_b.expand_to_n_c(self.n_c)
-
-        self._create_state_space_model()
-        self.ss_model.initialize(start_time, end_time, step_size)
-        self.ss_model.set_state(self._get_initial_state_tensor())
-
-        # Drop per-params forward caches: a fresh simulation must not reuse
-        # matrices (or their autograd graph) from a previous run.
-        self._fwd_mat_cache = None
-        self._forward_params_cache = None
-
-        self.INITIALIZED = True
-
-    def _get_initial_state_tensor(self):
-        # Scalar.get() returns shape (n_s, n_c)
-        t_wall = self.output["wallTemperature"].get()
-        n_s, n_c = t_wall.shape
-        x0 = torch.zeros((n_s, n_c, 1), dtype=t_wall.dtype, device=t_wall.device)
-        x0[:, :, 0] = t_wall
-        return x0
-
-    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    SUPPORTS_TRANSFORM_MODE = True
-    PARAM_NAMES = ("C", "R_a", "R_b")
+    T_init = Setting(20.0, doc="Initial wall temperature [degC]")
+    temperatureA = Input(doc="Side-A temperature [degC]")
+    temperatureB = Input(doc="Side-B temperature [degC]")
+    heatFlowRateA = Output(doc="Heat flow into side A [W]")
+    heatFlowRateB = Output(doc="Heat flow into side B [W]")
+    wallTemperature = Output(init=T_init, doc="Wall temperature [degC]")
+    T_wall = State(init=T_init, names=["T_wall"], doc="Wall temperature [degC]")
+    C = Parameter(1e5, lb=1e3, ub=1e8, relative=(0.1, 10.0), scaling="log", doc="Thermal capacitance [J/K]")
+    R_a = Parameter(0.05, lb=1e-4, ub=10.0, relative=(0.1, 10.0), scaling="log",
+                    doc="Resistance between side A and the wall [K/W]")
+    R_b = Parameter(0.05, lb=1e-4, ub=10.0, relative=(0.1, 10.0), scaling="log",
+                    doc="Resistance between side B and the wall [K/W]")
 
     def _state_heat_capacities(self):
         """``T_wall`` holds ``C`` [J/K]."""
@@ -362,55 +218,14 @@ class WallSystem(core.System, nn.Module):
 
         return A, B, C_out, D, E, F
 
-    def _create_state_space_model(self):
-        """Create the internal :class:`DiscreteStatespaceSystem` used by
-        ``do_step`` from the matrices built by :meth:`_build_matrices`."""
-        A, B, C_out, D, E, F = self._build_matrices()
-        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, 1)
-        x0 = x0_tensor[0, :, :]  # (n_c, 1)
-        self.ss_model = DiscreteStatespaceSystem(
-            A=A,
-            B=B,
-            C=C_out,
-            D=D,
-            x0=x0,
-            state_names=["T_wall"],
-            E=E,
-            F=F,
-            id=f"ss_model_{self.id}",
-        )
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
 
-    def step_constants(self, params):
-        """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
-        :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
-        return self._build_matrices(params)
-
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
-        """Pure one-step wall dynamics ``(state, inputs, params) -> (new_state, outputs)``.
-
-        Functorch-compatible re-expression of :meth:`do_step`. ``inputs`` is a
-        dict with ``temperatureA`` and ``temperatureB``; ``params`` a dict for
-        :attr:`PARAM_NAMES`. Returns the next wall temperature and the named
-        outputs ``{heatFlowRateA, heatFlowRateB, wallTemperature}`` (heat
-        flows INTO each side, computed from the end-of-step wall state).
-        """
-        # Params-only matrices, cached per params-dict identity (rebuilt once
-        # per theta in a sequential rollout, not once per step).  step_size
-        # is part of the key: the attached disc_cache holds (Ad, Bd)
-        # discretized at a specific T.
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._build_matrices(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._build_matrices(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C_out, D, E, F = matrices
+    def forward(self, x, inputs, params, step_size):
+        """One step of the wall: the next wall temperature, and the heat flows
+        INTO each side, from the end-of-step wall state."""
+        A, B, C_out, D, E, F = params["matrices"]
         u = torch.stack([inputs["temperatureA"], inputs["temperatureB"]], dim=-1)
         x_next, y = bilinear_onestep(
             A,
@@ -422,46 +237,12 @@ class WallSystem(core.System, nn.Module):
             x,
             u,
             step_size,
-            disc_cache=disc_cache,
-            transform_mode=transform_mode,
         )
         return x_next, {
             "heatFlowRateA": y[..., 0],
             "heatFlowRateB": y[..., 1],
             "wallTemperature": y[..., 2],
         }
-
-    def do_step(
-        self,
-        second_time=None,
-        date_time=None,
-        step_size=None,
-        step_index: Optional[int] = None,
-    ) -> None:
-        """Perform one simulation step.
-
-        Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the dynamics); the inner ``ss_model`` only carries the
-        state between steps.
-
-        Args:
-            second_time (float, optional): Current simulation time in seconds.
-            date_time (datetime.datetime, optional): Current simulation date and time.
-            step_size (float, optional): Time step size in seconds.
-            step_index (int, optional): Current simulation step index.
-        """
-        inputs = {
-            "temperatureA": self.input["temperatureA"].get(),
-            "temperatureB": self.input["temperatureB"].get(),
-        }
-        x = self.ss_model.get_state()  # (n_s, n_c, 1)
-        x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.ss_model.set_state(x_next)
-        self.output["heatFlowRateA"]._set(outs["heatFlowRateA"], i_t=step_index)
-        self.output["heatFlowRateB"]._set(outs["heatFlowRateB"], i_t=step_index)
-        self.output["wallTemperature"]._set(outs["wallTemperature"], i_t=step_index)
 
 
 # Deprecated aliases (removed in twin4build 2.1)

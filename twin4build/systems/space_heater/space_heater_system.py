@@ -1,34 +1,22 @@
-# Standard library imports
-import datetime
-from typing import Dict, List, Optional
-
 # Third party imports
 import torch
-import torch.nn as nn
 from scipy.optimize import fsolve
 
 # Local application imports
 import twin4build.utils.constants as constants
 import twin4build.utils.types as tps
 from twin4build import core
-from twin4build.systems.utils.discrete_statespace_system import (
-    DiscreteStatespaceSystem,
-    bilinear_onestep,
-)
-from twin4build.translator.translator import (
-    StepRule,
-    AnyPathRule,
-    Node,
-    NoStepRule,
-    Predicate,
-    ModeledNode,
-    OptionalRule,
-    SignaturePattern,
-    PathRule,
-)
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, Setting, State
+from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
 
 
-class SpaceHeaterSystem(core.System, nn.Module):
+def _ua_at_nominal(heater) -> float:
+    """``UA``'s default: the UA at which the radiator meets its nominal
+    sizing (:meth:`SpaceHeaterSystem.solve_UA`)."""
+    return heater.solve_UA()
+
+
+class SpaceHeaterSystem(core.System):
     r"""
     Space Heater (Radiator) Model with Finite Element Discretization.
 
@@ -44,9 +32,9 @@ class SpaceHeaterSystem(core.System, nn.Module):
         TAir_nominal_sh: Nominal room air temperature [°C]
         thermalMassHeatCapacity: Total thermal mass heat capacity [J/K]
         nelements: Number of finite elements
-        initialize_UA: If True (default), UA is computed via fsolve to match nominal
-            conditions on first initialization. If False, the UA value is used as-is,
-            which is useful when UA is being estimated/calibrated.
+        UA: Overall heat transfer coefficient [W/K]; by default the UA at which
+            the radiator delivers its nominal power at its nominal temperatures
+            (:meth:`solve_UA`), computed when the radiator is built
 
     Mathematical Formulation
     ------------------------
@@ -299,184 +287,30 @@ class SpaceHeaterSystem(core.System, nn.Module):
        - The model supports both steady-state and dynamic simulations
     """
 
-    def __init__(
-        self,
-        Q_flow_nominal_sh: float = 1000,
-        T_a_nominal_sh: float = 60,
-        T_b_nominal_sh: float = 45,
-        TAir_nominal_sh: float = 21,
-        thermalMassHeatCapacity: float = 500000,
-        nelements: int = 3,
-        initialize_UA: bool = True,
-        UA: Optional[float] = None,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-        self.Q_flow_nominal_sh = Q_flow_nominal_sh
-        self.T_a_nominal_sh = T_a_nominal_sh
-        self.T_b_nominal_sh = T_b_nominal_sh
-        self.TAir_nominal_sh = TAir_nominal_sh
-        self.nelements = nelements
-        # An explicit UA (a fitted value coming back from a serialized model)
-        # is the value; solving the nominal-output UA at initialize would
-        # overwrite it.
-        self.initialize_UA = initialize_UA if UA is None else False
-        self.UA = tps.Parameter(
-            torch.tensor(10.0 if UA is None else float(UA), dtype=tps.float_dtype()),
-            requires_grad=False,
-        )  # Placeholder, will be set in initialize if initialize_UA is True
-        self.thermalMassHeatCapacity = tps.Parameter(
-            torch.tensor(thermalMassHeatCapacity, dtype=tps.float_dtype()),
-            requires_grad=False,
-            scaling="log",
-        )
+    REMOVED_ATTRIBUTES = {
+        "initialize_UA": "UA starts at the nominal solve; give UA= to start elsewhere, "
+        "or heater.UA = heater.solve_UA() to solve again after a nominal changed",
+    }
 
-        # Define inputs and outputs as private variables
-        self._input = {
-            "supplyWaterTemperature": tps.Scalar(),
-            "waterFlowRate": tps.Scalar(),
-            "indoorTemperature": tps.Scalar(),
-        }
-        self._output = core.AliasedPorts(
-            {
-                # "outletWaterTemperature": tps.Vector(tensor=torch.ones(nelements)*21, size=nelements),
-                "outletWaterTemperature": tps.Scalar(21),
-                "toRoomPower": tps.Scalar(0),
-                "toRadiatorPower": tps.Scalar(0),
-            },
-            aliases=self.OUTPUT_PORT_ALIASES,
-            owner=type(self).__name__,
-        )
-        self.parameter = {
-            "Q_flow_nominal_sh": {},
-            "T_a_nominal_sh": {},
-            "T_b_nominal_sh": {},
-            "TAir_nominal_sh": {},
-            # Bounds make a parameter estimable through the base
-            # ``get_estimable_parameters`` contract; the construction
-            # nominals stay plain floats and are skipped.
-            "thermalMassHeatCapacity": {"lb": 1e4, "ub": 1e7, "relative": (0.25, 4.0)},
-            "UA": {"lb": 1.0, "ub": 2000.0, "relative": (0.25, 4.0)},
-            "initialize_UA": {},
-        }
-        self._config = {"parameters": list(self.parameter.keys())}
-        self.INITIALIZED = False
-
-    @property
-    def config(self) -> Dict[str, List[str]]:
-        """Get the configuration parameters.
-
-        Returns:
-            Dict[str, List[str]]: Dictionary containing configuration parameter names.
-        """
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the space heater system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "supplyWaterTemperature": Supply water temperature [°C]
-                - "waterFlowRate": Water flow rate [kg/s]
-                - "indoorTemperature": Indoor air temperature [°C]
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the space heater system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "outletWaterTemperature": Outlet water temperature [°C]
-                - "toRoomPower": Heat given to the room [W]
-                - "toRadiatorPower": Heat taken from the heating circuit [W]
-
-            ``"Power"`` is the deprecated name of ``"toRoomPower"``.
-        """
-        return self._output
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        """Initialize the space heater system for simulation.
-
-        This method performs the following initialization steps:
-
-        1. If ``initialize_UA`` is True and this is the first call, numerically solves
-           for the UA value that matches the nominal heat output
-        2. Initializes input/output data structures
-        3. Creates or reinitializes the state-space model
-
-        Args:
-            start_time (datetime.datetime): Start time of the simulation period.
-            end_time (datetime.datetime): End time of the simulation period.
-            step_size (int): Time step size in seconds.
-        """
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-
-        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
-            self.n_c = self._n_c_batched
-        else:
-            self.n_c = 1
-
-        # Initialize I/O
-        for input in self.input.values():
-            input.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-                n_c=self.n_c,
-            )
-        for output in self.output.values():
-            output.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-                n_c=self.n_c,
-            )
-
-        # Expand parameters to n_c dimension for vectorization
-        self.UA = self.UA.expand_to_n_c(self.n_c)
-        self.thermalMassHeatCapacity = self.thermalMassHeatCapacity.expand_to_n_c(
-            self.n_c
-        )
-
-        if not self.INITIALIZED and self.initialize_UA:
-            # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh.
-            # When initialize_UA is False, the current UA value is used directly,
-            # which is useful when UA is being estimated/calibrated.
-            #
-            # ``solve_UA`` is the same solve as a public method, for a caller
-            # that sizes the radiator before the model is initialized (and
-            # then sets ``initialize_UA = False``).
-            UA_val = self.solve_UA()
-            # Write the physical UA through ``set`` so normalization is applied.
-            # ``data.fill_(UA_val)`` would store the physical value in the
-            # normalized slot and make ``get()`` return min+(UA_val)*(max-min)
-            # (e.g. 350 when the placeholder max is 10).
-            self.UA.set(UA_val, normalized=False)
-
-        self._create_state_space_model()
-        self.ss_model.initialize(start_time, end_time, step_size)
-
-        x0_tensor = self._get_initial_state_tensor()
-        self.ss_model.set_state(x0_tensor)
-
-        # Drop per-params forward caches: a fresh simulation must not reuse
-        # matrices (or their autograd graph) from a previous run.
-        self._fwd_mat_cache = None
-        self._forward_params_cache = None
-
-        self.INITIALIZED = True
+    Q_flow_nominal_sh = Setting(1000.0, doc="Nominal heat output [W]")
+    T_a_nominal_sh = Setting(60.0, doc="Nominal supply water temperature [degC]")
+    T_b_nominal_sh = Setting(45.0, doc="Nominal return water temperature [degC]")
+    TAir_nominal_sh = Setting(21.0, doc="Nominal room air temperature [degC]")
+    nelements = Setting(3, doc="Number of elements along the water flow")
+    supplyWaterTemperature = Input(doc="Supply water temperature [degC]")
+    waterFlowRate = Input(doc="Water flow rate [kg/s]")
+    indoorTemperature = Input(doc="Indoor air temperature [degC]")
+    elements = State(size=nelements, init=21.0, doc="Element water temperatures [degC], along the flow")
+    outletWaterTemperature = Output(init=elements, doc="Outlet water temperature [degC]")
+    toRoomPower = Output(alias="Power", doc="Heat given to the room [W]")
+    toRadiatorPower = Output(doc="Heat taken from the heating circuit [W]")
+    thermalMassHeatCapacity = Parameter(
+        500000.0, lb=1e4, ub=1e7, relative=(0.25, 4.0), scaling="log", doc="Thermal mass heat capacity [J/K]"
+    )
+    UA = Parameter(
+        _ua_at_nominal, lb=1.0, ub=2000.0, relative=(0.25, 4.0),
+        doc="Overall heat transfer coefficient [W/K]; default: the nominal solve",
+    )
 
     def _ua_residual(self, UA_candidate):
         """Calculate the residual for UA optimization.
@@ -492,13 +326,12 @@ class SpaceHeaterSystem(core.System, nn.Module):
             float: Difference between calculated and nominal heat output.
         """
         # This runs on the CPU in plain floats, ON PURPOSE.  SciPy's ``fsolve``
-        # converts whatever the residual returns with ``numpy.asanyarray``, and
-        # under ``Model.to("cuda")`` ``SimulationModel.initialize`` wraps
-        # component initialization in ``with torch.device(self.device)`` -- so
-        # every tensor built here would be allocated on the GPU and the solve
-        # would die with "can't convert cuda:0 device type tensor to numpy".
-        # It is a one-off (nelements x nelements) solve at initialize time, so
-        # there is nothing to gain from running it on the device anyway.
+        # converts whatever the residual returns with ``numpy.asanyarray``; a
+        # caller inside ``with torch.device("cuda")`` would otherwise allocate
+        # every tensor built here on the GPU and the solve would die with
+        # "can't convert cuda:0 device type tensor to numpy".  It is a one-off
+        # (nelements x nelements) solve when the radiator is built, so there
+        # is nothing to gain from running it on the device anyway.
         n = self.nelements
         cpu = torch.device("cpu")
         tmc = self.thermalMassHeatCapacity.get()
@@ -532,33 +365,6 @@ class SpaceHeaterSystem(core.System, nn.Module):
         # view.
         power = UA_elem * float(torch.sum(x_ss - t_air).item())
         return power - q_nom
-
-    def _get_initial_state_tensor(self):
-        # Get dimensions from outletWaterTemperature
-        # Scalar.get() returns shape (n_s, n_c)
-        t_outlet = self.output["outletWaterTemperature"].get()
-        n_s = t_outlet.shape[0]
-        n_c = t_outlet.shape[1]
-
-        # x0 shape: (n_s, n_c, n_states) where n_states = nelements
-        x0 = torch.zeros(
-            (n_s, n_c, self.nelements),
-            dtype=t_outlet.dtype,
-            device=t_outlet.device,
-        )
-
-        # Initialize all elements with outlet water temperature
-        for i in range(self.nelements):
-            x0[:, :, i] = t_outlet
-
-        return x0
-
-    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    SUPPORTS_TRANSFORM_MODE = True
-    PARAM_NAMES = ("thermalMassHeatCapacity", "UA")
-    #: ``Power`` was renamed when the water-side power became an output of
-    #: its own (see ``System.OUTPUT_PORT_ALIASES``).
-    OUTPUT_PORT_ALIASES = {"Power": "toRoomPower"}
 
     def _state_heat_capacities(self):
         """Every element holds ``thermalMassHeatCapacity / nelements`` [J/K]."""
@@ -616,7 +422,6 @@ class SpaceHeaterSystem(core.System, nn.Module):
             "E": frozenset({(1, i, i) for i in range(n)} | {(1, i, i - 1) for i in range(1, n)}),
             "F": frozenset({(0, 0, 1)}),
         }
-
 
     def _build_matrices(self, p=None):
         """Build the radiator state-space matrices ``(A, B, C, D, E, F)`` from the
@@ -694,64 +499,19 @@ class SpaceHeaterSystem(core.System, nn.Module):
         )  # (n_c, 2, n_inputs)
         return A, B, C_out, D, E, F
 
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
 
-    def _create_state_space_model(self):
-        """Create the internal :class:`DiscreteStatespaceSystem` used by
-        ``do_step`` from the matrices built by :meth:`_build_matrices`."""
-        n = self.nelements
-        A, B, C_out, D, E, F = self._build_matrices()
-
-        # Initial state - shape (n_c, n_states)
-        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[0, :, :]  # first simulation, all components: (n_c, n_states)
-
-        self.ss_model = DiscreteStatespaceSystem(
-            A=A,
-            B=B,
-            C=C_out,
-            D=D,
-            x0=x0,
-            state_names=[f"T_{i+1}" for i in range(n)],
-            E=E,  # State-input coupling
-            F=F,  # Input-input coupling
-            id=f"ss_model_{self.id}",
-        )
-
-    def step_constants(self, params):
-        """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
-        :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
-        return self._build_matrices(params)
-
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
-        """Pure one-step radiator dynamics ``(state, inputs, params) -> (new_state, outputs)``.
-
-        Functorch-compatible re-expression of :meth:`do_step`.  ``inputs`` is a
-        dict assembled here in do_step order ``[supplyWaterTemperature,
-        waterFlowRate, indoorTemperature]``; ``params`` a dict for
-        :attr:`PARAM_NAMES`.  Returns the next element temperatures and the named
+    def forward(self, x, inputs, params, step_size):
+        """One step of the radiator: the next element temperatures and the
         outputs ``{outletWaterTemperature, toRoomPower, toRadiatorPower}``:
         toRoomPower = UA/n * sum(T_i - T_zone), the heat given to the zone
         (the coupling into thermal), and toRadiatorPower = waterFlowRate * c_p
         * (supplyWaterTemperature - outletWaterTemperature), the heat taken
         from the heating circuit.  Both at the end-of-step state.
         """
-        # Params-only matrices, cached per params-dict identity (rebuilt once
-        # per theta in a sequential rollout, not once per step).  step_size
-        # is part of the key: the attached disc_cache holds (Ad, Bd)
-        # discretized at a specific T.
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._build_matrices(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._build_matrices(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C_out, D, E, F = matrices
+        A, B, C_out, D, E, F = params["matrices"]
         u = torch.stack(
             [
                 inputs["supplyWaterTemperature"],
@@ -770,8 +530,6 @@ class SpaceHeaterSystem(core.System, nn.Module):
             x,
             u,
             step_size,
-            disc_cache=disc_cache,
-            transform_mode=transform_mode,
         )
         outlet = y[..., 0]
         # the power row: UA/n * sum_i (T_i - T_zone) at the end-of-step state
@@ -780,51 +538,6 @@ class SpaceHeaterSystem(core.System, nn.Module):
         outputs.update(self._ss_derived_outputs(inputs, outputs))
         return x_next, outputs
 
-
-    def do_step(
-        self,
-        second_time=None,
-        date_time=None,
-        step_size=None,
-        step_index: Optional[int] = None,
-    ):
-        """Perform one simulation step.
-
-        This method advances the state-space model by one time step and calculates
-        the outlet water temperature and the two powers. The method:
-
-        1. Collects current input values
-        2. Updates the state-space model
-        3. Calculates the heat given to the room and the heat taken from the
-           heating circuit based on element temperatures
-        4. Updates output values
-
-        Args:
-            second_time (float, optional): Current simulation time in seconds.
-            date_time (date_time, optional): Current simulation date and time.
-            step_size (float, optional): Time step size in seconds.
-            step_index (int, optional): Current simulation step index.
-
-        Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the dynamics); the inner ``ss_model`` only carries the
-        state between steps.
-        """
-        inputs = {
-            "supplyWaterTemperature": self.input["supplyWaterTemperature"].get(),
-            "waterFlowRate": self.input["waterFlowRate"].get(),
-            "indoorTemperature": self.input["indoorTemperature"].get(),
-        }
-        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
-        x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.ss_model.set_state(x_next)
-        self.output["outletWaterTemperature"]._set(
-            outs["outletWaterTemperature"], i_t=step_index
-        )
-        self.output["toRoomPower"]._set(outs["toRoomPower"], i_t=step_index)
-        self.output["toRadiatorPower"]._set(outs["toRadiatorPower"], i_t=step_index)
-
     def solve_UA(self) -> float:
         """The ``UA`` that meets the radiator's nominal sizing.
 
@@ -832,14 +545,11 @@ class SpaceHeaterSystem(core.System, nn.Module):
         radiator, in steady state at its nominal conditions
         (``T_a_nominal_sh``, ``T_b_nominal_sh``, ``TAir_nominal_sh``, and
         the water flow that gives ``Q_flow_nominal_sh`` over that
-        temperature drop), delivers ``Q_flow_nominal_sh``.  It is the value
-        ``initialize`` sets when ``initialize_UA`` is True; the component is
-        not changed and need not be initialized.  To start a model from a
-        sized radiator, set the value and switch the solve at ``initialize``
-        off::
+        temperature drop), delivers ``Q_flow_nominal_sh``.  It is ``UA``'s
+        default; the component is not changed.  After a nominal changed,
+        solve again::
 
-            heater.UA.set(heater.solve_UA(), normalized=False)
-            heater.initialize_UA = False
+            heater.UA = heater.solve_UA()
 
         Returns:
             The heat transfer coefficient [W/K].

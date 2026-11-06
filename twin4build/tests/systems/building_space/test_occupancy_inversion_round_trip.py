@@ -19,6 +19,7 @@ import torch
 # Local application imports
 import twin4build
 import twin4build as tb
+from twin4build.systems.utils.discrete_statespace_system import traceable
 from twin4build.systems.utils.smooth_saturation import saturation_mode
 import twin4build.utils.constants as constants
 from twin4build.simulator.simulator import _has_triton
@@ -94,13 +95,8 @@ def _invert(m_sup, m_exh, c_prev, c_now, dt=DT, transform_mode=None):
         "damperPositionMeasured": _t(1.0),  # fully open: flow = nominal
         "outdoorCo2Concentration": _t(C_OUT),
     }
-    _, out = occ.forward(
-        torch.zeros((1, 0), dtype=torch.float64),
-        inputs,
-        params,
-        dt,
-        transform_mode=transform_mode,
-    )
+    with traceable(bool(transform_mode)):
+        _, out = occ.forward(torch.zeros((1, 0), dtype=torch.float64), inputs, params, dt)
     return float(out["scheduleValue"])
 
 
@@ -113,7 +109,8 @@ def _forward_step(m_sup, m_exh, c_prev, n_people, dt=DT, transform_mode=None):
         "outdoorCo2Concentration": _t(C_OUT), "numberOfPeople": _t(n_people),
     }
     x0 = torch.full((1, 1), c_prev, dtype=torch.float64)
-    x1, _ = room.forward(x0, inputs, params, dt, transform_mode=transform_mode)
+    with traceable(bool(transform_mode)):
+        x1, _ = room.forward(x0, room.with_defaults(inputs), room.full_params(params, dt), dt)
     return float(x1[0, 0])
 
 
@@ -289,13 +286,13 @@ class TestInversionRoundTrip(unittest.TestCase):
 
         room = tb.BuildingSpaceMassSystem(V=V, G_occ=G_OCC, m_inf=M_INF, id="room")
         room.n_c = n_c
-        x1, _ = room.forward(
-            c_prev.unsqueeze(-1),
-            {**flows, "numberOfPeople": people},
-            mass_params,
-            DT_AHU,
-            transform_mode=True,
-        )
+        with traceable():
+            x1, _ = room.forward(
+                c_prev.unsqueeze(-1),
+                room.with_defaults({**flows, "numberOfPeople": people}),
+                room.full_params(mass_params, DT_AHU),
+                DT_AHU,
+            )
         got = tb.OccupancySystem.invert_zoh_occupancy(
             mass_params, flows, c_prev, x1[..., 0], DT_AHU,
             n_c=n_c, transform_mode=True,

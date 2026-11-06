@@ -27,6 +27,7 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
+from twin4build.utils.data_loaders.sources import CsvSource
 
 
 def create_weather_data(
@@ -180,25 +181,13 @@ def generate_data_with_twin4build(
     )
 
     # Schedule systems for external inputs
-    outdoor_temp_schedule = tb.ScheduleSystem(
-        filename=file_paths["outdoor_temp"], id="outdoor_temp"
-    )
-    solar_schedule = tb.ScheduleSystem(filename=file_paths["solar"], id="solar")
-    occupancy_schedule = tb.ScheduleSystem(
-        filename=file_paths["occupancy"], id="occupancy"
-    )
-    setpoint_schedule = tb.ScheduleSystem(
-        filename=file_paths["setpoint"], id="setpoint"
-    )
-    supply_flow_schedule = tb.ScheduleSystem(
-        filename=file_paths["supply_flow"], id="supply_flow"
-    )
-    exhaust_flow_schedule = tb.ScheduleSystem(
-        filename=file_paths["exhaust_flow"], id="exhaust_flow"
-    )
-    supply_temp_schedule = tb.ScheduleSystem(
-        filename=file_paths["supply_temp"], id="supply_temp"
-    )
+    outdoor_temp_schedule = tb.ScheduleSystem(id="outdoor_temp", source=CsvSource(file_paths["outdoor_temp"]))
+    solar_schedule = tb.ScheduleSystem(id="solar", source=CsvSource(file_paths["solar"]))
+    occupancy_schedule = tb.ScheduleSystem(id="occupancy", source=CsvSource(file_paths["occupancy"]))
+    setpoint_schedule = tb.ScheduleSystem(id="setpoint", source=CsvSource(file_paths["setpoint"]))
+    supply_flow_schedule = tb.ScheduleSystem(id="supply_flow", source=CsvSource(file_paths["supply_flow"]))
+    exhaust_flow_schedule = tb.ScheduleSystem(id="exhaust_flow", source=CsvSource(file_paths["exhaust_flow"]))
+    supply_temp_schedule = tb.ScheduleSystem(id="supply_temp", source=CsvSource(file_paths["supply_temp"]))
 
     # Supply water temperature for the heating system (constant hot water)
     supply_water_temp_data = pd.DataFrame(
@@ -209,9 +198,7 @@ def generate_data_with_twin4build(
     )
     supply_water_temp_file = os.path.join(temp_dir, "supply_water_temp.csv")
     supply_water_temp_data.to_csv(supply_water_temp_file, index=False)
-    supply_water_temp_schedule = tb.ScheduleSystem(
-        filename=supply_water_temp_file, id="supply_water_temp"
-    )
+    supply_water_temp_schedule = tb.ScheduleSystem(id="supply_water_temp", source=CsvSource(supply_water_temp_file))
 
     # =========================================================================
     # Add Components to Model
@@ -507,10 +494,10 @@ def run_controller_identification_example():
     model = tb.Model(id="controller_identification_model")
 
     # Create ScheduleSystem for temperature sensor input
-    temperature_schedule = tb.ScheduleSystem(filename=temp_file, id="temperature_input")
+    temperature_schedule = tb.ScheduleSystem(id="temperature_input", source=CsvSource(temp_file))
 
     # Create ScheduleSystem for setpoint input
-    setpoint_schedule = tb.ScheduleSystem(filename=sp_file, id="setpoint_input")
+    setpoint_schedule = tb.ScheduleSystem(id="setpoint_input", source=CsvSource(sp_file))
 
     # Create the controller to identify
     # Uses combined candidate controllers (default: P, PI, PID variants)

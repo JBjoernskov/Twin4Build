@@ -28,8 +28,8 @@ tb._IS_TESTING = True
 
 def _room(model, rid):
     room = tb.BuildingSpaceSystem(
-        thermal_kwargs=dict(C_air=2e6, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0, Q_occ_gain=100.0),
-        mass_kwargs=dict(V=100.0, G_occ=5e-6, m_inf=0.01),
+        thermal=dict(C_air=2e6, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0, Q_occ_gain=100.0),
+        mass=dict(V=100.0, G_occ=5e-6, m_inf=0.01),
         id=rid,
     )
     for port, value in (("outdoorTemperature", 0.0), ("supplyAirTemperature", 20.0), ("globalIrradiation", 0.0),

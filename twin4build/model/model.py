@@ -1287,7 +1287,7 @@ class Model:
                 n_c = len(comps)
                 cls = comps[0].__class__
                 # A component whose constructor takes required arguments
-                # (FunctionSystem's ``inputs``/``fn``) declares them in
+                # (a declared System's settings) declares them in
                 # ``_batch_init_kwargs`` so the meta can be built at all.
                 # Components sharing a batch share those values;
                 # _component_signature keeps differing ones apart.
@@ -1651,29 +1651,33 @@ class Model:
 
         """Stack calibration parameters along the ``n_c`` dimension.
 
-        Only ``tps.Parameter`` and ``tps.TensorParameter`` attributes whose
-        names appear in ``components[0].parameter`` are batched.  Each
-        original component contributes one slice along ``n_c``.
-
-        Supports dotted parameter names (e.g. ``"thermal.C_air"``) for
-        composite components that wrap sub-models.
+        A declared System's parameters are all its declared ones, its
+        children's by their dotted paths (``PARAM_NAMES``), bounded or not:
+        a fan's fixed flow range is one value per copy like its estimated
+        betas.  Otherwise the ``tps.Parameter`` and ``tps.TensorParameter``
+        attributes whose names appear in ``components[0].parameter`` (or its
+        saved config) are batched.  Each original component contributes one
+        slice along ``n_c``.
         """
-        param_dict = getattr(components[0], "parameter", None)
-        parameter_names = (
-            list(param_dict)
-            if param_dict
-            else list(getattr(components[0], "config", {}).get("parameters", ()))
-        )
+        if getattr(type(components[0]), "_is_declared", False):
+            parameter_names = list(type(components[0]).PARAM_NAMES)
+        else:
+            param_dict = getattr(components[0], "parameter", None)
+            parameter_names = (
+                list(param_dict)
+                if param_dict
+                else list(getattr(components[0], "config", {}).get("parameters", ()))
+            )
         if not parameter_names:
             return
 
         for param_name in parameter_names:
-            originals = []
-            for c in components:
-                p = self._resolve_dotted_attr(c, param_name)
-                if p is None:
-                    return
-                originals.append(p)
+            originals = [self._resolve_dotted_attr(c, param_name) for c in components]
+            if any(p is None for p in originals):
+                # Absent on the copies (an optional parameter; copies batch
+                # only with copies that lack it too): nothing to stack.  It
+                # returned here, and every parameter after it went unstacked.
+                continue
 
             first = originals[0]
             self._stack_parameter_spec(meta, components, param_name)
@@ -1782,19 +1786,9 @@ class Model:
     # Keyed by fully-qualified class name.  Supports dotted paths for
     # composite components (e.g. ``"thermal.some_attr"``).
     _INIT_ATTRS_TO_COPY: Dict[str, Tuple[str, ...]] = {
-        "twin4build.systems.space_heater.space_heater_system.SpaceHeaterSystem": (
-            "nelements",
-            "Q_flow_nominal_sh",
-            "T_a_nominal_sh",
-            "T_b_nominal_sh",
-            "TAir_nominal_sh",
-            "initialize_UA",
-        ),
-        "twin4build.systems.building_space.building_space_system.BuildingSpaceSystem": (),
-        # The initial wall / node temperature is a constructor value, not a
-        # Parameter; without it a batched wall starts at the class default.
-        "twin4build.systems.wall.wall_system.WallSystem": ("T_init",),
-        "twin4build.systems.thermal_mass.thermal_mass_node_system.ThermalMassNodeSystem": ("T_init",),
+        # A declared System's settings build its meta (``_batch_init_kwargs``)
+        # and its wiring sizes its ports: the wall, the node, the radiator,
+        # the fan-coil and the room need no entry.
         "twin4build.systems.controller.setpoint_controller.pid_controller"
         ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
     }
@@ -1825,11 +1819,6 @@ class Model:
         has the correct structural values (e.g. ``nelements``) even though
         ``_batch_parameters`` only handles ``tps.Parameter`` objects.
         Supports dotted paths for composite components.
-
-        Additionally, for composite building-space components, topology
-        values (``n_walls``, ``n_boundary_temperature``) are
-        computed from the source component's connection graph -- which is
-        available even before ``initialize()`` has been called.
         """
         fqn = f"{source.__class__.__module__}.{source.__class__.__name__}"
         attrs = self._INIT_ATTRS_TO_COPY.get(fqn, ())
@@ -1837,26 +1826,6 @@ class Model:
             val = self._resolve_dotted_attr(source, attr)
             if val is not None:
                 self._set_dotted_attr(meta, attr, val)
-
-        # For BuildingSpaceSystem: derive topology from the source
-        # component's connects_at (populated by model.load()) and push
-        # it through the thermal sub-model's setter so the manual flag
-        # is set and initialize() skips its own connects_at discovery.
-        if source.__class__.__name__ == "BuildingSpaceSystem":
-            cp_boundary = [
-                cp
-                for cp in source.connects_at
-                if cp.input_port == "boundaryTemperature"
-            ]
-            n_boundary = (
-                len(cp_boundary[0].connects_system_through) if cp_boundary else 0
-            )
-            cp_wall = [
-                cp for cp in source.connects_at if cp.input_port == "wallHeatGain"
-            ]
-            n_walls = len(cp_wall[0].connects_system_through) if cp_wall else 0
-            meta.thermal.n_walls = n_walls
-            meta.thermal.n_boundary_temperature = n_boundary
 
     # -- signature helpers ------------------------------------------------
 
@@ -1872,6 +1841,16 @@ class Model:
                 else getattr(component, "config", {}).get("parameters", ())
             )
         )
+        # Copies of a class with an optional parameter batch only with copies
+        # that have it, or that lack it, too (their parameter sets differ).
+        absent = []
+        for name in getattr(component, "PARAM_NAMES", ()):
+            try:
+                if rgetattr(component, name) is None:
+                    absent.append(name)
+            except AttributeError:
+                pass
+        parameter_keys = parameter_keys + (("absent",) + tuple(absent) if absent else ())
 
         # A component that only replays recorded data (a controller in
         # playback) is exogenous to the functional composer while its
@@ -1914,7 +1893,7 @@ class Model:
         )
         data_signature = data_signature + source_identity
 
-        # Declared batch-construction values (a FunctionSystem's input names
+        # Declared batch-construction values (a declared System's settings
         # and its transformation) are part of the component's identity: batching
         # two different transformations into one n_c block would silently apply
         # one of them to both.
@@ -1927,6 +1906,9 @@ class Model:
                 # a literal (an identified controller's candidate structure):
                 # equal contents are the same structure
                 return tuple(sorted((str(k), _declared_signature(v)) for k, v in value.items()))
+            if callable(getattr(value, "signature", None)) and hasattr(value, "to_config"):
+                # A reader: two readers of the same data are the same source.
+                return ("source",) + tuple(value.signature())
             # A callable (or any other object) counts as identity: two
             # separately created functions are two transformations as far as
             # batching is concerned, even if their source is identical.
