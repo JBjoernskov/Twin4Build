@@ -22,6 +22,7 @@ from dateutil import tz
 import twin4build as tb
 from twin4build.utils.data_loaders.load import sample_from_df
 from twin4build.utils.simulation_time import get_simulation_timesteps
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 CPH = tz.gettz("Europe/Copenhagen")
 
@@ -88,7 +89,7 @@ class TestStepsAcrossDst(unittest.TestCase):
                 utc = datetime.timezone.utc
                 times = pd.date_range(start.astimezone(utc), end.astimezone(utc), freq="10min", inclusive="left")
                 df = pd.DataFrame({"value": (times - times[0]).total_seconds() / 60}, index=times.tz_convert(CPH))
-                source = tb.TimeSeriesInputSystem(id=f"dst_{start:%m}", df=df)
+                source = tb.TimeSeriesInputSystem(id=f"dst_{start:%m}", source=DataFrameSource(df))
                 source.initialize(start_time=[start], end_time=[end], step_size=[600])
                 values = np.asarray(source.values, dtype=float).reshape(-1)
                 np.testing.assert_allclose(values, np.arange(0, hours * 60, 10, dtype=float))

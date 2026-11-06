@@ -1,14 +1,9 @@
-# Standard library imports
-import datetime
-from typing import Optional
-
 # Third party imports
 import torch
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
-from twin4build.utils.slots import wired_width
+from twin4build.systems.saref4syst.declarations import Input, Output
 
 
 class MaxSystem(core.System):
@@ -31,67 +26,11 @@ class MaxSystem(core.System):
         **kwargs: Additional keyword arguments
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    inputs = Input(size="wired", doc="Values to take the maximum over, one slot per connection")
+    value = Output(doc="Smooth maximum of the input values")
 
-        self.input = {"inputs": tps.Vector()}
-        self.output = {"value": tps.Scalar()}
-        self._config = {"parameters": []}
-
-    @property
-    def config(self):
-        return self._config
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-        self.n_c = int(getattr(self, "_n_c_batched", 1))
-
-        n_v = wired_width(self, "inputs")
-        if n_v == 0 and self.input["inputs"].n_v:
-            # Preserve an explicitly configured standalone vector. Compiled
-            # graph instances infer the width from their connections above.
-            n_v = self.input["inputs"].n_v
-        self.input["inputs"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_c=self.n_c, n_v=n_v
-        )
-
-        for output in self.output.values():
-            output.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the math)."""
-        _, outs = self.forward(
-            None, {"inputs": self.input["inputs"].get()}, {}, step_size
-        )
-        self.output["value"]._set(outs["value"], step_index)
-
-    #: No physical parameters (the ``forward`` theta contract).
-    PARAM_NAMES = ()
-
-    def forward(self, x, inputs, params, step_size):
-        """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
-
-        ``inputs`` provides ``inputs`` with the vector of values along the
-        last dim; the smooth max reduces that dim, so the result keeps
-        whatever batch dims the input carried (``(1,)`` under the composer,
-        ``(n_s, n_c)`` under ``do_step``).  Returns ``(x, {"value"})``.
-        """
-        vals = inputs["inputs"]
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: ``logsumexp(k x) / k`` over the slots, ``k = 50``."""
         k = 50.0
-        smooth_max = torch.logsumexp(k * vals, dim=-1) / k
-        return x, {"value": smooth_max}
+        return x, {"value": torch.logsumexp(k * inputs["inputs"], dim=-1) / k}
+

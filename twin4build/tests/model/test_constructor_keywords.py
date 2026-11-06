@@ -2,7 +2,7 @@
 
 ``System.__init__`` used to drop every keyword it did not know, so a misspelled
 or removed keyword built a different component without a word
-(``PIDControllerSystem(isReverse=True)``: a direct-acting loop;
+(``PIDControllerSystem(isRevers=True)``: a direct-acting loop;
 ``BuildingSpaceSystem(C_air=...)``: the default capacitance).  The translator
 and the model loader build components from a node's literals, which also name
 properties a class does not take: they pass only
@@ -55,21 +55,25 @@ def _schedule(value, sid):
 
 class TestUnknownKeywords(unittest.TestCase):
     def test_an_unknown_keyword_raises_naming_it(self):
-        with self.assertRaisesRegex(TypeError, r"PIDControllerSystem.*'isReverse'"):
-            tb.PIDControllerSystem(id="pid", isReverse=True)
-        # the composite room takes its submodels' values through thermal_kwargs / mass_kwargs only
+        with self.assertRaisesRegex(TypeError, r"PIDControllerSystem.*'isRevers'"):
+            tb.PIDControllerSystem(id="pid", isRevers=True)
+        # the composite room takes its children's values as dicts only
         with self.assertRaisesRegex(TypeError, r"BuildingSpaceSystem.*'C_air'"):
             tb.BuildingSpaceSystem(id="room", C_air=1e5)
-        room = tb.BuildingSpaceSystem(id="room", thermal_kwargs={"C_air": 1e5})
+        room = tb.BuildingSpaceSystem(id="room", thermal={"C_air": 1e5})
         self.assertAlmostEqual(float(room.thermal.C_air.get()), 1e5, delta=1e-6)
+        with self.assertWarns(DeprecationWarning):  # the old name, until 2.1
+            room = tb.BuildingSpaceSystem(id="room", thermal_kwargs={"C_air": 2e5})
+        self.assertAlmostEqual(float(room.thermal.C_air.get()), 2e5, delta=1e-6)
 
     def test_constructor_keywords_follow_the_chain(self):
         pid = tb.PIDControllerSystem.constructor_keywords()
         self.assertTrue({"kp", "Ti", "Td", "is_reverse", "id"} <= pid)
-        self.assertNotIn("isReverse", pid)
+        self.assertIn("isReverse", pid)  # the old name translates (until 2.1)
+        self.assertNotIn("isRevers", pid)
         self.assertEqual(
-            tb.BuildingSpaceSystem.constructor_keywords() & {"thermal_kwargs", "mass_kwargs", "id"},
-            {"thermal_kwargs", "mass_kwargs", "id"},
+            tb.BuildingSpaceSystem.constructor_keywords() & {"thermal", "mass", "thermal_kwargs", "mass_kwargs", "id"},
+            {"thermal", "mass", "thermal_kwargs", "mass_kwargs", "id"},
         )
 
     def test_a_deprecated_keyword_a_class_translates_still_works(self):

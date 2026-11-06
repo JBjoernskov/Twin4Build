@@ -828,36 +828,21 @@ def cut_measured_edges(
 
 
 def _repair_return_junctions(model) -> List[str]:
-    """Make every return junction's ``branch_temperature_slots`` follow its
-    surviving connections; returns the ids of the junctions changed.
-
-    The map names, per flow slot (a branch), the temperature slot that
-    carries its temperature, and the junction sizes its ports from the
-    connections it has.  With components removed the map is cut to the
-    surviving branches, and a branch that lost its flow or its temperature
-    points at a surviving temperature slot (a branch without a connection
-    carries no flow, so the temperature it points at does not count).
+    """Give every flow slot of a return junction that lost its temperature
+    (the room was removed, its terminal kept) the temperature of the lowest
+    surviving temperature slot, by a connection; returns the ids of the
+    junctions changed.
 
     Removing a connection leaves its slot indices on the connection point,
-    and a component sizes a vector port by the indices it finds there; the
-    junction's are dropped with their connections, so that its ports and
-    its map are sized by the same connections."""
+    and the junction sizes its ports by the indices it finds there; those of
+    removed connections are dropped first."""
     from twin4build.systems.junction.return_flow_junction_system import (
         ReturnFlowJunctionSystem,
     )
 
-    connected: Dict[Tuple[str, str], Set[int]] = {}
-    for e in _edges(model):
-        if isinstance(e.receiver, ReturnFlowJunctionSystem) and e.input_slot is not None:
-            connected.setdefault((e.receiver.id, e.input_port), set()).add(e.input_slot)
     repaired = []
     for junction in model.components.values():
         if not isinstance(junction, ReturnFlowJunctionSystem):
-            continue
-        slots = list(junction.branch_temperature_slots)
-        branches = connected.get((junction.id, "airFlowRateIn"), set())
-        temperatures = connected.get((junction.id, "airTemperatureIn"), set())
-        if not slots or not branches or not temperatures:
             continue
         for cp in junction.connects_at:
             for indices in (
@@ -866,13 +851,19 @@ def _repair_return_junctions(model) -> List[str]:
             ):
                 for connection in [c for c in indices if c not in cp.connects_system_through]:
                     del indices[connection]
-        fallback = min(temperatures)
-        new = [
-            slots[b] if b in branches and b < len(slots) and slots[b] in temperatures else fallback
-            for b in range(max(branches) + 1)
-        ]
-        if new != slots:
-            junction.branch_temperature_slots = new
+        edges = [e for e in _edges(model) if e.receiver is junction and e.input_slot is not None]
+        branches = {e.input_slot for e in edges if e.input_port == "airFlowRateIn"}
+        temperatures = {e.input_slot: e for e in edges if e.input_port == "airTemperatureIn"}
+        if not branches or not temperatures:
+            continue
+        source = temperatures[min(temperatures)]
+        missing = sorted(b for b in branches if b not in temperatures)
+        for b in missing:
+            kwargs = {"input_port_index": b}
+            if source.output_slot is not None:
+                kwargs["output_port_index"] = source.output_slot
+            model.add_connection(source.sender, junction, source.output_port, "airTemperatureIn", **kwargs)
+        if missing:
             repaired.append(junction.id)
     return repaired
 
@@ -896,8 +887,8 @@ def keep_groups(
     schedules, the weather, the replay leaves of :func:`cut_measured_edges`):
     a leaf carries no parameters and joins no group, and without it the
     kept component has no input.  Everything else is removed, and what the
-    removal breaks is repaired: a ``ReturnFlowJunctionSystem``'s
-    ``branch_temperature_slots`` follow the surviving connections.
+    removal breaks is repaired: a ``ReturnFlowJunctionSystem``'s branch whose
+    room was removed takes a surviving room's temperature, by a connection.
 
     Args:
         model: The model the partition was made of, cut

@@ -144,7 +144,7 @@ class TestThermalBalance(_HardSaturation):
             start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[DT]
         )
         self.params = self.zone._forward_params()
-        self.x0 = self.zone.ss_model.get_state()
+        self.x0 = self.zone.get_state()
 
     def _dTdt(self, m_sup, m_exh):
         inputs = {
@@ -156,7 +156,7 @@ class TestThermalBalance(_HardSaturation):
             "numberOfPeople": _t(0.0),
             "heatGain": _t(0.0),
         }
-        x_next, _ = self.zone.forward(self.x0, inputs, self.params, DT)
+        x_next, _ = self.zone.forward(self.x0, self.zone.with_defaults(inputs), self.params, DT)
         return float((x_next[..., 0] - self.x0[..., 0]) / DT)
 
     def _expected(self, m_sup, m_exh):
@@ -211,7 +211,7 @@ class TestMassBalance(_HardSaturation):
             start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[DT]
         )
         self.params = self.room._forward_params()
-        self.x0 = torch.full_like(self.room.ss_model.get_state(), self.C_I)
+        self.x0 = torch.full_like(self.room.get_state(), self.C_I)
 
     def _dCdt(self, m_sup, m_exh):
         inputs = {
@@ -220,7 +220,7 @@ class TestMassBalance(_HardSaturation):
             "outdoorCo2Concentration": _t(self.C_OUT),
             "numberOfPeople": _t(0.0),
         }
-        x_next, _ = self.room.forward(self.x0, inputs, self.params, DT)
+        x_next, _ = self.room.forward(self.x0, self.room.with_defaults(inputs), self.params, DT)
         return float((x_next[..., 0] - self.x0[..., 0]) / DT)
 
     def _expected(self, m_sup, m_exh):

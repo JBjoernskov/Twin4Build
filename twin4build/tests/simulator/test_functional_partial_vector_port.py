@@ -47,18 +47,17 @@ class TestPartiallyConnectedVectorPort(unittest.TestCase):
         model = tb.Model(id="functional_partial_vector_port")
         ahu = AirHandlingUnitSystem(
             id="ahu",
-            supply_damper_kwargs={"a": 1.0, "nominalAirFlowRate": 0.5}, exhaust_damper_kwargs={"a": 1.0, "nominalAirFlowRate": 0.5},
-            heat_recovery_kwargs={
+            supply_damper={"a": 1.0, "nominalAirFlowRate": 0.5}, exhaust_damper={"a": 1.0, "nominalAirFlowRate": 0.5},
+            heat_recovery={
                 "eps_75_h": 0.7, "eps_100_h": 0.75, "eps_75_c": 0.65, "eps_100_c": 0.7,
                 "primaryAirFlowRateMax": 1.0, "secondaryAirFlowRateMax": 1.0,
             },
-            supply_fan_kwargs={
+            supply_fan={
                 "beta0": 0.0, "beta1": 200.0 / 3.0, "beta2": 400.0, "beta3": 1000.0, "f_total": 1.0,
             },
-            exhaust_fan_kwargs={
+            exhaust_fan={
                 "beta0": 0.0, "beta1": 200.0 / 3.0, "beta2": 400.0, "beta3": 1000.0, "f_total": 1.0,
             },
-            n_branches=3,
         )
         # Branches 0 and 2 have a damper command; branch 1 has none.
         for slot, value in ((0, 0.8), (2, 0.4)):
@@ -70,8 +69,8 @@ class TestPartiallyConnectedVectorPort(unittest.TestCase):
         # One stateful consumer on branch 0, so there is something to compose.
         room = BuildingSpaceSystem(
             id="room",
-            thermal_kwargs=dict(C_wall=1e6, C_air=1e4, C_boundary=5e5, R_out=0.01, R_in=0.02, R_boundary=0.03, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
-            mass_kwargs=dict(V=100.0),
+            thermal=dict(C_wall=1e6, C_air=1e4, R_out=0.01, R_in=0.02, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
+            mass=dict(V=100.0),
         )
         model.add_connection(ahu, room, "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=0)
         model.add_connection(ahu, room, "supplyAirTemperature", "supplyAirTemperature")
