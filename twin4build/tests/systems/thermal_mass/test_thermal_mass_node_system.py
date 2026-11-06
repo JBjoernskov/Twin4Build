@@ -68,16 +68,16 @@ class TestThermalMassNodeSystem(unittest.TestCase):
         node.do_step(second_time=0, step_size=[self.DT], step_index=0)
         self.assertAlmostEqual(float(node.output["temperature"].get()), self.T_INIT, places=12)
 
-    def test_forward_matches_do_step_and_step_constants_shapes(self):
+    def test_forward_matches_do_step_and_derived_shapes(self):
         model, node, walls = self._star(3)
         start, end = self._window(2)
         node.initialize(start, end, [self.DT])
         params = {"C": node.C.get()}
         x = node.ss_model.get_state()
         u = torch.tensor([[[100.0, 200.0, -50.0]]], dtype=node.C.get().dtype)
-        x_next, outs = node.forward(x, {"heatFlowRate": u[0]}, params, float(self.DT))
+        x_next, outs = node.forward(x, {"heatFlowRate": u[0]}, node.full_params(params, float(self.DT)), float(self.DT))
         self.assertAlmostEqual(float(outs["temperature"]), self.T_INIT + self.DT * 250.0 / self.C, places=9)
-        A, B, C_out, D, E, F = node.step_constants(params)
+        A, B, C_out, D, E, F = node.derive(params, float(self.DT))["matrices"]
         self.assertEqual(tuple(B.shape), (1, 1, 3))
         self.assertEqual(tuple(D.shape), (1, 1, 3))
         self.assertEqual(tuple(E.shape), (1, 3, 1, 1))

@@ -19,6 +19,7 @@ from twin4build.systems.utils.on_off_system import OnOffSystem
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 twin4build._IS_TESTING = True
 
@@ -31,7 +32,7 @@ class TestTimeSeriesInputSystem(unittest.TestCase):
             freq="10min",
         )
         df = pd.DataFrame({"value": [0.5] * 10}, index=dates)
-        self.ts_input = TimeSeriesInputSystem(id="test_timeseries", df=df)
+        self.ts_input = TimeSeriesInputSystem(id="test_timeseries", source=DataFrameSource(df))
 
     def test_initialization(self):
         """Test time series input system initialization."""
