@@ -16,7 +16,8 @@ Covered:
 5. two copies with different parameters, batched, against the copies stepped
    separately;
 6. a saved model reloads with the same parameters and settings;
-7. a composite's children: overrides, dotted parameter paths;
+7. a composite's children: overrides, dotted parameter paths, a child and a
+   parameter per slot of an input;
 8. the converted valve keeps its constructor keywords, bounds and flow.
 """
 
@@ -105,6 +106,20 @@ class PairSystem(core.System):
         _, a = self.first.forward(None, {"x": inputs["x"]}, {"gain": p["first.gain"]}, step_size)
         _, b = self.second.forward(None, {"x": a["y"]}, {"gain": p["second.gain"]}, step_size)
         return x, {"y": b["y"]}
+
+
+class BranchesSystem(core.System):
+    """A gain per branch (a child stepped once per slot of ``u``), and a scale
+    per branch only with ``scale_per_branch``."""
+
+    scale_per_branch = Setting(False)
+    u = Input(size="wired")
+    y = Output(size=u)
+    scale = Parameter(1.0, lb=0.1, ub=10.0, per_slot=u, per_slot_if=scale_per_branch)
+    branch = Child(GainSystem, per_slot=u)
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"y": inputs["u"]}
 
 
 def _signal(sid="signal"):
@@ -345,6 +360,41 @@ class TestChildren(unittest.TestCase):
         _, outs = pair.forward(None, {"x": torch.tensor([2.0])}, {"first.gain": torch.tensor([3.0]),
                                                                  "second.gain": torch.tensor([0.5])}, STEP)
         torch.testing.assert_close(outs["y"], torch.tensor([3.0]))
+
+
+class TestPerSlot(unittest.TestCase):
+    def _initialized(self, **values):
+        branches = BranchesSystem(id="branches", **values)
+        branches.input["u"]._n_v = 3  # stepped on its own: the width by hand
+        branches.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        return branches
+
+    def test_a_child_per_slot_holds_a_value_per_branch(self):
+        branches = self._initialized()
+        self.assertEqual(branches.branch.n_c, 3)
+        self.assertEqual(tuple(branches.branch.gain.get().shape), (3,))
+        self.assertEqual(branches.scale.get().numel(), 1)
+
+    def test_a_parameter_per_slot_only_while_its_setting_holds(self):
+        branches = self._initialized(scale_per_branch=True)
+        self.assertEqual(tuple(branches.scale.get().shape), (3,))
+
+    def test_given_values_per_branch_are_kept(self):
+        branches = self._initialized(branch=dict(gain=[1.0, 2.0, 3.0]))
+        torch.testing.assert_close(
+            branches.branch.gain.get(), torch.tensor([1.0, 2.0, 3.0], dtype=branches.branch.gain.get().dtype)
+        )
+
+    def test_per_slot_must_name_an_input_of_the_class(self):
+        other = Input(size="wired")
+        with self.assertRaisesRegex(TypeError, "per_slot"):
+            class Stray(core.System):
+                u = Input(size="wired")
+                part = Child(GainSystem, per_slot=other)
+        with self.assertRaisesRegex(TypeError, "per_slot"):
+            Parameter(1.0, per_slot=Setting(3))
+        with self.assertRaisesRegex(TypeError, "per_slot_if"):
+            Parameter(1.0, per_slot_if=Setting(False))
 
 
 class TestConvertedValve(unittest.TestCase):

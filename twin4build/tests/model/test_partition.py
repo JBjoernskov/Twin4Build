@@ -146,7 +146,7 @@ def build():
     rooms = [Room(id=f"room{k}") for k in range(2)]
     sj = SupplyFlowJunctionSystem(id="supply_junction")
     rj = ReturnFlowJunctionSystem(id="return_junction")
-    unit = AirHandlingUnitCoreSystem(id="unit", supply_fan_kwargs=dict(FAN_KWARGS), exhaust_fan_kwargs=dict(FAN_KWARGS))
+    unit = AirHandlingUnitCoreSystem(id="unit", supply_fan=dict(FAN_KWARGS), exhaust_fan=dict(FAN_KWARGS))
     for k in range(2):
         d, r = dampers[k], rooms[k]
         model.add_connection(pos[k], d, "measuredValue", "damperPosition")

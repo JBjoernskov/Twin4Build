@@ -55,7 +55,7 @@ def build(model_id="keep_groups"):
     setpoint = series([18.0] * 8, id="setpoint")
     sj = SupplyFlowJunctionSystem(id="supply_junction")
     rj = ReturnFlowJunctionSystem(id="return_junction")
-    unit = AirHandlingUnitCoreSystem(id="unit", supply_fan_kwargs=dict(FAN_KWARGS), exhaust_fan_kwargs=dict(FAN_KWARGS))
+    unit = AirHandlingUnitCoreSystem(id="unit", supply_fan=dict(FAN_KWARGS), exhaust_fan=dict(FAN_KWARGS))
     for k in range(N_ROOMS):
         d = DamperSystem(id=f"terminal{k}", a=1.0, nominalAirFlowRate=0.5, exhaustFlowRatio=RATIO)
         r = Room(id=f"room{k}", k=0.5 + 0.25 * k)

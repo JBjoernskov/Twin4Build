@@ -52,18 +52,17 @@ def build_model(model_id, exhaust_per_zone=False):
     model = tb.Model(id=model_id)
     ahu = AirHandlingUnitSystem(
         id="ahu",
-        supply_damper_kwargs={"a": 1.0, "nominalAirFlowRate": 0.5}, exhaust_damper_kwargs={"a": 1.0, "nominalAirFlowRate": 0.5},
-        heat_recovery_kwargs={
+        supply_damper={"a": 1.0, "nominalAirFlowRate": 0.5}, exhaust_damper={"a": 1.0, "nominalAirFlowRate": 0.5},
+        heat_recovery={
             "eps_75_h": 0.7, "eps_100_h": 0.75, "eps_75_c": 0.65, "eps_100_c": 0.7,
             "primaryAirFlowRateMax": 1.0, "secondaryAirFlowRateMax": 1.0,
         },
-        supply_fan_kwargs={
+        supply_fan={
             "beta0": 0.0, "beta1": 200.0 / 3.0, "beta2": 400.0, "beta3": 1000.0, "f_total": 1.0,
         },
-        exhaust_fan_kwargs={
+        exhaust_fan={
             "beta0": 0.0, "beta1": 200.0 / 3.0, "beta2": 400.0, "beta3": 1000.0, "f_total": 1.0,
         },
-        n_branches=3,
     )
     # Three dampers: branch 0 serves zone A, branches 1 and 2 serve zone B.
     for slot, value in ((0, 0.8), (1, 0.4), (2, 0.6)):
