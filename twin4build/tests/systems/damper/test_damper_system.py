@@ -70,7 +70,7 @@ class TestDamperTorchSystem(unittest.TestCase):
 
     def test_offset_c_is_the_closed_damper_flow(self):
         """``c`` tied (default): zero flow when closed, ``c`` not estimable,
-        and it follows a re-estimated ``a``.  Given / ``set_c``: ``a + c``
+        and it follows a re-estimated ``a``.  Given (``c=`` or ``damper.c =``): ``a + c``
         is the closed-damper flow (a VAV's minimum flow), ``c`` is
         estimable, the flow never goes negative and full opening still
         gives the nominal flow."""
@@ -106,6 +106,15 @@ class TestDamperTorchSystem(unittest.TestCase):
         self.assertIsNotNone(untied.c)
         self.assertAlmostEqual(flow(untied, 0.0), 0.0)
         self.assertAlmostEqual(flow(untied, 1.0), 0.5, places=6)
+
+    def test_the_old_tie_raises_with_its_replacement(self):
+        """``set_c`` and ``c_tied`` raise instead of doing nothing."""
+        damper = DamperSystem(id="old_tie")
+        with self.assertRaisesRegex(AttributeError, "damper.c = value"):
+            damper.set_c(-0.9)
+        with self.assertRaisesRegex(AttributeError, "c is optional"):
+            damper.c_tied = False
+        self.assertIsNone(damper.c)
 
     def test_do_step_batch(self):
         """Test damper system do_step method with batch size > 1."""
