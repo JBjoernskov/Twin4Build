@@ -246,5 +246,18 @@ class TestScheduleSystem(unittest.TestCase):
             shutil.rmtree("generated_files/models/test_cache_model")
 
 
+class TestOldAttributeNames(unittest.TestCase):
+    def test_an_old_name_sets_and_reads_the_current_one(self):
+        """``schedule.weekDayRulesetDict = {...}`` set an attribute nothing
+        read (the example models' setup did it); it sets the ruleset now."""
+        schedule = tb.ScheduleSystem(id="old_name")
+        ruleset = {"ruleset_default_value": 900.0}
+        with self.assertWarns(DeprecationWarning):
+            schedule.weekDayRulesetDict = ruleset
+        self.assertEqual(schedule.weekday_ruleset, ruleset)
+        self.assertNotIn("weekDayRulesetDict", schedule.__dict__)
+        with self.assertWarns(DeprecationWarning):
+            self.assertEqual(schedule.weekDayRulesetDict, ruleset)
+
 if __name__ == "__main__":
     unittest.main()
