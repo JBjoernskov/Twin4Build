@@ -146,18 +146,9 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
         # the terminal keeps that, with its position unwired.
         LOGGER.warning("%s: branches %s carry no damper command; their terminals stay closed", unit.id, missing)
 
-    # The room of branch b: what reads its supply flow and also publishes its
-    # temperature into the unit; else the aligned temperature slot.
-    temperature_of_sender = {id(s): (s, p, out_v) for s, p, out_v in temperatures.values()}
-    room_temperature: Dict[int, Tuple[object, str, Optional[int]]] = {}
-    for b in range(n):
-        for r, _, _ in supply_readers.get(b, []):
-            if id(r) in temperature_of_sender:
-                room_temperature[b] = temperature_of_sender[id(r)]
-                break
-        else:
-            if b in temperatures:
-                room_temperature[b] = temperatures[b]
+    # The unit reads one exhaust temperature per branch: branch b's is the one
+    # wired to slot b (a room on several branches fills the slot of each).
+    room_temperature: Dict[int, Tuple[object, str, Optional[int]]] = dict(temperatures)
 
     # --- the parts ----------------------------------------------------------------
     unit_id = unit.id
@@ -189,18 +180,7 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
                 )
             )
     supply_junction = SupplyFlowJunctionSystem(id=f"{unit_id}_supply_junction")
-    # one temperature slot per room; branch b reads its room's slot
-    room_slot: Dict[Tuple[int, str], int] = {}
-    branch_temperature_slots = []
-    for b in range(n):
-        if b in room_temperature:
-            s_, p_, _ = room_temperature[b]
-            branch_temperature_slots.append(room_slot.setdefault((id(s_), p_), len(room_slot)))
-        else:
-            branch_temperature_slots.append(0)
-    return_junction = ReturnFlowJunctionSystem(
-        id=f"{unit_id}_return_junction", branch_temperature_slots=branch_temperature_slots
-    )
+    return_junction = ReturnFlowJunctionSystem(id=f"{unit_id}_return_junction")
 
     core = AirHandlingUnitCoreSystem(id=unit_id)
     # the device's own submodels, fitted parameters included
@@ -242,16 +222,11 @@ def factor_air_handling_unit(model, unit: AirHandlingUnitSystem) -> Dict[str, ob
                 "%s: branch %d has no room temperature; its exhaust is left out of the return junction",
                 unit_id, b,
             )
-    # every room's temperature once, on its own slot of the return junction
-    connected_rooms = set()
+    # each branch's temperature on the branch's slot of the return junction
     for b in range(n):
-        if b not in room_temperature:
-            continue
-        s, p, out_v = room_temperature[b]
-        if (id(s), p) in connected_rooms:
-            continue
-        connected_rooms.add((id(s), p))
-        _connect(model, s, p, return_junction, "airTemperatureIn", out_v=out_v, in_v=room_slot[(id(s), p)])
+        if b in room_temperature:
+            s, p, out_v = room_temperature[b]
+            _connect(model, s, p, return_junction, "airTemperatureIn", out_v=out_v, in_v=b)
     _connect(model, supply_junction, "airFlowRateIn", core, "totalSupplyAirFlowRate")
 
     _connect(model, return_junction, "airFlowRateOut", core, "totalExhaustAirFlowRate")

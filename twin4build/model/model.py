@@ -1668,12 +1668,12 @@ class Model:
             return
 
         for param_name in parameter_names:
-            originals = []
-            for c in components:
-                p = self._resolve_dotted_attr(c, param_name)
-                if p is None:
-                    return
-                originals.append(p)
+            originals = [self._resolve_dotted_attr(c, param_name) for c in components]
+            if any(p is None for p in originals):
+                # Absent on the copies (an optional parameter; copies batch
+                # only with copies that lack it too): nothing to stack.  It
+                # returned here, and every parameter after it went unstacked.
+                continue
 
             first = originals[0]
             self._stack_parameter_spec(meta, components, param_name)

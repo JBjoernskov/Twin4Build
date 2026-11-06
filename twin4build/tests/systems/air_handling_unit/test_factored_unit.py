@@ -341,9 +341,9 @@ class TestFactoringTheComposite(unittest.TestCase):
 
 
 class TestFactoringSharedRoom(unittest.TestCase):
-    """A room with two terminals publishes one temperature for both branches:
-    the composite maps branches to room slots internally, the factored form
-    through the return junction's ``branch_temperature_slots``."""
+    """A room with two terminals publishes one temperature into the slots of
+    both branches (one connection, two slots): the composite and the factored
+    form read it per branch."""
 
     def build(self):
         model = tb.Model(id="shared_room_unit")
@@ -366,16 +366,16 @@ class TestFactoringSharedRoom(unittest.TestCase):
         model.add_connection(fan, unit, "measuredValue", "supplyFanSpeed")
         model.add_connection(outdoor, unit, "measuredValue", "outdoorAirTemperature")
         model.add_connection(setpoint, unit, "measuredValue", "supplyAirTemperatureSetpoint")
-        # room 0 owns branches 0 and 1 and publishes its state as its temperature (slot 0);
-        # room 1 owns branch 2 on slot 1
+        # room 0 owns branches 0 and 1 and publishes its state as its temperature on both;
+        # room 1 owns branch 2
         room0, room1 = Sink(id="room0"), Sink(id="room1")
         model.add_connection(
             unit, room0, "supplyAirFlowRate", "u",
             output_port_index=torch.tensor([0, 1]), input_port_index=torch.tensor([0, 1]),
         )
         model.add_connection(unit, room1, "supplyAirFlowRate", "u", output_port_index=2, input_port_index=0)
-        model.add_connection(room0, unit, "w", "exhaustTemperature", input_port_index=0)
-        model.add_connection(room1, unit, "w", "exhaustTemperature", input_port_index=1)
+        model.add_connection(room0, unit, "w", "exhaustTemperature", input_port_index=[0, 1])
+        model.add_connection(room1, unit, "w", "exhaustTemperature", input_port_index=2)
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         return model
 
@@ -407,7 +407,13 @@ class TestFactoringSharedRoom(unittest.TestCase):
         reference["room0"] = _history(model, "room0", "w")
         reference["room1"] = _history(model, "room1", "w")
         (parts,) = model.factor_air_handling_units()
-        self.assertEqual(parts["return_junction"].branch_temperature_slots, [0, 0, 1])
+        junction = parts["return_junction"]
+        slots = {
+            conn.connects_system.id: sorted(torch.as_tensor(cp.input_port_index[conn]).reshape(-1).tolist())
+            for cp in junction.connects_at if cp.input_port == "airTemperatureIn"
+            for conn in cp.connects_system_through
+        }
+        self.assertEqual(slots, {"room0": [0, 1], "room1": [2]})
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         _simulate(model)
         self._check(model, reference)
