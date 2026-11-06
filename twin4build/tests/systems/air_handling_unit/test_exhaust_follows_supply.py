@@ -18,6 +18,7 @@ from dateutil import tz
 import twin4build
 import twin4build as tb
 from twin4build.systems.utils.smooth_saturation import saturation_mode
+from twin4build.utils.rgetattr import rgetattr
 from twin4build.systems.air_handling_unit.air_handling_unit_system import (
     AirHandlingUnitSystem,
 )
@@ -43,16 +44,17 @@ def _ahu(follows: bool, ratio: float = 0.93, n_branches: int = 2) -> AirHandling
     fan_kwargs = {
         "beta0": 0.0, "beta1": 200.0 / 3.0, "beta2": 400.0, "beta3": 1000.0, "f_total": 1.0,
     }
-    return AirHandlingUnitSystem(
+    ahu = AirHandlingUnitSystem(
         id="ahu",
-        supply_damper_kwargs={"nominalAirFlowRate": 0.5},
-        exhaust_damper_kwargs={"nominalAirFlowRate": 0.2},  # deliberately different
-        supply_fan_kwargs=fan_kwargs,
-        exhaust_fan_kwargs=dict(fan_kwargs),
-        n_branches=n_branches,
+        supply_damper={"nominalAirFlowRate": 0.5},
+        exhaust_damper={"nominalAirFlowRate": 0.2},  # deliberately different
+        supply_fan=fan_kwargs,
+        exhaust_fan=dict(fan_kwargs),
         exhaust_follows_supply=follows,
         exhaustFlowRatio=ratio,
     )
+    ahu.n_branches = n_branches  # stepped on its own: no wiring gives the width
+    return ahu
 
 
 def _step(ahu: AirHandlingUnitSystem, supply_pos, exhaust_pos):
@@ -87,10 +89,12 @@ class TestExhaustFollowsSupply(unittest.TestCase):
             "supplyAirTemperatureSetpoint": torch.tensor([18.0], dtype=torch.float64),
             "outdoorAirTemperature": torch.tensor([5.0], dtype=torch.float64),
         }
-        _, out = ahu.forward(None, inputs, {}, 600.0)
+        own = {name: rgetattr(ahu, name).get() for name in ahu.PARAM_NAMES if rgetattr(ahu, name) is not None}
+        _, out = ahu.forward(None, inputs, ahu.full_params(own, 600.0), 600.0)
         torch.testing.assert_close(out["exhaustAirFlowRate"], exh[0])
         # an estimated ratio arrives through params
-        _, out2 = ahu.forward(None, inputs, {"exhaustFlowRatio": torch.tensor([0.5], dtype=torch.float64)}, 600.0)
+        estimated = {**own, "exhaustFlowRatio": torch.tensor([0.5], dtype=torch.float64)}
+        _, out2 = ahu.forward(None, inputs, ahu.full_params(estimated, 600.0), 600.0)
         torch.testing.assert_close(out2["exhaustAirFlowRate"], 0.5 * out2["supplyAirFlowRate"])
 
     def test_preheat_temperature_output(self):

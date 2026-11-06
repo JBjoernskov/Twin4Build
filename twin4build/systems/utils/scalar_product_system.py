@@ -1,13 +1,6 @@
-# Standard library imports
-import datetime
-from typing import Optional
-
-# Third party imports
-import torch
-
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output, Setting
 
 
 class ScalarProductSystem(core.System):
@@ -32,83 +25,12 @@ class ScalarProductSystem(core.System):
         output (Scalar): Result of ``input_1 * input_2 * scale_factor``.
     """
 
-    def __init__(
-        self,
-        scale_factor: float = 1.0,
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
+    scale_factor = Setting(1.0, doc="Constant multiplier after the element-wise product")
+    input_1 = Input(doc="First operand")
+    input_2 = Input(doc="Second operand")
+    output = Output(doc="input_1 * input_2 * scale_factor")
 
-        self.input = {
-            "input_1": tps.Scalar(),
-            "input_2": tps.Scalar(),
-        }
-        self.output = {
-            "output": tps.Scalar(),
-        }
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: ``input_1 * input_2 * scale_factor``."""
+        return x, {"output": inputs["input_1"] * inputs["input_2"] * self.scale_factor}
 
-        self._scale_factor = scale_factor
-
-        self._config = {"parameters": ["scale_factor"]}
-
-    @property
-    def config(self):
-        return self._config
-
-    @property
-    def scale_factor(self) -> float:
-        return self._scale_factor
-
-    @scale_factor.setter
-    def scale_factor(self, value: float) -> None:
-        self._scale_factor = value
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-        for inp in self.input.values():
-            inp.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-        for out in self.output.values():
-            out.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the math)."""
-        _, outs = self.forward(
-            None,
-            {
-                "input_1": self.input["input_1"].get(),
-                "input_2": self.input["input_2"].get(),
-            },
-            {},
-            step_size,
-        )
-        self.output["output"]._set(outs["output"], i_t=step_index)
-
-    #: No estimated physical parameters (the ``forward`` theta contract);
-    #: ``scale_factor`` is a fixed constant read from the instance.
-    PARAM_NAMES = ()
-
-    def forward(self, x, inputs, params, step_size):
-        """Pure algebraic map ``(inputs,) -> outputs`` (stateless).
-
-        ``output = input_1 * input_2 * scale_factor``.  Functorch-compatible;
-        keeps whatever batch dims the inputs carry (``(1,)`` under the
-        composer, ``(n_s, n_c)`` under ``do_step``).  Returns
-        ``(x, {"output"})``.
-        """
-        out = inputs["input_1"] * inputs["input_2"] * self._scale_factor
-        return x, {"output": out}

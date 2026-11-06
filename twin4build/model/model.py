@@ -1287,7 +1287,7 @@ class Model:
                 n_c = len(comps)
                 cls = comps[0].__class__
                 # A component whose constructor takes required arguments
-                # (FunctionSystem's ``inputs``/``fn``) declares them in
+                # (a declared System's settings) declares them in
                 # ``_batch_init_kwargs`` so the meta can be built at all.
                 # Components sharing a batch share those values;
                 # _component_signature keeps differing ones apart.
@@ -1668,12 +1668,12 @@ class Model:
             return
 
         for param_name in parameter_names:
-            originals = []
-            for c in components:
-                p = self._resolve_dotted_attr(c, param_name)
-                if p is None:
-                    return
-                originals.append(p)
+            originals = [self._resolve_dotted_attr(c, param_name) for c in components]
+            if any(p is None for p in originals):
+                # Absent on the copies (an optional parameter; copies batch
+                # only with copies that lack it too): nothing to stack.  It
+                # returned here, and every parameter after it went unstacked.
+                continue
 
             first = originals[0]
             self._stack_parameter_spec(meta, components, param_name)
@@ -1872,6 +1872,16 @@ class Model:
                 else getattr(component, "config", {}).get("parameters", ())
             )
         )
+        # Copies of a class with an optional parameter batch only with copies
+        # that have it, or that lack it, too (their parameter sets differ).
+        absent = []
+        for name in getattr(component, "PARAM_NAMES", ()):
+            try:
+                if rgetattr(component, name) is None:
+                    absent.append(name)
+            except AttributeError:
+                pass
+        parameter_keys = parameter_keys + (("absent",) + tuple(absent) if absent else ())
 
         # A component that only replays recorded data (a controller in
         # playback) is exogenous to the functional composer while its
@@ -1914,7 +1924,7 @@ class Model:
         )
         data_signature = data_signature + source_identity
 
-        # Declared batch-construction values (a FunctionSystem's input names
+        # Declared batch-construction values (a declared System's settings
         # and its transformation) are part of the component's identity: batching
         # two different transformations into one n_c block would silently apply
         # one of them to both.
@@ -1927,6 +1937,9 @@ class Model:
                 # a literal (an identified controller's candidate structure):
                 # equal contents are the same structure
                 return tuple(sorted((str(k), _declared_signature(v)) for k, v in value.items()))
+            if callable(getattr(value, "signature", None)) and hasattr(value, "to_config"):
+                # A reader: two readers of the same data are the same source.
+                return ("source",) + tuple(value.signature())
             # A callable (or any other object) counts as identity: two
             # separately created functions are two transformations as far as
             # batching is concerned, even if their source is identical.

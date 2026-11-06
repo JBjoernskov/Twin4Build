@@ -1,22 +1,10 @@
-# Standard library imports
-import datetime
-from typing import Optional
-
 # Third party imports
 import torch
 
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.constants as constants
-import twin4build.utils.types as tps
-from twin4build.translator.translator import (
-    StepRule,
-    AnyPathRule,
-    Node,
-    OptionalRule,
-    SignaturePattern,
-    PathRule,
-)
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
 
 
 class AirToAirHeatRecoverySystem(core.System):
@@ -84,170 +72,26 @@ class AirToAirHeatRecoverySystem(core.System):
 
     """
 
-    def __init__(
-        self,
-        eps_75_h=0.86,
-        eps_100_h=0.8,
-        eps_75_c=0.86,
-        eps_100_c=0.8,
-        primaryAirFlowRateMax=1.0,
-        secondaryAirFlowRateMax=1.0,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-
-        # Store attributes as private variables
-        self.eps_75_h = tps.Parameter(
-            torch.tensor(eps_75_h, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.eps_100_h = tps.Parameter(
-            torch.tensor(eps_100_h, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.eps_75_c = tps.Parameter(
-            torch.tensor(eps_75_c, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.eps_100_c = tps.Parameter(
-            torch.tensor(eps_100_c, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.primaryAirFlowRateMax = tps.Parameter(
-            torch.tensor(primaryAirFlowRateMax, dtype=tps.float_dtype()),
-            requires_grad=False,
-        )
-        self.secondaryAirFlowRateMax = tps.Parameter(
-            torch.tensor(secondaryAirFlowRateMax, dtype=tps.float_dtype()),
-            requires_grad=False,
-        )
-
-        # Define inputs and outputs as private variables
-        self._input = {
-            "primaryAirFlowRate": tps.Scalar(),
-            "secondaryAirFlowRate": tps.Scalar(),
-            "primaryTemperatureIn": tps.Scalar(),
-            "secondaryTemperatureIn": tps.Scalar(),
-            "primaryTemperatureOutSetpoint": tps.Scalar(),
-        }
-        self._output = {
-            "primaryTemperatureOut": tps.Scalar(),
-            "secondaryTemperatureOut": tps.Scalar(),
-        }
-        # Per-leaf bounds consumed by
-        # :meth:`twin4build.core.System.get_estimable_parameters`.
-        # Effectiveness factors are physically in ``[0, 1]``; nominal
-        # max flows are sized loosely around a residential / small
-        # commercial unit (~1 kg/s) with one order of magnitude
-        # headroom either side.
-        # Physically-realistic bounds.  Real plate / rotary air-to-air
-        # heat-recovery units land in the 0.4 - 0.95 effectiveness
-        # range across the operating envelope; allowing the solver
-        # down to 0 (no heat transfer) lets it absorb model errors
-        # from elsewhere as zero recovery, and allowing it past ~ 0.95
-        # has no physical interpretation.  The eps_75 vs eps_100
-        # labels are the same underlying physics at the two reference
-        # capacity ratios, so they share bounds.
-        self.parameter = {
-            "eps_75_h":                {"lb": 0.4, "ub": 0.95},
-            "eps_100_h":               {"lb": 0.4, "ub": 0.95},
-            "eps_75_c":                {"lb": 0.4, "ub": 0.95},
-            "eps_100_c":               {"lb": 0.4, "ub": 0.95},
-            # AHU primary / secondary air mass flow at maximum
-            # operation.  Same 0.5 - 10 kg/s envelope as the fan and
-            # damper sub-systems -- needs to bracket the same
-            # physical AHU sizes consistently.
-            "primaryAirFlowRateMax":   {"lb": 0.5, "ub": 10.0, "relative": (0.25, 4.0)},
-            "secondaryAirFlowRateMax": {"lb": 0.5, "ub": 10.0, "relative": (0.25, 4.0)},
-        }
-        self._config = {"parameters": list(self.parameter.keys())}
-
-    @property
-    def config(self):
-        """Get the configuration parameters.
-
-        Returns:
-            dict: Configuration parameters.
-        """
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the air-to-air heat recovery system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "primaryAirFlowRate": Primary (supply) air flow rate [kg/s]
-                - "secondaryAirFlowRate": Secondary (exhaust) air flow rate [kg/s]
-                - "primaryTemperatureIn": Primary air inlet temperature [°C]
-                - "secondaryTemperatureIn": Secondary air inlet temperature [°C]
-                - "primaryTemperatureOutSetpoint": Primary air outlet temperature setpoint [°C]
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the air-to-air heat recovery system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "primaryTemperatureOut": Primary air outlet temperature [°C]
-                - "secondaryTemperatureOut": Secondary air outlet temperature [°C]
-        """
-        return self._output
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        """Initialize the system for simulation.
-
-        This method is currently not implemented as the system does not require initialization.
-
-        Args:
-            start_time: Start time of the simulation period.
-            end_time: End time of the simulation period.
-            step_size: Time step size in seconds.
-            simulator: Simulation model object.
-        """
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-        for input in self.input.values():
-            input.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-            )
-        for output in self.output.values():
-            output.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-            )
-
-        # Expand parameters to n_c dimension for vectorization
-        self.eps_75_h = self.eps_75_h.expand_to_n_c(self.n_c)
-        self.eps_100_h = self.eps_100_h.expand_to_n_c(self.n_c)
-        self.eps_75_c = self.eps_75_c.expand_to_n_c(self.n_c)
-        self.eps_100_c = self.eps_100_c.expand_to_n_c(self.n_c)
-        self.primaryAirFlowRateMax = self.primaryAirFlowRateMax.expand_to_n_c(self.n_c)
-        self.secondaryAirFlowRateMax = self.secondaryAirFlowRateMax.expand_to_n_c(
-            self.n_c
-        )
-
-        self.INITIALIZED = True
-
-    PARAM_NAMES = (
-        "eps_75_h",
-        "eps_100_h",
-        "eps_75_c",
-        "eps_100_c",
-        "primaryAirFlowRateMax",
-        "secondaryAirFlowRateMax",
+    primaryAirFlowRate = Input(doc="Primary (supply) air flow rate [kg/s]")
+    secondaryAirFlowRate = Input(doc="Secondary (exhaust) air flow rate [kg/s]")
+    primaryTemperatureIn = Input(doc="Primary air inlet temperature [degC]")
+    secondaryTemperatureIn = Input(doc="Secondary air inlet temperature [degC]")
+    primaryTemperatureOutSetpoint = Input(doc="Primary air outlet temperature setpoint [degC]")
+    primaryTemperatureOut = Output(doc="Primary air outlet temperature [degC]")
+    secondaryTemperatureOut = Output(doc="Secondary air outlet temperature [degC]")
+    eps_75_h = Parameter(0.86, lb=0.4, ub=0.95, doc="Effectiveness at 75% flow, heating [-]")
+    eps_100_h = Parameter(0.8, lb=0.4, ub=0.95, doc="Effectiveness at 100% flow, heating [-]")
+    eps_75_c = Parameter(0.86, lb=0.4, ub=0.95, doc="Effectiveness at 75% flow, cooling [-]")
+    eps_100_c = Parameter(0.8, lb=0.4, ub=0.95, doc="Effectiveness at 100% flow, cooling [-]")
+    primaryAirFlowRateMax = Parameter(
+        1.0, lb=0.5, ub=10.0, relative=(0.25, 4.0), doc="Maximum primary air flow rate [kg/s]"
+    )
+    secondaryAirFlowRateMax = Parameter(
+        1.0, lb=0.5, ub=10.0, relative=(0.25, 4.0), doc="Maximum secondary air flow rate [kg/s]"
     )
 
     def forward(self, x, inputs, params, step_size):
-        """Pure one-step heat-recovery model (functorch-safe, stateless).
+        """Stateless: the heat recovered between the two streams.
 
         Effectiveness interpolated between the 75%/100% reference points,
         operation mode selected from inlet temperatures vs the setpoint,
@@ -338,35 +182,3 @@ class AirToAirHeatRecoverySystem(core.System):
             "primaryTemperatureOut": primary_temp_out,
             "secondaryTemperatureOut": secondary_temp_out,
         }
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """Perform one simulation step.
-
-        Thin port-I/O wrapper delegating the math to :meth:`forward` (heat
-        recovery between supply and exhaust air streams with interpolated
-        effectiveness and heating/cooling mode selection).
-
-        Args:
-            second_time: Current simulation time in seconds.
-            date_time: Current simulation date and time.
-            step_size: Time step size in seconds.
-            step_index: Current simulation step index.
-        """
-        inputs = {name: port.get() for name, port in self.input.items()}
-        _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.output["primaryTemperatureOut"]._set(
-            outs["primaryTemperatureOut"], i_t=step_index
-        )
-        self.output["secondaryTemperatureOut"]._set(
-            outs["secondaryTemperatureOut"], i_t=step_index
-        )
-
-

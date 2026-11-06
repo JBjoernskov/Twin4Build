@@ -33,16 +33,16 @@ class TestFeedTransformations(unittest.TestCase):
 
         outdoor.set_transformation_by_type(sm.get_type(BRICK.Solar_Irradiance_Sensor), clip)
         outdoor.set_transformation_by_type(sm.get_type(BRICK.Outside_Air_Temperature_Sensor), f2c)
-        self.assertIs(outdoor._transformation_globalIrradiation, clip)
-        self.assertIs(outdoor._transformation_outdoorTemperature, f2c)
+        self.assertIs(outdoor.globalIrradiation_transformation, clip)
+        self.assertIs(outdoor.outdoorTemperature_transformation, f2c)
 
         # A rule keyed by the generic Temperature_Sensor still reaches the
         # temperature feed (subclass dispatch happens in Model).
         outdoor.set_transformation_by_type(sm.get_type(BRICK.Temperature_Sensor), clip)
-        self.assertIs(outdoor._transformation_outdoorTemperature, clip)
+        self.assertIs(outdoor.outdoorTemperature_transformation, clip)
         # Unrelated classes are ignored.
         outdoor.set_transformation_by_type(sm.get_type(BRICK.CO2_Sensor), f2c)
-        self.assertIs(outdoor._transformation_globalIrradiation, clip)
+        self.assertIs(outdoor.globalIrradiation_transformation, clip)
 
 
 if __name__ == "__main__":

@@ -1,22 +1,9 @@
-# Standard library imports
-import datetime
-from typing import List, Optional, Union
-
 # Third party imports
-import numpy as np
 import torch
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
-from twin4build.translator.translator import (
-    StepRule,
-    AnyPathRule,
-    Node,
-    OptionalRule,
-    SignaturePattern,
-    PathRule,
-)
+from twin4build.systems.saref4syst.declarations import Input, Output, Setting
 
 
 class ReturnFlowJunctionSystem(core.System):
@@ -58,130 +45,11 @@ class ReturnFlowJunctionSystem(core.System):
        - :math:`\dot{m}_{out}` is the total output flow rate [kg/s]
     """
 
-    def __init__(self, airFlowRateBias=None, branch_temperature_slots=None, **kwargs):
-        """
-        Args:
-            airFlowRateBias: Bias added to the total flow rate [kg/s].
-            branch_temperature_slots: For flow slot ``b`` (a branch), the
-                slot of ``airTemperatureIn`` that carries its temperature.
-                A room with several terminals publishes one temperature,
-                on one slot, for all of its branches (a scalar output
-                cannot be wired to several slots of one port), so the
-                temperature port is one slot per room and this map joins
-                the two.  ``None``: the slots are aligned one to one.
-        """
-        super().__init__(**kwargs)
-        if airFlowRateBias is not None:
-            self.airFlowRateBias = airFlowRateBias
-        else:
-            self.airFlowRateBias = 0
-        self.n_input_ports = 2
-        self._manual_setup_n_input_ports = False
-        # an empty list means aligned one to one (None would read as a
-        # missing parameter value to the model's validation)
-        self.branch_temperature_slots = [int(i) for i in (branch_temperature_slots or [])]
-
-
-        self.input = {
-            "airFlowRateIn": tps.Vector(),
-            "airTemperatureIn": tps.Vector(),
-        }
-        self.output = {
-            "airFlowRateOut": tps.Scalar(),
-            "airTemperatureOut": tps.Scalar(),
-        }
-        self._config = {"parameters": ["airFlowRateBias", "branch_temperature_slots"]}
-
-
-    @property
-    def n_input_ports(self):
-        return self._n_input_ports
-
-    @n_input_ports.setter
-    def n_input_ports(self, n_input_ports: int):
-        self._manual_setup_n_input_ports = True
-        self._n_input_ports = n_input_ports
-
-    @property
-    def config(self):
-        return self._config
-
-    def setup_variable_inputs(self):
-
-        # Check that the number of airFlowRateIn and airTemperatureIn are the same
-        connection_point_airFlowRateIn = [
-            cp for cp in self.connects_at if cp.input_port == "airFlowRateIn"
-        ]
-        connection_point_airTemperatureIn = [
-            cp for cp in self.connects_at if cp.input_port == "airTemperatureIn"
-        ]
-        if len(connection_point_airFlowRateIn) != len(
-            connection_point_airTemperatureIn
-        ):
-            raise ValueError(
-                "The number of airFlowRateIn and airTemperatureIn must be the same"
-            )
-
-        if self._manual_setup_n_input_ports == False:
-            # Assert that the number of input ports is at least 1
-            connection_point = [
-                cp for cp in self.connects_at if cp.input_port == "airFlowRateIn"
-            ]
-            if len(connection_point) == 0:
-                raise ValueError("No input port found for airFlowRateIn")
-            # The width is the highest wired slot plus one (one connection
-            # from a batched meta carries many slots); without slot indices,
-            # one slot per connection as before.
-            n_input_ports = self.get_n_v_from_connections("airFlowRateIn") or len(
-                connection_point[0].connects_system_through
-            )
-            self.n_input_ports = n_input_ports
-
-    def initialize(
-        self,
-        start_time: Union[List[datetime.datetime], datetime.datetime],
-        end_time: Union[List[datetime.datetime], datetime.datetime],
-        step_size: Union[List[int], int],
-    ) -> None:
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-        self.setup_variable_inputs()
-        # The temperature port may be narrower than the flow port (one slot
-        # per room against one per branch, see ``branch_temperature_slots``).
-        n_temperature = self.n_input_ports
-        if self.branch_temperature_slots:
-            n_temperature = self.get_n_v_from_connections("airTemperatureIn") or (
-                max(self.branch_temperature_slots) + 1
-            )
-        self.input["airFlowRateIn"].initialize(n_t=max_timesteps, n_s=batch_size, n_v=self.n_input_ports)
-        self.input["airTemperatureIn"].initialize(n_t=max_timesteps, n_s=batch_size, n_v=n_temperature)
-        # On the ports' device: a CUDA-graph capture must not record a
-        # host-to-device copy of the index inside ``forward``.
-        device = self.input["airFlowRateIn"].get().device
-        self._temperature_index = (
-            torch.tensor(self.branch_temperature_slots, dtype=torch.long, device=device)
-            if self.branch_temperature_slots
-            else None
-        )
-        # The same map as a constant 0/1 matrix (branches x temperature
-        # slots): the branch temperatures are then one small matmul instead
-        # of an index gather inside the branch reduction, which Triton's
-        # backend refused to compile on the ring (PassManager::run failed).
-        self._temperature_select = (
-            torch.nn.functional.one_hot(self._temperature_index, n_temperature).to(tps.float_dtype())
-            if self._temperature_index is not None
-            else None
-        )
-
-        for output in self.output.values():
-            output.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-            )
-
-    PARAM_NAMES = ()  # airFlowRateBias is a plain number (structural constant)
+    airFlowRateBias = Setting(0.0, doc="Added to the total flow [kg/s]")
+    airFlowRateIn = Input(size="wired", doc="The branches' flows [kg/s]")
+    airTemperatureIn = Input(size=airFlowRateIn, doc="The branches' temperatures [degC], a slot per branch")
+    airFlowRateOut = Output(doc="The total flow [kg/s]")
+    airTemperatureOut = Output(doc="The flow-weighted temperature [degC]")
 
     #: The streams' sum and their flow-weighted temperature (:mod:`twin4build.model.signal_dependencies`): every slot.
     OUTPUT_DEPENDENCIES = {
@@ -189,68 +57,29 @@ class ReturnFlowJunctionSystem(core.System):
         "airTemperatureOut": {"inputs": ("airFlowRateIn", "airTemperatureIn")},
     }
 
-    def forward(self, x, inputs, params, step_size):
-        """Pure one-step flow mixing (functorch-safe, stateless).
+    @property
+    def n_input_ports(self) -> int:
+        """The number of branches."""
+        return self.input["airFlowRateIn"]._n_v
 
-        Total flow is the sum of the input flows plus the bias; the output
-        temperature is the flow-weighted average (20 °C fallback when there
-        is no flow).  ``airFlowRateBias`` is a plain (non-estimable) number,
-        read from ``self`` as a structural constant.
-        """
-        # Sum over last dimension (input flows dimension) to preserve batch dimension
-        temperature = inputs["airTemperatureIn"]
-        select = getattr(self, "_temperature_select", None)
-        index = getattr(self, "_temperature_index", None)
-        if select is not None:
-            if select.device != temperature.device or select.dtype != temperature.dtype:
-                select = select.to(device=temperature.device, dtype=temperature.dtype)
-                self._temperature_select = select
-            # (..., n_temperature) @ (n_temperature, n_branches) -> (..., n_branches)
-            temperature = temperature @ select.transpose(-1, -2)
-        elif index is not None:
-            if index.device != temperature.device:
-                index = index.to(temperature.device)
-                self._temperature_index = index
-            temperature = temperature[..., index]
-        m_dot_in = inputs["airFlowRateIn"].sum(dim=-1)
-        Q_dot_in = (temperature * inputs["airFlowRateIn"]).sum(dim=-1)
+    @n_input_ports.setter
+    def n_input_ports(self, n: int) -> None:
+        # A junction owned by a composite has no connections: its owner sets
+        # the width.
+        self.input["airFlowRateIn"]._n_v = int(n)
 
-
+    def forward(self, x, inputs, p, step_size):
+        """Stateless: the total flow (plus the bias) and the flow-weighted
+        temperature (20 degC without flow)."""
+        flows = inputs["airFlowRateIn"]
+        m_dot_in = flows.sum(dim=-1)
+        Q_dot_in = (inputs["airTemperatureIn"] * flows).sum(dim=-1)
         tol = 1e-5
         has_flow = m_dot_in > tol
-
-        # Calculate outputs for flow case
         flow_rate_out = m_dot_in + self.airFlowRateBias
-        # Avoid division by zero by using flow_rate_out (which includes bias)
         temp_out_flow = Q_dot_in / torch.clamp(flow_rate_out, min=tol)
-
-        # Select between flow and no-flow cases
-        air_flow_rate_out = torch.where(
-            has_flow, flow_rate_out, torch.zeros_like(m_dot_in)
-        )
-        air_temp_out = torch.where(
-            has_flow, temp_out_flow, torch.full_like(m_dot_in, 20.0)
-        )
         return x, {
-            "airFlowRateOut": air_flow_rate_out,
-            "airTemperatureOut": air_temp_out,
+            "airFlowRateOut": torch.where(has_flow, flow_rate_out, torch.zeros_like(m_dot_in)),
+            "airTemperatureOut": torch.where(has_flow, temp_out_flow, torch.full_like(m_dot_in, 20.0)),
         }
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        inputs = {
-            "airFlowRateIn": self.input["airFlowRateIn"].get(),
-            "airTemperatureIn": self.input["airTemperatureIn"].get(),
-        }
-        _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.output["airFlowRateOut"]._set(outs["airFlowRateOut"], i_t=step_index)
-        self.output["airTemperatureOut"]._set(outs["airTemperatureOut"], i_t=step_index)
-
 
