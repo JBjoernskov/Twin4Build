@@ -1,24 +1,16 @@
-# Standard library imports
-import datetime
-from typing import List
-
-# Third party imports
-import torch
-import torch.nn as nn
-
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
 from twin4build.systems.controller.setpoint_controller.cascade_controller.cascade_controller_system import (
     CascadeControllerSystem,
 )
 from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import (
     PIDControllerSystem,
 )
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
 from twin4build.systems.utils.smooth_saturation import clamp
 
 
-class SATLinearRuleSystem(core.System, nn.Module):
+class SATLinearRuleSystem(core.System):
     r"""
     SAT Linear Rule -- standalone rule-based controller.
 
@@ -70,103 +62,16 @@ class SATLinearRuleSystem(core.System, nn.Module):
         >>> # At SAT=23°C: output = 0.3 + 0.05*10 = 0.80
     """
 
-    def __init__(
-        self,
-        base_position: float = 0.3,
-        sat_design: float = 13.0,
-        gain: float = 0.05,
-        output_min: float = 0.0,
-        output_max: float = 1.0,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-
-        self.base_position = tps.Parameter(
-            torch.tensor(float(base_position), dtype=tps.float_dtype()),
-            min_value=0.0,
-            max_value=1.0,
-            requires_grad=False,
-        )
-        self.sat_design = tps.Parameter(
-            torch.tensor(float(sat_design), dtype=tps.float_dtype()),
-            min_value=0.0,
-            max_value=30.0,
-            requires_grad=False,
-        )
-        self.gain = tps.Parameter(
-            torch.tensor(float(gain), dtype=tps.float_dtype()),
-            min_value=-0.5,
-            max_value=0.5,
-            requires_grad=False,
-        )
-        self.output_min = tps.Parameter(
-            torch.tensor(float(output_min), dtype=tps.float_dtype()),
-            min_value=0.0,
-            max_value=1.0,
-            requires_grad=False,
-        )
-        self.output_max = tps.Parameter(
-            torch.tensor(float(output_max), dtype=tps.float_dtype()),
-            min_value=0.0,
-            max_value=1.0,
-            requires_grad=False,
-        )
-
-        # I/O ports
-        self.input = {
-            "supplyAirTemp": tps.Scalar(),
-        }
-        self.output = {
-            "inputSignal": tps.Scalar(0),
-        }
-
-        self._config = {
-            "parameters": [
-                "base_position",
-                "sat_design",
-                "gain",
-                "output_min",
-                "output_max",
-            ],
-        }
-
-    @property
-    def config(self):
-        return self._config
-
-    def initialize(
-        self,
-        start_time: List[datetime.datetime],
-        end_time: List[datetime.datetime],
-        step_size: int,
-    ) -> None:
-        """Initialize the controller for simulation."""
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-
-        self.input["supplyAirTemp"].initialize(
-            n_t=max_timesteps,
-            n_s=batch_size,
-        )
-        self.output["inputSignal"].initialize(
-            n_t=max_timesteps,
-            n_s=batch_size,
-        )
-
-        # Expand parameters to n_c dimension for vectorization
-        self.base_position = self.base_position.expand_to_n_c(self.n_c)
-        self.sat_design = self.sat_design.expand_to_n_c(self.n_c)
-        self.gain = self.gain.expand_to_n_c(self.n_c)
-        self.output_min = self.output_min.expand_to_n_c(self.n_c)
-        self.output_max = self.output_max.expand_to_n_c(self.n_c)
-
-    PARAM_NAMES = ("base_position", "sat_design", "gain", "output_min", "output_max")
+    supplyAirTemp = Input(doc="Supply air temperature [degC]")
+    inputSignal = Output(init=0.0, doc="The minimum airflow command (0-1)")
+    base_position = Parameter(0.3, lb=0.0, ub=1.0, doc="Command at the design supply temperature")
+    sat_design = Parameter(13.0, lb=0.0, ub=30.0, doc="Design supply air temperature [degC]")
+    gain = Parameter(0.05, lb=-0.5, ub=0.5, doc="Command per degree off the design temperature [1/K]")
+    output_min = Parameter(0.0, lb=0.0, ub=1.0, doc="Lower limit of the command")
+    output_max = Parameter(1.0, lb=0.0, ub=1.0, doc="Upper limit of the command")
 
     def forward(self, x, inputs, params, step_size):
-        """Pure one-step linear SAT compensation (functorch-safe, stateless).
+        """Stateless: the linear SAT compensation.
 
         ``output = clamp(base_position + gain * (SAT - sat_design),
         output_min, output_max)``
@@ -177,24 +82,6 @@ class SATLinearRuleSystem(core.System, nn.Module):
             raw_output, lower=params["output_min"], upper=params["output_max"]
         )
         return x, {"inputSignal": output}
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """
-        Compute minimum airflow setpoint from AHU supply air temperature.
-
-        Thin port-I/O wrapper delegating the math to :meth:`forward`.
-        """
-        inputs = {"supplyAirTemp": self.input["supplyAirTemp"].get()}
-        _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.output["inputSignal"].set(outs["inputSignal"], step_index)
 
     def reset_state(self) -> None:
         """Reset controller state (stateless controller, no-op)."""
@@ -294,6 +181,7 @@ class SATCompensatedControllerSystem(CascadeControllerSystem):
             },
             **kwargs,
         )
+
 
 # Deprecated aliases (removed in twin4build 2.1)
 SATCompensatedControllerTorchSystem = SATCompensatedControllerSystem
