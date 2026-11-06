@@ -360,7 +360,7 @@ class System(nn.Module, metaclass=SystemMeta):
         """The current name of a declared System's attribute ``name`` when it
         is an old keyword the class still translates (``DEPRECATED_KEYWORDS``),
         with a ``DeprecationWarning``; else ``None``."""
-        if not type(self).__dict__.get("_is_declared", getattr(type(self), "_is_declared", False)):
+        if not getattr(type(self), "_is_declared", False):
             return None
         new = getattr(type(self), "DEPRECATED_KEYWORDS", {}).get(name)
         if not new or "." in new:
@@ -373,11 +373,15 @@ class System(nn.Module, metaclass=SystemMeta):
         removed = type(self).REMOVED_ATTRIBUTES.get(name)
         if removed is not None:
             raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
-        if not name.startswith("_"):
-            new = self._renamed(name)
-            if new is not None:  # an old name reads the current one
-                return getattr(self, new)
-        return super().__getattr__(name)
+        try:
+            # registered parameters and children first: a traced forward
+            # reaches its children this way (``self.thermal``)
+            return super().__getattr__(name)
+        except AttributeError:
+            new = None if name.startswith("_") else self._renamed(name)
+            if new is None:
+                raise
+        return getattr(self, new)  # an old name reads the current one
 
     def __setattr__(self, name, value):
         removed = type(self).REMOVED_ATTRIBUTES.get(name)
