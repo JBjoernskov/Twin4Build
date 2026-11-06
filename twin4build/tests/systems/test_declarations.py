@@ -16,7 +16,18 @@ Covered:
 5. two copies with different parameters, batched, against the copies stepped
    separately;
 6. a saved model reloads with the same parameters and settings;
-7. a composite's children: overrides, dotted parameter paths;
+7. a composite's children: overrides, dotted parameter paths, a child and a
+   parameter per slot of an input;
+9. initial values: a state and an output start at a setting, an output at its
+   state's start;
+10. a parameter's default computed from the System, an old keyword that moved
+    into a child, a removed keyword that names its replacement, and the alias
+    tables a renamed port fills;
+11. an input that reads another input while unwired, in both engines; a child
+    that takes its composite's wired width; a child parameter shared with
+    another; a child's own id;
+12. settings batch per copy: a value setting may differ between batched
+    copies and reaches forward through p; a structural one splits batches.
 8. the converted valve keeps its constructor keywords, bounds and flow.
 """
 
@@ -38,6 +49,7 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.registry import SystemRegistry
 from twin4build.systems.saref4syst.declarations import (
+    REQUIRED,
     Child,
     Input,
     Output,
@@ -105,6 +117,104 @@ class PairSystem(core.System):
         _, a = self.first.forward(None, {"x": inputs["x"]}, {"gain": p["first.gain"]}, step_size)
         _, b = self.second.forward(None, {"x": a["y"]}, {"gain": p["second.gain"]}, step_size)
         return x, {"y": b["y"]}
+
+
+class BranchesSystem(core.System):
+    """A gain per branch (a child stepped once per slot of ``u``), and a scale
+    per branch only with ``scale_per_branch``."""
+
+    scale_per_branch = Setting(False)
+    u = Input(size="wired")
+    y = Output(size=u)
+    scale = Parameter(1.0, lb=0.1, ub=10.0, per_slot=u, per_slot_if=scale_per_branch)
+    branch = Child(GainSystem, per_slot=u)
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"y": inputs["u"]}
+
+
+class TankSystem(core.System):
+    """A level that holds: the state and both outputs start at ``start``."""
+
+    start = Setting(5.0)
+    stored = State(init=start)
+    level = Output(init=start)
+    reading = Output(init=stored)
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"level": x[..., 0], "reading": x[..., 0]}
+
+
+class PlateSystem(core.System):
+    """A parameter computed from a setting; an old keyword now a child's."""
+
+    DEPRECATED_KEYWORDS = {"part_gain": "part.gain"}
+    REMOVED_ATTRIBUTES = {"legacy": "give width= instead"}
+
+    width = Setting(2.0)
+    area = Parameter(lambda plate: plate.width ** 2, lb=0.1, ub=100.0)
+    part = Child(GainSystem)
+
+
+class MixSystem(core.System):
+    """``b`` reads ``a`` while unwired."""
+
+    a = Input()
+    b = Input(default=a)
+    y = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"y": inputs["a"] + 10.0 * inputs["b"]}
+
+
+class FlowSumSystem(core.System):
+    flows = Input(size="wired")
+    total = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"total": inputs["flows"].sum(dim=-1)}
+
+
+class OuterSystem(core.System):
+    """A child sums the composite's wired vector of the same name; its gain is the other child's."""
+
+    SHARED_UNIT_PARAMS = {"second.gain": "first.gain"}
+
+    flows = Input(size="wired")
+    total = Output()
+    inner = Child(FlowSumSystem)
+    first = Child(GainSystem)
+    second = Child(GainSystem)
+
+    def forward(self, x, inputs, p, step_size):
+        _, out = self.inner.forward(None, {"flows": inputs["flows"]}, {}, step_size)
+        return x, out
+
+
+class BiasSystem(core.System):
+    """A value setting (``bias``), a structural one (``negate``) and one that
+    sizes a port (``width``)."""
+
+    bias = Setting(0.0)
+    negate = Setting(False, structural=True)
+    width = Setting(1)
+    u = Input()
+    extra = Input(size=width, default=0.0)
+    y = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        y = inputs["u"] + p["bias"]
+        return x, {"y": -y if self.negate else y}
+
+
+def _bias_model(model_id, biases, negate=(False, False)):
+    model = tb.Model(id=model_id)
+    for k, (bias, neg) in enumerate(zip(biases, negate)):
+        system = BiasSystem(id=f"bias{k}", bias=bias, negate=neg)
+        model.add_connection(_signal(f"signal{k}"), system, "scheduleValue", "u")
+        model.add_connection(system, LagSystem(id=f"lag{k}"), "y", "u")
+    model.load(draw_semantic_model=False, draw_simulation_model=False)
+    return model
 
 
 def _signal(sid="signal"):
@@ -300,6 +410,30 @@ class TestStepping(unittest.TestCase):
             torch.testing.assert_close(got, _history(separate, f"lag{k}"), rtol=1e-12, atol=1e-12)
             torch.testing.assert_close(got, _closed_form(separate, tau), rtol=1e-12, atol=1e-12)
 
+    def test_batching_stacks_every_declared_parameter(self):
+        """A fan's flow range has no bounds (it is not estimated) and is
+        still one value per copy once batched."""
+        model = tb.Model(id="test_declared_batch_fans")
+        fans = []
+        for k, (lo, hi) in enumerate(((0.0, 1.0), (0.5, 3.0))):
+            fan = tb.FanSystem(id=f"fan{k}")
+            fan.set_flow_range(lo, hi)
+            fans.append(fan)
+            model.add_connection(_signal(f"flow{k}"), fan, "scheduleValue", "airFlowRate")
+            model.add_connection(_signal(f"temperature{k}"), fan, "scheduleValue", "inletAirTemperature")
+            model.add_connection(fan, LagSystem(id=f"lag{k}"), "Power", "u")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["fan0"]
+        self.assertIs(model._component_to_meta["fan1"][0], meta)
+        torch.testing.assert_close(meta.flowRangeLower.get().reshape(-1).cpu(), torch.tensor([0.0, 0.5], dtype=torch.float64))
+        torch.testing.assert_close(meta.flowRangeUpper.get().reshape(-1).cpu(), torch.tensor([1.0, 3.0], dtype=torch.float64))
+        torch.testing.assert_close(
+            meta.beta3.get().reshape(-1).cpu(),
+            torch.stack([f.beta3.get().reshape(-1)[0] for f in fans]).cpu(),
+        )
+        _remove("test_declared_batch_fans", batched.id)
+
 
 class TestSaveAndReload(unittest.TestCase):
     MODEL_ID = "test_declared_saved"
@@ -345,6 +479,331 @@ class TestChildren(unittest.TestCase):
         _, outs = pair.forward(None, {"x": torch.tensor([2.0])}, {"first.gain": torch.tensor([3.0]),
                                                                  "second.gain": torch.tensor([0.5])}, STEP)
         torch.testing.assert_close(outs["y"], torch.tensor([3.0]))
+
+
+class TestPerSlot(unittest.TestCase):
+    def _initialized(self, **values):
+        branches = BranchesSystem(id="branches", **values)
+        branches.input["u"]._n_v = 3  # stepped on its own: the width by hand
+        branches.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        return branches
+
+    def test_a_child_per_slot_holds_a_value_per_branch(self):
+        branches = self._initialized()
+        self.assertEqual(branches.branch.n_c, 3)
+        self.assertEqual(tuple(branches.branch.gain.get().shape), (3,))
+        self.assertEqual(branches.scale.get().numel(), 1)
+
+    def test_a_parameter_per_slot_only_while_its_setting_holds(self):
+        branches = self._initialized(scale_per_branch=True)
+        self.assertEqual(tuple(branches.scale.get().shape), (3,))
+
+    def test_given_values_per_branch_are_kept(self):
+        branches = self._initialized(branch=dict(gain=[1.0, 2.0, 3.0]))
+        torch.testing.assert_close(
+            branches.branch.gain.get(), torch.tensor([1.0, 2.0, 3.0], dtype=branches.branch.gain.get().dtype)
+        )
+
+    def test_per_slot_must_name_an_input_of_the_class(self):
+        other = Input(size="wired")
+        with self.assertRaisesRegex(TypeError, "per_slot"):
+            class Stray(core.System):
+                u = Input(size="wired")
+                part = Child(GainSystem, per_slot=other)
+        with self.assertRaisesRegex(TypeError, "per_slot"):
+            Parameter(1.0, per_slot=Setting(3))
+        with self.assertRaisesRegex(TypeError, "per_slot_if"):
+            Parameter(1.0, per_slot_if=Setting(False))
+
+
+class TestSizedParameters(unittest.TestCase):
+    """``Parameter(size=)``: several values per copy (a curve's points)."""
+
+    def test_a_sized_parameter_holds_its_values(self):
+        class Weights(core.System):
+            names = Setting(REQUIRED)
+            u = Input()
+            y = Output()
+            w = Parameter(REQUIRED, size=names)
+            fixed = Parameter(0.5, size=2)
+
+        weights = Weights(id="weights", names=["a", "b", "c"], w=[1.0, 0.0, -2.0])
+        self.assertEqual(weights.w.get().tolist(), [1.0, 0.0, -2.0])  # zeros and signs mixed normalize too
+        self.assertEqual(weights.fixed.get().tolist(), [0.5, 0.5])  # one value fills every place
+        self.assertEqual(weights.values_per_copy("w"), 3)
+        self.assertNotIn("names", Weights.value_settings())
+        with self.assertRaisesRegex(TypeError, "needs the parameter 'w'"):
+            Weights(id="weights", names=["a"])
+        with self.assertRaisesRegex(ValueError, "2 values, but its size is 3"):
+            Weights(id="weights", names=["a", "b", "c"], w=[1.0, 2.0])
+
+    def test_size_takes_an_int_or_a_setting_of_the_class(self):
+        stray = Setting(["a"])
+        with self.assertRaisesRegex(TypeError, "size="):
+            class Stray(core.System):
+                w = Parameter(1.0, size=stray)
+        with self.assertRaisesRegex(TypeError, "not both"):
+            class Both(core.System):
+                u = Input(size="wired")
+                w = Parameter(1.0, size=2, per_slot=u)
+
+
+class TestBatchedValuesPerCopy(unittest.TestCase):
+    """Batched copies of a System holding several values per copy (a value
+    or a child per branch, a curve's points) lay them out one copy after
+    another."""
+
+    def tearDown(self):
+        _remove("test_per_copy_branches", "test_per_copy_widths", "test_per_copy_curves_separate",
+                "test_per_copy_curves_batched")
+
+    @staticmethod
+    def _branches(model_id, widths, **values):
+        model = tb.Model(id=model_id)
+        for k, width in enumerate(widths):
+            branches = BranchesSystem(id=f"branches{k}", scale_per_branch=True, **values)
+            for j in range(width):
+                model.add_connection(_signal(f"u{k}{j}"), branches, "scheduleValue", "u", input_port_index=j)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model
+
+    def test_copies_with_a_child_per_branch_batch_and_run(self):
+        """They batched with one value per copy and failed at the run start
+        (a child per branch needs one per branch of every copy)."""
+        for values in ({}, {"branch": dict(gain=[1.0, 2.0])}):
+            model = self._branches("test_per_copy_branches", (2, 2), **values)
+            batched = model.batch_components()
+            meta, _ = model._component_to_meta["branches0"]
+            self.assertIs(model._component_to_meta["branches1"][0], meta)
+            gains = [1.0, 2.0] * 2 if values else [2.0] * 4
+            self.assertEqual(meta.branch.gain.get().tolist(), gains)
+            batched.load(draw_semantic_model=False, draw_simulation_model=False)
+            _simulate(batched)
+            meta = batched.components[meta.id]
+            self.assertEqual(meta.branch.n_c, 4)
+            self.assertEqual(meta.scale.get().numel(), 4)
+            _remove(batched.id)
+
+    def test_copies_with_different_branch_counts_stay_apart(self):
+        model = self._branches("test_per_copy_widths", (2, 3))
+        batched = model.batch_components()
+        self.assertIsNot(model._component_to_meta["branches0"][0], model._component_to_meta["branches1"][0])
+        _remove(batched.id)
+
+    @staticmethod
+    def _curves(model_id, points):
+        model = tb.Model(id=model_id)
+        for k, Y in enumerate(points):
+            curve = tb.PiecewiseLinearSystem(id=f"curve{k}", X=[0.0, 2.0, 4.0], Y=Y)
+            model.add_connection(_signal(f"x{k}"), curve, "scheduleValue", "x")
+            model.add_connection(curve, LagSystem(id=f"lag{k}"), "y", "u")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model
+
+    def test_curves_with_their_own_points_batch_and_keep_them(self):
+        points = ([0.0, 10.0, 0.0], [5.0, -5.0, 20.0])
+        separate = self._curves("test_per_copy_curves_separate", points)
+        _simulate(separate)
+        model = self._curves("test_per_copy_curves_batched", points)
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["curve0"]
+        self.assertIs(model._component_to_meta["curve1"][0], meta)
+        self.assertEqual(meta.Y.get().tolist(), points[0] + points[1])
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        for mode in ("object", "functional"):
+            _simulate(batched, mode=mode)
+            for k in range(2):
+                meta, i_c = model._component_to_meta[f"curve{k}"]
+                got = batched.components[meta.id].output["y"].history(i_c=i_c).reshape(-1).detach().cpu()
+                want = separate.components[f"curve{k}"].output["y"].history().reshape(-1).cpu()
+                torch.testing.assert_close(got, want, msg=mode)
+        _remove(batched.id)
+
+
+class TestInitialValues(unittest.TestCase):
+    def test_a_state_and_its_outputs_start_at_a_setting(self):
+        tank = TankSystem(id="tank", start=7.0)
+        tank.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        self.assertEqual(float(tank.get_state().reshape(-1)[0]), 7.0)
+        self.assertEqual(tank.output["level"].init_value, 7.0)
+        self.assertEqual(tank.output["reading"].init_value, 7.0)
+        self.assertEqual(float(tank.output["reading"].get().reshape(-1)[0]), 7.0)
+        tank.start = 3.0  # the next run starts at the new value
+        tank.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        self.assertEqual(float(tank.get_state().reshape(-1)[0]), 3.0)
+
+    def test_init_takes_a_number_a_setting_or_a_state(self):
+        with self.assertRaisesRegex(TypeError, "init="):
+            State(init="warm")
+        with self.assertRaisesRegex(TypeError, "init="):
+            State(init=State())
+        with self.assertRaisesRegex(TypeError, "init="):
+            class Stray(core.System):
+                level = Output(init=Setting(1.0))
+
+
+class TestBuildRules(unittest.TestCase):
+    def test_a_default_computed_from_the_system_and_a_given_value(self):
+        self.assertEqual(float(PlateSystem(id="p", width=3.0).area.get()), 9.0)
+        self.assertEqual(float(PlateSystem(id="q", width=3.0, area=5.0).area.get()), 5.0)
+
+    def test_an_old_keyword_moves_into_its_child(self):
+        with self.assertWarns(DeprecationWarning):
+            plate = PlateSystem(id="p", part_gain=5.0)
+        self.assertEqual(float(plate.part.gain.get()), 5.0)
+        self.assertEqual(plate._batch_init_kwargs["part"], {"gain": 5.0})
+
+    def test_a_removed_keyword_names_its_replacement(self):
+        with self.assertRaisesRegex(TypeError, "give width= instead"):
+            PlateSystem(id="p", legacy=1)
+
+    def test_a_renamed_port_fills_the_alias_table(self):
+        self.assertEqual(GainSystem.OUTPUT_PORT_ALIASES, {"out": "y"})
+        self.assertEqual(GainSystem(id="g").resolve_output_port("y"), "y")
+        with self.assertWarns(DeprecationWarning):
+            self.assertEqual(GainSystem(id="g").resolve_output_port("out"), "y")
+
+
+class TestCompositionRules(unittest.TestCase):
+    MODEL_ID = "test_declared_composition"
+
+    def tearDown(self):
+        _remove(self.MODEL_ID)
+
+    def test_an_unwired_input_reads_another_in_both_engines(self):
+        model = tb.Model(id=self.MODEL_ID)
+        mix = MixSystem(id="mix")
+        model.add_connection(_signal(), mix, "scheduleValue", "a")
+        model.add_connection(mix, LagSystem(id="lag"), "y", "u")  # the functional engine steps a state
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        self.assertEqual(mix.input_defaults(), {"b": "a"})
+        _simulate(model)
+        a = model.components["signal"].output["scheduleValue"].history().reshape(-1).cpu()
+        y_object = mix.output["y"].history().reshape(-1).cpu().clone()
+        torch.testing.assert_close(y_object, 11.0 * a)
+        _simulate(model, mode="functional")
+        torch.testing.assert_close(mix.output["y"].history().reshape(-1).cpu(), y_object)
+
+    def test_with_defaults_fills_what_an_engine_fills(self):
+        mix = MixSystem(id="mix")
+        filled = mix.with_defaults({"a": torch.tensor([2.0])})
+        torch.testing.assert_close(filled["b"], torch.tensor([2.0]))
+        thermal = tb.BuildingSpaceThermalSystem(id="zone")
+        filled = thermal.with_defaults({"outdoorTemperature": torch.tensor([5.0])})
+        torch.testing.assert_close(filled["makeUpAirTemperature"], torch.tensor([5.0]))
+        torch.testing.assert_close(filled["infiltrationAirFlowRate"], torch.tensor([0.0]))
+        with self.assertRaisesRegex(TypeError, "default="):
+            class Stray(core.System):
+                a = Input(default=Input())
+
+    def test_a_child_takes_the_wired_width_and_a_shared_parameter(self):
+        model = tb.Model(id=self.MODEL_ID)
+        outer = OuterSystem(id="outer")
+        for k in range(3):
+            model.add_connection(_signal(f"signal{k}"), outer, "scheduleValue", "flows", input_port_index=k)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        _simulate(model)
+        self.assertEqual(outer.inner.input["flows"].n_v, 3)
+        self.assertNotIn("second.gain", OuterSystem.PARAM_NAMES)
+        self.assertNotIn("second.gain", outer.config["parameters"])
+        self.assertIs(outer.second.gain, outer.first.gain)
+
+    def test_a_child_may_give_its_own_id(self):
+        self.assertEqual(PairSystem(id="pair").first.id, "pair_first")
+        self.assertEqual(PairSystem(id="pair", first=dict(id="custom")).first.id, "custom")
+
+
+class TestSettingsPerCopy(unittest.TestCase):
+    def tearDown(self):
+        _remove("test_settings_separate", "test_settings_batched", "test_settings_split", "test_walls_t_init")
+
+    def test_which_settings_are_values(self):
+        self.assertEqual(BiasSystem.value_settings(), ("bias",))
+        self.assertEqual(tb.WallSystem.value_settings(), ("T_init",))
+        self.assertEqual(tb.ScheduleSystem.value_settings(), ())  # a data source
+        self.assertEqual(tb.AirHandlingUnitSystem.value_settings(), ())
+
+    def test_copies_with_different_values_batch_and_keep_them(self):
+        separate = _bias_model("test_settings_separate", (1.0, 5.0))
+        _simulate(separate)
+        model = _bias_model("test_settings_batched", (1.0, 5.0))
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["bias0"]
+        self.assertIs(model._component_to_meta["bias1"][0], meta)
+        torch.testing.assert_close(meta.bias, torch.tensor([1.0, 5.0], dtype=torch.float64))
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        for mode in ("object", "functional"):
+            _simulate(batched, mode=mode)
+            for k in range(2):
+                meta, i_c = model._component_to_meta[f"bias{k}"]
+                got = batched.components[meta.id].output["y"].history(i_c=i_c).reshape(-1).detach().cpu()
+                torch.testing.assert_close(got, separate.components[f"bias{k}"].output["y"].history().reshape(-1).cpu(),
+                                           msg=mode)
+        _remove(batched.id)
+
+    def test_a_structural_setting_splits_the_batch(self):
+        model = _bias_model("test_settings_split", (1.0, 1.0), negate=(False, True))
+        batched = model.batch_components()
+        self.assertIsNot(model._component_to_meta["bias0"][0], model._component_to_meta["bias1"][0])
+        _remove(batched.id)
+
+    def test_walls_start_at_their_own_value_in_one_batch(self):
+        model = tb.Model(id="test_walls_t_init")
+        node = tb.ThermalMassNodeSystem(C=5e7, T_init=22.0, id="node")
+        for k, t_init in enumerate((18.0, 26.0)):
+            wall = tb.WallSystem(T_init=t_init, id=f"wall{k}")
+            model.add_connection(node, wall, "temperature", "temperatureA")
+            model.add_connection(node, wall, "temperature", "temperatureB")
+            model.add_connection(wall, node, "heatFlowRateB", "heatFlowRate", input_port_index=k)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["wall0"]
+        self.assertIs(model._component_to_meta["wall1"][0], meta)
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        meta = batched.components[meta.id]
+        meta.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        torch.testing.assert_close(meta.get_state().reshape(-1).cpu(), torch.tensor([18.0, 26.0], dtype=torch.float64))
+        torch.testing.assert_close(meta.output["wallTemperature"].get().reshape(-1).cpu(),
+                                   torch.tensor([18.0, 26.0], dtype=torch.float64))
+        _remove(batched.id)
+
+
+class TestPIDDirectionPerCopy(unittest.TestCase):
+    """Standalone PIDs acting in opposite directions share a batched copy and
+    each acts in its own (they all took the first one's before)."""
+
+    def tearDown(self):
+        _remove("test_pid_separate", "test_pid_batched")
+
+    def _model(self, model_id):
+        model = tb.Model(id=model_id)
+        for k, reverse in enumerate((True, False)):
+            pid = tb.PIDControllerSystem(id=f"pid{k}", kp=0.5, Ti=600.0, is_reverse=reverse)
+            model.add_connection(_signal(f"measured{k}"), pid, "scheduleValue", "actualValue")
+            setpoint = tb.ScheduleSystem(weekday_ruleset={"ruleset_default_value": 2.0}, id=f"setpoint{k}")
+            model.add_connection(setpoint, pid, "scheduleValue", "setpointValue")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model
+
+    def test_opposite_directions_batch_and_keep_theirs(self):
+        separate = self._model("test_pid_separate")
+        _simulate(separate)
+        u0, u1 = (separate.components[f"pid{k}"].output["inputSignal"].history().reshape(-1) for k in range(2))
+        self.assertFalse(torch.allclose(u0, u1))  # the directions act differently
+        model = self._model("test_pid_batched")
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["pid0"]
+        self.assertIs(model._component_to_meta["pid1"][0], meta)
+        self.assertEqual(meta.is_reverse.tolist(), [True, False])
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        for mode in ("object", "functional"):
+            _simulate(batched, mode=mode)
+            for k in range(2):
+                meta, i_c = model._component_to_meta[f"pid{k}"]
+                got = batched.components[meta.id].output["inputSignal"].history(i_c=i_c).reshape(-1).detach().cpu()
+                want = separate.components[f"pid{k}"].output["inputSignal"].history().reshape(-1).cpu()
+                torch.testing.assert_close(got, want, msg=mode)
+        _remove(batched.id)
 
 
 class TestConvertedValve(unittest.TestCase):

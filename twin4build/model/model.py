@@ -1287,11 +1287,18 @@ class Model:
                 n_c = len(comps)
                 cls = comps[0].__class__
                 # A component whose constructor takes required arguments
-                # (FunctionSystem's ``inputs``/``fn``) declares them in
+                # (a declared System's settings) declares them in
                 # ``_batch_init_kwargs`` so the meta can be built at all.
                 # Components sharing a batch share those values;
                 # _component_signature keeps differing ones apart.
                 init_kwargs = dict(getattr(comps[0], "_batch_init_kwargs", None) or {})
+                if getattr(cls, "_is_declared", False):
+                    # a parameter the constructor must be given (a curve's
+                    # points): the first copy's, until the stacked values
+                    # replace it
+                    for name, decl in cls._declarations["parameter"].items():
+                        if decl.value is core.REQUIRED and getattr(comps[0], name, None) is not None:
+                            init_kwargs.setdefault(name, getattr(comps[0], name).get().detach().clone())
                 if n_c == 1:
                     # A singleton joins as a shallow copy with fresh wiring
                     # (the cycle-free load copies components the same way):
@@ -1314,6 +1321,7 @@ class Model:
                     self._copy_data_source_attrs(comps[0], meta)
                     meta._batched_execution_priority = group_idx
                     self._batch_parameters(meta, comps, n_c)
+                    self._batch_value_settings(meta, comps)
                     self._copy_init_attrs(meta, comps[0])
                     self._stack_instance_attrs(meta, comps)
                 except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
@@ -1651,32 +1659,47 @@ class Model:
 
         """Stack calibration parameters along the ``n_c`` dimension.
 
-        Only ``tps.Parameter`` and ``tps.TensorParameter`` attributes whose
-        names appear in ``components[0].parameter`` are batched.  Each
-        original component contributes one slice along ``n_c``.
+        A declared System's parameters are all its declared ones, its
+        children's by their dotted paths (``PARAM_NAMES``), bounded or not:
+        a fan's fixed flow range is one value per copy like its estimated
+        betas.  Otherwise the ``tps.Parameter`` and ``tps.TensorParameter``
+        attributes whose names appear in ``components[0].parameter`` (or its
+        saved config) are batched.  Each original component contributes one
+        slice along ``n_c``.
 
-        Supports dotted parameter names (e.g. ``"thermal.C_air"``) for
-        composite components that wrap sub-models.
+        A declared parameter of several values per copy
+        (:meth:`System.values_per_copy`: a curve's points, a value per branch,
+        a child per branch) is laid out flat, one copy's values after
+        another; a copy holding one value fills its places with it.
         """
-        param_dict = getattr(components[0], "parameter", None)
-        parameter_names = (
-            list(param_dict)
-            if param_dict
-            else list(getattr(components[0], "config", {}).get("parameters", ()))
-        )
+        declared = getattr(type(components[0]), "_is_declared", False)
+        if declared:
+            parameter_names = list(type(components[0]).PARAM_NAMES)
+        else:
+            param_dict = getattr(components[0], "parameter", None)
+            parameter_names = (
+                list(param_dict)
+                if param_dict
+                else list(getattr(components[0], "config", {}).get("parameters", ()))
+            )
         if not parameter_names:
             return
 
         for param_name in parameter_names:
-            originals = []
-            for c in components:
-                p = self._resolve_dotted_attr(c, param_name)
-                if p is None:
-                    return
-                originals.append(p)
+            originals = [self._resolve_dotted_attr(c, param_name) for c in components]
+            if any(p is None for p in originals):
+                # Absent on the copies (an optional parameter; copies batch
+                # only with copies that lack it too): nothing to stack.  It
+                # returned here, and every parameter after it went unstacked.
+                continue
 
             first = originals[0]
             self._stack_parameter_spec(meta, components, param_name)
+
+            width = components[0].values_per_copy(param_name) if declared else 1
+            if width > 1:
+                self._set_dotted_attr(meta, param_name, self._flat_per_copy(originals, width, param_name))
+                continue
 
             if isinstance(first, tps.Parameter):
                 if first.get().numel() > 1 and getattr(components[0], "_batch_flat_vectors", False):
@@ -1731,6 +1754,38 @@ class Model:
                 )
 
     @staticmethod
+    def _flat_per_copy(originals, width: int, name: str):
+        """The parameters ``originals`` (``width`` values per copy each, or
+        one) as one parameter of ``len(originals) * width`` values, one copy
+        after another."""
+
+        def per_copy(t):
+            t = torch.as_tensor(t).reshape(-1)
+            if t.numel() == 1:
+                return t.expand(width)
+            if t.numel() != width:
+                raise ValueError(f"{name}: a copy holds {t.numel()} values, not {width}")
+            return t
+
+        first = originals[0]
+        values = torch.cat([per_copy(p.get().detach()) for p in originals])
+        scaling = getattr(first, "scaling", "linear")
+        if isinstance(first, tps.TensorParameter):
+            bounds = [
+                None if getattr(first, attr) is None else torch.cat([per_copy(getattr(p, attr)) for p in originals])
+                for attr in ("min_value", "max_value")
+            ]
+            return tps.TensorParameter(values, min_value=bounds[0], max_value=bounds[1], normalized=False, scaling=scaling)
+        return tps.Parameter(
+            values,
+            min_value=torch.cat([per_copy(p.min_value) for p in originals]),
+            max_value=torch.cat([per_copy(p.max_value) for p in originals]),
+            requires_grad=first.requires_grad,
+            n_c=int(values.numel()),
+            scaling=scaling,
+        )
+
+    @staticmethod
     def _stack_parameter_spec(meta, components, param_name) -> None:
         """The meta's ``parameter[leaf]`` bounds, one per instance.
 
@@ -1782,22 +1837,24 @@ class Model:
     # Keyed by fully-qualified class name.  Supports dotted paths for
     # composite components (e.g. ``"thermal.some_attr"``).
     _INIT_ATTRS_TO_COPY: Dict[str, Tuple[str, ...]] = {
-        "twin4build.systems.space_heater.space_heater_system.SpaceHeaterSystem": (
-            "nelements",
-            "Q_flow_nominal_sh",
-            "T_a_nominal_sh",
-            "T_b_nominal_sh",
-            "TAir_nominal_sh",
-            "initialize_UA",
-        ),
-        "twin4build.systems.building_space.building_space_system.BuildingSpaceSystem": (),
-        # The initial wall / node temperature is a constructor value, not a
-        # Parameter; without it a batched wall starts at the class default.
-        "twin4build.systems.wall.wall_system.WallSystem": ("T_init",),
-        "twin4build.systems.thermal_mass.thermal_mass_node_system.ThermalMassNodeSystem": ("T_init",),
-        "twin4build.systems.controller.setpoint_controller.pid_controller"
-        ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
+        # A declared System's settings build its meta (``_batch_init_kwargs``)
+        # and its wiring sizes its ports: the wall, the node, the radiator,
+        # the fan-coil and the room need no entry.
     }
+
+    @staticmethod
+    def _batch_value_settings(meta: Any, components: List) -> None:
+        """A declared System's value settings, one per copy: a setting all
+        copies share stays as it is, differing ones are stacked ``(n_c,)``
+        (``forward`` reads them from ``p``)."""
+        for name in getattr(type(meta), "value_settings", lambda: ())():
+            values = [getattr(c, name) for c in components]
+            if all(v == values[0] for v in values[1:]):
+                continue
+            if all(isinstance(v, bool) for v in values):
+                setattr(meta, name, torch.tensor(values, dtype=torch.bool))
+            else:
+                setattr(meta, name, torch.tensor([float(v) for v in values], dtype=tps.float_dtype()))
 
     @staticmethod
     def _stack_instance_attrs(meta: Any, components: List) -> None:
@@ -1825,11 +1882,6 @@ class Model:
         has the correct structural values (e.g. ``nelements``) even though
         ``_batch_parameters`` only handles ``tps.Parameter`` objects.
         Supports dotted paths for composite components.
-
-        Additionally, for composite building-space components, topology
-        values (``n_walls``, ``n_boundary_temperature``) are
-        computed from the source component's connection graph -- which is
-        available even before ``initialize()`` has been called.
         """
         fqn = f"{source.__class__.__module__}.{source.__class__.__name__}"
         attrs = self._INIT_ATTRS_TO_COPY.get(fqn, ())
@@ -1837,26 +1889,6 @@ class Model:
             val = self._resolve_dotted_attr(source, attr)
             if val is not None:
                 self._set_dotted_attr(meta, attr, val)
-
-        # For BuildingSpaceSystem: derive topology from the source
-        # component's connects_at (populated by model.load()) and push
-        # it through the thermal sub-model's setter so the manual flag
-        # is set and initialize() skips its own connects_at discovery.
-        if source.__class__.__name__ == "BuildingSpaceSystem":
-            cp_boundary = [
-                cp
-                for cp in source.connects_at
-                if cp.input_port == "boundaryTemperature"
-            ]
-            n_boundary = (
-                len(cp_boundary[0].connects_system_through) if cp_boundary else 0
-            )
-            cp_wall = [
-                cp for cp in source.connects_at if cp.input_port == "wallHeatGain"
-            ]
-            n_walls = len(cp_wall[0].connects_system_through) if cp_wall else 0
-            meta.thermal.n_walls = n_walls
-            meta.thermal.n_boundary_temperature = n_boundary
 
     # -- signature helpers ------------------------------------------------
 
@@ -1872,6 +1904,26 @@ class Model:
                 else getattr(component, "config", {}).get("parameters", ())
             )
         )
+        # Copies of a class with an optional parameter batch only with copies
+        # that have it, or that lack it, too (their parameter sets differ).
+        absent = []
+        for name in getattr(component, "PARAM_NAMES", ()):
+            try:
+                if rgetattr(component, name) is None:
+                    absent.append(name)
+            except AttributeError:
+                pass
+        parameter_keys = parameter_keys + (("absent",) + tuple(absent) if absent else ())
+        # A declared System's values per copy (a curve's points, a value or a
+        # child per branch) must agree: two units with different branch
+        # counts cannot share one layout.
+        if getattr(type(component), "_is_declared", False):
+            children = type(component)._declarations["child"]
+            parameter_keys = parameter_keys + (
+                ("per_copy",)
+                + tuple(component.values_per_copy(name) for name in getattr(component, "PARAM_NAMES", ()))
+                + tuple(component.slots_per_copy(decl) for decl in children.values()),
+            )
 
         # A component that only replays recorded data (a controller in
         # playback) is exogenous to the functional composer while its
@@ -1914,7 +1966,7 @@ class Model:
         )
         data_signature = data_signature + source_identity
 
-        # Declared batch-construction values (a FunctionSystem's input names
+        # Declared batch-construction values (a declared System's settings
         # and its transformation) are part of the component's identity: batching
         # two different transformations into one n_c block would silently apply
         # one of them to both.
@@ -1927,16 +1979,23 @@ class Model:
                 # a literal (an identified controller's candidate structure):
                 # equal contents are the same structure
                 return tuple(sorted((str(k), _declared_signature(v)) for k, v in value.items()))
+            if callable(getattr(value, "signature", None)) and hasattr(value, "to_config"):
+                # A reader: two readers of the same data are the same source.
+                return ("source",) + tuple(value.signature())
             # A callable (or any other object) counts as identity: two
             # separately created functions are two transformations as far as
             # batching is concerned, even if their source is identical.
             return id(value)
 
+        # A value setting may differ between copies (it is stacked per copy);
+        # the structural ones must match.
+        per_copy = set(type(component).value_settings()) if hasattr(type(component), "value_settings") else set()
         init_signature = tuple(
             (name, _declared_signature(value))
             for name, value in sorted(
                 (getattr(component, "_batch_init_kwargs", None) or {}).items()
             )
+            if name not in per_copy
         )
         outgoing = []
         for connection in getattr(component, "connected_through", ()):

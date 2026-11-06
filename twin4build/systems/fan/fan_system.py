@@ -1,17 +1,14 @@
 # Standard library imports
-import datetime
 from math import comb
-from typing import Optional, Sequence
+from typing import Sequence
 
 # Third party imports
-import numpy as np
 import torch
-import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.constants as constants
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
 from twin4build.systems.utils.smooth_saturation import clamp
 
 
@@ -54,7 +51,7 @@ def bernstein_to_polynomial(
     return [sum(a[k] * comb(k, j) * u0 ** (k - j) * s**j for k in range(j, 4)) / nominalPowerRate for j in range(4)]
 
 
-class FanSystem(core.System, nn.Module):
+class FanSystem(core.System):
     r"""
     A fan system model implemented with PyTorch for gradient-based optimization.
 
@@ -123,107 +120,33 @@ class FanSystem(core.System, nn.Module):
 
     Implementation Details:
        - Uses PyTorch for gradient-based optimization
-       - Parameters are stored as ``tps.Parameter`` objects (``requires_grad=False``
-         by default); they are not trained directly but can be calibrated via the
-         Estimator
        - All calculations performed in SI units
     """
 
-    def __init__(
-        self,
-        beta0: float = 0.0,
-        beta1: float = 800.0 / 3.0,
-        beta2: float = 600.0,
-        beta3: float = 1000.0,
-        flowRangeLower: float = 0.0,
-        flowRangeUpper: float = 1.0,
-        f_total: float = 0.9,
-        **kwargs,
-    ):
-        """
-        Initialize the fan system model.
-
-        The default curve is 1 kW at 1 kg/s, 0.8 linear plus 0.2 square in
-        the flow, over the range 0-1 kg/s.
-
-        Args:
-            beta0-beta3: Bernstein coefficients of the power curve [W]
-            flowRangeLower, flowRangeUpper: Operating flow range [kg/s]
-            f_total: Total fan efficiency factor
-        """
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-        if not flowRangeUpper > flowRangeLower:
-            raise ValueError(f"{kwargs.get('id')}: flow range [{flowRangeLower}, {flowRangeUpper}] is empty")
-
-        # Store parameters as tps.Parameters for gradient tracking
-        for name, value in (
-            ("beta0", beta0),
-            ("beta1", beta1),
-            ("beta2", beta2),
-            ("beta3", beta3),
-            ("flowRangeLower", flowRangeLower),
-            ("flowRangeUpper", flowRangeUpper),
-            ("f_total", f_total),
-        ):
-            setattr(self, name, tps.Parameter(torch.tensor(value, dtype=tps.float_dtype()), requires_grad=False))
-
-        # Define inputs and outputs as private variables
-        self._input = {"airFlowRate": tps.Scalar(), "inletAirTemperature": tps.Scalar()}
-        self._output = {"outletAirTemperature": tps.Scalar(), "Power": tps.Scalar()}
-
-        # Define parameters for calibration.  The flow range is not one: it
-        # gives the betas their meaning (a moved range is another curve for
-        # the same betas), and the four betas already span every cubic.
-        self.parameter = {
-            # Power at the curve's control points [W].  Non-negative: with
-            # every beta >= 0 the power is >= 0 over the whole range (no fan
-            # gives power back), the constraint the solver sees as bounds.
-            # 100 kW is beyond any single AHU's fans.  Size quantities: once
-            # the fan is sized (``size_to``), each bound is 0 to 4 times its
-            # sized value.
-            "beta0": {"lb": 0.0, "ub": 1e5, "relative": (0.0, 4.0)},
-            "beta1": {"lb": 0.0, "ub": 1e5, "relative": (0.0, 4.0)},
-            "beta2": {"lb": 0.0, "ub": 1e5, "relative": (0.0, 4.0)},
-            "beta3": {"lb": 0.0, "ub": 1e5, "relative": (0.0, 4.0)},
-            # Total fan efficiency.  Real centrifugal AHU fans land
-            # between 0.4 and 0.85; lower bound 0.3 keeps very small
-            # / poorly maintained units in scope without admitting
-            # the unphysical 0.
-            "f_total": {"lb": 0.3, "ub": 0.9},
-        }
-
-        self._config = {"parameters": list(self.parameter.keys())}
-        self.INITIALIZED = False
-
-    @property
-    def config(self):
-        """Get the configuration of the fan system."""
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the fan system.
-
-        Returns:
-            dict: Dictionary containing input ports:
-                - "airFlowRate": Air mass flow rate [kg/s]
-                - "inletAirTemperature": Inlet air temperature [°C]
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the fan system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "outletAirTemperature": Outlet air temperature [°C]
-                - "Power": Fan power consumption [W]
-        """
-        return self._output
+    airFlowRate = Input(doc="Air mass flow rate [kg/s]")
+    inletAirTemperature = Input(doc="Inlet air temperature [degC]")
+    outletAirTemperature = Output(doc="Outlet air temperature [degC]")
+    Power = Output(doc="Fan power [W]")
+    # Power at the curve's control points [W].  Non-negative: with every
+    # beta >= 0 the power is >= 0 over the whole range (no fan gives power
+    # back), the constraint the solver sees as bounds.  100 kW is beyond any
+    # single AHU's fans.  Size quantities: once the fan is sized
+    # (``size_to``), each bound is 0 to 4 times its sized value.  The default
+    # curve is 1 kW at 1 kg/s, 0.8 linear plus 0.2 square in the flow, over
+    # the range 0-1 kg/s.
+    beta0 = Parameter(0.0, lb=0.0, ub=1e5, relative=(0.0, 4.0), doc="Power at the bottom of the flow range [W]")
+    beta1 = Parameter(800.0 / 3.0, lb=0.0, ub=1e5, relative=(0.0, 4.0), doc="First inner control point [W]")
+    beta2 = Parameter(600.0, lb=0.0, ub=1e5, relative=(0.0, 4.0), doc="Second inner control point [W]")
+    beta3 = Parameter(1000.0, lb=0.0, ub=1e5, relative=(0.0, 4.0), doc="Power at the top of the flow range [W]")
+    # The flow range is not estimated: it gives the betas their meaning (a
+    # moved range is another curve for the same betas), and the four betas
+    # already span every cubic.  ``set_flow_range`` moves it, keeping the curve.
+    flowRangeLower = Parameter(0.0, doc="Bottom of the operating flow range [kg/s]")
+    flowRangeUpper = Parameter(1.0, doc="Top of the operating flow range [kg/s]")
+    # Real centrifugal AHU fans land between 0.4 and 0.85; the lower bound
+    # 0.3 keeps very small or poorly maintained units in scope without
+    # admitting the unphysical 0.
+    f_total = Parameter(0.9, lb=0.3, ub=0.9, doc="Fraction of the fan power added to the air as heat [-]")
 
     def set_flow_range(self, lower: float, upper: float) -> None:
         """Move the operating flow range to ``[lower, upper]`` [kg/s], keeping
@@ -267,60 +190,13 @@ class FanSystem(core.System, nn.Module):
             sized = self.size_parameter(f"beta{k}", value) and sized
         return sized
 
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        """Initialize the fan system."""
-        # Initialize I/O
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-
-        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
-            self.n_c = self._n_c_batched
-        else:
-            self.n_c = 1
-
-        for input in self.input.values():
-            input.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-                n_c=self.n_c,
-            )
-        for output in self.output.values():
-            output.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-                n_c=self.n_c,
-            )
-
-        # Expand parameters to n_c dimension for vectorization
-        for name in self.PARAM_NAMES:
-            setattr(self, name, getattr(self, name).expand_to_n_c(self.n_c))
-
-        self.INITIALIZED = True
-
-    PARAM_NAMES = (
-        "beta0",
-        "beta1",
-        "beta2",
-        "beta3",
-        "flowRangeLower",
-        "flowRangeUpper",
-        "f_total",
-    )
-
     #: Bound on the fan's air-temperature rise [K], see ``forward``.
     MAX_DELTA_T = 30.0
     #: Width [W] of the smooth mode's curve where the power floors at zero.
     POWER_CURVE_START = 10.0
 
     def forward(self, x, inputs, params, step_size):
-        """Pure one-step fan model (functorch-safe, stateless).
+        """Stateless: the power curve and the heat it adds to the air.
 
         Fan power from the Bernstein power curve over the flow range,
         ``t = (m - lo)/(hi - lo)``,
@@ -367,30 +243,6 @@ class FanSystem(core.System, nn.Module):
         delta_T = torch.clamp(delta_T, -self.MAX_DELTA_T, self.MAX_DELTA_T)
         outlet_temp = inlet_temp + delta_T
         return x, {"outletAirTemperature": outlet_temp, "Power": power}
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """
-        Perform one step of the fan system simulation.
-
-        Thin port-I/O wrapper delegating the math to :meth:`forward`.
-        """
-        inputs = {
-            "airFlowRate": self.input["airFlowRate"].get(),
-            "inletAirTemperature": self.input["inletAirTemperature"].get(),
-        }
-        _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.output["outletAirTemperature"]._set(
-            outs["outletAirTemperature"], i_t=step_index
-        )
-        self.output["Power"]._set(outs["Power"], i_t=step_index)
 
 
 # Deprecated aliases (removed in twin4build 2.1)

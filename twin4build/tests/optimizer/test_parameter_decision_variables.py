@@ -21,7 +21,20 @@ import torch
 from dateutil import tz
 
 import twin4build as tb
+from twin4build.core import Input, Output, System
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
+
+
+class OverheatingSystem(System):
+    """relu(measured - setpoint): the overheating above the setpoint [K]."""
+
+    setpoint = Input()
+    measured = Input()
+    output = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"output": torch.relu(inputs["measured"] - inputs["setpoint"])}
+
 
 X_OUT = torch.tensor([-5.0, 0.0, 5.0, 10.0])
 
@@ -58,10 +71,8 @@ def build_model(model_id: str):
     # Overheating above the setpoint: warmer supply air lowers the heater's
     # power but raises this, so the two objectives conflict (a Pareto front
     # needs that; with agreeing objectives the sweep is just the anchors).
-    discomfort = tb.FunctionSystem(
-        inputs=["setpoint", "measured"], fn=lambda d: torch.relu(d["measured"] - d["setpoint"]), id="Discomfort"
-    )
-    curve = PiecewiseLinearSystem(id="Curve", X=X_OUT, Y=torch.tensor([18.0, 18.0, 18.0, 18.0]), Y_bounds=(12.0, 24.0))
+    discomfort = OverheatingSystem(id="Discomfort")
+    curve = PiecewiseLinearSystem(id="Curve", X=X_OUT, Y=torch.tensor([18.0, 18.0, 18.0, 18.0]))
 
     model.add_connection(zero, space, "scheduleValue", "numberOfPeople")
     model.add_connection(outdoor, space, "scheduleValue", "outdoorTemperature")

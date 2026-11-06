@@ -19,6 +19,7 @@ from twin4build.systems.utils.on_off_system import OnOffSystem
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 twin4build._IS_TESTING = True
 
@@ -31,7 +32,7 @@ class TestTimeSeriesInputSystem(unittest.TestCase):
             freq="10min",
         )
         df = pd.DataFrame({"value": [0.5] * 10}, index=dates)
-        self.ts_input = TimeSeriesInputSystem(id="test_timeseries", df=df)
+        self.ts_input = TimeSeriesInputSystem(id="test_timeseries", source=DataFrameSource(df))
 
     def test_initialization(self):
         """Test time series input system initialization."""
@@ -108,11 +109,33 @@ class TestPiecewiseLinearSystem(unittest.TestCase):
         self.assertIsNotNone(self.system)
         self.assertEqual(self.system.id, "test_piecewise")
 
+    def _y(self, x, Y=None):
+        x = torch.as_tensor(x, dtype=torch.float64)
+        _, out = self.system.forward(None, {"x": x}, {"Y": self.system.Y.get() if Y is None else Y}, 600)
+        return out["y"]
+
     def test_get_Y_within_range(self):
-        """Test interpolation within range."""
-        # At x=0.5, y should be 0.5 (on the first segment)
-        y = self.system._get_Y(0.5)
-        self.assertAlmostEqual(y, 0.5, places=5)
+        """Linear between two points, constant beyond the first and last."""
+        torch.testing.assert_close(self._y([0.5, 1.5, -1.0, 3.0]), torch.tensor([0.5, 0.5, 0.0, 0.0], dtype=torch.float64))
+
+    def test_one_row_of_points_per_copy(self):
+        """Batched copies hold their points flat, one copy after another;
+        every simulation of a copy reads its row."""
+        Y = torch.tensor([0.0, 1.0, 0.0, 2.0, 2.0, 4.0], dtype=torch.float64)
+        x = torch.tensor([0.5, 1.5, 0.5, 1.5], dtype=torch.float64)  # 2 simulations x 2 copies
+        torch.testing.assert_close(self._y(x, Y), torch.tensor([0.5, 3.0, 0.5, 3.0], dtype=torch.float64))
+
+    def test_the_points_are_checked(self):
+        with self.assertRaisesRegex(ValueError, "increase"):
+            PiecewiseLinearSystem(id="unsorted", X=[0.0, 2.0, 1.0], Y=[0.0, 1.0, 2.0])
+        with self.assertRaisesRegex(ValueError, "3 values, but its size is 2"):
+            PiecewiseLinearSystem(id="miscounted", X=[0.0, 1.0], Y=[0.0, 1.0, 2.0])
+        with self.assertRaisesRegex(TypeError, "needs the parameter 'Y'"):
+            PiecewiseLinearSystem(id="pointless", X=[0.0, 1.0])
+        with self.assertRaisesRegex(TypeError, "tb.Variable"):
+            PiecewiseLinearSystem(id="bounded", X=[0.0, 1.0], Y=[0.0, 1.0], Y_bounds=(0.0, 1.0))
+        flat = PiecewiseLinearSystem(id="flat", X=[0.0, 1.0, 2.0], Y=18.0)
+        self.assertEqual(flat.Y.get().tolist(), [18.0, 18.0, 18.0])  # one value fills every point
 
 
 class TestMaxSystem(unittest.TestCase):

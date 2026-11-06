@@ -1,22 +1,12 @@
-# Standard library imports
-import datetime
-from typing import Any, Dict, List, Optional
-
 # Third party imports
-import numpy as np
 import torch
-import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.constants as constants
 from twin4build.systems.building_space import air_balance
-import twin4build.utils.types as tps
-from twin4build.utils.slots import is_wired, wired_width
-from twin4build.systems.utils.discrete_statespace_system import (
-    DiscreteStatespaceSystem,
-    bilinear_onestep,
-)
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, State
+from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
 
 
 #: Matrix contract of the CO2 mass balance, shared with every model that has
@@ -158,12 +148,12 @@ def mass_matrices(V, G_occ, m_inf, n_c, make_up_co2_slot=OUTDOOR_CO2_SLOT, n_exc
     return A, B, C, D, E, F
 
 
-class BuildingSpaceMassSystem(core.System, nn.Module):
+class BuildingSpaceMassSystem(core.System):
     r"""
     Building Space CO2 Concentration Model using Mass Balance Dynamics.
 
     This model represents the CO2 concentration dynamics in a building space considering
-    supply and exhaust air flows, occupant CO2 generation, infiltration, and outdoor 
+    supply and exhaust air flows, occupant CO2 generation, infiltration, and outdoor
     CO2 concentration using bilinear state-space dynamics.
 
     Args:
@@ -213,7 +203,7 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     the volumetric (molar) concentration [ppmv/s].
 
     .. note::
-       Concentrations are expressed in **ppmv** (parts per million by volume), 
+       Concentrations are expressed in **ppmv** (parts per million by volume),
        which is equivalent to **ppm-moles** (molar fraction × 10⁶) for ideal gases.
 
     Note: the supply air's CO2 concentration is the outdoor one unless
@@ -324,161 +314,20 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     ... )
     """
 
-    def __init__(
-        self, V: float = 100, G_occ: float = 5e-6, m_inf: float = 0.001, **kwargs
-    ):
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
+    supplyAirFlowRate = Input(doc="Supply air flow rate [kg/s]")
+    exhaustAirFlowRate = Input(doc="Exhaust air flow rate [kg/s]")
+    outdoorCo2Concentration = Input(default=400.0, alias="outdoorCO2", doc="Outdoor CO2 concentration [ppmv]")
+    numberOfPeople = Input(doc="Number of occupants")
+    makeUpAirCO2 = Input(default=outdoorCo2Concentration, doc="CO2 of the make-up air [ppmv]; unwired: outdoor air")
+    supplyAirCO2 = Input(default=outdoorCo2Concentration, doc="CO2 of the supply air [ppmv]; unwired: outdoor air")
+    exchangeCO2Gain = Input(size="wired", doc="CO2 exchanged with other zones [kg/s], one slot per opening")
+    infiltrationAirFlowRate = Input(default=0.0, doc="Envelope inflow on top of the make-up flow [kg/s]")
+    indoorCO2 = Output(init=400.0, doc="Indoor CO2 concentration [ppmv]")
+    co2 = State(size=1, init=400.0, names=["CO2"], doc="Indoor CO2 concentration [ppmv]")
+    V = Parameter(100.0, lb=10.0, ub=1000.0, relative=(0.5, 2.0), doc="Air volume [m3]")
+    G_occ = Parameter(5e-6, lb=1e-6, ub=1e-5, doc="CO2 generation per occupant [kg/s]")
+    m_inf = Parameter(0.001, lb=1e-4, ub=0.01, relative=(0.2, 5.0), doc="Infiltration air flow [kg/s]")
 
-        # Store parameters as tps.Parameters
-        self.V = tps.Parameter(
-            torch.tensor(V, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.G_occ = tps.Parameter(
-            torch.tensor(G_occ, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.m_inf = tps.Parameter(
-            torch.tensor(m_inf, dtype=tps.float_dtype()), requires_grad=False
-        )
-
-        # Define inputs and outputs
-        self.input = core.AliasedPorts(
-            {
-                "supplyAirFlowRate": tps.Scalar(),  # Supply air flow rate [kg/s]
-                "exhaustAirFlowRate": tps.Scalar(),  # Exhaust air flow rate [kg/s]
-                # Outdoor CO2 concentration [ppmv]; 400 ppmv while unwired
-                "outdoorCo2Concentration": tps.Scalar(400.0),
-                "numberOfPeople": tps.Scalar(),  # Number of occupants
-                # CO2 of the make-up air the exhaust deficit draws in.  Unwired:
-                # the make-up stream is outdoor air (the classic balance).  Wired
-                # from a transfer node: the corridor's concentration.
-                "makeUpAirCO2": tps.Scalar(0.0, optional=True),
-                # CO2 of the supply air [ppmv].  Unwired: outdoor air (an air
-                # handling unit's supply).  Wired: the concentration of the zones
-                # whose air this zone takes.
-                "supplyAirCO2": tps.Scalar(0.0, optional=True),
-                # CO2 flow from openings to other zones [ppm kg/s], one slot per
-                # OpeningSystem -- the mass counterpart of the thermal zone's
-                # ``wallHeatGain``.
-                "exchangeCO2Gain": tps.Vector(optional=True),
-                # The envelope's inflow at outdoor state [kg/s] (air_balance.INFILTRATION_PORT): enters with the
-                # make-up stream at the outdoor level and leaves at room state.  Unwired: zero.  The u column is the
-                # last one.
-                "infiltrationAirFlowRate": tps.Scalar(0.0, optional=True),
-            },
-            aliases=self.INPUT_PORT_ALIASES,
-            owner=type(self).__name__,
-        )
-        self._make_up_wired = False
-        self._supply_wired = False
-        self._n_exchanges = 0
-        self._manual_setup_n_exchanges = False
-
-        # Define outputs
-        self.output = {
-            "indoorCO2": tps.Scalar(400),  # Indoor CO2 concentration [ppmv]
-        }
-
-        # Define parameters for calibration
-        self.parameter = {
-            "V": {"lb": 10.0, "ub": 1000.0, "relative": (0.5, 2.0)},
-            "G_occ": {"lb": 0.000001, "ub": 0.00001},
-            "m_inf": {"lb": 0.0001, "ub": 0.01, "relative": (0.2, 5.0)},
-        }
-
-        self._config = {"parameters": list(self.parameter.keys())}
-        self.INITIALIZED = False
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        """Initialize the mass balance model by setting up the state-space representation."""
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-
-        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
-            self.n_c = self._n_c_batched
-        else:
-            self.n_c = 1
-        # Structural: does a producer feed makeUpAirCO2 / supplyAirCO2?
-        # Fixed per model (in a BuildingSpaceSystem: wired on the composite).
-        self._make_up_wired = is_wired(self, "makeUpAirCO2")
-        self._supply_wired = is_wired(self, "supplyAirCO2")
-        # Openings: count logical exchangeCO2Gain slots (mirrors wallHeatGain).
-        if not self._manual_setup_n_exchanges:
-            self._n_exchanges = wired_width(self, "exchangeCO2Gain")
-
-        # Initialize I/O
-        for name, input in self.input.items():
-            if name == "exchangeCO2Gain":
-                input.initialize(
-                    n_t=max_timesteps, n_s=batch_size, n_c=self.n_c, n_v=self.n_exchanges
-                )
-            else:
-                input.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-        for output in self.output.values():
-            output.initialize(
-                n_t=max_timesteps,
-                n_s=batch_size,
-                n_c=self.n_c,
-            )
-
-        # Expand parameters to n_c dimension for vectorization
-        self.V = self.V.expand_to_n_c(self.n_c)
-        self.G_occ = self.G_occ.expand_to_n_c(self.n_c)
-        self.m_inf = self.m_inf.expand_to_n_c(self.n_c)
-
-        if not self.INITIALIZED:
-            # First initialization
-            self._create_state_space_model()
-            self.ss_model.initialize(start_time, end_time, step_size)
-
-            # FIX: Set correct initial state for batch
-            x0_tensor = self._get_initial_state_tensor()
-            self.ss_model.set_state(x0_tensor)
-
-            self.INITIALIZED = True
-        else:
-            # Re-initialize the state space
-            self._create_state_space_model()  # We need to re-create the model because the parameters have changed to create a new computation graph
-            self.ss_model.initialize(start_time, end_time, step_size)
-
-            # FIX: Set correct initial state for batch
-            x0_tensor = self._get_initial_state_tensor()
-            self.ss_model.set_state(x0_tensor)
-
-        # Drop per-params forward caches: a fresh simulation must not reuse
-        # matrices (or their autograd graph) from a previous run.
-        self._fwd_mat_cache = None
-        self._forward_params_cache = None
-
-    def _get_initial_state_tensor(self):
-        # Get dimensions from indoorCO2
-        # Scalar.get() returns shape (n_s, n_c)
-        co2_indoor = self.output["indoorCO2"].get()
-        n_s = co2_indoor.shape[0]
-        n_c = co2_indoor.shape[1]
-
-        # x0 shape: (n_s, n_c, n_states) where n_states = 1
-        x0 = torch.zeros(
-            (n_s, n_c, 1), dtype=co2_indoor.dtype, device=co2_indoor.device
-        )
-
-        x0[:, :, 0] = co2_indoor
-
-        return x0
-
-    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    SUPPORTS_TRANSFORM_MODE = True
-    PARAM_NAMES = ("V", "G_occ", "m_inf")
-    #: ``outdoorCO2`` is the deprecated name of ``outdoorCo2Concentration``
-    #: (removed in 2.1; see ``System.INPUT_PORT_ALIASES``).
-    INPUT_PORT_ALIASES = {"outdoorCO2": "outdoorCo2Concentration"}
     #: ``indoorCO2`` publishes the CO2 state as it is (see
     #: :meth:`System.state_output_ports`).
     STATE_OUTPUT_PORTS = {"indoorCO2": 0}
@@ -486,27 +335,28 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     @property
     def n_exchanges(self) -> int:
         """Connected ``exchangeCO2Gain`` slots (openings to other zones)."""
-        return self._n_exchanges
+        return int(self.input["exchangeCO2Gain"]._n_v or 0)
 
     @n_exchanges.setter
     def n_exchanges(self, value: int) -> None:
-        self._manual_setup_n_exchanges = True
-        self._n_exchanges = int(value)
+        # The width of a model stepped on its own (wiring gives it otherwise).
+        self.input["exchangeCO2Gain"]._n_v = int(value)
 
     def _ss_layout(self):
         """Port <-> matrix index map, mirroring :meth:`forward` exactly:
         ``u = [supplyAirFlowRate, exhaustAirFlowRate, outdoorCo2Concentration,
-        numberOfPeople]`` (the exhaust slot holds the make-up flow after
-        :meth:`_ss_transform_inputs`); single output row ``indoorCO2``."""
+        numberOfPeople, makeUpAirCO2, supplyAirCO2, exchangeCO2Gain x
+        n_exchanges, infiltrationAirFlowRate]`` (the exhaust slot holds the
+        make-up flow after :meth:`_ss_transform_inputs`); single output row
+        ``indoorCO2``."""
         u = [
             ("supplyAirFlowRate", 1),
             ("exhaustAirFlowRate", 1),
             ("outdoorCo2Concentration", 1),
             ("numberOfPeople", 1),
             ("makeUpAirCO2", 1),
+            ("supplyAirCO2", 1),
         ]
-        if self._supply_wired:
-            u.append(("supplyAirCO2", 1))
         if self.n_exchanges > 0:
             u.append(("exchangeCO2Gain", self.n_exchanges))
         u.append((air_balance.INFILTRATION_PORT, 1))  # last: it acts through the transform only
@@ -514,24 +364,11 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
 
     def _ss_support(self):
         """Conservative structural support of the ``D``, ``E`` and ``F`` matrices."""
-        # Superset: the make-up stream couples with slot 2 (outdoor) or slot 4
-        # (a wired transfer node); the supply stream with slot 2 or, wired,
-        # the supply-CO2 slot.
-        F = {(0, 0, 2), (1, 0, 2), (1, 0, MAKE_UP_CO2_SLOT)}
-        if self._supply_wired:
-            F.add((0, 0, SUPPLY_CO2_SLOT))
         return {
             "D": frozenset(),
             "E": frozenset({(0, 0, 0), (1, 0, 0)}),
-            "F": frozenset(F),
+            "F": frozenset({(0, 0, 2), (1, 0, 2), (1, 0, MAKE_UP_CO2_SLOT), (0, 0, SUPPLY_CO2_SLOT)}),
         }
-
-    #: Input ports whose values :meth:`_ss_transform_inputs` reads.
-    SS_TRANSFORM_PORTS = air_balance.TRANSFORM_PORTS + (
-        air_balance.INFILTRATION_PORT,
-        "outdoorCo2Concentration",
-        "makeUpAirCO2",
-    )
 
     @staticmethod
     def _ss_transform_inputs(inputs):
@@ -545,71 +382,25 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
     def _build_matrices(self, p=None):
         """Build the CO2 mass-balance matrices ``(A, B, C, D, E, F)`` from the
         physical parameters -- a pure function of ``p`` (a dict of physical values
-        for :attr:`PARAM_NAMES`; defaults to ``self.<name>.get()``).  Passing ``p``
-        explicitly is the functorch fast path (plain-tensor args, so
-        ``vmap(jacrev)`` is clean); see the thermal system for the rationale.
-        """
+        for :attr:`PARAM_NAMES`; defaults to ``self.<name>.get()``).  The make-up
+        and the supply stream bring the CO2 of their ports, which read the
+        outdoor CO2 while unwired."""
         if p is None:
             p = {name: getattr(self, name).get() for name in self.PARAM_NAMES}
-
-        slot = MAKE_UP_CO2_SLOT if self._make_up_wired else OUTDOOR_CO2_SLOT
         return mass_matrices(
             p["V"], p["G_occ"], p["m_inf"], self.n_c,
-            make_up_co2_slot=slot, n_exchanges=self.n_exchanges, supply_co2=self._supply_wired,
+            make_up_co2_slot=MAKE_UP_CO2_SLOT, n_exchanges=self.n_exchanges, supply_co2=True,
             infiltration_column=True,
         )
 
-    def _create_state_space_model(self):
-        """Create the internal :class:`DiscreteStatespaceSystem` used by
-        ``do_step`` from the matrices built by :meth:`_build_matrices`."""
-        A, B, C, D, E, F = self._build_matrices()
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
 
-        # Initial state - shape (n_c, n_states)
-        x0_tensor = self._get_initial_state_tensor()  # (n_s, n_c, n_states)
-        x0 = x0_tensor[0, :, :]  # first simulation, all components: (n_c, n_states)
-
-        self.ss_model = DiscreteStatespaceSystem(
-            A=A,
-            B=B,
-            C=C,
-            D=D,
-            x0=x0,
-            state_names=None,
-            id=f"ss_mass_model_{self.id}",
-            E=E,
-            F=F,
-        )
-
-    def step_constants(self, params):
-        """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
-        :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
-        return self._build_matrices(params)
-
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
-        """Pure one-step CO2 dynamics ``(state, inputs, params) -> (new_state, outputs)``.
-
-        Functorch-compatible re-expression of :meth:`do_step`; ``inputs`` is a dict
-        of resolved input-port values assembled here in do_step order
-        ``[supplyAirFlowRate, exhaustAirFlowRate, outdoorCo2Concentration, numberOfPeople]``,
-        ``params`` a dict for :attr:`PARAM_NAMES`.  Returns ``(x_next, {"indoorCO2"})``.
-        """
-        # Params-only matrices, cached per params-dict identity (rebuilt once
-        # per theta in a sequential rollout, not once per step).  step_size
-        # is part of the key: the attached disc_cache holds (Ad, Bd)
-        # discretized at a specific T.
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._build_matrices(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._build_matrices(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C, D, E, F = matrices
+    def forward(self, x, inputs, params, step_size):
+        """One step of the room's CO2: ``(state, inputs, params) -> (new_state,
+        {"indoorCO2"})``."""
+        A, B, C, D, E, F = params["matrices"]
         inputs = {**inputs, **self._ss_transform_inputs(inputs)}
         u = torch.stack(
             [
@@ -617,70 +408,16 @@ class BuildingSpaceMassSystem(core.System, nn.Module):
                 inputs["exhaustAirFlowRate"],
                 inputs["outdoorCo2Concentration"],
                 inputs["numberOfPeople"],
-                inputs.get("makeUpAirCO2", inputs["outdoorCo2Concentration"]),
+                inputs["makeUpAirCO2"],
+                inputs["supplyAirCO2"],
             ],
             dim=-1,
         )
-        if self._supply_wired:
-            u = torch.cat([u, inputs["supplyAirCO2"].unsqueeze(-1)], dim=-1)
         if self.n_exchanges > 0:
             u = torch.cat([u, inputs["exchangeCO2Gain"]], dim=-1)
-        inflow = inputs.get(air_balance.INFILTRATION_PORT)
-        u = torch.cat([u, (torch.zeros_like(inputs["supplyAirFlowRate"]) if inflow is None else inflow).unsqueeze(-1)], dim=-1)
-        x_next, y = bilinear_onestep(
-            A,
-            B,
-            C,
-            D,
-            E,
-            F,
-            x,
-            u,
-            step_size,
-            disc_cache=disc_cache,
-            transform_mode=transform_mode,
-        )
+        u = torch.cat([u, inputs[air_balance.INFILTRATION_PORT].unsqueeze(-1)], dim=-1)
+        x_next, y = bilinear_onestep(A, B, C, D, E, F, x, u, step_size)
         return x_next, {"indoorCO2": y[..., 0]}
-
-    @property
-    def config(self):
-        """Get the system configuration."""
-        return self._config
-
-    def do_step(
-        self,
-        second_time: Optional[float] = None,
-        date_time: Optional[datetime.datetime] = None,
-        step_size: Optional[float] = None,
-        step_index: Optional[int] = None,
-    ) -> None:
-        """Execute a single simulation step.
-
-        Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the dynamics); the inner ``ss_model`` only carries the
-        state between steps.
-        """
-        inputs = {
-            port: self.input[port].get()
-            for port in (
-                "supplyAirFlowRate",
-                "exhaustAirFlowRate",
-                "outdoorCo2Concentration",
-                "numberOfPeople",
-                "makeUpAirCO2",
-                air_balance.INFILTRATION_PORT,
-            )
-        }
-        if self._supply_wired:
-            inputs["supplyAirCO2"] = self.input["supplyAirCO2"].get()
-        if self.n_exchanges > 0:
-            inputs["exchangeCO2Gain"] = self.input["exchangeCO2Gain"].get()
-        x = self.ss_model.get_state()  # (n_s, n_c, n_states)
-        x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.ss_model.set_state(x_next)
-        self.output["indoorCO2"]._set(outs["indoorCO2"], i_t=step_index)
 
 
 # Deprecated aliases (removed in twin4build 2.1)

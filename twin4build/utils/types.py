@@ -771,6 +771,9 @@ class Scalar:
         # Create tensor with shape (n_s, n_c) from _init_value
         if self._init_value is None:
             self._tensor = torch.zeros((self.n_s, self.n_c), dtype=float_dtype())
+        elif isinstance(self._init_value, torch.Tensor) and self._init_value.numel() == self.n_c:
+            # one start per copy (a batched System's value setting)
+            self._tensor = self._init_value.to(float_dtype()).reshape(1, self.n_c).expand(self.n_s, self.n_c).clone()
         else:
             # Broadcast init_value to full tensor
             self._tensor = torch.full(
@@ -1138,25 +1141,28 @@ class Parameter(nn.Parameter):
         # Prepare data - convert to tensor with shape (n_c,) where n_c is inferred
         data, n_c = _prepare_parameter_data(data)
 
-        # Set min and max values with defaults - all should have shape (n_c,)
+        # Set min and max values with defaults - all should have shape (n_c,).
+        # Value by value: a negative value normalizes over [value, 0], a zero
+        # over [0, 1], a positive one over [0, value] (a vector of mixed
+        # signs or with zeros, a curve's points, failed max > min).
+        values = data.detach().clone()
         if min_value is None:
-            if torch.all(data < 0):
-                min_value = data.detach().clone()
-            elif scaling == "log":
+            if scaling == "log":
                 # Log scaling requires min > 0; default to data/10
-                min_value = (data.detach().clone().abs() * 0.1).clamp(min=1e-10)
+                min_value = (values.abs() * 0.1).clamp(min=1e-10)
+                if torch.all(data < 0):
+                    min_value = values
             else:
-                min_value = torch.zeros(n_c, dtype=float_dtype())
+                min_value = torch.where(values < 0, values, torch.zeros_like(values))
         else:
             min_value = _prepare_bound_value(min_value, data.shape, n_c)
 
         if max_value is None:
-            if torch.all(data < 0):
-                max_value = torch.zeros(n_c, dtype=float_dtype())
-            elif torch.allclose(data, torch.zeros_like(data)):
+            zero = torch.isclose(values, torch.zeros_like(values))
+            if torch.all(zero):
                 max_value = torch.ones(n_c, dtype=float_dtype())
             else:
-                max_value = data.detach().clone()
+                max_value = torch.where(values < 0, torch.zeros_like(values), torch.where(zero, torch.ones_like(values), values))
         else:
             max_value = _prepare_bound_value(max_value, data.shape, n_c)
 
@@ -1494,6 +1500,8 @@ class State(StateMarker):
             v = v.reshape(1, 1, n_v).expand(n_s, n_c, n_v).clone()
         elif v.dim() == 2 and v.shape == (n_c, n_v):  # (n_c, n_v)
             v = v.reshape(1, n_c, n_v).expand(n_s, n_c, n_v).clone()
+        elif v.dim() == 2 and v.shape == (n_c, 1):  # one value per copy
+            v = v.reshape(1, n_c, 1).expand(n_s, n_c, n_v).clone()
         elif v.dim() == 3 and v.shape == (n_s, n_c, n_v):
             v = v.clone()
         elif v.dim() == 0:

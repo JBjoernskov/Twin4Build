@@ -20,8 +20,8 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
     def setUp(self):
         self.space = BuildingSpaceSystem(
             id="test_space",
-            thermal_kwargs=dict(C_wall=1000000.0, C_air=10000.0, C_boundary=500000.0, R_out=0.01, R_in=0.02, R_boundary=0.03, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
-            mass_kwargs=dict(V=100.0),
+            thermal=dict(C_wall=1000000.0, C_air=10000.0, R_out=0.01, R_in=0.02, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
+            mass=dict(V=100.0),
         )
 
     def test_initialization(self):
@@ -65,8 +65,8 @@ class TestBuildingSpaceTorchSystem(unittest.TestCase):
         """Test building space system do_step method with batch size > 1."""
         space_batch = BuildingSpaceSystem(
             id="test_space_batch",
-            thermal_kwargs=dict(C_wall=1000000.0, C_air=10000.0, C_boundary=500000.0, R_out=0.01, R_in=0.02, R_boundary=0.03, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
-            mass_kwargs=dict(V=100.0),
+            thermal=dict(C_wall=1000000.0, C_air=10000.0, R_out=0.01, R_in=0.02, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
+            mass=dict(V=100.0),
         )
 
         batch_size = 2
