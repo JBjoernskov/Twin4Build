@@ -1,22 +1,13 @@
-# Standard library imports
-import datetime
-from typing import Dict, List, Optional
-
 # Third party imports
 import torch
-import torch.nn as nn
 
 # Local application imports
-import twin4build.utils.types as tps
 from twin4build import core
-from twin4build.systems.utils.discrete_statespace_system import (
-    DiscreteStatespaceSystem,
-    bilinear_onestep,
-)
-from twin4build.utils.slots import wired_width
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, Setting, State
+from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
 
 
-class ThermalMassNodeSystem(core.System, nn.Module):
+class ThermalMassNodeSystem(core.System):
     r"""
     Lumped Thermal Mass Node (1C) Shared by Several Walls.
 
@@ -27,10 +18,6 @@ class ThermalMassNodeSystem(core.System, nn.Module):
     coupled to (partitions, slabs, corridors) but that no sensor reads.  A
     :class:`WallSystem` between each zone and this node keeps the interzonal
     energy balance exact, the node stores what the walls deliver.
-
-    Args:
-        C: Thermal capacitance of the node [J/K]
-        T_init: Initial node temperature [degC]
 
     Mathematical Formulation
     ------------------------
@@ -69,102 +56,22 @@ class ThermalMassNodeSystem(core.System, nn.Module):
         ...     model.add_connection(wall, node, "heatFlowRateB", "heatFlowRate", input_port_index=i)
     """
 
-    def __init__(
-        self,
-        C: float = 1e8,
-        T_init: float = 20.0,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-
-        self.C = tps.Parameter(
-            torch.tensor(C, dtype=tps.float_dtype()), requires_grad=False, scaling="log"
-        )
-        self.T_init = T_init
-
-        self._input = {
-            "heatFlowRate": tps.Vector(),  # Heat flows into the node [W], one slot per wall
-        }
-        self._output = {
-            "temperature": tps.Scalar(T_init),  # Node temperature [degC]
-        }
-        self.parameter = {
-            "C": {"lb": 1e4, "ub": 1e11, "relative": (0.1, 10.0)},
-        }
-        self._config = {"parameters": list(self.parameter.keys())}
-        self.n_flows = 0
-        self.INITIALIZED = False
+    T_init = Setting(20.0, doc="Initial node temperature [degC]")
+    heatFlowRate = Input(size="wired", doc="Heat flows into the node [W], one slot per wall")
+    temperature = Output(init=T_init, doc="Node temperature [degC]")
+    T_node = State(init=T_init, names=["T_node"], doc="Node temperature [degC]")
+    C = Parameter(1e8, lb=1e4, ub=1e11, relative=(0.1, 10.0), scaling="log", doc="Thermal capacitance [J/K]")
 
     @property
-    def config(self) -> Dict[str, List[str]]:
-        return self._config
-
-    @property
-    def input(self) -> dict:
-        """``heatFlowRate``: heat flows into the node [W], a vector with one
-        slot per connected wall."""
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """``temperature``: the node temperature [degC]."""
-        return self._output
-
-    def initialize(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        step_size: int,
-    ) -> None:
-        """Size the heat-flow vector from the wired slots, expand the
-        parameter, build the state-space model and set the initial state."""
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-
-        if hasattr(self, "_n_c_batched") and self._n_c_batched > 1:
-            self.n_c = self._n_c_batched
-        else:
-            self.n_c = 1
-
-        # Count logical vector slots, not connection objects (see the
-        # thermal zone's ``wallHeatGain``).  A node with nothing wired keeps
-        # one zero slot so the matrices are well formed.
-        self.n_flows = max(wired_width(self, "heatFlowRate"), 1)
-        self.input["heatFlowRate"].initialize(
-            n_t=max_timesteps, n_s=batch_size, n_c=self.n_c, n_v=self.n_flows
-        )
-        self.output["temperature"].init_value = float(self.T_init)  # see WallSystem.initialize
-        for output in self.output.values():
-            output.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
-
-        self.C = self.C.expand_to_n_c(self.n_c)
-
-        self._create_state_space_model()
-        self.ss_model.initialize(start_time, end_time, step_size)
-        self.ss_model.set_state(self._get_initial_state_tensor())
-
-        self._fwd_mat_cache = None
-        self._forward_params_cache = None
-
-        self.INITIALIZED = True
-
-    def _get_initial_state_tensor(self):
-        t = self.output["temperature"].get()  # (n_s, n_c)
-        n_s, n_c = t.shape
-        x0 = torch.zeros((n_s, n_c, 1), dtype=t.dtype, device=t.device)
-        x0[:, :, 0] = t
-        return x0
-
-    #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    SUPPORTS_TRANSFORM_MODE = True
-    PARAM_NAMES = ("C",)
+    def n_flows(self) -> int:
+        """The heat flows the node sums: its wired slots (none wired: one,
+        held at zero, so the matrices are well formed)."""
+        return max(int(self.input["heatFlowRate"]._n_v or 0), 1)
 
     def _state_heat_capacities(self):
         """``T_node`` holds ``C`` [J/K]."""
         return self.C.get().reshape(-1, 1)
+
     #: The temperature is delivered from the start of the step: its edges are
     #: cut by the loader before cycle detection (a declared one-step lag).
     LAGGED_OUTPUT_PORTS = frozenset({"temperature"})
@@ -200,59 +107,18 @@ class ThermalMassNodeSystem(core.System, nn.Module):
         F = torch.zeros((n_c, n_u, 1, n_u), dtype=dt, device=dev)
         return A, B, C_out, D, E, F
 
-    def _create_state_space_model(self):
-        A, B, C_out, D, E, F = self._build_matrices()
-        x0 = self._get_initial_state_tensor()[0, :, :]  # (n_c, 1)
-        self.ss_model = DiscreteStatespaceSystem(
-            A=A,
-            B=B,
-            C=C_out,
-            D=D,
-            x0=x0,
-            state_names=["T_node"],
-            E=E,
-            F=F,
-            id=f"ss_model_{self.id}",
-        )
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
 
-    def step_constants(self, params):
-        """The theta-only matrices for one rollout (see ``StepParams``)."""
-        return self._build_matrices(params)
-
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
-        """Pure one-step node dynamics ``(state, inputs, params) -> (new_state, outputs)``.
-        ``inputs["heatFlowRate"]`` has shape ``(n_c, n_flows)``."""
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._build_matrices(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._build_matrices(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C_out, D, E, F = matrices
+    def forward(self, x, inputs, params, step_size):
+        """One step of the node: the summed heat flows into its
+        capacitance."""
+        A, B, C_out, D, E, F = params["matrices"]
         u = inputs["heatFlowRate"]
+        if u.shape[-1] == 0:  # nothing wired: no heat flows in
+            u = u.new_zeros(*u.shape[:-1], 1)
         x_next, y = bilinear_onestep(
-            A, B, C_out, D, E, F, x, u, step_size, disc_cache=disc_cache, transform_mode=transform_mode
+            A, B, C_out, D, E, F, x, u, step_size
         )
         return x_next, {"temperature": y[..., 0]}
-
-    def do_step(
-        self,
-        second_time=None,
-        date_time=None,
-        step_size=None,
-        step_index: Optional[int] = None,
-    ) -> None:
-        """One simulation step: a port-I/O wrapper around :meth:`forward`."""
-        inputs = {"heatFlowRate": self.input["heatFlowRate"].get()}  # (n_s, n_c, n_v)
-        x = self.ss_model.get_state()
-        x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        self.ss_model.set_state(x_next)
-        self.output["temperature"]._set(outs["temperature"], i_t=step_index)

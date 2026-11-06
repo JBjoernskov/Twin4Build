@@ -176,7 +176,7 @@ class TestProjections(unittest.TestCase):
             own_shapes = {k: (v.sum(dim=-1) if v.dim() > 1 and isinstance(component.input[k], tps.Scalar) else v)
                           for k, v in regime.items()}
             _, full = component.forward(state if state is None else state * 1.7, own_shapes,
-                                        sd.forward_params(component), 600.0)
+                                        component.full_params(sd.forward_params(component), 600.0), 600.0)
             _, own = projection.forward(None, {k: v for k, v in regime.items() if k in projection.input}, {}, 600.0)
             for port in ("surplusAirFlowRate", "makeUpAirFlowRate"):
                 torch.testing.assert_close(own[port], full[port])

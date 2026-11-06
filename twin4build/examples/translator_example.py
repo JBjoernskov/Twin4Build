@@ -103,7 +103,7 @@ def fcn(self):
     )
 
     # Configure control setpoints
-    self.components["office_co2_setpoint"].weekDayRulesetDict = {
+    self.components["office_co2_setpoint"].weekday_ruleset = {
         "ruleset_default_value": 900,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
@@ -112,7 +112,7 @@ def fcn(self):
         "ruleset_value": [],
     }
 
-    self.components["office_occupancy_profile"].weekDayRulesetDict = {
+    self.components["office_occupancy_profile"].weekday_ruleset = {
         "ruleset_default_value": 0,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
@@ -121,30 +121,18 @@ def fcn(self):
         "ruleset_value": [],
     }
 
-    self.components["office_temperature_heating_setpoint"].use_spreadsheet = True
-    self.components["office_temperature_heating_setpoint"].filename = utils.get_path(
+    self.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(
         ["estimator_example", "temperature_heating_setpoint.csv"]
-    )
+    ))
 
     # Configure outdoor environment data
-    self.components["outdoor_environment"].use_spreadsheet = True
-    self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(
+    self.components["outdoor_environment"].outdoorTemperature_source = CsvSource(utils.get_path(
         ["estimator_example", "outdoor_environment.csv"]
-    )
-    self.components["outdoor_environment"].datecolumn_outdoorTemperature = 0
-    self.components["outdoor_environment"].valuecolumn_outdoorTemperature = 1
-
-    self.components["outdoor_environment"].filename_globalIrradiation = utils.get_path(
+    ), date_column=0, value_column=1)
+    self.components["outdoor_environment"].globalIrradiation_source = CsvSource(utils.get_path(
         ["estimator_example", "outdoor_environment.csv"]
-    )
-    self.components["outdoor_environment"].datecolumn_globalIrradiation = 0
-    self.components["outdoor_environment"].valuecolumn_globalIrradiation = 2
-
-    self.components["outdoor_environment"].filename_outdoorCo2Concentration = (
-        utils.get_path(["estimator_example", "outdoor_environment.csv"])
-    )
-    self.components["outdoor_environment"].datecolumn_outdoorCo2Concentration = 0
-    self.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 3
+    ), date_column=0, value_column=2)
+    self.components["outdoor_environment"].outdoorCo2Concentration_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=3)
 
 
 # Create a new model
@@ -152,6 +140,7 @@ def fcn(self):
 from twin4build.utils.logger import LOGGER
 import twin4build.core as core
 from twin4build.translator.translator import Node, OptionalRule, SignaturePattern, StepRule
+from twin4build.utils.data_loaders.sources import CsvSource
 
 LOGGER.hide_status("debug")
 

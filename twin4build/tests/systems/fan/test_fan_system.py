@@ -245,9 +245,11 @@ class TestBernsteinForm(unittest.TestCase):
 
     def test_estimated_parameters_are_the_betas_and_f_total(self):
         """The solver sees the four betas (lower bound zero) and f_total; the
-        flow range is fixed, since it gives the betas their meaning."""
+        flow range is fixed, since it gives the betas their meaning, and
+        saved, so a moved range survives a save and a load."""
         fan = FanSystem(id="estimable")
-        self.assertEqual(fan.config["parameters"], ["beta0", "beta1", "beta2", "beta3", "f_total"])
+        self.assertEqual(list(fan.parameter), ["beta0", "beta1", "beta2", "beta3", "f_total"])
+        self.assertIn("flowRangeLower", fan.config["parameters"])
         for k in range(4):
             self.assertEqual(fan.parameter[f"beta{k}"]["lb"], 0.0)
         self.assertIn("flowRangeLower", FanSystem.PARAM_NAMES)

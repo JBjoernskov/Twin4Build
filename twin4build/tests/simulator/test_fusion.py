@@ -24,6 +24,7 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
+from twin4build.systems.utils.discrete_statespace_system import traceable
 from twin4build.systems.utils.smooth_saturation import saturation_mode
 
 tb._IS_TESTING = True
@@ -371,7 +372,7 @@ class TestFusionStructuralSupport(unittest.TestCase):
                 f"{compiled_at_max:.12g} != {reference_at_max:.12g}",
             )
 
-    def test_transform_path_matches_eager_and_does_not_mutate_cache(self):
+    def test_transform_path_matches_eager(self):
         state = self.fused.get_state()
         inputs = {name: port.get() for name, port in self.fused.input.items()}
         params = self.fused._forward_params()
@@ -381,23 +382,18 @@ class TestFusionStructuralSupport(unittest.TestCase):
         def transformed(theta):
             live_params = dict(params)
             live_params[target] = theta.reshape(1)
-            state_next, _ = self.fused.forward(
-                state,
-                inputs,
-                live_params,
-                600.0,
-                transform_mode=True,
-            )
+            with traceable():
+                state_next, _ = self.fused.forward(
+                    state, inputs, self.fused.full_params(live_params, 600.0), 600.0
+                )
             return state_next
 
-        self.fused._fwd_mat_cache = None
         transformed_value = transformed(theta0)
-        self.assertIsNone(self.fused._fwd_mat_cache)
 
         eager_params = dict(params)
         eager_params[target] = theta0.reshape(1)
         eager_value, _ = self.fused.forward(
-            state, inputs, eager_params, 600.0, transform_mode=False
+            state, inputs, self.fused.full_params(eager_params, 600.0), 600.0
         )
         self.assertTrue(
             torch.allclose(

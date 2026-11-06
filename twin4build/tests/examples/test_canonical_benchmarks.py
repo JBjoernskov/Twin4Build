@@ -297,7 +297,7 @@ def test_batched_pareto_problem_aggregates_every_zone():
     # setpoint stays a hard upper bound.
     assert setup["objective1"][2] == "min"
     assert setup["objective2"][2] == "min"
-    assert setup["objective2"][0].id.endswith("FunctionSystem")
+    assert setup["objective2"][0].id.endswith("DiscomfortSystem")
     assert setup["objective2"][0].n_c == 3
     assert [c[2] for c in setup["ineq_cons"]] == ["upper"]
 
