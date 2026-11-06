@@ -432,9 +432,12 @@ class System(nn.Module, metaclass=SystemMeta):
                 data = value.detach().clone()
             else:
                 data = torch.as_tensor(value, dtype=tps.float_dtype()).clone()
-            # normalized over the declared range, when it is one the scaling admits
-            bounded = parameter.lb is not None and parameter.ub is not None and (
-                parameter.scaling != "log" or parameter.lb > 0
+            # a log scale normalizes over the declared range (its default, a
+            # decade below the value, is arbitrary); a linear one keeps its
+            # default, which reads its value back exactly
+            bounded = (
+                parameter.scaling == "log" and parameter.lb is not None and parameter.ub is not None
+                and parameter.lb > 0
             )
             value = tps.Parameter(
                 data.to(tps.float_dtype()),
