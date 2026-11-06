@@ -73,6 +73,12 @@ class DamperSystem(core.System):
          vector port
     """
 
+    REMOVED_ATTRIBUTES = {
+        "set_c": "give the offset: damper.c = value (or DamperSystem(c=value))",
+        **{name: "c is optional: absent, it is tied (c = -a); damper.c = value unties it"
+           for name in ("c_tied", "_c_tied")},
+    }
+
     damperPosition = Input(doc="Damper position (0-1)")
     fanSpeed = Input(default=1.0, doc="Fan speed (0-1): nothing flows while the fan is stopped")
     damperPosition = Output(doc="Damper position (0-1)")
