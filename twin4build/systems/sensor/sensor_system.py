@@ -13,6 +13,7 @@ import twin4build.utils.types as tps
 from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.data_loaders.sources import reader_from_keywords
 from twin4build.utils.data_loaders.load import DEFAULT_DT_LIMIT
 from twin4build.translator.translator import (
     ModeledNode,
@@ -797,18 +798,20 @@ class SensorSystem(core.System):
             ):
                 self.time_series_input = TimeSeriesInputSystem(
                     id=f"time series input - {self.id}",
-                    df=self.df,
-                    filename=self.filename,
-                    date_column=self.datecolumn,
-                    value_column=self.valuecolumn,
-                    use_spreadsheet=self.use_spreadsheet,
-                    use_database=self.use_database,
-                    uuid=self.uuid,
-                    dbconfig=self.dbconfig,
+                    source=reader_from_keywords(
+                        df=self.df,
+                        filename=self.filename,
+                        date_column=self.datecolumn,
+                        value_column=self.valuecolumn,
+                        use_spreadsheet=self.use_spreadsheet,
+                        use_database=self.use_database,
+                        uuid=self.uuid,
+                        dbconfig=self.dbconfig,
+                        resample_method=sampling[0],
+                        dt_limit=sampling[1],
+                        fill=sampling[2],
+                    ),
                     transformation=self._transformation,
-                    resample_method=sampling[0],
-                    dt_limit=sampling[1],
-                    fill=sampling[2],
                 )
                 self.time_series_input.allow_missing = allow_missing
                 self._series_source = source

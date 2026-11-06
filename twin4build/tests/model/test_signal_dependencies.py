@@ -136,7 +136,7 @@ class TestRoom(DeclarationCase):
 
     INPUTS = {"outdoorTemperature": s(2.0), "supplyAirFlowRate": vec(0.05, 0.04), "exhaustAirFlowRate": vec(0.06),
               "supplyAirTemperature": s(19.0), "globalIrradiation": s(100.0), "numberOfPeople": s(3.0),
-              "heatGain": s(200.0), "makeUpAirTemperature": s(21.0), "boundaryTemperature": s(20.0),
+              "heatGain": s(200.0), "makeUpAirTemperature": s(21.0),
               "wallHeatGain": s(50.0), "infiltrationAirFlowRate": s(0.01), "outdoorCo2Concentration": s(420.0),
               "makeUpAirCO2": s(600.0), "supplyAirCO2": s(430.0), "exchangeCO2Gain": s(0.0)}
 
@@ -176,7 +176,7 @@ class TestProjections(unittest.TestCase):
             own_shapes = {k: (v.sum(dim=-1) if v.dim() > 1 and isinstance(component.input[k], tps.Scalar) else v)
                           for k, v in regime.items()}
             _, full = component.forward(state if state is None else state * 1.7, own_shapes,
-                                        sd.forward_params(component), 600.0)
+                                        component.full_params(sd.forward_params(component), 600.0), 600.0)
             _, own = projection.forward(None, {k: v for k, v in regime.items() if k in projection.input}, {}, 600.0)
             for port in ("surplusAirFlowRate", "makeUpAirFlowRate"):
                 torch.testing.assert_close(own[port], full[port])

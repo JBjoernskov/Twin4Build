@@ -31,7 +31,7 @@ t4b:OccupancySystem rdfs:subClassOf s4syst:System .
 
 t4b:OutdoorEnvironmentSystem rdfs:subClassOf s4syst:System .
 
-t4b:PiecewiseLinearScheduleSystem rdfs:subClassOf s4syst:System .
+t4b:PiecewiseLinearSystem rdfs:subClassOf s4syst:System .
 
 t4b:SpaceHeaterTorchSystem rdfs:subClassOf s4syst:System .
 
@@ -292,7 +292,7 @@ t4b:136777695663 a s4syst:Connection,
 t4b:136777849734 a s4syst:Connection,
         <n9411526c0c9c4b9f9fea134fb6f03758b1>,
         <n9411526c0c9c4b9f9fea134fb6f03758b2> ;
-    t4b:output_port "scheduleValue" ;
+    t4b:output_port "y" ;
     s4syst:connectsSystem t4b:supply_water_schedule ;
     s4syst:connectsSystemAt t4b:136778873776 .
 
@@ -609,19 +609,9 @@ t4b:office_temperature_sensor a t4b:SensorSystem ;
     s4syst:connectedThrough t4b:136778861062 ;
     s4syst:connectsAt t4b:136778861137 .
 
-t4b:supply_water_schedule a t4b:PiecewiseLinearScheduleSystem ;
-    t4b:add_noise false ;
-    t4b:defaultX "[-12, 5, 20]"^^rdf:JSON ;
-    t4b:defaultY "[60, 50, 20]"^^rdf:JSON ;
-    t4b:fridayRulesetDict "None" ;
-    t4b:mondayRulesetDict "None" ;
-    t4b:saturdayRulesetDict "None" ;
-    t4b:sundayRulesetDict "None" ;
-    t4b:thursdayRulesetDict "None" ;
-    t4b:tuesdayRulesetDict "None" ;
-    t4b:wednesdayRulesetDict "None" ;
-    t4b:weekDayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
-    t4b:weekendRulesetDict "None" ;
+t4b:supply_water_schedule a t4b:PiecewiseLinearSystem ;
+    t4b:X "[-12, 5, 20]"^^rdf:JSON ;
+    t4b:Y "[60, 50, 20]"^^rdf:JSON ;
     s4syst:connectedThrough t4b:136777849734 ;
     s4syst:connectsAt t4b:136777673519 .
 
@@ -773,10 +763,8 @@ t4b:office a t4b:BuildingSpaceTorchSystem ;
     t4b:mass.V "[100.0]"^^rdf:JSON ;
     t4b:mass.m_inf "[0.001]"^^rdf:JSON ;
     t4b:thermal.C_air "[999999.9999999995]"^^rdf:JSON ;
-    t4b:thermal.C_boundary "[999999.9999999995]"^^rdf:JSON ;
     t4b:thermal.C_wall "[999999.9999999995]"^^rdf:JSON ;
     t4b:thermal.Q_occ_gain "[100.0]"^^rdf:JSON ;
-    t4b:thermal.R_boundary "[0.010000000000000004]"^^rdf:JSON ;
     t4b:thermal.R_in "[0.05000000000000001]"^^rdf:JSON ;
     t4b:thermal.R_out "[0.05000000000000001]"^^rdf:JSON ;
     t4b:thermal.f_air "[0.1]"^^rdf:JSON ;

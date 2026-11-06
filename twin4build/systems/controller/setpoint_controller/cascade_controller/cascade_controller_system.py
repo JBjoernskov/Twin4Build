@@ -294,9 +294,17 @@ class CascadeControllerSystem(core.System, nn.Module):
             f"unrecognized input ports {list(ctrl.input.keys())}"
         )
 
-    SUPPORTS_TRANSFORM_MODE = True
+    def derive(self, p, step_size):
+        """Each sub-controller's parameters (estimated values from ``p``, the
+        rest the sub-controller's own) and what it derives from them."""
+        p_a = self._resolve_sub_params(self.ctrl_a, "ctrl_a", p)
+        p_b = self._resolve_sub_params(self.ctrl_b, "ctrl_b", p)
+        return {
+            "ctrl_a_params": self.ctrl_a.full_params(p_a, step_size),
+            "ctrl_b_params": self.ctrl_b.full_params(p_b, step_size),
+        }
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step of the composite cascade = ctrl_a -> ctrl_b.
 
         State is ``[ctrl_a_state | ctrl_b_state]`` (the order
@@ -306,21 +314,7 @@ class CascadeControllerSystem(core.System, nn.Module):
         Controller A's output feeds controller B *within the same step*,
         exactly like :meth:`do_step`'s sequential sub-stepping.
         """
-        # Identity-keyed cache: a sequential rollout re-calls forward with the
-        # SAME params dict every step (see OneStepComposer._params_for).
-        if transform_mode:
-            p_a = self._resolve_sub_params(self.ctrl_a, "ctrl_a", params)
-            p_b = self._resolve_sub_params(self.ctrl_b, "ctrl_b", params)
-        else:
-            cache = getattr(self, "_fwd_param_cache", None)
-            if cache is None or cache[0] is not params:
-                cache = (
-                    params,
-                    self._resolve_sub_params(self.ctrl_a, "ctrl_a", params),
-                    self._resolve_sub_params(self.ctrl_b, "ctrl_b", params),
-                )
-                self._fwd_param_cache = cache
-            _, p_a, p_b = cache
+        p_a, p_b = params["ctrl_a_params"], params["ctrl_b_params"]
 
         n_a = self.ctrl_a.state_size()
         x_a, x_b = x[..., :n_a], x[..., n_a:]
@@ -328,21 +322,11 @@ class CascadeControllerSystem(core.System, nn.Module):
         in_a = self._route_forward_inputs(
             self.ctrl_a, inputs["setpointValue_a"], inputs["actualValue_a"]
         )
-        kwargs_a = (
-            {"transform_mode": transform_mode}
-            if getattr(self.ctrl_a, "SUPPORTS_TRANSFORM_MODE", False)
-            else {}
-        )
-        x_a_n, out_a = self.ctrl_a.forward(x_a, in_a, p_a, step_size, **kwargs_a)
+        x_a_n, out_a = self.ctrl_a.forward(x_a, in_a, p_a, step_size)
 
         in_b = self._route_forward_inputs(
             self.ctrl_b, out_a["inputSignal"], inputs["actualValue_b"]
         )
-        kwargs_b = (
-            {"transform_mode": transform_mode}
-            if getattr(self.ctrl_b, "SUPPORTS_TRANSFORM_MODE", False)
-            else {}
-        )
-        x_b_n, out_b = self.ctrl_b.forward(x_b, in_b, p_b, step_size, **kwargs_b)
+        x_b_n, out_b = self.ctrl_b.forward(x_b, in_b, p_b, step_size)
 
         return torch.cat([x_a_n, x_b_n], dim=-1), {"inputSignal": out_b["inputSignal"]}

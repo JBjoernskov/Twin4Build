@@ -36,11 +36,27 @@ except ImportError:  # host memory stats then degrade to None
     psutil = None
 
 import twin4build as tb
+from twin4build.core import Input, Output, Setting, System
 import twin4build.examples.utils as example_utils
 from twin4build.simulator._functional_simulation import (
     FUNCTIONAL_MATERIALIZATION_REVISION,
 )
 from twin4build.utils.rgetattr import rgetattr
+from twin4build.utils.data_loaders.sources import CsvSource
+
+
+class DiscomfortSystem(System):
+    """relu(setpoint - measured) * scale: the underheating below the setpoint,
+    in Kelvin-hours per step with scale = step / 3600 s."""
+
+    scale = Setting(1.0)
+    setpoint = Input()
+    measured = Input()
+    output = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"output": torch.relu(inputs["setpoint"] - inputs["measured"]) * self.scale}
+
 
 SEED = 20260902
 BENCHMARK_IMPLEMENTATION_REVISION = "post-run-finiteness-v1"
@@ -909,7 +925,6 @@ def _set_truth(roles: dict[str, Any], values: dict[str, float]) -> None:
     ):
         for name in names:
             rgetattr(obj, name).set(values[f"{prefix}.{name}"], normalized=False)
-    heater.initialize_UA = False
     for damper, internal, prefix in (
         (supply, occupancy.supply_damper, "supply_damper"),
         (exhaust, occupancy.exhaust_damper, "exhaust_damper"),
@@ -2402,21 +2417,10 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         },
         id="shared_valve_position_schedule",
     )
-    # One function object for every zone: identical lambdas are distinct
-    # objects, and Model.batch_components treats two transformations as two
-    # component kinds, which would leave each zone's discomfort unbatched.
-    def _discomfort_kelvin_hours(d):
-        return torch.relu(d["setpoint"] - d["measured"]) * (STEP_SIZE / 3600)
-
     opt_parts = []
     for i, zone in enumerate(parts["zone_parts"]):
         prefix = f"zone_{i}__"
-        price = tb.ScheduleSystem(
-            filename=price_path,
-            date_column=0,
-            value_column=1,
-            id=prefix + "price_schedule",
-        )
+        price = tb.ScheduleSystem(id=prefix + "price_schedule", source=CsvSource(price_path, date_column=0, value_column=1))
         cost = tb.ScalarProductSystem(
             scale_factor=STEP_SIZE / 3600 / 1000, id=prefix + "costs_sensor"
         )
@@ -2427,11 +2431,7 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         # add a term that no solution ever trades against.  The optimizer
         # reports objectives as horizon means, so total Kelvin-hours over the
         # horizon is this objective times the number of steps.
-        discomfort = tb.FunctionSystem(
-            inputs=["setpoint", "measured"],
-            fn=_discomfort_kelvin_hours,
-            id=prefix + "discomfort_sensor",
-        )
+        discomfort = DiscomfortSystem(scale=STEP_SIZE / 3600, id=prefix + "discomfort_sensor")
         cooling = tb.ScheduleSystem(
             weekday_ruleset={
                 "ruleset_default_value": 0,

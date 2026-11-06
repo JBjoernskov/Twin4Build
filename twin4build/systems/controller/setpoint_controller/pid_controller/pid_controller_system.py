@@ -202,16 +202,6 @@ class PIDControllerSystem(core.System, nn.Module):
         # Allocate the PID state (n_s, n_c, 2), zero initial value.
         self._state.initialize(n_s=batch_size, n_c=self.n_c, n_v=2, force=True)
 
-        # Cache step_size as tensor to avoid creating it every step
-        # step_size may be a list with one value per batch element, so unsqueeze(1) gives shape (batch, 1)
-        self._step_size_tensor = torch.tensor(
-            step_size, dtype=tps.float_dtype(), requires_grad=False
-        ).unsqueeze(1)
-
-        # Drop per-params forward caches: a fresh simulation must not reuse
-        # coefficients (or their autograd graph) from a previous run.
-        self._fwd_coef_cache = None
-        self._forward_params_cache = None
 
     @staticmethod
     def asymptotic_smooth_saturation(
@@ -277,11 +267,7 @@ class PIDControllerSystem(core.System, nn.Module):
         step_index: int,
     ) -> None:
         """Thin port-I/O wrapper around :meth:`forward` (the single source of
-        truth for the PID math).  ``forward``'s identity-keyed
-        coefficient cache replaces the old per-attribute caching: the params
-        dict from ``_forward_params`` and ``self._step_size_tensor`` are both
-        identity-stable across steps, so the coefficients are recomputed only
-        when a parameter actually changes."""
+        truth for the PID math); the coefficients are derived once per run."""
         inputs = {
             "setpointValue": self.input["setpointValue"].get(),
             "actualValue": self.input["actualValue"].get(),
@@ -289,8 +275,8 @@ class PIDControllerSystem(core.System, nn.Module):
         x_next, outs = self.forward(
             self._state.get(),  # (n_s, n_c, 2) = [integral, err_prev]
             inputs,
-            self._forward_params(),
-            self._step_size_tensor,
+            self._forward_params(step_size),
+            self._scalar_step_size(step_size),
         )
         self._state.set(x_next)
         self.output["inputSignal"]._set(outs["inputSignal"], i_t=step_index)
@@ -300,10 +286,13 @@ class PIDControllerSystem(core.System, nn.Module):
     # base class generically.
 
     #: Physical parameters, in a fixed order (the ``forward`` theta contract).
-    SUPPORTS_TRANSFORM_MODE = True
     PARAM_NAMES = ("kp", "Ti", "Td", "output_min", "output_max")
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def derive(self, p, step_size):
+        """The gains per step, from the parameters and the step size."""
+        return {"coefficients": self._compute_pid_coefficients(p["kp"], p["Ti"], p["Td"], step_size)}
+
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step PID ``(state, inputs, params) -> (new_state, outputs)``.
 
         Functorch-compatible re-expression of :meth:`do_step`.  ``x`` is the memory
@@ -311,28 +300,7 @@ class PIDControllerSystem(core.System, nn.Module):
         ``setpointValue`` / ``actualValue``; ``params`` a dict for
         :attr:`PARAM_NAMES`.  Returns ``(x_next, {"inputSignal"})``.
         """
-        # Params-only coefficients, cached per params-dict identity (computed
-        # once per theta in a sequential rollout, not once per step).  The
-        # step-size check is by identity too: ``do_step`` passes the stable
-        # ``_step_size_tensor`` (a ``!=`` on a batched tensor would be
-        # ambiguous), the composer a stable float.
-        if transform_mode:
-            coefficients = self._compute_pid_coefficients(
-                params["kp"], params["Ti"], params["Td"], step_size
-            )
-        else:
-            cache = getattr(self, "_fwd_coef_cache", None)
-            if cache is None or cache[0] is not params or cache[1] is not step_size:
-                cache = (
-                    params,
-                    step_size,
-                    self._compute_pid_coefficients(
-                        params["kp"], params["Ti"], params["Td"], step_size
-                    ),
-                )
-                self._fwd_coef_cache = cache
-            coefficients = cache[2]
-        kp, ki, kd = coefficients
+        kp, ki, kd = params["coefficients"]
         err = inputs["setpointValue"] - inputs["actualValue"]
         reverse = self.is_reverse
         if isinstance(reverse, torch.Tensor):

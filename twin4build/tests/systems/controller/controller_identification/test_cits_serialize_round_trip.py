@@ -128,8 +128,8 @@ def build_radiator_loop(model_id, paths):
     cits = ControllerIdentificationPISystem(id="cits")
     room = BuildingSpaceSystem(
         id="room",
-        thermal_kwargs=dict(C_wall=1e6, C_air=1e4, C_boundary=5e5, R_out=0.01, R_in=0.02, R_boundary=0.03, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
-        mass_kwargs=dict(V=100.0),
+        thermal=dict(C_wall=1e6, C_air=1e4, R_out=0.01, R_in=0.02, f_wall=0.5, f_air=0.3, Q_occ_gain=100.0),
+        mass=dict(V=100.0),
     )
     # Heat to the room: command x 1 x 1500 W.
     radiator = ScalarProductSystem(id="radiator", scale_factor=1500.0)

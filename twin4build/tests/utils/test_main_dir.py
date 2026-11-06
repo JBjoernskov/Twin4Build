@@ -163,25 +163,32 @@ class TestSolveUA(unittest.TestCase):
         self.assertAlmostEqual(self._heater(Q_flow_nominal_sh=4800.0).solve_UA() / ua, 2.0, places=6)
 
     def test_the_component_is_not_changed(self):
-        heater = self._heater()
+        heater = self._heater(UA=10.0)
         heater.solve_UA()
-        self.assertAlmostEqual(float(heater.UA.get().reshape(-1)[0]), 10.0)  # the placeholder
-        self.assertTrue(heater.initialize_UA)
+        self.assertAlmostEqual(float(heater.UA.get().reshape(-1)[0]), 10.0)
         self.assertFalse(heater.INITIALIZED)
 
-    def test_it_is_the_value_initialize_sets(self):
+    def test_it_is_the_default_and_a_run_keeps_it(self):
         heater = self._heater()
         ua = heater.solve_UA()
+        self.assertAlmostEqual(float(heater.UA.get().reshape(-1)[0]), ua, places=9)
         self._initialize(heater)
         self.assertAlmostEqual(float(heater.UA.get().reshape(-1)[0]), ua, places=9)
 
-    def test_a_radiator_sized_before_the_model_is_initialized(self):
+    def test_a_given_ua_is_kept_and_the_old_switch_explains(self):
+        heater = self._heater(UA=37.5)
+        self._initialize(heater)
+        self.assertAlmostEqual(float(heater.UA.get().reshape(-1)[0]), 37.5, places=9)
+        with self.assertRaisesRegex(TypeError, "solve_UA"):
+            self._heater(initialize_UA=False)
+        with self.assertRaisesRegex(AttributeError, "solve_UA"):
+            heater.initialize_UA = True
+
+    def test_a_radiator_sized_again_after_a_nominal_changed(self):
         heater = self._heater()
         heater.Q_flow_nominal_sh = 3600.0  # the room's design heat loss
-        ua = heater.solve_UA()
-        heater.UA.set(ua, normalized=False)
-        heater.initialize_UA = False
-        self.assertAlmostEqual(float(heater.UA.get().reshape(-1)[0]), ua, places=9)
+        heater.UA = heater.solve_UA()
+        ua = float(heater.UA.get().reshape(-1)[0])
         self._initialize(heater)
         self.assertAlmostEqual(float(heater.UA.get().reshape(-1)[0]), ua, places=9)
         self.assertAlmostEqual(ua / self._heater().solve_UA(), 1.5, places=6)

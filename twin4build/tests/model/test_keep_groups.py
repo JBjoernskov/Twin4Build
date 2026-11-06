@@ -54,8 +54,8 @@ def build(model_id="keep_groups"):
     outdoor = series([5.0] * 8, id="outdoor")
     setpoint = series([18.0] * 8, id="setpoint")
     sj = SupplyFlowJunctionSystem(id="supply_junction")
-    rj = ReturnFlowJunctionSystem(id="return_junction", branch_temperature_slots=list(range(N_ROOMS)))
-    unit = AirHandlingUnitCoreSystem(id="unit", supply_fan_kwargs=dict(FAN_KWARGS), exhaust_fan_kwargs=dict(FAN_KWARGS))
+    rj = ReturnFlowJunctionSystem(id="return_junction")
+    unit = AirHandlingUnitCoreSystem(id="unit", supply_fan=dict(FAN_KWARGS), exhaust_fan=dict(FAN_KWARGS))
     for k in range(N_ROOMS):
         d = DamperSystem(id=f"terminal{k}", a=1.0, nominalAirFlowRate=0.5, exhaustFlowRatio=RATIO)
         r = Room(id=f"room{k}", k=0.5 + 0.25 * k)
@@ -104,6 +104,19 @@ def trajectory(model, cid, port="T"):
 def senders_of(component):
     return {conn.connects_system.id for cp in component.connects_at for conn in cp.connects_system_through}
 
+
+
+
+def temperature_slots(junction):
+    """Each room's slots on the junction's ``airTemperatureIn``."""
+    out = {}
+    for cp in junction.connects_at:
+        if cp.input_port != "airTemperatureIn":
+            continue
+        for conn in cp.connects_system_through:
+            index = cp.input_port_index[conn]
+            out[conn.connects_system.id] = sorted(torch.as_tensor(index).reshape(-1).tolist())
+    return out
 
 class TestKeepGroups(unittest.TestCase):
     def test_rooms_of_the_cut_model_with_what_sends_into_them(self):
@@ -178,7 +191,8 @@ class TestKeepGroups(unittest.TestCase):
         self.assertEqual(report["removed"], ["room1", "T_sensor1"])
         self.assertEqual(report["repaired"], ["return_junction"])
         junction = model.components["return_junction"]
-        self.assertEqual(junction.branch_temperature_slots, [0, 0, 2])
+        # branch 1 lost its room: it takes room0's temperature, by a connection
+        self.assertEqual(temperature_slots(junction), {"room0": [0, 1], "room2": [2]})
         self.assertEqual(senders_of(junction), {"terminal0", "terminal1", "terminal2", "room0", "room2"})
         simulate(model)
         self.assertEqual(junction.input["airFlowRateIn"].get().shape[-1], 3)
@@ -199,9 +213,9 @@ class TestKeepGroups(unittest.TestCase):
         self.assertEqual(
             set(report["removed"]), {"room2", "T_sensor2", "terminal2", "flow_sensor2", "pos2"}
         )
-        self.assertEqual(report["repaired"], ["return_junction"])
+        self.assertEqual(report["repaired"], [])  # flow and temperature left together
         junction = model.components["return_junction"]
-        self.assertEqual(junction.branch_temperature_slots, [0, 1])
+        self.assertEqual(temperature_slots(junction), {"room0": [0], "room1": [1]})
         simulate(model)
         self.assertEqual(junction.input["airFlowRateIn"].get().shape[-1], 2)
         self.assertTrue(torch.isfinite(trajectory(model, "return_junction", "airTemperatureOut")).all())
@@ -214,7 +228,7 @@ class TestKeepGroups(unittest.TestCase):
         report = keep_groups(model, p, everything, with_senders=False)
         self.assertEqual(report["removed"], [])
         self.assertEqual(report["repaired"], [])
-        self.assertEqual(model.components["return_junction"].branch_temperature_slots, [0, 1, 2])
+        self.assertEqual(temperature_slots(model.components["return_junction"]), {"room0": [0], "room1": [1], "room2": [2]})
 
     def test_a_group_the_partition_does_not_have(self):
         model = build("keep_unknown")

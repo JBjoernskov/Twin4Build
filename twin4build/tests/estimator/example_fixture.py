@@ -7,6 +7,7 @@ from pathlib import Path
 from dateutil import tz
 
 import twin4build as tb
+from twin4build.utils.data_loaders.sources import CsvSource
 
 
 STEP_SIZE = 1200
@@ -50,13 +51,14 @@ def load_model():
     components["supply_air_temperature_sensor"].filename = data_path(
         "supply_air_temperature.csv"
     )
-    components["office_temperature_heating_setpoint"].filename = data_path(
-        "temperature_heating_setpoint.csv"
+    # the saved model held the columns; the reader names them
+    components["office_temperature_heating_setpoint"].source = CsvSource(
+        data_path("temperature_heating_setpoint.csv"), date_column=2, value_column=4
     )
     outdoor = components["outdoor_environment"]
-    outdoor.filename_outdoorTemperature = data_path("outdoor_environment.csv")
-    outdoor.filename_globalIrradiation = data_path("outdoor_environment.csv")
-    outdoor.filename_outdoorCo2Concentration = data_path("outdoor_environment.csv")
+    outdoor.outdoorTemperature_source = CsvSource(data_path("outdoor_environment.csv"), date_column=0, value_column=1)
+    outdoor.globalIrradiation_source = CsvSource(data_path("outdoor_environment.csv"), date_column=0, value_column=2)
+    outdoor.outdoorCo2Concentration_source = CsvSource(data_path("outdoor_environment.csv"), date_column=0, value_column=3)
     components["office_occupancy"].co2_filename = data_path("co2_sensor.csv")
     components["office_occupancy"].damper_filename = data_path(
         "damper_position_sensor.csv"
@@ -76,10 +78,8 @@ def example_parameters(model):
     return [
         (space, "thermal.C_air", 2e6, 1e6, 1e7),
         (space, "thermal.C_wall", 2e6, 1e6, 1e7),
-        (space, "thermal.C_boundary", 5e5, 1e4, 1e6),
         (space, "thermal.R_out", 0.01, 1e-3, 0.1),
         (space, "thermal.R_in", 0.05, 1e-3, 0.5),
-        (space, "thermal.R_boundary", 0.05, 1e-3, 0.5),
         (space, "thermal.f_wall", 0.5, 0.01, 0.99),
         (space, "thermal.f_air", 0.5, 0.01, 0.99),
         (space, "mass.V", 80, 10, 300),

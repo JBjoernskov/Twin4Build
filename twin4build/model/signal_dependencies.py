@@ -82,12 +82,22 @@ def parameter_names(component) -> Tuple[str, ...]:
     return tuple(str(e[1]) for e in getter()) if callable(getter) else ()
 
 
-def forward_params(component) -> Dict[str, torch.Tensor]:
-    """The component's ``forward`` params at their current values (:func:`parameter_names`)."""
+def _settings(component) -> Dict[str, torch.Tensor]:
+    """The component's value settings (:meth:`System.value_settings`): constants of the
+    step, in ``forward``'s ``p`` but neither probed nor differentiated."""
+    values = getattr(component, "value_setting_params", None)
+    return values() if callable(values) else {}
 
-    if getattr(component, "PARAM_NAMES", None) is not None:
-        return dict(component._forward_params())
-    return {name: rgetattr(component, name).get() for name in parameter_names(component)}
+
+def forward_params(component) -> Dict[str, torch.Tensor]:
+    """The component's parameters at their current values (:func:`parameter_names`); what the
+    component derives from them (``derive``) is added where ``forward`` is called, so that the
+    derivatives reach the parameters."""
+    return {
+        name: rgetattr(component, name).get()
+        for name in parameter_names(component)
+        if rgetattr(component, name) is not None  # an absent (optional) parameter
+    }
 
 
 def has_state(component) -> bool:
@@ -262,7 +272,9 @@ def derive(
         p_in = {k: _perturbed(v, generator, spread).requires_grad_(True) for k, v in params.items()}
         x0 = None if state is None else (_perturbed(state, generator, spread).requires_grad_(True))
         with saturation_mode("smooth"):
-            x_next, outs = component.forward(x0, dict(x_in), dict(p_in), step_size, **(forward_kwargs or {}))
+            x_next, outs = component.forward(
+                x0, dict(x_in), component.full_params({**_settings(component), **p_in}, step_size), step_size, **(forward_kwargs or {})
+            )
         outs = dict(outs)
         if x0 is not None and isinstance(x_next, torch.Tensor):
             outs[STATE] = x_next
@@ -317,7 +329,9 @@ def independence_violations(
         state = component.get_state()
 
     def run(x_in, p_in, x0):
-        x_next, outs = component.forward(x0, dict(x_in), dict(p_in), step_size, **(forward_kwargs or {}))
+        x_next, outs = component.forward(
+            x0, dict(x_in), component.full_params({**_settings(component), **p_in}, step_size), step_size, **(forward_kwargs or {})
+        )
         outs = dict(outs)
         if x0 is not None and isinstance(x_next, torch.Tensor):
             outs[STATE] = x_next

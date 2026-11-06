@@ -380,8 +380,8 @@ class TestModelSavedWithPower(unittest.TestCase):
         model = tb.Model(id=self.MODEL_ID)
         room = tb.BuildingSpaceSystem(
             id="room",
-            thermal_kwargs=dict(C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02),
-            mass_kwargs=dict(V=100.0),
+            thermal=dict(C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02),
+            mass=dict(V=100.0),
         )
         heater = _radiator("heater", C=2e5, UA=45.0)
         for port, value in (

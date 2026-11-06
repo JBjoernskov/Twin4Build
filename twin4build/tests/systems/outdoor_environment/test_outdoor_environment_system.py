@@ -43,9 +43,10 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
             index=dates,
         )
 
-        outdoor_env = OutdoorEnvironmentSystem(id="test_outdoor_df", df=df)
+        outdoor_env = OutdoorEnvironmentSystem.from_dataframe(df, id="test_outdoor_df")
         self.assertIsNotNone(outdoor_env)
-        self.assertIsNotNone(outdoor_env.df)
+        for feed in OutdoorEnvironmentSystem.FEEDS:
+            self.assertIsNotNone(getattr(outdoor_env, f"{feed}_source"))
 
     def test_initialization_with_correction(self):
         """Test outdoor environment system with linear correction."""
@@ -82,7 +83,7 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
             index=dates,
         )
 
-        outdoor_env = OutdoorEnvironmentSystem(id="test_outdoor_step", df=df)
+        outdoor_env = OutdoorEnvironmentSystem.from_dataframe(df, id="test_outdoor_step")
 
         start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
         end_time = [datetime.datetime(2023, 1, 1, 1, 0, 0, tzinfo=tz.UTC)]
@@ -124,9 +125,9 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
         )
 
         # Create with correction: y = 1.1 * x + 0.5
-        outdoor_env = OutdoorEnvironmentSystem(
+        outdoor_env = OutdoorEnvironmentSystem.from_dataframe(
+            df,
             id="test_outdoor_correction_step",
-            df=df,
             a=1.1,
             b=0.5,
             apply_correction=True,
@@ -151,6 +152,20 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
         # Expected: 1.1 * 10.0 + 0.5 = 11.5
         self.assertAlmostEqual(temp.item(), 11.5, places=1)
 
+    def test_co2_without_a_reader_is_the_default(self):
+        dates = pd.date_range(start=datetime.datetime(2023, 1, 1, tzinfo=tz.UTC), periods=10, freq="10min")
+        df = pd.DataFrame({"outdoorTemperature": [5.0] * 10, "globalIrradiation": [100.0] * 10}, index=dates)
+        outdoor_env = OutdoorEnvironmentSystem.from_dataframe(df, id="test_no_co2", co2_default=415.0)
+        start = datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)
+        outdoor_env.initialize([start], [start + datetime.timedelta(hours=1)], [600])
+        self.assertTrue(torch.all(outdoor_env.output["outdoorCo2Concentration"].history() == 415.0))
+
+    def test_the_old_keywords_are_gone(self):
+        with self.assertRaises(TypeError):
+            OutdoorEnvironmentSystem(id="old", filename_outdoorTemperature="weather.csv")
+        with self.assertRaisesRegex(AttributeError, "outdoorTemperature_source"):
+            OutdoorEnvironmentSystem(id="old").filename_outdoorTemperature = "weather.csv"
+
     def test_initialize_without_data_raises_error(self):
         """Test that initialize raises error when no data source is provided."""
         outdoor_env = OutdoorEnvironmentSystem(id="test_no_data")
@@ -164,15 +179,6 @@ class TestOutdoorEnvironmentSystem(unittest.TestCase):
                 start_time=start_time, end_time=end_time, step_size=step_size
             )
 
-    def test_apply_method(self):
-        """Test the _apply method for linear correction."""
-        outdoor_env = OutdoorEnvironmentSystem(
-            id="test_apply", a=2.0, b=1.0, apply_correction=True
-        )
-
-        # Test _apply method directly
-        result = outdoor_env._apply(torch.tensor(5.0))
-        self.assertAlmostEqual(result.item(), 11.0, places=5)  # 2.0 * 5.0 + 1.0 = 11.0
 
 
 if __name__ == "__main__":

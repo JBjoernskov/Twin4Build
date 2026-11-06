@@ -79,8 +79,8 @@ def _room_model(fuse=True, model_id="infiltration", m_inf=0.004, people=0.0, int
     room's CO2 on ``supplyAirCO2``."""
     model = tb.Model(id=model_id)
     room = tb.BuildingSpaceSystem(
-        thermal_kwargs=dict(C_air=2e6, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0, Q_occ_gain=100.0),
-        mass_kwargs=dict(V=100.0, G_occ=5e-6, m_inf=m_inf),
+        thermal=dict(C_air=2e6, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0, Q_occ_gain=100.0),
+        mass=dict(V=100.0, G_occ=5e-6, m_inf=m_inf),
         id="Room",
     )
     for port, value in (
@@ -94,8 +94,8 @@ def _room_model(fuse=True, model_id="infiltration", m_inf=0.004, people=0.0, int
         model.add_connection(_schedule(value, f"S_{port}"), room, "scheduleValue", port)
     if interior is not None:
         zone = tb.BuildingSpaceSystem(
-            thermal_kwargs=dict(C_air=5e6, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0),
-            mass_kwargs=dict(V=400.0, G_occ=5e-6, m_inf=0.002),
+            thermal=dict(C_air=5e6, C_wall=5e6, R_out=0.01, R_in=0.01, f_wall=0.0, f_air=0.0),
+            mass=dict(V=400.0, G_occ=5e-6, m_inf=0.002),
             id="Interior",
         )
         for port, value in (
@@ -173,14 +173,13 @@ class TestInfiltrationHeat(unittest.TestCase):
             "heatGain": _t(0.0),
         }
         x0 = torch.tensor([[20.0, 20.0]], dtype=torch.float64)
-        x1, out = zone.forward(x0, inputs, params, DT)
+        x1, out = zone.forward(x0, zone.with_defaults(inputs), zone.full_params(params, DT), DT)
         expected = 20.0 * math.exp(-float(constants.CP_AIR) * m_inf / C_air * DT)
         self.assertAlmostEqual(float(x1[0, 0]), expected, places=9)
         self.assertEqual(float(out["surplusAirFlowRate"]), 0.0)
         self.assertEqual(float(out["makeUpAirFlowRate"]), 0.0)
         # without infiltration the decoupled air node holds its temperature
-        zone._fwd_mat_cache = None
-        x1, _ = zone.forward(x0, inputs, {**params, "m_inf": _t(0.0)}, DT)
+        x1, _ = zone.forward(x0, zone.with_defaults(inputs), zone.full_params({**params, "m_inf": _t(0.0)}, DT), DT)
         self.assertAlmostEqual(float(x1[0, 0]), 20.0, places=9)
 
 
@@ -251,7 +250,7 @@ class TestNeighbourTakesTheSurplus(unittest.TestCase):
                     )
                     zone = model.components["Interior"]
                     _simulate(model)
-                    self.assertEqual(zone.mass._supply_wired, wired)
+                    self.assertEqual("supplyAirCO2" not in zone.input_defaults(), wired)
                     reference = {
                         port: _series(zone.output[port]) for port in ("indoorCO2", "indoorTemperature")
                     }
