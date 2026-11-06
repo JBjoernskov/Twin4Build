@@ -16,7 +16,13 @@ Covered:
 5. two copies with different parameters, batched, against the copies stepped
    separately;
 6. a saved model reloads with the same parameters and settings;
-7. a composite's children: overrides, dotted parameter paths;
+7. a composite's children: overrides, dotted parameter paths, a child and a
+   parameter per slot of an input;
+9. initial values: a state and an output start at a setting, an output at its
+   state's start;
+10. a parameter's default computed from the System, an old keyword that moved
+    into a child, a removed keyword that names its replacement, and the alias
+    tables a renamed port fills;
 8. the converted valve keeps its constructor keywords, bounds and flow.
 """
 
@@ -105,6 +111,43 @@ class PairSystem(core.System):
         _, a = self.first.forward(None, {"x": inputs["x"]}, {"gain": p["first.gain"]}, step_size)
         _, b = self.second.forward(None, {"x": a["y"]}, {"gain": p["second.gain"]}, step_size)
         return x, {"y": b["y"]}
+
+
+class BranchesSystem(core.System):
+    """A gain per branch (a child stepped once per slot of ``u``), and a scale
+    per branch only with ``scale_per_branch``."""
+
+    scale_per_branch = Setting(False)
+    u = Input(size="wired")
+    y = Output(size=u)
+    scale = Parameter(1.0, lb=0.1, ub=10.0, per_slot=u, per_slot_if=scale_per_branch)
+    branch = Child(GainSystem, per_slot=u)
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"y": inputs["u"]}
+
+
+class TankSystem(core.System):
+    """A level that holds: the state and both outputs start at ``start``."""
+
+    start = Setting(5.0)
+    stored = State(init=start)
+    level = Output(init=start)
+    reading = Output(init=stored)
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"level": x[..., 0], "reading": x[..., 0]}
+
+
+class PlateSystem(core.System):
+    """A parameter computed from a setting; an old keyword now a child's."""
+
+    DEPRECATED_KEYWORDS = {"part_gain": "part.gain"}
+    REMOVED_ATTRIBUTES = {"legacy": "give width= instead"}
+
+    width = Setting(2.0)
+    area = Parameter(lambda plate: plate.width ** 2, lb=0.1, ub=100.0)
+    part = Child(GainSystem)
 
 
 def _signal(sid="signal"):
@@ -345,6 +388,85 @@ class TestChildren(unittest.TestCase):
         _, outs = pair.forward(None, {"x": torch.tensor([2.0])}, {"first.gain": torch.tensor([3.0]),
                                                                  "second.gain": torch.tensor([0.5])}, STEP)
         torch.testing.assert_close(outs["y"], torch.tensor([3.0]))
+
+
+class TestPerSlot(unittest.TestCase):
+    def _initialized(self, **values):
+        branches = BranchesSystem(id="branches", **values)
+        branches.input["u"]._n_v = 3  # stepped on its own: the width by hand
+        branches.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        return branches
+
+    def test_a_child_per_slot_holds_a_value_per_branch(self):
+        branches = self._initialized()
+        self.assertEqual(branches.branch.n_c, 3)
+        self.assertEqual(tuple(branches.branch.gain.get().shape), (3,))
+        self.assertEqual(branches.scale.get().numel(), 1)
+
+    def test_a_parameter_per_slot_only_while_its_setting_holds(self):
+        branches = self._initialized(scale_per_branch=True)
+        self.assertEqual(tuple(branches.scale.get().shape), (3,))
+
+    def test_given_values_per_branch_are_kept(self):
+        branches = self._initialized(branch=dict(gain=[1.0, 2.0, 3.0]))
+        torch.testing.assert_close(
+            branches.branch.gain.get(), torch.tensor([1.0, 2.0, 3.0], dtype=branches.branch.gain.get().dtype)
+        )
+
+    def test_per_slot_must_name_an_input_of_the_class(self):
+        other = Input(size="wired")
+        with self.assertRaisesRegex(TypeError, "per_slot"):
+            class Stray(core.System):
+                u = Input(size="wired")
+                part = Child(GainSystem, per_slot=other)
+        with self.assertRaisesRegex(TypeError, "per_slot"):
+            Parameter(1.0, per_slot=Setting(3))
+        with self.assertRaisesRegex(TypeError, "per_slot_if"):
+            Parameter(1.0, per_slot_if=Setting(False))
+
+
+class TestInitialValues(unittest.TestCase):
+    def test_a_state_and_its_outputs_start_at_a_setting(self):
+        tank = TankSystem(id="tank", start=7.0)
+        tank.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        self.assertEqual(float(tank.get_state().reshape(-1)[0]), 7.0)
+        self.assertEqual(tank.output["level"].init_value, 7.0)
+        self.assertEqual(tank.output["reading"].init_value, 7.0)
+        self.assertEqual(float(tank.output["reading"].get().reshape(-1)[0]), 7.0)
+        tank.start = 3.0  # the next run starts at the new value
+        tank.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        self.assertEqual(float(tank.get_state().reshape(-1)[0]), 3.0)
+
+    def test_init_takes_a_number_a_setting_or_a_state(self):
+        with self.assertRaisesRegex(TypeError, "init="):
+            State(init="warm")
+        with self.assertRaisesRegex(TypeError, "init="):
+            State(init=State())
+        with self.assertRaisesRegex(TypeError, "init="):
+            class Stray(core.System):
+                level = Output(init=Setting(1.0))
+
+
+class TestBuildRules(unittest.TestCase):
+    def test_a_default_computed_from_the_system_and_a_given_value(self):
+        self.assertEqual(float(PlateSystem(id="p", width=3.0).area.get()), 9.0)
+        self.assertEqual(float(PlateSystem(id="q", width=3.0, area=5.0).area.get()), 5.0)
+
+    def test_an_old_keyword_moves_into_its_child(self):
+        with self.assertWarns(DeprecationWarning):
+            plate = PlateSystem(id="p", part_gain=5.0)
+        self.assertEqual(float(plate.part.gain.get()), 5.0)
+        self.assertEqual(plate._batch_init_kwargs["part"], {"gain": 5.0})
+
+    def test_a_removed_keyword_names_its_replacement(self):
+        with self.assertRaisesRegex(TypeError, "give width= instead"):
+            PlateSystem(id="p", legacy=1)
+
+    def test_a_renamed_port_fills_the_alias_table(self):
+        self.assertEqual(GainSystem.OUTPUT_PORT_ALIASES, {"out": "y"})
+        self.assertEqual(GainSystem(id="g").resolve_output_port("y"), "y")
+        with self.assertWarns(DeprecationWarning):
+            self.assertEqual(GainSystem(id="g").resolve_output_port("out"), "y")
 
 
 class TestConvertedValve(unittest.TestCase):

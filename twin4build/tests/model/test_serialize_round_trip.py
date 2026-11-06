@@ -111,7 +111,6 @@ class TestSerializeRoundTrip(unittest.TestCase):
             ["thermal.C_wall", "mass.V", "UA", "thermalMassHeatCapacity"],
             overwrite=True,
         )
-        heater.initialize_UA = False
         return model, room, heater, outdoor
 
     def _simulate(self, model):
@@ -136,7 +135,6 @@ class TestSerializeRoundTrip(unittest.TestCase):
         self.assertAlmostEqual(float(room2.mass.V.get().reshape(-1)[0]), 150.0, places=6)
         self.assertAlmostEqual(float(heater2.UA.get().reshape(-1)[0]), 37.5, places=6)
         self.assertAlmostEqual(float(heater2.thermalMassHeatCapacity.get().reshape(-1)[0]), 2.5e5, delta=1e-3)
-        self.assertFalse(heater2.initialize_UA)
         self.assertIs(outdoor2.transformation, celsius_from_deci)
         self.assertEqual(outdoor2.transformation_ref, f"{__name__}:celsius_from_deci")
 
@@ -180,14 +178,15 @@ class TestSerializeRoundTrip(unittest.TestCase):
         )
 
         model = tb.Model(id=self.MODEL_ID + "_outdoor")
+        from twin4build.utils.data_loaders.sources import CsvSource
+
         outdoor = OutdoorEnvironmentSystem(
             id="outdoor",
-            filename_outdoorTemperature=os.path.join(self.tmp, "outdoor.csv"),
-            filename_globalIrradiation=os.path.join(self.tmp, "outdoor.csv"),
-            use_spreadsheet=True,
+            outdoorTemperature_source=CsvSource(os.path.join(self.tmp, "outdoor.csv")),
+            globalIrradiation_source=CsvSource(os.path.join(self.tmp, "outdoor.csv")),
         )
         outdoor.set_transformation(celsius_from_deci)
-        outdoor._transformation_globalIrradiation = clip_irradiance
+        outdoor.globalIrradiation_transformation = clip_irradiance
         sink = _schedule("sink", 0.0)
         room = BuildingSpaceSystem(id="room2", mass_kwargs=dict(V=100.0))
         model.add_connection(outdoor, room, "outdoorTemperature", "outdoorTemperature")
@@ -196,16 +195,17 @@ class TestSerializeRoundTrip(unittest.TestCase):
             model.add_connection(_schedule(f"s_{port}", value), room, "scheduleValue", port)
         del sink
         model.load()
-        self.assertEqual(outdoor.transformation_ref_outdoorTemperature, f"{__name__}:celsius_from_deci")
-        self.assertEqual(outdoor.transformation_ref_globalIrradiation, f"{__name__}:clip_irradiance")
+        saved = outdoor.populate_config()["parameters"]
+        self.assertEqual(saved["outdoorTemperature_transformation"], f"{__name__}:celsius_from_deci")
+        self.assertEqual(saved["globalIrradiation_transformation"], f"{__name__}:clip_irradiance")
         model.serialize()
         path, _ = model._simulation_model._semantic_model.get_dir(filename="instance_graph.ttl")
         try:
             reloaded = tb.Model(id=self.MODEL_ID + "_outdoor_reloaded")
             reloaded.load(filename=path)
             outdoor2 = reloaded.components["outdoor"]
-            self.assertIs(outdoor2._transformation_outdoorTemperature, celsius_from_deci)
-            self.assertIs(outdoor2._transformation_globalIrradiation, clip_irradiance)
+            self.assertIs(outdoor2.outdoorTemperature_transformation, celsius_from_deci)
+            self.assertIs(outdoor2.globalIrradiation_transformation, clip_irradiance)
         finally:
             for mid in (self.MODEL_ID + "_outdoor", self.MODEL_ID + "_outdoor_reloaded"):
                 shutil.rmtree(os.path.join("generated_files", "models", mid), ignore_errors=True)

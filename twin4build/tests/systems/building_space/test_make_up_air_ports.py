@@ -64,7 +64,6 @@ class TestMassMakeUpPort(unittest.TestCase):
 
     def _step(self, m_sup, m_exh, make_up=None, wired=False):
         self.room._make_up_wired = wired
-        self.room._fwd_mat_cache = None  # matrices are cached per params identity
         inputs = {
             "supplyAirFlowRate": _t(m_sup),
             "exhaustAirFlowRate": _t(m_exh),
@@ -73,7 +72,7 @@ class TestMassMakeUpPort(unittest.TestCase):
         }
         if make_up is not None:
             inputs["makeUpAirCO2"] = _t(make_up)
-        x1, _ = self.room.forward(self.x0, inputs, dict(self.params), DT)
+        x1, _ = self.room.forward(self.x0, inputs, self.room.full_params(dict(self.params), DT), DT)
         return float(x1[0, 0])
 
     def test_unwired_ignores_the_port(self):
@@ -115,7 +114,6 @@ class TestMassSupplyPort(unittest.TestCase):
 
     def _step(self, m_sup, m_exh, supply=None, wired=False):
         self.room._supply_wired = wired
-        self.room._fwd_mat_cache = None
         inputs = {
             "supplyAirFlowRate": _t(m_sup),
             "exhaustAirFlowRate": _t(m_exh),
@@ -124,7 +122,7 @@ class TestMassSupplyPort(unittest.TestCase):
         }
         if supply is not None:
             inputs["supplyAirCO2"] = _t(supply)
-        x1, _ = self.room.forward(self.x0, inputs, dict(self.params), DT)
+        x1, _ = self.room.forward(self.x0, inputs, self.room.full_params(dict(self.params), DT), DT)
         return float(x1[0, 0])
 
     def test_unwired_ignores_the_port(self):
@@ -224,7 +222,6 @@ class TestThermalMakeUpPort(unittest.TestCase):
 
     def _step(self, m_sup, m_exh, make_up=None, wired=False):
         self.zone._make_up_wired = wired
-        self.zone._fwd_mat_cache = None
         inputs = {
             "outdoorTemperature": _t(self.T_O),
             "supplyAirFlowRate": _t(m_sup),
@@ -236,7 +233,7 @@ class TestThermalMakeUpPort(unittest.TestCase):
         }
         if make_up is not None:
             inputs["makeUpAirTemperature"] = _t(make_up)
-        x1, _ = self.zone.forward(self.x0, inputs, dict(self.params), DT)
+        x1, _ = self.zone.forward(self.x0, inputs, self.zone.full_params(dict(self.params), DT), DT)
         return float(x1[..., 0].reshape(-1)[0])
 
     def test_unwired_ignores_the_port(self):

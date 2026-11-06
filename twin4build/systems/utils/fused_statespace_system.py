@@ -169,7 +169,6 @@ class FusedStateSpaceSystem(core.System, nn.Module):
     """
 
     PARAM_NAMES: tuple = ()
-    SUPPORTS_TRANSFORM_MODE = True
 
     def __init__(self, members: List, internal_arcs: List[tuple], **kwargs):
         super().__init__(**kwargs)
@@ -235,7 +234,6 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                     )
 
         self._config = {"parameters": []}
-        self._fwd_mat_cache = None
         self._do_step_params = None
         self.INITIALIZED = False
 
@@ -428,8 +426,8 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         # transform's: a substituted input has no value of its own here.
         self._derived_outputs = []
         for entry in self._units:
-            derive = getattr(entry["unit"], "_ss_derived_outputs", None)
-            if derive is None:
+            derived_outputs = getattr(entry["unit"], "_ss_derived_outputs", None)
+            if derived_outputs is None:
                 continue
             unit = entry["unit"]
             m = entry["member"]
@@ -447,7 +445,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                     f"{type(unit).__name__} derives outputs from {port!r}, "
                     "which is not one of its output rows"
                 )
-            self._derived_outputs.append((m.id, derive, in_ports, row_ports, out_ports))
+            self._derived_outputs.append((m.id, derived_outputs, in_ports, row_ports, out_ports))
 
         # Bilinear inputs must be external.  Validate this structural rule once
         # from the declared support instead of asserting inside every traced
@@ -545,7 +543,6 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             )
         )
 
-        self._fwd_mat_cache = None
         self._do_step_params = None
         self.INITIALIZED = True
 
@@ -707,11 +704,11 @@ class FusedStateSpaceSystem(core.System, nn.Module):
     # forward / do_step
     # ------------------------------------------------------------------
 
-    def step_constants(self, params):
-        """The joint theta-only ``(A, B, C, D, E, F)`` for one rollout."""
-        return self._assemble(params)
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._assemble(p)}
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step of the fused cluster: ``(state, inputs, params) ->
         (new_state, outputs)``.
 
@@ -722,19 +719,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         the step's external inputs and the end-of-step rows).  Matrices are
         cached per params-dict identity (theta-only work, done once per theta
         in a sequential rollout)."""
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._assemble(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._assemble(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C, D, E, F = matrices
+        A, B, C, D, E, F = params["matrices"]
         # A member's Vector input (a zone's per-branch air flows) enters the
         # fused input vector as its total: the state-space units declare one
         # column for it, and the zone itself sums the branches.  The members'
@@ -769,14 +754,12 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             x,
             u,
             step_size,
-            disc_cache=disc_cache,
-            transform_mode=transform_mode,
         )
         outputs = {name: y[..., p] for p, name in enumerate(self._out_names)}
         # Derived outputs read the ports' values, not the transformed matrix
         # columns (a zone's imbalance needs its exhaust, not its make-up flow).
-        for member_id, derive, in_ports, row_ports, out_ports in self._derived_outputs:
-            derived = derive(
+        for member_id, derived_outputs, in_ports, row_ports, out_ports in self._derived_outputs:
+            derived = derived_outputs(
                 {port: port_values[f"{member_id}.{port}"] for port in in_ports},
                 {port: outputs[f"{member_id}.{port}"] for port in row_ports},
             )
@@ -798,7 +781,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                 out[f"{member_id}.{port}"] = value
         return out
 
-    def _forward_params(self) -> dict:
+    def _forward_params(self, step_size=None) -> dict:
         """Params dict for the ``do_step`` path: every unit parameter under its
         prefixed name, from the members' own ``tps.Parameter`` values.
 
@@ -806,7 +789,8 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         parameters cannot change during a simulation, and the stable dict
         identity lets :meth:`forward` reuse the assembled joint matrices for
         the whole rollout.  Estimation writes parameters and re-simulates,
-        which re-initializes and rebuilds -- with the fresh autograd graph."""
+        which re-initializes and rebuilds -- with the fresh autograd graph.
+        The joint matrices (:meth:`derive`) are built with it."""
         params = self._do_step_params
         if params is None:
             params = {
@@ -814,6 +798,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                 for entry in self._units
                 for path in entry["param_paths"].values()
             }
+            params = {**params, **self.derive(params, step_size)}
             self._do_step_params = params
         return params
 
@@ -837,7 +822,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         inputs = {name: self._input[name].get() for name in self._ext_names}
         x = self.get_state()  # (n_s, n_c, N) via the members' own states
         x_next, outs = self.forward(
-            x, inputs, self._forward_params(), self._scalar_step_size(step_size)
+            x, inputs, self._forward_params(step_size), self._scalar_step_size(step_size)
         )
         self.set_state(x_next)
         for name, value in outs.items():

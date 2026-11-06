@@ -215,29 +215,26 @@ class TestFanCoilUnitTorchSystem(unittest.TestCase):
         ua_val = self.fcu.UA.get().item()
         self.assertGreater(ua_val, 0.0)
 
-    def test_no_ua_initialization(self):
-        """Test that UA is preserved when initialize_UA is False."""
-        fcu_no_init = FanCoilUnitSystem(
-            id="test_fcu_no_ua_init",
+    def test_a_given_ua_is_kept(self):
+        """A given UA is the start; without one, the nominal solve is."""
+        given = FanCoilUnitSystem(
+            id="test_fcu_given_ua",
             Q_flow_nominal=2000.0,
             T_w_supply_nominal=60.0,
             T_w_return_nominal=45.0,
             T_air_in_nominal=21.0,
             thermalMassHeatCapacity=50000.0,
             nelements=2,
-            initialize_UA=False,
+            UA=150.0,
         )
-        # UA should remain at its placeholder value
-        initial_ua = fcu_no_init.UA.get().item()
-
         start_time = [datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=tz.UTC)]
         end_time = [datetime.datetime(2023, 1, 1, 1, 40, 0, tzinfo=tz.UTC)]
         step_size = [600]
-        fcu_no_init.initialize(
-            start_time=start_time, end_time=end_time, step_size=step_size
-        )
-
-        self.assertAlmostEqual(fcu_no_init.UA.get().item(), initial_ua, places=5)
+        given.initialize(start_time=start_time, end_time=end_time, step_size=step_size)
+        self.assertAlmostEqual(given.UA.get().item(), 150.0, places=5)
+        self.assertNotAlmostEqual(given.solve_UA(), 150.0, places=1)
+        with self.assertRaisesRegex(TypeError, "solve_UA"):
+            FanCoilUnitSystem(id="old", initialize_UA=False)
 
 
 if __name__ == "__main__":

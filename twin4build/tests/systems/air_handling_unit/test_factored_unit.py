@@ -83,11 +83,10 @@ def build_composite():
     pos, fan, room, outdoor, setpoint = _leaves(model)
     unit = AirHandlingUnitSystem(
         id="unit",
-        supply_damper_kwargs=dict(DAMPER_KWARGS),
-        heat_recovery_kwargs=dict(HR_KWARGS),
-        supply_fan_kwargs=dict(FAN_KWARGS),
-        exhaust_fan_kwargs=dict(FAN_KWARGS),
-        n_branches=2,
+        supply_damper=dict(DAMPER_KWARGS),
+        heat_recovery=dict(HR_KWARGS),
+        supply_fan=dict(FAN_KWARGS),
+        exhaust_fan=dict(FAN_KWARGS),
         exhaust_follows_supply=True,
         exhaustFlowRatio=RATIO,
     )
@@ -123,9 +122,9 @@ def build_factored():
     return_junction = ReturnFlowJunctionSystem(id="return_junction")
     unit = AirHandlingUnitCoreSystem(
         id="unit",
-        heat_recovery_kwargs=dict(HR_KWARGS),
-        supply_fan_kwargs=dict(FAN_KWARGS),
-        exhaust_fan_kwargs=dict(FAN_KWARGS),
+        heat_recovery=dict(HR_KWARGS),
+        supply_fan=dict(FAN_KWARGS),
+        exhaust_fan=dict(FAN_KWARGS),
     )
     for k, d in enumerate(dampers):
         model.add_connection(pos[k], d, "measuredValue", "damperPosition")
@@ -226,7 +225,8 @@ class TestFactoredUnit(unittest.TestCase):
 
     def test_estimable_parameters(self):
         """The terminal owns its ratio; the composite unit keeps its own and
-        does not report its internal dampers' ratios."""
+        does not estimate its internal dampers' ratios (it saves them, as
+        every child value)."""
         terminal = DamperSystem(id="t", exhaustFlowRatio=RATIO, **DAMPER_KWARGS)
         attrs = {e[1] for e in terminal.get_estimable_parameters()}
         self.assertIn("exhaustFlowRatio", attrs)
@@ -236,7 +236,6 @@ class TestFactoredUnit(unittest.TestCase):
         self.assertIn("exhaustFlowRatio", attrs)
         self.assertNotIn("supply_damper.exhaustFlowRatio", attrs)
         self.assertNotIn("exhaust_damper.exhaustFlowRatio", attrs)
-        self.assertNotIn("supply_damper.exhaustFlowRatio", composite.config["parameters"])
         core_unit = build_factored().components["unit"]
         attrs = {e[1] for e in core_unit.get_estimable_parameters()}
         self.assertTrue(all(a.split(".")[0] in ("coil", "heat_recovery", "supply_fan", "exhaust_fan") for a in attrs))
@@ -341,9 +340,9 @@ class TestFactoringTheComposite(unittest.TestCase):
 
 
 class TestFactoringSharedRoom(unittest.TestCase):
-    """A room with two terminals publishes one temperature for both branches:
-    the composite maps branches to room slots internally, the factored form
-    through the return junction's ``branch_temperature_slots``."""
+    """A room with two terminals publishes one temperature into the slots of
+    both branches (one connection, two slots): the composite and the factored
+    form read it per branch."""
 
     def build(self):
         model = tb.Model(id="shared_room_unit")
@@ -353,11 +352,10 @@ class TestFactoringSharedRoom(unittest.TestCase):
         setpoint = Series([SETPOINT] * len(POSITIONS), id="setpoint")
         unit = AirHandlingUnitSystem(
             id="unit",
-            supply_damper_kwargs=dict(DAMPER_KWARGS),
-            heat_recovery_kwargs=dict(HR_KWARGS),
-            supply_fan_kwargs=dict(FAN_KWARGS),
-            exhaust_fan_kwargs=dict(FAN_KWARGS),
-            n_branches=3,
+            supply_damper=dict(DAMPER_KWARGS),
+            heat_recovery=dict(HR_KWARGS),
+            supply_fan=dict(FAN_KWARGS),
+            exhaust_fan=dict(FAN_KWARGS),
             exhaust_follows_supply=True,
             exhaustFlowRatio=RATIO,
         )
@@ -366,16 +364,16 @@ class TestFactoringSharedRoom(unittest.TestCase):
         model.add_connection(fan, unit, "measuredValue", "supplyFanSpeed")
         model.add_connection(outdoor, unit, "measuredValue", "outdoorAirTemperature")
         model.add_connection(setpoint, unit, "measuredValue", "supplyAirTemperatureSetpoint")
-        # room 0 owns branches 0 and 1 and publishes its state as its temperature (slot 0);
-        # room 1 owns branch 2 on slot 1
+        # room 0 owns branches 0 and 1 and publishes its state as its temperature on both;
+        # room 1 owns branch 2
         room0, room1 = Sink(id="room0"), Sink(id="room1")
         model.add_connection(
             unit, room0, "supplyAirFlowRate", "u",
             output_port_index=torch.tensor([0, 1]), input_port_index=torch.tensor([0, 1]),
         )
         model.add_connection(unit, room1, "supplyAirFlowRate", "u", output_port_index=2, input_port_index=0)
-        model.add_connection(room0, unit, "w", "exhaustTemperature", input_port_index=0)
-        model.add_connection(room1, unit, "w", "exhaustTemperature", input_port_index=1)
+        model.add_connection(room0, unit, "w", "exhaustTemperature", input_port_index=[0, 1])
+        model.add_connection(room1, unit, "w", "exhaustTemperature", input_port_index=2)
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         return model
 
@@ -407,7 +405,13 @@ class TestFactoringSharedRoom(unittest.TestCase):
         reference["room0"] = _history(model, "room0", "w")
         reference["room1"] = _history(model, "room1", "w")
         (parts,) = model.factor_air_handling_units()
-        self.assertEqual(parts["return_junction"].branch_temperature_slots, [0, 0, 1])
+        junction = parts["return_junction"]
+        slots = {
+            conn.connects_system.id: sorted(torch.as_tensor(cp.input_port_index[conn]).reshape(-1).tolist())
+            for cp in junction.connects_at if cp.input_port == "airTemperatureIn"
+            for conn in cp.connects_system_through
+        }
+        self.assertEqual(slots, {"room0": [0, 1], "room1": [2]})
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         _simulate(model)
         self._check(model, reference)
