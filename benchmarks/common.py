@@ -41,6 +41,7 @@ from twin4build.simulator._functional_simulation import (
     FUNCTIONAL_MATERIALIZATION_REVISION,
 )
 from twin4build.utils.rgetattr import rgetattr
+from twin4build.utils.data_loaders.sources import CsvSource
 
 SEED = 20260902
 BENCHMARK_IMPLEMENTATION_REVISION = "post-run-finiteness-v1"
@@ -2411,12 +2412,7 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
     opt_parts = []
     for i, zone in enumerate(parts["zone_parts"]):
         prefix = f"zone_{i}__"
-        price = tb.ScheduleSystem(
-            filename=price_path,
-            date_column=0,
-            value_column=1,
-            id=prefix + "price_schedule",
-        )
+        price = tb.ScheduleSystem(id=prefix + "price_schedule", source=CsvSource(price_path, date_column=0, value_column=1))
         cost = tb.ScalarProductSystem(
             scale_factor=STEP_SIZE / 3600 / 1000, id=prefix + "costs_sensor"
         )
