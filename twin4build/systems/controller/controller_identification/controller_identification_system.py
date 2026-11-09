@@ -283,14 +283,8 @@ class ControllerIdentificationSystem(core.System, nn.Module):
             cascade_controllers = [CascadeControllerSystem]
             cascade_controller_kwargs = [
                 {
-                    "kp_a": 0.1,
-                    "Ti_a": 10.0,
-                    "Td_a": 0.0,
-                    "kp_b": 0.5,
-                    "Ti_b": 5.0,
-                    "Td_b": 0.0,
-                    "isReverse_a": True,
-                    "isReverse_b": True,
+                    "ctrl_a": {"kp": 0.1, "Ti": 10.0, "Td": 0.0, "is_reverse": True},
+                    "ctrl_b": {"kp": 0.5, "Ti": 5.0, "Td": 0.0, "is_reverse": True},
                 },
             ]
 

@@ -663,6 +663,44 @@ class TestSettingsPerCopy(unittest.TestCase):
         _remove(batched.id)
 
 
+class TestPIDDirectionPerCopy(unittest.TestCase):
+    """Standalone PIDs acting in opposite directions share a batched copy and
+    each acts in its own (they all took the first one's before)."""
+
+    def tearDown(self):
+        _remove("test_pid_separate", "test_pid_batched")
+
+    def _model(self, model_id):
+        model = tb.Model(id=model_id)
+        for k, reverse in enumerate((True, False)):
+            pid = tb.PIDControllerSystem(id=f"pid{k}", kp=0.5, Ti=600.0, is_reverse=reverse)
+            model.add_connection(_signal(f"measured{k}"), pid, "scheduleValue", "actualValue")
+            setpoint = tb.ScheduleSystem(weekday_ruleset={"ruleset_default_value": 2.0}, id=f"setpoint{k}")
+            model.add_connection(setpoint, pid, "scheduleValue", "setpointValue")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model
+
+    def test_opposite_directions_batch_and_keep_theirs(self):
+        separate = self._model("test_pid_separate")
+        _simulate(separate)
+        u0, u1 = (separate.components[f"pid{k}"].output["inputSignal"].history().reshape(-1) for k in range(2))
+        self.assertFalse(torch.allclose(u0, u1))  # the directions act differently
+        model = self._model("test_pid_batched")
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["pid0"]
+        self.assertIs(model._component_to_meta["pid1"][0], meta)
+        self.assertEqual(meta.is_reverse.tolist(), [True, False])
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        for mode in ("object", "functional"):
+            _simulate(batched, mode=mode)
+            for k in range(2):
+                meta, i_c = model._component_to_meta[f"pid{k}"]
+                got = batched.components[meta.id].output["inputSignal"].history(i_c=i_c).reshape(-1).detach().cpu()
+                want = separate.components[f"pid{k}"].output["inputSignal"].history().reshape(-1).cpu()
+                torch.testing.assert_close(got, want, msg=mode)
+        _remove(batched.id)
+
+
 class TestConvertedValve(unittest.TestCase):
     def test_the_valve_keeps_its_interface_and_flow(self):
         valve = tb.ValveSystem(id="valve", waterFlowRateMax=0.02, valveAuthority=0.5)

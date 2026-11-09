@@ -1,13 +1,13 @@
 # Local application imports
-import twin4build.utils.types as tps
-from twin4build.systems.utils.sigmoid_gate import SigmoidGate
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
+from twin4build.systems.utils.sigmoid_gate import ThresholdGate
 
 
-class OccupancyDetectorSystem(SigmoidGate):
+class OccupancyDetectorSystem(ThresholdGate):
     r"""Smooth binary occupancy detector (mimics a PIR sensor).
 
-    Inherits sigmoid threshold logic from :class:`SigmoidGate`.  Overrides
-    port names for backward compatibility with existing model graphs.
+    The threshold logic of :class:`~twin4build.systems.utils.sigmoid_gate.SigmoidGate`, on its own
+    ports (``occupancy`` -> ``occupancySignal``).
 
     Converts a continuous occupancy estimate :math:`N_{occ}` into a smooth
     0--1 signal.  Despite the name, this is *not* a logistic sigmoid: it is
@@ -45,18 +45,12 @@ class OccupancyDetectorSystem(SigmoidGate):
             and usually should be, see above).
         steepness: Ramp gain; the differentiable window is ``1/steepness``
             wide (higher = sharper, but harder to calibrate through).
-        **kwargs: Forwarded to ``core.System`` (must include ``id``).
     """
 
     INPUT_PORT = "occupancy"
     OUTPUT_PORT = "occupancySignal"
 
-    def __init__(
-        self,
-        threshold: float = 1,
-        steepness: float = 10.0,
-        **kwargs,
-    ):
-        super().__init__(threshold=threshold, steepness=steepness, **kwargs)
-        self._input = {"occupancy": tps.Scalar()}
-        self._output = {"occupancySignal": tps.Scalar()}
+    occupancy = Input(doc="The occupancy estimate (people)")
+    occupancySignal = Output(doc="The smooth 0-1 occupied signal")
+    threshold = Parameter(1.0, doc="Occupancy level that triggers 'occupied'")
+    steepness = Parameter(10.0, doc="Ramp gain; the differentiable window is 1/steepness wide")

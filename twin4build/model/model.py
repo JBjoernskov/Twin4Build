@@ -1790,8 +1790,6 @@ class Model:
         # A declared System's settings build its meta (``_batch_init_kwargs``)
         # and its wiring sizes its ports: the wall, the node, the radiator,
         # the fan-coil and the room need no entry.
-        "twin4build.systems.controller.setpoint_controller.pid_controller"
-        ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
     }
 
     @staticmethod
