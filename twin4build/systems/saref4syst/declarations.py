@@ -248,16 +248,23 @@ class Setting(Declaration):
             the dict a saved model holds, ...).
         save: Whether a saved model holds the value (``False`` for a value
             that cannot be written down, such as a function).
+        structural: The setting picks a code path in ``forward`` (an ``if`` on
+            it), so batched copies must share it.  A setting that sizes a port
+            or a state, or that is not a number, is structural without saying
+            so; any other setting is a *value setting*: batched copies may hold
+            different values, and ``forward`` reads it from ``p``, one value
+            per copy (``p["is_reverse"]``).
         doc: What the setting chooses.
     """
 
     kind = "setting"
 
-    def __init__(self, default=REQUIRED, convert=None, save: bool = True, doc: str = ""):
+    def __init__(self, default=REQUIRED, convert=None, save: bool = True, structural: bool = False, doc: str = ""):
         super().__init__(doc)
         self.default = default
         self.convert = convert
         self.save = save
+        self.structural = bool(structural)
 
 
 class Child(Declaration):

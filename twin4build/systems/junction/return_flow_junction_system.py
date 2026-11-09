@@ -76,7 +76,7 @@ class ReturnFlowJunctionSystem(core.System):
         Q_dot_in = (inputs["airTemperatureIn"] * flows).sum(dim=-1)
         tol = 1e-5
         has_flow = m_dot_in > tol
-        flow_rate_out = m_dot_in + self.airFlowRateBias
+        flow_rate_out = m_dot_in + p["airFlowRateBias"]
         temp_out_flow = Q_dot_in / torch.clamp(flow_rate_out, min=tol)
         return x, {
             "airFlowRateOut": torch.where(has_flow, flow_rate_out, torch.zeros_like(m_dot_in)),

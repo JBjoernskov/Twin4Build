@@ -73,7 +73,9 @@ class AirHandlingUnitSystem(core.System):
         "exhaust_fan_kwargs": "exhaust_fan",
     }
 
-    exhaust_follows_supply = Setting(False, doc="Each branch's exhaust flow is exhaustFlowRatio times its supply flow")
+    exhaust_follows_supply = Setting(
+        False, structural=True, doc="Each branch's exhaust flow is exhaustFlowRatio times its supply flow"
+    )
     # Zone-level imbalance is real: a BMS snapshot showed 500 m3/h in and 250
     # out in one room with the floor balanced.
     exhaust_ratio_per_branch = Setting(False, doc="One exhaustFlowRatio per branch instead of one per unit")

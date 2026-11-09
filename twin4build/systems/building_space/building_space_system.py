@@ -148,8 +148,8 @@ class BuildingSpaceSystem(core.System):
         """Full physical-parameter dict for a submodel: estimated values from
         ``params`` (keyed ``"<prefix>.<name>"``, a shared one by its source's
         key, :attr:`SHARED_UNIT_PARAMS`), the rest from the ``tps.Parameter``
-        defaults."""
-        out = {}
+        defaults; the submodel's value settings come along."""
+        out = sub.value_setting_params()
         for name in sub.PARAM_NAMES:
             key = f"{prefix}.{name}"
             key = self.SHARED_UNIT_PARAMS.get(key, key)

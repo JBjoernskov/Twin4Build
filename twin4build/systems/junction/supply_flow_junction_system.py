@@ -59,5 +59,5 @@ class SupplyFlowJunctionSystem(core.System):
 
     def forward(self, x, inputs, p, step_size):
         """Stateless: the total flow plus the bias."""
-        return x, {"airFlowRateIn": inputs["airFlowRateOut"].sum(dim=-1) + self.airFlowRateBias}
+        return x, {"airFlowRateIn": inputs["airFlowRateOut"].sum(dim=-1) + p["airFlowRateBias"]}
 

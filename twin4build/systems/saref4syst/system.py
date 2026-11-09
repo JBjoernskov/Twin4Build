@@ -29,11 +29,20 @@ from twin4build.utils.simulation_time import get_simulation_timesteps
 from twin4build.utils.state_marker import StateMarker
 
 
+#: Per class, its value settings (see :meth:`System.value_settings`).
+_VALUE_SETTINGS: dict = {}
+
+
 def _setting_reader(name: str):
-    """A state's ``init_fn`` reading its initial value from the setting ``name``."""
+    """A state's ``init_fn`` reading its initial value from the setting ``name``
+    (one value per copy on a batched System: ``(n_c, 1)``)."""
 
     def read(component):
-        return torch.as_tensor(getattr(component, name), dtype=tps.float_dtype())
+        value = torch.as_tensor(getattr(component, name), dtype=tps.float_dtype())
+        n_c = int(getattr(component, "n_c", 1) or 1)
+        if value.dim() == 1 and n_c > 1 and value.numel() == n_c:
+            return value.reshape(n_c, 1)
+        return value
 
     return read
 
@@ -406,6 +415,13 @@ class System(nn.Module, metaclass=SystemMeta):
             if isinstance(value, dict) and hasattr(current, "to_config") and current.to_config() == value:
                 return  # the reader it already holds (a DataFrame reader's dict has no data)
             value = setting.convert(value)
+        if isinstance(value, (list, tuple, np.ndarray)) and name in type(self).value_settings():
+            # one value per copy (a batched System's saved config holds a list)
+            values = list(np.asarray(value).reshape(-1))
+            if all(isinstance(v, (bool, np.bool_)) for v in values):
+                value = torch.tensor([bool(v) for v in values], dtype=torch.bool)
+            else:
+                value = torch.tensor([float(v) for v in values], dtype=tps.float_dtype())
         parameter = type(self)._declarations["parameter"].get(name)
         if parameter is not None and value is not None and not isinstance(
             value, (tps.Parameter, tps.TensorParameter)
@@ -548,6 +564,49 @@ class System(nn.Module, metaclass=SystemMeta):
         n_v = decl.size if isinstance(decl.size, int) else None
         return tps.Vector(default, n_v=n_v, optional=default is not None, is_leaf=leaf)
 
+    @classmethod
+    def value_settings(cls) -> tuple:
+        """The settings batched copies may hold different values of, which
+        ``forward`` reads from ``p``: a number by default, not sizing anything,
+        not ``structural=True``, of a System that is not a data source."""
+        cached = _VALUE_SETTINGS.get(cls)
+        if cached is not None:
+            return cached
+        names = ()
+        if getattr(cls, "_is_declared", False) and not cls._is_data_source():
+            declared = cls._declarations
+            sizing = set()
+            for kind in ("input", "output", "state"):
+                for decl in declared[kind].values():
+                    ref = getattr(decl, "size", None)
+                    if isinstance(ref, Declaration) and ref.kind == "setting":
+                        sizing.add(ref.name)
+            for kind in ("parameter", "child"):
+                for decl in declared[kind].values():
+                    if getattr(decl, "per_slot_if", None) is not None:
+                        sizing.add(decl.per_slot_if.name)
+            names = tuple(
+                name for name, decl in declared["setting"].items()
+                if not decl.structural and name not in sizing
+                and isinstance(decl.default, (bool, int, float))
+            )
+        _VALUE_SETTINGS[cls] = names
+        return names
+
+    def value_setting_params(self) -> dict:
+        """The value settings as ``forward`` reads them in ``p``: a tensor, one
+        value per copy on a batched System."""
+        out = {}
+        for name in type(self).value_settings():
+            value = getattr(self, name)
+            if isinstance(value, torch.Tensor):
+                out[name] = value
+            elif isinstance(value, bool):
+                out[name] = torch.tensor(value)
+            else:
+                out[name] = torch.tensor(float(value), dtype=tps.float_dtype())
+        return out
+
     def _setting_size(self, name: str) -> int:
         value = getattr(self, name)
         if value is None:
@@ -619,7 +678,11 @@ class System(nn.Module, metaclass=SystemMeta):
         self.__dict__["_input_defaults"] = self.input_defaults()
         for name, decl in type(self)._declarations["output"].items():
             if decl.init is not None:
-                self.output[name].init_value = self._initial_value(decl.init)
+                value = self._initial_value(decl.init)
+                if isinstance(value, torch.Tensor):
+                    self.output[name]._init_value = value  # one per copy
+                else:
+                    self.output[name].init_value = value
         for ports in (self.input, self.output):
             for port in ports.values():
                 if data_source and ports is self.output:
@@ -649,19 +712,23 @@ class System(nn.Module, metaclass=SystemMeta):
             self._fill_from_series(n_t, n_s, n_c, *run)
         self.INITIALIZED = True
 
-    def _initial_value(self, init) -> float:
+    def _initial_value(self, init):
         """An output's ``init=``: a number, a setting's value, or a state's
-        initial value (one number)."""
+        initial value -- one number, or one per copy (a value setting of a
+        batched System)."""
         if isinstance(init, Declaration) and init.kind == "state":
             init = init.init
         if isinstance(init, Declaration):
             init = getattr(self, init.name)
         value = torch.as_tensor(init, dtype=tps.float_dtype()).reshape(-1)
-        if value.numel() != 1:
-            raise ValueError(
-                f"{type(self).__name__} '{self.id}': an output starts at one number, got {value.numel()} values"
-            )
-        return float(value[0])
+        if value.numel() == 1:
+            return float(value[0])
+        if value.numel() == self.n_c:
+            return value.clone()
+        raise ValueError(
+            f"{type(self).__name__} '{self.id}': an output starts at one number or one per copy, "
+            f"got {value.numel()} values for {self.n_c} copies"
+        )
 
     def input_defaults(self) -> dict:
         """The unwired inputs that read another input of the System
@@ -1147,6 +1214,7 @@ class System(nn.Module, metaclass=SystemMeta):
             value = rgetattr(self, name)
             if value is not None:  # an absent (optional) parameter
                 params[name] = value.get()
+        params.update(self.value_setting_params())
         if getattr(type(self), "derive", None) is None:
             return params
         derived = self.__dict__.get("_derived")

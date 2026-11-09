@@ -25,7 +25,9 @@ Covered:
     tables a renamed port fills;
 11. an input that reads another input while unwired, in both engines; a child
     that takes its composite's wired width; a child parameter shared with
-    another; a child's own id.
+    another; a child's own id;
+12. settings batch per copy: a value setting may differ between batched
+    copies and reaches forward through p; a structural one splits batches.
 8. the converted valve keeps its constructor keywords, bounds and flow.
 """
 
@@ -186,6 +188,32 @@ class OuterSystem(core.System):
     def forward(self, x, inputs, p, step_size):
         _, out = self.inner.forward(None, {"flows": inputs["flows"]}, {}, step_size)
         return x, out
+
+
+class BiasSystem(core.System):
+    """A value setting (``bias``), a structural one (``negate``) and one that
+    sizes a port (``width``)."""
+
+    bias = Setting(0.0)
+    negate = Setting(False, structural=True)
+    width = Setting(1)
+    u = Input()
+    extra = Input(size=width, default=0.0)
+    y = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        y = inputs["u"] + p["bias"]
+        return x, {"y": -y if self.negate else y}
+
+
+def _bias_model(model_id, biases, negate=(False, False)):
+    model = tb.Model(id=model_id)
+    for k, (bias, neg) in enumerate(zip(biases, negate)):
+        system = BiasSystem(id=f"bias{k}", bias=bias, negate=neg)
+        model.add_connection(_signal(f"signal{k}"), system, "scheduleValue", "u")
+        model.add_connection(system, LagSystem(id=f"lag{k}"), "y", "u")
+    model.load(draw_semantic_model=False, draw_simulation_model=False)
+    return model
 
 
 def _signal(sid="signal"):
@@ -578,6 +606,61 @@ class TestCompositionRules(unittest.TestCase):
     def test_a_child_may_give_its_own_id(self):
         self.assertEqual(PairSystem(id="pair").first.id, "pair_first")
         self.assertEqual(PairSystem(id="pair", first=dict(id="custom")).first.id, "custom")
+
+
+class TestSettingsPerCopy(unittest.TestCase):
+    def tearDown(self):
+        _remove("test_settings_separate", "test_settings_batched", "test_settings_split", "test_walls_t_init")
+
+    def test_which_settings_are_values(self):
+        self.assertEqual(BiasSystem.value_settings(), ("bias",))
+        self.assertEqual(tb.WallSystem.value_settings(), ("T_init",))
+        self.assertEqual(tb.ScheduleSystem.value_settings(), ())  # a data source
+        self.assertEqual(tb.AirHandlingUnitSystem.value_settings(), ())
+
+    def test_copies_with_different_values_batch_and_keep_them(self):
+        separate = _bias_model("test_settings_separate", (1.0, 5.0))
+        _simulate(separate)
+        model = _bias_model("test_settings_batched", (1.0, 5.0))
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["bias0"]
+        self.assertIs(model._component_to_meta["bias1"][0], meta)
+        torch.testing.assert_close(meta.bias, torch.tensor([1.0, 5.0], dtype=torch.float64))
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        for mode in ("object", "functional"):
+            _simulate(batched, mode=mode)
+            for k in range(2):
+                meta, i_c = model._component_to_meta[f"bias{k}"]
+                got = batched.components[meta.id].output["y"].history(i_c=i_c).reshape(-1).detach().cpu()
+                torch.testing.assert_close(got, separate.components[f"bias{k}"].output["y"].history().reshape(-1).cpu(),
+                                           msg=mode)
+        _remove(batched.id)
+
+    def test_a_structural_setting_splits_the_batch(self):
+        model = _bias_model("test_settings_split", (1.0, 1.0), negate=(False, True))
+        batched = model.batch_components()
+        self.assertIsNot(model._component_to_meta["bias0"][0], model._component_to_meta["bias1"][0])
+        _remove(batched.id)
+
+    def test_walls_start_at_their_own_value_in_one_batch(self):
+        model = tb.Model(id="test_walls_t_init")
+        node = tb.ThermalMassNodeSystem(C=5e7, T_init=22.0, id="node")
+        for k, t_init in enumerate((18.0, 26.0)):
+            wall = tb.WallSystem(T_init=t_init, id=f"wall{k}")
+            model.add_connection(node, wall, "temperature", "temperatureA")
+            model.add_connection(node, wall, "temperature", "temperatureB")
+            model.add_connection(wall, node, "heatFlowRateB", "heatFlowRate", input_port_index=k)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["wall0"]
+        self.assertIs(model._component_to_meta["wall1"][0], meta)
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        meta = batched.components[meta.id]
+        meta.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=[STEP])
+        torch.testing.assert_close(meta.get_state().reshape(-1).cpu(), torch.tensor([18.0, 26.0], dtype=torch.float64))
+        torch.testing.assert_close(meta.output["wallTemperature"].get().reshape(-1).cpu(),
+                                   torch.tensor([18.0, 26.0], dtype=torch.float64))
+        _remove(batched.id)
 
 
 class TestConvertedValve(unittest.TestCase):

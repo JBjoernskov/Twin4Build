@@ -385,9 +385,12 @@ class FunctionalModel:
         self.cone = self._influence_cone(seed_extra)
         self._default_params = {
             comp.id: {
-                name: rgetattr(comp, name).get()
-                for name in getattr(comp, "PARAM_NAMES", ())
-                if rgetattr(comp, name) is not None  # an absent (optional) parameter
+                **{
+                    name: rgetattr(comp, name).get()
+                    for name in getattr(comp, "PARAM_NAMES", ())
+                    if rgetattr(comp, name) is not None  # an absent (optional) parameter
+                },
+                **(comp.value_setting_params() if hasattr(comp, "value_setting_params") else {}),
             }
             for comp in self.cone
         }
@@ -1173,6 +1176,8 @@ class FunctionalModel:
                     p[name] = theta[est[name]].reshape(-1)
                 elif name in self._default_params[comp.id]:
                     p[name] = self._default_params[comp.id][name]
+            for name, value in self._default_params[comp.id].items():
+                p.setdefault(name, value)  # the value settings
         # Prefixed estimated params (composite: "thermal.C_air") -> pass through.
         for attr, idx in est.items():
             if "." in attr:

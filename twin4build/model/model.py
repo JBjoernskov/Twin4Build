@@ -1314,6 +1314,7 @@ class Model:
                     self._copy_data_source_attrs(comps[0], meta)
                     meta._batched_execution_priority = group_idx
                     self._batch_parameters(meta, comps, n_c)
+                    self._batch_value_settings(meta, comps)
                     self._copy_init_attrs(meta, comps[0])
                     self._stack_instance_attrs(meta, comps)
                 except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
@@ -1794,6 +1795,20 @@ class Model:
     }
 
     @staticmethod
+    def _batch_value_settings(meta: Any, components: List) -> None:
+        """A declared System's value settings, one per copy: a setting all
+        copies share stays as it is, differing ones are stacked ``(n_c,)``
+        (``forward`` reads them from ``p``)."""
+        for name in getattr(type(meta), "value_settings", lambda: ())():
+            values = [getattr(c, name) for c in components]
+            if all(v == values[0] for v in values[1:]):
+                continue
+            if all(isinstance(v, bool) for v in values):
+                setattr(meta, name, torch.tensor(values, dtype=torch.bool))
+            else:
+                setattr(meta, name, torch.tensor([float(v) for v in values], dtype=tps.float_dtype()))
+
+    @staticmethod
     def _stack_instance_attrs(meta: Any, components: List) -> None:
         """Stack the per-instance values a class declares in
         ``_batch_stacked_attrs`` (dotted paths) onto the meta, ``(n_c, ...)``.
@@ -1914,11 +1929,15 @@ class Model:
             # batching is concerned, even if their source is identical.
             return id(value)
 
+        # A value setting may differ between copies (it is stacked per copy);
+        # the structural ones must match.
+        per_copy = set(type(component).value_settings()) if hasattr(type(component), "value_settings") else set()
         init_signature = tuple(
             (name, _declared_signature(value))
             for name, value in sorted(
                 (getattr(component, "_batch_init_kwargs", None) or {}).items()
             )
+            if name not in per_copy
         )
         outgoing = []
         for connection in getattr(component, "connected_through", ()):

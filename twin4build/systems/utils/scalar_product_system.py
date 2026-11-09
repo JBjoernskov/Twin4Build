@@ -32,5 +32,5 @@ class ScalarProductSystem(core.System):
 
     def forward(self, x, inputs, p, step_size):
         """Stateless: ``input_1 * input_2 * scale_factor``."""
-        return x, {"output": inputs["input_1"] * inputs["input_2"] * self.scale_factor}
+        return x, {"output": inputs["input_1"] * inputs["input_2"] * p["scale_factor"]}
 
