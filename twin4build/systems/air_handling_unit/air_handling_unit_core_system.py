@@ -26,21 +26,14 @@ two wirings give the same supply temperature and powers.
 
 from __future__ import annotations
 
-# Standard library imports
-import datetime
-
-# Third party imports
-import torch
-import torch.nn as nn  # noqa: F401 - torch needed for tensor ops
-
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import (
     AirToAirHeatRecoverySystem,
 )
 from twin4build.systems.coil.coil_system import CoilSystem
 from twin4build.systems.fan.fan_system import FanSystem
+from twin4build.systems.saref4syst.declarations import Child, Input, Output
 
 
 #: The device's submodels, in the order the chain steps them.
@@ -50,7 +43,7 @@ CORE_SUB_NAMES = ("coil", "heat_recovery", "supply_fan", "exhaust_fan")
 def resolve_sub_params(sub, prefix, params):
     """Full physical-parameter dict for a submodel: estimated values from
     ``params`` (keyed ``"<prefix>.<name>"``), the rest from the submodel's
-    own ``tps.Parameter`` defaults."""
+    own values; an absent (optional) parameter stays out."""
     out = {}
     for name in sub.PARAM_NAMES:
         key = f"{prefix}.{name}"
@@ -128,7 +121,7 @@ def unit_chain(
     }
 
 
-class AirHandlingUnitCoreSystem(core.System, nn.Module):
+class AirHandlingUnitCoreSystem(core.System):
     r"""
     An air handling unit on its totals: the device without the terminals.
 
@@ -140,126 +133,39 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
     The composite :class:`AirHandlingUnitSystem` computes the same device on
     the branch flows of its internal dampers; the two agree step for step.
 
-    Inputs
-        - ``totalSupplyAirFlowRate`` [kg/s]
-        - ``totalExhaustAirFlowRate`` [kg/s]
-        - ``returnAirTemperature`` [°C], the flow-weighted mix of the exhausts
-        - ``supplyAirTemperatureSetpoint`` [°C]
-        - ``outdoorAirTemperature`` [°C]
-
-    Outputs
-        - ``supplyAirTemperature``, ``preheatSupplyAirTemperature``,
-          ``exhaustAirTemperatureOut`` [°C]
-        - ``totalSupplyAirFlowRate``, ``totalExhaustAirFlowRate`` [kg/s]
-          (the inputs, passed through for the unit's flow meters)
-        - ``heatingPower``, ``coolingPower``, ``supplyFanPower``,
-          ``exhaustFanPower`` [W]
-
-    Parameters
-        The coil's, the heat recovery's and the fans' own, prefixed
-        (``"coil.<name>"``, ``"heat_recovery.<name>"``, ``"supply_fan.<name>"``,
-        ``"exhaust_fan.<name>"``).
+    Its parameters are the coil's, the heat recovery's and the fans' own,
+    prefixed (``"coil.<name>"``, ``"heat_recovery.<name>"``,
+    ``"supply_fan.<name>"``, ``"exhaust_fan.<name>"``).  A child's values are
+    given as a dict: ``AirHandlingUnitCoreSystem(id="unit",
+    supply_fan=dict(beta3=2000.0))``.
     """
 
-    PARAM_NAMES = ()  # all parameters live on the owned submodels (prefixed)
-    _SUB_NAMES = CORE_SUB_NAMES
+    #: The old names of the children's constructor values (removed in 2.1).
+    DEPRECATED_KEYWORDS = {
+        "coil_kwargs": "coil",
+        "heat_recovery_kwargs": "heat_recovery",
+        "supply_fan_kwargs": "supply_fan",
+        "exhaust_fan_kwargs": "exhaust_fan",
+    }
 
-    def __init__(
-        self,
-        coil_kwargs: dict | None = None,
-        heat_recovery_kwargs: dict | None = None,
-        supply_fan_kwargs: dict | None = None,
-        exhaust_fan_kwargs: dict | None = None,
-        **kwargs,
-    ):
-        """
-        Args:
-            coil_kwargs: Keyword arguments for :class:`CoilSystem`.
-            heat_recovery_kwargs: Keyword arguments for
-                :class:`AirToAirHeatRecoverySystem`.
-            supply_fan_kwargs: Keyword arguments for the supply :class:`FanSystem`.
-            exhaust_fan_kwargs: Keyword arguments for the exhaust :class:`FanSystem`.
-            **kwargs: Passed to the System base class (``id`` is required).
-        """
-        coil_kwargs = dict(coil_kwargs or {})
-        heat_recovery_kwargs = dict(heat_recovery_kwargs or {})
-        supply_fan_kwargs = dict(supply_fan_kwargs or {})
-        exhaust_fan_kwargs = dict(exhaust_fan_kwargs or {})
-        assert "id" in kwargs, "id is required for AirHandlingUnitCoreSystem"
-        unit_id = kwargs["id"]
-        coil_kwargs.setdefault("id", f"{unit_id}_coil")
-        heat_recovery_kwargs.setdefault("id", f"{unit_id}_heat_recovery")
-        supply_fan_kwargs.setdefault("id", f"{unit_id}_supply_fan")
-        exhaust_fan_kwargs.setdefault("id", f"{unit_id}_exhaust_fan")
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-        self.coil = CoilSystem(**coil_kwargs)
-        self.heat_recovery = AirToAirHeatRecoverySystem(**heat_recovery_kwargs)
-        self.supply_fan = FanSystem(**supply_fan_kwargs)
-        self.exhaust_fan = FanSystem(**exhaust_fan_kwargs)
-
-        self._input = {
-            "totalSupplyAirFlowRate": tps.Scalar(),
-            "totalExhaustAirFlowRate": tps.Scalar(),
-            "returnAirTemperature": tps.Scalar(),
-            "supplyAirTemperatureSetpoint": tps.Scalar(),
-            "outdoorAirTemperature": tps.Scalar(),
-        }
-        self._output = {
-            "supplyAirTemperature": tps.Scalar(),
-            "preheatSupplyAirTemperature": tps.Scalar(),
-            "exhaustAirTemperatureOut": tps.Scalar(),
-            "totalSupplyAirFlowRate": tps.Scalar(),
-            "totalExhaustAirFlowRate": tps.Scalar(),
-            "heatingPower": tps.Scalar(),
-            "coolingPower": tps.Scalar(),
-            "supplyFanPower": tps.Scalar(),
-            "exhaustFanPower": tps.Scalar(),
-        }
-        self._config = {
-            "parameters": [
-                f"{sub_name}.{p}"
-                for sub_name in self._SUB_NAMES
-                for p in getattr(self, sub_name)._config["parameters"]
-            ]
-        }
-        self.PARAM_NAMES = tuple(
-            f"{sub_name}.{param_name}"
-            for sub_name in self._SUB_NAMES
-            for param_name in getattr(getattr(self, sub_name), "PARAM_NAMES", ())
-        )
-        self.INITIALIZED = False
-
-    @property
-    def input(self) -> dict:
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        return self._output
-
-    @property
-    def config(self):
-        return self._config
-
-    def initialize(
-        self,
-        start_time: list[datetime.datetime],
-        end_time: list[datetime.datetime],
-        step_size: int,
-    ) -> None:
-        """Initialize the ports and the submodels."""
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-        for port in self.input.values():
-            port.initialize(n_t=max_timesteps, n_s=batch_size)
-        for port in self.output.values():
-            port.initialize(n_t=max_timesteps, n_s=batch_size)
-        for sub_name in self._SUB_NAMES:
-            getattr(self, sub_name).initialize(start_time, end_time, step_size)
-        self.INITIALIZED = True
+    totalSupplyAirFlowRate = Input(doc="The supply flow [kg/s]")
+    totalExhaustAirFlowRate = Input(doc="The exhaust flow [kg/s]")
+    returnAirTemperature = Input(doc="The flow-weighted mix of the exhausts [degC]")
+    supplyAirTemperatureSetpoint = Input(doc="Supply air temperature setpoint [degC]")
+    outdoorAirTemperature = Input(doc="Outdoor air temperature [degC]")
+    supplyAirTemperature = Output(doc="Supply air temperature, after the supply fan [degC]")
+    preheatSupplyAirTemperature = Output(doc="Supply air temperature after the heat recovery, before the coil [degC]")
+    exhaustAirTemperatureOut = Output(doc="Exhaust air temperature after the heat recovery [degC]")
+    totalSupplyAirFlowRate = Output(doc="The supply flow, passed through for the unit's flow meter [kg/s]")
+    totalExhaustAirFlowRate = Output(doc="The exhaust flow, passed through for the unit's flow meter [kg/s]")
+    heatingPower = Output(doc="Coil heating power [W]")
+    coolingPower = Output(doc="Coil cooling power [W]")
+    supplyFanPower = Output(doc="Supply fan power [W]")
+    exhaustFanPower = Output(doc="Exhaust fan power [W]")
+    coil = Child(CoilSystem)
+    heat_recovery = Child(AirToAirHeatRecoverySystem)
+    supply_fan = Child(FanSystem)
+    exhaust_fan = Child(FanSystem)
 
     def derive(self, p, step_size):
         """The submodels' parameters (estimated values from ``p``, the rest the
@@ -267,17 +173,14 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
         return {
             "sub_params": {
                 n: getattr(self, n).full_params(resolve_sub_params(getattr(self, n), n, p), step_size)
-                for n in self._SUB_NAMES
+                for n in CORE_SUB_NAMES
             }
         }
 
     def forward(self, x, inputs, params, step_size):
-        """Pure one-step of the device (functorch-safe, stateless): the
-        :func:`unit_chain` on the scalar inputs.  ``params`` is keyed by the
-        composite attr path (``"coil.<name>"``, ...); non-estimated entries
-        fall back to the submodels' defaults."""
+        """Stateless: the :func:`unit_chain` on the totals."""
         P = params["sub_params"]
-        subs = {n: getattr(self, n) for n in self._SUB_NAMES}
+        subs = {n: getattr(self, n) for n in CORE_SUB_NAMES}
         outs = unit_chain(
             subs,
             P,
@@ -289,18 +192,3 @@ class AirHandlingUnitCoreSystem(core.System, nn.Module):
             step_size,
         )
         return x, outs
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ) -> None:
-        """Thin port-I/O wrapper around :meth:`forward`."""
-        inputs = {name: port.get() for name, port in self.input.items()}
-        _, outs = self.forward(
-            None, inputs, self._forward_params(), self._scalar_step_size(step_size)
-        )
-        for name, value in outs.items():
-            self.output[name]._set(value, i_t=step_index)

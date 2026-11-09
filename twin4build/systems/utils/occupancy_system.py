@@ -614,7 +614,7 @@ class OccupancySystem(core.System, nn.Module):
 
         fan = inputs.get("fanSpeedMeasured")
         if fan is not None:
-            # Same gate as AirHandlingUnitSystem._fan_gate: nothing moves
+            # Same gate as DamperSystem.fan_gate: nothing moves
             # with the fan stopped, the damper sets the flow once it runs.
             # A hard clamp: with the port unwired (value 1) the gate must be
             # exactly 1 so both engines agree to the bit.

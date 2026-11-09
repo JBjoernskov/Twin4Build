@@ -581,19 +581,30 @@ class System(nn.Module, metaclass=SystemMeta):
                 else:
                     port.initialize(n_t=n_t, n_s=n_s, n_c=n_c)
         declared = type(self)._declarations
-        for name in declared["parameter"]:
+        for name, decl in declared["parameter"].items():
             value = getattr(self, name)
             if value is not None:
-                setattr(self, name, value.expand_to_n_c(n_c))
+                setattr(self, name, value.expand_to_n_c(n_c * self.slots_per_copy(decl)))
         for name in declared["state"]:
             getattr(self, name).initialize(n_s=n_s, n_c=n_c, component=self, force=True)
-        for name in declared["child"]:
+        for name, decl in declared["child"].items():
             child = getattr(self, name)
             if type(child)._is_declared:
-                child._initialize_declared(n_t, n_s, n_c, run)
+                child._initialize_declared(n_t, n_s, n_c * self.slots_per_copy(decl), run)
         if data_source:
             self._fill_from_series(n_t, n_s, n_c, *run)
         self.INITIALIZED = True
+
+    def slots_per_copy(self, decl) -> int:
+        """How many values a declared parameter, or copies a declared child,
+        one copy of this System holds: the width of its ``per_slot`` input
+        (while its ``per_slot_if`` setting is true), else 1.  Read once the
+        ports are sized."""
+        port = getattr(decl, "per_slot", None)
+        condition = getattr(decl, "per_slot_if", None)
+        if port is None or (condition is not None and not getattr(self, condition.name)):
+            return 1
+        return max(int(self.input[port.name]._n_v or 0), 1)
 
     def _fill_from_series(self, n_t, n_s, n_c, timestamps, own_steps, step_size) -> None:
         """Call ``series`` and fill every output with its values for the whole

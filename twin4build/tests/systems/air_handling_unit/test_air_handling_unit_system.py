@@ -33,12 +33,12 @@ class TestAirHandlingUnitTorchSystem(unittest.TestCase):
         }
         self.ahu = AirHandlingUnitSystem(
             id="test_ahu",
-            supply_damper_kwargs=damper_kwargs, exhaust_damper_kwargs=damper_kwargs,
-            heat_recovery_kwargs=heat_recovery_kwargs,
-            supply_fan_kwargs=fan_kwargs,
-            exhaust_fan_kwargs=fan_kwargs,
-            n_branches=2,
+            supply_damper=damper_kwargs, exhaust_damper=damper_kwargs,
+            heat_recovery=heat_recovery_kwargs,
+            supply_fan=fan_kwargs,
+            exhaust_fan=fan_kwargs,
         )
+        self.ahu.n_branches = 2  # stepped on its own: no wiring gives the width
 
     def test_initialization(self):
         """AHU initializes without error."""

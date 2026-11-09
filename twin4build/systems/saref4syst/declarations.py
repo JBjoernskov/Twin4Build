@@ -75,6 +75,16 @@ def _check_size(size, where: str) -> None:
     )
 
 
+def _check_per_slot(per_slot, per_slot_if, where: str) -> None:
+    if per_slot is not None and not isinstance(per_slot, Input):
+        raise TypeError(f"{where}: per_slot= takes an input of the class, got {per_slot!r}")
+    if per_slot_if is not None:
+        if per_slot is None:
+            raise TypeError(f"{where}: per_slot_if= needs per_slot=")
+        if not isinstance(per_slot_if, Setting):
+            raise TypeError(f"{where}: per_slot_if= takes a setting of the class, got {per_slot_if!r}")
+
+
 class Input(Declaration):
     """An input port.
 
@@ -163,21 +173,29 @@ class Parameter(Declaration):
         relative: ``(low, high)`` factors: once something sizes the parameter
             (:meth:`System.size_parameter`), its range is ``value * low`` to
             ``value * high``.
+        per_slot: An input of the class: the parameter holds one value per
+            slot of that input (per copy), as :class:`Child`'s ``per_slot``.
+        per_slot_if: A boolean setting of the class: ``per_slot`` holds only
+            while the setting is true; otherwise one value per copy.
         doc: What the parameter is, with its unit.
     """
 
     kind = "parameter"
 
     def __init__(self, value, lb=None, ub=None, scaling: str = "linear",
-                 relative: Optional[Sequence[float]] = None, doc: str = ""):
+                 relative: Optional[Sequence[float]] = None, per_slot=None, per_slot_if=None,
+                 doc: str = ""):
         super().__init__(doc)
         if scaling not in ("linear", "log"):
             raise TypeError(f"Parameter: scaling= is 'linear' or 'log', got {scaling!r}")
+        _check_per_slot(per_slot, per_slot_if, "Parameter")
         self.value = value
         self.lb = lb
         self.ub = ub
         self.scaling = scaling
         self.relative = None if relative is None else tuple(relative)
+        self.per_slot = per_slot
+        self.per_slot_if = per_slot_if
 
     def bounds(self) -> Optional[Dict[str, Any]]:
         """The entry of the System's bounds table, or ``None`` without bounds."""
@@ -222,15 +240,21 @@ class Child(Declaration):
 
     Args:
         cls: The child's class.
+        per_slot: An input of the composite: the child is stepped once per slot
+            of that input (``n_c`` times its width copies; an air handling
+            unit's damper, one per branch), so each of its parameters holds a
+            value per slot.
         **values: The child's constructor values. A user overrides them with
             ``name=dict(...)`` on the composite's constructor.
     """
 
     kind = "child"
 
-    def __init__(self, cls, **values):
+    def __init__(self, cls, per_slot=None, **values):
         super().__init__(values.pop("doc", ""))
+        _check_per_slot(per_slot, None, "Child")
         self.cls = cls
+        self.per_slot = per_slot
         self.values = values
 
 
@@ -312,6 +336,14 @@ def _check_references(cls, merged) -> None:
                 raise TypeError(
                     f"{cls.__qualname__}.{name}: size= refers to {ref!r}, which the class does not declare"
                 )
+    for kind in ("parameter", "child"):
+        for name, decl in merged[kind].items():
+            for keyword in ("per_slot", "per_slot_if"):
+                ref = getattr(decl, keyword, None)
+                if ref is not None and not known(ref):
+                    raise TypeError(
+                        f"{cls.__qualname__}.{name}: {keyword}= refers to {ref!r}, which the class does not declare"
+                    )
 
 
 def _starts_a_run(initialize):

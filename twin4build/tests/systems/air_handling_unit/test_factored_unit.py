@@ -83,11 +83,10 @@ def build_composite():
     pos, fan, room, outdoor, setpoint = _leaves(model)
     unit = AirHandlingUnitSystem(
         id="unit",
-        supply_damper_kwargs=dict(DAMPER_KWARGS),
-        heat_recovery_kwargs=dict(HR_KWARGS),
-        supply_fan_kwargs=dict(FAN_KWARGS),
-        exhaust_fan_kwargs=dict(FAN_KWARGS),
-        n_branches=2,
+        supply_damper=dict(DAMPER_KWARGS),
+        heat_recovery=dict(HR_KWARGS),
+        supply_fan=dict(FAN_KWARGS),
+        exhaust_fan=dict(FAN_KWARGS),
         exhaust_follows_supply=True,
         exhaustFlowRatio=RATIO,
     )
@@ -123,9 +122,9 @@ def build_factored():
     return_junction = ReturnFlowJunctionSystem(id="return_junction")
     unit = AirHandlingUnitCoreSystem(
         id="unit",
-        heat_recovery_kwargs=dict(HR_KWARGS),
-        supply_fan_kwargs=dict(FAN_KWARGS),
-        exhaust_fan_kwargs=dict(FAN_KWARGS),
+        heat_recovery=dict(HR_KWARGS),
+        supply_fan=dict(FAN_KWARGS),
+        exhaust_fan=dict(FAN_KWARGS),
     )
     for k, d in enumerate(dampers):
         model.add_connection(pos[k], d, "measuredValue", "damperPosition")
@@ -226,7 +225,8 @@ class TestFactoredUnit(unittest.TestCase):
 
     def test_estimable_parameters(self):
         """The terminal owns its ratio; the composite unit keeps its own and
-        does not report its internal dampers' ratios."""
+        does not estimate its internal dampers' ratios (it saves them, as
+        every child value)."""
         terminal = DamperSystem(id="t", exhaustFlowRatio=RATIO, **DAMPER_KWARGS)
         attrs = {e[1] for e in terminal.get_estimable_parameters()}
         self.assertIn("exhaustFlowRatio", attrs)
@@ -236,7 +236,6 @@ class TestFactoredUnit(unittest.TestCase):
         self.assertIn("exhaustFlowRatio", attrs)
         self.assertNotIn("supply_damper.exhaustFlowRatio", attrs)
         self.assertNotIn("exhaust_damper.exhaustFlowRatio", attrs)
-        self.assertNotIn("supply_damper.exhaustFlowRatio", composite.config["parameters"])
         core_unit = build_factored().components["unit"]
         attrs = {e[1] for e in core_unit.get_estimable_parameters()}
         self.assertTrue(all(a.split(".")[0] in ("coil", "heat_recovery", "supply_fan", "exhaust_fan") for a in attrs))
@@ -353,11 +352,10 @@ class TestFactoringSharedRoom(unittest.TestCase):
         setpoint = Series([SETPOINT] * len(POSITIONS), id="setpoint")
         unit = AirHandlingUnitSystem(
             id="unit",
-            supply_damper_kwargs=dict(DAMPER_KWARGS),
-            heat_recovery_kwargs=dict(HR_KWARGS),
-            supply_fan_kwargs=dict(FAN_KWARGS),
-            exhaust_fan_kwargs=dict(FAN_KWARGS),
-            n_branches=3,
+            supply_damper=dict(DAMPER_KWARGS),
+            heat_recovery=dict(HR_KWARGS),
+            supply_fan=dict(FAN_KWARGS),
+            exhaust_fan=dict(FAN_KWARGS),
             exhaust_follows_supply=True,
             exhaustFlowRatio=RATIO,
         )
