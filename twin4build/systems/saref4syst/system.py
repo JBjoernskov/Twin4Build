@@ -392,6 +392,17 @@ class System(nn.Module, metaclass=SystemMeta):
             if isinstance(value, dict) and hasattr(current, "to_config") and current.to_config() == value:
                 return  # the reader it already holds (a DataFrame reader's dict has no data)
             value = setting.convert(value)
+        parameter = type(self)._declarations["parameter"].get(name)
+        if parameter is not None and value is not None and not isinstance(
+            value, (tps.Parameter, tps.TensorParameter)
+        ):
+            # a number for a declared parameter (``damper.c = -1.9``): the
+            # parameter, with its declared scaling
+            if isinstance(value, torch.Tensor):
+                data = value.detach().clone()
+            else:
+                data = torch.as_tensor(value, dtype=tps.float_dtype()).clone()
+            value = tps.Parameter(data.to(tps.float_dtype()), requires_grad=False, scaling=parameter.scaling)
         # Replacing a registered parameter or child with something torch does
         # not register (a ``TensorParameter`` -- what ``set_parameters`` leaves
         # on a parameter that is set but not estimated -- or a plain value)
@@ -456,16 +467,7 @@ class System(nn.Module, metaclass=SystemMeta):
         )
         bounds = {}
         for name, decl in declared["parameter"].items():
-            value = values["parameter"][name]
-            if isinstance(value, tps.Parameter):
-                data = value.get().detach().clone()
-            else:
-                data = torch.as_tensor(value, dtype=tps.float_dtype()).clone()
-            setattr(
-                self,
-                name,
-                tps.Parameter(data.to(tps.float_dtype()), requires_grad=False, scaling=decl.scaling),
-            )
+            setattr(self, name, values["parameter"][name])  # None: absent until given
             spec = decl.bounds()
             if spec is not None:
                 bounds[name] = spec
@@ -580,7 +582,9 @@ class System(nn.Module, metaclass=SystemMeta):
                     port.initialize(n_t=n_t, n_s=n_s, n_c=n_c)
         declared = type(self)._declarations
         for name in declared["parameter"]:
-            setattr(self, name, getattr(self, name).expand_to_n_c(n_c))
+            value = getattr(self, name)
+            if value is not None:
+                setattr(self, name, value.expand_to_n_c(n_c))
         for name in declared["state"]:
             getattr(self, name).initialize(n_s=n_s, n_c=n_c, component=self, force=True)
         for name in declared["child"]:
@@ -645,7 +649,10 @@ class System(nn.Module, metaclass=SystemMeta):
     @staticmethod
     def _fold(value: torch.Tensor, n_s: int, n_c: int) -> torch.Tensor:
         """``(n_s, n_c, ...)`` -> ``(n_s * n_c, ...)``: the one form
-        ``forward`` sees, its first dimension the copies being stepped."""
+        ``forward`` sees, its first dimension the copies being stepped.  A
+        port held once for every simulation or copy is broadcast."""
+        if value.shape[0] != n_s or value.shape[1] != n_c:
+            value = value.expand(n_s, n_c, *value.shape[2:])
         return value.reshape(n_s * n_c, *value.shape[2:])
 
     @staticmethod
@@ -1004,7 +1011,11 @@ class System(nn.Module, metaclass=SystemMeta):
         forgets the last run's (:meth:`_start_run`).
         """
         names = getattr(self, "PARAM_NAMES", ())
-        params = {name: rgetattr(self, name).get() for name in names}
+        params = {}
+        for name in names:
+            value = rgetattr(self, name)
+            if value is not None:  # an absent (optional) parameter
+                params[name] = value.get()
         if getattr(type(self), "derive", None) is None:
             return params
         derived = self.__dict__.get("_derived")

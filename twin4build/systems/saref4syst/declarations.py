@@ -152,7 +152,10 @@ class Parameter(Declaration):
     """A value of the System that can be estimated.
 
     Args:
-        value: The default value.
+        value: The default value; ``None``: the parameter is absent until it is
+            given (``System(c=...)`` or ``system.c = ...``).  An absent
+            parameter is not in ``forward``'s ``p``, is not estimated and is not
+            saved; the System says what follows from its absence in ``derive``.
         lb, ub: The range the estimator searches. A parameter without both is
             not estimated unless the caller gives bounds.
         scaling: ``"linear"`` or ``"log"`` (equal steps are equal ratios; needs

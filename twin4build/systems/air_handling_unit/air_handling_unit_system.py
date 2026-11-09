@@ -19,7 +19,6 @@ import torch.nn as nn  # noqa: F401 - torch needed for tensor ops
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.utils.slots import slot_pairs
 from twin4build.systems.air_handling_unit.air_handling_unit_core_system import (
     resolve_sub_params,
     unit_chain,
@@ -341,9 +340,16 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             else:
                 output_port.initialize(n_t=max_timesteps, n_s=batch_size)
 
-        # Exhaust branches read their room's exhaust temperature through the
-        # branch -> room map (None when the two are aligned one-to-one).
-        self._branch_room_index = self._exhaust_branch_map(n_v_exhaust)
+        # One exhaust temperature per exhaust branch: a room on several
+        # branches fills the slot of each (one connection, several slots).
+        n_v_temp = self.input["exhaustTemperature"].n_v
+        if n_v_temp not in (None, 0, n_v_exhaust):
+            raise ValueError(
+                f"|{self.__class__.__name__}|{self.id}|: exhaustTemperature has {n_v_temp} slots for "
+                f"{n_v_exhaust} exhaust branches; wire each room's temperature to the slot of each of its "
+                "branches (add_connection(room, ahu, 'indoorTemperature', 'exhaustTemperature', "
+                "input_port_index=[the branches' slots]))"
+            )
 
         # Set n_c for damper subcomponents: n_c_ahu * n_v (flattened from Vector shape)
         # Supply and exhaust can have different n_v values
@@ -380,61 +386,6 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         VAV branches are pressure-controlled, so the damper sets the flow
         while the fan runs, and nothing moves when it does not."""
         return torch.clamp(speed / cls.FAN_ON_SPEED, 0.0, 1.0)
-
-    def _exhaust_branch_map(self, n_v_exhaust: int):
-        """``LongTensor`` mapping each exhaust branch to the slot of
-        ``exhaustTemperature`` that carries its room's temperature, or
-        ``None`` when the two are aligned one-to-one (as many temperature
-        slots as branches -- the hand-built and single-VAV cases).
-
-        The map is read off the wiring: branch ``b`` belongs to the zone
-        that consumes ``supplyAirFlowRate[b]``, and that zone's slot on
-        ``exhaustTemperature`` is where it publishes ``indoorTemperature``.
-        """
-        n_v_temp = self.input["exhaustTemperature"].n_v
-        if n_v_temp == n_v_exhaust or n_v_temp is None:
-            return None
-        # (zone component, zone instance) -> its slot on exhaustTemperature.
-        # A batched zone meta publishes one temperature per instance, each
-        # on its own slot, so the instance is part of the key.
-        temp_slot_of = {}
-        for cp in self.connects_at:
-            if cp.input_port != "exhaustTemperature":
-                continue
-            for conn in cp.connects_system_through:
-                for s_ic, _, _, in_v in slot_pairs(cp, conn):
-                    instance = s_ic if isinstance(s_ic, int) else 0
-                    temp_slot_of[(id(conn.connects_system), instance)] = int(
-                        0 if in_v is None or isinstance(in_v, slice) else in_v
-                    )
-        index = [None] * n_v_exhaust
-        for conn in self.connected_through:
-            if conn.output_port != "supplyAirFlowRate":
-                continue
-            for cp in conn.connects_system_at:
-                for _, r_ic, out_v, _ in slot_pairs(cp, conn):
-                    instance = r_ic if isinstance(r_ic, int) else 0
-                    slot = temp_slot_of.get((id(cp.connection_point_of), instance))
-                    if slot is None or out_v is None or isinstance(out_v, slice):
-                        continue
-                    b = int(out_v)
-                    if b < n_v_exhaust:
-                        index[b] = slot
-        if any(i is None for i in index):
-            missing = [b for b, i in enumerate(index) if i is None]
-            raise ValueError(
-                f"|{self.__class__.__name__}|{self.id}|: exhaustTemperature has "
-                f"{n_v_temp} slots for {n_v_exhaust} exhaust branches, and branches "
-                f"{missing} cannot be mapped to a room (no zone consumes their "
-                "supplyAirFlowRate and publishes its exhaust temperature)."
-            )
-        return torch.tensor(index, dtype=torch.long)
-
-    def _per_branch_exhaust_temperature(self, exhaust_temperature):
-        index = getattr(self, "_branch_room_index", None)
-        if index is None:
-            return exhaust_temperature
-        return exhaust_temperature[..., index.to(exhaust_temperature.device)]
 
     def do_step(
         self,
@@ -496,9 +447,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             ).unsqueeze(-1)
 
         # 4) Return junction: combine exhaust flows and temperatures
-        exhaust_temp_vec = self._per_branch_exhaust_temperature(
-            self.input["exhaustTemperature"].get()
-        )
+        exhaust_temp_vec = self.input["exhaustTemperature"].get()
         self.return_junction.input["airFlowRateIn"].set(exhaust_flow_vec, step_index)
         self.return_junction.input["airTemperatureIn"].set(exhaust_temp_vec, step_index)
         self.return_junction.do_step(second_time, date_time, step_size, step_index)
@@ -591,7 +540,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
         for entry in super().get_estimable_parameters():
             attr = str(entry[1])
             prefix, _, leaf = attr.rpartition(".")
-            if leaf == "c" and getattr(getattr(self, prefix, None), "c_tied", False):
+            if leaf == "c" and getattr(getattr(self, prefix, None), "c", 0) is None:
                 continue
             if leaf == "exhaustFlowRatio" and prefix.endswith("damper"):
                 continue
@@ -688,9 +637,7 @@ class AirHandlingUnitSystem(core.System, nn.Module):
             None,
             {
                 "airFlowRateIn": exhaust_flow_vec,
-                "airTemperatureIn": self._per_branch_exhaust_temperature(
-                    inputs["exhaustTemperature"]
-                ),
+                "airTemperatureIn": inputs["exhaustTemperature"],
             },
             P["return_junction"],
             step_size,

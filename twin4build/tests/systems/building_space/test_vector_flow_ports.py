@@ -45,10 +45,10 @@ def _zone(id_):
     )
 
 
-def build_model(model_id, exhaust_per_branch=False):
-    """``exhaust_per_branch``: each zone's temperature on the exhaust slot of
-    every branch serving it (zone B's on 1 and 2, one connection), instead
-    of one slot per zone mapped to the branches by the AHU."""
+def build_model(model_id, exhaust_per_zone=False):
+    """Each zone's temperature on the exhaust slot of every branch serving it
+    (zone B's on 1 and 2, one connection).  ``exhaust_per_zone``: one slot
+    per zone instead, which the AHU refuses (it keeps no branch -> room map)."""
     model = tb.Model(id=model_id)
     ahu = AirHandlingUnitSystem(
         id="ahu",
@@ -80,14 +80,13 @@ def build_model(model_id, exhaust_per_branch=False):
     for k, branch in enumerate((1, 2)):
         model.add_connection(ahu, zones["B"], "supplyAirFlowRate", "supplyAirFlowRate", output_port_index=branch, input_port_index=k)
         model.add_connection(ahu, zones["B"], "exhaustAirFlowRate", "exhaustAirFlowRate", output_port_index=branch, input_port_index=k)
-    if exhaust_per_branch:
+    if exhaust_per_zone:
+        for slot, zone in enumerate(zones.values()):
+            model.add_connection(zone, ahu, "indoorTemperature", "exhaustTemperature", input_port_index=slot)
+    else:
         # Exhaust temperature: one slot per branch, a zone on each of its branches.
         model.add_connection(zones["A"], ahu, "indoorTemperature", "exhaustTemperature", input_port_index=0)
         model.add_connection(zones["B"], ahu, "indoorTemperature", "exhaustTemperature", input_port_index=[1, 2])
-    else:
-        # Exhaust temperature: one slot per zone.
-        for slot, zone in enumerate(zones.values()):
-            model.add_connection(zone, ahu, "indoorTemperature", "exhaustTemperature", input_port_index=slot)
     for name, zone in zones.items():
         model.add_connection(ahu, zone, "supplyAirTemperature", "supplyAirTemperature")
         model.add_connection(_schedule(f"t_out_{name}", 5.0), zone, "scheduleValue", "outdoorTemperature")
@@ -104,7 +103,7 @@ class TestVectorFlowPorts(unittest.TestCase):
     def _kwargs(self):
         return dict(start_time=self.START, end_time=self.START + datetime.timedelta(hours=2), step_size=600, show_progress_bar=False)
 
-    def test_merged_connection_and_branch_map(self):
+    def test_merged_connection_and_a_temperature_per_branch(self):
         model, ahu, zones = build_model("vector_flow_ports_topology")
         (cp,) = [cp for cp in zones["B"].connects_at if cp.input_port == "supplyAirFlowRate"]
         (conn,) = cp.connects_system_through
@@ -112,7 +111,7 @@ class TestVectorFlowPorts(unittest.TestCase):
         self.assertEqual(cp.output_port_index[conn].tolist(), [1, 2])
         tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
         self.assertEqual(zones["B"].input["supplyAirFlowRate"].n_v, 2)
-        self.assertEqual(ahu._branch_room_index.tolist(), [0, 1, 1])
+        self.assertEqual(ahu.input["exhaustTemperature"].n_v, 3)
 
     def test_fan_speed_gates_the_branch_flows(self):
         model, ahu, zones = build_model("vector_flow_ports_fan_gate")
@@ -153,7 +152,7 @@ class TestVectorFlowPorts(unittest.TestCase):
         import shutil
 
         model, ahu, zones = build_model("vector_flow_ports_offset")
-        ahu.supply_damper.set_c(0.02 - float(ahu.supply_damper.a.get().reshape(-1)[0]))
+        ahu.supply_damper.c = 0.02 - float(ahu.supply_damper.a.get().reshape(-1)[0])
         model.load()
         tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
         reference = ahu.output["supplyAirFlowRate"]._history.detach().clone()
@@ -166,8 +165,8 @@ class TestVectorFlowPorts(unittest.TestCase):
             reloaded = tb.Model(id="vector_flow_ports_offset_reloaded")
             reloaded.load(filename=path)
             ahu2 = reloaded.components["ahu"]
-            self.assertFalse(ahu2.supply_damper.c_tied)
-            self.assertTrue(ahu2.exhaust_damper.c_tied)
+            self.assertIsNotNone(ahu2.supply_damper.c)
+            self.assertIsNone(ahu2.exhaust_damper.c)
             for mode in ("object", "functional"):
                 tb.Simulator(reloaded, execution_mode=mode).simulate(**self._kwargs())
                 torch.testing.assert_close(ahu2.output["supplyAirFlowRate"]._history, reference, msg=mode)
@@ -235,12 +234,12 @@ class TestScalarIntoSeveralSlots(unittest.TestCase):
         return dict(start_time=self.START, end_time=self.START + datetime.timedelta(hours=2), step_size=600, show_progress_bar=False)
 
     def test_one_connection_carries_the_slots(self):
-        model, ahu, zones = build_model("scalar_fan_out_topology", exhaust_per_branch=True)
+        model, ahu, zones = build_model("scalar_fan_out_topology")
         self.assertEqual(_exhaust_slots(ahu), {"zone_a": ([0], None), "zone_b": ([1, 2], None)})
         self.assertEqual(ahu.get_n_v_from_connections("exhaustTemperature"), 3)
 
     def test_wiring_the_pair_again_on_other_slots_merges(self):
-        model, ahu, zones = build_model("scalar_fan_out_merge")
+        model, ahu, zones = build_model("scalar_fan_out_merge", exhaust_per_zone=True)
         # zone B on slot 1 (per zone); add slot 2 and it is per branch
         model.add_connection(zones["B"], ahu, "indoorTemperature", "exhaustTemperature", input_port_index=2)
         self.assertEqual(_exhaust_slots(ahu)["zone_b"], ([1, 2], None))
@@ -252,29 +251,25 @@ class TestScalarIntoSeveralSlots(unittest.TestCase):
         with self.assertRaises(AssertionError):
             model.add_connection(zones["A"], ahu, "indoorTemperature", "exhaustTemperature", input_port_index=[3, 3])
 
-    def test_per_branch_wiring_matches_the_branch_map_in_both_engines(self):
-        """Wiring each zone on its branches gives the AHU what its branch ->
-        room map builds from one slot per zone: the map is not needed (it
-        comes out ``None``) and every history is the same."""
-        per_zone = build_model("scalar_fan_out_per_zone")
-        per_branch = build_model("scalar_fan_out_per_branch", exhaust_per_branch=True)
+    def test_one_temperature_slot_per_zone_raises_and_names_the_wiring(self):
+        """The AHU reads one exhaust temperature per branch and keeps no
+        branch -> room map: one slot per zone is refused, with the fix."""
+        model, ahu, zones = build_model("scalar_fan_out_per_zone", exhaust_per_zone=True)
+        with self.assertRaisesRegex(ValueError, "input_port_index"):
+            tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
+
+    def test_a_zone_on_two_branches_fills_both_slots_in_both_engines(self):
         for mode in ("object", "functional"):
-            tb.Simulator(per_zone[0], execution_mode=mode).simulate(**self._kwargs())
-            tb.Simulator(per_branch[0], execution_mode=mode).simulate(**self._kwargs())
-            self.assertEqual(per_zone[1]._branch_room_index.tolist(), [0, 1, 1])
-            self.assertIsNone(per_branch[1]._branch_room_index)
-            self.assertEqual(per_branch[1].input["exhaustTemperature"].n_v, 3)
-            reference, result = _histories(*per_zone), _histories(*per_branch)
-            for key in reference:
-                torch.testing.assert_close(result[key], reference[key], rtol=0, atol=0, msg=f"{mode} {key}")
-            # zone B's temperature is on both of its branches' slots
-            exhaust = per_branch[1].input["exhaustTemperature"]._history
+            model, ahu, zones = build_model(f"scalar_fan_out_per_branch_{mode}")
+            tb.Simulator(model, execution_mode=mode).simulate(**self._kwargs())
+            self.assertEqual(ahu.input["exhaustTemperature"].n_v, 3)
+            exhaust = ahu.input["exhaustTemperature"]._history
             torch.testing.assert_close(exhaust[..., 1], exhaust[..., 2], rtol=0, atol=0, msg=mode)
 
     def test_the_slots_survive_serialization(self):
         import shutil
 
-        model, ahu, zones = build_model("scalar_fan_out_saved", exhaust_per_branch=True)
+        model, ahu, zones = build_model("scalar_fan_out_saved")
         tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
         reference = zones["B"].output["indoorTemperature"]._history.detach().clone()
         model.serialize()

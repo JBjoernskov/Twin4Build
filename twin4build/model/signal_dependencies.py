@@ -86,7 +86,11 @@ def forward_params(component) -> Dict[str, torch.Tensor]:
     """The component's parameters at their current values (:func:`parameter_names`); what the
     component derives from them (``derive``) is added where ``forward`` is called, so that the
     derivatives reach the parameters."""
-    return {name: rgetattr(component, name).get() for name in parameter_names(component)}
+    return {
+        name: rgetattr(component, name).get()
+        for name in parameter_names(component)
+        if rgetattr(component, name) is not None  # an absent (optional) parameter
+    }
 
 
 def has_state(component) -> bool:
