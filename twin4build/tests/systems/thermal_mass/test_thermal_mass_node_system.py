@@ -73,7 +73,7 @@ class TestThermalMassNodeSystem(unittest.TestCase):
         start, end = self._window(2)
         node.initialize(start, end, [self.DT])
         params = {"C": node.C.get()}
-        x = node.ss_model.get_state()
+        x = node.get_state()
         u = torch.tensor([[[100.0, 200.0, -50.0]]], dtype=node.C.get().dtype)
         x_next, outs = node.forward(x, {"heatFlowRate": u[0]}, node.full_params(params, float(self.DT)), float(self.DT))
         self.assertAlmostEqual(float(outs["temperature"]), self.T_INIT + self.DT * 250.0 / self.C, places=9)
