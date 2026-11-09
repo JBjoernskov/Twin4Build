@@ -103,7 +103,7 @@ def fcn(self):
     )
 
     # Configure control setpoints
-    self.components["office_co2_setpoint"].weekDayRulesetDict = {
+    self.components["office_co2_setpoint"].weekday_ruleset = {
         "ruleset_default_value": 900,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
@@ -112,7 +112,7 @@ def fcn(self):
         "ruleset_value": [],
     }
 
-    self.components["office_occupancy_profile"].weekDayRulesetDict = {
+    self.components["office_occupancy_profile"].weekday_ruleset = {
         "ruleset_default_value": 0,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
@@ -121,10 +121,9 @@ def fcn(self):
         "ruleset_value": [],
     }
 
-    self.components["office_temperature_heating_setpoint"].use_spreadsheet = True
-    self.components["office_temperature_heating_setpoint"].filename = utils.get_path(
+    self.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(
         ["estimator_example", "temperature_heating_setpoint.csv"]
-    )
+    ))
 
     # Configure outdoor environment data
     self.components["outdoor_environment"].use_spreadsheet = True
@@ -152,6 +151,7 @@ def fcn(self):
 from twin4build.utils.logger import LOGGER
 import twin4build.core as core
 from twin4build.translator.translator import Node, OptionalRule, SignaturePattern, StepRule
+from twin4build.utils.data_loaders.sources import CsvSource
 
 LOGGER.hide_status("debug")
 

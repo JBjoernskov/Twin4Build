@@ -236,6 +236,10 @@ class System(nn.Module, metaclass=SystemMeta):
         declared = getattr(cls, "_declarations", {})
         for kind in ("setting", "parameter", "child"):
             names.update(declared.get(kind, {}))
+        if getattr(cls, "_is_declared", False):
+            # a declared class has no __init__ of its own: the base
+            # translates its deprecated names
+            names.update(getattr(cls, "DEPRECATED_KEYWORDS", {}))
         System._CONSTRUCTOR_KEYWORDS[cls] = frozenset(names)
         return System._CONSTRUCTOR_KEYWORDS[cls]
 
@@ -333,7 +337,46 @@ class System(nn.Module, metaclass=SystemMeta):
         if declared_values is not None:
             self._build_declared(declared_values)
 
+    #: Attributes a class no longer has, and what replaced them: reading or
+    #: setting one raises with the replacement (setting it would otherwise
+    #: quietly do nothing).
+    REMOVED_ATTRIBUTES: dict = {}
+
+    def _renamed(self, name: str):
+        """The current name of a declared System's attribute ``name`` when it
+        is an old keyword the class still translates (``DEPRECATED_KEYWORDS``),
+        with a ``DeprecationWarning``; else ``None``."""
+        if not getattr(type(self), "_is_declared", False):
+            return None
+        new = getattr(type(self), "DEPRECATED_KEYWORDS", {}).get(name)
+        if not new or "." in new:
+            return None
+        cls_name = type(self).__name__
+        deprecate_name(f"{cls_name}.{name}", f"{cls_name}.{new}", stacklevel=4)
+        return new
+
+    def __getattr__(self, name):
+        removed = type(self).REMOVED_ATTRIBUTES.get(name)
+        if removed is not None:
+            raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
+        try:
+            # registered parameters and children first: a traced forward
+            # reaches its children this way (``self.thermal``)
+            return super().__getattr__(name)
+        except AttributeError:
+            new = None if name.startswith("_") else self._renamed(name)
+            if new is None:
+                raise
+        return getattr(self, new)  # an old name reads the current one
+
     def __setattr__(self, name, value):
+        removed = type(self).REMOVED_ATTRIBUTES.get(name)
+        if removed is not None:
+            raise AttributeError(f"{type(self).__name__}.{name} is gone in 2.0: {removed}")
+        if not name.startswith("_"):
+            new = self._renamed(name)
+            if new is not None:  # an old name sets the current one (it set nothing before)
+                name = new
         # A property of the class runs its setter, as on any Python object.
         # nn.Module would otherwise register a module or parameter value under
         # the property's name and skip the setter (a sensor's
@@ -365,6 +408,13 @@ class System(nn.Module, metaclass=SystemMeta):
         """Pop the declared settings, parameter values and child overrides
         from the constructor's keywords; a missing required setting raises."""
         declared = type(self)._declarations
+        for old, new in getattr(type(self), "DEPRECATED_KEYWORDS", {}).items():
+            if old in kwargs:
+                value = kwargs.pop(old)
+                cls_name = type(self).__name__
+                if new is not None:
+                    deprecate_name(f"{cls_name}({old}=...)", f"{cls_name}({new}=...)", stacklevel=4)
+                    kwargs.setdefault(new, value)
         values = {"setting": {}, "parameter": {}, "child": {}}
         for name, decl in declared["setting"].items():
             if name in kwargs:

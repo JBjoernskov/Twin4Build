@@ -16,6 +16,7 @@ from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.systems.damper.damper_system import DamperSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
+from twin4build.utils.data_loaders.sources import CsvSource
 
 # Set test flag
 tb._IS_TESTING = True
@@ -363,11 +364,7 @@ class TestSimulator(unittest.TestCase):
             model.components[sensor_id].datecolumn = 2
             model.components[sensor_id].valuecolumn = 3
 
-        model.components["office_temperature_heating_setpoint"].filename = (
-            utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"])
-        )
-        model.components["office_temperature_heating_setpoint"].datecolumn = 2
-        model.components["office_temperature_heating_setpoint"].valuecolumn = 3
+        model.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"]), date_column=2, value_column=3)
         model.components["outdoor_environment"].filename_outdoorTemperature = (
             utils.get_path(["estimator_example", "outdoor_environment.csv"])
         )

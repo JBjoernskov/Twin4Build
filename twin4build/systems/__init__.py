@@ -36,7 +36,6 @@ Key Components:
     Monitoring & Measurement:
         - SensorSystem: Generic sensor system
         - ScheduleSystem: Time-based scheduling system
-        - PiecewiseLinearScheduleSystem: Schedule with piecewise linear interpolation
 
     Environmental:
         - OutdoorEnvironmentSystem: External environmental conditions
@@ -98,7 +97,6 @@ __all__ = [
     "SensorSystem",
     # Schedules
     "ScheduleSystem",
-    "PiecewiseLinearScheduleSystem",
     # Outdoor Environment
     "OutdoorEnvironmentSystem",
     # Junction
@@ -157,7 +155,6 @@ _MODULES = {
     "ReturnFlowJunctionSystem": "junction.return_flow_junction_system",
     "SupplyFlowJunctionSystem": "junction.supply_flow_junction_system",
     "OutdoorEnvironmentSystem": "outdoor_environment.outdoor_environment_system",
-    "PiecewiseLinearScheduleSystem": "schedule.piecewise_linear_schedule_system",
     "ScheduleSystem": "schedule.schedule_system",
     "SensorSystem": "sensor.sensor_system",
     "SpaceHeaterSystem": "space_heater.space_heater_system",

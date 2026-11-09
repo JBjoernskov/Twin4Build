@@ -7,6 +7,7 @@ from pathlib import Path
 from dateutil import tz
 
 import twin4build as tb
+from twin4build.utils.data_loaders.sources import CsvSource
 
 
 STEP_SIZE = 1200
@@ -50,8 +51,9 @@ def load_model():
     components["supply_air_temperature_sensor"].filename = data_path(
         "supply_air_temperature.csv"
     )
-    components["office_temperature_heating_setpoint"].filename = data_path(
-        "temperature_heating_setpoint.csv"
+    # the saved model held the columns; the reader names them
+    components["office_temperature_heating_setpoint"].source = CsvSource(
+        data_path("temperature_heating_setpoint.csv"), date_column=2, value_column=4
     )
     outdoor = components["outdoor_environment"]
     outdoor.filename_outdoorTemperature = data_path("outdoor_environment.csv")
