@@ -1,829 +1,141 @@
-# Standard library imports
-import datetime
-import os
-import warnings
-from typing import List, Optional
+"""The weather at the site: a data source (ADR 0001, decision 6)."""
 
 # Third party imports
 import numpy as np
-import pandas as pd
 import torch
-import torch.nn as nn
 
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
-from twin4build.utils.data_loaders.sources import reader_from_keywords
-from twin4build.utils.callable_ref import callable_to_ref, ref_to_callable
-from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-from twin4build.translator.translator import (
-    StepRule,
-    Node,
-    OptionalRule,
-    SignaturePattern,
-    PathRule,
-)
-from twin4build.utils.data_loaders.load import load_from_database, load_from_spreadsheet
-from twin4build.utils.get_main_dir import get_main_dir
+from twin4build.systems.saref4syst.declarations import Output, Parameter, Setting
+from twin4build.utils.callable_ref import as_callable
+from twin4build.utils.data_loaders.sources import DataFrameSource, as_source
 
 
-class OutdoorEnvironmentSystem(core.System, nn.Module):
-    """An outdoor environment system model that provides weather data for building simulations.
+class OutdoorEnvironmentSystem(core.System):
+    r"""The weather at the site: outdoor temperature, global irradiation and
+    outdoor CO2, each read from its own reader once at run start.
 
-    This model represents the outdoor environment by providing time-series data for:
-    - Outdoor air temperature
-    - Global solar irradiation
-    - Outdoor CO2 concentration
+    ::
 
-    The model reads weather data from 3 separate CSV files (one for each parameter) and can
-    optionally apply a linear correction to the temperature data. The model is designed to be
-    used as a boundary condition for building energy simulations.
+        tb.OutdoorEnvironmentSystem(
+            id="outdoor",
+            outdoorTemperature_source=CsvSource("weather.csv", value_column=1),
+            globalIrradiation_source=CsvSource("weather.csv", value_column=2),
+        )
+
+    Without a CO2 reader ``outdoorCo2Concentration`` is the constant
+    ``co2_default`` (400 ppm).  :meth:`from_dataframe` builds the readers
+    from one DataFrame with a column per output.
 
     Args:
-        df: Input DataFrame containing weather data.
-            Must have columns 'outdoorTemperature', 'globalIrradiation', and 'outdoorCo2Concentration'.
-        use_spreadsheet: Whether to use spreadsheet files for data loading.
-        use_database: Whether to use a database for data loading.
-        use_df: Whether to use the provided DataFrame for data loading.
-            If none of the three flags is set, the source is auto-detected from
-            the provided arguments; at most one flag may be True.
-        filename_outdoorTemperature: Path to CSV file containing outdoor temperature data.
-        datecolumn_outdoorTemperature: Column index of the date column in the temperature file.
-        valuecolumn_outdoorTemperature: Column index of the temperature value column.
-        filename_globalIrradiation: Path to CSV file containing global irradiation data.
-        datecolumn_globalIrradiation: Column index of the date column in the irradiation file.
-        valuecolumn_globalIrradiation: Column index of the irradiation value column.
-        filename_outdoorCo2Concentration: Path to CSV file containing CO2 concentration data.
-        datecolumn_outdoorCo2Concentration: Column index of the date column in the CO2 file.
-        valuecolumn_outdoorCo2Concentration: Column index of the CO2 value column.
-        uuid_outdoorTemperature: UUID identifying the temperature time series in the database.
-        dbconfig_outdoorTemperature: Database configuration for the temperature time series.
-        uuid_globalIrradiation: UUID identifying the irradiation time series in the database.
-        dbconfig_globalIrradiation: Database configuration for the irradiation time series.
-        uuid_outdoorCo2Concentration: UUID identifying the CO2 time series in the database.
-        dbconfig_outdoorCo2Concentration: Database configuration for the CO2 time series.
-        a: Correction factor for linear correction of temperature data.
-        b: Correction offset for linear correction of temperature data.
-        apply_correction: Whether to apply linear correction to temperature data.
-
+        outdoorTemperature_source: The reader of the outdoor temperature. A
+            string is a database point's id, which is what a translator
+            pattern gives; likewise for the other readers.
+        globalIrradiation_source: The reader of the global irradiation.
+        outdoorCo2Concentration_source: The reader of the outdoor CO2.
+        co2_default: The outdoor CO2 [ppm] without a CO2 reader.
+        a: The gain of the correction ``a * x + b`` of the outdoor
+            temperature, applied when ``apply_correction`` is set.
+        b: The offset of that correction [degC].
+        apply_correction: Apply the correction.
+        outdoorTemperature_transformation: A function applied to every
+            temperature read (a unit conversion); a saved model holds its
+            ``module:qualname``.  :meth:`set_transformation` and
+            :meth:`set_transformation_by_type` are the hooks
+            :meth:`Model.set_transformations` uses.
+        globalIrradiation_transformation: The same for the irradiation
+            (clipping a sensor's spikes).
     """
 
-    def __init__(
-        self,
-        df: Optional[pd.DataFrame] = None,
-        use_spreadsheet: Optional[bool] = False,
-        use_database: Optional[bool] = False,
-        use_df: Optional[bool] = False,
-        filename_outdoorTemperature: Optional[str] = None,
-        datecolumn_outdoorTemperature: Optional[int] = 0,
-        valuecolumn_outdoorTemperature: Optional[int] = 1,
-        filename_globalIrradiation: Optional[str] = None,
-        datecolumn_globalIrradiation: Optional[int] = 0,
-        valuecolumn_globalIrradiation: Optional[int] = 1,
-        filename_outdoorCo2Concentration: Optional[str] = None,
-        datecolumn_outdoorCo2Concentration: Optional[int] = 0,
-        valuecolumn_outdoorCo2Concentration: Optional[int] = 1,
-        uuid_outdoorTemperature: Optional[str] = None,
-        dbconfig_outdoorTemperature: Optional[dict] = None,
-        uuid_globalIrradiation: Optional[str] = None,
-        dbconfig_globalIrradiation: Optional[dict] = None,
-        uuid_outdoorCo2Concentration: Optional[str] = None,
-        dbconfig_outdoorCo2Concentration: Optional[dict] = None,
-        a: Optional[float] = 1,
-        b: Optional[float] = 0,
-        apply_correction: Optional[bool] = False,
-        transformation_ref_outdoorTemperature: Optional[str] = None,
-        transformation_ref_globalIrradiation: Optional[str] = None,
-        **kwargs,
-    ):
-        for legacy_key, new_key in (
-            ("useSpreadsheet", "use_spreadsheet"),
-            ("useDatabase", "use_database"),
-            ("usedf", "use_df"),
-        ):
-            if legacy_key in kwargs:
-                raise TypeError(
-                    f"`{legacy_key}` has been removed. Use `{new_key}` instead."
-                )
+    #: The names 1.x saved the transformations under.
+    DEPRECATED_KEYWORDS = {
+        "transformation_ref_outdoorTemperature": "outdoorTemperature_transformation",
+        "transformation_ref_globalIrradiation": "globalIrradiation_transformation",
+    }
 
-        # Count how many data sources are provided
-        has_df = df is not None
-        has_filename = (
-            filename_outdoorTemperature is not None
-            or filename_globalIrradiation is not None
-            or filename_outdoorCo2Concentration is not None
-        )
-        has_database = (
-            dbconfig_outdoorTemperature is not None
-            or dbconfig_globalIrradiation is not None
-            or dbconfig_outdoorCo2Concentration is not None
-            or uuid_outdoorTemperature is not None
-            or uuid_globalIrradiation is not None
-            or uuid_outdoorCo2Concentration is not None
-        )
-        n_sources = sum([has_df, has_filename, has_database])
-        n_flags = sum([use_spreadsheet, use_database, use_df])
+    #: The 1.x keywords and what replaced them.
+    REMOVED_ATTRIBUTES = {
+        **{
+            f"{kind}_{feed}": f"give the feed a reader, {feed}_source=CsvSource(...) / DatabaseSource(uuid)"
+            for feed in ("outdoorTemperature", "globalIrradiation", "outdoorCo2Concentration")
+            for kind in ("filename", "datecolumn", "valuecolumn", "uuid", "dbconfig", "_uuid", "_filename", "_dbconfig")
+        },
+        **{name: "give each feed a reader (<feed>_source=...); OutdoorEnvironmentSystem.from_dataframe(df)"
+           for name in ("df", "use_df", "use_spreadsheet", "use_database")},
+        **{f"_transformation_{feed}": f"set {feed}_transformation (or set_transformation)"
+           for feed in ("outdoorTemperature", "globalIrradiation")},
+    }
 
-        # If multiple sources provided, user must explicitly set a flag
-        assert not (n_sources > 1 and n_flags == 0), (
-            "Multiple data sources provided (df, filename, database). "
-            "You must explicitly set one of use_df=True, use_spreadsheet=True, or use_database=True "
-            "to specify which source to use."
-        )
+    FEEDS = ("outdoorTemperature", "globalIrradiation", "outdoorCo2Concentration")
 
-        # Auto-detect data source if no flags are explicitly set
-        if not use_spreadsheet and not use_database and not use_df:
-            if has_df:
-                use_df = True
-            elif has_filename:
-                use_spreadsheet = True
-            elif has_database:
-                use_database = True
+    outdoorTemperature_source = Setting(None, convert=as_source, doc="The reader of the outdoor temperature")
+    globalIrradiation_source = Setting(None, convert=as_source, doc="The reader of the global irradiation")
+    outdoorCo2Concentration_source = Setting(None, convert=as_source, doc="The reader of the outdoor CO2")
+    co2_default = Setting(400.0, doc="The outdoor CO2 [ppm] without a CO2 reader")
+    apply_correction = Setting(False, doc="Apply the linear correction a * x + b to the outdoor temperature")
+    outdoorTemperature_transformation = Setting(None, convert=as_callable, doc="Applied to every temperature read")
+    globalIrradiation_transformation = Setting(None, convert=as_callable, doc="Applied to every irradiation read")
+    a = Parameter(1.0, doc="Gain of the outdoor-temperature correction")
+    b = Parameter(0.0, doc="Offset of the outdoor-temperature correction [degC]")
+    outdoorTemperature = Output(doc="Outdoor temperature [degC]")
+    globalIrradiation = Output(doc="Global irradiation [W/m2]")
+    outdoorCo2Concentration = Output(doc="Outdoor CO2 concentration [ppm]")
 
-        assert (
-            sum([use_spreadsheet, use_database, use_df]) <= 1
-        ), "Only one of use_spreadsheet, use_database, or use_df can be True."
-        super().__init__(**kwargs)
-        nn.Module.__init__(self)
-
-        if (
-            df is None
-            and (
-                filename_outdoorTemperature is None
-                or filename_globalIrradiation is None
-                or filename_outdoorCo2Concentration is None
-            )
-            and (
-                uuid_outdoorTemperature is None
-                or uuid_globalIrradiation is None
-                or uuid_outdoorCo2Concentration is None
-            )
-        ):
-            warnings.warn(
-                'Neither "df", "filename", nor "uuid" was provided as argument. The component will not be able to provide any output.'
-            )
-
-        # Define inputs and outputs as private variables
-        self._input = {}
-        self._output = {
-            "outdoorTemperature": tps.Scalar(is_leaf=True),
-            "globalIrradiation": tps.Scalar(is_leaf=True),
-            "outdoorCo2Concentration": tps.Scalar(is_leaf=True),
+    @classmethod
+    def from_dataframe(cls, df, **kwargs):
+        """The readers of the outputs from one DataFrame with a column per
+        output, indexed by timestamps (a column it lacks gets no reader)."""
+        readers = {
+            f"{feed}_source": DataFrameSource(df[[feed]]) for feed in cls.FEEDS if feed in df.columns
         }
-
-        # Store as private variables for property access
-        self._use_spreadsheet = use_spreadsheet
-        self._use_database = use_database
-        self._use_df = use_df
-
-        self._filename_outdoorTemperature = filename_outdoorTemperature
-        self.datecolumn_outdoorTemperature = datecolumn_outdoorTemperature
-        self.valuecolumn_outdoorTemperature = valuecolumn_outdoorTemperature
-
-        self._filename_globalIrradiation = filename_globalIrradiation
-        self.datecolumn_globalIrradiation = datecolumn_globalIrradiation
-        self.valuecolumn_globalIrradiation = valuecolumn_globalIrradiation
-
-        self._filename_outdoorCo2Concentration = filename_outdoorCo2Concentration
-        self.datecolumn_outdoorCo2Concentration = datecolumn_outdoorCo2Concentration
-        self.valuecolumn_outdoorCo2Concentration = valuecolumn_outdoorCo2Concentration
-
-        self._uuid_outdoorTemperature = uuid_outdoorTemperature
-        self._dbconfig_outdoorTemperature = dbconfig_outdoorTemperature
-
-        self._uuid_globalIrradiation = uuid_globalIrradiation
-        self._dbconfig_globalIrradiation = dbconfig_globalIrradiation
-
-        self._uuid_outdoorCo2Concentration = uuid_outdoorCo2Concentration
-        self._dbconfig_outdoorCo2Concentration = dbconfig_outdoorCo2Concentration
-
-        self._df = df
-        self.a = tps.Parameter(
-            torch.tensor(a, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.b = tps.Parameter(
-            torch.tensor(b, dtype=tps.float_dtype()), requires_grad=False
-        )
-        self.apply_correction = apply_correction
-        # Per-feed unit transformation populated by :meth:`set_transformation`
-        # (called from ``Model.set_transformations`` via the per-class
-        # dispatcher).  Only ``outdoorTemperature`` participates in the
-        # dispatcher today because the BRICK pattern adds
-        # ``Outside_Air_Temperature_Sensor`` (a subclass of
-        # ``Temperature_Sensor``) as a modeled node on this component,
-        # so the F→C rule keyed by ``Temperature_Sensor`` is the most-
-        # specific match.  ``globalIrradiation`` / ``outdoorCo2Concentration``
-        # do not have a Temperature_Sensor-compatible binding, so no
-        # F→C rule resolves to them; if a project ever needs a sibling
-        # unit conversion for those feeds (e.g. langley/min → W/m²),
-        # add a dedicated entry in :data:`TRANSFORMATIONS` and extend
-        # this hook with feed-specific setters.
-        self._transformation_outdoorTemperature = None
-        self._transformation_globalIrradiation = None
-        # A serialized model carries the transformations by import path.
-        self.transformation_ref_outdoorTemperature = transformation_ref_outdoorTemperature
-        self.transformation_ref_globalIrradiation = transformation_ref_globalIrradiation
-        self.cached_initialize_arguments = []
-        self.cache_root = get_main_dir()
-
-        self._config = {
-            "parameters": [
-                "a",
-                "b",
-                "apply_correction",
-                "use_spreadsheet",
-                "use_database",
-                "use_df",
-                # The per-feed unit transformations, by import path: a
-                # callable is not a literal (see SensorSystem.transformation_ref).
-                "transformation_ref_outdoorTemperature",
-                "transformation_ref_globalIrradiation",
-            ],
-            "spreadsheet": [
-                "filename_outdoorTemperature",
-                "datecolumn_outdoorTemperature",
-                "valuecolumn_outdoorTemperature",
-                "filename_globalIrradiation",
-                "datecolumn_globalIrradiation",
-                "valuecolumn_globalIrradiation",
-                "filename_outdoorCo2Concentration",
-                "datecolumn_outdoorCo2Concentration",
-                "valuecolumn_outdoorCo2Concentration",
-            ],
-            "database": [
-                "uuid_outdoorTemperature",
-                "dbconfig_outdoorTemperature",
-                "uuid_globalIrradiation",
-                "dbconfig_globalIrradiation",
-                "uuid_outdoorCo2Concentration",
-                "dbconfig_outdoorCo2Concentration",
-            ],
-        }
-
-    @property
-    def config(self):
-        """Get the configuration parameters.
-
-        Returns:
-            dict: Dictionary containing configuration parameters and file reading settings.
-        """
-        return self._config
-
-    # ==================== Data Source Flags ====================
-
-    @property
-    def use_spreadsheet(self):
-        return self._use_spreadsheet
-
-    @use_spreadsheet.setter
-    def use_spreadsheet(self, value):
-        self._use_spreadsheet = value
-
-    @property
-    def use_database(self):
-        return self._use_database
-
-    @use_database.setter
-    def use_database(self, value):
-        self._use_database = value
-
-    @property
-    def use_df(self):
-        return self._use_df
-
-    @use_df.setter
-    def use_df(self, value):
-        self._use_df = value
-
-    # ==================== DataFrame Property ====================
-
-    @property
-    def df(self):
-        return self._df
-
-    @df.setter
-    def df(self, value):
-        self._df = value
-        if value is not None:
-            self._use_df = True
-            self._use_spreadsheet = False
-            self._use_database = False
-
-    # ==================== Filename Properties ====================
-
-    @property
-    def filename_outdoorTemperature(self):
-        return self._filename_outdoorTemperature
-
-    @filename_outdoorTemperature.setter
-    def filename_outdoorTemperature(self, value):
-        self._filename_outdoorTemperature = value
-        if value is not None:
-            self._use_spreadsheet = True
-            self._use_database = False
-            self._use_df = False
-
-    @property
-    def filename_globalIrradiation(self):
-        return self._filename_globalIrradiation
-
-    @filename_globalIrradiation.setter
-    def filename_globalIrradiation(self, value):
-        self._filename_globalIrradiation = value
-        if value is not None:
-            self._use_spreadsheet = True
-            self._use_database = False
-            self._use_df = False
-
-    @property
-    def filename_outdoorCo2Concentration(self):
-        return self._filename_outdoorCo2Concentration
-
-    @filename_outdoorCo2Concentration.setter
-    def filename_outdoorCo2Concentration(self, value):
-        self._filename_outdoorCo2Concentration = value
-        if value is not None:
-            self._use_spreadsheet = True
-            self._use_database = False
-            self._use_df = False
-
-    # ==================== UUID Properties ====================
-
-    @property
-    def uuid_outdoorTemperature(self):
-        return self._uuid_outdoorTemperature
-
-    @uuid_outdoorTemperature.setter
-    def uuid_outdoorTemperature(self, value):
-        self._uuid_outdoorTemperature = value
-        if value is not None:
-            self._use_database = True
-            self._use_spreadsheet = False
-            self._use_df = False
-
-    @property
-    def uuid_globalIrradiation(self):
-        return self._uuid_globalIrradiation
-
-    @uuid_globalIrradiation.setter
-    def uuid_globalIrradiation(self, value):
-        self._uuid_globalIrradiation = value
-        if value is not None:
-            self._use_database = True
-            self._use_spreadsheet = False
-            self._use_df = False
-
-    @property
-    def uuid_outdoorCo2Concentration(self):
-        return self._uuid_outdoorCo2Concentration
-
-    @uuid_outdoorCo2Concentration.setter
-    def uuid_outdoorCo2Concentration(self, value):
-        self._uuid_outdoorCo2Concentration = value
-        if value is not None:
-            self._use_database = True
-            self._use_spreadsheet = False
-            self._use_df = False
-
-    # ==================== DBConfig Properties ====================
-
-    @property
-    def dbconfig_outdoorTemperature(self):
-        return self._dbconfig_outdoorTemperature
-
-    @dbconfig_outdoorTemperature.setter
-    def dbconfig_outdoorTemperature(self, value):
-        self._dbconfig_outdoorTemperature = value
-        if value is not None:
-            self._use_database = True
-            self._use_spreadsheet = False
-            self._use_df = False
-
-    @property
-    def dbconfig_globalIrradiation(self):
-        return self._dbconfig_globalIrradiation
-
-    @dbconfig_globalIrradiation.setter
-    def dbconfig_globalIrradiation(self, value):
-        self._dbconfig_globalIrradiation = value
-        if value is not None:
-            self._use_database = True
-            self._use_spreadsheet = False
-            self._use_df = False
-
-    @property
-    def dbconfig_outdoorCo2Concentration(self):
-        return self._dbconfig_outdoorCo2Concentration
-
-    @dbconfig_outdoorCo2Concentration.setter
-    def dbconfig_outdoorCo2Concentration(self, value):
-        self._dbconfig_outdoorCo2Concentration = value
-        if value is not None:
-            self._use_database = True
-            self._use_spreadsheet = False
-            self._use_df = False
+        return cls(**{**readers, **kwargs})
 
     def set_dbconfig(self, dbconfig) -> None:
-        """Apply the same database configuration to every per-feed slot.
+        """The database connection of every database reader."""
+        for feed in self.FEEDS:
+            reader = getattr(self, f"{feed}_source")
+            if hasattr(reader, "dbconfig"):
+                reader.dbconfig = dbconfig
 
-        The outdoor environment carries three independent timeseries
-        (``outdoorTemperature`` / ``globalIrradiation`` /
-        ``outdoorCo2Concentration``); a model-level
-        :meth:`SimulationModel.set_dbconfigs` call dispatches here and
-        we fan the shared ``dbconfig`` across all three.  Per-feed
-        overrides remain available via the individual properties.
-        """
-        self.dbconfig_outdoorTemperature = dbconfig
-        self.dbconfig_globalIrradiation = dbconfig
-        self.dbconfig_outdoorCo2Concentration = dbconfig
+    def set_transformation(self, fn) -> None:
+        """The function applied to every outdoor-temperature value read (the
+        hook :meth:`Model.set_transformations` uses); ``None`` removes it."""
+        self.outdoorTemperature_transformation = fn
 
-    @property
-    def input(self) -> dict:
-        """
-        Get the input ports of the outdoor environment system.
-
-        Returns:
-            dict: Dictionary containing input ports (empty for leaf systems)
-        """
-        return self._input
-
-    @property
-    def output(self) -> dict:
-        """
-        Get the output ports of the outdoor environment system.
-
-        Returns:
-            dict: Dictionary containing output ports:
-                - "outdoorTemperature": Outdoor air temperature [°C]
-                - "globalIrradiation": Global solar irradiation [W/m²]
-                - "outdoorCo2Concentration": Outdoor CO2 concentration [ppmv]
-        """
-        return self._output
-
-    def validate(self, p):
-        """Validate the system configuration.
-
-        This method checks if the required data source (either DataFrame or filename parameters)
-        is provided. If not, it issues a warning and marks the system as invalid for
-        simulation, estimation, evaluation, and monitoring.
-
-        Args:
-            p (object): Printer object for outputting validation messages.
-
-        Returns:
-            tuple: Three boolean values indicating validation status for:
-                - Simulator
-                - Estimator
-                - Optimizer
-        """
-        validated_for_simulator = True
-        validated_for_estimator = True
-        validated_for_optimizer = True
-
-        if self.use_df and self.df is None:
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: df must be provided when use_df=True to enable use of Simulator, Estimator, and Optimizer."
-            p(message, status="WARNING")
-            validated_for_simulator = False
-            validated_for_estimator = False
-            validated_for_optimizer = False
-        elif self.df is None:
-            if self.use_spreadsheet and (
-                self.filename_outdoorTemperature is None
-                or self.filename_globalIrradiation is None
-                or self.filename_outdoorCo2Concentration is None
-            ):
-                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: All three filename parameters must be provided if use_spreadsheet is True to enable use of Simulator, Estimator, and Optimizer."
-                p(message, status="WARNING")
-                validated_for_simulator = False
-                validated_for_estimator = False
-                validated_for_optimizer = False
-            elif self.use_database and (
-                self.uuid_outdoorTemperature is None
-                or self.uuid_globalIrradiation is None
-                or self.uuid_outdoorCo2Concentration is None
-            ):
-                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid parameters must be provided for all three data types if use_database is True to enable use of Simulator, Estimator, and Optimizer."
-                p(message, status="WARNING")
-                validated_for_simulator = False
-                validated_for_estimator = False
-                validated_for_optimizer = False
-            elif not self.use_spreadsheet and not self.use_database and not self.use_df:
-                message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either df with use_df=True, use_spreadsheet=True, or use_database=True must be provided to enable use of Simulator, Estimator, and Optimizer."
-                p(message, status="WARNING")
-                validated_for_simulator = False
-                validated_for_estimator = False
-                validated_for_optimizer = False
-
-        return (
-            validated_for_simulator,
-            validated_for_estimator,
-            validated_for_optimizer,
-        )
-
-    def initialize(
-        self,
-        start_time: List[datetime.datetime],
-        end_time: List[datetime.datetime],
-        step_size: List[int],
-    ) -> None:
-        """Initialize the outdoor environment system.
-
-        This method performs the following initialization steps:
-
-        1. Validates and resolves the weather data file paths
-        2. Loads weather data from 3 separate files/database or DataFrame
-        3. Verifies required data columns are present
-
-        Args:
-            start_time (List[datetime.datetime]): List of start times for the simulation periods.
-            end_time (List[datetime.datetime]): List of end times for the simulation periods.
-            step_size (List[int]): List of time step sizes in seconds.
-
-        Raises:
-            ValueError: If the weather data files cannot be found or required columns are missing.
-        """
-        if self.use_spreadsheet or self.use_database or self.use_df:
-            # Validate df if use_df is True
-            if self.use_df:
-                if self.df is None:
-                    raise ValueError("df must be provided when use_df=True.")
-                required_keys = [
-                    "outdoorTemperature",
-                    "globalIrradiation",
-                    "outdoorCo2Concentration",
-                ]
-                is_included = np.array(
-                    [key in self.df.columns for key in required_keys]
-                )
-                assert np.all(
-                    is_included
-                ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
-                # Create separate DataFrames for each weather parameter
-                df_temp = self.df[["outdoorTemperature"]]
-                df_irrad = self.df[["globalIrradiation"]]
-                df_co2 = self.df[["outdoorCo2Concentration"]]
-            else:
-                df_temp = df_irrad = df_co2 = None
-
-            # Use TimeSeriesInputSystem for each weather parameter (handles batching correctly).
-            # ``transformation`` is applied INSIDE ``time_series_temp.initialize``
-            # (see :class:`TimeSeriesInputSystem`) so ``time_series_temp.values``
-            # already carries the converted values (e.g. F→C) by the time the
-            # ``apply_correction`` linear correction below runs.  This ordering
-            # is deliberate: unit conversion first, then optional calibrated
-            # ``a*x+b`` correction on the canonical-unit signal.
-            time_series_temp = TimeSeriesInputSystem(
-                id=f"time series input - outdoorTemperature - {self.id}",
-                source=reader_from_keywords(
-                    df=df_temp,
-                    filename=self.filename_outdoorTemperature,
-                    date_column=self.datecolumn_outdoorTemperature,
-                    value_column=self.valuecolumn_outdoorTemperature,
-                    use_spreadsheet=self.use_spreadsheet,
-                    use_database=self.use_database,
-                    uuid=self.uuid_outdoorTemperature,
-                    dbconfig=self.dbconfig_outdoorTemperature,
-                ),
-                transformation=self._transformation_outdoorTemperature,
-            )
-
-            time_series_temp.initialize(start_time, end_time, step_size)
-
-            time_series_irrad = TimeSeriesInputSystem(
-                id=f"time series input - globalIrradiation - {self.id}",
-                source=reader_from_keywords(
-                    df=df_irrad,
-                    filename=self.filename_globalIrradiation,
-                    date_column=self.datecolumn_globalIrradiation,
-                    value_column=self.valuecolumn_globalIrradiation,
-                    use_spreadsheet=self.use_spreadsheet,
-                    use_database=self.use_database,
-                    uuid=self.uuid_globalIrradiation,
-                    dbconfig=self.dbconfig_globalIrradiation,
-                ),
-                transformation=self._transformation_globalIrradiation,
-            )
-            time_series_irrad.initialize(start_time, end_time, step_size)
-
-            # CO2 source is optional: if no BRICK Outdoor_Co2_Sensor exists,
-            # ``uuid_outdoorCo2Concentration`` (and dbconfig / filename / df
-            # column) is unset, and the pattern-driven matcher cannot
-            # populate it.  Skipping the ``time_series_co2`` build here lets
-            # the rest of the OutdoorEnvironmentSystem initialize cleanly --
-            # ``outdoorCo2Concentration`` falls back to a constant 400 ppmv,
-            # which is the right default for buildings without a dedicated
-            # outdoor CO2 sensor.  Consumers that need a real CO2 feed
-            # (e.g. ``BuildingSpace.outdoorCo2Concentration``) can be wired from a
-            # dedicated ScheduleSystem / TimeSeriesInputSystem in the fcn
-            # callback instead.
-            _has_co2_source = (
-                self.use_df
-                or (
-                    self.use_spreadsheet
-                    and self.filename_outdoorCo2Concentration is not None
-                )
-                or (
-                    self.use_database
-                    and self.uuid_outdoorCo2Concentration is not None
-                    and self.dbconfig_outdoorCo2Concentration is not None
-                )
-            )
-            if _has_co2_source:
-                time_series_co2 = TimeSeriesInputSystem(
-                    id=f"time series input - outdoorCo2Concentration - {self.id}",
-                    source=reader_from_keywords(
-                        df=df_co2,
-                        filename=self.filename_outdoorCo2Concentration,
-                        date_column=self.datecolumn_outdoorCo2Concentration,
-                        value_column=self.valuecolumn_outdoorCo2Concentration,
-                        use_spreadsheet=self.use_spreadsheet,
-                        use_database=self.use_database,
-                        uuid=self.uuid_outdoorCo2Concentration,
-                        dbconfig=self.dbconfig_outdoorCo2Concentration,
-                    ),
-                )
-                time_series_co2.initialize(start_time, end_time, step_size)
-            else:
-                time_series_co2 = None
-
-            # Initialize outputs using the values from TimeSeriesInputSystem.
-            # When ``apply_correction=True`` we pre-transform the temperature
-            # values here (rather than only inside ``do_step``) so that the
-            # output's ``_history`` and the live ``_tensor`` carry the SAME
-            # numbers.  Leaf scalars (``is_leaf=True``) populate ``_history``
-            # at initialize time and never re-write it per-step, so without
-            # this pre-transform ``output["outdoorTemperature"].history()``
-            # returned the raw feed (e.g. Sacramento degF) while the
-            # downstream AHU / BuildingSpace correctly consumed the
-            # corrected degC value -- a confusing discrepancy for anyone
-            # plotting ``.history()``.  ``do_step`` still applies
-            # ``self._apply`` to the live ``_tensor`` slice for each step;
-            # idempotent because ``a, b`` haven't changed between init and
-            # do_step (only one expand_to_n_c happens before either runs).
-            temp_values = time_series_temp.values
-            if self.apply_correction:
-                temp_values = self._apply(temp_values)
-            self.output["outdoorTemperature"].initialize(
-                n_t=time_series_temp.n_timesteps,
-                n_s=time_series_temp.batch_size,
-                n_c=1,
-                values=temp_values,
-            )
-            self.output["globalIrradiation"].initialize(
-                n_t=time_series_irrad.n_timesteps,
-                n_s=time_series_irrad.batch_size,
-                n_c=1,
-                values=time_series_irrad.values,
-            )
-            if time_series_co2 is not None:
-                self.output["outdoorCo2Concentration"].initialize(
-                    n_t=time_series_co2.n_timesteps,
-                    n_s=time_series_co2.batch_size,
-                    n_c=1,
-                    values=time_series_co2.values,
-                )
-            else:
-                # Mirror the temperature time-series shape so the Scalar
-                # output buffer is aligned with the rest of the model
-                # (consumers see a constant 400 ppmv ambient CO2 at every
-                # timestep).
-                self.output["outdoorCo2Concentration"].initialize(
-                    n_t=time_series_temp.n_timesteps,
-                    n_s=time_series_temp.batch_size,
-                    n_c=1,
-                    values=torch.full_like(time_series_temp.values, 400.0),
-                )
-
-            # Expand parameters to n_c dimension for vectorization
-            self.a = self.a.expand_to_n_c(self.n_c)
-            self.b = self.b.expand_to_n_c(self.n_c)
-        else:
-            raise ValueError(
-                "No data source provided. Set use_spreadsheet=True, use_database=True, or use_df=True."
-            )
-
-    @property
-    def transformation_ref_outdoorTemperature(self) -> Optional[str]:
-        """``module:qualname`` of the outdoor-temperature feed's transformation
-        (the serializable form; ``None`` without one)."""
-        return callable_to_ref(
-            self._transformation_outdoorTemperature,
-            f"|CLASS: {self.__class__.__name__}|ID: {self.id}|",
-        )
-
-    @transformation_ref_outdoorTemperature.setter
-    def transformation_ref_outdoorTemperature(self, ref: Optional[str]) -> None:
-        fn = ref_to_callable(ref)
-        if fn is not None:
-            self._transformation_outdoorTemperature = fn
-
-    @property
-    def transformation_ref_globalIrradiation(self) -> Optional[str]:
-        """``module:qualname`` of the irradiation feed's transformation."""
-        return callable_to_ref(
-            self._transformation_globalIrradiation,
-            f"|CLASS: {self.__class__.__name__}|ID: {self.id}|",
-        )
-
-    @transformation_ref_globalIrradiation.setter
-    def transformation_ref_globalIrradiation(self, ref: Optional[str]) -> None:
-        fn = ref_to_callable(ref)
-        if fn is not None:
-            self._transformation_globalIrradiation = fn
-
-    def set_transformation(self, fn):
-        """Set the unit-conversion callable for the outdoor-temperature feed.
-
-        This is the hook :meth:`Model.set_transformations` uses to dispatch
-        per-Brick-class transformations (e.g. ``Temperature_Sensor →
-        (x - 32) * 5 / 9`` for Fahrenheit time series).  The dispatcher
-        resolves a single most-specific rule per component; for
-        :class:`OutdoorEnvironmentSystem` the only matching class
-        binding is ``Outside_Air_Temperature_Sensor`` (a subclass of
-        ``Temperature_Sensor``), so any rule routed here is unambiguously
-        the temperature-side rule.  ``globalIrradiation`` and
-        ``outdoorCo2Concentration`` are NOT touched — they have no
-        ``Temperature_Sensor``-compatible binding and their unit rules
-        (if any) would have to be plumbed via a sibling setter.
-
-        The callable is applied inside :class:`TimeSeriesInputSystem`
-        when the temperature feed is loaded at ``initialize`` time, so
-        ``self.output["outdoorTemperature"].history()`` and every
-        downstream consumer see the same converted values.  Setting it
-        after ``initialize`` has run has no effect on the already-
-        loaded ``output`` buffer; re-call ``simulator.simulate(...)`` /
-        ``initialize`` for the change to take effect.
-
-        Args:
-            fn: A callable applied element-wise to the loaded temperature
-                series (``pd.Series.apply(fn)`` semantics).  Passing
-                ``None`` disables the per-class transformation.
-        """
-        self._transformation_outdoorTemperature = fn
-
-    def set_transformation_by_type(self, semantic_type, fn):
-        """Route a per-Brick-class transformation to the matching feed.
-
-        :meth:`Model.set_transformations` calls this once per semantic
-        node the component models, with the class whose rule won for
-        that node: temperature-sensor classes go to the
-        ``outdoorTemperature`` feed, solar radiance / irradiance classes
-        to the ``globalIrradiation`` feed (e.g. clipping the spikes a
-        BMS irradiance sensor logs).  Unknown classes are ignored.
-        """
-        uris = {str(semantic_type.uri)} | {
-            str(c.uri) for c in getattr(semantic_type, "super_classes", [])
-        }
+    def set_transformation_by_type(self, semantic_type, fn) -> None:
+        """Route a per-Brick-class transformation to its feed: temperature
+        sensors to the outdoor temperature, solar irradiance / radiance
+        sensors to the global irradiation; other classes are ignored."""
+        uris = {str(semantic_type.uri)} | {str(c.uri) for c in getattr(semantic_type, "super_classes", [])}
         brick = core.namespace.BRICK
         if str(brick.Temperature_Sensor) in uris:
-            self._transformation_outdoorTemperature = fn
+            self.outdoorTemperature_transformation = fn
         elif uris & {
             str(brick.Solar_Irradiance_Sensor),
             str(brick.Solar_Radiance_Sensor),
             str(brick.Global_Solar_Irradiation_Sensor),
         }:
-            self._transformation_globalIrradiation = fn
+            self.globalIrradiation_transformation = fn
 
-    def _apply(self, x):
-        return x * self.a.get() + self.b.get()
-
-    def do_step(
-        self,
-        second_time: Optional[float] = None,
-        date_time: Optional[datetime.datetime] = None,
-        step_size: Optional[float] = None,
-        step_index: Optional[int] = None,
-    ) -> None:
-        """Perform one simulation step.
-
-        This method reads the current weather data and applies optional linear corrections
-        to the temperature values. The irradiation and CO2 concentration values are passed through
-        without modification.
-
-        Args:
-            second_time (float, optional): Current simulation time in seconds.
-            date_time (date_time, optional): Current simulation date and time.
-            step_size (float, optional): Time step size in seconds.
-            step_index (int, optional): Current simulation step index.
-        """
-        # Set the values for each output.
-        #
-        # ``apply_correction`` is applied EXCLUSIVELY at ``initialize``
-        # time (where ``self._apply`` is folded into the temperature
-        # values BEFORE they're written into the leaf-scalar history),
-        # not here.  Doing the transformation per-step as well would
-        # double-correct: ``_set(transformation=self._apply)`` would
-        # read from already-corrected history and apply ``self._apply``
-        # a second time, producing values that look right in the live
-        # ``_tensor`` only by accident -- and any rerun of
-        # ``initialize`` (e.g. a fresh ``simulator.simulate(...)`` call)
-        # would compound it further.  Keeping ``do_step`` as a plain
-        # leaf-scalar passthrough also fixes the discrepancy between
-        # ``output["outdoorTemperature"].history()`` (which was raw
-        # feed) and what downstream AHU / BuildingSpace components
-        # consumed (corrected) -- both now read the corrected values.
-        self._output["outdoorTemperature"]._set(i_t=step_index)
-        self._output["globalIrradiation"]._set(i_t=step_index)
-        self._output["outdoorCo2Concentration"]._set(i_t=step_index)
-
-
+    def series(self, timestamps, step_size):
+        """Every output on the run's grid, from its reader."""
+        start_time, end_time, step_sizes = self.periods(timestamps, step_size)
+        values = {}
+        for feed in self.FEEDS:
+            reader = getattr(self, f"{feed}_source")
+            if reader is None:
+                if feed == "outdoorCo2Concentration":
+                    values[feed] = np.full(timestamps.shape, float(self.co2_default))
+                    continue
+                raise ValueError(f"OutdoorEnvironmentSystem '{self.id}': no reader for {feed} ({feed}_source)")
+            values[feed] = reader.read(
+                start_time, end_time, step_sizes,
+                transformation=getattr(self, f"{feed}_transformation", None),
+                owner=f"{self.id}.{feed}",
+            ).values
+        if self.apply_correction:
+            # the correction's parameters as they are at run start
+            a = self.a.get().reshape(-1)[0]
+            b = self.b.get().reshape(-1)[0]
+            values["outdoorTemperature"] = torch.as_tensor(values["outdoorTemperature"], dtype=a.dtype) * a + b
+        return values

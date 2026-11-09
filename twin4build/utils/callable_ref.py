@@ -34,3 +34,13 @@ def ref_to_callable(ref: Optional[str]) -> Optional[Callable]:
     for part in qualname.split("."):
         obj = getattr(obj, part)
     return obj
+
+
+def as_callable(value) -> Optional[Callable]:
+    """A function from a function, or from its ``module:qualname`` reference
+    (what a saved model holds)."""
+    if value is None or callable(value):
+        return value
+    if isinstance(value, str):
+        return ref_to_callable(value)
+    raise TypeError(f"Expected a function or its module:qualname reference, got {value!r}")

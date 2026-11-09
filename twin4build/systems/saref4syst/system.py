@@ -1385,6 +1385,12 @@ class System(nn.Module, metaclass=SystemMeta):
                 # A reader (a data source's ``source``): the dict it is
                 # rebuilt from.
                 return value.to_config()
+            if callable(value) and not isinstance(value, (torch.nn.Module, type)):
+                # A function (a transformation): its module:qualname
+                # reference (None for one that cannot be imported again).
+                from twin4build.utils.callable_ref import callable_to_ref
+
+                return callable_to_ref(value, f"|CLASS: {type(self).__name__}|ID: {self.id}|")
             if isinstance(value, (tps.Parameter, tps.TensorParameter)) or (
                 hasattr(value, "get") and hasattr(value, "detach")
             ):

@@ -424,13 +424,20 @@ def reader_from_keywords(df=None, filename=None, date_column=0, value_column=1, 
 
 
 def as_source(value):
-    """A reader from a reader, or from the dict a saved model holds."""
+    """A reader from a reader, from the dict a saved model holds, or from a
+    string: a database point's id (what a translator pattern gives, with
+    ``sp.add_parameter("source", ...)``)."""
     if value is None or isinstance(value, Source):
         return value
+    if isinstance(value, str):
+        return DatabaseSource(value)
     if isinstance(value, dict):
         options = dict(value)
         cls = _READERS.get(options.pop("type", None))
         if cls is None:
             raise ValueError(f"Not a reader: {value!r}")
         return cls(**options)
-    raise TypeError(f"A data source's source is a reader (CsvSource, DataFrameSource, DatabaseSource), got {value!r}")
+    raise TypeError(
+        f"A data source's source is a reader (CsvSource, DataFrameSource, DatabaseSource) or a database "
+        f"point's id, got {value!r}"
+    )
