@@ -83,9 +83,12 @@ class TestVariableSpec(unittest.TestCase):
 
     def test_private_components_keep_their_own_bounds(self):
         """A private Variable over several components gives each its own
-        declared bounds; a shared one refuses bounds that differ."""
+        bounds (an instance's own, as sizing a parameter gives them); a
+        shared one refuses bounds that differ."""
         model, curve, _heater, _discomfort = build_model(self.MODEL_ID + "_two_curves")
-        other = PiecewiseLinearSystem(id="Curve2", X=X_OUT, Y=torch.tensor([15.0] * 4), Y_bounds=(10.0, 20.0))
+        other = PiecewiseLinearSystem(id="Curve2", X=X_OUT, Y=torch.tensor([15.0] * 4))
+        curve.parameter = {**curve.parameter, "Y": {"lb": 12.0, "ub": 24.0}}
+        other.parameter = {**other.parameter, "Y": {"lb": 10.0, "ub": 20.0}}
         model.add_component(other)
         resolved = estimator_parameters([tb.Variable([curve.Y, other.Y])], model)
         self.assertEqual([(r[0].id, r[1], r[3], r[4], r[5]) for r in resolved], [("Curve", "Y", 12.0, 24.0, "private"), ("Curve2", "Y", 10.0, 20.0, "private")])
@@ -137,10 +140,11 @@ class TestVariableSpec(unittest.TestCase):
     # -- the Optimizer ---------------------------------------------------------
     def test_optimizer_variables_are_the_tuples(self):
         resolved = optimizer_variables(
-            [self.curve.Y, tb.Variable(self.model.components["Waterflow"].output["scheduleValue"], lb=0.0, ub=0.02)],
+            [tb.Variable(self.curve.Y, lb=12.0, ub=24.0),
+             tb.Variable(self.model.components["Waterflow"].output["scheduleValue"], lb=0.0, ub=0.02)],
             self.model,
         )
-        self.assertEqual(resolved[0], (self.curve, "Y", 12.0, 24.0))  # the curve's declared Y_bounds
+        self.assertEqual(resolved[0], (self.curve, "Y", 12.0, 24.0))
         self.assertEqual(resolved[1], (self.model.components["Waterflow"], "scheduleValue", 0.0, 0.02))
         with self.assertRaises(NotImplementedError):
             optimizer_variables([tb.Variable(self.curve.Y, periods="per_period")], self.model)
@@ -157,10 +161,10 @@ class TestVariableSpec(unittest.TestCase):
         self.assertEqual(optimizer_variables((tb.Variable(port, lb=0.0, ub=0.02),), self.model), [(self.model.components["Waterflow"], "scheduleValue", 0.0, 0.02)])
 
     def test_a_variable_defines_the_tuples_problem(self):
-        """The curve's points as a bare parameter define the same problem as
+        """The curve's points as a Variable define the same problem as
         the tuple: the same functional objective value at a point."""
         values = []
-        for variables in ([(self.curve, "Y", 12.0, 24.0)], [self.curve.Y]):
+        for variables in ([(self.curve, "Y", 12.0, 24.0)], [tb.Variable(self.curve.Y, lb=12.0, ub=24.0)]):
             optimizer = tb.Optimizer(tb.Simulator(self.model, execution_mode="functional"))
             optimizer.optimize(
                 start_time=self.start, end_time=self.end, step_size=2400,

@@ -72,7 +72,7 @@ def build_model(model_id: str):
     # power but raises this, so the two objectives conflict (a Pareto front
     # needs that; with agreeing objectives the sweep is just the anchors).
     discomfort = OverheatingSystem(id="Discomfort")
-    curve = PiecewiseLinearSystem(id="Curve", X=X_OUT, Y=torch.tensor([18.0, 18.0, 18.0, 18.0]), Y_bounds=(12.0, 24.0))
+    curve = PiecewiseLinearSystem(id="Curve", X=X_OUT, Y=torch.tensor([18.0, 18.0, 18.0, 18.0]))
 
     model.add_connection(zero, space, "scheduleValue", "numberOfPeople")
     model.add_connection(outdoor, space, "scheduleValue", "outdoorTemperature")

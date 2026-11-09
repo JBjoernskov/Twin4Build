@@ -39,14 +39,14 @@ _ORDER = itertools.count()
 
 
 class _Required:
-    """The default of a setting the constructor must be given."""
+    """The default of a setting or parameter the constructor must be given."""
 
     def __repr__(self) -> str:
         return "REQUIRED"
 
 
-#: The default of a :class:`Setting` that has none: constructing the System
-#: without it raises ``TypeError``.
+#: The default of a :class:`Setting` or :class:`Parameter` that has none:
+#: constructing the System without it raises ``TypeError``.
 REQUIRED = _Required()
 
 
@@ -192,6 +192,7 @@ class Parameter(Declaration):
             An absent
             parameter is not in ``forward``'s ``p``, is not estimated and is not
             saved; the System says what follows from its absence in ``derive``.
+            :data:`REQUIRED`: the constructor must be given it.
         lb, ub: The range the estimator searches. A parameter without both is
             not estimated unless the caller gives bounds.
         scaling: ``"linear"`` or ``"log"`` (equal steps are equal ratios; needs
@@ -203,6 +204,11 @@ class Parameter(Declaration):
             slot of that input (per copy), as :class:`Child`'s ``per_slot``.
         per_slot_if: A boolean setting of the class: ``per_slot`` holds only
             while the setting is true; otherwise one value per copy.
+        size: The parameter holds this many values per copy: an int, or a
+            setting of the class holding a sequence (its length).  The points
+            of a curve: ``Y = Parameter(REQUIRED, size=X)``.  ``forward``
+            reads them flat, one copy after another (``p["Y"].reshape(-1,
+            n)``); one value given fills every place.
         doc: What the parameter is, with its unit.
     """
 
@@ -210,11 +216,17 @@ class Parameter(Declaration):
 
     def __init__(self, value, lb=None, ub=None, scaling: str = "linear",
                  relative: Optional[Sequence[float]] = None, per_slot=None, per_slot_if=None,
-                 doc: str = ""):
+                 size=None, doc: str = ""):
         super().__init__(doc)
         if scaling not in ("linear", "log"):
             raise TypeError(f"Parameter: scaling= is 'linear' or 'log', got {scaling!r}")
         _check_per_slot(per_slot, per_slot_if, "Parameter")
+        if size is not None:
+            if per_slot is not None:
+                raise TypeError("Parameter: give size= or per_slot=, not both")
+            if not (isinstance(size, Setting) or (isinstance(size, int) and not isinstance(size, bool) and size > 0)):
+                raise TypeError(f"Parameter: size= takes a positive int or a setting of the class, got {size!r}")
+        self.size = size
         self.value = value
         self.lb = lb
         self.ub = ub
@@ -382,6 +394,12 @@ def _check_references(cls, merged) -> None:
                 raise TypeError(
                     f"{cls.__qualname__}.{name}: init= refers to {ref!r}, which the class does not declare"
                 )
+    for name, decl in merged["parameter"].items():
+        ref = decl.size
+        if isinstance(ref, Declaration) and not known(ref):
+            raise TypeError(
+                f"{cls.__qualname__}.{name}: size= refers to {ref!r}, which the class does not declare"
+            )
     for kind in ("parameter", "child"):
         for name, decl in merged[kind].items():
             for keyword in ("per_slot", "per_slot_if"):

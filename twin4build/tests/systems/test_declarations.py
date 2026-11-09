@@ -49,6 +49,7 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.registry import SystemRegistry
 from twin4build.systems.saref4syst.declarations import (
+    REQUIRED,
     Child,
     Input,
     Output,
@@ -513,6 +514,110 @@ class TestPerSlot(unittest.TestCase):
             Parameter(1.0, per_slot=Setting(3))
         with self.assertRaisesRegex(TypeError, "per_slot_if"):
             Parameter(1.0, per_slot_if=Setting(False))
+
+
+class TestSizedParameters(unittest.TestCase):
+    """``Parameter(size=)``: several values per copy (a curve's points)."""
+
+    def test_a_sized_parameter_holds_its_values(self):
+        class Weights(core.System):
+            names = Setting(REQUIRED)
+            u = Input()
+            y = Output()
+            w = Parameter(REQUIRED, size=names)
+            fixed = Parameter(0.5, size=2)
+
+        weights = Weights(id="weights", names=["a", "b", "c"], w=[1.0, 0.0, -2.0])
+        self.assertEqual(weights.w.get().tolist(), [1.0, 0.0, -2.0])  # zeros and signs mixed normalize too
+        self.assertEqual(weights.fixed.get().tolist(), [0.5, 0.5])  # one value fills every place
+        self.assertEqual(weights.values_per_copy("w"), 3)
+        self.assertNotIn("names", Weights.value_settings())
+        with self.assertRaisesRegex(TypeError, "needs the parameter 'w'"):
+            Weights(id="weights", names=["a"])
+        with self.assertRaisesRegex(ValueError, "2 values, but its size is 3"):
+            Weights(id="weights", names=["a", "b", "c"], w=[1.0, 2.0])
+
+    def test_size_takes_an_int_or_a_setting_of_the_class(self):
+        stray = Setting(["a"])
+        with self.assertRaisesRegex(TypeError, "size="):
+            class Stray(core.System):
+                w = Parameter(1.0, size=stray)
+        with self.assertRaisesRegex(TypeError, "not both"):
+            class Both(core.System):
+                u = Input(size="wired")
+                w = Parameter(1.0, size=2, per_slot=u)
+
+
+class TestBatchedValuesPerCopy(unittest.TestCase):
+    """Batched copies of a System holding several values per copy (a value
+    or a child per branch, a curve's points) lay them out one copy after
+    another."""
+
+    def tearDown(self):
+        _remove("test_per_copy_branches", "test_per_copy_widths", "test_per_copy_curves_separate",
+                "test_per_copy_curves_batched")
+
+    @staticmethod
+    def _branches(model_id, widths, **values):
+        model = tb.Model(id=model_id)
+        for k, width in enumerate(widths):
+            branches = BranchesSystem(id=f"branches{k}", scale_per_branch=True, **values)
+            for j in range(width):
+                model.add_connection(_signal(f"u{k}{j}"), branches, "scheduleValue", "u", input_port_index=j)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model
+
+    def test_copies_with_a_child_per_branch_batch_and_run(self):
+        """They batched with one value per copy and failed at the run start
+        (a child per branch needs one per branch of every copy)."""
+        for values in ({}, {"branch": dict(gain=[1.0, 2.0])}):
+            model = self._branches("test_per_copy_branches", (2, 2), **values)
+            batched = model.batch_components()
+            meta, _ = model._component_to_meta["branches0"]
+            self.assertIs(model._component_to_meta["branches1"][0], meta)
+            gains = [1.0, 2.0] * 2 if values else [2.0] * 4
+            self.assertEqual(meta.branch.gain.get().tolist(), gains)
+            batched.load(draw_semantic_model=False, draw_simulation_model=False)
+            _simulate(batched)
+            meta = batched.components[meta.id]
+            self.assertEqual(meta.branch.n_c, 4)
+            self.assertEqual(meta.scale.get().numel(), 4)
+            _remove(batched.id)
+
+    def test_copies_with_different_branch_counts_stay_apart(self):
+        model = self._branches("test_per_copy_widths", (2, 3))
+        batched = model.batch_components()
+        self.assertIsNot(model._component_to_meta["branches0"][0], model._component_to_meta["branches1"][0])
+        _remove(batched.id)
+
+    @staticmethod
+    def _curves(model_id, points):
+        model = tb.Model(id=model_id)
+        for k, Y in enumerate(points):
+            curve = tb.PiecewiseLinearSystem(id=f"curve{k}", X=[0.0, 2.0, 4.0], Y=Y)
+            model.add_connection(_signal(f"x{k}"), curve, "scheduleValue", "x")
+            model.add_connection(curve, LagSystem(id=f"lag{k}"), "y", "u")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        return model
+
+    def test_curves_with_their_own_points_batch_and_keep_them(self):
+        points = ([0.0, 10.0, 0.0], [5.0, -5.0, 20.0])
+        separate = self._curves("test_per_copy_curves_separate", points)
+        _simulate(separate)
+        model = self._curves("test_per_copy_curves_batched", points)
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["curve0"]
+        self.assertIs(model._component_to_meta["curve1"][0], meta)
+        self.assertEqual(meta.Y.get().tolist(), points[0] + points[1])
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        for mode in ("object", "functional"):
+            _simulate(batched, mode=mode)
+            for k in range(2):
+                meta, i_c = model._component_to_meta[f"curve{k}"]
+                got = batched.components[meta.id].output["y"].history(i_c=i_c).reshape(-1).detach().cpu()
+                want = separate.components[f"curve{k}"].output["y"].history().reshape(-1).cpu()
+                torch.testing.assert_close(got, want, msg=mode)
+        _remove(batched.id)
 
 
 class TestInitialValues(unittest.TestCase):
