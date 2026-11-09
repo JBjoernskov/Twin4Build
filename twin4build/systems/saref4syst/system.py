@@ -293,6 +293,10 @@ class System(nn.Module, metaclass=SystemMeta):
         if "_parameters" not in self.__dict__:
             nn.Module.__init__(self)
         declared_values = self._take_declared_values(kwargs) if type(self)._is_declared else None
+        for name in kwargs:
+            removed = type(self).REMOVED_ATTRIBUTES.get(name)
+            if removed is not None:
+                raise TypeError(f"{type(self).__name__}({name}=...) is gone in 2.0: {removed}")
         reject_unexpected_kwargs(type(self).__name__, kwargs)
         assert isinstance(connects_at, list) or connects_at is None, (
             'Attribute "connects_at" is of type "'
@@ -434,7 +438,13 @@ class System(nn.Module, metaclass=SystemMeta):
                 cls_name = type(self).__name__
                 if new is not None:
                     deprecate_name(f"{cls_name}({old}=...)", f"{cls_name}({new}=...)", stacklevel=4)
-                    kwargs.setdefault(new, value)
+                    child, _, leaf = new.partition(".")
+                    if leaf:  # a value of a child: into the child's dict
+                        given = dict(kwargs.get(child) or {})
+                        given.setdefault(leaf, value)
+                        kwargs[child] = given
+                    else:
+                        kwargs.setdefault(new, value)
         values = {"setting": {}, "parameter": {}, "child": {}}
         for name, decl in declared["setting"].items():
             if name in kwargs:
@@ -475,12 +485,19 @@ class System(nn.Module, metaclass=SystemMeta):
             owner=cls.__name__,
         )
         bounds = {}
+        computed = []
         for name, decl in declared["parameter"].items():
-            setattr(self, name, values["parameter"][name])  # None: absent until given
+            value = values["parameter"][name]
+            if callable(value) and not isinstance(value, (torch.Tensor, nn.Module)):
+                computed.append((name, value))  # a default computed from the System
+                value = None
+            setattr(self, name, value)  # None: absent until given
             spec = decl.bounds()
             if spec is not None:
                 bounds[name] = spec
         self.parameter = bounds
+        for name, compute in computed:
+            setattr(self, name, compute(self))
         for name, decl in declared["state"].items():
             size = decl.size if isinstance(decl.size, int) else None
             if size is None and getattr(decl.size, "kind", None) == "setting":

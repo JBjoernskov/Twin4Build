@@ -1782,19 +1782,9 @@ class Model:
     # Keyed by fully-qualified class name.  Supports dotted paths for
     # composite components (e.g. ``"thermal.some_attr"``).
     _INIT_ATTRS_TO_COPY: Dict[str, Tuple[str, ...]] = {
-        "twin4build.systems.space_heater.space_heater_system.SpaceHeaterSystem": (
-            "nelements",
-            "Q_flow_nominal_sh",
-            "T_a_nominal_sh",
-            "T_b_nominal_sh",
-            "TAir_nominal_sh",
-            "initialize_UA",
-        ),
+        # A declared System's settings build its meta (``_batch_init_kwargs``):
+        # the wall, the node, the radiator and the fan-coil need no entry.
         "twin4build.systems.building_space.building_space_system.BuildingSpaceSystem": (),
-        # The initial wall / node temperature is a constructor value, not a
-        # Parameter; without it a batched wall starts at the class default.
-        "twin4build.systems.wall.wall_system.WallSystem": ("T_init",),
-        "twin4build.systems.thermal_mass.thermal_mass_node_system.ThermalMassNodeSystem": ("T_init",),
         "twin4build.systems.controller.setpoint_controller.pid_controller"
         ".pid_controller_system.PIDControllerSystem": ("is_reverse",),
     }

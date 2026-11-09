@@ -111,7 +111,6 @@ class TestSerializeRoundTrip(unittest.TestCase):
             ["thermal.C_wall", "mass.V", "UA", "thermalMassHeatCapacity"],
             overwrite=True,
         )
-        heater.initialize_UA = False
         return model, room, heater, outdoor
 
     def _simulate(self, model):
@@ -136,7 +135,6 @@ class TestSerializeRoundTrip(unittest.TestCase):
         self.assertAlmostEqual(float(room2.mass.V.get().reshape(-1)[0]), 150.0, places=6)
         self.assertAlmostEqual(float(heater2.UA.get().reshape(-1)[0]), 37.5, places=6)
         self.assertAlmostEqual(float(heater2.thermalMassHeatCapacity.get().reshape(-1)[0]), 2.5e5, delta=1e-3)
-        self.assertFalse(heater2.initialize_UA)
         self.assertIs(outdoor2.transformation, celsius_from_deci)
         self.assertEqual(outdoor2.transformation_ref, f"{__name__}:celsius_from_deci")
 

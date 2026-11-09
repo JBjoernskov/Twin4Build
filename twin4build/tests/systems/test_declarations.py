@@ -20,6 +20,9 @@ Covered:
    parameter per slot of an input;
 9. initial values: a state and an output start at a setting, an output at its
    state's start;
+10. a parameter's default computed from the System, an old keyword that moved
+    into a child, a removed keyword that names its replacement, and the alias
+    tables a renamed port fills;
 8. the converted valve keeps its constructor keywords, bounds and flow.
 """
 
@@ -134,6 +137,17 @@ class TankSystem(core.System):
 
     def forward(self, x, inputs, p, step_size):
         return x, {"level": x[..., 0], "reading": x[..., 0]}
+
+
+class PlateSystem(core.System):
+    """A parameter computed from a setting; an old keyword now a child's."""
+
+    DEPRECATED_KEYWORDS = {"part_gain": "part.gain"}
+    REMOVED_ATTRIBUTES = {"legacy": "give width= instead"}
+
+    width = Setting(2.0)
+    area = Parameter(lambda plate: plate.width ** 2, lb=0.1, ub=100.0)
+    part = Child(GainSystem)
 
 
 def _signal(sid="signal"):
@@ -431,6 +445,28 @@ class TestInitialValues(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "init="):
             class Stray(core.System):
                 level = Output(init=Setting(1.0))
+
+
+class TestBuildRules(unittest.TestCase):
+    def test_a_default_computed_from_the_system_and_a_given_value(self):
+        self.assertEqual(float(PlateSystem(id="p", width=3.0).area.get()), 9.0)
+        self.assertEqual(float(PlateSystem(id="q", width=3.0, area=5.0).area.get()), 5.0)
+
+    def test_an_old_keyword_moves_into_its_child(self):
+        with self.assertWarns(DeprecationWarning):
+            plate = PlateSystem(id="p", part_gain=5.0)
+        self.assertEqual(float(plate.part.gain.get()), 5.0)
+        self.assertEqual(plate._batch_init_kwargs["part"], {"gain": 5.0})
+
+    def test_a_removed_keyword_names_its_replacement(self):
+        with self.assertRaisesRegex(TypeError, "give width= instead"):
+            PlateSystem(id="p", legacy=1)
+
+    def test_a_renamed_port_fills_the_alias_table(self):
+        self.assertEqual(GainSystem.OUTPUT_PORT_ALIASES, {"out": "y"})
+        self.assertEqual(GainSystem(id="g").resolve_output_port("y"), "y")
+        with self.assertWarns(DeprecationWarning):
+            self.assertEqual(GainSystem(id="g").resolve_output_port("out"), "y")
 
 
 class TestConvertedValve(unittest.TestCase):
