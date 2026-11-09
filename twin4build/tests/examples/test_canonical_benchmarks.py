@@ -236,7 +236,7 @@ def test_cycles_cut_from_a_bounded_sample(monkeypatch):
     """A batched model cuts where its source model cut before it searches
     its own cycles, so with fewer cycles held at once than its graph has
     (CYCLE_SAMPLE) it still cuts where the source model does, and ends
-    without a cycle (23 Oct 2026: the HTR ring's batched model had more
+    without a cycle (23 Oct 2026: a large building's batched model had more
     simple cycles than memory holds; its source model 20 713).  The source
     model is cut with its complete cycle list: cut from samples, identical
     zones may be cut on different signals, which no batched model can

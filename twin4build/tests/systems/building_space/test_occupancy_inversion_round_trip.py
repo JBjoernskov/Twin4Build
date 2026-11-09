@@ -259,7 +259,7 @@ class TestInversionRoundTrip(unittest.TestCase):
         self.assertTrue(t[..., ACTIVE_INPUT_SLICE]._is_view())
 
     def test_batched_n_c_round_trip(self):
-        """Several parallel components at once: the shapes the HTR run uses.
+        """Several parallel components at once: the shapes a large building's run uses.
 
         The hand-rolled inverse took its leading dims from the data
         (``C_now * 0``); the zone takes them from the parameters.  Only the

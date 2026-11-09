@@ -5,7 +5,7 @@ A class declares ``"relative": (lo, hi)`` next to the absolute ``lb`` /
 :meth:`System.size_parameter` makes the bounds relative to the value it
 sizes; a later value (a warm start, a fit's result) moves the parameter, not
 the bounds.  Unsized, the absolute bounds stay and a warning names the
-attribute.  On the HTR ring the heat recovery's flows were declared 0.5-10
+attribute.  On a large building the heat recovery's flows were declared 0.5-10
 kg/s while the two merged units supply 11-23 kg/s.
 """
 

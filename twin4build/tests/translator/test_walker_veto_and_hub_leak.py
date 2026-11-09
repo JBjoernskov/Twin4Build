@@ -1,4 +1,4 @@
-"""Two matcher regressions found on the Hoeje-Taastrup Raadhus graph.
+"""Two matcher regressions found on a large municipal building's graph.
 
 1. A stand-alone :class:`NoStepRule` (not ``&``-composed with a positive
    rule) pruned every branch: with the predicate absent the walker hit the

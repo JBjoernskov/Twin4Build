@@ -101,7 +101,7 @@ class TestBlocks(unittest.TestCase):
         """A batched controller holds each loop's gate-slot weights flat, one
         row per loop: estimated, they belong to their own loop, so two loops
         stay two independent blocks of the estimation problem (they were one,
-        and the HTR ring's 317 loops two dense blocks of 1120 and 1570
+        and a large building's 317 loops two dense blocks of 1120 and 1570
         parameters under one trust region)."""
         model = _model([_controller(k, slots=2) for k in range(2)], slots=2)
         batched = model.batch_components()

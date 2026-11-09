@@ -1,6 +1,6 @@
 # Research scripts
 
-Site-specific scripts from research case studies (Mortar buildings 1 and 13, BTS Site A, HTR, the ESIM 2026
+Site-specific scripts from research case studies (Mortar buildings 1 and 13, BTS Site A, another case-study building, the ESIM 2026
 calibration and optimization plots). They are kept for reference only:
 
 - they read private files (local paths, dated estimation pickles under `generated_files/`) and local databases;

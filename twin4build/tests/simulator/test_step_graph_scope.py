@@ -53,7 +53,7 @@ class TestStepGraphScope(unittest.TestCase):
     def test_a_graph_holds_for_one_initialization(self):
         """Every simulate() initializes the model, and the components
         reallocate their tensors: a step graph captured before reads them at
-        their old addresses (on the HTR ring the second simulation of one
+        their old addresses (on a large building the second simulation of one
         simulator ran from freed memory, rooms 2.3 K off).  The second
         simulation captures its graphs again and gives what the first gave."""
         model = build(n_pairs=3, model_id="scope_repeat")

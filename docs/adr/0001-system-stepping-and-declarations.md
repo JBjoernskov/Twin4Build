@@ -2,8 +2,8 @@
 
 - **Status:** accepted, 2026-11-05. To be implemented in 2.0.
 - **Scope:** how a System is written, stepped, sized, fed with data and
-  checked, for every System in the core package, the Roomwise extension and
-  HTR.
+  checked, for every System in the core package and in the packages that
+  build on it.
 - **Terms:** as defined in [GLOSSARY.md](../../GLOSSARY.md).
 
 ## Context
@@ -128,8 +128,8 @@ class DamperSystem(System):
   `use_spreadsheet` / `use_database` / `use_df` / `use_dict` switches go.
 - Data sources: outdoor environment, schedules, the piecewise-linear
   schedule, time-series inputs, the recorded series of a sensor, and a new
-  core `TimeOfDayBasisSystem`. The last replaces HTR's DataFrame basis
-  leaves and `refresh_occupancy_basis`.
+  core `TimeOfDayBasisSystem`. The last replaces the DataFrame basis
+  leaves that downstream code writes for itself.
 - A sensor has two outputs. `measuredData` is the recorded series, filled by
   `series`. `measuredValue` is an identity `forward` of its input, which
   defaults to `measuredData` when nothing is wired. A System that needs the
@@ -139,7 +139,7 @@ class DamperSystem(System):
 
 ### 7. Occupancy
 
-- The extension's forward `OccupancyProfileSystem` moves into core: people in
+- A forward `OccupancyProfileSystem`, written downstream so far, moves into core: people in
   a room are a time-of-day basis weighted by estimated knot values, and the
   room's CO2 sensor scores the fit.
 - The inverse `OccupancySystem` is deleted. Its inversion survives as an
@@ -164,8 +164,8 @@ class DamperSystem(System):
   wired twice is rejected.
 - Room temperature inputs become one slot per branch. The three
   branch -> room maps go: the AHU's `_exhaust_branch_map`, the return
-  junction's `branch_temperature_slots` and the extension air transfer
-  node's `branch_zone`. So do `partition._repair_return_junctions` and the
+  junction's `branch_temperature_slots` and a downstream air transfer
+  node's own map. So do `partition._repair_return_junctions` and the
   room lookup in `factor_units`.
 - In a translator pattern, a sender list and a slot list are paired only
   when the pattern's rules fill one from the other, which means both are
@@ -206,7 +206,7 @@ passes, in core and in other packages. It checks:
 
 Example inputs live in the tests, not in the System class. The core tests
 keep one table with an example per core System, and fail when a core System
-class has no entry. The extension and HTR call `check_system` on their own
+class has no entry. Downstream packages call `check_system` on their own
 Systems.
 
 ### 12. Names
@@ -237,7 +237,7 @@ Systems.
 | Keeping the two port aliases until 2.1 | Each alias is a second name for the same port, and 2.0 already breaks the System interface. |
 | Checks that only warn | Today's checks only warn, and models with missing inputs run. |
 | Running the first-run probe only with `simulate(check=True)`, or all checks only on `model.check()` | A wrong output name or size then reaches a fit unnoticed. The probe costs about one `forward` call per System per load. |
-| A conformance test that is internal to core, or none | The extension's Systems are the ones with the most to rewrite in 2.0. Without a shared check they can drift from core unseen. |
+| A conformance test that is internal to core, or none | Downstream packages' Systems are the ones with the most to rewrite in 2.0. Without a shared check they can drift from core unseen. |
 | Example inputs declared on the System (`Input(example=...)`) | Adds to the declarations, which should stay as simple as possible. |
 
 ## Consequences
@@ -259,13 +259,11 @@ Systems.
   deprecated `weekDayRulesetDict`.
 - **Tests:** `tests/optimizer/test_parameter_decision_variables.py` uses
   the `Power` alias.
-- **Roomwise extension:** three Systems override `do_step` and are
-  rewritten. The AHU pattern indexes the exhaust temperature by `vavs`
-  (`bms_ahu.py:104`). The air transfer node's `branch_zone` goes. Comments in
-  `test_bms_patterns.py` and `test_bms_ahu_ring.py` that say one slot per room
-  go stale.
-- **HTR:** `refresh_occupancy_basis` and the DataFrame basis leaves are
-  replaced by `TimeOfDayBasisSystem`.
+- **Downstream packages:** Systems that override `do_step` are rewritten.
+  Patterns that index the exhaust temperature by terminal unit, and air
+  transfer nodes that keep their own branch -> room map, change with the
+  paired slots. DataFrame basis leaves are replaced by
+  `TimeOfDayBasisSystem`.
 
 ## Implementation
 
@@ -273,7 +271,7 @@ A series of pull requests against `dev`, each keeping the tests passing:
 
 1. One scalar output fills several slots; the translator pairs list slots
    by the pattern's rules (decision 9, without removing the maps).
-2. The extension's AHU pattern indexes the exhaust temperature by `vavs`.
+2. A downstream AHU pattern indexes the exhaust temperature by terminal unit.
 3. This ADR and the glossary.
 4. `sample_time` -> `step_size`.
 5. Declarations (decisions 2-4 and 8). Systems written the old way keep
@@ -287,4 +285,4 @@ A series of pull requests against `dev`, each keeping the tests passing:
 10. Lock-in: overrides raise, the checks raise and `validate` goes, and
     `check_system` with the core examples table (decisions 1, 10 and 11).
 
-Then the extension and HTR convert their own Systems.
+Then downstream packages convert their own Systems.
