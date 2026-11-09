@@ -177,11 +177,6 @@ class System(nn.Module, metaclass=SystemMeta):
         id: The id of the system.
     """
 
-    #: Opt in only when ``forward`` accepts ``transform_mode`` and its complete
-    #: call tree bypasses mutable caches and tensor-dependent Python behavior.
-    #: See :doc:`/manual/differentiable_system_models`.
-    SUPPORTS_TRANSFORM_MODE = False
-
     #: Deprecated output port names and the names that replaced them
     #: (``{"old": "new"}``).  A class that renames an output port lists the
     #: old name here and holds its outputs in an :class:`AliasedPorts`; the
@@ -536,14 +531,23 @@ class System(nn.Module, metaclass=SystemMeta):
             return value
         return value.unsqueeze(0).expand(n_s, *value.shape).reshape(n_s * n_c, *value.shape[1:])
 
+    @classmethod
+    def _fold_tree(cls, value, n_s: int, n_c: int):
+        """:meth:`_fold_parameter` on every tensor of a dict / tuple / list."""
+        if isinstance(value, torch.Tensor):
+            return cls._fold_parameter(value, n_s, n_c)
+        if isinstance(value, dict):
+            return {k: cls._fold_tree(v, n_s, n_c) for k, v in value.items()}
+        if isinstance(value, (tuple, list)):
+            return type(value)(cls._fold_tree(v, n_s, n_c) for v in value)
+        return value
+
     def _declared_do_step(self, step_size, step_index: int) -> None:
         """One object-mode step of a declared System through ``forward``."""
         n_c = self.n_c
         n_s = next(iter({**self.input, **self.output}.values())).n_s
         inputs = {name: self._fold(port.get(), n_s, n_c) for name, port in self.input.items()}
-        params = {
-            name: self._fold_parameter(rgetattr(self, name).get(), n_s, n_c) for name in self.PARAM_NAMES
-        }
+        params = self._fold_tree(self._forward_params(step_size), n_s, n_c)
         stateful = bool(self.collect_states())
         x = self._fold(self.get_state(), n_s, n_c) if stateful else None
         x_next, outs = self.forward(x, inputs, params, self._scalar_step_size(step_size))
@@ -768,6 +772,7 @@ class System(nn.Module, metaclass=SystemMeta):
         if type(self)._is_declared:
             n_c = int(getattr(self, "_n_c_batched", 1) or 1)
             self._initialize_declared(max_timesteps, batch_size, max(n_c, self.n_c))
+            self._start_run(step_size)
             return
         for input in self.input.values():
             input.initialize(n_t=max_timesteps, n_s=batch_size, n_c=self.n_c)
@@ -859,31 +864,68 @@ class System(nn.Module, metaclass=SystemMeta):
     # become forward-only Systems; removed with do_step (ADR 0001).
     _scalar_sample_time = _scalar_step_size
 
-    def _forward_params(self) -> dict:
-        """Own physical parameters as the ``forward`` params dict.
+    def _forward_params(self, step_size=None) -> dict:
+        """The ``forward`` params dict in object mode: the System's own
+        parameter values (:attr:`PARAM_NAMES`; dotted paths reach into owned
+        sub-objects) and, for a System that defines ``derive(p, step_size)``,
+        what it derives from them.
 
-        The single-source-of-truth contract: ``do_step`` is a thin port-I/O
-        wrapper that DELEGATES the math to ``forward`` (so the two can never
-        drift apart), and this helper supplies the params dict for that call
-        from the component's own ``tps.Parameter`` values (:attr:`PARAM_NAMES`).
-
-        Identity-stable: returns the SAME dict object for as long as every
-        underlying parameter tensor is unchanged, so the identity-keyed caches
-        inside ``forward`` (state-space matrices, PID coefficients, ...) keep
-        hitting across steps and the delegation costs nothing per step.  A
-        parameter write (estimation) swaps the tensor ``get()`` returns, which
-        invalidates the dict -- and, downstream, those caches -- automatically.
+        The derived values are computed once per run, at the first step
+        (``forward`` caches nothing; ADR 0001, decision 5): the run start
+        forgets the last run's (:meth:`_start_run`).
         """
         names = getattr(self, "PARAM_NAMES", ())
-        # rgetattr: PARAM_NAMES may contain dotted paths into owned
-        # sub-objects (e.g. OccupancySystem's "supply_damper.a").
-        vals = tuple(rgetattr(self, n).get() for n in names)
-        cache = getattr(self, "_forward_params_cache", None)
-        if cache is not None and all(a is b for a, b in zip(cache[0], vals)):
-            return cache[1]
-        d = dict(zip(names, vals))
-        self._forward_params_cache = (vals, d)
-        return d
+        params = {name: rgetattr(self, name).get() for name in names}
+        if getattr(type(self), "derive", None) is None:
+            return params
+        derived = self.__dict__.get("_derived")
+        if derived is None:
+            if step_size is None:
+                step_size = self.__dict__.get("_run_step_size")
+            elif not isinstance(step_size, (int, float)):
+                step_size = self._scalar_step_size(step_size)
+            derived = self.derive(params, step_size)
+            self.__dict__["_derived"] = derived
+        return {**params, **derived}
+
+    def full_params(self, p: dict, step_size) -> dict:
+        """``p`` plus what this System derives from it (``derive``): the
+        params its ``forward`` expects.  A composite's ``derive`` hands each
+        child its full params this way."""
+        if getattr(type(self), "derive", None) is None:
+            return p
+        return {**p, **self.derive(p, step_size)}
+
+    def _start_run(self, step_size) -> None:
+        """Run start, as far as the base is concerned for a System written the
+        old way: record the run's step size and forget the derived values of
+        the last run, for this System and every System it owns."""
+        if step_size is not None and not isinstance(step_size, torch.Tensor):
+            try:
+                self.__dict__["_run_step_size"] = self._scalar_step_size(step_size)
+            except (AssertionError, TypeError, ValueError):
+                self.__dict__.pop("_run_step_size", None)
+        self.__dict__.pop("_derived", None)
+        for owned in self._owned_systems():
+            owned.__dict__.pop("_derived", None)
+            if step_size is not None and "_run_step_size" in self.__dict__:
+                owned.__dict__["_run_step_size"] = self.__dict__["_run_step_size"]
+
+    def _owned_systems(self, _visited=None) -> list:
+        """Every System this one owns (attributes and registered children),
+        recursively; connected Systems are never followed."""
+        if _visited is None:
+            _visited = {id(self)}
+        out = []
+        candidates = [v for v in vars(self).values() if isinstance(v, System)]
+        candidates.extend(child for _, child in self.named_children() if isinstance(child, System))
+        for sub in candidates:
+            if id(sub) in _visited:
+                continue
+            _visited.add(id(sub))
+            out.append(sub)
+            out.extend(sub._owned_systems(_visited))
+        return out
 
     #: Ports through which this component may be fused into a monolithic
     #: state-space block (see ``FusedStateSpaceSystem``).  A connection is

@@ -502,8 +502,6 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
 
         # Drop per-params forward caches: a fresh simulation must not reuse
         # matrices (or their autograd graph) from a previous run.
-        self._fwd_mat_cache = None
-        self._forward_params_cache = None
 
     def _has_boundary_temperature(self) -> bool:
         """Whether the (deprecated) in-zone boundary-wall path is in use:
@@ -579,7 +577,6 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         return x0
 
     #: Physical RC parameters, in a fixed order (the ``forward`` theta contract).
-    SUPPORTS_TRANSFORM_MODE = True
     def _state_heat_capacities(self):
         """``[T_air, T_wall(, T_boundary)]`` hold ``C_air``, ``C_wall`` (and
         ``C_boundary``) [J/K]."""
@@ -965,12 +962,11 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
         for port in ("indoorTemperature", "wallTemperature") + self.SS_DERIVED_OUTPUT_PORTS:
             self.output[port]._set(outs[port], i_t=step_index)
 
-    def step_constants(self, params):
-        """The theta-only ``(A, B, C, D, E, F)`` for one rollout (see
-        :class:`~twin4build.systems.utils.discrete_statespace_system.StepParams`)."""
-        return self._build_matrices(params)
+    def derive(self, p, step_size):
+        """The state-space matrices, which depend on the parameters alone."""
+        return {"matrices": self._build_matrices(p)}
 
-    def forward(self, x, inputs, params, step_size, transform_mode=None):
+    def forward(self, x, inputs, params, step_size):
         """Pure one-step dynamics: ``(state, inputs, params) -> (new_state, outputs)``.
 
         The functorch-compatible re-expression of :meth:`do_step` -- it rebuilds
@@ -993,24 +989,7 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             ``(x_next (n_c, n_states), {"indoorTemperature", "wallTemperature",
             "surplusAirFlowRate", "makeUpAirFlowRate"})``.
         """
-        # The matrices depend only on params, not on (x, u): cache them per
-        # params-dict identity so a sequential rollout builds them once per
-        # theta instead of once per step (see OneStepComposer._params_for /
-        # System._forward_params).  step_size is part of the key because the
-        # attached disc_cache holds (Ad, Bd) discretized at a specific T.
-        if transform_mode:
-            matrices = getattr(params, "matrices", None)
-            if matrices is None:
-                matrices = self._build_matrices(params)
-            disc_cache = None
-        else:
-            cache = getattr(self, "_fwd_mat_cache", None)
-            if cache is None or cache[0] is not params or cache[2] != step_size:
-                cache = (params, self._build_matrices(params), step_size, {})
-                self._fwd_mat_cache = cache
-            matrices = cache[1]
-            disc_cache = cache[3]
-        A, B, C, D, E, F = matrices
+        A, B, C, D, E, F = params["matrices"]
         derived = self._ss_derived_outputs(inputs, {})
         inputs = {**inputs, **self._ss_transform_inputs(inputs)}
         cols = [
@@ -1040,8 +1019,6 @@ class BuildingSpaceThermalSystem(core.System, nn.Module):
             x,
             u,
             step_size,
-            disc_cache=disc_cache,
-            transform_mode=transform_mode,
         )
         return x_next, {"indoorTemperature": y[..., 0], "wallTemperature": y[..., 1], **derived}
 
