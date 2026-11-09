@@ -23,6 +23,9 @@ Covered:
 10. a parameter's default computed from the System, an old keyword that moved
     into a child, a removed keyword that names its replacement, and the alias
     tables a renamed port fills;
+11. an input that reads another input while unwired, in both engines; a child
+    that takes its composite's wired width; a child parameter shared with
+    another; a child's own id.
 8. the converted valve keeps its constructor keywords, bounds and flow.
 """
 
@@ -148,6 +151,41 @@ class PlateSystem(core.System):
     width = Setting(2.0)
     area = Parameter(lambda plate: plate.width ** 2, lb=0.1, ub=100.0)
     part = Child(GainSystem)
+
+
+class MixSystem(core.System):
+    """``b`` reads ``a`` while unwired."""
+
+    a = Input()
+    b = Input(default=a)
+    y = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"y": inputs["a"] + 10.0 * inputs["b"]}
+
+
+class FlowSumSystem(core.System):
+    flows = Input(size="wired")
+    total = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"total": inputs["flows"].sum(dim=-1)}
+
+
+class OuterSystem(core.System):
+    """A child sums the composite's wired vector of the same name; its gain is the other child's."""
+
+    SHARED_UNIT_PARAMS = {"second.gain": "first.gain"}
+
+    flows = Input(size="wired")
+    total = Output()
+    inner = Child(FlowSumSystem)
+    first = Child(GainSystem)
+    second = Child(GainSystem)
+
+    def forward(self, x, inputs, p, step_size):
+        _, out = self.inner.forward(None, {"flows": inputs["flows"]}, {}, step_size)
+        return x, out
 
 
 def _signal(sid="signal"):
@@ -343,6 +381,30 @@ class TestStepping(unittest.TestCase):
             torch.testing.assert_close(got, _history(separate, f"lag{k}"), rtol=1e-12, atol=1e-12)
             torch.testing.assert_close(got, _closed_form(separate, tau), rtol=1e-12, atol=1e-12)
 
+    def test_batching_stacks_every_declared_parameter(self):
+        """A fan's flow range has no bounds (it is not estimated) and is
+        still one value per copy once batched."""
+        model = tb.Model(id="test_declared_batch_fans")
+        fans = []
+        for k, (lo, hi) in enumerate(((0.0, 1.0), (0.5, 3.0))):
+            fan = tb.FanSystem(id=f"fan{k}")
+            fan.set_flow_range(lo, hi)
+            fans.append(fan)
+            model.add_connection(_signal(f"flow{k}"), fan, "scheduleValue", "airFlowRate")
+            model.add_connection(_signal(f"temperature{k}"), fan, "scheduleValue", "inletAirTemperature")
+            model.add_connection(fan, LagSystem(id=f"lag{k}"), "Power", "u")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        batched = model.batch_components()
+        meta, _ = model._component_to_meta["fan0"]
+        self.assertIs(model._component_to_meta["fan1"][0], meta)
+        torch.testing.assert_close(meta.flowRangeLower.get().reshape(-1).cpu(), torch.tensor([0.0, 0.5], dtype=torch.float64))
+        torch.testing.assert_close(meta.flowRangeUpper.get().reshape(-1).cpu(), torch.tensor([1.0, 3.0], dtype=torch.float64))
+        torch.testing.assert_close(
+            meta.beta3.get().reshape(-1).cpu(),
+            torch.stack([f.beta3.get().reshape(-1)[0] for f in fans]).cpu(),
+        )
+        _remove("test_declared_batch_fans", batched.id)
+
 
 class TestSaveAndReload(unittest.TestCase):
     MODEL_ID = "test_declared_saved"
@@ -467,6 +529,55 @@ class TestBuildRules(unittest.TestCase):
         self.assertEqual(GainSystem(id="g").resolve_output_port("y"), "y")
         with self.assertWarns(DeprecationWarning):
             self.assertEqual(GainSystem(id="g").resolve_output_port("out"), "y")
+
+
+class TestCompositionRules(unittest.TestCase):
+    MODEL_ID = "test_declared_composition"
+
+    def tearDown(self):
+        _remove(self.MODEL_ID)
+
+    def test_an_unwired_input_reads_another_in_both_engines(self):
+        model = tb.Model(id=self.MODEL_ID)
+        mix = MixSystem(id="mix")
+        model.add_connection(_signal(), mix, "scheduleValue", "a")
+        model.add_connection(mix, LagSystem(id="lag"), "y", "u")  # the functional engine steps a state
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        self.assertEqual(mix.input_defaults(), {"b": "a"})
+        _simulate(model)
+        a = model.components["signal"].output["scheduleValue"].history().reshape(-1).cpu()
+        y_object = mix.output["y"].history().reshape(-1).cpu().clone()
+        torch.testing.assert_close(y_object, 11.0 * a)
+        _simulate(model, mode="functional")
+        torch.testing.assert_close(mix.output["y"].history().reshape(-1).cpu(), y_object)
+
+    def test_with_defaults_fills_what_an_engine_fills(self):
+        mix = MixSystem(id="mix")
+        filled = mix.with_defaults({"a": torch.tensor([2.0])})
+        torch.testing.assert_close(filled["b"], torch.tensor([2.0]))
+        thermal = tb.BuildingSpaceThermalSystem(id="zone")
+        filled = thermal.with_defaults({"outdoorTemperature": torch.tensor([5.0])})
+        torch.testing.assert_close(filled["makeUpAirTemperature"], torch.tensor([5.0]))
+        torch.testing.assert_close(filled["infiltrationAirFlowRate"], torch.tensor([0.0]))
+        with self.assertRaisesRegex(TypeError, "default="):
+            class Stray(core.System):
+                a = Input(default=Input())
+
+    def test_a_child_takes_the_wired_width_and_a_shared_parameter(self):
+        model = tb.Model(id=self.MODEL_ID)
+        outer = OuterSystem(id="outer")
+        for k in range(3):
+            model.add_connection(_signal(f"signal{k}"), outer, "scheduleValue", "flows", input_port_index=k)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        _simulate(model)
+        self.assertEqual(outer.inner.input["flows"].n_v, 3)
+        self.assertNotIn("second.gain", OuterSystem.PARAM_NAMES)
+        self.assertNotIn("second.gain", outer.config["parameters"])
+        self.assertIs(outer.second.gain, outer.first.gain)
+
+    def test_a_child_may_give_its_own_id(self):
+        self.assertEqual(PairSystem(id="pair").first.id, "pair_first")
+        self.assertEqual(PairSystem(id="pair", first=dict(id="custom")).first.id, "custom")
 
 
 class TestConvertedValve(unittest.TestCase):

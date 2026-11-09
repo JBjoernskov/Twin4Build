@@ -102,8 +102,11 @@ class Input(Declaration):
             (as many slots as its connections fill), or another port or setting
             of the class (the same size; a setting holding a sequence gives its
             length).
-        default: The value an unwired input holds (a number). ``None``: the
-            input must be wired.
+        default: What an unwired input holds: a number, or another input of
+            the class, whose value it then reads (a make-up air stream that is
+            outdoor air unless something says otherwise:
+            ``makeUpAirTemperature = Input(default=outdoorTemperature)``).
+            ``None``: the input must be wired.
         alias: An old name of the port that still connects, with a
             ``DeprecationWarning``.
         doc: What the port carries, with its unit.
@@ -114,8 +117,10 @@ class Input(Declaration):
     def __init__(self, size=None, default=None, alias: Optional[str] = None, doc: str = ""):
         super().__init__(doc)
         _check_size(size, "Input")
-        if default is not None and (isinstance(default, bool) or not isinstance(default, (int, float))):
-            raise TypeError(f"Input: default= takes a number, got {default!r}")
+        if default is not None and not isinstance(default, Input) and (
+            isinstance(default, bool) or not isinstance(default, (int, float))
+        ):
+            raise TypeError(f"Input: default= takes a number or another input of the class, got {default!r}")
         self.size = size
         self.default = default
         self.alias = alias
@@ -357,6 +362,12 @@ def _check_references(cls, merged) -> None:
                 raise TypeError(
                     f"{cls.__qualname__}.{name}: size= refers to {ref!r}, which the class does not declare"
                 )
+    for name, decl in merged["input"].items():
+        ref = decl.default
+        if isinstance(ref, Declaration) and not known(ref):
+            raise TypeError(
+                f"{cls.__qualname__}.{name}: default= refers to {ref!r}, which the class does not declare"
+            )
     for kind in ("output", "state"):
         for name, decl in merged[kind].items():
             ref = decl.init
@@ -414,9 +425,11 @@ class SystemMeta(type):
         cls._is_declared = any(merged[kind] for kind in KINDS)
         if cls._is_declared and "PARAM_NAMES" not in cls.__dict__:
             names = list(merged["parameter"])
+            shared = getattr(cls, "SHARED_UNIT_PARAMS", {})
             for child_name, child in merged["child"].items():
                 for sub in getattr(child.cls, "PARAM_NAMES", ()):
-                    names.append(f"{child_name}.{sub}")
+                    if f"{child_name}.{sub}" not in shared:  # read from its source
+                        names.append(f"{child_name}.{sub}")
             cls.PARAM_NAMES = tuple(names)
         # A renamed port's old name connects through the class's alias tables
         # (``System.resolve_output_port`` / ``resolve_input_port``).

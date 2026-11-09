@@ -1,10 +1,7 @@
-"""Parameters the wiring leaves without effect stay out of theta.
-
-The in-zone boundary wall (``C_boundary`` / ``R_boundary``) only acts when
-a ``boundaryTemperature`` is connected; otherwise the residual Jacobian
-column is identically zero and the estimator would carry two dead entries
-per room.  ``System.get_estimable_parameters`` now honours an owner's
-``_inactive_parameters()``.
+"""The in-zone boundary wall is gone in 2.0 (``C_boundary``, ``R_boundary``,
+``boundaryTemperature``): a WallSystem on ``wallHeatGain`` takes its place.
+Each old name raises and says so, and no room parameter is left without
+effect in theta.
 """
 
 # Standard library imports
@@ -21,40 +18,27 @@ def _attrs(entries):
     return {attr for _, attr, *_ in entries}
 
 
-class TestInactiveBoundaryParameters(unittest.TestCase):
-    def test_unwired_boundary_is_skipped_on_the_composite(self):
-        space = tb.BuildingSpaceSystem(id="room", mass_kwargs=dict(V=100.0))
+class TestBoundaryWallGone(unittest.TestCase):
+    def test_the_old_values_raise_and_name_the_wall(self):
+        with self.assertRaisesRegex(TypeError, "WallSystem"):
+            tb.BuildingSpaceThermalSystem(id="zone", C_boundary=5e5)
+        with self.assertRaisesRegex(TypeError, "WallSystem"):
+            tb.BuildingSpaceSystem(id="room", thermal=dict(R_boundary=0.01))
+        zone = tb.BuildingSpaceThermalSystem(id="zone")
+        with self.assertRaisesRegex(AttributeError, "WallSystem"):
+            zone.n_boundary_temperature = 1
+        with self.assertRaisesRegex(AttributeError, "WallSystem"):
+            zone.C_boundary
+
+    def test_every_room_parameter_acts(self):
+        space = tb.BuildingSpaceSystem(id="room", mass=dict(V=100.0))
         attrs = _attrs(space.get_estimable_parameters())
-        self.assertIn("thermal.C_air", attrs)
-        self.assertIn("thermal.R_out", attrs)
-        self.assertNotIn("thermal.C_boundary", attrs)
-        self.assertNotIn("thermal.R_boundary", attrs)
-
-    def test_unwired_boundary_is_skipped_on_the_thermal_unit(self):
-        zone = tb.BuildingSpaceThermalSystem(id="zone")
-        attrs = _attrs(zone.get_estimable_parameters())
-        self.assertIn("C_wall", attrs)
-        self.assertNotIn("C_boundary", attrs)
-        self.assertNotIn("R_boundary", attrs)
-
-    def test_connected_boundary_keeps_the_parameters(self):
-        model = tb.Model(id="boundary_model")
-        zone = tb.BuildingSpaceThermalSystem(id="zone")
-        boundary = tb.ScheduleSystem(
-            weekday_ruleset={"ruleset_default_value": 15.0}, id="Boundary"
+        self.assertEqual(
+            attrs,
+            {"thermal.C_air", "thermal.C_wall", "thermal.R_in", "thermal.R_out", "thermal.f_air",
+             "thermal.f_wall", "thermal.Q_occ_gain", "mass.V", "mass.G_occ", "mass.m_inf"},
         )
-        model.add_connection(boundary, zone, "scheduleValue", "boundaryTemperature")
-        attrs = _attrs(zone.get_estimable_parameters())
-        self.assertIn("C_boundary", attrs)
-        self.assertIn("R_boundary", attrs)
-
-    def test_manual_setup_keeps_the_parameters(self):
-        zone = tb.BuildingSpaceThermalSystem(id="zone")
-        zone.n_boundary_temperature = 1
-        attrs = _attrs(zone.get_estimable_parameters())
-        self.assertIn("C_boundary", attrs)
-        zone.n_boundary_temperature = 0
-        self.assertNotIn("C_boundary", _attrs(zone.get_estimable_parameters()))
+        self.assertNotIn("boundaryTemperature", space.input)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from twin4build.utils.deprecation import deprecate_name, reject_unexpected_kwarg
 from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
+from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.simulation_time import get_simulation_timesteps
 from twin4build.utils.state_marker import StateMarker
 
@@ -518,10 +519,15 @@ class System(nn.Module, metaclass=SystemMeta):
         config = [n for n, d in declared["setting"].items() if d.save] + list(declared["parameter"])
         self._child_overrides = {k: v for k, v in values["child"].items() if v}
         for name, decl in declared["child"].items():
-            child = decl.cls(id=f"{self._id}_{name}", **{**decl.values, **values["child"][name]})
+            # the child's id: <composite>_<child>, unless its values give one
+            child = decl.cls(**{"id": f"{self._id}_{name}", **decl.values, **values["child"][name]})
             setattr(self, name, child)
-            config.extend(f"{name}.{sub}" for sub in child.config.get("parameters", ()))
+            shared = getattr(cls, "SHARED_UNIT_PARAMS", {})
+            config.extend(
+                f"{name}.{sub}" for sub in child.config.get("parameters", ()) if f"{name}.{sub}" not in shared
+            )
         self._config = {"parameters": config}
+        self._share_unit_params()
         self.INITIALIZED = False
 
     @classmethod
@@ -533,6 +539,10 @@ class System(nn.Module, metaclass=SystemMeta):
     @staticmethod
     def _declared_port(decl, leaf: bool = False):
         default = getattr(decl, "default", None)
+        if isinstance(default, Declaration):  # reads another input while unwired
+            return tps.Scalar(None, optional=True, is_leaf=leaf) if decl.size is None else tps.Vector(
+                None, n_v=decl.size if isinstance(decl.size, int) else None, optional=True, is_leaf=leaf
+            )
         if decl.size is None:
             return tps.Scalar(default, optional=default is not None, is_leaf=leaf)
         n_v = decl.size if isinstance(decl.size, int) else None
@@ -606,6 +616,7 @@ class System(nn.Module, metaclass=SystemMeta):
         self.n_c = n_c
         self.size_declared_ports()
         data_source = type(self)._is_data_source()
+        self.__dict__["_input_defaults"] = self.input_defaults()
         for name, decl in type(self)._declarations["output"].items():
             if decl.init is not None:
                 self.output[name].init_value = self._initial_value(decl.init)
@@ -627,7 +638,13 @@ class System(nn.Module, metaclass=SystemMeta):
         for name, decl in declared["child"].items():
             child = getattr(self, name)
             if type(child)._is_declared:
+                # A child has no connections: an input it sizes by its wiring
+                # takes the width of the composite's input of the same name.
+                for port, child_decl in type(child)._declarations["input"].items():
+                    if child_decl.size == "wired" and port in self.input:
+                        child.input[port]._n_v = self.input[port]._n_v
                 child._initialize_declared(n_t, n_s, n_c * self.slots_per_copy(decl), run)
+        self._share_unit_params()
         if data_source:
             self._fill_from_series(n_t, n_s, n_c, *run)
         self.INITIALIZED = True
@@ -645,6 +662,56 @@ class System(nn.Module, metaclass=SystemMeta):
                 f"{type(self).__name__} '{self.id}': an output starts at one number, got {value.numel()} values"
             )
         return float(value[0])
+
+    def input_defaults(self) -> dict:
+        """The unwired inputs that read another input of the System
+        (``Input(default=otherInput)``): ``{input: the input it reads}``, the
+        chain followed to an input that is wired or holds a number.  Every
+        engine gives ``forward`` the value of the input read."""
+        from twin4build.utils.slots import is_wired
+
+        declared = type(self).__dict__.get("_declarations") or getattr(type(self), "_declarations", {})
+        inputs = declared.get("input", {})
+        out = {}
+        for name, decl in inputs.items():
+            if not isinstance(decl.default, Declaration) or is_wired(self, name):
+                continue
+            source, seen = decl.default.name, {name}
+            while source not in seen and isinstance(inputs[source].default, Declaration) and not is_wired(self, source):
+                seen.add(source)
+                source = inputs[source].default.name
+            if source in seen:
+                raise TypeError(f"{type(self).__name__} '{self.id}': {name!r} reads itself through its defaults")
+            out[name] = source
+        return out
+
+    def _share_unit_params(self) -> None:
+        """Point every shared child parameter (``SHARED_UNIT_PARAMS``, e.g. a
+        room's ``thermal.m_inf``) at its source (``mass.m_inf``): one
+        parameter object, saved and estimated once."""
+        for path, source in getattr(type(self), "SHARED_UNIT_PARAMS", {}).items():
+            rsetattr(self, path, rgetattr(self, source))
+
+    def with_defaults(self, inputs: dict) -> dict:
+        """``inputs`` with every declared input it lacks filled the way an
+        engine fills an unwired one: a number shaped like the given inputs,
+        or the value of the input it reads.  For calling ``forward`` by hand
+        (a test, a probe)."""
+        declared = type(self)._declarations["input"]
+        out = dict(inputs)
+        like = next((v for v in inputs.values() if isinstance(v, torch.Tensor)), None)
+        pending = [name for name in declared if name not in out]
+        for _ in range(len(pending) + 1):
+            for name in list(pending):
+                default = declared[name].default
+                if isinstance(default, Declaration):
+                    if default.name in out:
+                        out[name] = out[default.name]
+                        pending.remove(name)
+                elif default is not None and like is not None:
+                    out[name] = torch.full_like(like, float(default))
+                    pending.remove(name)
+        return out
 
     def slots_per_copy(self, decl) -> int:
         """How many values a declared parameter, or copies a declared child,
@@ -741,6 +808,8 @@ class System(nn.Module, metaclass=SystemMeta):
         n_c = self.n_c
         n_s = next(iter({**self.input, **self.output}.values())).n_s
         inputs = {name: self._fold(port.get(), n_s, n_c) for name, port in self.input.items()}
+        for name, source in self.__dict__.get("_input_defaults", {}).items():
+            inputs[name] = inputs[source]
         params = self._fold_tree(self._forward_params(step_size), n_s, n_c)
         stateful = bool(self.collect_states())
         x = self._fold(self.get_state(), n_s, n_c) if stateful else None

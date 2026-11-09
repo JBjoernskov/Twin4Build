@@ -59,8 +59,8 @@ def _schedule(value, sid):
 def _room(sid="room"):
     return tb.BuildingSpaceSystem(
         id=sid,
-        thermal_kwargs=dict(C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02),
-        mass_kwargs=dict(V=100.0),
+        thermal=dict(C_wall=1e6, C_air=1e5, R_out=0.01, R_in=0.02),
+        mass=dict(V=100.0),
     )
 
 
@@ -101,7 +101,7 @@ class TestDeprecatedName(unittest.TestCase):
             port = room.input[OLD]
         self.assertEqual(caught.filename, __file__)
         self.assertIs(port, room.input[NEW])
-        self.assertIs(port, room.mass.input[NEW])  # one port object for the room and its mass balance
+        self.assertIn(NEW, room.mass.input)  # the room declares its own ports, its mass balance too
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             self.assertIn(OLD, room.input)  # no warning
