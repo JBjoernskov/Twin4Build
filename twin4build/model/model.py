@@ -1433,8 +1433,8 @@ class Model:
         # (a fused block's: its members'); the batched load cuts these first
         # (SimulationModel._cut_source_cuts), so its one-step lags sit where
         # the source model's do without searching the batched graph's cycles,
-        # which batching multiplies (23 Oct 2026: more than 300 000 on the HTR
-        # ring's, past the memory).
+        # which batching multiplies (23 Oct 2026: more than 300 000 on a large
+        # building's, past the memory).
         source_sim = self.simulation_model
         fused = getattr(source_sim, "_fused_components", None) or {}
 

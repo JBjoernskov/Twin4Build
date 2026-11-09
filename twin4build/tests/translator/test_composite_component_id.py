@@ -18,14 +18,14 @@ FP = "0123456789abcdef0123456789abcdef"
 
 class TestCompositeComponentId(unittest.TestCase):
     def test_small_group_keeps_legacy_form(self):
-        names = ["HTR9_VEN02", "R08.01_VAV01_1", "R08_01_VAV01_1"]
+        names = ["AHU9_VEN02", "R08.01_VAV01_1", "R08_01_VAV01_1"]
         id_ = Translator._composite_component_id(names, FP)
         self.assertEqual(
-            id_, "[HTR9_VEN02][R08_01_VAV01_1][R08_01_VAV01_1]_0123456789abcdef"
+            id_, "[AHU9_VEN02][R08_01_VAV01_1][R08_01_VAV01_1]_0123456789abcdef"
         )
 
     def test_large_group_is_capped(self):
-        names = ["HTR9_VEN02"] + [f"R00.{i:02d}_VAV01_1" for i in range(700)]
+        names = ["AHU9_VEN02"] + [f"R00.{i:02d}_VAV01_1" for i in range(700)]
         id_ = Translator._composite_component_id(names, FP)
         budget = Translator.COMPOSITE_ID_NAME_BUDGET
         prefix, _, fp = id_.rpartition("_")

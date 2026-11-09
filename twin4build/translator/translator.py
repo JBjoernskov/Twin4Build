@@ -2405,7 +2405,7 @@ class Translator:
                     # Compute the relational fingerprint when a multi-member
                     # ModeledNode group participates. For singleton matches
                     # we keep the existing single-IRI id for backwards
-                    # compatibility with HTR, sensor, fan-coil etc. patterns.
+                    # compatibility with the sensor, fan-coil etc. patterns.
                     component_fingerprint: Optional[str] = None
                     if mn_groups:
                         # Combine per-group fingerprints into a single stable

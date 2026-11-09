@@ -30,17 +30,17 @@ from twin4build.utils.logger import LOGGER
 if __name__ == "__main__":
     # sys.setrecursionlimit(50000)
     # Load the semantic model
-    file_path = r"C:\Users\jabj\Documents\python\Datasets\HTR\HTR full graph.ttl"
+    file_path = r"path/to/bms_graph.ttl"
 
     # LOGGER.set_caller_filter_mode("whitelist")
     # LOGGER.hide_debug()
     # LOGGER.show_caller("_match_patterns", include_stack=False)
     # LOGGER.show_caller("_connect_components", include_stack=True)
 
-    sm = tb.SemanticModel(rdf_file=file_path, id="htr", verbose=1500)
+    sm = tb.SemanticModel(rdf_file=file_path, id="bms_graph", verbose=1500)
     # sm.visualize()
     translator = tb.Translator()
-    # LOGGER.logfile = "htr.log"
+    # LOGGER.logfile = "bms_graph.log"
     LOGGER.log_flush_size = 10000
     # LOGGER.show_status("debug")
     # LOGGER.show_only_from_caller("translate")

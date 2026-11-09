@@ -855,7 +855,7 @@ class System(nn.Module, metaclass=SystemMeta):
             return float(step_size[0])
         return float(step_size)
 
-    # The old name, for the Roomwise extension's do_step overrides until they
+    # The old name, for downstream do_step overrides until they
     # become forward-only Systems; removed with do_step (ADR 0001).
     _scalar_sample_time = _scalar_step_size
 

@@ -1,6 +1,6 @@
 """A load writes a component's parameter file only when its content changes: loading a model again leaves every file
 untouched, and a file whose content differs from the model's is written back (26 Oct 2026: every load rewrote every
-component's file, 2 778 on the HTR model)."""
+component's file, 2 778 on a large building's model)."""
 import json
 import os
 import unittest

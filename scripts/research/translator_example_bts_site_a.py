@@ -37,8 +37,6 @@ if __name__ == "__main__":
     # file_path = r"C:\Users\jabj\Documents\python\Datasets\Building Timeseries dataset\Site_B.ttl"
     # file_path = r"C:\Users\jabj\Documents\python\Twin4Build\twin4build\examples\generated_files\models\site_b\semantic_model.ttl"
 
-    # file_path = r"C:\Users\jabj\Documents\python\Datasets\HTR\HTR full graph.ttl"
-
     # sm = tb.SemanticModel(
     #     rdf_file=file_path, id="site_a", verbose=10
     # )
@@ -67,7 +65,6 @@ if __name__ == "__main__":
     )
     # sm.reason()
 
-    # HTR
     # Map fso:feedsFluidTo to brick:feeds to enable reasoning across ontologies
     # fso_feeds_fluid_to = core.namespace.FSO.feedsFluidTo
     # brick_feeds = core.namespace.BRICK.feeds

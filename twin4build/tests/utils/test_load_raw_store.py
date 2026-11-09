@@ -3,7 +3,7 @@ with the intervals it covers.
 
 The disk cache holds the processed series of one exact window and step, so
 every new split of a period into windows queried the database once per point
-and window (about 4,800 queries for the HTR ring's 601 measured points over
+and window (about 4,800 queries for a large building's 601 measured points over
 eight windows).  A window missing from the store now fetches the whole span of
 windows around it, and a later split of the same span is cut from the store.
 """

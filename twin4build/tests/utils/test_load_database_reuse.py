@@ -3,7 +3,7 @@ the table checked once, past empty windows cached, and a connection the
 server dropped while idle opened again.
 
 Every load used to open its own connection and check the table (about
-0.45 s per load on the HTR server), and a window without rows was never
+0.45 s per load on a site's server), and a window without rows was never
 cached: a model with points that log nothing in a period queried them again
 at every simulate.
 """

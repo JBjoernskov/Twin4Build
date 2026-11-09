@@ -2844,7 +2844,7 @@ class SimulationModel:
         # many source components into a few meta components, and the parallel
         # paths through the components it leaves apart (one per room sensor)
         # multiply its simple cycles past any memory (23 Oct 2026: more than
-        # 300 000 in 5 s on the HTR ring's 177-component cluster, the run killed
+        # 300 000 in 5 s on a large building's 177-component cluster, the run killed
         # at 29 GB).  Below the cap the list is complete, as before; above it the
         # edges are chosen from the sample by the same rule, and the cycles are
         # searched again once the sample is used up.
