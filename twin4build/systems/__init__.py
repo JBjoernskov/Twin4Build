@@ -50,7 +50,6 @@ Key Components:
         - OnOffSystem: Binary state system
         - DiscreteStatespaceSystem: General-purpose discrete state-space model
         - ScalarProductSystem: Elementwise scalar product
-        - FunctionSystem: User-supplied transformation of named inputs
         - OccupancySystem / OccupancyDetectorSystem: Occupancy modeling and detection
         - SigmoidGate: Smooth gating function
 
@@ -120,7 +119,6 @@ __all__ = [
     "OnOffSystem",
     "DiscreteStatespaceSystem",
     "ScalarProductSystem",
-    "FunctionSystem",
     "OccupancySystem",
     "OccupancyDetectorSystem",
     "SigmoidGate",
@@ -166,7 +164,6 @@ _MODULES = {
     "OccupancySystem": "utils.occupancy_system",
     "OnOffSystem": "utils.on_off_system",
     "PiecewiseLinearSystem": "utils.piecewise_linear_system",
-    "FunctionSystem": "utils.function_system",
     "ScalarProductSystem": "utils.scalar_product_system",
     "TimeSeriesInputSystem": "utils.time_series_input_system",
     "ValveSystem": "valve.valve_system",

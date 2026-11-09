@@ -36,12 +36,27 @@ except ImportError:  # host memory stats then degrade to None
     psutil = None
 
 import twin4build as tb
+from twin4build.core import Input, Output, Setting, System
 import twin4build.examples.utils as example_utils
 from twin4build.simulator._functional_simulation import (
     FUNCTIONAL_MATERIALIZATION_REVISION,
 )
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.sources import CsvSource
+
+
+class DiscomfortSystem(System):
+    """relu(setpoint - measured) * scale: the underheating below the setpoint,
+    in Kelvin-hours per step with scale = step / 3600 s."""
+
+    scale = Setting(1.0)
+    setpoint = Input()
+    measured = Input()
+    output = Output()
+
+    def forward(self, x, inputs, p, step_size):
+        return x, {"output": torch.relu(inputs["setpoint"] - inputs["measured"]) * self.scale}
+
 
 SEED = 20260902
 BENCHMARK_IMPLEMENTATION_REVISION = "post-run-finiteness-v1"
@@ -2403,12 +2418,6 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         },
         id="shared_valve_position_schedule",
     )
-    # One function object for every zone: identical lambdas are distinct
-    # objects, and Model.batch_components treats two transformations as two
-    # component kinds, which would leave each zone's discomfort unbatched.
-    def _discomfort_kelvin_hours(d):
-        return torch.relu(d["setpoint"] - d["measured"]) * (STEP_SIZE / 3600)
-
     opt_parts = []
     for i, zone in enumerate(parts["zone_parts"]):
         prefix = f"zone_{i}__"
@@ -2423,11 +2432,7 @@ def _optimization_problem(n_zones: int, seed: int, *, batch_it: bool = False):
         # add a term that no solution ever trades against.  The optimizer
         # reports objectives as horizon means, so total Kelvin-hours over the
         # horizon is this objective times the number of steps.
-        discomfort = tb.FunctionSystem(
-            inputs=["setpoint", "measured"],
-            fn=_discomfort_kelvin_hours,
-            id=prefix + "discomfort_sensor",
-        )
+        discomfort = DiscomfortSystem(scale=STEP_SIZE / 3600, id=prefix + "discomfort_sensor")
         cooling = tb.ScheduleSystem(
             weekday_ruleset={
                 "ruleset_default_value": 0,
