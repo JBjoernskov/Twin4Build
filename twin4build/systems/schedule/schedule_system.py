@@ -11,6 +11,7 @@ import torch
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.data_loaders.sources import reader_from_keywords
 from twin4build.translator.translator import StepRule, Node, SignaturePattern, PathRule
 from twin4build.utils.deprecation import deprecate_args, deprecate_name
 
@@ -587,14 +588,16 @@ class ScheduleSystem(core.System):
         if self.use_spreadsheet or self.use_database:
             time_series_input = TimeSeriesInputSystem(
                 id=f"time series input - {self.id}",
-                filename=self.filename,
-                date_column=self.date_column,
-                value_column=self.value_column,
-                use_spreadsheet=self.use_spreadsheet,
-                use_database=self.use_database,
-                uuid=self.uuid,
-                dbconfig=self.dbconfig,
-                fill=self.fill,
+                source=reader_from_keywords(
+                    filename=self.filename,
+                    date_column=self.date_column,
+                    value_column=self.value_column,
+                    use_spreadsheet=self.use_spreadsheet,
+                    use_database=self.use_database,
+                    uuid=self.uuid,
+                    dbconfig=self.dbconfig,
+                    fill=self.fill,
+                ),
             )
             time_series_input.initialize(start_time, end_time, step_size)
 

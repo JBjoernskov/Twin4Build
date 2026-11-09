@@ -18,6 +18,7 @@ from twin4build.simulator.simulator import Simulator
 from twin4build.systems.damper.damper_system import DamperSystem
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 twin4build._IS_TESTING = True
 
@@ -37,10 +38,7 @@ class TestOptimizer(unittest.TestCase):
 
         # Create a controllable input (not a fixed schedule)
         # We'll use it as our optimization variable
-        self.setpoint = TimeSeriesInputSystem(
-            id="damper_setpoint",
-            df=df,
-        )
+        self.setpoint = TimeSeriesInputSystem(id="damper_setpoint", source=DataFrameSource(df))
 
         self.damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
 

@@ -197,14 +197,20 @@ class Setting(Declaration):
     Args:
         default: The value when the constructor is not given one.
             :data:`REQUIRED` (the default): the constructor must be given it.
+        convert: Applied to the value the constructor is given (a reader from
+            the dict a saved model holds, ...).
+        save: Whether a saved model holds the value (``False`` for a value
+            that cannot be written down, such as a function).
         doc: What the setting chooses.
     """
 
     kind = "setting"
 
-    def __init__(self, default=REQUIRED, doc: str = ""):
+    def __init__(self, default=REQUIRED, convert=None, save: bool = True, doc: str = ""):
         super().__init__(doc)
         self.default = default
+        self.convert = convert
+        self.save = save
 
 
 class Child(Declaration):

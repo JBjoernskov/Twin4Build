@@ -341,6 +341,14 @@ class System(nn.Module, metaclass=SystemMeta):
         if isinstance(getattr(type(self), name, None), property):
             object.__setattr__(self, name, value)
             return
+        # A declared setting converts every value it is given (a reader from
+        # the dict a saved model's parameter file holds).
+        setting = type(self).__dict__.get("_declarations", type(self)._declarations)["setting"].get(name)
+        if setting is not None and setting.convert is not None:
+            current = self.__dict__.get(name)
+            if isinstance(value, dict) and hasattr(current, "to_config") and current.to_config() == value:
+                return  # the reader it already holds (a DataFrame reader's dict has no data)
+            value = setting.convert(value)
         # Replacing a registered parameter or child with something torch does
         # not register (a ``TensorParameter`` -- what ``set_parameters`` leaves
         # on a parameter that is set but not estimated -- or a plain value)
@@ -365,6 +373,8 @@ class System(nn.Module, metaclass=SystemMeta):
                 raise TypeError(f"{type(self).__name__}() needs the setting {name!r}")
             else:
                 values["setting"][name] = copy.deepcopy(decl.default)
+            if decl.convert is not None:
+                values["setting"][name] = decl.convert(values["setting"][name])
         for name, decl in declared["parameter"].items():
             values["parameter"][name] = kwargs.pop(name, decl.value)
         for name in declared["child"]:
@@ -388,8 +398,9 @@ class System(nn.Module, metaclass=SystemMeta):
             aliases={d.alias: n for n, d in declared["input"].items() if d.alias},
             owner=cls.__name__,
         )
+        series_outputs = cls._is_data_source()
         self._output = AliasedPorts(
-            {name: self._declared_port(decl) for name, decl in declared["output"].items()},
+            {name: self._declared_port(decl, leaf=series_outputs) for name, decl in declared["output"].items()},
             aliases={d.alias: n for n, d in declared["output"].items() if d.alias},
             owner=cls.__name__,
         )
@@ -418,7 +429,7 @@ class System(nn.Module, metaclass=SystemMeta):
                 name,
                 tps.State(n_v=size, init_value=decl.init, lb=decl.lb, ub=decl.ub, names=decl.names),
             )
-        config = list(declared["setting"]) + list(declared["parameter"])
+        config = [n for n, d in declared["setting"].items() if d.save] + list(declared["parameter"])
         self._child_overrides = {k: v for k, v in values["child"].items() if v}
         for name, decl in declared["child"].items():
             child = decl.cls(id=f"{self._id}_{name}", **{**decl.values, **values["child"][name]})
@@ -427,13 +438,19 @@ class System(nn.Module, metaclass=SystemMeta):
         self._config = {"parameters": config}
         self.INITIALIZED = False
 
+    @classmethod
+    def _is_data_source(cls) -> bool:
+        """A System whose outputs are a series known before the run: it
+        defines ``series(timestamps, step_size)`` and no ``forward``."""
+        return getattr(cls, "series", None) is not None and getattr(cls, "forward", None) is nn.Module.forward
+
     @staticmethod
-    def _declared_port(decl):
+    def _declared_port(decl, leaf: bool = False):
         default = getattr(decl, "default", None)
         if decl.size is None:
-            return tps.Scalar(default, optional=default is not None)
+            return tps.Scalar(default, optional=default is not None, is_leaf=leaf)
         n_v = decl.size if isinstance(decl.size, int) else None
-        return tps.Vector(default, n_v=n_v, optional=default is not None)
+        return tps.Vector(default, n_v=n_v, optional=default is not None, is_leaf=leaf)
 
     def _setting_size(self, name: str) -> int:
         value = getattr(self, name)
@@ -495,13 +512,18 @@ class System(nn.Module, metaclass=SystemMeta):
                 getattr(self, name)._n_v = self.declared_size("state", name)
         self.__dict__.pop("_state_size_cache", None)
 
-    def _initialize_declared(self, n_t: int, n_s: int, n_c: int) -> None:
+    def _initialize_declared(self, n_t: int, n_s: int, n_c: int, run=None) -> None:
         """Run start of a declared System: size and allocate the ports,
-        expand the parameters to one value per copy, start the states."""
+        expand the parameters to one value per copy, start the states, and
+        fill a data source's outputs from its ``series`` (``run`` is the
+        run's ``(timestamps, own steps per period, step size)``)."""
         self.n_c = n_c
         self.size_declared_ports()
+        data_source = type(self)._is_data_source()
         for ports in (self.input, self.output):
             for port in ports.values():
+                if data_source and ports is self.output:
+                    continue  # filled from ``series`` below
                 if isinstance(port, tps.Vector):
                     port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, n_v=port._n_v)
                 else:
@@ -514,8 +536,61 @@ class System(nn.Module, metaclass=SystemMeta):
         for name in declared["child"]:
             child = getattr(self, name)
             if type(child)._is_declared:
-                child._initialize_declared(n_t, n_s, n_c)
+                child._initialize_declared(n_t, n_s, n_c, run)
+        if data_source:
+            self._fill_from_series(n_t, n_s, n_c, *run)
         self.INITIALIZED = True
+
+    def _fill_from_series(self, n_t, n_s, n_c, timestamps, own_steps, step_size) -> None:
+        """Call ``series`` and fill every output with its values for the whole
+        run. A period's steps past its own end hold its last value."""
+        values = self.series(timestamps, step_size)
+        for name, port in self.output.items():
+            if name not in values:
+                raise KeyError(f"{type(self).__name__} '{self.id}': series() gave no values for the output {name!r}")
+            v = values[name]
+            v = v.to(tps.float_dtype()) if isinstance(v, torch.Tensor) else torch.as_tensor(
+                np.asarray(v, dtype=float), dtype=tps.float_dtype()
+            )
+            v = v.clone()
+            if v.shape[:2] != (n_s, n_t):
+                raise ValueError(
+                    f"{type(self).__name__} '{self.id}': series() gave {name!r} of shape {tuple(v.shape)}, "
+                    f"expected ({n_s}, {n_t}, ...)"
+                )
+            for b, own in enumerate(own_steps):
+                own = int(own)
+                if 0 < own < n_t:
+                    v[b, own:] = v[b, own - 1]
+            if isinstance(port, tps.Vector):
+                n_v = v.shape[2] if v.dim() == 3 else 1
+                v = v.reshape(n_s, n_t, n_v).permute(1, 0, 2).unsqueeze(2).expand(n_t, n_s, n_c, n_v)
+                port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, n_v=n_v, values=v)
+            else:
+                port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, values=v.T.unsqueeze(-1).expand(n_t, n_s, n_c))
+
+    @staticmethod
+    def run_timestamps(start_time, end_time, step_size):
+        """The ``(n_s, n_t)`` timestamps ``series`` is called with, the own
+        steps of each period and the step size: a shorter period's row ends
+        in ``None`` after its last step."""
+        _, date_steps, n_t, own_steps = get_simulation_timesteps(start_time, end_time, step_size)
+        timestamps = np.array(date_steps, dtype=object).reshape(len(start_time), n_t)
+        for b, own in enumerate(own_steps):
+            timestamps[b, int(own):] = None
+        return timestamps, [int(n) for n in own_steps], System._scalar_step_size(step_size)
+
+    @staticmethod
+    def periods(timestamps, step_size):
+        """The ``(start_time, end_time, step_size)`` lists of the periods in
+        ``timestamps`` (as ``series`` gets them): a period ends one step after
+        its last timestamp."""
+        starts, ends = [], []
+        for row in timestamps:
+            own = [t for t in row if t is not None]
+            starts.append(own[0])
+            ends.append(own[-1] + datetime.timedelta(seconds=float(step_size)))
+        return starts, ends, [step_size] * len(starts)
 
     @staticmethod
     def _fold(value: torch.Tensor, n_s: int, n_c: int) -> torch.Tensor:
@@ -771,7 +846,8 @@ class System(nn.Module, metaclass=SystemMeta):
         batch_size = len(start_time)
         if type(self)._is_declared:
             n_c = int(getattr(self, "_n_c_batched", 1) or 1)
-            self._initialize_declared(max_timesteps, batch_size, max(n_c, self.n_c))
+            run = self.run_timestamps(start_time, end_time, step_size) if type(self)._is_data_source() else None
+            self._initialize_declared(max_timesteps, batch_size, max(n_c, self.n_c), run)
             self._start_run(step_size)
             return
         for input in self.input.values():
@@ -795,7 +871,10 @@ class System(nn.Module, metaclass=SystemMeta):
             step_size (List[int]): The step size of the simulation in seconds.
             step_index (int): The current step index.
         """
-        if type(self)._is_declared:
+        if type(self)._is_data_source():
+            for port in self.output.values():
+                port._set(i_t=step_index)
+        elif type(self)._is_declared:
             self._declared_do_step(step_size, step_index)
 
     # -- Continuous state (multiple-shooting / collocation estimation) --------
@@ -1252,6 +1331,10 @@ class System(nn.Module, metaclass=SystemMeta):
             # write path -- leaves behind) both publish their physical value
             # through ``get()``; serializing anything else would write the
             # object's repr into the graph.
+            if hasattr(value, "to_config"):
+                # A reader (a data source's ``source``): the dict it is
+                # rebuilt from.
+                return value.to_config()
             if isinstance(value, (tps.Parameter, tps.TensorParameter)) or (
                 hasattr(value, "get") and hasattr(value, "detach")
             ):

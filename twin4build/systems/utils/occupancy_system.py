@@ -22,6 +22,7 @@ from twin4build.systems.utils.discrete_statespace_system import (
     effective_matrices,
 )
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.data_loaders.sources import reader_from_keywords
 from twin4build.utils.deprecation import deprecate_args
 
 
@@ -363,10 +364,12 @@ class OccupancySystem(core.System, nn.Module):
             )
             self._co2_ts = TimeSeriesInputSystem(
                 id=f"co2_ts_{self.id}",
-                filename=self.co2_filename,
-                date_column=self.co2_date_column,
-                value_column=self.co2_value_column,
-                use_spreadsheet=True,
+                source=reader_from_keywords(
+                    filename=self.co2_filename,
+                    date_column=self.co2_date_column,
+                    value_column=self.co2_value_column,
+                    use_spreadsheet=True,
+                ),
             )
             self._co2_ts.initialize(start_time, end_time, step_size)
         if not self._damper_from_sensor:
@@ -377,10 +380,12 @@ class OccupancySystem(core.System, nn.Module):
             )
             self._damper_ts = TimeSeriesInputSystem(
                 id=f"damper_ts_{self.id}",
-                filename=self.damper_filename,
-                date_column=self.damper_date_column,
-                value_column=self.damper_value_column,
-                use_spreadsheet=True,
+                source=reader_from_keywords(
+                    filename=self.damper_filename,
+                    date_column=self.damper_date_column,
+                    value_column=self.damper_value_column,
+                    use_spreadsheet=True,
+                ),
             )
             self._damper_ts.initialize(start_time, end_time, step_size)
 
