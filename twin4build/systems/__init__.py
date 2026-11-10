@@ -27,7 +27,6 @@ Key Components:
     Control Systems:
         - PIDControllerSystem: Proportional-Integral-Derivative controller
         - CascadeControllerSystem: Cascade (outer/inner loop) controller
-        - ScheduleSwitchControllerSystem: Schedule-based switching controller
         - SATLinearRuleSystem / SATCompensatedControllerSystem: Supply air
           temperature compensation rules
         - ControllerIdentificationSystem / ControllerIdentificationPISystem:
@@ -81,7 +80,6 @@ __all__ = [
     # Controllers
     "PIDControllerSystem",
     "CascadeControllerSystem",
-    "ScheduleSwitchControllerSystem",
     "SATLinearRuleSystem",
     "SATCompensatedControllerSystem",
     "ControllerIdentificationSystem",
@@ -145,7 +143,6 @@ _MODULES = {
     "RewireReport": "controller.controller_identification.pi_loop_rewire",
     "SATCompensatedControllerSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
     "SATLinearRuleSystem": "controller.rulebased_controller.sat_compensated_controller.sat_compensated_controller_system",
-    "ScheduleSwitchControllerSystem": "controller.rulebased_controller.schedule_switch_controller.schedule_switch_controller_system",
     "CascadeControllerSystem": "controller.setpoint_controller.cascade_controller.cascade_controller_system",
     "PIDControllerSystem": "controller.setpoint_controller.pid_controller.pid_controller_system",
     "DamperSystem": "damper.damper_system",
@@ -183,7 +180,6 @@ _ALIASES = {
     "SpaceHeaterTorchSystem": "SpaceHeaterSystem",
     "FanCoilUnitTorchSystem": "FanCoilUnitSystem",
     "AirHandlingUnitTorchSystem": "AirHandlingUnitSystem",
-    "ScheduleSwitchControllerTorchSystem": "ScheduleSwitchControllerSystem",
     "SATCompensatedControllerTorchSystem": "SATCompensatedControllerSystem",
     "ControllerIdentificationTorchSystem": "ControllerIdentificationSystem",
     "ControllerIdentificationPITorchSystem": "ControllerIdentificationPISystem",
