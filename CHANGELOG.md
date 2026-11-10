@@ -879,6 +879,18 @@ Unused and untested; 2.0 drops them without a deprecation period.
   terms; the matrices are the same.  The per-step CUDA graphs' adjoint
   gives an integer constant a zero cotangent instead of asking for its
   gradient.
+- `zoh_expm="aug"` (`T4B_ZOH_EXPM=aug`): a transform-mode state-space step
+  reads the next state off ONE matrix exponential of size `n + 1`,
+  `exp([[A T, B T u], [0, 0]])`, instead of the `phi1` pair and an `n x m`
+  product: about half the products, and the most accurate of the three on
+  stiff blocks (about 1e-15 of the state against `torch.matrix_exp`, `phi1`
+  about 1e-6).  The default stays `phi1`.
+- The `small_matmul_max` setting (`T4B_SMALL_MATMUL_MAX`, 16): while
+  `torch.compile` traces, a matrix exponential up to that size is written
+  with broadcast products for Inductor to fuse, a larger one with `bmm` (a
+  159-state fused block's step took 26 ms with the broadcast products, 5.8
+  with `bmm`).  Every exponential used the broadcast products before.  A
+  setting is a `bool`, an `int` or a `str` (`Setting(kind=int)`).
 
 ### Migration notes
 

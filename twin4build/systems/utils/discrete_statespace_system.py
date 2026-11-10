@@ -117,10 +117,15 @@ def _expm_ss(M, order=8, squarings=18):
     SLSQP solution.)  Extra squarings of an O(1) stable matrix cost a few small
     matmuls and only *improve* accuracy for well-scaled matrices.
     """
-    if torch.compiler.is_compiling():
+    if torch.compiler.is_compiling() and M.shape[-1] <= _settings.value("small_matmul_max"):
         # Inductor: pointwise products fuse; cuBLAS calls would not.  The
         # exponential's ~25 products per call were 79 % of the kernels left
-        # in a compiled rollout step (issue #134).
+        # in a compiled rollout step (issue #134).  A broadcast multiply and
+        # sum moves n times a product's memory, so a large matrix keeps bmm
+        # (the ``small_matmul_max`` setting): measured on a laptop GPU,
+        # float32, 960 matrices per call, one step forward and backward, the
+        # broadcast form wins up to 13 x 13 and loses from 17 x 17 on (33 x 33:
+        # 54 vs 7.7 ms; a 159-state fused block 26 vs 5.8 ms).
         return _expm_ss_fused(M, order=order, squarings=squarings)
     N = M.shape[-1]
     lead = M.shape[:-2]
@@ -180,7 +185,7 @@ def _expm_phi1_ss(X, order=8, squarings=18):
     ``A T`` over the bounds; the input matrix, which the block form folds
     into the scaled norm, enters here linearly).
     """
-    if torch.compiler.is_compiling():
+    if torch.compiler.is_compiling() and X.shape[-1] <= _settings.value("small_matmul_max"):
         return _expm_phi1_ss_fused(X, order=order, squarings=squarings)
     N = X.shape[-1]
     lead = X.shape[:-2]
@@ -415,6 +420,38 @@ def _discretize_onestep(A, B, E, F, u, step_size, transform_mode=None):
     return expM[..., :n, :n], expM[..., :n, n:]
 
 
+def _onestep_augmented(A, B, C, D, E, F, x, u, step_size):
+    """One exact ZOH step from ONE matrix exponential of size ``n + 1``
+    (the ``zoh_expm="aug"`` setting).
+
+    The step needs the state's next value, not the discrete matrices: with
+    ``X = A_eff T`` and the input folded into a vector ``b = B_eff T u``,
+    ``exp([[X, b], [0, 0]]) = [[exp(X), phi1(X) b], [0, 1]]``, so
+    ``x_next = exp(X) x + phi1(X) b`` reads off one exponential of an
+    ``(n + 1)`` matrix.  The ``phi1`` path computes the pair ``(exp(X),
+    phi1(X))`` (twice the products) and then ``Bd = phi1(X) B_eff T``, an
+    ``n x m`` product (a storey-wide fused block: ~158 states, ~588 inputs).
+    Same series and squarings (:func:`_expm_ss`); on a stiff matrix (``|A T|``
+    ~ 1e5) it is the more accurate of the two (~1e-15 of the state against
+    ``torch.matrix_exp``, the ``phi1`` recurrence ~1e-6), values and
+    gradients."""
+    A_eff, B_eff = effective_matrices(A, B, E, F, u)
+    T = step_size
+    n = A.shape[-1]
+    X = A_eff * T
+    b = (B_eff * T) @ u.unsqueeze(-1)  # (..., n, 1)
+    lead = torch.broadcast_shapes(X.shape[:-2], b.shape[:-2])
+    top = torch.cat([X.expand(*lead, n, n), b.expand(*lead, n, 1)], dim=-1)  # (..., n, n + 1)
+    M = torch.nn.functional.pad(top, (0, 0, 0, 1))  # (..., n + 1, n + 1): a zero last row
+    if _settings.value("expm_checkpoint"):
+        expM = torch.utils.checkpoint.checkpoint(_expm_ss, M, use_reentrant=False)
+    else:
+        expM = _expm_ss(M)
+    x_next = (expM[..., :n, :n] @ x.unsqueeze(-1)).squeeze(-1) + expM[..., :n, n]
+    y = (C @ x_next.unsqueeze(-1)).squeeze(-1) + (D @ u.unsqueeze(-1)).squeeze(-1)
+    return x_next, y
+
+
 def bilinear_onestep(
     A,
     B,
@@ -463,6 +500,8 @@ def bilinear_onestep(
     """
     if transform_mode is None:
         transform_mode = _traceable()
+    if transform_mode and _settings.value("zoh_expm") == "aug":
+        return _onestep_augmented(A, B, C, D, E, F, x, u, step_size)
     if disc_cache is None or transform_mode:
         Ad, Bd = _discretize_onestep(
             A, B, E, F, u, step_size, transform_mode=transform_mode

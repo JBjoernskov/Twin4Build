@@ -54,9 +54,9 @@ _MISSING = object()
 class _Setting:
     """A knob: its name, environment variable, type, default and what it does.
 
-    ``kind`` is ``bool`` or ``str``.  A ``str`` setting with ``choices`` takes
-    one of them, in any case; a ``str`` setting whose default is ``None`` is off
-    until it is given a value (a file name, a filter).
+    ``kind`` is ``bool``, ``int`` or ``str``.  A ``str`` setting with
+    ``choices`` takes one of them, in any case; a ``str`` setting whose default
+    is ``None`` is off until it is given a value (a file name, a filter).
     """
 
     name: str
@@ -74,8 +74,8 @@ _LOGGED: tuple = ()
 
 def _register(setting: _Setting) -> None:
     """Declare a setting; only this module declares them, at its end."""
-    if setting.kind not in (bool, str):
-        raise TypeError(f"setting {setting.name!r}: kind is bool or str")
+    if setting.kind not in (bool, int, str):
+        raise TypeError(f"setting {setting.name!r}: kind is bool, int or str")
     if setting.name in _REGISTRY:
         raise ValueError(f"setting {setting.name!r} is already declared")
     if any(other.env == setting.env for other in _REGISTRY.values()):
@@ -96,7 +96,7 @@ def _check(setting: _Setting, v: Any, where: str) -> Any:
     """``v`` as a value of ``setting``, or an error naming ``where`` it came from."""
     if v is None and setting.default is None:
         return None
-    if not isinstance(v, setting.kind):
+    if not isinstance(v, setting.kind) or (setting.kind is int and isinstance(v, bool)):
         raise TypeError(f"{where} is a {setting.kind.__name__}, not {v!r}")
     if setting.choices:
         v = v.strip().lower()
@@ -115,6 +115,11 @@ def _parse(setting: _Setting, text: str) -> Any:
         if text.lower() in _FALSE:
             return False
         raise ValueError(f"{where}: give one of {', '.join(_TRUE + _FALSE)}")
+    if setting.kind is int:
+        try:
+            return int(text)
+        except ValueError:
+            raise ValueError(f"{where}: give a whole number") from None
     return _check(setting, text, where)
 
 
@@ -211,12 +216,24 @@ _register(
         env="T4B_ZOH_EXPM",
         kind=str,
         default="phi1",
-        choices=("phi1", "block"),
+        choices=("phi1", "block", "aug"),
         doc="How a state-space step is discretised in transform mode "
         "(compiled, captured, vmapped): 'phi1' exponentiates A T and carries "
         "phi1(A T) through the same scaling and squaring, Bd = phi1(A T) B T; "
-        "'block' exponentiates the (n + m) block [[A T, B T], [0, 0]].  The "
-        "same zero-order-hold step to rounding.",
+        "'block' exponentiates the (n + m) block [[A T, B T], [0, 0]]; 'aug' "
+        "reads the next state off one exponential of the (n + 1) matrix "
+        "[[A T, B T u], [0, 0]].  The same zero-order-hold step to rounding.",
+    )
+)
+_register(
+    _Setting(
+        name="small_matmul_max",
+        env="T4B_SMALL_MATMUL_MAX",
+        kind=int,
+        default=16,
+        doc="The largest matrix whose exponential is written with broadcast "
+        "products while torch.compile traces (Inductor fuses them into few "
+        "kernels); a larger one uses bmm.",
     )
 )
 _register(
