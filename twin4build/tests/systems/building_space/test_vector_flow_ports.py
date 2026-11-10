@@ -45,7 +45,7 @@ def _zone(id_):
     )
 
 
-def build_model(model_id, exhaust_per_zone=False):
+def build_model(model_id, exhaust_per_zone=False, load=True):
     """Each zone's temperature on the exhaust slot of every branch serving it
     (zone B's on 1 and 2, one connection).  ``exhaust_per_zone``: one slot
     per zone instead, which the AHU refuses (it keeps no branch -> room map)."""
@@ -92,7 +92,8 @@ def build_model(model_id, exhaust_per_zone=False):
         model.add_connection(_schedule(f"people_{name}", 2.0), zone, "scheduleValue", "numberOfPeople")
         model.add_connection(_schedule(f"sun_{name}", 0.0), zone, "scheduleValue", "globalIrradiation")
         model.add_connection(_schedule(f"gain_{name}", 0.0), zone, "scheduleValue", "heatGain")
-    model.load()
+    if load:
+        model.load()
     return model, ahu, zones
 
 
@@ -235,7 +236,7 @@ class TestScalarIntoSeveralSlots(unittest.TestCase):
         self.assertEqual(ahu.get_n_v_from_connections("exhaustTemperature"), 3)
 
     def test_wiring_the_pair_again_on_other_slots_merges(self):
-        model, ahu, zones = build_model("scalar_fan_out_merge", exhaust_per_zone=True)
+        model, ahu, zones = build_model("scalar_fan_out_merge", exhaust_per_zone=True, load=False)
         # zone B on slot 1 (per zone); add slot 2 and it is per branch
         model.add_connection(zones["B"], ahu, "indoorTemperature", "exhaustTemperature", input_port_index=2)
         self.assertEqual(_exhaust_slots(ahu)["zone_b"], ([1, 2], None))
@@ -250,9 +251,8 @@ class TestScalarIntoSeveralSlots(unittest.TestCase):
     def test_one_temperature_slot_per_zone_raises_and_names_the_wiring(self):
         """The AHU reads one exhaust temperature per branch and keeps no
         branch -> room map: one slot per zone is refused, with the fix."""
-        model, ahu, zones = build_model("scalar_fan_out_per_zone", exhaust_per_zone=True)
         with self.assertRaisesRegex(ValueError, "input_port_index"):
-            tb.Simulator(model, execution_mode="object").simulate(**self._kwargs())
+            build_model("scalar_fan_out_per_zone", exhaust_per_zone=True)  # the load refuses it
 
     def test_a_zone_on_two_branches_fills_both_slots_in_both_engines(self):
         for mode in ("object", "functional"):
