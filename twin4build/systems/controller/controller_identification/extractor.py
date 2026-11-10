@@ -29,7 +29,7 @@ Typical usage (see also the research script
         rewire_actuator_consumers=True,
     )
     print(report.summary())
-    sim_model_stage2.validate()
+    sim_model_stage2.load()  # checks the wiring; raises on a problem
 """
 
 from __future__ import annotations

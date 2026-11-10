@@ -374,10 +374,10 @@ class TestSizes(unittest.TestCase):
         model = tb.Model(id=self.MODEL_ID)
         sized = SizedSystem(id="sized", n_zones=2)
         model.add_connection(_signal(), sized, "scheduleValue", "flows", input_port_index=0)
+        model.add_connection(_signal("t"), sized, "scheduleValue", "temperatures", input_port_index=0)
         model.add_connection(_signal("w"), sized, "scheduleValue", "weights", input_port_index=2)
-        model.load(draw_semantic_model=False, draw_simulation_model=False)
-        with self.assertRaisesRegex(ValueError, "weights"):
-            _simulate(model)
+        with self.assertRaisesRegex(ValueError, "'weights' is wired up to slot 2, but its size is 2"):
+            model.load(draw_semantic_model=False, draw_simulation_model=False)
 
 
 class TestStepping(unittest.TestCase):

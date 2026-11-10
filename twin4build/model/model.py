@@ -325,10 +325,6 @@ class Model:
         return self._simulation_model.is_loaded
 
     @property
-    def is_validated(self) -> bool:
-        return self._simulation_model.is_validated
-
-    @property
     def components(self) -> dict:
         return self.simulation_model.components
 
@@ -824,12 +820,6 @@ class Model:
         )
         self.simulation_model.initialize(start_time, end_time, step_size)
 
-    def validate(self) -> None:
-        """
-        Validate the model by checking IDs and connections.
-        """
-        self.simulation_model.validate()
-
     def _load_parameters(self, force_config_overwrite: bool = False) -> None:
         """
         Load parameters for all components from configuration files.
@@ -848,7 +838,6 @@ class Model:
         fcn: Optional[Callable] = None,
         draw_semantic_model: bool = True,
         draw_simulation_model: bool = True,
-        validate_model: bool = True,
         force_config_overwrite: bool = False,
         logfile: Optional[str] = None,
         enable_fusion: bool = True,
@@ -874,7 +863,6 @@ class Model:
             fcn: Custom function applied during model loading.
             draw_semantic_model: Whether to draw the semantic model graph.
             draw_simulation_model: Whether to draw the simulation model graph.
-            validate_model: Whether to perform model validation.
             force_config_overwrite: If True, all parameters are read from config.
             logfile: Path to the plain LOGGER file. None (default) leaves
                 ``LOGGER.logfile`` as it is.
@@ -882,7 +870,16 @@ class Model:
             semantic_model_filename: Deprecated (removed in 2.1). Use
                 ``SemanticModel`` + ``Translator.translate`` instead.
             simulation_model_filename: Deprecated alias for ``filename`` (removed in 2.1).
+
+        Raises:
+            ValueError: When the model does not load: an input without a
+                default is not wired, a wired width exceeds a declared size,
+                or a parameter has no value (every problem at once).
         """
+        if "validate_model" in kwargs:
+            raise TypeError(
+                "Model.load(validate_model=...) is gone in 2.0: every load checks the model and raises on a problem"
+            )
         if "verbose" in kwargs:
             deprecate_name("verbose=", "LOGGER.verbose")
             LOGGER.verbose = kwargs.pop("verbose")
@@ -908,7 +905,6 @@ class Model:
                 fcn=fcn,
                 draw_semantic_model=draw_semantic_model,
                 draw_simulation_model=draw_simulation_model,
-                validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
                 logfile=logfile,
                 enable_fusion=enable_fusion,
@@ -922,8 +918,7 @@ class Model:
                     fcn=fcn,
                     draw_semantic_model=draw_semantic_model,
                     draw_simulation_model=draw_simulation_model,
-                    validate_model=validate_model,
-                    force_config_overwrite=force_config_overwrite,
+                        force_config_overwrite=force_config_overwrite,
                     logfile=logfile,
                     enable_fusion=enable_fusion,
                 )
@@ -935,7 +930,6 @@ class Model:
         fcn: Optional[Callable],
         draw_semantic_model: bool,
         draw_simulation_model: bool,
-        validate_model: bool,
         force_config_overwrite: bool,
         logfile: Optional[str],
         enable_fusion: bool = True,
@@ -951,7 +945,6 @@ class Model:
             fcn: Custom function to be applied during model loading.
             draw_semantic_model: Whether to create and save the object graph.
             draw_simulation_model: Whether to create and save the system graph.
-            validate_model: Whether to perform model validation.
             force_config_overwrite: Whether to force the configuration file to be overwritten.
             logfile: Path to the log file, or None to leave ``LOGGER.logfile`` as it is.
         """
@@ -1010,7 +1003,6 @@ class Model:
         self._simulation_model.load(
             rdf_file=simulation_model_filename,
             fcn=fcn,
-            validate_model=validate_model,
             force_config_overwrite=force_config_overwrite,
             logfile=logfile,
         )

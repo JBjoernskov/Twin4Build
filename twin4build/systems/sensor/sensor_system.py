@@ -23,7 +23,7 @@ from twin4build.translator.translator import (
     SignaturePattern,
     StepRule,
 )
-from twin4build.utils.logger import LOGGER, autoreset_print
+from twin4build.utils.logger import autoreset_print
 
 
 # Properties of spaces
@@ -233,7 +233,9 @@ class SensorSystem(core.System):
         super().__init__(**kwargs)
 
         # Define inputs and outputs as private variables
-        self._input = {"measuredValue": tps.Scalar()}
+        # Unwired, the sensor reads its data (its run start raises when it
+        # holds none either).
+        self._input = {"measuredValue": tps.Scalar(optional=True)}
         self._output = {
             "measuredValue": tps.Scalar(0),
             # The historised series itself, for consumers that need the
@@ -257,7 +259,6 @@ class SensorSystem(core.System):
         self._valuecolumn = valuecolumn
         self._uuid = uuid
         self._dbconfig = dbconfig
-        self._is_leaf = None
         self._time_series_input = None
         self._transformation = transformation
         self.resample_method = resample_method
@@ -398,17 +399,9 @@ class SensorSystem(core.System):
 
     @property
     def is_leaf(self) -> bool:
-        """
-        Get whether the sensor reads from file/DataFrame (True) or is virtual (False).
-        """
-        return self._is_leaf
-
-    @is_leaf.setter
-    def is_leaf(self, value: bool) -> None:
-        """
-        Set whether the sensor reads from file/DataFrame (True) or is virtual (False).
-        """
-        self._is_leaf = value
+        """Whether nothing is wired to the sensor's input: it then reads its
+        data (True), otherwise the value wired to it (False)."""
+        return len(self.connects_at) == 0
 
     @property
     def time_series_input(self) -> Optional[TimeSeriesInputSystem]:
@@ -654,73 +647,6 @@ class SensorSystem(core.System):
         """
         self._transformation = fn
 
-    def validate(self, p) -> tuple[bool, bool, bool, bool]:
-        """Validate the sensor system configuration.
-
-        Checks if the sensor has proper inputs for different operational modes.
-
-        Args:
-            p: Logging function for validation messages.
-
-        Returns:
-            tuple[bool, bool, bool, bool]: Validation status for:
-                - Simulator
-                - Estimator
-                - Evaluator
-                - Monitor
-        """
-        validated_for_simulator = True
-        validated_for_estimator = True
-        validated_for_optimizer = True
-
-        if (
-            len(self.connects_at) == 0
-            and self.filename is None
-            and self.df is None
-            and self.uuid is None
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df or uuid must be provided to enable use of Simulator, Estimator, and Optimizer."
-            p(message, status="WARNING")
-            validated_for_simulator = False
-            validated_for_estimator = False
-            validated_for_optimizer = False
-
-        elif (
-            len(self.connects_at) > 0
-            and self.filename is None
-            and self.df is None
-            and self.uuid is None
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df or uuid must be provided to enable use of Estimator."
-            p(message, status="WARNING")
-            validated_for_estimator = False
-
-        self.is_leaf = len(self.connects_at) == 0  # No inputs -> leaf scalar
-        self.output["measuredValue"].is_leaf = self.is_leaf
-        self.output["measuredData"].is_leaf = self.has_data
-
-        return (
-            validated_for_simulator,
-            validated_for_estimator,
-            validated_for_optimizer,
-        )
-
-    def validate_connections(self, p) -> bool:
-        validated = True
-        if (
-            self.is_leaf
-            and self.use_spreadsheet == False
-            and self.use_database == False
-            and self.use_df == False
-        ):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-            p(message, status="[WARNING]")
-            p.add_level()
-            p("measuredValue")
-            p.remove_level()
-            validated = False
-        return validated
-
     def initialize(
         self,
         start_time: List[datetime.datetime],
@@ -738,8 +664,8 @@ class SensorSystem(core.System):
             model (Optional[Any]): Model object (not used in this class).
         """
 
-        self.validate(LOGGER)
-        self.validate_connections(LOGGER)
+        self.output["measuredValue"].is_leaf = self.is_leaf
+        self.output["measuredData"].is_leaf = self.has_data
 
         if self.use_spreadsheet or self.use_database or self.use_df:
             if self.use_df:

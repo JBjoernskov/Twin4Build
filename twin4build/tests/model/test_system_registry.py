@@ -658,7 +658,6 @@ class TestExternalSystemTranslation(unittest.TestCase):
             filename=path,
             draw_semantic_model=False,
             draw_simulation_model=False,
-            validate_model=False,
         )
         self.assertIs(type(reloaded.components["fan"]), AcmeGainSystem)
         self.assertIs(type(reloaded.components["flow_sensor"]), tb.SensorSystem)
