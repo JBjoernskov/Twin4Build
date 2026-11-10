@@ -621,10 +621,14 @@ For a release:
 
 6. Merge the reviewed release changes.
 7. Create and push an annotated ``vMAJOR.MINOR.PATCH`` tag that exactly matches
-   ``pyproject.toml``.
+   ``pyproject.toml`` (``v2.0.0rc1`` for a release candidate whose
+   ``pyproject.toml`` says ``2.0.0rc1``).
 
 The ``Publish to PyPI`` workflow builds and publishes only pushed tags whose
-names start with ``v`` and only for the configured maintainer actor. PyPI uses
+names start with ``v`` and only for the configured maintainer actor. It fails
+unless the tag without its ``v`` is the ``pyproject.toml`` version (compared as
+PEP 440 versions), then runs the CI workflow on the tagged commit, and builds
+and publishes only when every CI job passes. PyPI uses
 trusted publishing; contributors should not run ``twine upload`` as part of
 the normal release path. Branch merges alone do not publish a release, and
 the repository does not automatically bump the version on every ``dev``

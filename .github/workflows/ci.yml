@@ -8,6 +8,9 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+  # publish_pypi.yml calls this workflow on the tagged commit and publishes
+  # only when every job here passes.
+  workflow_call:
 
 permissions:
   contents: read
