@@ -294,6 +294,10 @@ class SpaceHeaterSystem(core.System):
     T_b_nominal_sh = Setting(45.0, doc="Nominal return water temperature [degC]")
     TAir_nominal_sh = Setting(21.0, doc="Nominal room air temperature [degC]")
     nelements = Setting(3, doc="Number of elements along the water flow")
+    fusable = Setting(
+        True, structural=True,
+        doc="Fuse with the room it heats; False: couple to it one step late",
+    )
     supplyWaterTemperature = Input(doc="Supply water temperature [degC]")
     waterFlowRate = Input(doc="Water flow rate [kg/s]")
     indoorTemperature = Input(doc="Indoor air temperature [degC]")

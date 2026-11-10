@@ -24,6 +24,7 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
+from twin4build.model.partition import Edge, _is_fusable
 from twin4build.systems.utils.discrete_statespace_system import SparseBilinear, traceable
 from twin4build.systems.utils.smooth_saturation import saturation_mode
 
@@ -44,8 +45,9 @@ def _exact(test):
     return run
 
 
-def build_model(r_a=0.02, r_b=0.02, fuse=True, model_id="test_fusion"):
-    """Two thermal zones coupled by one WallSystem; zone A heated."""
+def build_model(r_a=0.02, r_b=0.02, fuse=True, model_id="test_fusion", wall_fusable=True):
+    """Two thermal zones coupled by one WallSystem; zone A heated.
+    ``wall_fusable=False``: the wall opts out of fusion."""
     model = tb.Model(id=model_id)
 
     def make_zone(zone_id):
@@ -63,6 +65,8 @@ def build_model(r_a=0.02, r_b=0.02, fuse=True, model_id="test_fusion"):
     zone_a = make_zone("ZoneA")
     zone_b = make_zone("ZoneB")
     wall = tb.WallSystem(C=2e5, R_a=r_a, R_b=r_b, id="PartitionWall")
+    if not wall_fusable:
+        wall.fusable = False
 
     outdoor = tb.ScheduleSystem(
         weekday_ruleset={"ruleset_default_value": 5.0}, id="Outdoor"
@@ -239,6 +243,56 @@ class TestFusionConsistency(unittest.TestCase):
         self.assertEqual(len(model.simulation_model._fused_components), 0)
         order = [c.id for g in model.simulation_model._execution_order for c in g]
         self.assertIn("PartitionWall", order)
+
+
+class TestFusableFlag(unittest.TestCase):
+    """A component set ``fusable=False`` stays out of every fused block (walls
+    between rooms that should not fuse the rooms together): the model runs as
+    with fusion off, the partition sees no fusable arc through it, and a
+    batched model keeps the setting."""
+
+    def test_the_wall_opts_out(self):
+        model, *_ = build_model(fuse=True, model_id="fusable_flag", wall_fusable=False)
+        self.assertEqual(len(model.simulation_model._fused_components), 0)
+        self.assertEqual(model.simulation_model._fusable_arcs(), [])
+        res_flag = simulate(model, 6, 600)
+        res_off = simulate(build_model(fuse=False, model_id="fusable_flag_off")[0], 6, 600)
+        for key in ("t_a", "t_b", "t_w"):
+            torch.testing.assert_close(res_flag[key], res_off[key], rtol=0, atol=1e-12)
+
+    def test_the_default_still_fuses(self):
+        model, *_ = build_model(fuse=True, model_id="fusable_default")
+        self.assertEqual(len(model.simulation_model._fused_components), 1)
+        self.assertTrue(tb.WallSystem(id="w").fusable)
+        self.assertFalse(tb.WallSystem(id="w", fusable=False).fusable)
+
+    def test_the_partition_and_the_batched_model_keep_it(self):
+        model, zone_a, zone_b, wall = build_model(fuse=False, model_id="fusable_batch", wall_fusable=False)
+        edge = Edge(sender=wall, output_port="heatFlowRateA", output_slot=None, receiver=zone_a,
+                    input_port="wallHeatGain", input_slot=0)
+        self.assertFalse(_is_fusable(edge))
+        wall.fusable = True
+        self.assertTrue(_is_fusable(edge))
+        wall.fusable = False
+        batched = model.batch_components()
+        (meta,) = [c for c in batched.components.values() if isinstance(c, tb.WallSystem)]
+        self.assertIs(meta.fusable, False)
+
+    def test_copies_that_differ_batch_apart(self):
+        """The setting is structural: walls that fuse and walls that do not
+        are never one batched copy."""
+        model = tb.Model(id="fusable_batches")
+        temperature = tb.ScheduleSystem(weekday_ruleset={"ruleset_default_value": 20.0}, id="T")
+        walls = [tb.WallSystem(C=1e5, R_a=0.02, R_b=0.02, fusable=k != 1, id=f"W{k}") for k in range(3)]
+        for wall in walls:
+            model.add_connection(temperature, wall, "scheduleValue", "temperatureA")
+            model.add_connection(temperature, wall, "scheduleValue", "temperatureB")
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        model.batch_components()
+        metas = {id(model._component_to_meta[w.id][0]): model._component_to_meta[w.id][0] for w in walls}
+        self.assertEqual(sorted(int(m.n_c) for m in metas.values()), [1, 2])
+        for wall in walls:
+            self.assertIs(model._component_to_meta[wall.id][0].fusable, wall.fusable)
 
 
 class TestFusionStability(unittest.TestCase):

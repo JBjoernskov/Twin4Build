@@ -891,6 +891,14 @@ Unused and untested; 2.0 drops them without a deprecation period.
   159-state fused block's step took 26 ms with the broadcast products, 5.8
   with `bmm`).  Every exponential used the broadcast products before.  A
   setting is a `bool`, an `int` or a `str` (`Setting(kind=int)`).
+- `fusable` (default `True`), a structural setting of the Systems with
+  fusable ports (`WallSystem`, `BuildingSpaceSystem`,
+  `BuildingSpaceThermalSystem`, `SpaceHeaterSystem`): an instance set
+  `fusable=False` joins no fused block and couples to its neighbours one
+  step late, as with fusion off (walls between rooms that should not fuse
+  the rooms into one block).  Batched copies share it: walls that fuse and
+  walls that do not batch apart.  The partition (`split_worlds`) sees no
+  fusable arc through such an instance.
 
 ### Migration notes
 
