@@ -116,6 +116,10 @@ passing it raises and names its replacement.
   without a value.  These were warnings, and a model with a missing input
   loaded and ran.  Wire the input, give it a default (`Input(default=...)`)
   or give the parameter a value.
+- A System class whose `forward` cannot take `(x, inputs, p, step_size)`,
+  whose `derive` cannot take `(p, step_size)` or whose `series` cannot take
+  `(timestamps, step_size)` raises `TypeError` when it is defined (they are
+  called positionally, so the argument names are the System's own).
 - A `SensorSystem`'s input is optional: a sensor holding data reads it while
   nothing is wired (its run start raises when it has neither); `is_leaf` is
   whether nothing is wired to it.
