@@ -29,6 +29,7 @@ from __future__ import annotations
 
 # Standard library imports
 import functools
+import inspect
 import itertools
 from typing import Any, Dict, Optional, Sequence
 
@@ -410,6 +411,32 @@ def _check_references(cls, merged) -> None:
                     )
 
 
+#: What the base calls a System's own stepping methods with (ADR 0001,
+#: decision 1): positionally, so the names are the System's own.
+SIGNATURES = {
+    "forward": ("x", "inputs", "p", "step_size"),
+    "derive": ("p", "step_size"),
+    "series": ("timestamps", "step_size"),
+}
+
+
+def _check_signatures(cls, namespace) -> None:
+    """``forward``, ``derive`` and ``series``, where the class body defines
+    them, take the arguments the base calls them with."""
+    for name, arguments in SIGNATURES.items():
+        method = namespace.get(name)
+        if not inspect.isfunction(method):
+            continue
+        signature = inspect.signature(method)
+        try:
+            signature.bind(None, *arguments)
+        except TypeError:
+            raise TypeError(
+                f"{cls.__qualname__}.{name}{signature}: a System's {name} takes "
+                f"(self, {', '.join(arguments)})"
+            ) from None
+
+
 def _starts_a_run(initialize):
     """Wrap a System's own ``initialize`` (a System written the old way): after
     it, the base starts the run -- it records the step size and forgets the
@@ -446,6 +473,7 @@ class SystemMeta(type):
         cls._own_declarations = {k: dict(v) for k, v in (declarations or {}).items() if v}
         merged = _merge(cls)
         _check_references(cls, merged)
+        _check_signatures(cls, namespace)
         cls._declarations = merged
         cls._is_declared = any(merged[kind] for kind in KINDS)
         if cls._is_declared and "PARAM_NAMES" not in cls.__dict__:

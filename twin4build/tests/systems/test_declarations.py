@@ -4,8 +4,9 @@ Covered:
 
 1. class definition: one input and one output may share a name, ports and
    parameters are not class attributes, any other repeated name raises, a
-   ``size=`` must name a declaration of the class, a subclass inherits and
-   redeclares;
+   ``size=`` must name a declaration of the class, ``forward``, ``derive``
+   and ``series`` take the arguments the base gives them, a subclass
+   inherits and redeclares;
 2. construction: settings (default, required), parameter values by keyword,
    unknown keywords, the constructor keywords, ``PARAM_NAMES`` in declaration
    order, the bounds table and the saved config, attribute access to ports,
@@ -294,6 +295,24 @@ class TestClassDefinition(unittest.TestCase):
 
             class Other(core.System):
                 flows = Input(size=SizedSystem._declarations["input"]["flows"])
+
+    def test_forward_derive_and_series_take_the_arguments_the_base_gives(self):
+        bodies = {
+            "forward": "    def forward(self, x, inputs):\n        pass\n",
+            "derive": "    def derive(self, p):\n        pass\n",
+            "series": "    def series(self, timestamps, step_size, period):\n        pass\n",
+        }
+        for name, method in bodies.items():
+            with self.subTest(name), self.assertRaisesRegex(TypeError, f"a System's {name} takes"):
+                exec("class X(core.System):\n    u = Input()\n" + method, {"core": core, "Input": Input})
+
+        class Named(core.System):  # other names, and an extra keyword with a default
+            u = Input()
+
+            def forward(self, state, values, params, dt, extra=None):
+                return state, {}
+
+        self.assertTrue(Named._is_declared)
 
     def test_a_subclass_inherits_and_redeclares(self):
         class Wider(GainSystem):
