@@ -561,12 +561,6 @@ t4b:office_exhaust_damper a t4b:DamperTorchSystem ;
     s4syst:connectsAt t4b:136778860870 .
 
 t4b:office_occupancy a t4b:OccupancySystem ;
-    t4b:co2_datecolumn 2 ;
-    t4b:co2_filename "C:\\Users\\jabj\\Documents\\python\\Twin4build-Case-Studies\\DP37\\model\\data\\Time series\\Rooms\\OD095_01_011A\\OD095_01_011A_L95_LC02_BQA001_S2.plc_SENSOR_VALUE.csv" ;
-    t4b:co2_valuecolumn 4 ;
-    t4b:damper_datecolumn 2 ;
-    t4b:damper_filename "C:\\Users\\jabj\\Documents\\python\\Twin4build-Case-Studies\\DP37\\model\\data\\Time series\\Rooms\\OD095_01_011A\\OD095_01_011A_L95_LC02_QNB001_C1.plc_ACTUATOR_VALUE.csv" ;
-    t4b:damper_valuecolumn 4 ;
     t4b:exhaust_damper.a "[1.0]"^^rdf:JSON ;
     t4b:exhaust_damper.nominalAirFlowRate "[0.001]"^^rdf:JSON ;
     t4b:mass.G_occ "[5e-06]"^^rdf:JSON ;
@@ -781,3 +775,32 @@ t4b:office a t4b:BuildingSpaceTorchSystem ;
         t4b:136778850116,
         t4b:136778850263 .
 
+# The occupancy reads the room's CO2 and the damper position as the sensors
+# recorded them (their measuredData).
+t4b:office_co2_sensor s4syst:connectedThrough t4b:occupancy_co2_connection .
+
+t4b:office_damper_position_sensor s4syst:connectedThrough t4b:occupancy_damper_connection .
+
+t4b:office_occupancy s4syst:connectsAt t4b:occupancy_co2_point,
+        t4b:occupancy_damper_point .
+
+t4b:occupancy_co2_connection a s4syst:Connection ;
+    t4b:output_port "measuredData" ;
+    s4syst:connectsSystem t4b:office_co2_sensor ;
+    s4syst:connectsSystemAt t4b:occupancy_co2_point .
+
+t4b:occupancy_co2_point a s4syst:ConnectionPoint ;
+    t4b:input_port "indoorCo2Measured" ;
+    s4syst:connectionPointOf t4b:office_occupancy ;
+    s4syst:connectsSystemThrough t4b:occupancy_co2_connection .
+
+t4b:occupancy_damper_connection a s4syst:Connection ;
+    t4b:output_port "measuredData" ;
+    s4syst:connectsSystem t4b:office_damper_position_sensor ;
+    s4syst:connectsSystemAt t4b:occupancy_damper_point .
+
+t4b:occupancy_damper_point a s4syst:ConnectionPoint ;
+    t4b:input_port "damperPositionMeasured" ;
+    t4b:input_port_index "{\"occupancy_damper_connection\": 0}"^^rdf:JSON ;
+    s4syst:connectionPointOf t4b:office_occupancy ;
+    s4syst:connectsSystemThrough t4b:occupancy_damper_connection .

@@ -397,14 +397,6 @@ class TestEstimator(unittest.TestCase):
             
             model.components["outdoor_environment"].outdoorCo2Concentration_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=3)
 
-            # OccupancySystem reads CO2 / damper time series directly from disk;
-            # redirect to the example CSVs so the test runs on any machine.
-            model.components["office_occupancy"].co2_filename = utils.get_path(
-                ["estimator_example", "co2_sensor.csv"]
-            )
-            model.components["office_occupancy"].damper_filename = utils.get_path(
-                ["estimator_example", "damper_position_sensor.csv"]
-            )
 
             # Set up a temporary directory for saving estimation results
             # This ensures files are cleaned up and works in GitHub Actions
@@ -543,12 +535,6 @@ class TestEstimator(unittest.TestCase):
             ].outdoorCo2Concentration_source = CsvSource(utils.get_path(
                 ["estimator_example", "outdoor_environment.csv"]
             ), date_column=0, value_column=2)
-            model2.components["office_occupancy"].co2_filename = utils.get_path(
-                ["estimator_example", "co2_sensor.csv"]
-            )
-            model2.components["office_occupancy"].damper_filename = utils.get_path(
-                ["estimator_example", "damper_position_sensor.csv"]
-            )
 
             # Step 11: Load the estimation result from file
             model2.load_estimation_result(filename=saved_file_path)

@@ -142,6 +142,25 @@ passing it raises and names its replacement.
   another shape.  `check_system` makes the request.  A `series` that gives
   an output the System does not declare, or a vector output at another
   size, raises at every run start, where it fills the outputs.
+- `OccupancySystem` is declared and keeps its parameters estimable through
+  the inversion: the children `mass` (`V`, `G_occ`, `m_inf`),
+  `supply_damper` and `exhaust_damper` (`a`, `nominalAirFlowRate`, `c`, one
+  per damper slot) keep their paths, so `([room, occupancy], "mass.V", ...,
+  "shared")` and `([damper, occupancy.supply_damper], "a", ..., "shared")`
+  work as before.  Its file mode goes (ADR 0001, decision 6): `co2_filename`,
+  `damper_filename` and their column keywords raise; wire `indoorCo2Measured`
+  from the room's CO2 sensor and `damperPositionMeasured` from the damper
+  position sensors (`measuredData`, one slot each).  The previous CO2 sample
+  is a state, starting at 400 ppm (`previousIndoorCo2Measured` goes).  The
+  flat `V=`, `G_occ=`, `m_inf=`, `supply_damper_a=` ... keywords move into the
+  children (`mass=dict(V=...)`), with a warning; `c_tied` / `set_c` on its
+  dampers raise (give `c` a value).  Wired the same way, it steps exactly as
+  before.  The full-workflow example, the canonical benchmarks and the
+  estimator example's saved model wire the occupancy to the sensors (the
+  saved model gains the two connections and drops the file paths); at the
+  first step of a run the occupancy now starts from the 400 ppm lag instead
+  of a zero CO2 change, so the canonical topology has two connections and one
+  state more per zone.
 - A System class whose `forward` cannot take `(x, inputs, p, step_size)`,
   whose `derive` cannot take `(p, step_size)` or whose `series` cannot take
   `(timestamps, step_size)` raises `TypeError` when it is defined (they are
@@ -161,13 +180,13 @@ passing it raises and names its replacement.
 
 #### Not yet converted
 
-Four Systems still write their own `do_step` and `initialize`; a test keeps
+Three Systems still write their own `do_step` and `initialize`; a test keeps
 the list from growing and states each reason.  `ControllerIdentificationSystem`
 (and `ControllerIdentificationPISystem`) is exempt for 2.0 and converted in
 2.1: it builds its candidates and gates from its wiring.  `FusedStateSpaceSystem`
 is exempt: the loader builds it.  `DiscreteStatespaceSystem` is converted
-once the numerics work lands, and `OccupancySystem` waits on decision 7.
-Until then the base does not raise on an override.
+once the numerics work lands.  Until then the base does not raise on an
+override.
 
 ### Removed
 

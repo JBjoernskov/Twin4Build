@@ -1534,17 +1534,6 @@ class Model:
         "uuid",
         "name",
         "dbconfig",
-        # OccupancySystem measured inverse-model inputs
-        "co2_filename",
-        "co2_date_column",
-        "co2_value_column",
-        "co2_datecolumn",
-        "co2_valuecolumn",
-        "damper_filename",
-        "damper_date_column",
-        "damper_value_column",
-        "damper_datecolumn",
-        "damper_valuecolumn",
         # ScheduleSystem rulesets
         "weekday_ruleset",
         "weekend_ruleset",

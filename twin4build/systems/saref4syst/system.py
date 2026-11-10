@@ -636,11 +636,16 @@ class System(nn.Module, metaclass=SystemMeta):
         return out
 
     def _setting_size(self, name: str) -> int:
+        """The size a setting gives: an int, the length of a sequence, none
+        for ``None``, and one for a factor while it is nonzero (a smoothing
+        factor sizes the memory of its filter)."""
         value = getattr(self, name)
         if value is None:
             return 0
         if isinstance(value, int) and not isinstance(value, bool):
             return value
+        if isinstance(value, float):
+            return int(value != 0.0)
         return len(value)
 
     def declared_size(self, kind: str, name: str, _seen=None) -> Optional[int]:

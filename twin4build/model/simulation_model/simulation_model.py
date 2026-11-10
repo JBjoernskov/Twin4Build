@@ -3098,7 +3098,7 @@ class SimulationModel:
 
     def _component_lookup(self) -> Dict[str, Any]:
         """The model's components by id, with the nested sub-objects that
-        carry an id of their own (e.g. ``OccupancySystem._DamperParams``).
+        carry an id of their own (e.g. ``OccupancySystem.supply_damper``).
         ``nn.Module`` keeps child modules in ``_modules`` rather than
         ``__dict__``, so ``.modules()`` walks the hierarchy."""
         lookup = dict(self._components)
@@ -3459,7 +3459,7 @@ class SimulationModel:
         result_x = self._result["result_x"]
 
         # Extended lookup including nested sub-objects (e.g.
-        # OccupancySystem._DamperParams) that have their own id but are
+        # OccupancySystem.supply_damper) that have their own id but are
         # not registered as top-level components.
         component_lookup = self._component_lookup()
 

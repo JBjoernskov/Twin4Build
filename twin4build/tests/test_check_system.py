@@ -149,6 +149,15 @@ def examples(directory):
         tb.FanSystem: (tb.FanSystem(id="fan"), {"airFlowRate": 1.0, "inletAirTemperature": 18.0}),
         tb.MaxSystem: (tb.MaxSystem(id="max"), {"inputs": [1.0, 3.0, 2.0]}),
         tb.OccupancyDetectorSystem: (tb.OccupancyDetectorSystem(id="detector"), {"occupancy": 2.0}),
+        tb.OccupancySystem: (
+            tb.OccupancySystem(
+                id="occupancy",
+                mass=dict(V=100.0),
+                supply_damper=dict(nominalAirFlowRate=0.1),
+                exhaust_damper=dict(nominalAirFlowRate=0.1),
+            ),
+            {"indoorCo2Measured": 600.0, "damperPositionMeasured": [0.5]},
+        ),
         tb.OnOffSystem: (tb.OnOffSystem(id="on_off", threshold=0.5, is_off_value=0.0), {"value": 1.0, "criteriaValue": 0.5}),
         tb.OutdoorEnvironmentSystem: (
             tb.OutdoorEnvironmentSystem(
@@ -198,7 +207,6 @@ WITHOUT_EXAMPLE = {
     "DiscreteStatespaceSystem": "not converted yet",
     "ControllerIdentificationSystem": "converted in 2.1",
     "ControllerIdentificationPISystem": "converted in 2.1, with its parent",
-    "OccupancySystem": "to be deleted (ADR 0001, decision 7)",
 }
 
 
@@ -209,7 +217,6 @@ STEPPING_THEMSELVES = {
     "FusedStateSpaceSystem": "exempt: the loader builds it from the state-space Systems it fuses and steps it "
     "as one block; nobody writes one",
     "DiscreteStatespaceSystem": "converted to derive + forward once the numerics branches land",
-    "OccupancySystem": "waiting on the decision about what replaces its CO2 inversion (decision 7)",
 }
 
 

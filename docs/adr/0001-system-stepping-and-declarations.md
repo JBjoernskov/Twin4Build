@@ -1,7 +1,8 @@
 # ADR 0001: A System is its declarations and one forward step
 
-- **Status:** accepted, 2026-11-05; decision 10 amended 2026-11-10 (the
-  probe runs on request). To be implemented in 2.0.
+- **Status:** accepted, 2026-11-05; decisions 7 and 10 amended 2026-11-10
+  (`OccupancySystem` is converted, not deleted; the probe runs on request).
+  To be implemented in 2.0.
 - **Scope:** how a System is written, stepped, sized, fed with data and
   checked, for every System in the core package and in the packages that
   build on it.
@@ -143,7 +144,8 @@ class DamperSystem(System):
 - A forward `OccupancyProfileSystem`, written downstream so far, moves into core: people in
   a room are a time-of-day basis weighted by estimated knot values, and the
   room's CO2 sensor scores the fit.
-- The inverse `OccupancySystem` is deleted. Its inversion survives as an
+- The inverse `OccupancySystem` is deleted (amended: it is converted, see
+  the Implementation, step 9). Its inversion survives as an
   `invert_zoh_occupancy` helper for start values.
 
 ### 8. Load
@@ -257,7 +259,7 @@ Systems.
   `derive` or `series`.
 - **Renamed:** `sample_time` becomes `step_size` in every `forward` (39
   files today) and in the engine's callers.
-- **Removed:** `OccupancySystem`, `ScheduleSwitchControllerSystem`, the
+- **Removed:** `ScheduleSwitchControllerSystem`, the
   `Power` and `outdoorCO2` aliases, `C_boundary` / `R_boundary`,
   `transform_mode` / `SUPPORTS_TRANSFORM_MODE` / `step_constants`, the
   occupancy file mode, the `use_*` switches, the per-System `validate`
@@ -292,7 +294,11 @@ A series of pull requests against `dev`, each keeping the tests passing:
 8. Convert the Systems in groups: simple Systems; flows, junctions and the
    AHU, where the branch maps go; rooms and composites, where the boundary
    wall goes; controllers.
-9. Deletions (decision 7, the aliases, the occupancy file mode).
+9. Deletions (the aliases, the occupancy file mode). `OccupancySystem` is
+   converted rather than removed (amended 2026-11-10, the maintainer's
+   decision): converted, it keeps the zone's `V`, `G_occ` and `m_inf` and
+   the dampers' `a`, `nominalAirFlowRate` and `c` estimable through the
+   inversion, shared with the room and the dampers.
 10. Lock-in: overrides raise, the checks raise and `validate` goes, and
     `check_system` with the core examples table (decisions 1, 10 and 11).
 

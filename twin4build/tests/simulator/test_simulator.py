@@ -367,14 +367,6 @@ class TestSimulator(unittest.TestCase):
         model.components["outdoor_environment"].globalIrradiation_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=2)
         model.components["outdoor_environment"].outdoorCo2Concentration_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=2)
 
-        # OccupancySystem reads CO2 / damper time series directly from disk;
-        # redirect to the example CSVs so the test runs on any machine.
-        model.components["office_occupancy"].co2_filename = utils.get_path(
-            ["estimator_example", "co2_sensor.csv"]
-        )
-        model.components["office_occupancy"].damper_filename = utils.get_path(
-            ["estimator_example", "damper_position_sensor.csv"]
-        )
 
         return model
 
