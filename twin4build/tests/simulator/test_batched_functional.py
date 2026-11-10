@@ -46,11 +46,6 @@ class TestBatchedFunctional(unittest.TestCase):
         self.assertEqual(audit["n_theta"], 56)
         self.assertLess(audit["max_abs_error"], 3e-5)
 
-    # Fails on dev since #204 (a2baa180): zone_0__office.makeUpAirTemperature
-    # logs a history the functional replay does not populate.  It never ran in
-    # CI before.  Remove the marker with the fix: an unexpected pass fails
-    # the run.
-    @unittest.expectedFailure
     def test_public_batched_functional_replay_materializes_all_input_histories(self):
         for device, backend in [("cpu", "eager"), ("cuda", "cuda_graph")]:
             with self.subTest(device=device, backend=backend):

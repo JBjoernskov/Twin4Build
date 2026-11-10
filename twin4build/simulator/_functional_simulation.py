@@ -885,6 +885,22 @@ class FunctionalSimulationSession:
             if port.log_history and port._history is not None:
                 port._history_is_populated = True
                 port._tensor.copy_(port._history[-1])
+        # The unwired inputs nothing routes into, as the composer resolves
+        # them (_resolve_inputs): one that reads another input
+        # (``Input(default=otherInput)``) held that input's values, one of no
+        # slots (an unwired "wired"-size vector) held none.
+        for component in self.model.components.values():
+            defaults = component.input_defaults() if hasattr(component, "input_defaults") else {}
+            for name, port in component.input.items():
+                if not port.log_history or port._history is None or port._history_is_populated:
+                    continue
+                read = component.input[defaults[name]] if name in defaults else None
+                if read is not None and read._history_is_populated:
+                    port._history.copy_(read._history)
+                    port._tensor.copy_(read._history[-1])
+                    port._history_is_populated = True
+                elif read is None and port._history.numel() == 0:
+                    port._history_is_populated = True
         return connected_ports
 
     def finalize_materialization(self, result):
