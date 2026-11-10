@@ -19,7 +19,6 @@ from dateutil import tz
 
 import twin4build as tb
 import twin4build.core as core
-import twin4build.utils.types as tps
 from twin4build.model.partition import cut_measured_edges, measured_partition
 from twin4build.systems.air_handling_unit.air_handling_unit_core_system import (
     AirHandlingUnitCoreSystem,
@@ -31,6 +30,7 @@ from twin4build.systems.junction.return_flow_junction_system import (
 from twin4build.systems.junction.supply_flow_junction_system import (
     SupplyFlowJunctionSystem,
 )
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter, State
 
 tb._IS_TESTING = True
 
@@ -41,11 +41,6 @@ RATIO = 0.9
 FAN_KWARGS = {
     "beta0": 0.0, "beta1": 200.0 / 3.0, "beta2": 400.0, "beta3": 1000.0, "f_total": 1.0,
 }
-
-
-def _n_t(start_time, end_time, step_size):
-    _, _, n_t, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-    return n_t
 
 
 def series(values, **kwargs):
@@ -62,79 +57,28 @@ def data_sensor(id_):
 class Room(core.System):
     """``T <- T + k (sum flows) + 0.01 (T_supply - T)``: a state, a parameter."""
 
-    def __init__(self, k=1.0, **kwargs):
-        super().__init__(**kwargs)
-        self.input = {"flow": tps.Vector(), "supplyT": tps.Scalar()}
-        self.output = {"T": tps.Scalar()}
-        self.k = tps.Parameter(torch.tensor(float(k)), min_value=0.0, max_value=10.0)
-        self.parameter = {"k": {"lb": 0.0, "ub": 10.0}}
-        self.T = tps.State(n_v=1, init_value=20.0, names=[f"{self.id}.T"])
-        self._config = {"parameters": ["k"]}
+    flow = Input(size="wired")
+    supplyT = Input()
+    T = Output()
+    temperature = State(init=20.0)
+    k = Parameter(1.0, lb=0.0, ub=10.0)
 
-    @property
-    def config(self):
-        return self._config
-
-    def initialize(self, start_time, end_time, step_size):
-        n_t = _n_t(start_time, end_time, step_size)
-        indices = [
-            int(i)
-            for cp in self.connects_at
-            if cp.input_port == "flow"
-            for conn in cp.connects_system_through
-            for i in torch.as_tensor(cp.input_port_index[conn]).reshape(-1).tolist()
-        ]
-        n_v = max(indices, default=-1) + 1
-        self.k = self.k.expand_to_n_c(self.n_c)
-        self.input["flow"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c, n_v=n_v)
-        self.input["supplyT"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
-        self.output["T"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
-        self.T.initialize(n_s=len(start_time), n_c=self.n_c, n_v=1, force=True)
-
-    PARAM_NAMES = ("k",)
-
-    def forward(self, x, inputs, params, step_size):
-        k = params["k"].reshape(-1, 1)
+    def forward(self, x, inputs, p, step_size):
+        k = p["k"].reshape(-1, 1)
         x_next = x + k * inputs["flow"].sum(dim=-1, keepdim=True) + 0.01 * (inputs["supplyT"].reshape(-1, 1) - x)
         return x_next, {"T": x_next[..., 0]}
-
-    def do_step(self, second_time, date_time, step_size, step_index):
-        inputs = {"flow": self.input["flow"].get(), "supplyT": self.input["supplyT"].get()}
-        x_next, outs = self.forward(self.get_state(), inputs, self._forward_params(), step_size)
-        self.set_state(x_next)
-        self.output["T"]._set(outs["T"], i_t=step_index)
 
 
 class Gain(core.System):
     """``u = g (setpoint - T)``: a proportional controller, one parameter."""
 
-    def __init__(self, g=0.1, **kwargs):
-        super().__init__(**kwargs)
-        self.input = {"T": tps.Scalar()}
-        self.output = {"u": tps.Scalar()}
-        self.g = tps.Parameter(torch.tensor(float(g)), min_value=0.0, max_value=10.0)
-        self.parameter = {"g": {"lb": 0.0, "ub": 10.0}}
-        self._config = {"parameters": ["g"]}
+    T = Input()
+    u = Output()
+    g = Parameter(0.1, lb=0.0, ub=10.0)
 
-    @property
-    def config(self):
-        return self._config
-
-    def initialize(self, start_time, end_time, step_size):
-        n_t = _n_t(start_time, end_time, step_size)
-        self.g = self.g.expand_to_n_c(self.n_c)
-        self.input["T"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
-        self.output["u"].initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
-
-    PARAM_NAMES = ("g",)
-
-    def forward(self, x, inputs, params, step_size):
-        u = params["g"].reshape(-1) * (21.0 - inputs["T"].reshape(-1))
+    def forward(self, x, inputs, p, step_size):
+        u = p["g"].reshape(-1) * (21.0 - inputs["T"].reshape(-1))
         return x, {"u": u}
-
-    def do_step(self, second_time, date_time, step_size, step_index):
-        _, outs = self.forward(None, {"T": self.input["T"].get()}, self._forward_params(), step_size)
-        self.output["u"]._set(outs["u"], i_t=step_index)
 
 
 def build():

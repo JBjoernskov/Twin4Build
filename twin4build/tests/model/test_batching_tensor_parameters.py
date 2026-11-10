@@ -16,30 +16,18 @@ from dateutil import tz
 import twin4build as tb
 import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
 
 
 class GainSystem(core.System):
     """``y = gain * x``, ``gain`` a parameter."""
 
-    def __init__(self, gain: float = 1.0, **kwargs):
-        super().__init__(**kwargs)
-        self.gain = tps.Parameter(torch.tensor(float(gain)), min_value=0.0, max_value=10.0)
-        self.input = {"x": tps.Scalar()}
-        self.output = {"y": tps.Scalar()}
-        self.parameter = {"gain": {"lb": 0.0, "ub": 10.0}}
-        self._config = {"parameters": ["gain"]}
+    x = Input()
+    y = Output()
+    gain = Parameter(1.0, lb=0.0, ub=10.0)
 
-    @property
-    def config(self):
-        return self._config
-
-    def initialize(self, start_time, end_time, step_size):
-        _, _, n_t, _ = core.Simulator.get_simulation_timesteps(start_time, end_time, step_size)
-        for port in (*self.input.values(), *self.output.values()):
-            port.initialize(n_t=n_t, n_s=len(start_time), n_c=self.n_c)
-
-    def do_step(self, second_time, date_time, step_size, step_index):
-        self.output["y"]._set(self.input["x"].get() * self.gain.get(), i_t=step_index)
+    def forward(self, x, inputs, p, step_size):
+        return x, {"y": inputs["x"] * p["gain"]}
 
 
 class TestBatchingStacksTensorParameters(unittest.TestCase):
