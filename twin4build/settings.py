@@ -37,8 +37,6 @@ from typing import Any, Dict, Tuple
 from twin4build.utils.logger import LOGGER
 
 __all__ = [
-    "Setting",
-    "register",
     "value",
     "set",
     "reset",
@@ -53,7 +51,7 @@ _MISSING = object()
 
 
 @dataclass(frozen=True)
-class Setting:
+class _Setting:
     """A knob: its name, environment variable, type, default and what it does.
 
     ``kind`` is ``bool`` or ``str``.  A ``str`` setting with ``choices`` takes
@@ -69,13 +67,13 @@ class Setting:
     choices: Tuple[str, ...] = ()
 
 
-_REGISTRY: Dict[str, Setting] = {}
+_REGISTRY: Dict[str, _Setting] = {}
 _SET: Dict[str, Any] = {}
 _LOGGED: tuple = ()
 
 
-def register(setting: Setting) -> None:
-    """Declare a setting (the library's are declared at the end of this module)."""
+def _register(setting: _Setting) -> None:
+    """Declare a setting; only this module declares them, at its end."""
     if setting.kind not in (bool, str):
         raise TypeError(f"setting {setting.name!r}: kind is bool or str")
     if setting.name in _REGISTRY:
@@ -86,7 +84,7 @@ def register(setting: Setting) -> None:
     _REGISTRY[setting.name] = setting
 
 
-def _get(name: str) -> Setting:
+def _get(name: str) -> _Setting:
     try:
         return _REGISTRY[name]
     except KeyError:
@@ -94,7 +92,7 @@ def _get(name: str) -> Setting:
         raise KeyError(f"no setting {name!r}; the settings are {known}") from None
 
 
-def _check(setting: Setting, v: Any, where: str) -> Any:
+def _check(setting: _Setting, v: Any, where: str) -> Any:
     """``v`` as a value of ``setting``, or an error naming ``where`` it came from."""
     if v is None and setting.default is None:
         return None
@@ -108,7 +106,7 @@ def _check(setting: Setting, v: Any, where: str) -> Any:
     return v
 
 
-def _parse(setting: Setting, text: str) -> Any:
+def _parse(setting: _Setting, text: str) -> Any:
     """An environment variable's (stripped, non-empty) text as a value."""
     where = f"{setting.env}={text!r}"
     if setting.kind is bool:
@@ -205,8 +203,8 @@ def log_active(where: str) -> None:
 # ---------------------------------------------------------------------------
 # The library's settings (docs/source/manual/settings.rst describes each).
 # ---------------------------------------------------------------------------
-register(
-    Setting(
+_register(
+    _Setting(
         name="zoh_expm",
         env="T4B_ZOH_EXPM",
         kind=str,
@@ -219,8 +217,8 @@ register(
         "same zero-order-hold step to rounding.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="expm_checkpoint",
         env="T4B_EXPM_CHECKPOINT",
         kind=bool,
@@ -230,8 +228,8 @@ register(
         "step stays on the autograd tape.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="rollout_checkpoint",
         env="T4B_ROLLOUT_CHECKPOINT",
         kind=bool,
@@ -241,8 +239,8 @@ register(
         "exogenous rows per step, and the backward pass runs each step again.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="no_data_warmstart",
         env="TWIN4BUILD_NO_DATA_WARMSTART",
         kind=bool,
@@ -251,8 +249,8 @@ register(
         "the boundary_state_init option says (as boundary_state_init='rollout').",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="testing",
         env="TWIN4BUILD_TESTING",
         kind=bool,
@@ -262,8 +260,8 @@ register(
         "that every cell runs, quickly.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="jac_check",
         env="TWIN4BUILD_JAC_CHECK",
         kind=bool,
@@ -272,8 +270,8 @@ register(
         "differences on a few columns and logs the largest difference.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="bench_timestep",
         env="TWIN4BUILD_BENCH_TIMESTEP",
         kind=bool,
@@ -283,8 +281,8 @@ register(
         "and their agreement.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="match_diag_file",
         env="TWIN4BUILD_MATCH_DIAG_FILE",
         kind=str,
@@ -293,8 +291,8 @@ register(
         "decisions, merge attempts) to this file.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="match_diag_pattern",
         env="TWIN4BUILD_MATCH_DIAG_PATTERN",
         kind=str,
@@ -303,8 +301,8 @@ register(
         "this text.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="cuda_graph_sync_phases",
         env="T4B_CUDA_GRAPH_SYNC_PHASES",
         kind=bool,
@@ -314,8 +312,8 @@ register(
         "is reported in the phase that launched it.",
     )
 )
-register(
-    Setting(
+_register(
+    _Setting(
         name="logger_strict",
         env="TWIN4BUILD_LOGGER_STRICT",
         kind=bool,

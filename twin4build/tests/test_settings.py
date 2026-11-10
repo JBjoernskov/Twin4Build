@@ -158,10 +158,10 @@ class TestSettings(_NoSettingsInTheEnvironment):
 
     def test_a_setting_is_declared_once(self):
         with self.assertRaises(ValueError):
-            settings.register(settings._REGISTRY["testing"])
+            settings._register(settings._REGISTRY["testing"])
         with self.assertRaises(TypeError):
-            settings.register(
-                settings.Setting(
+            settings._register(
+                settings._Setting(
                     name="steps", env="T4B_TEST_STEPS", kind=int, default=1, doc=""
                 )
             )
@@ -186,6 +186,13 @@ class TestSettings(_NoSettingsInTheEnvironment):
     def test_the_package_exports_the_settings(self):
         self.assertIs(tb.settings, settings)
         self.assertIn("settings", tb.__all__)
+        # Only the library declares settings: the declaration is private.
+        self.assertEqual(
+            sorted(settings.__all__),
+            ["log_active", "override", "reset", "set", "snapshot", "value"],
+        )
+        self.assertFalse(hasattr(settings, "Setting"))
+        self.assertFalse(hasattr(settings, "register"))
 
     @unittest.skipUnless(PAGE.exists(), "a source checkout's docs")
     def test_the_manual_describes_every_setting(self):
