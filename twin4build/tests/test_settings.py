@@ -84,19 +84,20 @@ class TestSettings(_NoSettingsInTheEnvironment):
         self.assertFalse(settings.value("jac_check"))
 
     def test_snapshot_records_every_setting_and_its_source(self):
-        os.environ["TWIN4BUILD_NO_DATA_WARMSTART"] = "1"
+        os.environ["TWIN4BUILD_TESTING"] = "1"
         settings.set(zoh_expm="block")
         snapshot = settings.snapshot()
         self.assertEqual(sorted(snapshot), sorted(settings._REGISTRY))
         # Among them the settings that change a run's numbers.
-        for name in ("zoh_expm", "no_data_warmstart", "testing"):
+        for name in ("zoh_expm", "testing"):
             self.assertIn(name, snapshot)
         self.assertEqual(snapshot["zoh_expm"], {"value": "block", "source": "set"})
         self.assertEqual(
-            snapshot["no_data_warmstart"],
-            {"value": True, "source": "TWIN4BUILD_NO_DATA_WARMSTART"},
+            snapshot["testing"], {"value": True, "source": "TWIN4BUILD_TESTING"}
         )
-        self.assertEqual(snapshot["testing"], {"value": False, "source": "default"})
+        self.assertEqual(
+            snapshot["jac_check"], {"value": False, "source": "default"}
+        )
         self.assertEqual(json.loads(json.dumps(snapshot)), snapshot)
 
     def test_unknown_names(self):

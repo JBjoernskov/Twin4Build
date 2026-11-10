@@ -779,8 +779,6 @@ def _solve_sparse_collocation(
         boundary_state_init = (
             "data" if bool(options.pop("data_warmstart")) else "rollout"
         )
-    if _settings.value("no_data_warmstart"):
-        boundary_state_init = "rollout"  # legacy escape hatch, retained
     _ws_fit = None  # set when "auto" measures the warm start; reported in the audit
     if boundary_state_init not in ("auto", "data", "rollout"):
         raise ValueError(

@@ -206,6 +206,10 @@ Unused and untested; 2.0 drops them without a deprecation period.
   methods and `Estimator.estimate(n_cores=...)` (the worker pools that
   computed the Jacobian).  Every component is a torch module; use
   `method=(..., "ad")`.
+- `TWIN4BUILD_NO_DATA_WARMSTART`, which made collocation start the boundary
+  states from a rollout whatever its options said: it duplicated the
+  `boundary_state_init` option, and the variable is now ignored.  Use
+  `estimate(..., options={"boundary_state_init": "rollout"})`.
 - `FmuSystem` (and its `fmuSystem` alias): FMU components and the `fmpy`
   dependency.
 - `Model.make_pickable`, `SimulationModel.make_pickable`,
@@ -647,9 +651,9 @@ Unused and untested; 2.0 drops them without a deprecation period.
   variable set after `import twin4build` takes effect.  The environment
   variables keep their names; their values are now checked: a boolean takes
   `1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off`, an empty one is unset,
-  and other text raises (`TWIN4BUILD_NO_DATA_WARMSTART=0`,
-  `TWIN4BUILD_JAC_CHECK=0` and `TWIN4BUILD_BENCH_TIMESTEP=0` used to switch
-  them on; `T4B_ZOH_EXPM` other than `phi1` or `block` used to mean
+  and other text raises (`TWIN4BUILD_JAC_CHECK=0` and
+  `TWIN4BUILD_BENCH_TIMESTEP=0` used to switch them on; `T4B_ZOH_EXPM`
+  other than `phi1` or `block` used to mean
   `block`).  The module attributes that held the values read at import
   (`discrete_statespace_system.ZOH_EXPM` and `EXPM_CHECKPOINT`,
   `_functional.ROLLOUT_CHECKPOINT`, the translator's `_MATCH_DIAG_PATH` and

@@ -640,7 +640,7 @@ def main():
     #      here), not a readout gain -- so every segment's air-temperature
     #      state starts ~5.6 K too hot.  Measured at the handoff: objective
     #      1875.8 and max|defect| 7.7, against 8.2 / 7e-5 for the same warm
-    #      start with the seeding disabled (TWIN4BUILD_NO_DATA_WARMSTART=1).
+    #      start with the seeding disabled (boundary_state_init="rollout").
     #   2. Termination is effectively optimality-free: with the Gauss-Newton
     #      Hessian on (the default) the module sets acceptable_tol=1e3,
     #      acceptable_iter=5, acceptable_compl_inf_tol=1e3, leaving "feasible

@@ -84,13 +84,6 @@ Runs
    that every cell of the example notebooks runs, quickly. The results are not
    converged.
 
-``no_data_warmstart``
-   ``TWIN4BUILD_NO_DATA_WARMSTART`` -- boolean, off by default.
-
-   Collocation starts the boundary states from a rollout, whatever its
-   ``boundary_state_init`` option says. It predates that option; prefer
-   ``options={"boundary_state_init": "rollout"}``.
-
 Diagnostics
 -----------
 

@@ -241,16 +241,6 @@ _register(
 )
 _register(
     _Setting(
-        name="no_data_warmstart",
-        env="TWIN4BUILD_NO_DATA_WARMSTART",
-        kind=bool,
-        default=False,
-        doc="Collocation starts the boundary states from a rollout, whatever "
-        "the boundary_state_init option says (as boundary_state_init='rollout').",
-    )
-)
-_register(
-    _Setting(
         name="testing",
         env="TWIN4BUILD_TESTING",
         kind=bool,
