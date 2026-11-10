@@ -152,12 +152,20 @@ class StepGraphs:
             y_ = y.detach().requires_grad_(True)
             theta_ = theta.detach().requires_grad_(True)
             u_ = u.detach().requires_grad_(True) if tape_grad else u
-            leaves_ = [l.detach().requires_grad_(True) for l in leaves]
-            wrt = (y_, theta_, *leaves_) + ((u_,) if tape_grad else ())
+            # An integer leaf (a sparse bilinear term's positions) takes no
+            # gradient: only the floating leaves are differentiated, and an
+            # integer one gets a zero cotangent of its own dtype.
+            floating = [l.is_floating_point() for l in leaves]
+            leaves_ = [l.detach().requires_grad_(True) if f else l for l, f in zip(leaves, floating)]
+            diff = [l for l, f in zip(leaves_, floating) if f]
+            wrt = (y_, theta_, *diff) + ((u_,) if tape_grad else ())
             with torch.enable_grad():
                 y_next, meas = step(y_, theta_, u_, unflatten(leaves_))
                 grads = torch.autograd.grad((y_next, meas), wrt, grad_outputs=(ybar_next, mbar), allow_unused=True)
-            return tuple(g if g is not None else torch.zeros_like(x) for g, x in zip(grads, wrt))
+            grads = [g if g is not None else torch.zeros_like(x) for g, x in zip(grads, wrt)]
+            diff_bars = iter(grads[2 : 2 + len(diff)])
+            leafbars = [next(diff_bars) if f else torch.zeros_like(l) for l, f in zip(leaves_, floating)]
+            return (grads[0], grads[1], *leafbars) + ((grads[-1],) if tape_grad else ())
 
         self.fwd = StepGraph(fwd_fn, n_static, name=f"{name}:forward")
         self._adj_fn = adj_fn
@@ -226,7 +234,8 @@ class _StepGraphRollout(torch.autograd.Function):
                     tapebar[t] = out[-1]
             if sbar is not None:
                 ybar = ybar + sbar[0]
-        return (None, ybar, thetabar, tapebar, *leafbars)
+        # an integer leaf has no gradient
+        return (None, ybar, thetabar, tapebar, *[b if l.is_floating_point() else None for b, l in zip(leafbars, leaves)])
 
 
 def step_graph_rollout(functional_model, y0, theta, tape, *, batched: bool = False, kind: Optional[str] = None):

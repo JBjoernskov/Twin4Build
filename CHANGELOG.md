@@ -865,6 +865,20 @@ Unused and untested; 2.0 drops them without a deprecation period.
   left them so: a simulation after it kept no history of any other port,
   vector ports included now that `set_save_simulation_result` sets them
   (`history()` raised "History is not populated").
+- A fused state-space block builds its matrices unit by unit, each unit its
+  own rows, and holds its bilinear terms (`E`, `F`) as their entries
+  (`discrete_statespace_system.SparseBilinear`): a few thousand of the tens
+  of millions a dense `(n_c, m, n, n)` / `(n_c, m, n, m)` tensor has for a
+  storey-wide block, where padding every term to the joint shape ran an
+  8 GB GPU out of memory and broadcasting the inputs over the dense terms
+  took most of a step.  The entries' indices and the fixed order they are
+  summed in (`bilinear_plan`) are built once from the block's structure, so
+  a step gives the same bits on every call and in a CUDA graph, and also
+  when the first assembly runs inside a `torch.func` transform.  The new
+  `fused_sparse` setting (`T4B_FUSED_SPARSE`, on) switches back to dense
+  terms; the matrices are the same.  The per-step CUDA graphs' adjoint
+  gives an integer constant a zero cotangent instead of asking for its
+  gradient.
 
 ### Migration notes
 

@@ -221,6 +221,17 @@ _register(
 )
 _register(
     _Setting(
+        name="fused_sparse",
+        env="T4B_FUSED_SPARSE",
+        kind=bool,
+        default=True,
+        doc="A fused block's bilinear terms (state x input, input x input) are "
+        "held as their entries, not as dense tensors that are almost all zeros; "
+        "off: dense.  The same matrices; the trajectories agree to rounding.",
+    )
+)
+_register(
+    _Setting(
         name="expm_checkpoint",
         env="T4B_EXPM_CHECKPOINT",
         kind=bool,

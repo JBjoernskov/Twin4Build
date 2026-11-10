@@ -24,7 +24,7 @@ from dateutil import tz
 
 # Local application imports
 import twin4build as tb
-from twin4build.systems.utils.discrete_statespace_system import traceable
+from twin4build.systems.utils.discrete_statespace_system import SparseBilinear, traceable
 from twin4build.systems.utils.smooth_saturation import saturation_mode
 
 tb._IS_TESTING = True
@@ -330,8 +330,14 @@ class TestFusionStructuralSupport(unittest.TestCase):
             params = dict(base)
             for i, key in enumerate(targets):
                 params[key] = theta[i].reshape(1)
+            # E and F come as their entries (SparseBilinear): their values are
+            # what theta moves
             return torch.cat(
-                [matrix.reshape(-1) for matrix in self.fused._assemble(params)]
+                [
+                    (matrix.values if isinstance(matrix, SparseBilinear) else matrix).reshape(-1)
+                    for matrix in self.fused._assemble(params)
+                    if matrix is not None
+                ]
             )
 
         value = packed_matrices(theta0)

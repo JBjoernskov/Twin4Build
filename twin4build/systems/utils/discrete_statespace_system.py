@@ -1,9 +1,10 @@
 # Standard library imports
 import contextlib
 import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 # Third party imports
+import numpy as np
 import torch
 import torch.utils.checkpoint
 import torch.nn as nn
@@ -213,6 +214,139 @@ def _functorch_active() -> bool:
         return True
 
 
+class SparseBilinear(NamedTuple):
+    """A bilinear tensor by its entries: ``E`` (``(n_c, m, n, n)``,
+    state-input) or ``F`` (``(n_c, m, n, m)``, input-input) as
+    ``values[:, e]`` at (input ``k[e]``, row ``i[e]``, column ``j[e]``).  A
+    fused block's bilinear terms are a few thousand entries of tens of
+    millions (a storey-wide block: ~158 states x 588 inputs); held dense,
+    every step broadcasts ``u`` over all of them.  Entries may repeat (they
+    add).
+
+    ``plan`` (:func:`bilinear_plan`, :func:`with_plan`): the fixed-order
+    layout the effective matrices are summed by, the same bits on every call
+    and device; without it they are summed by ``index_add`` (atomic adds on a
+    GPU)."""
+
+    k: torch.Tensor  # (nnz,) long: the input
+    i: torch.Tensor  # (nnz,) long: the row (a state)
+    j: torch.Tensor  # (nnz,) long: the column (a state for E, an input for F)
+    values: torch.Tensor  # (n_c, nnz)
+    plan: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None  # (slot, inputs, group, flat)
+
+
+def _as_numpy(t) -> np.ndarray:
+    # ``tolist``, not ``numpy()``: a block assembled for the first time inside
+    # a functorch transform (an optimizer's jacrev over an object-mode
+    # simulation) holds its index tensors wrapped, and a wrapped tensor -- or
+    # its unwrapped base while the transform runs -- has no storage numpy can
+    # read.
+    return np.asarray(t.tolist() if isinstance(t, torch.Tensor) else t, dtype=np.int64).reshape(-1)
+
+
+def structure_constant(t: torch.Tensor) -> torch.Tensor:
+    """``t`` without functorch wrappers: an integer tensor of a model's
+    structure (bilinear indices and their plan) built inside a transform,
+    which a block keeps and reuses in later calls, inside or outside any
+    transform.  Only for constants: nothing differentiates or batches
+    through them."""
+    while torch._C._functorch.is_functorch_wrapped_tensor(t):
+        t = torch._C._functorch.get_unwrapped(t)
+    return t
+
+
+def _table(keys: np.ndarray, pad: int):
+    """``(unique keys, table (n_unique, width), row, col, order)``: each key's
+    entries (indices into ``keys``) in their order, padded with ``pad``; entry
+    ``order[p]`` sits at ``(row[p], col[p])``."""
+    order = np.argsort(keys, kind="stable")
+    unique, start, counts = np.unique(keys[order], return_index=True, return_counts=True)
+    width = int(counts.max()) if len(keys) else 1
+    table = np.full((len(unique), width), pad, dtype=np.int64)
+    row = np.repeat(np.arange(len(unique)), counts)
+    col = np.arange(len(keys)) - np.repeat(start, counts)
+    table[row, col] = order
+    return unique, table, row, col, order
+
+
+def bilinear_plan(k, i, j, cols: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """The fixed-order layout of a :class:`SparseBilinear`'s entries:
+    ``(slot, inputs, group, flat)``.
+
+    ``index_add``, and the backward of a gather with repeated indices, add
+    repeated positions by atomic adds in whatever order the GPU runs them:
+    float32 results differ in their last bits from call to call, and a CUDA
+    graph's replay differs from the eager step (its parity check fails).
+    With the plan no index repeats where values are summed or gradients flow
+    back:
+
+    * ``inputs (n_in,)``: the inputs the entries act on, each once;
+      ``slot (n_in, K)``: each input's entries (indices into ``values``),
+      padded with ``nnz`` (a zero) -- the inputs enter by broadcasting, not
+      by a gather;
+    * ``flat (n_out,)``: the matrix positions ``i * cols + j`` the entries
+      reach, each once; ``group (n_out, G)``: each position's entries by
+      their place in the ``(n_in, K)`` layout flattened, padded with
+      ``n_in * K`` (a zero).
+
+    Built from the indices alone (on the host, once per structure)."""
+    device = k.device if isinstance(k, torch.Tensor) else None
+    k, i, j = _as_numpy(k), _as_numpy(i), _as_numpy(j)
+    nnz = len(k)
+    inputs, slot, row, col, order = _table(k, nnz)
+    width = slot.shape[1]
+    place = np.empty(nnz, dtype=np.int64)
+    place[order] = row * width + col
+    flat, table, _, _, _ = _table(i * int(cols) + j, nnz)
+    group = np.append(place, len(inputs) * width)[table]
+    return tuple(
+        structure_constant(torch.as_tensor(a, dtype=torch.long, device=device))
+        for a in (slot, inputs, group, flat)
+    )
+
+
+def with_plan(T: "SparseBilinear", cols: int) -> "SparseBilinear":
+    """``T`` with its :func:`bilinear_plan` (``cols``: the matrix's columns:
+    ``n`` for ``E``, ``m`` for ``F``)."""
+    return T._replace(plan=bilinear_plan(T.k, T.i, T.j, cols))
+
+
+def bilinear_inputs(T, m: int, device) -> torch.Tensor:
+    """``(m,)`` bool: the inputs a bilinear tensor (dense,
+    :class:`SparseBilinear` or ``None``) acts on."""
+    mask = torch.zeros(m, dtype=torch.bool, device=device)
+    if T is None:
+        return mask
+    if isinstance(T, SparseBilinear):
+        live = (T.values.detach().abs() > 0).any(0)
+        mask[T.k[live].to(device)] = True
+        return mask
+    return mask | (T.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m).any(0)
+
+
+def _add_bilinear(M, T, u):
+    """``M + sum_k u_k T_k`` for a :class:`SparseBilinear` ``T``: only its
+    entries -- by its ``plan`` in a fixed order (the same bits on every call
+    and in a CUDA graph), else added by ``index_add``."""
+    rows, cols = M.shape[-2], M.shape[-1]
+    if T.plan is not None:
+        slot, inputs, group, flat = T.plan
+        vals = torch.cat([T.values, T.values.new_zeros(*T.values.shape[:-1], 1)], dim=-1)[..., slot]  # (n_c, n_in, K)
+        contrib = vals * u[..., inputs].unsqueeze(-1)  # (..., n_c, n_in, K)
+        lead = torch.broadcast_shapes(contrib.shape[:-2], M.shape[:-2])
+        contrib = contrib.expand(*lead, *contrib.shape[-2:]).reshape(*lead, -1)
+        contrib = torch.cat([contrib, contrib.new_zeros(*lead, 1)], dim=-1)
+        summed = contrib[..., group].sum(dim=-1)  # (..., n_out): each position's entries in a fixed order
+        dense = contrib.new_zeros(*lead, rows * cols).index_copy(-1, flat, summed)  # every position once
+        return M + dense.reshape(*lead, rows, cols)
+    contrib = T.values * u[..., T.k]  # (..., n_c, nnz)
+    flat = T.i * cols + T.j
+    lead = torch.broadcast_shapes(contrib.shape[:-1], M.shape[:-2])
+    contrib = contrib.expand(*lead, contrib.shape[-1])
+    dense = torch.zeros(*lead, rows * cols, dtype=contrib.dtype, device=contrib.device).index_add(-1, flat, contrib)
+    return M + dense.reshape(*lead, rows, cols)
+
+
 def effective_matrices(A, B, E, F, u):
     """``(A_eff, B_eff)``: the bilinear matrices evaluated at the current ``u``.
 
@@ -226,9 +360,20 @@ def effective_matrices(A, B, E, F, u):
     # Broadcast-friendly bilinear terms (einsum would require the batch dims of
     # E/F and u to match exactly; the fast single-shooting rollout batches u
     # over periods while the matrices keep their (n_c=1, ...) leading dim).
+    # A SparseBilinear term adds its entries only (_add_bilinear).
     u_b = u.unsqueeze(-1).unsqueeze(-1)  # (..., m, 1, 1)
-    A_eff = A if E is None else A + (E * u_b).sum(dim=-3)
-    B_eff = B if F is None else B + (F * u_b).sum(dim=-3)
+    if E is None:
+        A_eff = A
+    elif isinstance(E, SparseBilinear):
+        A_eff = _add_bilinear(A, E, u)
+    else:
+        A_eff = A + (E * u_b).sum(dim=-3)
+    if F is None:
+        B_eff = B
+    elif isinstance(F, SparseBilinear):
+        B_eff = _add_bilinear(B, F, u)
+    else:
+        B_eff = B + (F * u_b).sum(dim=-3)
     return A_eff, B_eff
 
 
@@ -297,6 +442,8 @@ def bilinear_onestep(
         E (n_c, m, n, n) or None            F (n_c, m, n, m) or None
         x (n_c, n)        u (n_c, m)
 
+    ``E`` and ``F`` may also be given by their entries (:class:`SparseBilinear`).
+
     Returns ``x_next (n_c, n)``, ``y (n_c, p)``.  ``vmap`` maps this over segments.
 
     ``disc_cache`` (a mutable dict scoped to one theta by the caller) enables
@@ -324,15 +471,7 @@ def bilinear_onestep(
         mask = disc_cache.get("mask")
         if mask is None:
             m_dim = B.shape[-1]
-            mask = torch.zeros(m_dim, dtype=torch.bool, device=u.device)
-            if E is not None:
-                mask |= (
-                    (E.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
-                )
-            if F is not None:
-                mask |= (
-                    (F.detach().abs().sum(dim=(-2, -1)) > 0).reshape(-1, m_dim).any(0)
-                )
+            mask = bilinear_inputs(E, m_dim, u.device) | bilinear_inputs(F, m_dim, u.device)
             disc_cache["mask"] = mask
         u_rel_live = u[..., mask]
         if u_rel_live.requires_grad:

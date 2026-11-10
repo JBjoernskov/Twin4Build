@@ -104,7 +104,13 @@ import torch.nn as nn
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.systems.utils.discrete_statespace_system import bilinear_onestep
+from twin4build import settings as _settings
+from twin4build.systems.utils.discrete_statespace_system import (
+    SparseBilinear,
+    bilinear_onestep,
+    bilinear_plan,
+    structure_constant,
+)
 from twin4build.utils.logger import LOGGER
 from twin4build.utils.rgetattr import rgetattr
 
@@ -290,6 +296,9 @@ class FusedStateSpaceSystem(core.System, nn.Module):
 
         # -- unit table: (member, unit_prefix, unit, layout, param_prefix) --
         self._units = []
+        # The bilinear terms' indices and their summing plans, by (device, N,
+        # M): structure only, built at the first assembly (:meth:`_assemble`).
+        self._sparse_cache = {}
         for m in self._members:
             key = self._member_keys[m.id]
             shared = getattr(m, "SHARED_UNIT_PARAMS", None) or {}
@@ -542,6 +551,11 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                 for path in entry["param_paths"].values()
             )
         )
+        if _settings.value("fused_sparse"):
+            # The bilinear terms' indices and plan, from one assembly of the
+            # default parameters here: a step that rebuilds the matrices under
+            # torch.compile (a batched step) cannot build them (numpy).
+            self._assemble({})
 
         self._do_step_params = None
         self.INITIALIZED = True
@@ -564,7 +578,9 @@ class FusedStateSpaceSystem(core.System, nn.Module):
 
     def _assemble(self, params):
         """Build the joint ``(A, B, C, D, E, F)`` from the unit matrices,
-        eliminating the internal arcs exactly."""
+        eliminating the internal arcs exactly.  ``E`` and ``F`` come as their
+        entries (:class:`SparseBilinear`, ``None`` for a block without such
+        terms) unless the ``fused_sparse`` setting is off (dense tensors)."""
         units = self._units
         mats = [u["unit"]._build_matrices(self._unit_params(u, params)) for u in units]
 
@@ -616,68 +632,104 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                 su = torch.zeros((n_c, 0, M), dtype=dtype, device=device)
             S.append((sx, su))
 
-        a_parts = []
-        b_parts = []
-        e_parts = []
-        f_parts = []
+        # Each unit owns the joint state rows o .. o + n (the units' states are
+        # contiguous, in unit order), so every matrix is the units' row blocks
+        # stacked: a unit builds only its own rows.  Padded to the full joint
+        # shape and stacked before the sum, the terms held one (n_c, M, N, M)
+        # copy per bilinear term at once (a storey-wide block, ~158 states x
+        # 588 inputs: ~200 MB per copy in float32).  Same values; the peak is
+        # about one joint matrix.
+        sparse = _settings.value("fused_sparse")
+        a_rows = []
+        b_rows = []
+        e_rows = []
+        f_rows = []
+        # sparse: the (input, row, column) indices and the (n_c, entries)
+        # values, every entry the dense form has; the indices and their
+        # summing plans depend on the structure only: built once
+        e_idx, f_idx, e_vals, f_vals = [], [], [], []
+        cache_key = (str(device), N, M)
+        cached = self._sparse_cache.get(cache_key) if sparse else None
+        build = sparse and cached is None
         for i, entry in enumerate(units):
             Ai, Bi, Ci, Di, Ei, Fi = (_expand(t) for t in mats[i])
             o, n = entry["x_offset"], entry["n_states"]
             sx, su = S[i]
-            a_parts.append(
-                torch.nn.functional.pad(
-                    Ai, (o, N - o - n, o, N - o - n)
-                )
-                + torch.nn.functional.pad(
-                    Bi @ sx, (0, 0, o, N - o - n)
-                )
-            )
-            b_parts.append(
-                torch.nn.functional.pad(Bi @ su, (0, 0, o, N - o - n))
-            )
+            a_rows.append(torch.nn.functional.pad(Ai, (o, N - o - n)) + Bi @ sx)  # (n_c, n, N)
+            b_rows.append(Bi @ su)  # (n_c, n, M)
 
             # Bilinear terms must act on external inputs only: substituted
             # (state-valued) bilinear inputs would create quadratic state
             # terms that no LTI block can represent.
+            e_unit = None  # (n_c, M, n, N): the unit's rows of E
+            f_unit = None  # (n_c, M, n, M): the unit's rows of F
+            rows = torch.arange(n, device=device)
             for k, kind in enumerate(entry["cols"]):
-                Ek = Ei[:, k]  # (n_c, n, n)
-                Fk = Fi[:, k]  # (n_c, n, m_i)
                 has_E = k in entry["support"]["E_inputs"]
                 f_inputs = entry["support"]["F_by_input"].get(k, ())
                 if not has_E and not f_inputs:
                     continue
                 j = kind[1]
                 if has_E:
-                    e_parts.append(
-                        ext_eye[j].reshape(1, M, 1, 1)
-                        * torch.nn.functional.pad(
-                            Ek, (o, N - o - n, o, N - o - n)
+                    if sparse:
+                        # the unit's whole (n, n) block of this input, as the dense form takes it
+                        if build:
+                            r, c = torch.meshgrid(rows, rows, indexing="ij")
+                            e_idx.append((torch.full((n * n,), j, device=device), o + r.reshape(-1), o + c.reshape(-1)))
+                        e_vals.append(Ei[:, k].reshape(n_c, n * n))
+                    else:
+                        term = ext_eye[j].reshape(1, M, 1, 1) * torch.nn.functional.pad(
+                            Ei[:, k], (o, N - o - n)
                         ).unsqueeze(1)
-                    )
+                        e_unit = term if e_unit is None else e_unit + term
                 for k2 in f_inputs:
                     kind2 = entry["cols"][k2]
-                    col = Fk[:, :, k2]  # (n_c, n)
-                    col_joint = torch.nn.functional.pad(
-                        col, (o, N - o - n)
-                    )
-                    f_parts.append(
-                        ext_eye[j].reshape(1, M, 1, 1)
-                        * col_joint.unsqueeze(1).unsqueeze(-1)
-                        * ext_eye[kind2[1]].reshape(1, 1, 1, M)
-                    )
+                    col = Fi[:, k][:, :, k2]  # (n_c, n)
+                    if sparse:
+                        if build:
+                            f_idx.append(
+                                (torch.full((n,), j, device=device), o + rows, torch.full((n,), kind2[1], device=device))
+                            )
+                        f_vals.append(col)
+                    else:
+                        term = (
+                            ext_eye[j].reshape(1, M, 1, 1)
+                            * col.reshape(n_c, 1, n, 1)
+                            * ext_eye[kind2[1]].reshape(1, 1, 1, M)
+                        )
+                        f_unit = term if f_unit is None else f_unit + term
+            if not sparse:
+                e_rows.append(e_unit if e_unit is not None else torch.zeros((n_c, M, n, N), dtype=dtype, device=device))
+                f_rows.append(f_unit if f_unit is not None else torch.zeros((n_c, M, n, M), dtype=dtype, device=device))
 
-        A = torch.stack(a_parts).sum(0)
-        B = torch.stack(b_parts).sum(0)
-        E = (
-            torch.stack(e_parts).sum(0)
-            if e_parts
-            else torch.zeros((n_c, M, N, N), dtype=dtype, device=device)
-        )
-        F = (
-            torch.stack(f_parts).sum(0)
-            if f_parts
-            else torch.zeros((n_c, M, N, M), dtype=dtype, device=device)
-        )
+        A = torch.cat(a_rows, dim=1)
+        B = torch.cat(b_rows, dim=1)
+        if sparse:
+            if build:
+                def _indices(idx, cols):
+                    if not idx:
+                        return None
+                    # plain tensors even when the first assembly runs inside a
+                    # transform: the cache outlives it
+                    k_, i_, j_ = (
+                        structure_constant(torch.cat([t[p] for t in idx]).to(torch.long)) for p in range(3)
+                    )
+                    return (k_, i_, j_, bilinear_plan(k_, i_, j_, cols))
+
+                cached = self._sparse_cache[cache_key] = (_indices(e_idx, N), _indices(f_idx, M))
+
+            def _sparse(idx, vals):
+                if idx is None:
+                    return None
+                values = torch.cat(vals, dim=1)
+                assert values.shape[1] == idx[0].numel(), "the cached bilinear indices do not match the block's terms"
+                return SparseBilinear(*idx[:3], values, idx[3])
+
+            E = _sparse(cached[0], e_vals)
+            F = _sparse(cached[1], f_vals)
+        else:
+            E = torch.cat(e_rows, dim=2)
+            F = torch.cat(f_rows, dim=2)
 
         # Published outputs: y = (C_i + D_i S_x) x + (D_i S_u) u_ext rows.
         c_rows = []

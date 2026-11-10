@@ -60,6 +60,19 @@ Numerics
    component per step) are the tape of an unrolled rollout. Both are the same
    zero-order-hold step; their results differ at rounding level.
 
+``fused_sparse``
+   ``T4B_FUSED_SPARSE`` -- boolean, on by default.
+
+   A fused block (connected state-space components joined into one, see
+   ``FusedStateSpaceSystem``) holds its bilinear terms, state x input and
+   input x input, as their entries: a few thousand of the tens of millions a
+   dense ``(n_c, m, n, n)`` or ``(n_c, m, n, m)`` tensor has for a storey-wide
+   block (about 158 states and 588 inputs), whose broadcast over the inputs
+   took most of a fused step's time. They are summed in a fixed order, so a
+   step gives the same bits on every call and in a CUDA graph. Off, the terms
+   are dense tensors; the matrices are the same and the trajectories agree to
+   rounding. For comparing the two forms.
+
 Memory
 ------
 
