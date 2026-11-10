@@ -644,7 +644,10 @@ Unused and untested; 2.0 drops them without a deprecation period.
   *Settings* page lists them).  A value comes from `tb.settings.set(...)`,
   else the environment variable, else the default; `override(...)` sets
   values for a `with` block, `reset(...)` undoes `set`, and `snapshot()`
-  gives every setting with its value and source, to save with a result.
+  gives every setting with its value and source.  The results of
+  `Estimator.estimate` (and the file it saves) and `Optimizer.optimize`
+  carry that snapshot as `result["settings"]`, and `ParetoResult` as
+  `settings`, so a result records how it was computed.
   The settings off their defaults are logged when an estimation, a
   simulation, an optimization or a Pareto front starts.  The library reads
   a setting where it uses it, no longer when a module is imported, so a

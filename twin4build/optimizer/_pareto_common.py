@@ -21,6 +21,9 @@ class ParetoResult:
     PHYSICAL objective means (natural units, unsigned); ``f1_min``/``f2_min``
     are the internal min-oriented normalized values ("min" objectives keep
     their sign, "max" objectives are negated) used for dominance and slope.
+    ``settings`` holds the library's settings the front was computed with
+    (:func:`twin4build.settings.snapshot`; :meth:`Optimizer.pareto_front`
+    fills it).
     """
 
     eps: np.ndarray
@@ -43,6 +46,7 @@ class ParetoResult:
     max_defect: Optional[np.ndarray] = None
     rollout_parity: list = field(default_factory=list)
     callback_shapes: dict = field(default_factory=dict)
+    settings: dict = field(default_factory=dict)
     _optimizer: object = field(default=None, repr=False)
 
     def apply(self, i: int) -> None:

@@ -3,12 +3,15 @@
 A value comes from ``set``, else the environment variable, else the default;
 values are checked; ``override`` restores what was there; ``snapshot`` records
 every setting with its source; and the library reads the settings where it uses
-them, never when a module is imported.
+them, never when a module is imported; estimation and optimization results
+carry the settings they ran with.
 """
 
 # Standard library imports
+import datetime
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -16,19 +19,30 @@ from pathlib import Path
 from unittest import mock
 
 # Third party imports
+import numpy as np
+import pandas as pd
 import torch
 import torch.utils.checkpoint
+from dateutil import tz
 
 # Local application imports
 import twin4build as tb
 from twin4build import settings
 from twin4build.simulator import _functional
+from twin4build.systems.damper.damper_system import DamperSystem
+from twin4build.systems.schedule.schedule_system import ScheduleSystem
+from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.utils import discrete_statespace_system as dss
+from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.utils.data_loaders.sources import DataFrameSource
 from twin4build.utils.logger import LOGGER
 
 ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "docs" / "source" / "manual" / "settings.rst"
 VARIABLES = [s.env for s in settings._REGISTRY.values()]
+START = datetime.datetime(2023, 1, 1, tzinfo=tz.UTC)
+END = START + datetime.timedelta(hours=1)
+STEP = 600
 
 
 class _NoSettingsInTheEnvironment(unittest.TestCase):
@@ -248,6 +262,107 @@ class TestSettingsAreReadWhereTheyAreUsed(_NoSettingsInTheEnvironment):
                     ) as recorded:
                         step()
                 self.assertTrue(recorded.called)
+
+
+class TestResultsCarryTheSettings(_NoSettingsInTheEnvironment):
+    """estimate, optimize and pareto_front return the settings they ran with.
+
+    The runs have ``testing`` on, which also stops them after one iteration.
+    """
+
+    def _model(self, name):
+        model_id = f"test_settings_{name}"
+        self.addCleanup(
+            shutil.rmtree,
+            os.path.join("generated_files", "models", model_id),
+            ignore_errors=True,
+        )
+        return tb.Model(id=model_id)
+
+    def _damper_with_a_setpoint(self, name):
+        dates = pd.date_range(start=START, periods=7, freq=f"{STEP}s")
+        frame = pd.DataFrame({"value": np.full(len(dates), 0.5)}, index=dates)
+        setpoint = TimeSeriesInputSystem(id="setpoint", source=DataFrameSource(frame))
+        damper = DamperSystem(id="damper", nominalAirFlowRate=1.0)
+        model = self._model(name)
+        model.add_connection(setpoint, damper, "value", "damperPosition")
+        model.load()
+        return model, setpoint, damper
+
+    def test_estimate(self):
+        schedule = ScheduleSystem(
+            weekday_ruleset={
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [0],
+                "ruleset_end_hour": [24],
+                "ruleset_value": [0.5],
+                "ruleset_default_value": 0,
+            },
+            id="schedule",
+        )
+        damper = DamperSystem(id="damper", a=0.5, nominalAirFlowRate=0.5)
+        dates = pd.date_range(start=START, periods=6, freq=f"{STEP}s")
+        sensor = SensorSystem(
+            id="airflow_sensor",
+            df=pd.DataFrame({"value": np.full(len(dates), 0.3)}, index=dates),
+        )
+        model = self._model("estimate")
+        model.add_connection(schedule, damper, "scheduleValue", "damperPosition")
+        model.add_connection(damper, sensor, "airFlowRate", "measuredValue")
+        model.load()
+        estimator = tb.Estimator(tb.Simulator(model))
+        with settings.override(testing=True):
+            result = estimator.estimate(
+                parameters=[(damper, "a", 0.5, 0.1, 2.0)],
+                measurements=[(sensor, 0.01)],
+                start_time=START,
+                end_time=END,
+                step_size=STEP,
+                method=("scipy", "SLSQP", "ad"),
+                n_warmup=0,
+            )
+            expected = settings.snapshot()
+        self.assertEqual(result.settings, expected)
+        self.assertEqual(result.settings["testing"], {"value": True, "source": "set"})
+        self.assertLessEqual(result.iterations, 1)
+
+    def test_optimize(self):
+        model, setpoint, damper = self._damper_with_a_setpoint("optimize")
+        optimizer = tb.Optimizer(tb.Simulator(model))
+        with settings.override(testing=True):
+            result = optimizer.optimize(
+                variables=[(setpoint, "value", 0.0, 1.0)],
+                objectives=[(damper, "airFlowRate", "min")],
+                start_time=START,
+                end_time=END,
+                step_size=STEP,
+                method=("scipy", "SLSQP", "ad"),
+                options={"maxiter": 50},
+            )
+            expected = settings.snapshot()
+        self.assertEqual(result.settings, expected)
+        self.assertEqual(result.settings["testing"], {"value": True, "source": "set"})
+        self.assertLessEqual(result.nit, 1)
+
+    def test_pareto_front(self):
+        model, setpoint, damper = self._damper_with_a_setpoint("pareto")
+        optimizer = tb.Optimizer(tb.Simulator(model, execution_mode="functional"))
+        with settings.override(testing=True):
+            front = optimizer.pareto_front(
+                start_time=START,
+                end_time=END,
+                step_size=STEP,
+                variables=[(setpoint, "value", 0.0, 1.0)],
+                objective1=(setpoint, "value", "min"),
+                objective2=(damper, "airFlowRate", "max"),
+                n_points=5,
+                batched_prepass=False,
+            )
+            expected = settings.snapshot()
+        self.assertEqual(front.settings, expected)
+        self.assertEqual(front.settings["testing"], {"value": True, "source": "set"})
+        self.assertLessEqual(len(front.eps), 3)
 
 
 # Imports every module of the library (not its tests or examples) while

@@ -2895,6 +2895,7 @@ class Estimator:
             final_objective=getattr(result, "fun", None),
             success=getattr(result, "success", None),
             message=getattr(result, "message", None),
+            settings=_settings.snapshot(),
         )
         if estimated_initial_state is not None:
             result["estimated_initial_state"] = estimated_initial_state
@@ -4066,6 +4067,10 @@ class EstimationResult(ResultDict):
         final_objective: Final objective function value achieved.
         success: Whether the optimization was successful.
         message: Optimization result message.
+        settings: The library's settings the fit ran with,
+            :func:`twin4build.settings.snapshot` (``{name: {"value": ...,
+            "source": ...}}``); :meth:`Estimator.estimate` fills it, and the
+            saved result carries it.
 
     Notes:
         Depending on the estimation configuration, additional keys may be
@@ -4133,6 +4138,7 @@ class EstimationResult(ResultDict):
         final_objective: Optional[float] = None,
         success: Optional[bool] = None,
         message: Optional[str] = None,
+        settings: Optional[Dict[str, Dict[str, Any]]] = None,
         **metadata: Any,
     ):
         """
@@ -4156,6 +4162,8 @@ class EstimationResult(ResultDict):
             final_objective: Final objective function value achieved.
             success: Whether the optimization was successful.
             message: Optimization result message.
+            settings: The settings the fit ran with
+                (:func:`twin4build.settings.snapshot`).
         """
         super().__init__(
             result_x=result_x,
@@ -4175,6 +4183,7 @@ class EstimationResult(ResultDict):
             final_objective=final_objective,
             success=success,
             message=message,
+            settings=settings,
             **metadata,
         )
 

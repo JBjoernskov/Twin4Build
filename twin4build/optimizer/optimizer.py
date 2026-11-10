@@ -856,7 +856,9 @@ class Optimizer:
 
         LOGGER.remove_level()
         LOGGER.ok("Running optimization", change_status=True)
-        return OptimizationResult.from_scipy(result)
+        result = OptimizationResult.from_scipy(result)
+        result["settings"] = _settings.snapshot()
+        return result
 
     def pareto_front(
         self,
@@ -976,6 +978,7 @@ class Optimizer:
             raise
         LOGGER.remove_level()
         LOGGER.ok("Generating Pareto front", change_status=True)
+        result.settings = _settings.snapshot()
         return result
 
     # def _torch_solver(
@@ -1888,6 +1891,9 @@ class OptimizationResult(ResultDict):
 
     Wraps the SciPy ``OptimizeResult`` fields and keeps attribute access
     (``result.x``, ``result.success``, …) for compatibility with SciPy-style code.
+    :meth:`Optimizer.optimize` adds ``settings``, the library's settings the
+    optimization ran with (:func:`twin4build.settings.snapshot`,
+    ``{name: {"value": ..., "source": ...}}``).
     """
 
     def __init__(self, **kwargs):

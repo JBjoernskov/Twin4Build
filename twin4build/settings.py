@@ -172,10 +172,12 @@ def override(**values: Any):
 
 
 def snapshot() -> Dict[str, Dict[str, Any]]:
-    """Every setting's value and its source, to save with a result.
+    """Every setting's value and its source, to record with a result.
 
     ``{name: {"value": ..., "source": ...}}``; the source is ``"set"``, the
-    environment variable's name, or ``"default"``.
+    environment variable's name, or ``"default"``.  The results of
+    ``Estimator.estimate``, ``Optimizer.optimize`` and
+    ``Optimizer.pareto_front`` carry it as ``settings``.
     """
     out = {}
     for name in _REGISTRY:

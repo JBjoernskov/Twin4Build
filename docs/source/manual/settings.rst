@@ -34,8 +34,16 @@ The settings that are off their defaults are logged, with where each value came
 from, when an estimation, a simulation, an optimization or a Pareto front
 starts. ``tb.settings.snapshot()`` gives every setting as
 ``{name: {"value": ..., "source": ...}}``, the source being ``"set"``, the
-environment variable's name or ``"default"``; save it with a result to record
-how the result was computed.
+environment variable's name or ``"default"``. The results record how they were
+computed: the result of ``Estimator.estimate`` (and the file it is saved to)
+and of ``Optimizer.optimize`` carry the snapshot as ``result["settings"]``
+(``result.settings``), and a front from ``Optimizer.pareto_front`` as
+``front.settings``.
+
+.. code-block:: python
+
+   result = estimator.estimate(...)
+   result.settings["zoh_expm"]  # {'value': 'phi1', 'source': 'default'}
 
 Numerics
 --------
