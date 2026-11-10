@@ -854,6 +854,14 @@ class System(nn.Module, metaclass=SystemMeta):
         """Call ``series`` and fill every output with its values for the whole
         run. A period's steps past its own end hold its last value."""
         values = self.series(timestamps, step_size)
+        if not isinstance(values, dict):
+            raise TypeError(f"{type(self).__name__} '{self.id}': series() gave a {type(values).__name__}, not a dict")
+        extra = sorted(set(values) - set(self.output))
+        if extra:
+            raise ValueError(
+                f"{type(self).__name__} '{self.id}': series() gave {', '.join(extra)}, "
+                f"which the System does not declare as outputs"
+            )
         for name, port in self.output.items():
             if name not in values:
                 raise KeyError(f"{type(self).__name__} '{self.id}': series() gave no values for the output {name!r}")
@@ -873,6 +881,12 @@ class System(nn.Module, metaclass=SystemMeta):
                     v[b, own:] = v[b, own - 1]
             if isinstance(port, tps.Vector):
                 n_v = v.shape[2] if v.dim() == 3 else 1
+                size = self.declared_size("output", name) if name in type(self)._declarations["output"] else None
+                if size and n_v != size:
+                    raise ValueError(
+                        f"{type(self).__name__} '{self.id}': series() gave {name!r} with {n_v} values a step, "
+                        f"its size is {size}"
+                    )
                 v = v.reshape(n_s, n_t, n_v).permute(1, 0, 2).unsqueeze(2).expand(n_t, n_s, n_c, n_v)
                 port.initialize(n_t=n_t, n_s=n_s, n_c=n_c, n_v=n_v, values=v)
             else:
@@ -945,6 +959,66 @@ class System(nn.Module, metaclass=SystemMeta):
             port._set(value.reshape(n_s, n_c, *value.shape[1:]), i_t=step_index)
         if stateful:
             self.set_state(x_next.reshape(n_s, n_c, x_next.shape[-1]))
+
+    def _probe(self, step_size) -> List[str]:
+        """The run-start probe of a declared System (ADR 0001, decision 10):
+        one call of ``derive`` and ``forward`` on the ports' values at the
+        run start, as the first object-mode step makes them, writing
+        nothing.  ``derive`` must give a dict, and ``forward`` every output
+        and nothing else, each at its size, and a state of the state's
+        shape.  A data source's ``series`` is checked where it fills the
+        outputs (:meth:`_fill_from_series`).
+
+        Returns:
+            List[str]: What is wrong, one line each; empty when nothing is.
+        """
+        cls = type(self)
+        if not cls._is_declared or cls._is_data_source():
+            return []
+        name = f"{cls.__name__} '{self.id}'"
+        step = self._scalar_step_size(step_size)
+        params = {}
+        for path in getattr(self, "PARAM_NAMES", ()):
+            value = rgetattr(self, path)
+            if value is not None:  # an absent (optional) parameter
+                params[path] = value.get()
+        params.update(self.value_setting_params())
+        if getattr(cls, "derive", None) is not None:
+            derived = self.derive(params, step)
+            if not isinstance(derived, dict):
+                return [f"{name}: derive returned a {type(derived).__name__}, not a dict"]
+            params = {**params, **derived}
+        n_c = self.n_c
+        n_s = next(iter({**self.input, **self.output}.values())).n_s
+        inputs = {key: self._fold(port.get(), n_s, n_c) for key, port in self.input.items()}
+        for key, source in self.input_defaults().items():
+            inputs[key] = inputs[source]
+        stateful = bool(self.collect_states())
+        x = self._fold(self.get_state(), n_s, n_c) if stateful else None
+        with torch.no_grad():
+            x_next, outs = self.forward(x, inputs, self._fold_tree(params, n_s, n_c), step)
+        if not isinstance(outs, dict):
+            return [f"{name}: forward gave its outputs as a {type(outs).__name__}, not a dict"]
+        problems = []
+        missing, extra = sorted(set(self.output) - set(outs)), sorted(set(outs) - set(self.output))
+        if missing:
+            problems.append(f"{name}: forward gave no value for the output(s) {', '.join(missing)}")
+        if extra:
+            problems.append(f"{name}: forward gave {', '.join(extra)}, which the System does not declare as outputs")
+        copies = n_s * n_c
+        for key in sorted(set(self.output) & set(outs)):
+            value, port = outs[key], self.output[key]
+            width = int(port._n_v or 0) if isinstance(port, tps.Vector) else 1
+            if not (isinstance(value, torch.Tensor) and value.dim() > 0 and value.shape[0] == copies
+                    and value[0].numel() == width):
+                shape = tuple(value.shape) if isinstance(value, torch.Tensor) else type(value).__name__
+                problems.append(
+                    f"{name}: forward gave the output {key!r} as {shape}, not {copies} copies of {width} value(s)"
+                )
+        if stateful and not (isinstance(x_next, torch.Tensor) and tuple(x_next.shape) == tuple(x.shape)):
+            shape = tuple(x_next.shape) if isinstance(x_next, torch.Tensor) else type(x_next).__name__
+            problems.append(f"{name}: forward gave a state of {shape}, not {tuple(x.shape)}")
+        return problems
 
     @property
     def config(self) -> dict:

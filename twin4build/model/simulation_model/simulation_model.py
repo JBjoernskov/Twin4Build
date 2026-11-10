@@ -353,6 +353,7 @@ class SimulationModel:
         "_system_registry",
         "_initial_state",
         "_initialization_count",
+        "_probed",
     )
 
     def __str__(self):
@@ -419,6 +420,7 @@ class SimulationModel:
         self._required_initialization_connections = []
         self._initial_state = None  # see set_state
         self._initialization_count = 0  # see initialization_count
+        self._probed = False  # see _probe_components
         self._components_no_cycles = {}
         self._source_cuts = None  # a batched model's: see _cut_source_cuts
         self._fused_components = {}
@@ -1877,6 +1879,9 @@ class SimulationModel:
             # the state of ``set_state`` (an estimated initial state), after
             # the components have set their own initial conditions
             self._apply_initial_state(start_time)
+            if not self._probed:
+                self._probe_components(step_size)
+                self._probed = True
         # The components reallocate their tensors here; a CUDA graph captured
         # before reads them at their old addresses, so captured graphs hold
         # for one initialization (``initialization_count``).
@@ -1984,6 +1989,22 @@ class SimulationModel:
 
         # Check for missing initial values AFTER all components are initialized
         self.check_for_missing_initial_values()
+
+    def _probe_components(self, step_size) -> None:
+        """The first run start after a load probes every declared System it
+        steps (ADR 0001, decision 10): one ``derive`` and ``forward`` call
+        each (:meth:`System._probe`); a data source's ``series`` is checked
+        where it fills its outputs.
+
+        Raises:
+            ValueError: Naming every System whose ``derive`` or ``forward``
+                gives what its declarations do not.
+        """
+        problems = []
+        for component in self._flat_execution_order:
+            problems.extend(component._probe(step_size))
+        if problems:
+            raise ValueError(f"The model '{self._id}' does not run:" + "".join(f"{chr(10)}  {p}" for p in problems))
 
     def _check_loaded(self) -> None:
         """The checks of a load, which raise (ADR 0001, decision 10).
@@ -2230,6 +2251,7 @@ class SimulationModel:
         LOGGER.task("Checking model")
         self._check_loaded()
         LOGGER.ok("Checking model", change_status=True)
+        self._probed = False  # the next run start probes the Systems
 
         LOGGER.remove_level()
         LOGGER.ok("Loading simulation model", change_status=True)
