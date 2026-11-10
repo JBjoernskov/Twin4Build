@@ -85,7 +85,9 @@ Numerics
    and 65 x 65. 16 suits batched models (hundreds of matrices per call); runs
    that exponentiate a few blocks at a time may gain about 1 ms per step with
    32. A large block (a fused storey) must stay above it. The setting has no
-   effect outside ``torch.compile``.
+   effect outside ``torch.compile``. In a source checkout,
+   ``python benchmarks/small_matmul_crossover.py --matrices <blocks x windows>``
+   measures the crossover on a GPU (``benchmarks/README.md``).
 
 ``fused_sparse``
    ``T4B_FUSED_SPARSE`` -- boolean, on by default.
