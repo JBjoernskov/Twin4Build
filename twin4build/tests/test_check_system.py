@@ -193,23 +193,23 @@ def examples(directory):
 WITHOUT_EXAMPLE = {
     "ThresholdGate": "a base without ports; SigmoidGate, BandGate and OccupancyDetectorSystem declare them",
     "FusedStateSpaceSystem": "the loader builds it from the state-space Systems it fuses; never written by a user",
-    # Written the old way, with their own do_step and initialize (ADR 0001,
-    # steps 8-9): each gets an example when it is converted or deleted.
-    # ControllerIdentificationPISystem inherits its parent's.
+    # Written the old way, with their own do_step and initialize; each gets an
+    # example when it is converted (see STEPPING_THEMSELVES).
     "DiscreteStatespaceSystem": "not converted yet",
-    "ControllerIdentificationSystem": "not converted yet",
-    "ControllerIdentificationPISystem": "not converted yet",
+    "ControllerIdentificationSystem": "converted in 2.1",
+    "ControllerIdentificationPISystem": "converted in 2.1, with its parent",
     "OccupancySystem": "to be deleted (ADR 0001, decision 7)",
 }
 
 
 #: The System classes of the package that still write their own do_step and
-#: initialize.  ADR 0001 removes them; the list only shrinks.
+#: initialize, and why (ADR 0001, decision 1).  The list only shrinks.
 STEPPING_THEMSELVES = {
-    "ControllerIdentificationSystem",
-    "DiscreteStatespaceSystem",
-    "FusedStateSpaceSystem",
-    "OccupancySystem",
+    "ControllerIdentificationSystem": "exempt for 2.0, converted in 2.1: it builds its candidate controllers and gates from its wiring at the run start, one set per actuator, which the declarations do not express",
+    "FusedStateSpaceSystem": "exempt: the loader builds it from the state-space Systems it fuses and steps it "
+    "as one block; nobody writes one",
+    "DiscreteStatespaceSystem": "converted to derive + forward once the numerics branches land",
+    "OccupancySystem": "waiting on the decision about what replaces its CO2 inversion (decision 7)",
 }
 
 
@@ -249,6 +249,7 @@ class TestCoreExamples(unittest.TestCase):
     def test_only_the_systems_not_converted_yet_step_themselves(self):
         own = sorted(c.__name__ for c in _core_system_classes() if {"do_step", "initialize"} & set(vars(c)))
         self.assertEqual(own, sorted(STEPPING_THEMSELVES), "do_step and initialize belong to the base (ADR 0001)")
+        self.assertTrue(all(STEPPING_THEMSELVES.values()), "every exemption states its reason")
 
     def test_every_example_passes_check_system(self):
         for cls, (system, inputs) in self.examples.items():

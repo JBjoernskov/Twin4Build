@@ -133,13 +133,15 @@ passing it raises and names its replacement.
   measurement connects to `measuredData`.  An `Input(default=...)` may name
   one of the System's own outputs that its `series` fills, and a System may
   define both `series` (for some outputs) and `forward` (for the others).
-- The first run start after a load probes every declared System: one
-  `derive` and `forward` call each on the run-start values, writing
-  nothing; one `ValueError` names every System whose `derive` gives no dict
-  or whose `forward` leaves out an output, gives one it does not declare (or
-  one `series` fills), an output at another size or a state of another
-  shape.  A `series` that gives an output the System does not declare, or a
-  vector output at another size, raises where it fills the outputs.
+- `Model.check(start_time, end_time, step_size)` and
+  `Simulator.simulate(..., check=True)` probe every declared System, on
+  request: one `derive` and `forward` call each on the run-start values,
+  writing nothing; one `ValueError` names every System whose `derive` gives
+  no dict or whose `forward` leaves out an output, gives one it does not
+  declare (or one `series` fills), an output at another size or a state of
+  another shape.  `check_system` makes the request.  A `series` that gives
+  an output the System does not declare, or a vector output at another
+  size, raises at every run start, where it fills the outputs.
 - A System class whose `forward` cannot take `(x, inputs, p, step_size)`,
   whose `derive` cannot take `(p, step_size)` or whose `series` cannot take
   `(timestamps, step_size)` raises `TypeError` when it is defined (they are
@@ -159,11 +161,13 @@ passing it raises and names its replacement.
 
 #### Not yet converted
 
-`DiscreteStatespaceSystem`, `ControllerIdentificationSystem` (and
-`ControllerIdentificationPISystem`), `FusedStateSpaceSystem` and
-`OccupancySystem` still write their own `do_step` and `initialize`; a test
-keeps that list from growing.  Until they are converted or deleted (ADR
-0001, steps 8 and 9), the base cannot raise on an override.
+Four Systems still write their own `do_step` and `initialize`; a test keeps
+the list from growing and states each reason.  `ControllerIdentificationSystem`
+(and `ControllerIdentificationPISystem`) is exempt for 2.0 and converted in
+2.1: it builds its candidates and gates from its wiring.  `FusedStateSpaceSystem`
+is exempt: the loader builds it.  `DiscreteStatespaceSystem` is converted
+once the numerics work lands, and `OccupancySystem` waits on decision 7.
+Until then the base does not raise on an override.
 
 ### Removed
 
