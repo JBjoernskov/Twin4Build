@@ -24,6 +24,7 @@ import torch
 # Local application imports
 import twin4build
 import twin4build as tb
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 twin4build._IS_TESTING = True
 
@@ -65,7 +66,7 @@ class TestLaterProducerInCone(unittest.TestCase):
         sim.simulate(start_time=[START], end_time=[end], step_size=STEP, show_progress_bar=False)
         y = cls.plant.output["outputSignal"].history().detach().flatten().numpy()
         index = pd.date_range(start=START, periods=len(y), freq=f"{STEP}s")
-        cls.sensor.df = pd.DataFrame({"value": y + 0.01 * np.random.default_rng(0).standard_normal(len(y))}, index=index)
+        cls.sensor.source = DataFrameSource(pd.DataFrame({"value": y + 0.01 * np.random.default_rng(0).standard_normal(len(y))}, index=index))
         cls.estimator = tb.Estimator(tb.Simulator(cls.model, execution_mode="functional"))
         cls.estimator.estimate(
             parameters=[(cls.pid, "kp", 1.0, 0.1, 10.0)],

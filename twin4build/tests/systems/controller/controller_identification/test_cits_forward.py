@@ -36,6 +36,7 @@ from twin4build.systems.controller.controller_identification.controller_identifi
 from twin4build.systems.controller.controller_identification.controller_identification_system import (
     ControllerIdentificationSystem,
 )
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 twin4build._IS_TESTING = True
 
@@ -201,7 +202,7 @@ class TestCitsClosedLoopComposes(unittest.TestCase):
         y = cls.plant.output["outputSignal"].history().detach().flatten().numpy()
         index = pd.date_range(start=START, periods=len(y), freq=f"{STEP}s")
         rng = np.random.default_rng(0)
-        cls.sensor.df = pd.DataFrame({"value": y + 0.01 * rng.standard_normal(len(y))}, index=index)
+        cls.sensor.source = DataFrameSource(pd.DataFrame({"value": y + 0.01 * rng.standard_normal(len(y))}, index=index))
         cls.estimator = tb.Estimator(tb.Simulator(cls.model, execution_mode="functional"))
         cls.estimator.estimate(
             parameters=[(cls.cits, "candidate_0_0.kp", 1.0, 0.1, 10.0), (cls.cits, "candidate_0_0.Ti", 1800.0, 300.0, 7200.0)],

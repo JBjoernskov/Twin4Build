@@ -262,7 +262,7 @@ class SensorSystem(core.System):
         elif allow_missing and drives:
             raise ValueError(
                 f"SensorSystem '{self.id}' ({self.uuid}) drives the model: its gaps cannot be unscored "
-                f"(allow_missing); give its reader a fill instead (fill=...)."
+                f"(allow_missing); declare a fill on its reader instead (fill=...)."
             )
         reading = self.__dict__.get("_reading")
         if reading is None or reading.source is not reader or reading.transformation is not self.transformation:

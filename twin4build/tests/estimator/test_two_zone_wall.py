@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover - depends on optional installation
 
 # Local application imports
 import twin4build as tb
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 
@@ -111,7 +112,7 @@ def build_two_zone_model():
 
 
 def attach_synthetic_readings(model, sensor, series, index):
-    sensor.df = pd.DataFrame({"value": series}, index=index)
+    sensor.source = DataFrameSource(pd.DataFrame({"value": series}, index=index))
 
 
 class TestTwoZoneWall(unittest.TestCase):

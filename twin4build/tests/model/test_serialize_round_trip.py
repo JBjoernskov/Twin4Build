@@ -9,7 +9,7 @@ Regressions covered:
   reloaded as the placeholder (and ``initialize`` then re-solved it);
 * a sensor's unit transformation is a callable, not a literal, and was
   dropped -- a saved calibrated model replayed in raw units (#190).  It now
-  travels as an import path (``transformation_ref``);
+  travels as an import path (``module:qualname``);
 * a model that was loaded from a file serialized the triples of that file
   next to its own (every connection twice, JSON literals as Python reprs),
   to a file that did not load again.
@@ -35,6 +35,7 @@ from twin4build.systems.building_space.building_space_system import BuildingSpac
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.space_heater.space_heater_system import SpaceHeaterSystem
+from twin4build.utils.data_loaders.sources import CsvSource
 
 tb._IS_TESTING = True
 
@@ -134,7 +135,6 @@ class TestSerializeRoundTrip(unittest.TestCase):
         self.assertAlmostEqual(float(heater2.UA.get().reshape(-1)[0]), 37.5, places=6)
         self.assertAlmostEqual(float(heater2.thermalMassHeatCapacity.get().reshape(-1)[0]), 2.5e5, delta=1e-3)
         self.assertIs(outdoor2.transformation, celsius_from_deci)
-        self.assertEqual(outdoor2.transformation_ref, f"{__name__}:celsius_from_deci")
 
         torch.testing.assert_close(self._simulate(reloaded), reference)
 
@@ -176,7 +176,6 @@ class TestSerializeRoundTrip(unittest.TestCase):
         )
 
         model = tb.Model(id=self.MODEL_ID + "_outdoor")
-        from twin4build.utils.data_loaders.sources import CsvSource
 
         outdoor = OutdoorEnvironmentSystem(
             id="outdoor",
