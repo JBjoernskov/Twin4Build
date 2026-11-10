@@ -92,6 +92,16 @@ passing it raises and names its replacement.
   `band = threshold_high - threshold` (#297).
 - `CoilSystem.specificHeatCapacityAir` (unused; the coil reads
   `constants.CP_AIR`) (#290).
+- `SensorSystem`'s `filename`, `datecolumn`, `valuecolumn`, `df`,
+  `dbconfig`, `use_spreadsheet`, `use_database`, `use_df`, `resample_method`,
+  `dt_limit` and `fill` → one reader, `source=CsvSource(path,
+  date_column=..., value_column=...)`, `DataFrameSource(df)` or
+  `DatabaseSource(uuid, dbconfig)`, which carries the reading options;
+  `set_series(series)` and `set_dbconfig(dbconfig)` stay.  `uuid` names the
+  point (and is the database point read when there is no `source`); setting
+  it no longer switches a sensor with another reader to the database.
+  `transformation_ref` → `transformation` (old saved names load, with a
+  warning).  `del sensor.scoring_mask` → `sensor.scoring_mask = None`.
 - `ScheduleSwitchControllerSystem` and its
   `ScheduleSwitchControllerTorchSystem` alias: no users.
 - `SpaceHeaterSystem`'s output `Power` → `toRoomPower`, and the room's input
@@ -116,6 +126,20 @@ passing it raises and names its replacement.
   without a value.  These were warnings, and a model with a missing input
   loaded and ran.  Wire the input, give it a default (`Input(default=...)`)
   or give the parameter a value.
+- `SensorSystem` is declared: `measuredData`, the recorded series read once
+  at the run start, and `measuredValue`, what it reads, the value wired to
+  its input or, with nothing wired, its recorded series
+  (`measuredValue = Input(default=measuredData)`).  A System that needs the
+  measurement connects to `measuredData`.  An `Input(default=...)` may name
+  one of the System's own outputs that its `series` fills, and a System may
+  define both `series` (for some outputs) and `forward` (for the others).
+- The first run start after a load probes every declared System: one
+  `derive` and `forward` call each on the run-start values, writing
+  nothing; one `ValueError` names every System whose `derive` gives no dict
+  or whose `forward` leaves out an output, gives one it does not declare (or
+  one `series` fills), an output at another size or a state of another
+  shape.  A `series` that gives an output the System does not declare, or a
+  vector output at another size, raises where it fills the outputs.
 - A System class whose `forward` cannot take `(x, inputs, p, step_size)`,
   whose `derive` cannot take `(p, step_size)` or whose `series` cannot take
   `(timestamps, step_size)` raises `TypeError` when it is defined (they are
@@ -135,8 +159,8 @@ passing it raises and names its replacement.
 
 #### Not yet converted
 
-`SensorSystem`, `DiscreteStatespaceSystem`, `ControllerIdentificationSystem`
-(and `ControllerIdentificationPISystem`), `FusedStateSpaceSystem` and
+`DiscreteStatespaceSystem`, `ControllerIdentificationSystem` (and
+`ControllerIdentificationPISystem`), `FusedStateSpaceSystem` and
 `OccupancySystem` still write their own `do_step` and `initialize`; a test
 keeps that list from growing.  Until they are converted or deleted (ADR
 0001, steps 8 and 9), the base cannot raise on an override.
@@ -210,9 +234,6 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 - `*TorchSystem` public names → prefer `*System`
 - Schedule/controller camelCase kwargs → snake_case (`weekday_ruleset`, `is_reverse`, `date_column`, …)
-- `SensorSystem`'s `use_spreadsheet` / `use_database` / `use_df` → give
-  `filename=`, `df=` or `uuid=` (the schedule and the outdoor environment
-  take readers, see the ADR 0001 section above)
 - `Model.load(semantic_model_filename=...)` auto-translate → `SemanticModel` + `Translator.translate`; prefer `Model.load(filename=...)`
 - `Model.load(simulation_model_filename=...)` → `Model.load(filename=...)`
 - `Translator.translate(systems_=...)` → `systems=`
@@ -767,7 +788,7 @@ Unused and untested; 2.0 drops them without a deprecation period.
 
 1. Replace `BuildingSpaceTorchSystem` with `BuildingSpaceSystem` (etc.).
 2. Use `weekday_ruleset=` / `is_reverse=` / `date_column=` instead of camelCase.
-3. Give a schedule, an outdoor environment or a time-series input a reader:
+3. Give a schedule, an outdoor environment, a time-series input or a sensor a reader:
    `source=CsvSource(path, date_column=..., value_column=...)`,
    `DataFrameSource(df)` or `DatabaseSource(...)`.
 4. Translate explicitly: `model = Translator().translate(SemanticModel(...)); model.load()`.
