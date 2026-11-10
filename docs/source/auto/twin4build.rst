@@ -16,6 +16,17 @@ Package
    twin4build.translator
    twin4build.utils
 
+Modules
+-------
+
+twin4build.testing module
+-------------------------
+
+.. automodule:: twin4build.testing
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 Note
 ----
 
