@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import datetime
 import traceback
-import os as _os
 import time as _time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -58,6 +57,7 @@ from torch.func import jacrev, vmap
 
 import twin4build.utils.types as tps
 import twin4build.core as core
+from twin4build import settings as _settings
 from twin4build.simulator._functional import StateLayout as _StateLayout
 from twin4build.simulator._functional import collect_stateful as _collect_stateful
 from twin4build.simulator._replica_layout import (
@@ -779,7 +779,7 @@ def _solve_sparse_collocation(
         boundary_state_init = (
             "data" if bool(options.pop("data_warmstart")) else "rollout"
         )
-    if _os.environ.get("TWIN4BUILD_NO_DATA_WARMSTART") is not None:
+    if _settings.value("no_data_warmstart"):
         boundary_state_init = "rollout"  # legacy escape hatch, retained
     _ws_fit = None  # set when "auto" measures the warm start; reported in the audit
     if boundary_state_init not in ("auto", "data", "rollout"):
@@ -1612,8 +1612,8 @@ def _solve_sparse_collocation(
 
     def _jac_selfcheck(z0_use, jr, jc, ng, gfun, gjac, dim):
         """Compare the composer Jacobian to a finite-difference of ``gfun`` on a
-        few columns -- ground-truth correctness check (env TWIN4BUILD_JAC_CHECK)."""
-        if not _os.environ.get("TWIN4BUILD_JAC_CHECK"):
+        few columns -- ground-truth correctness check (the ``jac_check`` setting)."""
+        if not _settings.value("jac_check"):
             return
         z0_use = np.asarray(z0_use, dtype=np.float64)
         g0 = gfun(z0_use)
@@ -1675,13 +1675,13 @@ def _solve_sparse_collocation(
         n_fb,
     )
 
-    # Timestepping micro-benchmark (env TWIN4BUILD_BENCH_TIMESTEP): compute every
+    # Timestepping micro-benchmark (the ``bench_timestep`` setting): compute every
     # segment's one-step transition both ways -- the new vmap(F_aug) map vs the old
     # object-graph batched simulate (do_step traversal) -- and report wall time and
     # agreement.  This isolates *why* collocation is fast: the per-evaluation
     # forward cost that both the objective and the defects pay each iteration.
     if (
-        _os.environ.get("TWIN4BUILD_BENCH_TIMESTEP")
+        _settings.value("bench_timestep")
         and composer is not None
         and CAP is not None
     ):

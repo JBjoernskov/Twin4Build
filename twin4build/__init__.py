@@ -26,6 +26,7 @@ except PackageNotFoundError:
     __version__ = "0+unknown"
 
 # Local application imports
+from twin4build import settings
 import twin4build.systems as _systems
 from twin4build.utils.deprecation import deprecate_name
 
@@ -88,6 +89,7 @@ __all__ = [
     "SystemRegistry",
     "system_registry",
     "plot",
+    "settings",
     "types",
     "Vector",
     "Scalar",

@@ -4,7 +4,6 @@ from __future__ import annotations
 import datetime
 import functools
 import math
-import os
 import pickle
 import re as _re
 import time as time_module
@@ -22,6 +21,7 @@ from scipy.optimize import Bounds, basinhopping, dual_annealing, least_squares, 
 import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.utils.types as tps
+from twin4build import settings as _settings
 from twin4build.systems.utils.smooth_saturation import saturation_mode
 from twin4build.estimator._batched_solvers import (
     BatchedObjectiveEvaluator,
@@ -924,6 +924,8 @@ class Estimator:
         # Process parameters in new list format
         self._process_parameters_list(parameters)
 
+        _settings.log_active("estimate")
+
         # Optional per-iteration parameter dump.  Enabled via
         # ``estimate(..., log_parameters=True)``; when on, every new
         # objective evaluation logs the full denormalized theta vector as
@@ -1181,9 +1183,10 @@ class Estimator:
         # Fast-path for notebook example tests: keep every cell exercising
         # the full Estimator API (so we still catch wiring / API
         # regressions) but stop the solver after a single iteration.
-        # Honors the env var set by ``utils.test_notebook.test_notebook``;
-        # the regular ``test_estimator.py`` suite already passes
-        # ``maxiter=2`` explicitly so this is a no-op for them.
+        # Honors the ``testing`` setting, which ``utils.test_notebook``
+        # turns on (``TWIN4BUILD_TESTING=1``); the regular
+        # ``test_estimator.py`` suite already passes ``maxiter=2``
+        # explicitly so this is a no-op for them.
         #
         # The cap is applied here (top-level ``options``) *and* again
         # inside :meth:`_run_schedule` after the per-phase merge -- so a
@@ -1192,11 +1195,7 @@ class Estimator:
         # 100}}, {"options": {"maxiter": 50}}]``) still collapses to
         # one iteration per phase in tests instead of overriding the
         # top-level cap during the schedule merge.
-        if os.environ.get("TWIN4BUILD_TESTING", "").lower() in (
-            "1",
-            "true",
-            "yes",
-        ):
+        if _settings.value("testing"):
             options = {**options, "maxiter": 1}
 
         # --- Schedule dispatch ---
@@ -1301,13 +1300,9 @@ class Estimator:
 
             # Re-apply the notebook-test fast-path cap after the
             # per-phase merge so an explicit per-phase ``maxiter`` in
-            # the schedule cannot accidentally undo the env-var cap
+            # the schedule cannot accidentally undo the ``testing`` cap
             # (see :meth:`estimate` for the top-level pass).
-            if os.environ.get("TWIN4BUILD_TESTING", "").lower() in (
-                "1",
-                "true",
-                "yes",
-            ):
+            if _settings.value("testing"):
                 merged_options["maxiter"] = 1
 
             self._regularization_lambda = lam

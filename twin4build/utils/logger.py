@@ -1559,11 +1559,11 @@ class Logger:
                 # purely because of a logging hiccup.  Instead we
                 # silently no-op (the underlying work has already run)
                 # so the user keeps their results, and surface the
-                # mismatch via the env var so we can still find these
-                # in development if we want to.
-                if ignore_no_match or os.environ.get(
-                    "TWIN4BUILD_LOGGER_STRICT", ""
-                ).lower() not in ("1", "true", "yes"):
+                # mismatch via the ``logger_strict`` setting so we can
+                # still find these in development if we want to
+                # (twin4build.settings imports this module, so the
+                # setting is read through the package).
+                if ignore_no_match or not twin4build.settings.value("logger_strict"):
                     pass
                 else:
                     raise ValueError(

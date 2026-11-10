@@ -1,7 +1,6 @@
 # Standard library imports
 import contextlib
 import datetime
-import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -13,21 +12,7 @@ from scipy import signal
 # Local application imports
 import twin4build.utils.types as tps
 from twin4build import core
-
-
-#: How the transform-mode step (compiled, captured, vmapped) discretises:
-#: ``"phi1"`` exponentiates the n x n matrix ``A T`` and carries
-#: ``phi1(A T) = sum (A T)^k / (k+1)!`` through the same scaling and
-#: squaring, ``Bd = phi1(A T) B T``; ``"block"`` exponentiates the
-#: (n+m) x (n+m) block ``[[A T, B T], [0, 0]]``.  Same ZOH result to rounding;
-#: the block form works on a matrix as wide as the inputs are many (a zone: 6
-#: states, 11 inputs, 17 x 17), and its ~26 saved products per instance per
-#: step were the tape of an unrolled rollout.  ``T4B_ZOH_EXPM`` overrides.
-ZOH_EXPM = os.environ.get("T4B_ZOH_EXPM", "phi1").strip().lower()
-#: Recompute the exponential's chain in the backward pass instead of saving
-#: it (``torch.utils.checkpoint``): keeps one matrix per instance per step.
-#: ``T4B_EXPM_CHECKPOINT=1`` switches it on.
-EXPM_CHECKPOINT = os.environ.get("T4B_EXPM_CHECKPOINT", "0").strip().lower() in {"1", "true", "yes"}
+from twin4build import settings as _settings
 
 
 #: Set by the functional engine for the length of a step it traces, captures
@@ -256,9 +241,11 @@ def _discretize_onestep(A, B, E, F, u, step_size, transform_mode=None):
     T = step_size
     if transform_mode is None:
         transform_mode = _traceable()
-    if transform_mode and ZOH_EXPM == "phi1":
+    # The transform-mode step (compiled, captured, vmapped) discretises as the
+    # ``zoh_expm`` and ``expm_checkpoint`` settings say (twin4build.settings).
+    if transform_mode and _settings.value("zoh_expm") == "phi1":
         X = A_eff * T
-        if EXPM_CHECKPOINT:
+        if _settings.value("expm_checkpoint"):
             expX, phi = torch.utils.checkpoint.checkpoint(_expm_phi1_ss, X, use_reentrant=False)
         else:
             expX, phi = _expm_phi1_ss(X)
@@ -274,7 +261,7 @@ def _discretize_onestep(A, B, E, F, u, step_size, transform_mode=None):
     # while the explicit bool keeps the private functorch-state query out of
     # captured production graphs.
     if transform_mode:
-        if EXPM_CHECKPOINT:
+        if _settings.value("expm_checkpoint"):
             expM = torch.utils.checkpoint.checkpoint(_expm_ss, M, use_reentrant=False)
         else:
             expM = _expm_ss(M)

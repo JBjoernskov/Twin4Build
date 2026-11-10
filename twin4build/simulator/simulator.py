@@ -34,6 +34,7 @@ def _functorch_active() -> bool:
         return False
 
 
+from twin4build import settings as _settings
 from twin4build.simulator._functional import (
     FunctionalModel,
     StateLayout,
@@ -600,6 +601,7 @@ class Simulator:
             )
         self._last_execution_mode = mode
         self._last_execution_backend = backend
+        _settings.log_active("simulate")
 
         for legacy_key, new_key in (
             ("startTime", "start_time"),

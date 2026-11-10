@@ -17,6 +17,7 @@ This documentation is organized into three main sections:
    * Installation - Instructions for installing Twin4Build and its dependencies
    * Examples and Tutorials - Step-by-step guides showing basic usage
    * Benchmarks - Reproducible performance methodology and canonical notebooks
+   * Settings - The library's knobs, their environment variables and defaults
 
 **API Reference**
    Detailed documentation of all Twin4Build modules and their components.
@@ -33,6 +34,7 @@ This documentation is organized into three main sections:
    manual/installation
    manual/examples_and_tutorials
    manual/benchmarks
+   manual/settings
 
 .. toctree::
    :maxdepth: 2

@@ -39,7 +39,6 @@ from __future__ import annotations
 import collections
 import hashlib
 import inspect
-import os
 import time  # ##
 import warnings
 from dataclasses import dataclass
@@ -62,6 +61,7 @@ from sympy import I
 import twin4build.core as core
 import twin4build.systems as systems_module
 import twin4build.utils.types as tps
+from twin4build import settings as _settings
 from twin4build.systems.registry import SystemRegistry
 from twin4build.utils.logger import LOGGER, autoreset_print
 from twin4build.utils.rgetattr import rgetattr
@@ -95,13 +95,16 @@ def _stack_rows(rows, n_vars: int):
 
 
 # ---------------------------------------------------------------------------
-# Matcher diagnostic dump (env-var gated, zero-cost when disabled).
+# Matcher diagnostic dump (gated by a setting, zero-cost when disabled).
 #
-# Enable with::
+# Enable with the ``match_diag_file`` setting (twin4build.settings)::
 #
-#     set TWIN4BUILD_MATCH_DIAG_FILE=matcher_diag.log
+#     tb.settings.set(match_diag_file="matcher_diag.log")
 #     # optional: filter to one pattern id (substring match)
-#     set TWIN4BUILD_MATCH_DIAG_PATTERN=controller_identification_vav
+#     tb.settings.set(match_diag_pattern="controller_identification_vav")
+#
+# or with their environment variables, TWIN4BUILD_MATCH_DIAG_FILE and
+# TWIN4BUILD_MATCH_DIAG_PATTERN.
 #
 # Writes one line per decision in four scopes:
 #   [PHASE1]    per (sp_node, sm_node) enumeration start, and per complete/incomplete mapping
@@ -118,34 +121,34 @@ def _stack_rows(rows, n_vars: int):
 # The file is opened on first write and flushed per line so partial runs
 # still produce useful output if the process is interrupted.
 # ---------------------------------------------------------------------------
-_MATCH_DIAG_PATH = os.environ.get("TWIN4BUILD_MATCH_DIAG_FILE")
-_MATCH_DIAG_PATTERN_FILTER = os.environ.get("TWIN4BUILD_MATCH_DIAG_PATTERN")
 _MATCH_DIAG_FH = None
 
 
 def _match_diag_enabled(signature_pattern) -> bool:
     """Return True iff the diagnostic dump is enabled for this pattern."""
-    if _MATCH_DIAG_PATH is None:
+    if _settings.value("match_diag_file") is None:
         return False
-    if _MATCH_DIAG_PATTERN_FILTER is None:
+    pattern_filter = _settings.value("match_diag_pattern")
+    if pattern_filter is None:
         return True
     try:
         pid = getattr(signature_pattern, "id", "") or ""
     except Exception:
         pid = ""
-    return _MATCH_DIAG_PATTERN_FILTER in pid
+    return pattern_filter in pid
 
 
 def _match_diag_write(line: str) -> None:
     """Append a line to the diagnostic file (opens on first call)."""
     global _MATCH_DIAG_FH
-    if _MATCH_DIAG_PATH is None:
+    path = _settings.value("match_diag_file")
+    if path is None:
         return
     if _MATCH_DIAG_FH is None:
-        _MATCH_DIAG_FH = open(_MATCH_DIAG_PATH, "w", encoding="utf-8")
+        _MATCH_DIAG_FH = open(path, "w", encoding="utf-8")
         _MATCH_DIAG_FH.write(
             "# twin4build matcher diagnostic dump\n"
-            f"# filter: pattern~={_MATCH_DIAG_PATTERN_FILTER!r}\n"
+            f"# filter: pattern~={_settings.value('match_diag_pattern')!r}\n"
         )
     _MATCH_DIAG_FH.write(line)
     if not line.endswith("\n"):

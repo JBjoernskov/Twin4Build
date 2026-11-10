@@ -55,7 +55,6 @@ from types import SimpleNamespace
 from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
-import os
 
 import torch
 import torch.utils.checkpoint
@@ -63,6 +62,7 @@ import torch.utils.checkpoint
 import twin4build.systems.utils.discrete_statespace_system as _dss
 import torch.nn as nn
 
+from twin4build import settings as _settings
 import twin4build.systems as systems
 import twin4build.utils.types as tps
 from twin4build.utils.rgetattr import rgetattr
@@ -2141,17 +2141,12 @@ def functional_rollout_rows(functional_model, Y0, Theta, exogenous_tape, *, step
     return (out, Y) if return_end else out
 
 
-#: Recompute every time step in the backward pass instead of saving its
-#: intermediates (``torch.utils.checkpoint`` around each step call): the
-#: rollout's autograd tape then holds the state and exogenous rows per step
-#: and nothing of what the step computed from them.  The backward pass runs
-#: each step's forward a second time.  ``T4B_ROLLOUT_CHECKPOINT=1``.
-ROLLOUT_CHECKPOINT = os.environ.get("T4B_ROLLOUT_CHECKPOINT", "0").strip().lower() in {"1", "true", "yes"}
-
-
 def _step_call(step, y, theta, u_t, constants):
-    """One step call, recomputed in the backward when :data:`ROLLOUT_CHECKPOINT`."""
-    if ROLLOUT_CHECKPOINT and torch.is_grad_enabled():
+    """One step call, recomputed in the backward pass (``torch.utils.checkpoint``)
+    when the ``rollout_checkpoint`` setting is on: the rollout's autograd tape
+    then holds the state and exogenous rows per step and nothing of what the
+    step computed from them."""
+    if torch.is_grad_enabled() and _settings.value("rollout_checkpoint"):
         return torch.utils.checkpoint.checkpoint(step, y, theta, u_t, constants, use_reentrant=False)
     return step(y, theta, u_t, constants)
 
