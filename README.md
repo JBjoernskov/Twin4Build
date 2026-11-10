@@ -78,8 +78,8 @@ grouped with `model.batch_components()`; inspect the layout with
 `get_batched_component_info()` and `get_batch_id_for_component()`.
 
 Simulation has two independent policy dimensions. `execution_mode="object"`
-runs component `do_step` methods, while `execution_mode="functional"` uses
-the functional one-step model. `execution_backend="eager"` is the default;
+steps the components one by one through their `forward`, while
+`execution_mode="functional"` uses the functional one-step model. `execution_backend="eager"` is the default;
 `execution_backend="cuda_graph"` captures and replays fixed-shape functional
 execution on CUDA. CUDA Graph is a backend, not a mode. Functional workflows
 can also use `build_functional_model`, `record_exogenous_inputs`, and

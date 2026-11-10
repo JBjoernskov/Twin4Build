@@ -390,47 +390,47 @@ Optimizer, and Translator need integration coverage.
 Writing components
 ------------------
 
-Custom components inherit :class:`~twin4build.systems.saref4syst.system.System`.
-Declare :class:`~twin4build.utils.types.Scalar` or
-:class:`~twin4build.utils.types.Vector` ports, initialize their histories, and
-implement ``do_step``.
+Custom components inherit :class:`~twin4build.systems.saref4syst.system.System`
+and are written as class-level declarations plus one ``forward`` (ADR 0001):
 
 .. code-block:: python
 
-   import torch
    import twin4build as tb
+   from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
 
    class GainSystem(tb.System):
-       def __init__(self, gain: float = 1.0, **kwargs):
-           super().__init__(**kwargs)
-           self.gain = gain
-           self.input = {"value": tb.Scalar()}
-           self.output = {"value": tb.Scalar()}
+       value = Input(doc="Signal")
+       value = Output(doc="Signal times the gain")
+       gain = Parameter(1.0, lb=0.0, ub=10.0)
 
-       def initialize(self, start_time, end_time, step_size):
-           _, _, n_t, _ = tb.Simulator.get_simulation_timesteps(
-               start_time, end_time, step_size
-           )
-           n_s = len(start_time)
-           self.input["value"].initialize(n_t=n_t, n_s=n_s)
-           self.output["value"].initialize(n_t=n_t, n_s=n_s)
+       def forward(self, x, inputs, p, step_size):
+           return x, {"value": p["gain"] * inputs["value"]}
 
-       def forward(self, state, inputs, parameters, **kwargs):
-           return state, {"value": inputs["value"] * self.gain}
+The base builds the ports, parameters, settings, states and children from the
+declarations, sizes the vector ports at load, and steps the System through
+``forward`` in object mode and in the functional engine alike; a System does
+not write ``initialize`` or ``do_step``. ``derive(p, step_size)`` computes what
+depends only on the parameters and the step size, and a data source defines
+``series(timestamps, step_size)`` instead of ``forward``. Follow
+:doc:`differentiable_system_models` for the rules ``forward`` keeps.
 
-       def do_step(self, second_time, date_time, step_size, step_index):
-           _, outputs = self.forward(
-               None,
-               {"value": self.input["value"].get()},
-               {},
-           )
-           self.output["value"]._set(outputs["value"], i_t=step_index)
+Every System passes the conformance check, in Twin4Build and in packages that
+build on it:
 
-The exact ``forward`` signature and state semantics depend on the component
-family. Before adding functional support, follow
-:doc:`differentiable_system_models` and add value, Jacobian, Hessian, replay,
-device, and dtype tests as applicable. ``do_step`` must delegate its
-mathematics to the pure implementation so execution paths cannot drift.
+.. code-block:: python
+
+   import unittest
+   from twin4build.testing import check_system
+
+   class TestGain(unittest.TestCase):
+       def test_the_gain_conforms(self):
+           check_system(GainSystem(id="gain", gain=2.0), inputs={"value": 1.5})
+
+:func:`~twin4build.testing.check_system` steps the System in a model of its
+own and checks save and reload, a deepcopy, object mode against the functional
+engine, two batched copies against the copies stepped separately, finite
+gradients, and CUDA when a GPU is present. Twin4Build's own table of examples
+is ``twin4build/tests/test_check_system.py``.
 
 External component packages
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
