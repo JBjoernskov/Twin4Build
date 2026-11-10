@@ -172,6 +172,7 @@ def examples(directory):
         tb.SATLinearRuleSystem: (tb.SATLinearRuleSystem(id="sat_rule"), {"supplyAirTemp": 18.0}),
         tb.ScalarProductSystem: (tb.ScalarProductSystem(id="product"), {"input_1": 2.0, "input_2": 3.0}),
         tb.ScheduleSystem: (tb.ScheduleSystem(id="schedule", weekday_ruleset=_ruleset(1.0, 3.0)), {}),
+        tb.SensorSystem: (tb.SensorSystem(id="sensor", source=CsvSource(_csv(directory, "sensor", series))), {}),
         tb.SigmoidGate: (tb.SigmoidGate(id="gate", threshold=0.5), {"inputSignal": 0.4}),
         tb.SpaceHeaterSystem: (
             tb.SpaceHeaterSystem(id="heater", thermalMassHeatCapacity=2e5, UA=45.0, nelements=3),
@@ -196,7 +197,6 @@ WITHOUT_EXAMPLE = {
     # steps 8-9): each gets an example when it is converted or deleted.
     # ControllerIdentificationPISystem inherits its parent's.
     "DiscreteStatespaceSystem": "not converted yet",
-    "SensorSystem": "not converted yet",
     "ControllerIdentificationSystem": "not converted yet",
     "ControllerIdentificationPISystem": "not converted yet",
     "OccupancySystem": "to be deleted (ADR 0001, decision 7)",
@@ -210,7 +210,6 @@ STEPPING_THEMSELVES = {
     "DiscreteStatespaceSystem",
     "FusedStateSpaceSystem",
     "OccupancySystem",
-    "SensorSystem",
 }
 
 
