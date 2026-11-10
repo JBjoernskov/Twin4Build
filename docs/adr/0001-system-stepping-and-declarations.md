@@ -245,7 +245,7 @@ Systems.
 | A clock data source feeding schedules through ports | A schedule's values follow from the timestamps alone. Computing them once at run start is simpler than stepping calendar logic. |
 | A `run` object, or a `DatetimeIndex` with a frequency, as the argument to `series` | Wraps what a System needs, the timestamps and the step size, in something it must unpack. |
 | Caching derived values inside `forward` (`transform_mode`) | `forward` stays a pure function. The caller evaluates `derive` once, inside autograd. |
-| Keeping the inverse `OccupancySystem` | The forward profile fits occupancy as a model. The inversion stays only as a helper for start values. |
+| Keeping the inverse `OccupancySystem` | Chosen after all (amended 2026-11-10, see the Implementation, step 9). The forward profile fits occupancy as a model; converted, the inversion keeps its parameters estimable. |
 | Keeping the two port aliases until 2.1 | Each alias is a second name for the same port, and 2.0 already breaks the System interface. |
 | Checks that only warn | Today's checks only warn, and models with missing inputs run. |
 | All checks only on `model.check()` | A model with a missing input then loads and runs. |
