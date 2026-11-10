@@ -15,6 +15,7 @@ import pandas as pd
 import twin4build
 import twin4build.utils.data_loaders.sources as tsi_mod  # where the readers call the loaders
 from twin4build.systems.sensor.sensor_system import SensorSystem
+from twin4build.utils.data_loaders.sources import DatabaseSource
 
 twin4build._IS_TESTING = True
 
@@ -32,7 +33,8 @@ class TestEmptyTimeSeriesError(unittest.TestCase):
     def test_empty_database_result_raises_named_error(self):
         tz = ZoneInfo("Europe/Copenhagen")
         sensor = SensorSystem(
-            id="lonely_sensor", uuid="POINT_WITHOUT_DATA", dbconfig=DBCONFIG
+            id="lonely_sensor",
+            source=DatabaseSource("POINT_WITHOUT_DATA", DBCONFIG),
         )
         start = datetime.datetime(2024, 3, 4, tzinfo=tz)
         end = datetime.datetime(2024, 3, 5, tzinfo=tz)

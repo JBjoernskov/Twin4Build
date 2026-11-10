@@ -16,6 +16,7 @@ from twin4build.systems.controller.controller_identification.controller_identifi
     ControllerIdentificationPISystem,
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 
@@ -37,10 +38,10 @@ class TestRewireActionSign(unittest.TestCase):
         u = np.clip(0.5 + 0.4 * (sp - fb), 0.0, 1.0)
         model = tb.Model(id="test_cits_rewire_sign")
         cits = ControllerIdentificationPISystem(id="cits", n_sensors=1, n_setpoints=1, n_on_off_signals=1)
-        sensor = SensorSystem(id="zone_t", df=_df(index, fb), use_df=True)
-        setpoint = SensorSystem(id="sp_heat", df=_df(index, sp), use_df=True)
-        gate = SensorSystem(id="flow_sp", df=_df(index, np.full(n, 300.0)), use_df=True)
-        command = SensorSystem(id="cmd", df=_df(index, u), use_df=True)
+        sensor = SensorSystem(id="zone_t", source=DataFrameSource(_df(index, fb)))
+        setpoint = SensorSystem(id="sp_heat", source=DataFrameSource(_df(index, sp)))
+        gate = SensorSystem(id="flow_sp", source=DataFrameSource(_df(index, np.full(n, 300.0))))
+        command = SensorSystem(id="cmd", source=DataFrameSource(_df(index, u)))
         model.add_connection(sensor, cits, "measuredValue", "sensorValue", input_port_index=0)
         model.add_connection(setpoint, cits, "measuredValue", "setpointValue", input_port_index=0)
         model.add_connection(gate, cits, "measuredValue", "onOffSignal", input_port_index=0)
@@ -65,10 +66,10 @@ class TestRewireActionSign(unittest.TestCase):
         for mode, expect_playback in (("simulate", True), ("train", False)):
             model = tb.Model(id=f"test_cits_unexcited_{mode}")
             cits = ControllerIdentificationPISystem(id="cits", n_sensors=1, n_setpoints=1, n_on_off_signals=1)
-            sensor = SensorSystem(id="zone_t", df=_df(index, fb), use_df=True)
-            setpoint = SensorSystem(id="sp_heat", df=_df(index, np.full(n, 22.0)), use_df=True)
-            gate = SensorSystem(id="flow_sp", df=_df(index, np.full(n, 300.0)), use_df=True)
-            command = SensorSystem(id="cmd", df=_df(index, u), use_df=True)
+            sensor = SensorSystem(id="zone_t", source=DataFrameSource(_df(index, fb)))
+            setpoint = SensorSystem(id="sp_heat", source=DataFrameSource(_df(index, np.full(n, 22.0))))
+            gate = SensorSystem(id="flow_sp", source=DataFrameSource(_df(index, np.full(n, 300.0))))
+            command = SensorSystem(id="cmd", source=DataFrameSource(_df(index, u)))
             model.add_connection(sensor, cits, "measuredValue", "sensorValue", input_port_index=0)
             model.add_connection(setpoint, cits, "measuredValue", "setpointValue", input_port_index=0)
             model.add_connection(gate, cits, "measuredValue", "onOffSignal", input_port_index=0)

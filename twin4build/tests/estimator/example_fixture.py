@@ -38,19 +38,19 @@ def load_model():
     def data_path(name):
         return str(data_dir / name)
 
-    components["office_temperature_sensor"].filename = data_path(
+    components["office_temperature_sensor"].source = CsvSource(data_path(
         "temperature_sensor.csv"
-    )
-    components["office_co2_sensor"].filename = data_path("co2_sensor.csv")
-    components["office_valve_position_sensor"].filename = data_path(
+    ), date_column=2, value_column=4)
+    components["office_co2_sensor"].source = CsvSource(data_path("co2_sensor.csv"), date_column=2, value_column=4)
+    components["office_valve_position_sensor"].source = CsvSource(data_path(
         "valve_position_sensor.csv"
-    )
-    components["office_damper_position_sensor"].filename = data_path(
+    ), date_column=2, value_column=4)
+    components["office_damper_position_sensor"].source = CsvSource(data_path(
         "damper_position_sensor.csv"
-    )
-    components["supply_air_temperature_sensor"].filename = data_path(
+    ), date_column=2, value_column=4)
+    components["supply_air_temperature_sensor"].source = CsvSource(data_path(
         "supply_air_temperature.csv"
-    )
+    ), date_column=2, value_column=4)
     # the saved model held the columns; the reader names them
     components["office_temperature_heating_setpoint"].source = CsvSource(
         data_path("temperature_heating_setpoint.csv"), date_column=2, value_column=4

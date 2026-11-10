@@ -2659,7 +2659,7 @@ def _apply_playback(model, cits_list) -> None:
                 sensor = cp.connection_point_of
                 if not isinstance(sensor, SensorSystem) or cp.input_port != "measuredValue":
                     continue
-                if not (sensor.uuid or sensor.filename or sensor.df is not None):
+                if not sensor.has_data:
                     continue
                 idx = cp.output_port_index.get(conn, 0)
                 idx = int(idx.item()) if hasattr(idx, "item") else int(idx or 0)

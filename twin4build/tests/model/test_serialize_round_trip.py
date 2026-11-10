@@ -89,9 +89,7 @@ class TestSerializeRoundTrip(unittest.TestCase):
         heater = SpaceHeaterSystem(id="heater")
         outdoor = SensorSystem(
             id="outdoor_sensor",
-            filename=os.path.join(self.tmp, "outdoor.csv"),
-            datecolumn=0, valuecolumn=1,
-            use_spreadsheet=True,
+            source=CsvSource(os.path.join(self.tmp, "outdoor.csv"), date_column=0, value_column=1),
             transformation=celsius_from_deci,
         )
         model.add_connection(outdoor, room, "measuredValue", "outdoorTemperature")

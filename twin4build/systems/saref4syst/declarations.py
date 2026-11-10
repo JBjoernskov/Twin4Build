@@ -106,7 +106,10 @@ class Input(Declaration):
         default: What an unwired input holds: a number, or another input of
             the class, whose value it then reads (a make-up air stream that is
             outdoor air unless something says otherwise:
-            ``makeUpAirTemperature = Input(default=outdoorTemperature)``).
+            ``makeUpAirTemperature = Input(default=outdoorTemperature)``), or
+            one of the class's own outputs that its ``series`` fills (a
+            sensor reads its recorded series while nothing is wired:
+            ``measuredValue = Input(default=measuredData)``).
             ``None``: the input must be wired.
         alias: An old name of the port that still connects, with a
             ``DeprecationWarning``.
@@ -118,10 +121,12 @@ class Input(Declaration):
     def __init__(self, size=None, default=None, alias: Optional[str] = None, doc: str = ""):
         super().__init__(doc)
         _check_size(size, "Input")
-        if default is not None and not isinstance(default, Input) and (
+        if default is not None and not isinstance(default, (Input, Output)) and (
             isinstance(default, bool) or not isinstance(default, (int, float))
         ):
-            raise TypeError(f"Input: default= takes a number or another input of the class, got {default!r}")
+            raise TypeError(
+                f"Input: default= takes a number, another input or an output of the class, got {default!r}"
+            )
         self.size = size
         self.default = default
         self.alias = alias
@@ -387,6 +392,11 @@ def _check_references(cls, merged) -> None:
         if isinstance(ref, Declaration) and not known(ref):
             raise TypeError(
                 f"{cls.__qualname__}.{name}: default= refers to {ref!r}, which the class does not declare"
+            )
+        if isinstance(ref, Declaration) and ref.kind == "output" and getattr(cls, "series", None) is None:
+            raise TypeError(
+                f"{cls.__qualname__}.{name}: default= names the output {ref.name!r}, but the class has no "
+                f"series to fill it"
             )
     for kind in ("output", "state"):
         for name, decl in merged[kind].items():

@@ -12,6 +12,7 @@ import twin4build as tb
 tb._IS_TESTING = True
 
 from twin4build.tests.simulator.test_fusion_batched import START, build, simulate
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 
 def _frame(start, hours, value):
@@ -26,7 +27,7 @@ class TestBatchSensorSources(unittest.TestCase):
         start = START  # the frames cover the simulated hours (nothing is repeated beyond a frame's readings)
         sensors = []
         for k, z in enumerate(zones):
-            s = tb.SensorSystem(id=f"T_meas_{k}", df=_frame(start, 12, 20.0 + k), use_df=True)
+            s = tb.SensorSystem(id=f"T_meas_{k}", source=DataFrameSource(_frame(start, 12, 20.0 + k)))
             model.add_component(s)
             model.add_connection(z, s, "indoorTemperature", "measuredValue")
             sensors.append(s)

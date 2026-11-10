@@ -20,6 +20,7 @@ from dateutil import tz
 
 import twin4build as tb
 from twin4build.model.partition import cut_measured_edges, measured_partition, split_worlds
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 START = datetime.datetime(2024, 1, 1, tzinfo=tz.UTC)
@@ -32,7 +33,7 @@ def _sched(value, sid):
 
 def _series(value, sid):
     index = pd.DatetimeIndex([START + datetime.timedelta(seconds=STEP * k) for k in range(12)], name="time")
-    return tb.SensorSystem(df=pd.DataFrame({"value": [float(value)] * 12}, index=index), use_df=True, id=sid)
+    return tb.SensorSystem(source=DataFrameSource(pd.DataFrame({"value": [float(value)] * 12}, index=index)), id=sid)
 
 
 def _room(model, rid, temperature_sensor=True, skip=()):

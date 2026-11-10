@@ -510,7 +510,7 @@ def run_controller_identification_example():
     )
 
     # Create sensor to measure actuator output
-    actuator_sensor = tb.SensorSystem(filename=act_file, id="actuator_sensor")
+    actuator_sensor = tb.SensorSystem(source=CsvSource(act_file), id="actuator_sensor")
 
     # Add components to model
     model.add_component(temperature_schedule)

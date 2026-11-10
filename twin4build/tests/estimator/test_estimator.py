@@ -24,6 +24,7 @@ tb._IS_TESTING = True
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.utils.data_loaders.sources import CsvSource
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 
 class TestEstimator(unittest.TestCase):
@@ -93,7 +94,7 @@ class TestEstimator(unittest.TestCase):
 
         sensor = SensorSystem(
             id="airflow_sensor",
-            df=df,
+            source=DataFrameSource(df),
         )
 
         # Create new model for estimation with different initial parameter
@@ -162,7 +163,7 @@ class TestEstimator(unittest.TestCase):
 
         dates = pd.date_range(start=start_time, end=end_time, freq=f"{step_size}s")
         df = pd.DataFrame({"value": np.ones(len(dates)) * 0.5}, index=dates)
-        sensor = SensorSystem(id="sensor", df=df)
+        sensor = SensorSystem(id="sensor", source=DataFrameSource(df))
 
         model = Model(id="test_omit_x0")
         schedule = ScheduleSystem(
@@ -207,7 +208,7 @@ class TestEstimator(unittest.TestCase):
         # Create simple model with sensor
         dates = pd.date_range(start=start_time, end=end_time, freq=f"{step_size}s")
         df = pd.DataFrame({"value": np.ones(len(dates)) * 0.5}, index=dates)
-        sensor = SensorSystem(id="sensor", df=df)
+        sensor = SensorSystem(id="sensor", source=DataFrameSource(df))
 
         self.model.add_component(sensor)
         self.model.add_connection(self.damper, sensor, "airFlowRate", "measuredValue")
@@ -267,7 +268,7 @@ class TestEstimator(unittest.TestCase):
 
         dates = pd.date_range(start=start_time, end=end_time, freq=f"{step_size}s")
         df = pd.DataFrame({"value": np.ones(len(dates)) * 0.5}, index=dates)
-        sensor = SensorSystem(id="sensor", df=df)
+        sensor = SensorSystem(id="sensor", source=DataFrameSource(df))
 
         self.model.add_component(sensor)
         self.model.add_connection(self.damper, sensor, "airFlowRate", "measuredValue")
@@ -295,7 +296,7 @@ class TestEstimator(unittest.TestCase):
 
         dates = pd.date_range(start=start_time, end=end_time, freq=f"{step_size}s")
         df = pd.DataFrame({"value": np.ones(len(dates)) * 0.5}, index=dates)
-        sensor = SensorSystem(id="sensor", df=df)
+        sensor = SensorSystem(id="sensor", source=DataFrameSource(df))
 
         self.model.add_component(sensor)
         self.model.add_connection(self.damper, sensor, "airFlowRate", "measuredValue")
@@ -334,7 +335,7 @@ class TestEstimator(unittest.TestCase):
             freq=f"{step_size}s",
         )
         df = pd.DataFrame({"value": np.ones(len(dates)) * 0.5}, index=dates)
-        sensor = SensorSystem(id="sensor", df=df)
+        sensor = SensorSystem(id="sensor", source=DataFrameSource(df))
 
         self.model.add_component(sensor)
         self.model.add_connection(self.damper, sensor, "airFlowRate", "measuredValue")
@@ -385,11 +386,9 @@ class TestEstimator(unittest.TestCase):
                 ("office_damper_position_sensor", "damper_position_sensor.csv"),
                 ("supply_air_temperature_sensor", "supply_air_temperature.csv"),
             ]:
-                model.components[sensor_id].filename = utils.get_path(
+                model.components[sensor_id].source = CsvSource(utils.get_path(
                     ["estimator_example", csv_name]
-                )
-                model.components[sensor_id].datecolumn = 2
-                model.components[sensor_id].valuecolumn = 3
+                ), date_column=2, value_column=3)
             model.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(
                     ["estimator_example", "temperature_heating_setpoint.csv"]
                 ), date_column=2, value_column=3)
@@ -531,11 +530,9 @@ class TestEstimator(unittest.TestCase):
                 ("office_damper_position_sensor", "damper_position_sensor.csv"),
                 ("supply_air_temperature_sensor", "supply_air_temperature.csv"),
             ]:
-                model2.components[sensor_id].filename = utils.get_path(
+                model2.components[sensor_id].source = CsvSource(utils.get_path(
                     ["estimator_example", csv_name]
-                )
-                model2.components[sensor_id].datecolumn = 2
-                model2.components[sensor_id].valuecolumn = 3
+                ), date_column=2, value_column=3)
             model2.components["office_temperature_heating_setpoint"].source = CsvSource(utils.get_path(
                     ["estimator_example", "temperature_heating_setpoint.csv"]
                 ), date_column=2, value_column=3)

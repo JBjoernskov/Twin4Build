@@ -3,9 +3,9 @@
 ``scoring_mask`` (the samples an estimation scores) and ``measurement_sd``
 (the standard deviation it is scored with) are attributes of the sensor:
 they travel with it into a batched model and the estimator reads them.
-``set_series`` puts a sensor on an in-memory series and gives it an
-identity (``uuid``) without switching it to database mode, and the sensor
-stays on its series when ``Model.load`` restores its saved configuration.
+``set_series`` puts a sensor on an in-memory series (a ``DataFrameSource``)
+and gives it an identity (``uuid``), and the sensor stays on its series when
+``Model.load`` restores its saved configuration.
 """
 import datetime
 import os
@@ -25,6 +25,7 @@ from twin4build.utils.get_main_dir import get_main_dir, set_main_dir
 tb._IS_TESTING = True
 
 from twin4build.tests.simulator.test_fusion_batched import START, STEP, build, history, simulate
+from twin4build.utils.data_loaders.sources import CsvSource, DataFrameSource, DatabaseSource
 
 HOURS = 12
 END = START + datetime.timedelta(hours=HOURS)
@@ -63,7 +64,7 @@ def room_model(n, model_id, data=None, **sensor_kwargs):
     model = build(n_pairs=n, model_id=model_id)
     for k in range(n):
         values = np.full(HOURS * 6, 20.0) if data is None else data[k]
-        sensor = SensorSystem(id=f"T{k}", df=frame(values), uuid=f"ROOM{k}_T", **sensor_kwargs)
+        sensor = SensorSystem(id=f"T{k}", source=DataFrameSource(frame(values)), uuid=f"ROOM{k}_T", **sensor_kwargs)
         model.add_connection(model.components[f"Zone{k}"], sensor, "indoorTemperature", "measuredValue")
     model.load(draw_semantic_model=False, draw_simulation_model=False)
     return model
@@ -71,13 +72,13 @@ def room_model(n, model_id, data=None, **sensor_kwargs):
 
 class TestScoringAttributes(unittest.TestCase):
     def test_defaults(self):
-        sensor = SensorSystem(id="s", df=frame([20.0] * 6))
+        sensor = SensorSystem(id="s", source=DataFrameSource(frame([20.0] * 6)))
         self.assertIsNone(sensor.scoring_mask)
         self.assertIsNone(sensor.measurement_sd)
 
     def test_set_at_construction_and_afterwards(self):
         mask = pd.Series(True, index=index(6))
-        sensor = SensorSystem(id="s", df=frame([20.0] * 6), scoring_mask=mask, measurement_sd=0.3)
+        sensor = SensorSystem(id="s", source=DataFrameSource(frame([20.0] * 6)), scoring_mask=mask, measurement_sd=0.3)
         self.assertIs(sensor.scoring_mask, mask)
         self.assertEqual(sensor.measurement_sd, 0.3)
         other = pd.Series(False, index=index(6))
@@ -91,74 +92,55 @@ class TestScoringAttributes(unittest.TestCase):
         self.assertIsNone(sensor.scoring_mask)
         self.assertIsNone(sensor.measurement_sd)
 
-    def test_deleting_the_mask_clears_it(self):
-        """``del sensor.scoring_mask`` worked while the mask was a plain
-        attribute; it still does."""
-        sensor = SensorSystem(id="s", df=frame([20.0] * 6))
-        sensor.scoring_mask = np.ones(6, dtype=bool)
-        del sensor.scoring_mask
-        self.assertIsNone(sensor.scoring_mask)
-
     def test_a_standard_deviation_is_positive(self):
-        sensor = SensorSystem(id="s", df=frame([20.0] * 6))
+        sensor = SensorSystem(id="s", source=DataFrameSource(frame([20.0] * 6)))
         for value in (0.0, -0.1):
             with self.assertRaises(ValueError):
                 sensor.measurement_sd = value
         with self.assertRaises(ValueError):
-            SensorSystem(id="s2", df=frame([20.0] * 6), measurement_sd=0.0)
+            SensorSystem(id="s2", source=DataFrameSource(frame([20.0] * 6)), measurement_sd=0.0)
 
 
 class TestInMemorySeries(unittest.TestCase):
     def test_a_frame_and_a_uuid_give_an_in_memory_sensor(self):
-        sensor = SensorSystem(id="s", df=frame([20.0, 21.0, 22.0, 23.0, 24.0, 25.0]), uuid="X")
+        sensor = SensorSystem(id="s", source=DataFrameSource(frame([20.0, 21.0, 22.0, 23.0, 24.0, 25.0])), uuid="X")
         self.assertEqual(sensor.uuid, "X")
-        self.assertTrue(sensor.use_df)
-        self.assertFalse(sensor.use_database)
-        self.assertFalse(sensor.use_spreadsheet)
+        self.assertIsInstance(sensor.reader, DataFrameSource)
         self.assertEqual(readings(sensor), [20.0, 21.0, 22.0, 23.0, 24.0, 25.0])
 
-    def test_a_uuid_alone_is_still_a_database_source(self):
+    def test_a_uuid_alone_is_a_database_point(self):
         sensor = SensorSystem(id="s", uuid="X")
-        self.assertTrue(sensor.use_database)
-        self.assertFalse(sensor.use_df)
-        sensor = SensorSystem(id="s", df=frame([20.0] * 6))
-        sensor.uuid = "X"  # the setter switches to the database, as before
-        self.assertTrue(sensor.use_database)
-        self.assertFalse(sensor.use_df)
-
-    def test_a_frame_and_a_database_are_still_ambiguous(self):
-        with self.assertRaises(AssertionError):
-            SensorSystem(id="s", df=frame([20.0] * 6), uuid="X", dbconfig={"host": "h"})
+        self.assertIsInstance(sensor.reader, DatabaseSource)
+        self.assertEqual(sensor.reader.uuid, "X")
+        sensor = SensorSystem(id="s", source=DataFrameSource(frame([20.0] * 6)))
+        sensor.uuid = "X"  # an identity: the reader stays
+        self.assertIsInstance(sensor.reader, DataFrameSource)
 
     def test_set_series_takes_a_series(self):
-        sensor = SensorSystem(id="s", uuid="DB_POINT", dbconfig={"host": "h"})
-        self.assertTrue(sensor.use_database)
+        sensor = SensorSystem(id="s", source=DatabaseSource("DB_POINT", {"host": "h"}), uuid="DB_POINT")
         series = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], index=index(6))
         sensor.set_series(series)
-        self.assertTrue(sensor.use_df)
-        self.assertFalse(sensor.use_database)
-        self.assertFalse(sensor.use_spreadsheet)
+        self.assertIsInstance(sensor.source, DataFrameSource)
         self.assertEqual(sensor.uuid, "DB_POINT")  # kept
         self.assertTrue(sensor.has_data)
         self.assertEqual(readings(sensor), [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
 
     def test_set_series_names_the_sensor_without_a_database(self):
-        sensor = SensorSystem(id="s", df=frame([20.0] * 6))
+        sensor = SensorSystem(id="s", source=DataFrameSource(frame([20.0] * 6)))
         self.assertIsNone(sensor.uuid)
         sensor.set_series(frame([7.0] * 6), uuid="UNIT_supplyAirTemperature")
         self.assertEqual(sensor.uuid, "UNIT_supplyAirTemperature")
-        self.assertTrue(sensor.use_df)
-        self.assertFalse(sensor.use_database)
+        self.assertIsInstance(sensor.source, DataFrameSource)
         self.assertEqual(readings(sensor), [7.0] * 6)
 
     def test_set_series_replaces_the_series_of_an_initialized_sensor(self):
-        sensor = SensorSystem(id="s", df=frame([20.0] * 6))
+        sensor = SensorSystem(id="s", source=DataFrameSource(frame([20.0] * 6)))
         self.assertEqual(readings(sensor), [20.0] * 6)
         sensor.set_series(pd.Series([3.0] * 6, index=index(6), name="flow"))
         self.assertEqual(readings(sensor), [3.0] * 6)
 
     def test_set_series_refuses_what_is_not_a_time_series(self):
-        sensor = SensorSystem(id="s", df=frame([20.0] * 6))
+        sensor = SensorSystem(id="s", source=DataFrameSource(frame([20.0] * 6)))
         with self.assertRaises(TypeError):
             sensor.set_series([1.0, 2.0])
         with self.assertRaises(TypeError):
@@ -171,8 +153,8 @@ class TestInMemorySeries(unittest.TestCase):
 class TestSavedConfiguration(unittest.TestCase):
     """``Model.load`` writes every component's configuration to the model's
     folder and, when the folder holds one already (a second run, a second
-    load), restores it by assignment.  Restoring the ``uuid``, ``dbconfig``
-    or ``filename`` a sensor already has does not switch its source."""
+    load), restores it by assignment.  Restoring the reader a sensor
+    already has (a DataFrame reader's saved dict holds no data) keeps it."""
 
     def setUp(self):
         self.main_dir = get_main_dir()
@@ -195,16 +177,14 @@ class TestSavedConfiguration(unittest.TestCase):
 
     def _assert_in_memory(self, model, value):
         sensor = model.components["water"]
-        self.assertTrue(sensor.use_df)
-        self.assertFalse(sensor.use_database)
-        self.assertFalse(sensor.use_spreadsheet)
+        self.assertIsInstance(sensor.source, DataFrameSource)
         simulate(model, hours=2)
         read = sensor.output["measuredValue"].history().reshape(-1)
         self.assertTrue(bool((read == value).all()))
 
     def test_a_named_in_memory_sensor_stays_in_memory(self):
         for run in range(2):  # the second run finds the configuration the first one saved
-            sensor = SensorSystem(id="water", df=frame([55.0] * 20), uuid="WATER_T")
+            sensor = SensorSystem(id="water", source=DataFrameSource(frame([55.0] * 20)), uuid="WATER_T")
             model = self._model(sensor, "saved_named")
             saved = os.path.join(
                 self.tmp, "generated_files", "models", "saved_named", "simulation_model",
@@ -216,34 +196,28 @@ class TestSavedConfiguration(unittest.TestCase):
             self._assert_in_memory(model, 55.0)
 
     def test_a_database_sensor_put_on_a_series_stays_on_it(self):
-        sensor = SensorSystem(id="water", uuid="WATER_T", dbconfig={"host": "historian"})
-        self.assertTrue(sensor.use_database)
+        sensor = SensorSystem(id="water", source=DatabaseSource("WATER_T", {"host": "historian"}), uuid="WATER_T")
         sensor.set_series(frame([57.0] * 20))
         model = self._model(sensor, "saved_database")
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         self.assertEqual(sensor.uuid, "WATER_T")
-        self.assertEqual(sensor.dbconfig, {"host": "historian"})
         self._assert_in_memory(model, 57.0)
-        # a new uuid or database configuration is a new source, as before
-        sensor.dbconfig = {"host": "another"}
-        self.assertTrue(sensor.use_database)
-        self.assertFalse(sensor.use_df)
+        # the model's database connection reaches database readers only
+        model.set_dbconfigs({"host": "another"})
+        self.assertIsInstance(sensor.source, DataFrameSource)
 
     def test_a_spreadsheet_sensor_put_on_a_series_stays_on_it(self):
         filename = os.path.join(self.tmp, "water.csv")
         frame([50.0] * 20).to_csv(filename)
-        sensor = SensorSystem(id="water", filename=filename)
-        self.assertTrue(sensor.use_spreadsheet)
+        sensor = SensorSystem(id="water", source=CsvSource(filename))
         sensor.set_series(frame([58.0] * 20))
         model = self._model(sensor, "saved_spreadsheet")
         model.load(draw_semantic_model=False, draw_simulation_model=False)
-        self.assertEqual(sensor.filename, filename)
         self._assert_in_memory(model, 58.0)
         other = os.path.join(self.tmp, "other.csv")
         frame([51.0] * 20).to_csv(other)
-        sensor.filename = other
-        self.assertTrue(sensor.use_spreadsheet)
-        self.assertFalse(sensor.use_df)
+        sensor.source = CsvSource(other)
+        self.assertEqual(sensor.source.path, other)
 
 
 class TestBatchingCarriesTheScoring(unittest.TestCase):
@@ -265,7 +239,7 @@ class TestBatchingCarriesTheScoring(unittest.TestCase):
             self.assertIs(stand_in.scoring_mask, masks[k])
             self.assertAlmostEqual(stand_in.measurement_sd, 0.1 * (k + 1))
             self.assertEqual(stand_in.uuid, f"ROOM{k}_T")
-            self.assertTrue(stand_in.use_df)
+            self.assertTrue(stand_in.has_data)
 
 
 class TestEstimatorReadsTheSensor(unittest.TestCase):

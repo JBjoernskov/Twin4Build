@@ -2593,7 +2593,7 @@ class Translator:
 
         Either it declares no input ports at all (outdoor environment,
         schedules, ...) or it is a data-bound leaf such as a
-        :class:`SensorSystem` with a ``uuid`` / ``filename`` / ``df`` source,
+        :class:`SensorSystem` with a recorded series (``has_data``),
         whose ``measuredValue`` input is optional.
         """
         if len(getattr(component, "input", None) or {}) == 0:
@@ -2616,11 +2616,7 @@ class Translator:
             if source_flags and not any(source_flags):
                 return False
             return True
-        return bool(
-            getattr(component, "uuid", None)
-            or getattr(component, "filename", None)
-            or getattr(component, "df", None) is not None
-        )
+        return bool(getattr(component, "has_data", False))
     #: Character budget for the human-readable prefix of a composite
     #: (multi-member ``ModeledNode``) component id.  The id doubles as a
     #: filename under ``model_parameters/<class>/<id>.json``, so it must

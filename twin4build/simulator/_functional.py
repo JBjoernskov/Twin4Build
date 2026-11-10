@@ -173,8 +173,12 @@ def _clone_recording(recording):
 def _has_real_forward(comp) -> bool:
     """True iff ``comp``'s class overrides ``forward`` (not the ``nn.Module`` base
     stub, which every ``nn.Module`` inherits).  Components without their own
-    ``forward`` (sensors, schedules, weather, occupancy, ...) are treated as
-    exogenous/pass-through by the functional_model."""
+    ``forward`` (schedules, weather, occupancy, ...) are treated as
+    exogenous/pass-through by the functional_model.  A sensor's ``forward``
+    is the identity of its input, which the functional model follows
+    instead of tracing it (:meth:`FunctionalModel._follow`)."""
+    if isinstance(comp, systems.SensorSystem):
+        return False
     f = getattr(type(comp), "forward", None)
     return f is not None and f is not nn.Module.forward
 
@@ -659,6 +663,9 @@ class FunctionalModel:
         namespaced port names)."""
         if _is_passthrough_sensor(producer) and out_port == "measuredValue":
             return self._trace_source(producer, "measuredValue")
+        if isinstance(producer, systems.SensorSystem) and out_port == "measuredValue":
+            # nothing wired: the sensor reads its recorded series
+            return producer, "measuredData", ()
         # A pass-through sensor's ``measuredData`` (its historised series)
         # is the sensor's own leaf output, not the modelled value.
         fused = self._fusion_alias.get(producer.id)

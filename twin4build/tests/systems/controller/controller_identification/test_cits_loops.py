@@ -30,6 +30,7 @@ from twin4build.systems.controller.setpoint_controller.pid_controller.pid_contro
 )
 from twin4build.systems.sensor.sensor_system import SensorSystem
 from twin4build.systems.utils.smooth_saturation import saturation_mode
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 tb._IS_TESTING = True
 
@@ -48,7 +49,7 @@ def _df(values):
 
 
 def _sensor(sid, values):
-    return SensorSystem(id=sid, df=_df(values), use_df=True)
+    return SensorSystem(id=sid, source=DataFrameSource(_df(values)))
 
 
 #: The temperature loop's setpoint of the damper rooms.

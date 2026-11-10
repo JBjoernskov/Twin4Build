@@ -77,30 +77,25 @@ def fcn(self):
     )
 
     # Configure sensor data sources
-    self.components["office_temperature_sensor"].use_spreadsheet = True
-    self.components["office_temperature_sensor"].filename = utils.get_path(
+    self.components["office_temperature_sensor"].source = CsvSource(utils.get_path(
         ["estimator_example", "temperature_sensor.csv"]
-    )
+    ))
 
-    self.components["office_co2_sensor"].use_spreadsheet = True
-    self.components["office_co2_sensor"].filename = utils.get_path(
+    self.components["office_co2_sensor"].source = CsvSource(utils.get_path(
         ["estimator_example", "co2_sensor.csv"]
-    )
+    ))
 
-    self.components["office_valve_position_sensor"].use_spreadsheet = True
-    self.components["office_valve_position_sensor"].filename = utils.get_path(
+    self.components["office_valve_position_sensor"].source = CsvSource(utils.get_path(
         ["estimator_example", "valve_position_sensor.csv"]
-    )
+    ))
 
-    self.components["office_damper_position_sensor"].use_spreadsheet = True
-    self.components["office_damper_position_sensor"].filename = utils.get_path(
+    self.components["office_damper_position_sensor"].source = CsvSource(utils.get_path(
         ["estimator_example", "damper_position_sensor.csv"]
-    )
+    ))
 
-    self.components["supply_air_temperature_sensor"].use_spreadsheet = True
-    self.components["supply_air_temperature_sensor"].filename = utils.get_path(
+    self.components["supply_air_temperature_sensor"].source = CsvSource(utils.get_path(
         ["estimator_example", "supply_air_temperature.csv"]
-    )
+    ))
 
     # Configure control setpoints
     self.components["office_co2_setpoint"].weekday_ruleset = {

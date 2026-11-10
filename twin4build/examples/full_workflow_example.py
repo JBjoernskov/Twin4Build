@@ -31,6 +31,7 @@ import twin4build as tb
 import twin4build.examples.utils as utils
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.sources import CsvSource
+from twin4build.utils.data_loaders.sources import DataFrameSource
 
 # ---------------------------------------------------------------------------
 # Part 1: Semantic Model -> Simulation Model (Translator)
@@ -118,35 +119,25 @@ def fcn(self):
     # Original DP37 PLC exports (room OD095_01_011A / HF04), packaged under
     # full_workflow_example/ and resolved via utils.get_path (same pattern as
     # estimator_example — not the estimator CSVs themselves).
-    self.components["office_temperature_sensor"].filename = utils.get_path(
+    self.components["office_temperature_sensor"].source = CsvSource(utils.get_path(
         ["full_workflow_example", "temperature_sensor.csv"]
-    )
-    self.components["office_temperature_sensor"].datecolumn = 2
-    self.components["office_temperature_sensor"].valuecolumn = 4
+    ), date_column=2, value_column=4)
 
-    self.components["office_co2_sensor"].filename = utils.get_path(
+    self.components["office_co2_sensor"].source = CsvSource(utils.get_path(
         ["full_workflow_example", "co2_sensor.csv"]
-    )
-    self.components["office_co2_sensor"].datecolumn = 2
-    self.components["office_co2_sensor"].valuecolumn = 4
+    ), date_column=2, value_column=4)
 
-    self.components["office_valve_position_sensor"].filename = utils.get_path(
+    self.components["office_valve_position_sensor"].source = CsvSource(utils.get_path(
         ["full_workflow_example", "valve_position_sensor.csv"]
-    )
-    self.components["office_valve_position_sensor"].datecolumn = 2
-    self.components["office_valve_position_sensor"].valuecolumn = 4
+    ), date_column=2, value_column=4)
 
-    self.components["office_damper_position_sensor"].filename = utils.get_path(
+    self.components["office_damper_position_sensor"].source = CsvSource(utils.get_path(
         ["full_workflow_example", "damper_position_sensor.csv"]
-    )
-    self.components["office_damper_position_sensor"].datecolumn = 2
-    self.components["office_damper_position_sensor"].valuecolumn = 4
+    ), date_column=2, value_column=4)
 
-    self.components["supply_air_temperature_sensor"].filename = utils.get_path(
+    self.components["supply_air_temperature_sensor"].source = CsvSource(utils.get_path(
         ["full_workflow_example", "supply_air_temperature.csv"]
-    )
-    self.components["supply_air_temperature_sensor"].datecolumn = 2
-    self.components["supply_air_temperature_sensor"].valuecolumn = 4
+    ), date_column=2, value_column=4)
 
     self.components["office_co2_setpoint"].weekday_ruleset = {
         "ruleset_default_value": 900,
@@ -902,7 +893,7 @@ def main():
         .numpy(),
         index=simulator.date_time_steps[0],
     )
-    valve_position_schedule = tb.SensorSystem(df=df_valve, id="ValvePositionSchedule")
+    valve_position_schedule = tb.SensorSystem(source=DataFrameSource(df_valve), id="ValvePositionSchedule")
 
     valve_position_schedule = tb.ScheduleSystem(
         weekday_ruleset={
