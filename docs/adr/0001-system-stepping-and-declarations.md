@@ -1,6 +1,7 @@
 # ADR 0001: A System is its declarations and one forward step
 
-- **Status:** accepted, 2026-11-05. To be implemented in 2.0.
+- **Status:** accepted, 2026-11-05; decision 10 amended 2026-11-10 (the
+  probe runs on request). To be implemented in 2.0.
 - **Scope:** how a System is written, stepped, sized, fed with data and
   checked, for every System in the core package and in the packages that
   build on it.
@@ -175,14 +176,16 @@ class DamperSystem(System):
 ### 10. Checks
 
 Every check runs automatically, once, at the first moment its information
-exists, and raises. Nothing is checked during the steps themselves.
+exists, and raises, except the probe, which runs on request. Nothing is
+checked during the steps themselves.
 
 | When | What is checked |
 |---|---|
 | Class definition | no name declared twice (except one input and one output); no `do_step` or `initialize` override; `size=` and `default=` name a real port or setting; `forward`, `derive` and `series` take the arguments above |
 | Construction | no unknown keyword; every setting without a default is given |
 | Load | every input without a default is wired; wired widths match declared sizes; ports sized after the same port or setting agree; translator lists are paired; every parameter has a value after the config is read |
-| First run start after a load | one probe per System: `forward` returns exactly the declared outputs at their declared sizes and a state of the state's shape; `derive` returns a dict; `series` returns every output at `(n_s, n_t, size)`; every output is filled by exactly one of `series` or `forward` |
+| Every run start | `series` returns every output it fills at `(n_s, n_t, size)` and no other |
+| On request: `model.check(start_time, end_time, step_size)` or `simulate(check=True)`; `check_system` requests it | one probe per System on the run-start values: `forward` returns exactly the declared outputs at their declared sizes and a state of the state's shape; `derive` returns a dict; every output is filled by exactly one of `series` or `forward` |
 | After each run | every connected input stayed finite (as today) |
 
 The per-System `validate(self, p)` hooks (schedule, sensor, outdoor
@@ -190,6 +193,13 @@ environment) and the sensor's `validate_connections(self, p)` go. So do the
 model-level `SimulationModel.validate`, `validate_components`,
 `validate_connections`, the `_validated_for_*` flags, `is_validated` and
 `load(validate_model=...)`.
+
+The probe runs on request (amended 2026-11-10, the maintainer's decision;
+the draft ran it at the first run start after every load). Run at every
+load, it would catch a wrong output name, size or state shape before it
+reaches a fit. It would also cost one `derive` and one `forward` call per
+System on every load of every simulation, estimation and optimization, for
+a check that a System's author needs and `check_system` already requests.
 
 ### 11. Conformance check
 
@@ -236,7 +246,8 @@ Systems.
 | Keeping the inverse `OccupancySystem` | The forward profile fits occupancy as a model. The inversion stays only as a helper for start values. |
 | Keeping the two port aliases until 2.1 | Each alias is a second name for the same port, and 2.0 already breaks the System interface. |
 | Checks that only warn | Today's checks only warn, and models with missing inputs run. |
-| Running the first-run probe only with `simulate(check=True)`, or all checks only on `model.check()` | A wrong output name or size then reaches a fit unnoticed. The probe costs about one `forward` call per System per load. |
+| All checks only on `model.check()` | A model with a missing input then loads and runs. |
+| The probe at the first run start after every load (the draft of decision 10) | Overridden by the maintainer: it would catch a wrong output name or size before a fit, at one `derive` and `forward` call per System on every load; the probe runs on request, and `check_system` requests it. |
 | A conformance test that is internal to core, or none | Downstream packages' Systems are the ones with the most to rewrite in 2.0. Without a shared check they can drift from core unseen. |
 | Example inputs declared on the System (`Input(example=...)`) | Adds to the declarations, which should stay as simple as possible. |
 

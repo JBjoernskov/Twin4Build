@@ -1,16 +1,17 @@
-"""The first run start after a load probes every System (ADR 0001, decision 10).
+"""The probe of every System, on request (ADR 0001, decision 10):
+``Model.check(...)`` and ``Simulator.simulate(check=True)``.
 
 Covered:
 
 1. a ``forward`` that leaves out an output, gives one the System does not
    declare, gives an output at another size, or gives a state of another
-   shape, and a ``derive`` that gives no dict, raise at the first run start,
-   naming the System and what is wrong; every problem of the model at once;
+   shape, and a ``derive`` that gives no dict, raise when probed, naming the
+   System and what is wrong; every problem of the model at once;
 2. a data source's ``series`` that gives an output the System does not
    declare, or a vector output at another size, raises where it fills the
-   outputs;
-3. the probe runs once per load: a second run of the same model does not
-   probe again, a new load does;
+   outputs, at every run start;
+3. the probe runs on request only: a plain run does not probe, ``check``
+   and ``simulate(check=True)`` do;
 4. a correct System runs as before (the probe writes nothing).
 """
 
@@ -140,18 +141,18 @@ def _model(model_id, *systems):
     return model
 
 
-def _simulate(model, mode="object"):
+END = START + datetime.timedelta(seconds=3 * STEP)
+
+
+def _simulate(model, mode="object", check=True):
     tb.Simulator(model, execution_mode=mode).simulate(
-        start_time=START,
-        end_time=START + datetime.timedelta(seconds=3 * STEP),
-        step_size=STEP,
-        show_progress_bar=False,
+        start_time=START, end_time=END, step_size=STEP, show_progress_bar=False, check=check,
     )
 
 
 class TestRunStartProbe(unittest.TestCase):
     MODEL_IDS = ("probe_outputs", "probe_widths", "probe_state", "probe_derive", "probe_all",
-                 "probe_series_extra", "probe_series_width", "probe_once", "probe_ok")
+                 "probe_series_extra", "probe_series_width", "probe_on_request", "probe_ok")
 
     def tearDown(self):
         for model_id in self.MODEL_IDS:
@@ -193,20 +194,19 @@ class TestRunStartProbe(unittest.TestCase):
 
     def test_series_gives_exactly_the_declared_outputs_at_their_sizes(self):
         with self.assertRaisesRegex(ValueError, "series\\(\\) gave other, which the System does not declare"):
-            _simulate(_model("probe_series_extra", Recorded(id="recorded", extra=True)))
+            _simulate(_model("probe_series_extra", Recorded(id="recorded", extra=True)), check=False)
         with self.assertRaisesRegex(ValueError, "series\\(\\) gave 'profile' with 3 values a step, its size is 2"):
-            _simulate(_model("probe_series_width", Recorded(id="recorded", wrong=True)))
+            _simulate(_model("probe_series_width", Recorded(id="recorded", wrong=True)), check=False)
 
-    def test_the_probe_runs_once_per_load(self):
-        model = _model("probe_once", Lag(id="lag"))
+    def test_the_probe_runs_on_request_only(self):
+        model = _model("probe_on_request", TwoOutputs(id="added", add=True))
         with mock.patch.object(System, "_probe", autospec=True, side_effect=System._probe) as probe:
-            _simulate(model)
-            _simulate(model)
-            first = probe.call_count
-            model.load(draw_semantic_model=False, draw_simulation_model=False)
-            _simulate(model)
-        self.assertGreater(first, 0)
-        self.assertEqual(probe.call_count, 2 * first)
+            _simulate(model, check=False)  # an output it does not declare, unprobed: the run goes on
+            self.assertEqual(probe.call_count, 0)
+        with self.assertRaisesRegex(ValueError, "TwoOutputs 'added': forward gave c"):
+            model.check(START, END, STEP)
+        with self.assertRaisesRegex(ValueError, "TwoOutputs 'added': forward gave c"):
+            _simulate(model, check=True)
 
     def test_a_correct_system_runs_as_before(self):
         model = _model("probe_ok", Lag(id="lag"), Derived(id="derived"), Widths(id="widths"), Recorded(id="recorded"))

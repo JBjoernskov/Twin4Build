@@ -432,6 +432,12 @@ engine, two batched copies against the copies stepped separately, finite
 gradients, and CUDA when a GPU is present. Twin4Build's own table of examples
 is ``twin4build/tests/test_check_system.py``.
 
+On a model, ``model.check(start_time, end_time, step_size)`` (or
+``simulator.simulate(..., check=True)``) probes every System once at the run
+start: ``derive`` must give a dict and ``forward`` exactly the declared
+outputs at their sizes and a state of the state's shape. The probe runs on
+request only.
+
 External component packages
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

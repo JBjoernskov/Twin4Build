@@ -69,6 +69,8 @@ def check_system(
     to a list of numbers, one per slot.  An input left out keeps its default.
     The checks:
 
+    - the run-start probe (``Model.check``) finds what ``derive`` and
+      ``forward`` give to be what the System declares;
     - save and reload give the same settings and parameters, and the same
       outputs;
     - a deepcopy steps the same as the original and shares no tensor with
@@ -100,7 +102,7 @@ def check_system(
     try:
         check.deepcopy_shares_nothing(system, copies[0])
         original = check.model(system, "original")
-        reference = check.run(original, system)
+        reference = check.run(original, system, probe=True)
         check.same(check.run(check.model(copies[0], "copy"), copies[0]), reference, "a deepcopy steps differently")
         check.same(check.run(original, system, mode="functional"), reference,
                    "the functional engine and object mode differ")
@@ -161,7 +163,7 @@ class _Check:
                     model.add_connection(system, probe, name, "u", input_port_index=slot)
                     slot += 1
 
-    def run(self, model, system, mode="object", device=None):
+    def run(self, model, system, mode="object", device=None, probe=False):
         if device is not None:
             model.to(device=device)
         Simulator(model, execution_mode=mode).simulate(
@@ -169,6 +171,7 @@ class _Check:
             end_time=START + datetime.timedelta(seconds=self.steps * self.step_size),
             step_size=self.step_size,
             show_progress_bar=False,
+            check=probe,
         )
         return {name: _values(port) for name, port in system.output.items()}
 

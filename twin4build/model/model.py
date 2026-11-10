@@ -820,6 +820,26 @@ class Model:
         )
         self.simulation_model.initialize(start_time, end_time, step_size)
 
+    def check(
+        self,
+        start_time: Union[datetime.datetime, List[datetime.datetime]],
+        end_time: Union[datetime.datetime, List[datetime.datetime]],
+        step_size: Union[int, List[int]],
+    ) -> None:
+        """Probe every declared System of the loaded model over a period: one
+        ``derive`` and ``forward`` call each on the run-start values (see
+        :meth:`SimulationModel.check`).  ``Simulator.simulate(check=True)``
+        probes the run it starts.
+
+        Raises:
+            ValueError: Naming every System whose ``derive`` or ``forward``
+                gives what its declarations do not.
+        """
+        start_time, end_time, step_size = validate_period(
+            start_time, end_time, step_size
+        )
+        self.simulation_model.check(start_time, end_time, step_size)
+
     def _load_parameters(self, force_config_overwrite: bool = False) -> None:
         """
         Load parameters for all components from configuration files.

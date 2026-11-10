@@ -542,6 +542,7 @@ class Simulator:
         after_initialize=None,
         execution_mode: str = None,
         execution_backend: str = None,
+        check: bool = False,
         **kwargs,
     ) -> None:
         """
@@ -571,9 +572,13 @@ class Simulator:
                 ``"functional"``.
             execution_backend: Optional per-call override of ``"eager"`` or
                 ``"cuda_graph"``.
+            check: Probe every declared System at the run start, before the
+                first step (``Model.check``): one ``derive`` and ``forward``
+                call each; raises on what its declarations do not give.
 
         Raises:
             AssertionError: If input parameters are invalid or missing timezone info.
+            ValueError: With ``check``, naming every System the probe finds wrong.
         """
         mode = self.execution_mode if execution_mode is None else execution_mode
         backend = (
@@ -645,6 +650,8 @@ class Simulator:
                 torch.cuda.synchronize(functional_device)
             initialization_started = time.perf_counter()
         self.model.initialize(start_time, end_time, step_size)
+        if check:
+            (getattr(self.model, "_simulation_model", None) or self.model)._probe_components(step_size)
         if initialization_started is not None:
             if functional_device.type == "cuda":
                 torch.cuda.synchronize(functional_device)

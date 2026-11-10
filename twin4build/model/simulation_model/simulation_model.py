@@ -353,7 +353,6 @@ class SimulationModel:
         "_system_registry",
         "_initial_state",
         "_initialization_count",
-        "_probed",
     )
 
     def __str__(self):
@@ -420,7 +419,6 @@ class SimulationModel:
         self._required_initialization_connections = []
         self._initial_state = None  # see set_state
         self._initialization_count = 0  # see initialization_count
-        self._probed = False  # see _probe_components
         self._components_no_cycles = {}
         self._source_cuts = None  # a batched model's: see _cut_source_cuts
         self._fused_components = {}
@@ -1879,9 +1877,6 @@ class SimulationModel:
             # the state of ``set_state`` (an estimated initial state), after
             # the components have set their own initial conditions
             self._apply_initial_state(start_time)
-            if not self._probed:
-                self._probe_components(step_size)
-                self._probed = True
         # The components reallocate their tensors here; a CUDA graph captured
         # before reads them at their old addresses, so captured graphs hold
         # for one initialization (``initialization_count``).
@@ -1990,16 +1985,36 @@ class SimulationModel:
         # Check for missing initial values AFTER all components are initialized
         self.check_for_missing_initial_values()
 
-    def _probe_components(self, step_size) -> None:
-        """The first run start after a load probes every declared System it
-        steps (ADR 0001, decision 10): one ``derive`` and ``forward`` call
-        each (:meth:`System._probe`); a data source's ``series`` is checked
-        where it fills its outputs.
+    def check(
+        self,
+        start_time: List[datetime.datetime],
+        end_time: List[datetime.datetime],
+        step_size: List[int],
+    ) -> None:
+        """Probe every declared System the model steps, on request (ADR
+        0001, decision 10): the model is initialized for the period, as a run
+        starts, and each System's ``derive`` and ``forward`` are called once
+        on the run-start values, writing nothing (:meth:`System._probe`).  A
+        data source's ``series`` is checked where it fills its outputs, at
+        every run start.  ``Simulator.simulate(check=True)`` probes the run it
+        starts.
+
+        Args:
+            start_time: Start time of each period.
+            end_time: End time of each period.
+            step_size: Step size of each period [s].
 
         Raises:
-            ValueError: Naming every System whose ``derive`` or ``forward``
-                gives what its declarations do not.
+            ValueError: Naming every System whose ``derive`` gives no dict, or
+                whose ``forward`` leaves out an output, gives one it does not
+                declare, gives an output at another size or a state of
+                another shape.
         """
+        self.initialize(start_time, end_time, step_size)
+        self._probe_components(step_size)
+
+    def _probe_components(self, step_size) -> None:
+        """The probe of :meth:`check`, on the model as initialized."""
         problems = []
         for component in self._flat_execution_order:
             problems.extend(component._probe(step_size))
@@ -2251,7 +2266,6 @@ class SimulationModel:
         LOGGER.task("Checking model")
         self._check_loaded()
         LOGGER.ok("Checking model", change_status=True)
-        self._probed = False  # the next run start probes the Systems
 
         LOGGER.remove_level()
         LOGGER.ok("Loading simulation model", change_status=True)
