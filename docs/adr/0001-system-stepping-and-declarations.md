@@ -143,7 +143,8 @@ class DamperSystem(System):
 
 - A forward `OccupancyProfileSystem`, written downstream so far, moves into core: people in
   a room are a time-of-day basis weighted by estimated knot values, and the
-  room's CO2 sensor scores the fit.
+  room's CO2 sensor scores the fit. (Amended: it stays downstream. Core is
+  stand-alone and takes nothing from the packages built on it.)
 - The inverse `OccupancySystem` is deleted (amended: it is converted, see
   the Implementation, step 9). Its inversion survives as an
   `invert_zoh_occupancy` helper for start values.
