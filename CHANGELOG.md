@@ -918,6 +918,20 @@ Unused and untested; 2.0 drops them without a deprecation period.
   neighbouring zone (`makeUpAirTemperature` wired) and the CO2 are not
   touched.  A composite's children see the composite's wiring
   (`System.input_defaults()` of a room's `thermal` is the room's).
+- `split_worlds` provides a lagged hub instead of copying it: a component
+  with free parameters whose outputs the other worlds read are all lagged
+  (`LAGGED_OUTPUT_PORTS`, a building's hidden interior node) and that one
+  world needs only through measured or exogenous signals lives in that
+  world (its home, `Worlds.provided`), and every other world reads it
+  through a `GradientBarrierSystem` (`systems/utils/gradient_barrier_system.py`:
+  the value, without its gradient).  The partition counts a barrier's
+  output as exogenous and the estimator's structure walk
+  (`FunctionalModel.index_coupling`) lets no parameter reach through it, so
+  the readers' blocks stay apart from the home's.
+- `System.JOINS_WORLDS` (default `False`): a component whose class sets it
+  (an opening between the zones of one room) joins the worlds of the scored
+  spaces it reads or feeds into one world (`Worlds.merged`) instead of being
+  copied with a measurement of the other side.
 
 ### Migration notes
 

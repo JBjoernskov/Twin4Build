@@ -64,6 +64,7 @@ import torch.nn as nn
 
 from twin4build import settings as _settings
 import twin4build.systems as systems
+from twin4build.systems.utils.gradient_barrier_system import GradientBarrierSystem
 import twin4build.utils.types as tps
 from twin4build.utils.rgetattr import rgetattr
 
@@ -1504,11 +1505,15 @@ class FunctionalModel:
         upstream = {cid: set().union(*(producer_ids(spec) for _port, spec in ports)) if ports else set()
                     for cid, ports in self.wiring.items()}
         reached: Set[str] = {cid for cid, attrs in self.theta_by_comp.items() if attrs}
+        # A gradient barrier (split_worlds' provided components) passes a value on without its gradient: no parameter
+        # reaches what it sends, so its readers' blocks stay apart from its sender's (7 Nov 2026: a building's hidden
+        # node, read by every room).
+        barriers = {c.id for c in self.cone if isinstance(c, GradientBarrierSystem)}
         changed = True
         while changed:
             changed = False
             for cid, ups in upstream.items():
-                if cid not in reached and ups & reached:
+                if cid not in reached and cid not in barriers and ups & reached:
                     reached.add(cid)
                     changed = True
 

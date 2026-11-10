@@ -11,6 +11,9 @@ flow meter.  On top of them, one of:
   the dampers, A and B stay apart.
 
 By component (the rule before), either would put A, B and everything else in one group.
+
+A lagged hub (a building's hidden interior node) that one world reads only through measurements is provided from
+that world: the other worlds read it through a gradient barrier instead of copies of it and its walls.
 """
 
 import datetime
@@ -22,6 +25,7 @@ from dateutil import tz
 
 import twin4build as tb
 from twin4build.model.partition import cut_measured_edges, measured_partition, split_worlds
+from twin4build.systems.utils.gradient_barrier_system import GradientBarrierSystem
 from twin4build.tests.model.test_split_worlds import START, STEP, _sched, _series, senders
 
 tb._IS_TESTING = True
@@ -177,6 +181,125 @@ class TestJunction(unittest.TestCase):
         total = model.components["J"].output["airFlowRateIn"].history()
         one = model.components["A_damper"].output["airFlowRate"].history()
         self.assertTrue(bool(((total - 2 * one).abs() < 1e-12).all()))  # two equal dampers, copies equal originals
+
+
+def build_node(model_id, with_meter=True, with_draw=False):
+    """Rooms A and B (scored), each with a core wall to one hidden node N (a lagged :class:`ThermalMassNodeSystem`
+    with a free capacity); with ``with_meter`` a space M, scored, takes N's temperature as its supply air (a unit's
+    return air drawn from a building's hidden interior): M's world reads N only through A's and B's measurements.
+    With ``with_draw`` N also reads A's surplus air (unmeasured, state-free: as the node reads a box's draw)."""
+    model = tb.Model(id=model_id)
+    sensors = []
+    node = tb.ThermalMassNodeSystem(C=1e8, T_init=20.0, id="N")
+    for k, rid in enumerate(("A", "B")):
+        room, _, s = _room(model, rid)
+        sensors += s
+        wall = tb.WallSystem(C=2e5, R_a=0.02, R_b=0.02, id=f"W_{rid}")
+        model.add_connection(room, wall, "indoorTemperature", "temperatureA")
+        model.add_connection(node, wall, "temperature", "temperatureB")
+        model.add_connection(wall, room, "heatFlowRateA", "wallHeatGain", input_port_index=0)
+        model.add_connection(wall, node, "heatFlowRateB", "heatFlowRate", input_port_index=k)
+    if with_draw:
+        model.add_connection(model.components["A"], node, "surplusAirFlowRate", "heatFlowRate", input_port_index=2)
+    if with_meter:
+        meter = tb.BuildingSpaceSystem(id="M")
+        for port, value in (("outdoorTemperature", 0.0), ("globalIrradiation", 0.0), ("numberOfPeople", 0.0),
+                            ("heatGain", 0.0), ("outdoorCo2Concentration", 400.0)):
+            model.add_connection(_sched(value, f"M_{port}"), meter, "scheduleValue", port)
+        model.add_connection(_sched(0.1, "M_sup"), meter, "scheduleValue", "supplyAirFlowRate", input_port_index=0)
+        model.add_connection(_sched(0.1, "M_exh"), meter, "scheduleValue", "exhaustAirFlowRate", input_port_index=0)
+        model.add_connection(node, meter, "temperature", "supplyAirTemperature")
+        sensors.append(_series(20.0, "M_T"))
+        model.add_connection(meter, sensors[-1], "indoorTemperature", "measuredValue")
+    return model, sensors
+
+
+class TestProvidedNode(unittest.TestCase):
+    """7 Nov 2026: a lagged hub that one world reads only through measurements lives there (provided); the rooms'
+    worlds read it through a gradient barrier, not copies of it and of every wall it has."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.model, cls.sensors = build_node("signal_worlds_node")
+        cls.worlds = split_worlds(cls.model, measured=cls.sensors, scored=cls.sensors)
+        cls.partition = measured_partition(cls.model, measured=cls.sensors, scored=cls.sensors)
+
+    def test_the_node_is_provided_from_the_meter_s_world(self):
+        self.assertEqual(self.worlds.merged, {})
+        self.assertEqual(self.worlds.provided, {"N": ["N__temperature__barrier"]})
+        self.assertNotIn("N", self.worlds.copies)
+        # each core wall twice: in its room's world (the original) and in the node's (a copy on the measured room)
+        self.assertEqual(self.worlds.copies, {"W_A": ["W_A__in_M"], "W_B": ["W_B__in_M"]})
+
+    def test_the_rooms_read_the_barrier_and_the_node_reads_the_measured_rooms(self):
+        c = self.model.components
+        self.assertEqual([s.id for s in senders(c["W_A"], "temperatureB")], ["N__temperature__barrier"])
+        self.assertEqual([s.id for s in senders(c["N__temperature__barrier"], "value")], ["N"])
+        self.assertEqual([s.id for s in senders(c["W_A__in_M"], "temperatureB")], ["N"])
+        self.assertEqual([s.id for s in senders(c["W_A__in_M"], "temperatureA")], ["A_T__world_replay"])
+        self.assertEqual({s.id for s in senders(c["N"], "heatFlowRate")}, {"W_A__in_M", "W_B__in_M"})
+
+    def test_three_groups_and_the_barrier_ties_none(self):
+        g = self.partition.group_of
+        self.assertEqual(len({g["A"], g["B"], g["M"]}), 3)
+        self.assertEqual(g["N"], g["M"])
+        self.assertEqual(g["W_A__in_M"], g["M"])
+        self.assertEqual(g["W_A"], g["A"])
+        self.assertEqual(g["N__temperature__barrier"], g["N"])  # with what it passes on; its readers apart
+
+    def test_the_split_model_simulates_and_the_barrier_passes_the_node_on(self):
+        model, sensors = build_node("signal_worlds_node_sim")
+        split_worlds(model, measured=sensors, scored=sensors)
+        cut_measured_edges(model, measured_partition(model, measured=sensors, scored=sensors))
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        tb.Simulator(model).simulate(start_time=START, end_time=START + datetime.timedelta(hours=1), step_size=STEP,
+                                     show_progress_bar=False)
+        node = model.components["N"].output["temperature"].history()
+        passed = model.components["N__temperature__barrier"].output["value"].history()
+        self.assertTrue(bool(torch.isfinite(passed).all()))
+        self.assertLess(float((node - passed).abs().max()), 1.0)  # the node's value (start of step), not another signal
+
+    def test_the_solver_s_blocks_stay_apart(self):
+        """The estimator's structure walk (index_coupling) does not join the rooms' blocks to the node's through the
+        barrier: no parameter reaches what a barrier sends."""
+        model, sensors = build_node("signal_worlds_node_blocks")
+        split_worlds(model, measured=sensors, scored=sensors)
+        cut_measured_edges(model, measured_partition(model, measured=sensors, scored=sensors))
+        # unfused: the theta spec names the rooms and walls themselves (fused, a block would hold them)
+        model.load(draw_semantic_model=False, draw_simulation_model=False, enable_fusion=False)
+        model.initialize(start_time=[START], end_time=[START + datetime.timedelta(hours=1)], step_size=STEP)
+        # every estimable parameter
+        theta_spec = [(comp, attr) for comp in model.components.values() if hasattr(comp, "get_estimable_parameters")
+                      for _, attr, _, _, _ in comp.get_estimable_parameters()]
+        measurements = [s for s in sensors if s.id in model.components]
+        simulator = tb.Simulator(model, execution_mode="functional", execution_backend="eager")
+        _, functional_model = simulator.build_functional_model(theta_spec=theta_spec, measurements=measurements,
+                                                               step_size=STEP)
+        functional_model.prepare_routes(torch.device("cpu"))
+        theta_block, _column_block, _n_blocks = functional_model.index_coupling()
+        # A with its wall, B with its wall, and the node's world (N, M, the walls' copies): three blocks
+        self.assertEqual(len({int(b) for b in theta_block}), 3, sorted(functional_model.theta_by_comp))
+
+    def test_the_barrier_stops_the_gradient(self):
+        x = torch.tensor([[21.0]], requires_grad=True)
+        _, out = GradientBarrierSystem(id="b").forward(None, {"value": x}, {}, 600.0)
+        self.assertEqual(float(out["value"]), 21.0)
+        self.assertFalse(out["value"].requires_grad)
+
+    def test_another_world_s_state_free_output_keeps_the_home(self):
+        """7 Nov 2026: a large building's node reads the central box's draw (unmeasured, the box a world of its own
+        by its meter); the box's draw is computed in the home from what it reads, so the home stays clean."""
+        model, sensors = build_node("signal_worlds_node_draw", with_draw=True)
+        worlds = split_worlds(model, measured=sensors, scored=sensors)
+        self.assertEqual(worlds.merged, {})
+        self.assertEqual(worlds.provided, {"N": ["N__temperature__barrier"]})
+        self.assertNotIn("N", worlds.copies)
+
+    def test_without_a_world_that_reads_it_through_measurements_it_is_copied(self):
+        model, sensors = build_node("signal_worlds_node_alone", with_meter=False)
+        worlds = split_worlds(model, measured=sensors, scored=sensors)
+        self.assertEqual(worlds.provided, {})
+        self.assertIn("N", worlds.copies)
 
 
 if __name__ == "__main__":
