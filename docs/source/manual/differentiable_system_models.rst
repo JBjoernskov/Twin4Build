@@ -261,32 +261,29 @@ it must not appear in ``FUSABLE_OUTPUT_PORTS``. A fused block logs a warning
 for a member output that is neither a row nor a derived output: that output
 would keep its initial value.
 
-Renaming an output port
------------------------
+Renaming a port
+---------------
 
-A component that renames an output port keeps the old name working for a
-release. It lists the old name in ``OUTPUT_PORT_ALIASES`` (``{"old":
-"new"}``) and holds its outputs in an
-:class:`~twin4build.systems.saref4syst.system.AliasedPorts`:
+A System that renames a port keeps the old name working for a release. The
+port declares its old name:
 
 .. code-block:: python
 
-   OUTPUT_PORT_ALIASES = {"Power": "toRoomPower"}
+   class HeaterSystem(core.System):
+       heatOutput = Output(alias="oldHeatOutput")
 
-   self._output = core.AliasedPorts(
-       {"toRoomPower": tps.Scalar(0), ...},
-       aliases=self.OUTPUT_PORT_ALIASES,
-       owner=type(self).__name__,
-   )
-
-The ports are a plain ``dict`` of the current names, so everything that walks
-them sees one name per port; ``output["old"]`` and ``output.get("old")``
-return the renamed port with a ``DeprecationWarning`` and ``"old" in output``
-is true. ``Model.add_connection`` and ``remove_connection``, the loader of a
-saved model, the translator's signature-pattern inputs and the optimizer's
+The class's ``OUTPUT_PORT_ALIASES`` (``INPUT_PORT_ALIASES`` for an input)
+then map the old name to the new one, and the ports are an
+:class:`~twin4build.systems.saref4syst.system.AliasedPorts`: a plain ``dict``
+of the current names, so everything that walks them sees one name per port;
+``output["old"]`` and ``output.get("old")`` return the renamed port with a
+``DeprecationWarning`` and ``"old" in output`` is true.
+``Model.add_connection`` and ``remove_connection``, the loader of a saved
+model, the translator's signature-pattern inputs and the optimizer's
 ``(component, port, ...)`` tuples replace the old name through
-``System.resolve_output_port``, so connections, saved models, fusion,
-batching and the functional rollout hold the new name only.
+``System.resolve_output_port`` (``resolve_input_port``), so connections,
+saved models, fusion, batching and the functional rollout hold the new name
+only.
 
 Persistent tensors in ``nn.Module``
 -----------------------------------

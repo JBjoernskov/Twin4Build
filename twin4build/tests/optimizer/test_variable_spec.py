@@ -48,11 +48,11 @@ class TestVariableSpec(unittest.TestCase):
         with self.assertRaises(ValueError):
             tb.Variable(self.curve.Y, periods="monthly")
         with self.assertRaises(ValueError):  # a trajectory needs its bounds
-            tb.Variable(self.heater.output["Power"])
+            tb.Variable(self.heater.output["toRoomPower"])
         with self.assertRaises(TypeError):
             tb.Variable(1.0)
         self.assertEqual(tb.Variable(self.curve.Y).periods, "shared")
-        self.assertEqual(tb.Variable(self.heater.output["Power"], lb=0, ub=1).periods, "per_period")
+        self.assertEqual(tb.Variable(self.heater.output["toRoomPower"], lb=0, ub=1).periods, "per_period")
 
     # -- the Estimator ---------------------------------------------------------
     def test_estimator_variables_are_the_tuples(self):
@@ -169,7 +169,7 @@ class TestVariableSpec(unittest.TestCase):
             optimizer.optimize(
                 start_time=self.start, end_time=self.end, step_size=2400,
                 variables=variables,
-                objectives=[(self.heater, "Power", "min"), (self.discomfort, "output", "min")],
+                objectives=[(self.heater, "toRoomPower", "min"), (self.discomfort, "output", "min")],
                 method=("scipy", "SLSQP", "ad"),
                 options={"maxiter": 1},
             )

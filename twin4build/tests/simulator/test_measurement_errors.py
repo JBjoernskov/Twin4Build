@@ -79,7 +79,7 @@ def room_model(model_id, data, start=START):
         model.add_connection(model.components[f"Zone{k}"], sensor, "indoorTemperature", "measuredValue")
     # sensors that read a port and hold no data, and a data leaf: no measurements
     for k in range(3):
-        model.add_connection(model.components[f"Radiator{k}"], tb.SensorSystem(id=f"P{k}"), "Power", "measuredValue")
+        model.add_connection(model.components[f"Radiator{k}"], tb.SensorSystem(id=f"P{k}"), "toRoomPower", "measuredValue")
     leaf = tb.SensorSystem(id="water_sensor", df=frame([60.0] * (len(data[0]) + 6), start))
     radiator = model.components["Radiator2"]
     model.remove_connection(model.components["WaterTemp"], radiator, "scheduleValue", "supplyWaterTemperature")

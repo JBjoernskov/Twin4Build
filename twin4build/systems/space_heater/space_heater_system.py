@@ -110,9 +110,6 @@ class SpaceHeaterSystem(core.System):
        - ``toRoomPower``: Heat given to the room [W]
        - ``toRadiatorPower``: Heat taken from the heating circuit [W]
 
-    ``Power`` is the deprecated name of ``toRoomPower`` (removed in
-    twin4build 2.1).
-
     **State-Space Representation:**
 
     The system is implemented using the DiscreteStatespaceSystem with matrices:
@@ -302,7 +299,7 @@ class SpaceHeaterSystem(core.System):
     indoorTemperature = Input(doc="Indoor air temperature [degC]")
     elements = State(size=nelements, init=21.0, doc="Element water temperatures [degC], along the flow")
     outletWaterTemperature = Output(init=elements, doc="Outlet water temperature [degC]")
-    toRoomPower = Output(alias="Power", doc="Heat given to the room [W]")
+    toRoomPower = Output(doc="Heat given to the room [W]")
     toRadiatorPower = Output(doc="Heat taken from the heating circuit [W]")
     thermalMassHeatCapacity = Parameter(
         500000.0, lb=1e4, ub=1e7, relative=(0.25, 4.0), scaling="log", doc="Thermal mass heat capacity [J/K]"

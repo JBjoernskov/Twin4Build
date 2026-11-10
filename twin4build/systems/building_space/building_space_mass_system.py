@@ -316,7 +316,7 @@ class BuildingSpaceMassSystem(core.System):
 
     supplyAirFlowRate = Input(doc="Supply air flow rate [kg/s]")
     exhaustAirFlowRate = Input(doc="Exhaust air flow rate [kg/s]")
-    outdoorCo2Concentration = Input(default=400.0, alias="outdoorCO2", doc="Outdoor CO2 concentration [ppmv]")
+    outdoorCo2Concentration = Input(default=400.0, doc="Outdoor CO2 concentration [ppmv]")
     numberOfPeople = Input(doc="Number of occupants")
     makeUpAirCO2 = Input(default=outdoorCo2Concentration, doc="CO2 of the make-up air [ppmv]; unwired: outdoor air")
     supplyAirCO2 = Input(default=outdoorCo2Concentration, doc="CO2 of the supply air [ppmv]; unwired: outdoor air")

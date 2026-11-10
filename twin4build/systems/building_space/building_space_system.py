@@ -65,8 +65,7 @@ class BuildingSpaceSystem(core.System):
           - exhaustAirFlowRate: Used by both thermal (heat removal) and mass (CO2 removal)
           - numberOfPeople: Used by both thermal (heat gain) and mass (CO2 generation)
           - outdoorTemperature: Used by thermal model
-          - outdoorCo2Concentration: Used by mass balance model (400 ppmv while unwired;
-            ``outdoorCO2`` is its deprecated name)
+          - outdoorCo2Concentration: Used by mass balance model (400 ppmv while unwired)
 
        **Thermal-Only Inputs:**
           - supplyAirTemperature, globalIrradiation, heatGain
@@ -112,7 +111,7 @@ class BuildingSpaceSystem(core.System):
     )
     wallHeatGain = Input(size="wired", doc="Heat flows from connected WallSystem components [W], one slot per wall")
     infiltrationAirFlowRate = Input(default=0.0, doc="Envelope inflow on top of the make-up flow [kg/s]")
-    outdoorCo2Concentration = Input(default=400.0, alias="outdoorCO2", doc="Outdoor CO2 concentration [ppmv]")
+    outdoorCo2Concentration = Input(default=400.0, doc="Outdoor CO2 concentration [ppmv]")
     makeUpAirCO2 = Input(default=outdoorCo2Concentration, doc="CO2 of the make-up air [ppmv]; unwired: outdoor air")
     supplyAirCO2 = Input(default=outdoorCo2Concentration, doc="CO2 of the supply air [ppmv]; unwired: outdoor air")
     exchangeCO2Gain = Input(size="wired", doc="CO2 exchanged with other zones [kg/s], one slot per opening")

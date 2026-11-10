@@ -21,8 +21,9 @@ Covered:
 9. initial values: a state and an output start at a setting, an output at its
    state's start;
 10. a parameter's default computed from the System, an old keyword that moved
-    into a child, a removed keyword that names its replacement, and the alias
-    tables a renamed port fills;
+    into a child, a removed keyword that names its replacement, the alias
+    tables a renamed port fills, and a renamed input and output connecting,
+    disconnecting, reading and naming an objective through the old names;
 11. an input that reads another input while unwired, in both engines; a child
     that takes its composite's wired width; a child parameter shared with
     another; a child's own id;
@@ -662,6 +663,41 @@ class TestBuildRules(unittest.TestCase):
         self.assertEqual(GainSystem(id="g").resolve_output_port("y"), "y")
         with self.assertWarns(DeprecationWarning):
             self.assertEqual(GainSystem(id="g").resolve_output_port("out"), "y")
+
+    def test_renamed_ports_connect_and_read_through_their_old_names(self):
+        from twin4build.optimizer.optimizer import _resolve_port_names
+
+        class RenamedInputSystem(core.System):
+            u = Input(alias="signal")
+            y = Output()
+
+            def forward(self, x, inputs, p, step_size):
+                return x, {"y": inputs["u"]}
+
+        model = tb.Model(id="test_declared_renamed_ports")
+        gain, follower = GainSystem(id="g"), RenamedInputSystem(id="f")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model.add_connection(gain, follower, "out", "signal")
+        messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
+        self.assertTrue(any("GainSystem.y" in m for m in messages), messages)
+        self.assertTrue(any("RenamedInputSystem.u" in m for m in messages), messages)
+        self.assertEqual({w.filename for w in caught if w.category is DeprecationWarning}, {__file__})
+        self.assertEqual([c.output_port for c in gain.connected_through], ["y"])
+        self.assertEqual([p.input_port for p in follower.connects_at], ["u"])
+        with self.assertWarnsRegex(DeprecationWarning, "RenamedInputSystem.u"):
+            port = follower.input["signal"]
+        self.assertIs(port, follower.input["u"])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self.assertIn("signal", follower.input)  # no warning
+            self.assertNotIn("signal", list(follower.input))
+        with self.assertWarnsRegex(DeprecationWarning, "GainSystem.y"):
+            self.assertEqual(_resolve_port_names([(gain, "out", "min")]), [(gain, "y", "min")])
+        with self.assertWarns(DeprecationWarning):
+            model.remove_connection(gain, follower, "out", "signal")
+        self.assertEqual(gain.connected_through, [])
+        self.assertEqual(follower.connects_at, [])
 
 
 class TestCompositionRules(unittest.TestCase):
