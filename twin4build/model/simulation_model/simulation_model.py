@@ -3640,8 +3640,9 @@ class SimulationModel:
                         (component_uri, predicate, Literal(recorded[key]))
                     )
             for key, value in flatten_dict(component.populate_config(), component):
-                if isinstance(value, (dict, list)):
-                    # Serialize dicts and lists as JSON with datatype
+                if isinstance(value, (dict, list, tuple)):
+                    # Serialize dicts, lists and tuples (a setting's points)
+                    # as JSON with datatype
                     value_ = json.dumps(value)
                     datatype = core.namespace.RDF.JSON
                 else:
