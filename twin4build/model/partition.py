@@ -474,6 +474,9 @@ def split_worlds(
     its original's widths (and batches with it).  Which components these are follows from the wiring, the
     measurements and the classes' declarations; no class is named.  Arguments as :func:`measured_partition`; ``free``
     also decides which parameters are shared.  Call :func:`measured_partition` on the model afterwards.
+
+    The model records the result (``model.worlds``): a multiple-shooting fit of it starts every component and its
+    copies from one box and one start, as they are one state.
     """
 
     c = _classify(model, free, measured, derived, scored)
@@ -871,6 +874,7 @@ def split_worlds(
                 len(result.copies), sum(len(v) for v in result.copies.values()),
                 sum(len(v) for v in result.projections.values()), len(result.shared), len(result.merged),
                 len(result.provided), sum(len(v) for v in result.provided.values()))
+    model.worlds = result
     return result
 
 

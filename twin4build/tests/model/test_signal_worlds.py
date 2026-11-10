@@ -436,5 +436,66 @@ class TestProvidedNode(unittest.TestCase):
         self.assertIn("N", worlds.copies)
 
 
+def _shooting_estimator(model_id, forget_worlds=False):
+    """The provided node's split model fitted over two consecutive 50-minute windows (multiple shooting, one SLSQP
+    iteration; the second window starts where each world's first ends, so a wall and its copy start apart), with
+    no option about the copies.  ``forget_worlds``: the model's record of its worlds dropped after the split, as
+    on a model built the same way by hand.  Returns the model, its worlds and the objective."""
+    model, sensors = build_node(model_id)
+    worlds = split_worlds(model, measured=sensors, scored=sensors)
+    if forget_worlds:
+        model.worlds = None
+    cut_measured_edges(model, measured_partition(model, measured=sensors, scored=sensors))
+    model.load(draw_semantic_model=False, draw_simulation_model=False, enable_fusion=False)
+    c = model.components
+    entries = [(c[w], "C", 2e5, 1e4, 1e7) for w in ("W_A", "W_A__in_M", "W_B", "W_B__in_M")]
+    entries.append((c["N"], "C", 1e8, 1e6, 1e9))
+    # the default tolerance, given: an empty multiple-shooting config sets up no window starts
+    options = {"maxiter": 1, "continuity_sd_rel": 0.01}
+    window = datetime.timedelta(minutes=50)  # the test series hold two hours
+    est = tb.Estimator(tb.Simulator(model, execution_mode="functional", execution_backend="eager", compile_step=False))
+    est.estimate(parameters=entries, measurements=[(s, 0.1) for s in sensors if s.id in c],
+                 start_time=[START, START + window], end_time=[START + window, START + 2 * window], step_size=STEP,
+                 n_warmup=0, method=("scipy", "SLSQP", "ad", "multiple_shooting"), options=options)
+    return model, worlds, est._functional_objective
+
+
+def _wall_columns(obj):
+    """Per wall, the positions of its first state entry and of its copy's among the window-start variables."""
+    columns = obj._state_columns()
+    position = {int(col): j for j, col in enumerate(obj.init_index.tolist())}
+    return {wall: (position[columns[wall][0]], position[columns[f"{wall}__in_M"][0]]) for wall in ("W_A", "W_B")}
+
+
+class TestSharedInitialStates(unittest.TestCase):
+    """8 Nov 2026: a component and its copies start every window from one box and one start, as they are one
+    state; no option asks for it.  A large building's room-node walls lived in the room's world (the copy, its
+    start fitted to the room's sensor) and in the node's (the original, its start left at the 20 C default in two
+    thirds of the windows); the coupled model took the original's and ran the rooms cold."""
+
+    def test_the_copies_share_one_box_and_one_start(self):
+        model, worlds, obj = _shooting_estimator("signal_worlds_node_states")
+        self.assertIs(model.worlds, worlds)  # split_worlds records what it did on the model
+        norm = obj.init_x0_norm.reshape(2, obj.init_n_slow)
+        for wall, (j0, j1) in _wall_columns(obj).items():
+            for p in range(2):
+                for bound in (obj.init_lb, obj.init_ub, obj.init_x0):
+                    self.assertEqual(float(bound[p, j0]), float(bound[p, j1]), wall)
+                # equal starts in the solver's coordinates too (one box)
+                self.assertEqual(float(norm[p, j0]), float(norm[p, j1]), wall)
+
+    def test_a_model_without_its_worlds_starts_them_apart(self):
+        # the second window starts where each world's first ends: a wall and its copy start apart
+        _, _, obj = _shooting_estimator("signal_worlds_node_states_forgotten", forget_worlds=True)
+        apart = [float(obj.init_x0[1, j0]) != float(obj.init_x0[1, j1]) for j0, j1 in _wall_columns(obj).values()]
+        self.assertTrue(all(apart))
+
+    def test_a_batched_model_reads_its_source_s_worlds(self):
+        model, sensors = build_node("signal_worlds_node_batched_worlds")
+        worlds = split_worlds(model, measured=sensors, scored=sensors)
+        model.load(draw_semantic_model=False, draw_simulation_model=False)
+        self.assertIs(model.batch_components().worlds, worlds)
+
+
 if __name__ == "__main__":
     unittest.main()

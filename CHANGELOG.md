@@ -935,6 +935,12 @@ Unused and untested; 2.0 drops them without a deprecation period.
   (an opening between the zones of one room) joins the worlds of the scored
   spaces it reads or feeds into one world (`Worlds.merged`) instead of being
   copied with a measurement of the other side.
+- `split_worlds` records what it did on the model it splits:
+  `Model.worlds` (a batched model reads its source's).  A multiple-shooting
+  fit of such a model starts every component and its copies in other worlds
+  (`Worlds.copies`) from one box and one start, without an option: they are
+  one state.  Per state entry their window-start variables get the union of
+  their boxes and their mean start.
 
 ### Migration notes
 

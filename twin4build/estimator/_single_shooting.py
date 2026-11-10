@@ -374,6 +374,9 @@ class FunctionalEstimationObjective:
         low[1:] = torch.minimum(low[1:], previous_end)
         high[1:] = torch.maximum(high[1:], previous_end)
         lb, ub = low - half, high + half
+        # a component and its copies in other worlds (the model's worlds, split_worlds) are one state: their windows
+        # start from one box and one start, per state entry
+        self._share_initial_states(self._world_copies(), index, x0, lb, ub)
         n_slow = int(index.size)
         self.n_init = int(P * n_slow)
         self.init_index = index_t
@@ -392,6 +395,70 @@ class FunctionalEstimationObjective:
             "multiple shooting: %d windows, %d states per window as variables (%d total), "
             "continuity sd %.3g of the state's range, at most %.3g J per jump in a state that stores heat",
             P, n_slow, self.n_init, sd_rel, energy_tol,
+        )
+
+    def _world_copies(self) -> list:
+        """``[[component id, *ids of its copies], ...]``: every component the model's worlds
+        (:attr:`~twin4build.model.model.Model.worlds`, :func:`~twin4build.model.partition.split_worlds`) put in
+        several worlds; none on a model that was not split."""
+        worlds = getattr(self.est.simulator.model, "worlds", None)
+        if worlds is None:
+            return []
+        return [[cid, *copies] for cid, copies in worlds.copies.items()]
+
+    def _state_columns(self) -> dict:
+        """``{component id: [positions of its state in the layout]}`` for every state owner: a fused block's members
+        each, a batched component's instances by the ids they stand for (as ``SimulationModel.set_state`` names
+        them)."""
+        # here, not at the top: the simulation model imports the estimator
+        from twin4build.model.simulation_model.simulation_model import SimulationModel
+
+        out = {}
+        for comp, (start, _stop), (n_c, ss) in zip(self.layout.components, self.layout.slices, self.layout.shapes):
+            if not ss:
+                continue
+            offset = 0
+            for member in list(getattr(comp, "members", None) or [comp]):
+                if not member.is_stateful():
+                    continue
+                width = int(member.state_size())
+                ids = SimulationModel.get_source_component_ids(member)
+                for c in range(int(n_c)):
+                    sid = ids[c] if len(ids) == n_c else (ids[0] if n_c == 1 else None)
+                    if sid is not None:
+                        out[str(sid)] = [int(start + c * ss + offset + k) for k in range(width)]
+                offset += width
+        return out
+
+    def _share_initial_states(self, groups, index, x0, lb, ub) -> None:
+        """Every group of ``groups`` (component ids) starts the windows from one box and one start: per state entry
+        its members' variables get the union of their boxes and their mean start (``x0``, ``lb``, ``ub`` ``(P,
+        n_slow)`` changed in place, physical).  A member that holds no state variable here (not in the model, in no
+        estimated block) is left out; a group left with one member needs nothing."""
+        if not groups:
+            return
+        columns = self._state_columns()
+        position = {int(c): j for j, c in enumerate(np.asarray(index).tolist())}
+        n_groups, moved = 0, 0.0
+        for group in groups:
+            members = [columns[str(cid)] for cid in group if str(cid) in columns]
+            members = [m for m in members if all(c in position for c in m)]
+            if len(members) < 2:
+                continue
+            widths = {len(m) for m in members}
+            if len(widths) != 1:
+                raise ValueError(f"{list(group)} share their initial states but hold {sorted(widths)} state entries")
+            n_groups += 1
+            for k in range(widths.pop()):
+                js = torch.as_tensor([position[m[k]] for m in members], dtype=torch.long, device=x0.device)
+                lb[:, js] = lb[:, js].amin(dim=1, keepdim=True)
+                ub[:, js] = ub[:, js].amax(dim=1, keepdim=True)
+                mean = x0[:, js].mean(dim=1, keepdim=True)
+                moved = max(moved, float((x0[:, js] - mean).abs().max()))
+                x0[:, js] = mean
+        LOGGER.config(
+            "multiple shooting: %d components and their copies start each window from one box and one start (the "
+            "starts moved at most %.3g to their mean)", n_groups, moved,
         )
 
     @property

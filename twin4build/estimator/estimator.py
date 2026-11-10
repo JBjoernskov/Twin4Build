@@ -596,6 +596,14 @@ class Estimator:
                   not tied to it: it starts free, like the first period,
                   while the periods within each span stay tied.
 
+                On a model split into worlds
+                (``twin4build.model.partition.split_worlds``, which records
+                them as ``model.worlds``), a component and its copies in
+                other worlds (``Worlds.copies``) are one state: their
+                variables start every period from one box and one start
+                (per state entry, the union of their boxes and their mean
+                start).
+
                 The result carries the estimated states
                 (``estimated_initial_state_instances``) and the jumps at the
                 boundaries (``continuity_jumps_instances``,

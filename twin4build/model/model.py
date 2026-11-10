@@ -161,6 +161,7 @@ class Model:
         "_dir_conf",
         "_component_to_meta",
         "_batch_source_model",
+        "_worlds",
     )
 
     def __str__(self):
@@ -259,6 +260,8 @@ class Model:
         self._component_to_meta: Dict[str, Tuple[Any, int]] = {}
         #: On a batched model: the model it was batched from (batch_components).
         self._batch_source_model = None
+        #: What split_worlds did to the model (the worlds property).
+        self._worlds = None
 
     @classmethod
     def from_translation(
@@ -1210,6 +1213,22 @@ class Model:
         from twin4build.model.factor_units import factor_air_handling_units
 
         return factor_air_handling_units(self)
+
+    @property
+    def worlds(self):
+        """What :func:`~twin4build.model.partition.split_worlds` did to this model (a
+        :class:`~twin4build.model.partition.Worlds`), ``None`` before; on a batched model, the worlds of the model it
+        was batched from.  A multiple-shooting fit starts every component and its copies (``Worlds.copies``) from
+        one box and one start."""
+        worlds = getattr(self, "_worlds", None)
+        source = getattr(self, "_batch_source_model", None)
+        if worlds is None and source is not None:
+            return source.worlds
+        return worlds
+
+    @worlds.setter
+    def worlds(self, worlds) -> None:
+        self._worlds = worlds
 
     def batch_components(self) -> "Model":
         """Build a Model with batched meta components.
