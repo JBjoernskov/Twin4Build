@@ -34,6 +34,13 @@ class BuildingSpaceThermalSystem(core.System):
         Q_occ_gain: Heat gain per occupant [W]
         m_inf: Infiltration air flow [kg/s] (in a :class:`BuildingSpaceSystem`
             the CO2 model's ``mass.m_inf``: one flow for heat and CO2)
+        eta_inf: The share of the indoor-outdoor temperature difference the
+            space's outdoor air has recovered before it enters (0-1): the
+            infiltration and an outdoor make-up stream arrive at
+            ``T_o + eta_inf (T_i - T_o)``, so they carry ``1 - eta_inf`` of
+            their heat; their CO2 is unchanged.  0 (the default): outdoor air
+            at outdoor temperature.  For a space whose outdoor air passes warm
+            spaces first (an interior node).
 
     Mathematical Formulation
     ------------------------
@@ -46,12 +53,15 @@ class BuildingSpaceThermalSystem(core.System):
 
     .. math::
 
-       C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \sum_{j}\dot{Q}_{wall,j} + Q_{occ} N_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) + c_p\dot{m}_{mu}(T_{mu} - T_i) + c_p\dot{m}_{inf}(T_o - T_i)
+       C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \sum_{j}\dot{Q}_{wall,j} + \sum_{k}\dot{Q}_{exch,k} + Q_{occ} N_{occ} + Q_{sh} + Q_{plug} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) + c_p\dot{m}_{mu}(T_{mu} - T_i) + c_p\dot{m}_{inf}(T_o - T_i)
 
     The last term is the infiltration :math:`\dot{m}_{inf}`: outdoor air
     through the envelope, balanced by room air leaving, the same flow the CO2
     model carries.  :math:`T_{mu}` is the make-up air's temperature: outdoor,
-    unless ``makeUpAirTemperature`` is wired (a neighbouring zone's).
+    unless ``makeUpAirTemperature`` is wired (a neighbouring zone's).  With
+    ``eta_inf`` (:math:`\eta`) the outdoor air arrives at
+    :math:`T_o + \eta (T_i - T_o)`: the infiltration term and an outdoor
+    make-up stream take the factor :math:`1 - \eta`.
 
     *2. Exterior Wall Temperature:*
 
@@ -76,6 +86,9 @@ class BuildingSpaceThermalSystem(core.System):
        - :math:`\Phi_{sol}`: Solar radiation [W/m²] (input)
        - :math:`N_{occ}`: Number of occupants (input)
        - :math:`Q_{sh}`: Space heater heat input [W] (input)
+       - :math:`\dot{Q}_{exch,k}`: Heat flow from connected opening k [W]
+         (input, optional)
+       - :math:`Q_{plug}`: Electrical plug load [W] (input, optional)
 
     **State-Space Representation:**
 
@@ -83,7 +96,7 @@ class BuildingSpaceThermalSystem(core.System):
 
     *State vector:* :math:`\mathbf{x} = \begin{bmatrix}T_i \\ T_w\end{bmatrix}`
 
-    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_o \\ \dot{m}_{sup} \\ \dot{m}_{mu} \\ T_{sup} \\ \Phi_{sol} \\ N_{occ} \\ Q_{sh} \\ T_{mu} \\ \dot{Q}_{wall,1} \\ \vdots \\ \dot{Q}_{wall,n} \\ \dot{m}_{inf}\end{bmatrix}`
+    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_o \\ \dot{m}_{sup} \\ \dot{m}_{mu} \\ T_{sup} \\ \Phi_{sol} \\ N_{occ} \\ Q_{sh} \\ T_{mu} \\ \dot{Q}_{wall,1} \\ \vdots \\ \dot{Q}_{wall,n} \\ \dot{Q}_{exch,1} \\ \vdots \\ \dot{Q}_{exch,k} \\ Q_{plug} \\ \dot{m}_{inf}\end{bmatrix}`
 
     The third slot carries the make-up flow
     :math:`\dot{m}_{mu} = \max(\dot{m}_{exh} - \dot{m}_{sup}, 0)`, not the
@@ -92,9 +105,10 @@ class BuildingSpaceThermalSystem(core.System):
 
     *Base System Matrices:*
 
-    For one connected wall (the infiltration conductance :math:`G_{inf} = c_p
-    \dot{m}_{inf} / C_{air}` adds :math:`-G_{inf}` to :math:`A_{00}` and
-    :math:`G_{inf}` to :math:`B_{00}`, left out below):
+    For one connected wall and no opening (the infiltration conductance
+    :math:`G_{inf} = c_p \dot{m}_{inf} (1 - \eta) / C_{air}` adds
+    :math:`-G_{inf}` to :math:`A_{00}` and :math:`G_{inf}` to :math:`B_{00}`,
+    left out below):
 
     .. math::
 
@@ -104,8 +118,8 @@ class BuildingSpaceThermalSystem(core.System):
        \end{bmatrix}
 
        \mathbf{B} = \begin{bmatrix}
-       0 & 0 & 0 & 0 & \frac{f_{air}}{C_{air}} & \frac{Q_{occ}}{C_{air}} & \frac{1}{C_{air}} & 0 & \frac{1}{C_{air}} & 0 \\
-       \frac{1}{R_{out}C_{wall}} & 0 & 0 & 0 & \frac{f_{wall}}{C_{wall}} & 0 & 0 & 0 & 0 & 0
+       0 & 0 & 0 & 0 & \frac{f_{air}}{C_{air}} & \frac{Q_{occ}}{C_{air}} & \frac{1}{C_{air}} & 0 & \frac{1}{C_{air}} & \frac{1}{C_{air}} & 0 \\
+       \frac{1}{R_{out}C_{wall}} & 0 & 0 & 0 & \frac{f_{wall}}{C_{wall}} & 0 & 0 & 0 & 0 & 0 & 0
        \end{bmatrix}
 
        \mathbf{C} = \begin{bmatrix}
@@ -114,9 +128,12 @@ class BuildingSpaceThermalSystem(core.System):
        \end{bmatrix}
 
        \mathbf{D} = \begin{bmatrix}
-       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
-       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
        \end{bmatrix}
+
+    An opening's column (``exchangeHeatGain``) is the wall's: :math:`\frac{1}{C_{air}}`
+    in the air row.
 
     **Bilinear Coupling Matrices:**
 
@@ -141,7 +158,12 @@ class BuildingSpaceThermalSystem(core.System):
        \mathbf{F}[1, 0, 3] = \frac{c_p}{C_{air}} \quad \text{(supply flow} \cdot T_{sup}\text{)}, \qquad
        \mathbf{F}[2, 0, 7] = \frac{c_p}{C_{air}} \quad \text{(make-up flow} \cdot T_{mu}\text{)}
 
-    Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{mu}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{mu}, \dot{Q}_{wall,1}, \dot{m}_{inf}]^T`
+    An outdoor make-up stream (``makeUpAirTemperature`` unwired) carries the
+    outdoor air's unrecovered share of its heat: both entries take the factor
+    :math:`1 - \eta`.  A stream from a neighbouring zone (the port wired)
+    carries all of it.
+
+    Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{mu}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{mu}, \dot{Q}_{wall,1}, Q_{plug}, \dot{m}_{inf}]^T`
 
     *Bilinear Effects*
 
@@ -175,6 +197,14 @@ class BuildingSpaceThermalSystem(core.System):
        - Because a single wall component owns the wall state, the heat leaving
          one zone equals the heat stored in the wall plus the heat entering the
          other zone (energy-consistent by construction)
+       - An opening between zones of one air volume sends its heat flow on
+         ``exchangeHeatGain``, a port of its own: the walls may be kept out
+         of fusion (``fusable=False``) while the openings fuse
+
+    **Internal Gains:**
+       - Occupants: ``numberOfPeople`` x ``Q_occ_gain`` [W per person]
+       - Electrical equipment: ``plugLoad`` [W], all of it heat in the air
+         (optional; unwired, the room has none)
 
     **Flow-Dependent Effects:**
        - Supply air flow brings heat at supply temperature and displaces room
@@ -235,6 +265,10 @@ class BuildingSpaceThermalSystem(core.System):
         default=outdoorTemperature, doc="Temperature of the make-up air [degC]; unwired: outdoor air"
     )
     wallHeatGain = Input(size="wired", doc="Heat flows from connected WallSystem components [W], one slot per wall")
+    exchangeHeatGain = Input(
+        size="wired", doc="Heat flows from connected openings to other zones [W], one slot per opening"
+    )
+    plugLoad = Input(default=0.0, doc="Electrical plug load [W], all of it heat in the air; unwired: none")
     infiltrationAirFlowRate = Input(default=0.0, doc="Envelope inflow on top of the make-up flow [kg/s]")
     indoorTemperature = Output(init=20.0, doc="Indoor air temperature [degC]")
     wallTemperature = Output(init=20.0, doc="Exterior wall temperature [degC]")
@@ -251,6 +285,9 @@ class BuildingSpaceThermalSystem(core.System):
     f_wall = Parameter(0.3, lb=0.0, ub=1.0, doc="Share of the solar gain on the wall [-]")
     Q_occ_gain = Parameter(100.0, lb=50.0, ub=200.0, doc="Heat gain per occupant [W]")
     m_inf = Parameter(0.0, lb=0.0, ub=0.01, doc="Infiltration air flow [kg/s] (in a room: mass.m_inf)")
+    eta_inf = Parameter(
+        0.0, lb=0.0, ub=1.0, doc="Share of the indoor-outdoor difference the outdoor air has recovered [-]"
+    )
 
     @property
     def n_walls(self) -> int:
@@ -261,6 +298,26 @@ class BuildingSpaceThermalSystem(core.System):
     def n_walls(self, n: int) -> None:
         # The width of a model stepped on its own (wiring gives it otherwise).
         self.input["wallHeatGain"]._n_v = int(n)
+
+    @property
+    def n_exchanges(self) -> int:
+        """The connected openings: the slots of ``exchangeHeatGain``."""
+        return int(self.input["exchangeHeatGain"]._n_v or 0)
+
+    @n_exchanges.setter
+    def n_exchanges(self, n: int) -> None:
+        self.input["exchangeHeatGain"]._n_v = int(n)
+
+    def _make_up_is_outdoor_air(self) -> bool:
+        """Whether the make-up stream is outdoor air: ``makeUpAirTemperature``
+        is unwired and reads ``outdoorTemperature``
+        (:meth:`~twin4build.systems.saref4syst.system.System.input_defaults`;
+        in a :class:`BuildingSpaceSystem` the room's wiring).  Fixed per model:
+        batched copies share their wiring."""
+        defaults = self.__dict__.get("_input_defaults")
+        if defaults is None:
+            defaults = self.input_defaults()
+        return "makeUpAirTemperature" in defaults
 
     def _state_heat_capacities(self):
         """``[T_air, T_wall]`` hold ``C_air`` and ``C_wall`` [J/K]."""
@@ -293,9 +350,9 @@ class BuildingSpaceThermalSystem(core.System):
         return {"surplusAirFlowRate": surplus, "makeUpAirFlowRate": make_up}
 
     #: Fusable coupling ports (see FusedStateSpaceSystem): connected
-    #: WallSystem heat flows enter the linear B matrix, and
+    #: WallSystem and opening heat flows enter the linear B matrix, and
     #: ``indoorTemperature`` is a pure state observation.
-    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "heatGain"})
+    FUSABLE_INPUT_PORTS = frozenset({"wallHeatGain", "exchangeHeatGain", "heatGain"})
 
     FUSABLE_OUTPUT_PORTS = frozenset({"indoorTemperature"})
     #: ``indoorTemperature`` publishes the air state as it is (see
@@ -310,10 +367,11 @@ class BuildingSpaceThermalSystem(core.System):
 
         ``u = [outdoorTemperature, supplyAirFlowRate, exhaustAirFlowRate,
         supplyAirTemperature, globalIrradiation, numberOfPeople, heatGain,
-        makeUpAirTemperature, wallHeatGain x n_walls, infiltrationAirFlowRate]``
-        (the exhaust slot holds the make-up flow after
-        :meth:`_ss_transform_inputs`); output rows are the observed states.
-        Valid once the ports are sized (needs ``n_walls``).
+        makeUpAirTemperature, wallHeatGain x n_walls, exchangeHeatGain x
+        n_exchanges, plugLoad, infiltrationAirFlowRate]`` (the exhaust slot
+        holds the make-up flow after :meth:`_ss_transform_inputs`); output
+        rows are the observed states.  Valid once the ports are sized (needs
+        ``n_walls`` and ``n_exchanges``).
         """
         u = [
             ("outdoorTemperature", 1),
@@ -327,6 +385,9 @@ class BuildingSpaceThermalSystem(core.System):
         ]
         if self.n_walls > 0:
             u.append(("wallHeatGain", self.n_walls))
+        if self.n_exchanges > 0:
+            u.append(("exchangeHeatGain", self.n_exchanges))
+        u.append(("plugLoad", 1))
         u.append((air_balance.INFILTRATION_PORT, 1))  # last: it acts through the transform only
         return {"u": u, "y": {"indoorTemperature": 0, "wallTemperature": 1}}
 
@@ -376,7 +437,8 @@ class BuildingSpaceThermalSystem(core.System):
         if p is None:
             p = {name: getattr(self, name).get() for name in self.PARAM_NAMES}
         n_states = 2  # air and wall temperature
-        n_inputs = 9 + self.n_walls  # the eight base inputs, the walls, the infiltration
+        # the eight base inputs, the walls, the openings, the plug load, the infiltration
+        n_inputs = 10 + self.n_walls + self.n_exchanges
 
         # Parameter values, shape (n_c_param,); may be 1 even when self.n_c > 1
         # (batched components share identical params).
@@ -395,8 +457,10 @@ class BuildingSpaceThermalSystem(core.System):
         air_wall = 1 / (R_in * C_air)
         wall_air = 1 / (R_in * C_wall)
         wall_outdoor = 1 / (R_out * C_wall)
+        # The outdoor air's unrecovered share: it arrives at T_o + eta (T_i - T_o)
+        keep = 1 - p["eta_inf"]
         # Infiltration: outdoor air in, room air out, at a constant flow.
-        air_outdoor = constants.CP_AIR * m_inf / C_air
+        air_outdoor = constants.CP_AIR * m_inf * keep / C_air
         A = torch.stack(
             [
                 torch.stack([-air_wall - air_outdoor, air_wall], dim=-1),
@@ -410,6 +474,9 @@ class BuildingSpaceThermalSystem(core.System):
         wall_inputs = [wall_outdoor, zero, zero, zero, f_wall / C_wall, zero, zero, zero]
         air_inputs.extend([1 / C_air] * self.n_walls)
         wall_inputs.extend([zero] * self.n_walls)
+        # the openings' heat flows and the plug load: heat into the air node
+        air_inputs.extend([1 / C_air] * (self.n_exchanges + 1))
+        wall_inputs.extend([zero] * (self.n_exchanges + 1))
         # the envelope inflow's column (last): it acts through the input
         # transform, on the make-up slot, not through B
         air_inputs.append(zero)
@@ -433,15 +500,21 @@ class BuildingSpaceThermalSystem(core.System):
         u_make_up_temperature = input_basis[self.MAKE_UP_TEMPERATURE_SLOT]
         state_air = state_basis[0]
         gain = (constants.CP_AIR / C_air).reshape(n_c, 1, 1, 1)
+        # An outdoor make-up stream carries the outdoor air's unrecovered share
+        # of its heat, like the infiltration; a stream from a neighbouring zone
+        # all of it.
+        make_up_keep = (keep if self._make_up_is_outdoor_air() else torch.ones_like(keep)).reshape(n_c, 1, 1, 1)
         E = (
             -gain
-            * (u_supply_flow + u_make_up_flow).reshape(1, n_inputs, 1, 1)
+            * (u_supply_flow.reshape(1, n_inputs, 1, 1) + make_up_keep * u_make_up_flow.reshape(1, n_inputs, 1, 1))
             * state_air.reshape(1, 1, n_states, 1)
             * state_air.reshape(1, 1, 1, n_states)
         )
         F = gain * state_air.reshape(1, 1, n_states, 1) * (
             u_supply_flow.reshape(1, n_inputs, 1, 1) * u_supply_temperature.reshape(1, 1, 1, n_inputs)
-            + u_make_up_flow.reshape(1, n_inputs, 1, 1) * u_make_up_temperature.reshape(1, 1, 1, n_inputs)
+            + make_up_keep
+            * u_make_up_flow.reshape(1, n_inputs, 1, 1)
+            * u_make_up_temperature.reshape(1, 1, 1, n_inputs)
         )
         return A, B, C_out, D, E, F
 
@@ -456,7 +529,7 @@ class BuildingSpaceThermalSystem(core.System):
         Args:
             x: state ``(n_c, 2)`` = ``[T_indoor, T_wall]``.
             inputs: the input-port values (each ``(n_c,)``, or ``(n_c, n_v)``
-                for ``wallHeatGain``).
+                for ``wallHeatGain`` and ``exchangeHeatGain``).
             params: the physical parameter values and the matrices.
             step_size: step size in seconds.
 
@@ -481,7 +554,11 @@ class BuildingSpaceThermalSystem(core.System):
         u = torch.stack(cols, dim=-1)  # (n_c, 8)
         if self.n_walls > 0:
             u = torch.cat([u, inputs["wallHeatGain"]], dim=-1)
-        u = torch.cat([u, inputs[air_balance.INFILTRATION_PORT].unsqueeze(-1)], dim=-1)
+        if self.n_exchanges > 0:
+            u = torch.cat([u, inputs["exchangeHeatGain"]], dim=-1)
+        u = torch.cat(
+            [u, inputs["plugLoad"].unsqueeze(-1), inputs[air_balance.INFILTRATION_PORT].unsqueeze(-1)], dim=-1
+        )
         x_next, y = bilinear_onestep(A, B, C, D, E, F, x, u, step_size)
         return x_next, {"indoorTemperature": y[..., 0], "wallTemperature": y[..., 1], **derived}
 

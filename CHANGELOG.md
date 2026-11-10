@@ -905,6 +905,19 @@ Unused and untested; 2.0 drops them without a deprecation period.
   are substituted exactly, and only the outside slots enter the port's
   column.  Such a cluster could not be simulated before (the fused block
   had no input of that name).
+- The rooms' internal gains and openings: `BuildingSpaceThermalSystem` and
+  `BuildingSpaceSystem` take `plugLoad` [W] (electrical plug load, all of
+  it heat in the air; 0 while unwired) and `exchangeHeatGain` [W] (fusable,
+  one slot per connected opening to another zone: a port apart from
+  `wallHeatGain`, so the walls between rooms can stay out of fusion while
+  the openings fuse).  Both enter the air node as `heatGain` does.
+- `BuildingSpaceThermalSystem.eta_inf` (0 to 1, default 0): the share of
+  the indoor-outdoor temperature difference the space's outdoor air has
+  recovered before it enters.  The infiltration and an outdoor make-up
+  stream arrive at `T_o + eta_inf (T_i - T_o)`; a make-up stream from a
+  neighbouring zone (`makeUpAirTemperature` wired) and the CO2 are not
+  touched.  A composite's children see the composite's wiring
+  (`System.input_defaults()` of a room's `thermal` is the room's).
 
 ### Migration notes
 

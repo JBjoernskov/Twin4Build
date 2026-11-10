@@ -746,10 +746,16 @@ class System(nn.Module, metaclass=SystemMeta):
             child = getattr(self, name)
             if type(child)._is_declared:
                 # A child has no connections: an input it sizes by its wiring
-                # takes the width of the composite's input of the same name.
+                # takes the width of the composite's input of the same name,
+                # and an input is wired when the composite's is (is_wired reads
+                # the names handed down: the child's input_defaults are the
+                # composite's).
+                from twin4build.utils.slots import is_wired
+
                 for port, child_decl in type(child)._declarations["input"].items():
                     if child_decl.size == "wired" and port in self.input:
                         child.input[port]._n_v = self.input[port]._n_v
+                child._wired_ports = frozenset(port for port in child.input if port in self.input and is_wired(self, port))
                 child._initialize_declared(n_t, n_s, n_c * self.slots_per_copy(decl), run)
         self._share_unit_params()
         if type(self)._has_series():
