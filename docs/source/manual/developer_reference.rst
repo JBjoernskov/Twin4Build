@@ -350,25 +350,22 @@ performance and must be recorded in experiments.
 Testing and validation
 ----------------------
 
-The CI test command is:
+CI runs the suite with pytest (``pytest.ini`` sets the test path and output
+options; pytest is included in ``.[dev]``):
+
+.. code-block:: console
+
+   python -m pytest
+   python -m pytest twin4build/tests/systems/junction/test_junction_systems.py
+   python -m pytest twin4build/tests/ --cov=twin4build --cov-report=term-missing
+
+Every test is a ``unittest.TestCase``, so unittest runs the same suite without
+pytest installed:
 
 .. code-block:: console
 
    python -m unittest discover twin4build/tests/ -v
-
-Run one importable module:
-
-.. code-block:: console
-
    python -m unittest twin4build.tests.simulator.test_simulator -v
-
-Pytest is included in ``.[dev]`` and can run the same suite:
-
-.. code-block:: console
-
-   python -m pytest twin4build/tests/ -v
-   python -m pytest twin4build/tests/systems/junction/test_junction_systems.py
-   python -m pytest twin4build/tests/ --cov=twin4build --cov-report=term-missing
 
 For formatting and static checks:
 
@@ -381,8 +378,12 @@ For formatting and static checks:
 The validation script runs Black, isort, flake8, file checks, and optionally
 tests. Review auto-fixes before committing.
 
-Tests should use ``test_*.py`` files and ``unittest.TestCase`` classes unless a
-focused test has a reason to use another supported pytest idiom. Public
+Tests are ``unittest.TestCase`` methods in ``test_*.py`` files and do not
+import pytest: ``unittest.mock`` replaces monkeypatch, ``subTest`` replaces
+parametrize, ``unittest.skipIf`` replaces skipif, ``tempfile`` replaces
+tmp_path, and ``setUp`` replaces fixtures. ``twin4build/tests/test_test_style.py``
+fails on a module-level test function, a ``Test*`` class that is not a
+TestCase, or a pytest import. Public
 behavior needs unit coverage; interactions among Model, Simulator, Estimator,
 Optimizer, and Translator need integration coverage.
 

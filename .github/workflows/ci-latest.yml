@@ -36,5 +36,7 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
       - name: Installed versions
         run: python -m pip freeze
-      - name: Run discovered test suite
-        run: python -m unittest discover twin4build/tests/ -v
+      # Every test is a unittest.TestCase; pytest runs them (pytest.ini:
+      # testpaths, verbosity).  test_test_style.py keeps it that way.
+      - name: Run test suite
+        run: python -m pytest
