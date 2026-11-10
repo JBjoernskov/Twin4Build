@@ -204,13 +204,24 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                     if conn.connects_system is s and conn.output_port == s_port:
                         internal_conns.add(id(conn))
 
+        # A vector port fed partly inside the cluster and partly from outside
+        # (a room whose wall toward a hallway is fused and whose walls toward
+        # other rooms are not) stays an external port: its outside slots are
+        # its column, the inside slots are substituted.
+        ext_recv_ports = {
+            (m.id, cp.input_port)
+            for m in self._members
+            for cp in m.connects_at
+            if any(id(conn) not in internal_conns for conn in cp.connects_system_through)
+        }
+
         # Namespaced port dicts ALIASING the member port objects: a write
         # through the fused dict is a write to the member port.
         fused_input = {}
         fused_output = {}
         for m in self._members:
             for port, obj in m.input.items():
-                if (m.id, port) in internal_recv_ports:
+                if (m.id, port) in internal_recv_ports and (m.id, port) not in ext_recv_ports:
                     continue  # eliminated into the joint matrices
                 fused_input[f"{m.id}.{port}"] = obj
             for port, obj in m.output.items():
@@ -239,6 +250,7 @@ class FusedStateSpaceSystem(core.System, nn.Module):
                         _ConnectionView(self, f"{m.id}.{conn.output_port}", conn)
                     )
 
+        self._ext_slot_masks = {}  # set by initialize
         self._config = {"parameters": []}
         self._do_step_params = None
         self.INITIALIZED = False
@@ -382,27 +394,44 @@ class FusedStateSpaceSystem(core.System, nn.Module):
         # -- input columns: internal (substituted) or external (joint u) -----
         # External columns are keyed by the namespaced port name; the same
         # port may feed several unit columns (composite submodels sharing a
-        # port object).
+        # port object).  A vector port's slots enter its column as their sum;
+        # a port fed partly inside the cluster sums its outside slots only
+        # (``_ext_slot_masks``: 1 outside, 0 inside -- the inside slots are
+        # substituted, and the port object still holds their values, written
+        # after each step).
         self._ext_names: List[str] = []
+        self._ext_slot_masks: Dict[str, torch.Tensor] = {}
         ext_index = {}
+        ref = self._units[0]["unit"]._build_matrices()[0] if self._units else torch.zeros(1)
         for entry in self._units:
             m = entry["member"]
             cols = []  # per unit column: ("ext", j) | ("int", sender_id, out_port)
             for port, width in entry["layout"]["u"]:
+                inside = []
                 for slot in range(width):
                     src = self._internal_recv.get((m.id, port, slot))
                     if src is not None:
                         cols.append(("int", src[0], src[1]))
+                        inside.append(slot)
                     else:
                         name = f"{m.id}.{port}"
                         assert name in self._input, (
-                            f"fused input port {name} missing (vector port "
-                            "partially internal?)"
+                            f"fused input port {name} missing (an outside slot "
+                            "of a port with no outside connection)"
                         )
                         if name not in ext_index:
                             ext_index[name] = len(self._ext_names)
                             self._ext_names.append(name)
                         cols.append(("ext", ext_index[name]))
+                name = f"{m.id}.{port}"
+                if inside and len(inside) < width:
+                    mask = torch.ones(width, dtype=ref.dtype, device=ref.device)
+                    mask[inside] = 0.0
+                    previous = self._ext_slot_masks.get(name)
+                    assert previous is None or torch.equal(previous, mask), (
+                        f"fused input port {name}: its units disagree on the inside slots"
+                    )
+                    self._ext_slot_masks[name] = mask
             entry["cols"] = cols
 
         # -- per-unit input transforms (e.g. the room models' balanced
@@ -790,10 +819,15 @@ class FusedStateSpaceSystem(core.System, nn.Module):
             ref = next(v for v in inputs.values() if v.dim() == n_lead)
             inputs = dict(inputs)
             inputs.update({name: torch.zeros_like(ref) for name in missing})
-        port_values = {
-            name: (inputs[name].sum(dim=-1) if inputs[name].dim() > n_lead else inputs[name])
-            for name in self._ext_names
-        }
+        port_values = {}
+        for name in self._ext_names:
+            value = inputs[name]
+            if value.dim() > n_lead:
+                mask = self._ext_slot_masks.get(name)
+                if mask is not None:  # a port fed partly inside: its outside slots only
+                    value = value * mask.to(dtype=value.dtype, device=value.device)
+                value = value.sum(dim=-1)
+            port_values[name] = value
         summed = self._transform_inputs(port_values)
         u = torch.stack([summed[name] for name in self._ext_names], dim=-1)
         x_next, y = bilinear_onestep(

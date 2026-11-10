@@ -899,6 +899,12 @@ Unused and untested; 2.0 drops them without a deprecation period.
   the rooms into one block).  Batched copies share it: walls that fuse and
   walls that do not batch apart.  The partition (`split_worlds`) sees no
   fusable arc through such an instance.
+- A fused block keeps a member's vector input fed partly inside the block
+  and partly from outside (a room's `wallHeatGain` from a fused wall toward
+  a hallway and from an unfused wall toward another room): the inside slots
+  are substituted exactly, and only the outside slots enter the port's
+  column.  Such a cluster could not be simulated before (the fused block
+  had no input of that name).
 
 ### Migration notes
 
