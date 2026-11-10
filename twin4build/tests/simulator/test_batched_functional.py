@@ -38,12 +38,6 @@ def _port_histories(model):
 
 
 class TestBatchedFunctional(unittest.TestCase):
-    # Fails on dev since #199 (4363f89c): the batched model's room
-    # temperatures differ from the unbatched model's by up to 0.64 K; see
-    # test_nested_occupancy_parameters_and_ports_keep_n_c.  It never ran in
-    # CI before (a pytest function under unittest discovery).  Remove the
-    # marker with the fix: an unexpected pass fails the run.
-    @unittest.expectedFailure
     def test_complete_two_zone_object_functional_parity(self):
         audit = common.batched_parity_audit(2, hours=1)
         self.assertEqual(audit["n_components"], 46)
@@ -114,11 +108,6 @@ class TestBatchedFunctional(unittest.TestCase):
                     msg=lambda message, key=(component.id, name): f"{key}: {message}",
                 )
 
-    # Fails on dev since #199 (4363f89c): the batched occupancy holds one
-    # mass.V (100.0) instead of each zone's value.  It never ran in CI
-    # before.  Remove the marker with the fix: an unexpected pass fails the
-    # run.
-    @unittest.expectedFailure
     def test_nested_occupancy_parameters_and_ports_keep_n_c(self):
         model, parts = common.build_multizone_model(
             2, model_id="batched_full_workflow_nested_parameters"

@@ -471,11 +471,6 @@ class TestCanonicalBenchmarks(unittest.TestCase):
         self.assertNotIn("trust-constr", source + notebook_text)
         self.assertNotIn("L-BFGS-B", source + notebook_text)
 
-    # Fails on dev since #199 (4363f89c), as
-    # simulator/test_batched_functional.py's parity test does.  It never ran
-    # in CI before.  Remove the marker with the fix: an unexpected pass
-    # fails the run.
-    @unittest.expectedFailure
     def test_batched_unbatched_smoke_parity(self):
         common = _common()
         audit = common.batched_parity_audit(2, hours=1)

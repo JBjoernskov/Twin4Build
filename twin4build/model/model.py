@@ -1655,17 +1655,33 @@ class Model:
                     rank[cid] = k
         return role, rank
 
+    @staticmethod
+    def _parameter_names(component: Any) -> Tuple[str, ...]:
+        """The attribute paths of a component's parameters: its
+        ``PARAM_NAMES`` (the values ``forward`` reads; a declared System's
+        are its own and its children's by their dotted paths), else the
+        paths its config saves, else the keys of its ``parameter`` map.
+
+        The ``parameter`` map bounds the System's own parameters only, never
+        its children's: a composite with one bounded parameter of its own (an
+        occupancy model's ``exhaustFlowRatio``) left every child's parameter
+        (``mass.V``) unstacked, at the constructor default for every copy.
+        """
+        names = getattr(component, "PARAM_NAMES", None)
+        if names or getattr(type(component), "_is_declared", False):
+            return tuple(names or ())
+        config = getattr(component, "config", None)
+        names = config.get("parameters", ()) if isinstance(config, dict) else ()
+        return tuple(names or getattr(component, "parameter", None) or ())
+
     def _batch_parameters(self, meta: Any, components: List, n_c: int) -> None:
 
         """Stack calibration parameters along the ``n_c`` dimension.
 
-        A declared System's parameters are all its declared ones, its
-        children's by their dotted paths (``PARAM_NAMES``), bounded or not:
-        a fan's fixed flow range is one value per copy like its estimated
-        betas.  Otherwise the ``tps.Parameter`` and ``tps.TensorParameter``
-        attributes whose names appear in ``components[0].parameter`` (or its
-        saved config) are batched.  Each original component contributes one
-        slice along ``n_c``.
+        The ``tps.Parameter`` and ``tps.TensorParameter`` attributes named by
+        :meth:`_parameter_names` are batched, bounded or not: a fan's fixed
+        flow range is one value per copy like its estimated betas.  Each
+        original component contributes one slice along ``n_c``.
 
         A declared parameter of several values per copy
         (:meth:`System.values_per_copy`: a curve's points, a value per branch,
@@ -1673,15 +1689,7 @@ class Model:
         another; a copy holding one value fills its places with it.
         """
         declared = getattr(type(components[0]), "_is_declared", False)
-        if declared:
-            parameter_names = list(type(components[0]).PARAM_NAMES)
-        else:
-            param_dict = getattr(components[0], "parameter", None)
-            parameter_names = (
-                list(param_dict)
-                if param_dict
-                else list(getattr(components[0], "config", {}).get("parameters", ()))
-            )
+        parameter_names = self._parameter_names(components[0])
         if not parameter_names:
             return
 
@@ -1896,14 +1904,7 @@ class Model:
         input_signature = self._port_dict_signature(getattr(component, "input", {}))
         output_signature = self._port_dict_signature(getattr(component, "output", {}))
 
-        parameter = getattr(component, "parameter", None)
-        parameter_keys: Tuple[str, ...] = tuple(
-            sorted(
-                parameter.keys()
-                if parameter
-                else getattr(component, "config", {}).get("parameters", ())
-            )
-        )
+        parameter_keys: Tuple[str, ...] = tuple(sorted(self._parameter_names(component)))
         # Copies of a class with an optional parameter batch only with copies
         # that have it, or that lack it, too (their parameter sets differ).
         absent = []
