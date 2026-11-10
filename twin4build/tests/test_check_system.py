@@ -30,6 +30,8 @@ import torch
 # Local application imports
 import twin4build as tb
 import twin4build.core as core
+import twin4build.systems
+import twin4build.utils
 from twin4build.systems.saref4syst.declarations import Input, Output, Parameter
 from twin4build.testing import check_system
 from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
@@ -213,9 +215,6 @@ STEPPING_THEMSELVES = {
 
 
 def _core_system_classes():
-    import twin4build.systems
-    import twin4build.utils
-
     for package in (twin4build.systems, twin4build.utils):
         for module in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
             importlib.import_module(module.name)

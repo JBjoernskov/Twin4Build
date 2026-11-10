@@ -32,6 +32,7 @@ from twin4build.simulator.simulator import Simulator
 from twin4build.systems.registry import SystemRegistry
 from twin4build.systems.saref4syst.declarations import Input, Output, State
 from twin4build.systems.saref4syst.system import System
+from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.data_loaders.sources import Source
 from twin4build.utils.rgetattr import rgetattr
 
@@ -84,10 +85,12 @@ def check_system(
         inputs: The constant each input is wired from.
         steps: How many steps each run takes.
         step_size: The step size [s].
-        rtol, atol: The tolerances outputs are compared with.
+        rtol: The relative tolerance outputs are compared with.
+        atol: The absolute tolerance outputs are compared with.
 
     Raises:
         AssertionError: Naming the check that failed.
+        ValueError: When ``system`` is part of a model.
     """
     if system.connects_at or system.connected_through:
         raise ValueError(f"check_system takes a System that is not part of a model; '{system.id}' is wired")
@@ -264,8 +267,6 @@ class _Check:
 
 
 def _constant(value, sid):
-    from twin4build.systems.schedule.schedule_system import ScheduleSystem
-
     return ScheduleSystem(
         id=sid,
         weekday_ruleset={
