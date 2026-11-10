@@ -61,9 +61,10 @@ class OccupancySystem(core.System):
     CO2 arrives on ``indoorCo2Measured`` (the room's CO2 sensor's
     ``measuredData``) and the damper positions on ``damperPositionMeasured``
     (the damper position sensors of the terminals serving the room, one slot
-    each); the previous CO2 sample is a one-step lag state, which starts at
-    the outdoor level (400 ppm).  Inputs arrive through connections only: the
-    System reads no file (ADR 0001, decision 6).
+    each); the previous CO2 sample is a one-step lag state.  It starts
+    empty, so the first step of a run takes no change of CO2 and the initial
+    occupancy comes from the static balance.  Inputs arrive through
+    connections only: the System reads no file (ADR 0001, decision 6).
 
     .. note::
        Because the inverse is exact, measured-vs-predicted CO2 is
@@ -128,7 +129,7 @@ class OccupancySystem(core.System):
     damperPositionMeasured = Input(size="wired", doc="Measured damper positions (0-1), one slot per terminal")
     fanSpeedMeasured = Input(default=1.0, doc="Fan state of the air handler (0-1); unwired: running")
     scheduleValue = Output(doc="The number of people")
-    co2_prev = State(init=400.0, doc="The measured CO2 of the step before [ppmv]")
+    co2_prev = State(init=0.0, doc="The measured CO2 of the step before [ppmv]; 0: none yet")
     occupancy_prev = State(size=smoothing, init=0.0, doc="The smoothed occupancy of the step before")
     exhaustFlowRatio = Parameter(1.0, lb=0.3, ub=1.5, doc="Exhaust-to-supply flow ratio [-]")
     mass = Child(_OccupancyMass)
@@ -303,6 +304,9 @@ class OccupancySystem(core.System):
         through the zone's own ZOH step; the measured CO2 becomes the state."""
         P = p["sub_params"]
         C_indoor = inputs["indoorCo2Measured"]
+        # The lag starts empty (0 ppm): the first step takes no change of CO2,
+        # so the people come from the static balance.
+        C_prev = torch.where(x[..., 0] == 0.0, C_indoor, x[..., 0])
         positions = inputs["damperPositionMeasured"]
         m_sup = self._flow(P["supply_damper"], positions)
         if self.exhaust_follows_supply:
@@ -321,7 +325,7 @@ class OccupancySystem(core.System):
                 "exhaustAirFlowRate": m_exh * gate,
                 "outdoorCo2Concentration": inputs["outdoorCo2Concentration"],
             },
-            x[..., 0],
+            C_prev,
             C_indoor,
             step_size,
             n_c=torch.as_tensor(mass["V"]).reshape(-1).shape[0],

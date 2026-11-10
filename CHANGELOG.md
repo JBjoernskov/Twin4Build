@@ -151,16 +151,19 @@ passing it raises and names its replacement.
   `damper_filename` and their column keywords raise; wire `indoorCo2Measured`
   from the room's CO2 sensor and `damperPositionMeasured` from the damper
   position sensors (`measuredData`, one slot each).  The previous CO2 sample
-  is a state, starting at 400 ppm (`previousIndoorCo2Measured` goes).  The
-  flat `V=`, `G_occ=`, `m_inf=`, `supply_damper_a=` ... keywords move into the
-  children (`mass=dict(V=...)`), with a warning; `c_tied` / `set_c` on its
-  dampers raise (give `c` a value).  Wired the same way, it steps exactly as
-  before.  The full-workflow example, the canonical benchmarks and the
-  estimator example's saved model wire the occupancy to the sensors (the
-  saved model gains the two connections and drops the file paths); at the
-  first step of a run the occupancy now starts from the 400 ppm lag instead
-  of a zero CO2 change, so the canonical topology has two connections and one
-  state more per zone.
+  is a state (`previousIndoorCo2Measured` goes) that starts empty: the first
+  step of a run takes no change of CO2, as the file mode did (the wired mode
+  started it at 400 ppm, which at short steps booked a burst of people at the
+  first step).  The flat `V=`, `G_occ=`, `m_inf=`, `supply_damper_a=` ...
+  keywords move into the children (`mass=dict(V=...)`), with a warning;
+  `c_tied` / `set_c` on its dampers raise (give `c` a value).  The
+  full-workflow example, the canonical benchmarks and the estimator
+  example's saved model wire the occupancy to the sensors (the saved model
+  gains the two connections and drops the file paths), so the canonical
+  topology has two connections and one state more per zone.  The occupancy
+  steps there exactly as its file mode did; the damper position sensor's
+  modelled reading now lags its damper by one step, where the loader cuts
+  the new loop through the sensors.
 - A System class whose `forward` cannot take `(x, inputs, p, step_size)`,
   whose `derive` cannot take `(p, step_size)` or whose `series` cannot take
   `(timestamps, step_size)` raises `TypeError` when it is defined (they are
