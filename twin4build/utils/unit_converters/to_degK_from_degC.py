@@ -1,9 +1,6 @@
-# Standard library imports
-import datetime
-
 # Local application imports
 import twin4build.core as core
-import twin4build.utils.types as tps
+from twin4build.systems.saref4syst.declarations import Input, Output
 
 
 class ToDegKFromDegC(core.System):
@@ -15,32 +12,10 @@ class ToDegKFromDegC(core.System):
     .. math::
 
        T_{K} = T_{C} + 273.15
-
-    where:
-    - :math:`T_{K}` is temperature in Kelvin
-    - :math:`T_{C}` is temperature in Celsius
     """
 
-    def __init__(self):
-        super().__init__()
-        self.input = {"C": tps.Scalar()}
-        self.output = {"K": tps.Scalar()}
+    C = Input(doc="Temperature [°C]")
+    K = Output(doc="Temperature [K]")
 
-    def initialize(
-        self, start_time: datetime.datetime, end_time: datetime.datetime, step_size: int
-    ):
-        _, _, max_timesteps, _ = core.Simulator.get_simulation_timesteps(
-            start_time, end_time, step_size
-        )
-        batch_size = len(start_time)
-        self.input["C"].initialize(n_t=max_timesteps, n_s=batch_size)
-        self.output["K"].initialize(n_t=max_timesteps, n_s=batch_size)
-
-    def do_step(
-        self,
-        second_time: float,
-        date_time: datetime.datetime,
-        step_size: int,
-        step_index: int,
-    ):
-        self.output["K"]._set(self.input["C"].get() + 273.15, i_t=step_index)
+    def forward(self, x, inputs, p, step_size):
+        return x, {"K": inputs["C"] + 273.15}
