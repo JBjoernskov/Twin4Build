@@ -6,7 +6,9 @@ only.  Batching took the map's keys as the parameters whenever the map was
 not empty, so a composite with one bounded parameter of its own lost every
 child's: the occupancy model's ``mass.V`` stayed at the constructor default
 for every copy once it gained ``exhaustFlowRatio`` (#199), and the batched
-zones' temperatures parted from the unbatched ones.
+zones' temperatures parted from the unbatched ones.  The occupancy is
+declared now; the controller identification's gates and candidates still
+take this path.
 """
 
 import datetime
@@ -21,7 +23,7 @@ import twin4build.utils.types as tps
 
 
 class _Child:
-    """A sub-model holding a parameter, as ``OccupancySystem.mass`` does."""
+    """A sub-model holding a parameter, as the controller identification's gates do."""
 
     def __init__(self, V: float):
         self.V = tps.Parameter(torch.tensor(float(V)), min_value=1.0, max_value=1000.0)
