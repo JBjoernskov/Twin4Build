@@ -8,7 +8,10 @@ Covered:
    has none;
 2. every example passes ``check_system``;
 3. ``check_system`` fails a System whose gradient is not finite, and one
-   given while it is part of a model.
+   given while it is part of a model;
+4. no System class of the package writes its own ``do_step`` or
+   ``initialize`` (decision 1), except the ones not converted yet, a list
+   that only shrinks.
 """
 
 # Standard library imports
@@ -189,11 +192,23 @@ WITHOUT_EXAMPLE = {
     "FusedStateSpaceSystem": "the loader builds it from the state-space Systems it fuses; never written by a user",
     # Written the old way, with their own do_step and initialize (ADR 0001,
     # steps 8-9): each gets an example when it is converted or deleted.
+    # ControllerIdentificationPISystem inherits its parent's.
     "DiscreteStatespaceSystem": "not converted yet",
     "SensorSystem": "not converted yet",
     "ControllerIdentificationSystem": "not converted yet",
     "ControllerIdentificationPISystem": "not converted yet",
     "OccupancySystem": "to be deleted (ADR 0001, decision 7)",
+}
+
+
+#: The System classes of the package that still write their own do_step and
+#: initialize.  ADR 0001 removes them; the list only shrinks.
+STEPPING_THEMSELVES = {
+    "ControllerIdentificationSystem",
+    "DiscreteStatespaceSystem",
+    "FusedStateSpaceSystem",
+    "OccupancySystem",
+    "SensorSystem",
 }
 
 
@@ -232,6 +247,10 @@ class TestCoreExamples(unittest.TestCase):
         missing = sorted(c.__name__ for c in _core_system_classes() if c.__name__ not in named | set(WITHOUT_EXAMPLE))
         self.assertEqual(missing, [], "core System classes without an example in this table")
         self.assertEqual(sorted(named & set(WITHOUT_EXAMPLE)), [])
+
+    def test_only_the_systems_not_converted_yet_step_themselves(self):
+        own = sorted(c.__name__ for c in _core_system_classes() if {"do_step", "initialize"} & set(vars(c)))
+        self.assertEqual(own, sorted(STEPPING_THEMSELVES), "do_step and initialize belong to the base (ADR 0001)")
 
     def test_every_example_passes_check_system(self):
         for cls, (system, inputs) in self.examples.items():
