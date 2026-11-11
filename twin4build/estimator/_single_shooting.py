@@ -238,7 +238,7 @@ class FunctionalEstimationObjective:
         solvers see them as any other parameter and residual.  Needs the
         batched window rollout (equal-length periods).
         """
-        if not config:
+        if config is None:
             return
         windows = self._windows()
         if windows is None:

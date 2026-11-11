@@ -457,6 +457,19 @@ class TestMultipleShooting(unittest.TestCase):
         self.assertLess(wall["one-sided"], 0.75)
         self.assertEqual(list(continuity_summary(jumps, tolerance)["component"])[0], "node")
 
+    def test_no_continuity_option_is_still_multiple_shooting(self):
+        """Contiguous periods with no ``continuity_*`` option give an empty
+        config: multiple shooting at the default tolerances, not single
+        shooting.  It ran single shooting without a word (no window starts)
+        while the empty config read as no config."""
+        obj = _estimator("cpu")._functional_objective
+        self.assertGreater(obj.n_init, 0)
+        self.assertEqual(obj.n_init, 2 * obj.init_n_slow)
+        # and the guard of a fit in several phases holds without an option too
+        with self.assertRaises(ValueError) as raised:
+            _estimator("cpu", schedule=[{}, {}])
+        self.assertIn("one phase", str(raised.exception))
+
     def test_the_periods_must_be_contiguous(self):
         with self.assertRaises(ValueError) as raised:
             _estimator("cpu", shooting=MS, gap_hours=1)
