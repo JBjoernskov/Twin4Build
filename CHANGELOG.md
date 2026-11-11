@@ -860,6 +860,11 @@ Unused and untested; 2.0 drops them without a deprecation period.
   histories of every other port no longer take memory; a functional run
   still fills the history of an output wired into a logged input (a
   sensor's `measuredValue`).  What is logged is unchanged, bit for bit.
+- `Estimator.estimate` puts every port's logging back as it was when it
+  returns or raises.  Its simulations log the measuring devices only, and it
+  left them so: a simulation after it kept no history of any other port,
+  vector ports included now that `set_save_simulation_result` sets them
+  (`history()` raised "History is not populated").
 
 ### Migration notes
 
