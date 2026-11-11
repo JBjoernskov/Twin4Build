@@ -25,6 +25,7 @@ import torch
 from dateutil import tz
 
 import twin4build as tb
+from twin4build.estimator.estimator import _join_world_copies
 from twin4build.model.partition import cut_measured_edges, measured_partition, split_worlds
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.tests.model.test_split_worlds import START, STEP, _sched, _series, senders
@@ -439,8 +440,9 @@ class TestProvidedNode(unittest.TestCase):
 def _shooting_estimator(model_id, forget_worlds=False):
     """The provided node's split model fitted over two consecutive 50-minute windows (multiple shooting, one SLSQP
     iteration; the second window starts where each world's first ends, so a wall and its copy start apart), with
-    no option about the copies.  ``forget_worlds``: the model's record of its worlds dropped after the split, as
-    on a model built the same way by hand.  Returns the model, its worlds and the objective."""
+    no option about the copies; the walls are listed, their copies join them.  ``forget_worlds``: the model's
+    record of its worlds dropped after the split, as on a model built the same way by hand.  Returns the model, its
+    worlds and the objective."""
     model, sensors = build_node(model_id)
     worlds = split_worlds(model, measured=sensors, scored=sensors)
     if forget_worlds:
@@ -448,7 +450,7 @@ def _shooting_estimator(model_id, forget_worlds=False):
     cut_measured_edges(model, measured_partition(model, measured=sensors, scored=sensors))
     model.load(draw_semantic_model=False, draw_simulation_model=False, enable_fusion=False)
     c = model.components
-    entries = [(c[w], "C", 2e5, 1e4, 1e7) for w in ("W_A", "W_A__in_M", "W_B", "W_B__in_M")]
+    entries = [(c[w], "C", 2e5, 1e4, 1e7) for w in ("W_A", "W_B")]
     entries.append((c["N"], "C", 1e8, 1e6, 1e9))
     # the default tolerance, given: an empty multiple-shooting config sets up no window starts
     options = {"maxiter": 1, "continuity_sd_rel": 0.01}
@@ -476,6 +478,11 @@ class TestSharedInitialStates(unittest.TestCase):
     def test_the_copies_share_one_box_and_one_start(self):
         model, worlds, obj = _shooting_estimator("signal_worlds_node_states")
         self.assertIs(model.worlds, worlds)  # split_worlds records what it did on the model
+        # the walls' copies joined their capacities: one value each after the fit
+        shared = {c.id for c in obj.est._flat_components_shared}
+        self.assertEqual(shared, {"W_A", "W_A__in_M", "W_B", "W_B__in_M"})
+        for wall in ("W_A", "W_B"):
+            torch.testing.assert_close(model.components[wall].C.get(), model.components[f"{wall}__in_M"].C.get())
         norm = obj.init_x0_norm.reshape(2, obj.init_n_slow)
         for wall, (j0, j1) in _wall_columns(obj).items():
             for p in range(2):
@@ -495,6 +502,93 @@ class TestSharedInitialStates(unittest.TestCase):
         worlds = split_worlds(model, measured=sensors, scored=sensors)
         model.load(draw_semantic_model=False, draw_simulation_model=False)
         self.assertIs(model.batch_components().worlds, worlds)
+
+
+def _joined(model, entries):
+    """The parameter entries as the estimator holds them after its validation and the join (no fit)."""
+    est = tb.Estimator(tb.Simulator(model))
+    return _join_world_copies(est._validate_list_format(entries), model)
+
+
+def _groups(entries):
+    return sorted((sorted(c.id for c in comps), attr, kind) for comps, attr, _x0, _lb, _ub, kind, _mi in entries)
+
+
+class TestCopiedParameters(unittest.TestCase):
+    """11 Nov 2026: a parameter and its copies in other worlds (``Worlds.shared``) are one parameter, whatever the
+    fit is asked: listed, the original takes its copies into its entry, with its start and bounds.  What cannot be
+    read one way raises and says what to write."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.model, sensors = build_node("signal_worlds_node_parameters")
+        cls.worlds = split_worlds(cls.model, measured=sensors, scored=sensors)
+        cut_measured_edges(cls.model, measured_partition(cls.model, measured=sensors, scored=sensors))
+        cls.model.load(draw_semantic_model=False, draw_simulation_model=False, enable_fusion=False)
+        cls.c = cls.model.components
+
+    def test_a_private_original_and_its_copy_become_one_shared_entry(self):
+        out = _joined(self.model, [(self.c["W_A"], "C", 2e5, 1e4, 1e7), (self.c["N"], "C", 1e8, 1e6, 1e9)])
+        self.assertEqual(_groups(out), [(["N"], "C", "private"), (["W_A", "W_A__in_M"], "C", "shared")])
+        shared = next(e for e in out if e[5] == "shared")
+        self.assertEqual(shared[2:5], (2e5, 1e4, 1e7))  # the original's start and bounds
+
+    def test_the_other_components_of_a_private_entry_stay_private(self):
+        out = _joined(self.model, [([self.c["W_A"], self.c["N"]], "C", 2e5, 1e4, 1e9)])
+        self.assertEqual(_groups(out), [(["N"], "C", "private"), (["W_A", "W_A__in_M"], "C", "shared")])
+
+    def test_a_shared_group_takes_its_members_copies_in(self):
+        out = _joined(self.model, [([self.c["W_A"], self.c["W_B"]], "C", 2e5, 1e4, 1e7, "shared")])
+        self.assertEqual(_groups(out), [(["W_A", "W_A__in_M", "W_B", "W_B__in_M"], "C", "shared")])
+
+    def test_a_copy_listed_like_its_original_joins_it(self):
+        out = _joined(self.model, [(self.c[w], "C", 2e5, 1e4, 1e7) for w in ("W_A", "W_A__in_M")])
+        self.assertEqual(_groups(out), [(["W_A", "W_A__in_M"], "C", "shared")])
+
+    def test_auto_follows_the_same_rule(self):
+        est = tb.Estimator(tb.Simulator(self.model))
+        out = _join_world_copies(est._validate_list_format(est._auto_parameters()), self.model)
+        group = {(c.id, attr): i for i, (comps, attr, *_rest) in enumerate(out) for c in comps}
+        self.assertTrue(self.worlds.shared)
+        for (cid, attr), members in self.worlds.shared.items():
+            if (cid, attr) not in group:
+                continue  # not estimable: nothing to join
+            self.assertEqual({group[(m, a)] for m, a in members}, {group[(cid, attr)]}, (cid, attr))
+            self.assertEqual(out[group[(cid, attr)]][5], "shared")
+
+    def test_a_copy_with_another_start_or_bounds_raises(self):
+        with self.assertRaisesRegex(ValueError, r"W_A__in_M\.C copies W_A\.C .*same start and bounds"):
+            _joined(self.model, [(self.c["W_A"], "C", 2e5, 1e4, 1e7), (self.c["W_A__in_M"], "C", 2e5, 1e3, 1e7)])
+
+    def test_a_copy_without_its_original_raises(self):
+        with self.assertRaisesRegex(ValueError, r"W_A__in_M\.C copies W_A\.C .*list W_A\.C instead"):
+            _joined(self.model, [(self.c["W_A__in_M"], "C", 2e5, 1e4, 1e7), (self.c["W_A"], "R_a", 0.02, 1e-3, 1.0)])
+
+    def test_a_copy_in_a_shared_group_without_its_original_raises(self):
+        entries = [(self.c["W_A"], "C", 2e5, 1e4, 1e7), ([self.c["W_A__in_M"], self.c["W_B"]], "C", 2e5, 1e4, 1e7, "shared")]
+        with self.assertRaisesRegex(ValueError, r"W_A__in_M\.C is in a shared group without W_A\.C"):
+            _joined(self.model, entries)
+
+    def test_a_member_listed_twice_raises(self):
+        with self.assertRaisesRegex(ValueError, r"W_A\.C is listed 2 times"):
+            _joined(self.model, [(self.c["W_A"], "C", 2e5, 1e4, 1e7), (self.c["W_A"], "C", 2e5, 1e4, 1e7)])
+
+    def test_a_batched_original_raises(self):
+        model, sensors = build_node("signal_worlds_node_parameters_batched")
+        split_worlds(model, measured=sensors, scored=sensors)
+        model.load(draw_semantic_model=False, draw_simulation_model=False, enable_fusion=False)
+        batched = model.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False, enable_fusion=False)
+        meta, _ = model.get_batched_component_info("W_A")
+        self.assertGreater(meta._n_c_batched, 1)
+        with self.assertRaisesRegex(ValueError, r"W_A\.C has copies .* batched .*unbatched model"):
+            _joined(batched, [(meta, "C", 2e5, 1e4, 1e7)])
+
+    def test_a_model_not_split_keeps_its_entries(self):
+        model, _ = build_node("signal_worlds_node_parameters_whole")
+        model.load(draw_semantic_model=False, draw_simulation_model=False, enable_fusion=False)
+        out = _joined(model, [(model.components["W_A"], "C", 2e5, 1e4, 1e7)])
+        self.assertEqual(_groups(out), [(["W_A"], "C", "private")])
 
 
 if __name__ == "__main__":

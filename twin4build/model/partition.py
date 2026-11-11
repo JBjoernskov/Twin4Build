@@ -391,7 +391,8 @@ class Worlds:
     #: ``{component id: [ids of its copies]}`` (the component keeps one world, each copy another).
     copies: Dict[str, List[str]] = field(default_factory=dict)
     #: ``{(component id, attr): [(component or copy id, attr), ...]}``: the copies of each free parameter of a
-    #: duplicated component, the component's own first.  A fit keeps them in agreement (consensus).
+    #: duplicated component, the component's own first.  The estimator fits them as one parameter: a listed
+    #: original takes its copies into its entry (``Estimator.estimate``).
     shared: Dict[Tuple[str, str], List[Tuple[str, str]]] = field(default_factory=dict)
     #: Components that more than one world reads but that an unmeasured input from another world keeps whole, and
     #: components whose class joins the worlds of what they connect (``JOINS_WORLDS``):
@@ -452,7 +453,7 @@ def split_worlds(
     * Any other component is evaluated once per world that needs it: the original in one, a copy (:func:`_clone`)
       in each other, state and all (a wall between two measured rooms), or the projection where only state-free
       outputs are needed.  The free parameters the copied signals depend on are one parameter evaluated in several
-      worlds: :attr:`Worlds.shared` lists their copies for the fit to keep in agreement (consensus).
+      worlds: :attr:`Worlds.shared` lists their copies, which the estimator fits as one parameter.
     * A component without free parameters that reads nothing from any world (only measured or exogenous signals)
       is not copied: every world would evaluate the same function of measurements, so it is evaluated once on their
       replays (:attr:`Worlds.once`) and is exogenous afterwards.

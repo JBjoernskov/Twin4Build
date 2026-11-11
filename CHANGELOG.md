@@ -941,6 +941,16 @@ Unused and untested; 2.0 drops them without a deprecation period.
   (`Worlds.copies`) from one box and one start, without an option: they are
   one state.  Per state entry their window-start variables get the union of
   their boxes and their mean start.
+- On such a model, a parameter and its copies (`Worlds.shared`) are one
+  parameter: `Estimator.estimate` puts each copy into its original's entry
+  with its start and bounds (a private original becomes one shared entry
+  with its copies, a shared group takes them in; `parameters="auto"`, which
+  lists the copies, too).  A copy listed with another start or bounds, a
+  copy listed without its original or in a shared group without it, and
+  an original or a copy that is an instance of a batched component raise a
+  `ValueError` that names them and says what to list.  The worlds that
+  share a copied parameter are one block of the estimator's structure
+  (`FunctionalModel.index_coupling`).
 
 ### Migration notes
 
