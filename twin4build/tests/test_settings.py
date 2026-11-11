@@ -305,7 +305,9 @@ class TestResultsCarryTheSettings(_NoSettingsInTheEnvironment):
         dates = pd.date_range(start=START, periods=6, freq=f"{STEP}s")
         sensor = SensorSystem(
             id="airflow_sensor",
-            df=pd.DataFrame({"value": np.full(len(dates), 0.3)}, index=dates),
+            source=DataFrameSource(
+                pd.DataFrame({"value": np.full(len(dates), 0.3)}, index=dates)
+            ),
         )
         model = self._model("estimate")
         model.add_connection(schedule, damper, "scheduleValue", "damperPosition")
