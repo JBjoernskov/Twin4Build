@@ -1,8 +1,9 @@
 # ADR 0001: A System is its declarations and one forward step
 
 - **Status:** accepted, 2026-11-05; decisions 7 and 10 amended 2026-11-10
-  (`OccupancySystem` is converted, not deleted; the probe runs on request).
-  To be implemented in 2.0.
+  (`OccupancySystem` is converted, not deleted; the probe runs on request),
+  decision 6 amended 2026-11-11 (the occupancy reads its measurements
+  through its own readers). To be implemented in 2.0.
 - **Scope:** how a System is written, stepped, sized, fed with data and
   checked, for every System in the core package and in the packages that
   build on it.
@@ -119,6 +120,18 @@ class DamperSystem(System):
   inputs. The occupancy System's file mode (`co2_filename`,
   `damper_filename` and their column keywords) goes.
   `ScheduleSwitchControllerSystem` is deleted: it has no users.
+  (Amended 2026-11-11, the maintainer's decision: the occupancy reads its
+  measurements through its own readers, not wired from the sensors. It
+  takes `co2=` and `damper_position=` readers, the sensors' own or others,
+  and its `series` fills the measured CO2, the CO2 of the step before and
+  the damper positions, which its inputs of the same names hand to
+  `forward`, as a sensor's `measuredValue` reads its `measuredData`. Wired
+  from the sensors' `measuredData`, the occupancy closed a loop between
+  components: occupancy, room, CO2 controller, damper, damper position
+  sensor, occupancy. The loader cuts a loop per component, so it cut the
+  edge into the damper sensor, whose modelled reading then lagged its
+  damper by one step. The occupancy reads only recorded data, but the
+  loader cannot see that through the sensor's two outputs.)
 - A data source is a System whose outputs are a series known before the run.
   It defines `series(self, timestamps, step_size)`. The base calls it once at
   run start with the `(n_s, n_t)` timestamps that `get_simulation_timesteps`
@@ -135,7 +148,8 @@ class DamperSystem(System):
 - A sensor has two outputs. `measuredData` is the recorded series, filled by
   `series`. `measuredValue` is an identity `forward` of its input, which
   defaults to `measuredData` when nothing is wired. A System that needs the
-  measurement connects to `measuredData`.
+  measurement connects to `measuredData` (amended 2026-11-11: the occupancy
+  holds the sensor's reader instead, above).
 - The examples switch from `PiecewiseLinearScheduleSystem` to
   `PiecewiseLinearSystem`.
 
@@ -146,7 +160,8 @@ class DamperSystem(System):
   room's CO2 sensor scores the fit. (Amended: it stays downstream. Core is
   stand-alone and takes nothing from the packages built on it.)
 - The inverse `OccupancySystem` is deleted (amended: it is converted, see
-  the Implementation, step 9). Its inversion survives as an
+  the Implementation, step 9, and reads its measurements through its own
+  readers, decision 6). Its inversion survives as an
   `invert_zoh_occupancy` helper for start values.
 
 ### 8. Load
@@ -240,7 +255,7 @@ Systems.
 | One per-System load method for wiring-dependent choices | That is a System looking at its own connections. `size=` and `default=` express every case found: widths, unwired fallbacks and width agreement. |
 | The AHU's branch -> room map as a setting | Indexing must come only from the connections. A scalar output filling several slots removes the need for the map. |
 | Pairing any two translator lists of the same length | Silent and wrong for the AHU pattern, where it put every room on every slot. Pairing must come from the pattern's rules. |
-| Declared self-fed inputs: a System reading a file for one of its inputs | A second way for data to reach a System. A data source plus a connection already does it. |
+| Declared self-fed inputs: a System reading a file for one of its inputs | A second way for data to reach a System. A data source plus a connection already does it. (Amended 2026-11-11: the occupancy reads its measurements through its own readers, decision 6; connected to the sensors, it lagged the damper sensor by a step.) |
 | Stepped data sources (a `do_step` that reads the next sample) | Their values are known before the run. Filling them once is cheaper and needs no state. |
 | Data sources keeping their own `initialize` | Run start belongs to the base (decision 1). `series` is the one thing a data source adds. |
 | A clock data source feeding schedules through ports | A schedule's values follow from the timestamps alone. Computing them once at run start is simpler than stepping calendar logic. |
@@ -299,7 +314,8 @@ A series of pull requests against `dev`, each keeping the tests passing:
    converted rather than removed (amended 2026-11-10, the maintainer's
    decision): converted, it keeps the zone's `V`, `G_occ` and `m_inf` and
    the dampers' `a`, `nominalAirFlowRate` and `c` estimable through the
-   inversion, shared with the room and the dampers.
+   inversion, shared with the room and the dampers. It reads its
+   measurements through its own readers (amended 2026-11-11, decision 6).
 10. Lock-in: overrides raise, the checks raise and `validate` goes, and
     `check_system` with the core examples table (decisions 1, 10 and 11).
 

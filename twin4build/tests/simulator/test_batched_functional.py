@@ -41,10 +41,8 @@ class TestBatchedFunctional(unittest.TestCase):
     def test_complete_two_zone_object_functional_parity(self):
         audit = common.batched_parity_audit(2, hours=1)
         self.assertEqual(audit["n_components"], 46)
-        # the occupancy reads the CO2 and damper sensors and keeps the CO2 of
-        # the step before as a state
-        self.assertEqual(audit["n_connections"], 68)
-        self.assertEqual(audit["n_states"], 28)
+        self.assertEqual(audit["n_connections"], 64)
+        self.assertEqual(audit["n_states"], 26)
         self.assertEqual(audit["n_theta"], 56)
         self.assertLess(audit["max_abs_error"], 3e-5)
 
@@ -141,7 +139,7 @@ class TestBatchedFunctional(unittest.TestCase):
         self.assertEqual(len(setup["parameters"]), 26)
         self.assertEqual(len(setup["measurements"]), 4)
         self.assertEqual(setup["topology"]["n_theta"], 28)
-        self.assertEqual(setup["topology"]["n_states"], 14)
+        self.assertEqual(setup["topology"]["n_states"], 13)
 
     def test_full_pareto_controls_costs_and_constraints_are_batched(self):
         setup = common.batched_pareto_problem(2, measure_batch=False)

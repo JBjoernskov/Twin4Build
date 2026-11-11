@@ -396,7 +396,9 @@ class TestEstimator(unittest.TestCase):
             model.components["outdoor_environment"].globalIrradiation_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=2)
             
             model.components["outdoor_environment"].outdoorCo2Concentration_source = CsvSource(utils.get_path(["estimator_example", "outdoor_environment.csv"]), date_column=0, value_column=3)
-
+            # the occupancy reads the measured CO2 and damper position through the sensors' readers
+            model.components["office_occupancy"].co2 = model.components["office_co2_sensor"].source
+            model.components["office_occupancy"].damper_position = model.components["office_damper_position_sensor"].source
 
             # Set up a temporary directory for saving estimation results
             # This ensures files are cleaned up and works in GitHub Actions
@@ -535,6 +537,8 @@ class TestEstimator(unittest.TestCase):
             ].outdoorCo2Concentration_source = CsvSource(utils.get_path(
                 ["estimator_example", "outdoor_environment.csv"]
             ), date_column=0, value_column=2)
+            model2.components["office_occupancy"].co2 = model2.components["office_co2_sensor"].source
+            model2.components["office_occupancy"].damper_position = model2.components["office_damper_position_sensor"].source
 
             # Step 11: Load the estimation result from file
             model2.load_estimation_result(filename=saved_file_path)

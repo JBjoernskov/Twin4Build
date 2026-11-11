@@ -414,6 +414,14 @@ class System(nn.Module, metaclass=SystemMeta):
             current = self.__dict__.get(name)
             if isinstance(value, dict) and hasattr(current, "to_config") and current.to_config() == value:
                 return  # the reader it already holds (a DataFrame reader's dict has no data)
+            if (
+                isinstance(value, (dict, list))
+                and isinstance(current, tuple)
+                and current
+                and all(hasattr(reader, "to_config") for reader in current)
+                and [reader.to_config() for reader in current] == (value if isinstance(value, list) else [value])
+            ):
+                return  # the readers it already holds (a saved list of one is read back as its item)
             value = setting.convert(value)
         if isinstance(value, (list, tuple, np.ndarray)) and name in type(self).value_settings():
             # one value per copy (a batched System's saved config holds a list)
@@ -996,7 +1004,11 @@ class System(nn.Module, metaclass=SystemMeta):
         for name, source in self.__dict__.get("_input_defaults", {}).items():
             inputs[name] = inputs[source]
         for name, source in self.__dict__.get("_output_defaults", {}).items():
-            inputs[name] = self._fold(self.output[source].get(), n_s, n_c)
+            value = self.output[source].get()
+            # the input holds what it reads, as a wired one does: the
+            # functional engine records an unwired input from its port
+            self.input[name]._set(value, i_t=step_index)
+            inputs[name] = self._fold(value, n_s, n_c)
         params = self._fold_tree(self._forward_params(step_size), n_s, n_c)
         stateful = bool(self.collect_states())
         x = self._fold(self.get_state(), n_s, n_c) if stateful else None
@@ -1789,6 +1801,9 @@ class System(nn.Module, metaclass=SystemMeta):
                 # A reader (a data source's ``source``): the dict it is
                 # rebuilt from.
                 return value.to_config()
+            if isinstance(value, (list, tuple)) and value and all(hasattr(v, "to_config") for v in value):
+                # Several readers (the occupancy's damper positions): theirs.
+                return [v.to_config() for v in value]
             if callable(value) and not isinstance(value, (torch.nn.Module, type)):
                 # A function (a transformation): its module:qualname
                 # reference (None for one that cannot be imported again).

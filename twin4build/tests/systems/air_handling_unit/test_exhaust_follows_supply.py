@@ -143,11 +143,11 @@ class TestOccupancyFollowsSupply(unittest.TestCase):
         ratio = occ.exhaustFlowRatio.get() if ratio_param is None else t(ratio_param)
         inputs = occ.with_defaults({
             "indoorCo2Measured": t(900.0),
+            "previousIndoorCo2Measured": t(880.0),
             "damperPositionMeasured": t(1.0).reshape(1, 1),
             "outdoorCo2Concentration": t(400.0),
         })
-        x = torch.full((1, 1), 880.0, dtype=torch.float64)  # the measured CO2 of the step before
-        _, out = occ.forward(x, inputs, occ.full_params({"exhaustFlowRatio": ratio}, 600.0), 600.0)
+        _, out = occ.forward(None, inputs, occ.full_params({"exhaustFlowRatio": ratio}, 600.0), 600.0)
         return float(out["scheduleValue"])
 
     @_exact

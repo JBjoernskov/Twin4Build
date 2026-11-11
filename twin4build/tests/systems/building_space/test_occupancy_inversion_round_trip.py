@@ -85,12 +85,12 @@ def _invert(m_sup, m_exh, c_prev, c_now, dt=DT, transform_mode=None):
     )
     inputs = occ.with_defaults({
         "indoorCo2Measured": _t(c_now),
+        "previousIndoorCo2Measured": _t(c_prev),
         "damperPositionMeasured": _t(1.0).reshape(1, 1),  # one slot, fully open: flow = nominal
         "outdoorCo2Concentration": _t(C_OUT),
     })
-    x = torch.full((1, 1), c_prev, dtype=torch.float64)  # the measured CO2 of the step before
     with traceable(bool(transform_mode)):
-        _, out = occ.forward(x, inputs, occ.full_params({}, dt), dt)
+        _, out = occ.forward(None, inputs, occ.full_params({}, dt), dt)
     return float(out["scheduleValue"])
 
 

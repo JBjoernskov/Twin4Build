@@ -176,8 +176,8 @@ class TestCanonicalBenchmarks(unittest.TestCase):
             {
                 "n_zones": 3,
                 "n_components": 69,
-                "n_connections": 102,
-                "n_states": 42,
+                "n_connections": 96,
+                "n_states": 39,
                 "n_parameter_groups": 78,
                 "n_theta": 84,
                 "n_measurements": 12,
@@ -438,7 +438,7 @@ class TestCanonicalBenchmarks(unittest.TestCase):
             self.assertTrue(collocation["implementation_supported"])
             self.assertEqual(collocation["replica_count"], zones)
             self.assertEqual(collocation["replica_theta_width"], 28)
-            self.assertEqual(collocation["replica_state_width"], 17)
+            self.assertEqual(collocation["replica_state_width"], 16)
             # Sparse storage never trips the cap at these sizes; the empirical
             # VRAM model (1.16 GiB/zone measured on an A100) decides, and its
             # verdict depends on the card the test runs on -- so check the
@@ -461,7 +461,7 @@ class TestCanonicalBenchmarks(unittest.TestCase):
             )
             self.assertTrue(pareto["mathematically_safe"])
             self.assertEqual(pareto["replica_count"], zones)
-            self.assertEqual(pareto["replica_state_width"], 17)
+            self.assertEqual(pareto["replica_state_width"], 16)
 
     def test_no_disallowed_benchmark_solvers(self):
         source = (BENCHMARKS / "common.py").read_text(encoding="utf-8")

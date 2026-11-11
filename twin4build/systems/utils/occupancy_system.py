@@ -1,7 +1,9 @@
 """The people a zone's measured CO2 implies: the inverse of its CO2 balance
-(ADR 0001: a declared System)."""
+(ADR 0001: a declared System that reads its measurements through its own
+readers)."""
 
 # Third party imports
+import numpy as np
 import torch
 
 # Local application imports
@@ -19,11 +21,28 @@ from twin4build.systems.utils.discrete_statespace_system import (
     effective_matrices,
 )
 from twin4build.systems.utils.smooth_saturation import clamp
+from twin4build.utils.data_loaders.sources import as_source
+from twin4build.utils.slots import is_wired
 
 _FILE_MODE = (
-    "wire indoorCo2Measured from the room's CO2 sensor (its measuredData) and damperPositionMeasured "
-    "from the damper position sensors (their measuredData, one slot each)"
+    "give the occupancy readers: co2=CsvSource(path, date_column=..., value_column=...) and "
+    "damper_position=CsvSource(...), or the sensors' own (co2=co2_sensor.source)"
 )
+
+#: The measurements the occupancy reads through its readers: each is an
+#: output its ``series`` fills, and the input of the same name hands it to
+#: ``forward``.
+MEASURED = ("indoorCo2Measured", "previousIndoorCo2Measured", "damperPositionMeasured")
+
+
+def _as_readers(value) -> tuple:
+    """The damper position readers: none, one reader, or one per terminal
+    (each a reader, the dict a saved model holds or a database point's id)."""
+    if value is None:
+        return ()
+    if isinstance(value, (list, tuple)):
+        return tuple(as_source(v) for v in value)
+    return (as_source(value),)
 
 
 class _OccupancyMass(core.System):
@@ -57,14 +76,32 @@ class OccupancySystem(core.System):
     The exact inverse of :class:`BuildingSpaceMassSystem`'s ZOH step, through
     the zone's *own* matrices (:meth:`invert_zoh_occupancy`): an Euler
     rearrangement, an analytic ``expm1`` inverse, or a separately derived
-    reduced system are all different maps than the zone step.  The measured
-    CO2 arrives on ``indoorCo2Measured`` (the room's CO2 sensor's
-    ``measuredData``) and the damper positions on ``damperPositionMeasured``
-    (the damper position sensors of the terminals serving the room, one slot
-    each); the previous CO2 sample is a one-step lag state.  It starts
-    empty, so the first step of a run takes no change of CO2 and the initial
-    occupancy comes from the static balance.  Inputs arrive through
-    connections only: the System reads no file (ADR 0001, decision 6).
+    reduced system are all different maps than the zone step.
+
+    The occupancy reads its measurements itself, through its own readers
+    (ADR 0001, decision 6, amended), the way a sensor reads its recorded
+    series: ``co2`` the room's CO2 and ``damper_position`` the damper
+    positions of the terminals serving the room, one reader each::
+
+        tb.OccupancySystem(
+            id="occupancy",
+            co2=co2_sensor.source,
+            damper_position=damper_sensor.source,
+        )
+
+    ``series`` reads them once at the run start into the outputs
+    ``indoorCo2Measured``, ``previousIndoorCo2Measured`` (the CO2 of the step
+    before; at a period's first step its own, so the first step takes no
+    change of CO2 and the occupancy comes from the static balance) and
+    ``damperPositionMeasured`` (one slot per reader), and the inputs of the
+    same names hand them to ``forward``.  Nothing is wired to those inputs
+    (the run start raises): wired from the sensors' ``measuredData``, the
+    occupancy would close a loop through the model (the occupancy drives the
+    room, the room the CO2 controller, the controller the dampers the damper
+    position sensor measures) that the loader cuts at the damper sensor,
+    whose modelled reading then lags its damper by a step.  A reader is
+    held, not followed: an occupancy given a sensor's reader keeps it when
+    the sensor's is replaced later.
 
     .. note::
        Because the inverse is exact, measured-vs-predicted CO2 is
@@ -83,6 +120,14 @@ class OccupancySystem(core.System):
         ([supply_damper, occupancy.supply_damper], "a", 1, 1, 10, "shared"),
 
     Args:
+        co2: The reader of the room's measured CO2 [ppmv]:
+            :class:`~twin4build.utils.data_loaders.sources.CsvSource`,
+            :class:`~twin4build.utils.data_loaders.sources.DataFrameSource` or
+            :class:`~twin4build.utils.data_loaders.sources.DatabaseSource`
+            (a string is a database point's id).  Required at the run start.
+        damper_position: The readers of the measured damper positions (0-1),
+            one per terminal serving the room (one reader: one terminal).
+            None given: no mechanical ventilation, only infiltration.
         mass: The values of the zone's CO2 balance, ``dict(V=..., G_occ=...,
             m_inf=...)``.
         supply_damper: The supply damper's characteristic,
@@ -124,12 +169,29 @@ class OccupancySystem(core.System):
 
     exhaust_follows_supply = Setting(False, structural=True, doc="The exhaust flow is the supply flow times the ratio")
     smoothing = Setting(0.0, structural=True, doc="Smoothing factor of the occupancy (0: none)")
+    co2 = Setting(None, convert=as_source, doc="The reader of the room's measured CO2 [ppmv]")
+    damper_position = Setting(
+        (), convert=_as_readers, doc="The readers of the measured damper positions (0-1), one per terminal"
+    )
     outdoorCo2Concentration = Input(default=400.0, doc="Outdoor CO2 concentration [ppmv]")
-    indoorCo2Measured = Input(doc="The room's measured CO2 [ppmv]")
-    damperPositionMeasured = Input(size="wired", doc="Measured damper positions (0-1), one slot per terminal")
     fanSpeedMeasured = Input(default=1.0, doc="Fan state of the air handler (0-1); unwired: running")
     scheduleValue = Output(doc="The number of people")
-    co2_prev = State(init=0.0, doc="The measured CO2 of the step before [ppmv]; 0: none yet")
+    # The measurements, read at the run start (series); each input of the same
+    # name reads its output.
+    indoorCo2Measured = Output(doc="The room's measured CO2, read by co2 [ppmv]")
+    previousIndoorCo2Measured = Output(
+        doc="The measured CO2 of the step before; at a period's first step, its own [ppmv]"
+    )
+    damperPositionMeasured = Output(
+        size=damper_position, doc="The measured damper positions (0-1), one slot per damper_position reader"
+    )
+    indoorCo2Measured = Input(default=indoorCo2Measured, doc="The room's measured CO2 [ppmv]")
+    previousIndoorCo2Measured = Input(
+        default=previousIndoorCo2Measured, doc="The measured CO2 of the step before [ppmv]"
+    )
+    damperPositionMeasured = Input(
+        size=damper_position, default=damperPositionMeasured, doc="The measured damper positions (0-1)"
+    )
     occupancy_prev = State(size=smoothing, init=0.0, doc="The smoothed occupancy of the step before")
     exhaustFlowRatio = Parameter(1.0, lb=0.3, ub=1.5, doc="Exhaust-to-supply flow ratio [-]")
     mass = Child(_OccupancyMass)
@@ -299,14 +361,37 @@ class OccupancySystem(core.System):
         P = {k: self._on_slots(v, positions) for k, v in P.items()}
         return self._airflow(P["a"], P["nominalAirFlowRate"], positions, P.get("c")).sum(dim=-1)
 
+    def series(self, timestamps, step_size):
+        """The measurements on the run's grid, from the readers: the CO2, the
+        CO2 of the step before (a period's first step takes its own) and the
+        damper positions, one slot per reader."""
+        wired = [name for name in MEASURED if is_wired(self, name)]
+        if wired:
+            raise ValueError(
+                f"OccupancySystem '{self.id}': {', '.join(wired)} {'is' if len(wired) == 1 else 'are'} wired; "
+                f"the occupancy reads its measurements "
+                f"through its readers ({_FILE_MODE}). Wired from the sensors, it closes a loop through the model "
+                f"that lags a sensor's modelled reading by a step."
+            )
+        if self.co2 is None:
+            raise ValueError(f"OccupancySystem '{self.id}' has no reader of the room's CO2: {_FILE_MODE}")
+        start_time, end_time, step_sizes = self.periods(timestamps, step_size)
+
+        def read(reader, what):
+            return reader.read(start_time, end_time, step_sizes, owner=f"{self.id} ({what})").values
+
+        co2 = read(self.co2, "co2")
+        previous = np.concatenate([co2[:, :1], co2[:, :-1]], axis=1)
+        positions = [read(reader, f"damper_position[{i}]") for i, reader in enumerate(self.damper_position)]
+        damper = np.stack(positions, axis=-1) if positions else np.zeros(co2.shape + (0,))
+        return {"indoorCo2Measured": co2, "previousIndoorCo2Measured": previous, "damperPositionMeasured": damper}
+
     def forward(self, x, inputs, p, step_size):
-        """One step: the people that take the last measured CO2 to this one,
-        through the zone's own ZOH step; the measured CO2 becomes the state."""
+        """One step: the people that take the CO2 of the step before to this
+        one, through the zone's own ZOH step."""
         P = p["sub_params"]
         C_indoor = inputs["indoorCo2Measured"]
-        # The lag starts empty (0 ppm): the first step takes no change of CO2,
-        # so the people come from the static balance.
-        C_prev = torch.where(x[..., 0] == 0.0, C_indoor, x[..., 0])
+        C_prev = inputs["previousIndoorCo2Measured"]
         positions = inputs["damperPositionMeasured"]
         m_sup = self._flow(P["supply_damper"], positions)
         if self.exhaust_follows_supply:
@@ -330,9 +415,8 @@ class OccupancySystem(core.System):
             step_size,
             n_c=torch.as_tensor(mass["V"]).reshape(-1).shape[0],
         )
-        parts = [C_indoor.unsqueeze(-1)]
         if self.smoothing:
-            N_occ = self.smoothing * x[..., 1] + (1.0 - self.smoothing) * N_occ
-            parts.append(N_occ.unsqueeze(-1))
+            N_occ = self.smoothing * x[..., 0] + (1.0 - self.smoothing) * N_occ
+            x = N_occ.unsqueeze(-1)
         N_occ = clamp(N_occ, lower=0.0, upper=1e6)
-        return torch.cat(parts, dim=-1), {"scheduleValue": N_occ}
+        return x, {"scheduleValue": N_occ}

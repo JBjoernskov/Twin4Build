@@ -150,13 +150,19 @@ def examples(directory):
         tb.MaxSystem: (tb.MaxSystem(id="max"), {"inputs": [1.0, 3.0, 2.0]}),
         tb.OccupancyDetectorSystem: (tb.OccupancyDetectorSystem(id="detector"), {"occupancy": 2.0}),
         tb.OccupancySystem: (
+            # it reads its measurements itself: the CO2 and two terminals' damper positions
             tb.OccupancySystem(
                 id="occupancy",
+                co2=CsvSource(_csv(directory, "co2", [600.0, 640.0, 700.0, 690.0, 650.0, 620.0, 600.0, 590.0])),
+                damper_position=[
+                    CsvSource(_csv(directory, "damper_a", [0.5, 0.5, 0.8, 1.0, 0.6, 0.4, 0.3, 0.3])),
+                    CsvSource(_csv(directory, "damper_b", [0.2, 0.3, 0.3, 0.5, 0.5, 0.4, 0.2, 0.2])),
+                ],
                 mass=dict(V=100.0),
                 supply_damper=dict(nominalAirFlowRate=0.1),
                 exhaust_damper=dict(nominalAirFlowRate=0.1),
             ),
-            {"indoorCo2Measured": 600.0, "damperPositionMeasured": [0.5]},
+            {"outdoorCo2Concentration": 410.0},
         ),
         tb.OnOffSystem: (tb.OnOffSystem(id="on_off", threshold=0.5, is_off_value=0.0), {"value": 1.0, "criteriaValue": 0.5}),
         tb.OutdoorEnvironmentSystem: (

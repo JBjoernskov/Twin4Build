@@ -131,8 +131,9 @@ passing it raises and names its replacement.
   its input or, with nothing wired, its recorded series
   (`measuredValue = Input(default=measuredData)`).  A System that needs the
   measurement connects to `measuredData`.  An `Input(default=...)` may name
-  one of the System's own outputs that its `series` fills, and a System may
-  define both `series` (for some outputs) and `forward` (for the others).
+  one of the System's own outputs that its `series` fills (the input then
+  holds what it reads), and a System may define both `series` (for some
+  outputs) and `forward` (for the others).
 - `Model.check(start_time, end_time, step_size)` and
   `Simulator.simulate(..., check=True)` probe every declared System, on
   request: one `derive` and `forward` call each on the run-start values,
@@ -147,23 +148,28 @@ passing it raises and names its replacement.
   `supply_damper` and `exhaust_damper` (`a`, `nominalAirFlowRate`, `c`, one
   per damper slot) keep their paths, so `([room, occupancy], "mass.V", ...,
   "shared")` and `([damper, occupancy.supply_damper], "a", ..., "shared")`
-  work as before.  Its file mode goes (ADR 0001, decision 6): `co2_filename`,
-  `damper_filename` and their column keywords raise; wire `indoorCo2Measured`
-  from the room's CO2 sensor and `damperPositionMeasured` from the damper
-  position sensors (`measuredData`, one slot each).  The previous CO2 sample
-  is a state (`previousIndoorCo2Measured` goes) that starts empty: the first
-  step of a run takes no change of CO2, as the file mode did (the wired mode
-  started it at 400 ppm, which at short steps booked a burst of people at the
-  first step).  The flat `V=`, `G_occ=`, `m_inf=`, `supply_damper_a=` ...
-  keywords move into the children (`mass=dict(V=...)`), with a warning;
-  `c_tied` / `set_c` on its dampers raise (give `c` a value).  The
-  full-workflow example, the canonical benchmarks and the estimator
-  example's saved model wire the occupancy to the sensors (the saved model
-  gains the two connections and drops the file paths), so the canonical
-  topology has two connections and one state more per zone.  The occupancy
-  steps there exactly as its file mode did; the damper position sensor's
-  modelled reading now lags its damper by one step, where the loader cuts
-  the new loop through the sensors.
+  work as before.  It reads its measurements through its own readers (ADR
+  0001, decision 6, amended): `co2=` for the room's CO2 and
+  `damper_position=` for the damper positions, one reader per terminal
+  serving the room, such as the sensors' own
+  (`co2=co2_sensor.source, damper_position=damper_sensor.source`).  Its
+  `series` reads them at the run start into the outputs
+  `indoorCo2Measured`, `previousIndoorCo2Measured` (at a period's first step
+  its own, so the first step takes no change of CO2) and
+  `damperPositionMeasured`, which its inputs of the same names hand to
+  `forward`.  Its file mode goes: `co2_filename`, `damper_filename` and
+  their column keywords raise and name the readers.  Wiring those inputs
+  from the sensors' `measuredData` raises at the run start: it closes a
+  loop through the model (occupancy, room, CO2 controller, damper, damper
+  position sensor), which the loader cuts at the damper sensor, so its
+  modelled reading lagged its damper by one step.  The flat `V=`, `G_occ=`,
+  `m_inf=`, `supply_damper_a=` ... keywords move into the children
+  (`mass=dict(V=...)`), with a warning; `c_tied` / `set_c` on its dampers
+  raise (give `c` a value).  The full-workflow example, the canonical
+  benchmarks and the estimator example give the occupancy the sensors'
+  readers (the estimator example's saved model drops the file paths); the
+  canonical topology is unchanged, and those models step exactly as with
+  the file mode, in object mode, the functional engine and batched.
 - A System class whose `forward` cannot take `(x, inputs, p, step_size)`,
   whose `derive` cannot take `(p, step_size)` or whose `series` cannot take
   `(timestamps, step_size)` raises `TypeError` when it is defined (they are
@@ -173,7 +179,8 @@ passing it raises and names its replacement.
   whether nothing is wired to it.
 - A setting that holds a tuple (a piecewise-linear curve's points) is saved
   as JSON and reloads; a saved model with a `PiecewiseLinearSystem` did not
-  load.
+  load.  So does a setting that holds several readers (the occupancy's
+  `damper_position`).
 - `ToDegCFromDegK` and `ToDegKFromDegC` are declared Systems (they could not
   be built before).
 - PIDs of different directions batch into one copy, each acting in its own

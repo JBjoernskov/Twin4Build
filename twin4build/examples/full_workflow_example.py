@@ -149,26 +149,15 @@ def fcn(self):
     }
 
     # Replace constant-zero occupancy schedule with inverse-CO2 estimator.
-    # Indoor CO2 and damper position are the sensors' recorded series
-    # (measuredData, the measurements, not the modelled values), so no
-    # gradient feedback loop runs through simulated sensor outputs.
+    # It reads the measured CO2 and damper position itself, through the
+    # sensors' readers (the measurements, not the modelled values): nothing
+    # connects the sensors to it, so no loop runs through the model.
     self.remove_component(self.components["office_occupancy_profile"])
     occupancy_system = tb.OccupancySystem(
         mass=dict(V=100, G_occ=5e-6, m_inf=0.001),
+        co2=self.components["office_co2_sensor"].source,
+        damper_position=self.components["office_damper_position_sensor"].source,
         id="office_occupancy",
-    )
-    self.add_connection(
-        self.components["office_co2_sensor"],
-        occupancy_system,
-        "measuredData",
-        "indoorCo2Measured",
-    )
-    self.add_connection(
-        self.components["office_damper_position_sensor"],
-        occupancy_system,
-        "measuredData",
-        "damperPositionMeasured",
-        input_port_index=0,
     )
     self.add_connection(
         self.components["outdoor_environment"],

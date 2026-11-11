@@ -183,6 +183,13 @@ def _has_real_forward(comp) -> bool:
     return f is not None and f is not nn.Module.forward
 
 
+def _is_series_output(comp, port) -> bool:
+    """An output a System's ``series`` fills at the run start (the
+    occupancy's measurements): known before the run, so it is data, never
+    produced by the System's ``forward``."""
+    return port in getattr(comp, "__dict__", {}).get("_series_outputs", ())
+
+
 def _replays_data(comp) -> bool:
     """A component that, in its current configuration, only replays recorded
     data (a controller in playback mode outputs its historised command): its
@@ -440,7 +447,7 @@ class FunctionalModel:
         meas_offset = 0
         for md in measurements or []:
             src = self._trace_source(md, "measuredValue")
-            if src is not None and src[0].id in {x.id for x in self.cone}:
+            if src is not None and src[0].id in {x.id for x in self.cone} and not _is_series_output(src[0], src[1]):
                 width = self._route_width(src[2], src[0], src[1])
                 self.meas_sources.append(("fresh", src[0].id, src[1], src[2]))
             else:
@@ -462,7 +469,11 @@ class FunctionalModel:
         # every output on a fused zone would be wrongly classified external.
         for comp, out_port in outputs or []:
             resolved = self._follow(comp, out_port)
-            if resolved is not None and resolved[0].id in self.cone_ids:
+            if (
+                resolved is not None
+                and resolved[0].id in self.cone_ids
+                and not _is_series_output(resolved[0], resolved[1])
+            ):
                 width = self._route_width(resolved[2], resolved[0], resolved[1])
                 self.meas_sources.append(
                     ("fresh", resolved[0].id, resolved[1], resolved[2])
@@ -769,7 +780,12 @@ class FunctionalModel:
         width = self._component_n_c(comp)
         categories = []
         for src in sources:
-            in_cone = src[0].id in self.forward_ids and src[0].id in self.cone_ids
+            # a series output (filled at the run start) is data, whoever owns it
+            in_cone = (
+                src[0].id in self.forward_ids
+                and src[0].id in self.cone_ids
+                and not _is_series_output(src[0], src[1])
+            )
             if in_cone and self.pos[src[0].id] < self.pos[comp.id]:
                 categories.append("fresh")
             elif in_cone:

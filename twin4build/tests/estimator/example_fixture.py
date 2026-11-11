@@ -59,6 +59,9 @@ def load_model():
     outdoor.outdoorTemperature_source = CsvSource(data_path("outdoor_environment.csv"), date_column=0, value_column=1)
     outdoor.globalIrradiation_source = CsvSource(data_path("outdoor_environment.csv"), date_column=0, value_column=2)
     outdoor.outdoorCo2Concentration_source = CsvSource(data_path("outdoor_environment.csv"), date_column=0, value_column=3)
+    # the occupancy reads the measured CO2 and damper position through the sensors' readers
+    components["office_occupancy"].co2 = components["office_co2_sensor"].source
+    components["office_occupancy"].damper_position = components["office_damper_position_sensor"].source
     return model
 
 
