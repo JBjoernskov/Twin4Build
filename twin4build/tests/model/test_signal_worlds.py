@@ -17,6 +17,7 @@ import datetime
 import unittest
 
 import pandas as pd
+import torch
 from dateutil import tz
 
 import twin4build as tb
@@ -120,6 +121,37 @@ class TestHallway(unittest.TestCase):
         room = model.components["A"].output["surplusAirFlowRate"].history()
         projected = model.components["A__projection_in_H"].output["surplusAirFlowRate"].history()
         self.assertTrue(bool(((room - projected).abs() < 1e-12).all()))
+
+    def test_the_batched_projections_keep_one_value_per_copy(self):
+        # The two rooms' projections batch into one AirImbalanceSystem: every port of it holds
+        # both copies (a downstream run once saw the exhaust vector allocated for one) and each copy its room's
+        # imbalance.  B's damper is larger, so the copies differ.
+        def split(model_id):
+            model, sensors = build_hallway(model_id)
+            model.components["B_damper"].nominalAirFlowRate.set(0.2, normalized=False)
+            split_worlds(model, measured=sensors, scored=sensors)
+            model.load(draw_semantic_model=False, draw_simulation_model=False)
+            return model
+
+        span = dict(start_time=START, end_time=START + datetime.timedelta(hours=1), step_size=STEP,
+                    show_progress_bar=False)
+        model = split("signal_worlds_hallway_unbatched")
+        tb.Simulator(model).simulate(**span)
+        source = split("signal_worlds_hallway_batched")
+        batched = source.batch_components()
+        batched.load(draw_semantic_model=False, draw_simulation_model=False)
+        meta, _ = source.get_batched_component_info("A__projection_in_H")
+        self.assertIsInstance(meta, tb.AirImbalanceSystem)
+        self.assertEqual(meta._n_c_batched, 2)
+        for mode in ("object", "functional"):
+            with self.subTest(mode=mode):
+                tb.Simulator(batched, execution_mode=mode).simulate(**span)
+                for name, port in {**meta.input, **meta.output}.items():
+                    self.assertEqual(port.n_c, 2, name)
+                for rid in ("A", "B"):
+                    _, i_c = source.get_batched_component_info(f"{rid}__projection_in_H")
+                    room = model.components[rid].output["surplusAirFlowRate"]._history[..., 0]
+                    torch.testing.assert_close(meta.output["surplusAirFlowRate"]._history[..., i_c], room)
 
 
 class TestJunction(unittest.TestCase):
