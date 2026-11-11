@@ -922,12 +922,15 @@ Unused and untested; 2.0 drops them without a deprecation period.
   with free parameters whose outputs the other worlds read are all lagged
   (`LAGGED_OUTPUT_PORTS`, a building's hidden interior node) and that one
   world needs only through measured or exogenous signals lives in that
-  world (its home, `Worlds.provided`), and every other world reads it
-  through a `GradientBarrierSystem` (`systems/utils/gradient_barrier_system.py`:
-  the value, without its gradient).  The partition counts a barrier's
-  output as exogenous and the estimator's structure walk
-  (`FunctionalModel.index_coupling`) lets no parameter reach through it, so
-  the readers' blocks stay apart from the home's.
+  world (its home), and every other world reads it through a cut
+  connection: `Model.add_connection(..., detached=True)`, the value without
+  its gradient (`Worlds.provided` lists them as `(output port, reader,
+  input port)`).  Both engines pass the value on detached and still
+  evaluate the sender every step, the partition reads the signal as data,
+  and the estimator's structure walk (`FunctionalModel.index_coupling`) lets
+  no parameter through, so the readers' blocks stay apart from the home's.
+  A batched meta holds one flag per pair (its instances may read the sender
+  in different ways), and a saved model keeps the flag.
 - `System.JOINS_WORLDS` (default `False`): a component whose class sets it
   (an opening between the zones of one room) joins the worlds of the scored
   spaces it reads or feeds into one world (`Worlds.merged`) instead of being

@@ -58,7 +58,6 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, 
 from twin4build.model import signal_dependencies as sd
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.sensor.sensor_system import SensorSystem
-from twin4build.systems.utils.gradient_barrier_system import GradientBarrierSystem
 from twin4build.utils.data_loaders.load import DEFAULT_DT_LIMIT
 from twin4build.utils.slots import slot_pairs
 
@@ -81,6 +80,9 @@ class Edge:
     sensor: Optional[SensorSystem] = None
     #: A function of the sensor's series that gives the signal (derived).
     transform: Optional[Callable] = None
+    #: The connection is read without its gradient (``ConnectionPoint.detached_of``; split_worlds' cuts from a
+    #: provided component): the receiver reads the signal as data.
+    detached: bool = False
 
     @property
     def signal(self) -> Signal:
@@ -126,9 +128,12 @@ def _edges(model) -> List[Edge]:
     for comp in model.components.values():
         for conn in comp.connected_through:
             for cp in conn.connects_system_at:
+                cut = cp.detached_of(conn)
+                detached = bool(cut.any()) if hasattr(cut, "any") else bool(cut)
                 for _, _, out_v, in_v in slot_pairs(cp, conn):
                     out.append(
-                        Edge(comp, conn.output_port, _slot(out_v), cp.connection_point_of, cp.input_port, _slot(in_v))
+                        Edge(comp, conn.output_port, _slot(out_v), cp.connection_point_of, cp.input_port, _slot(in_v),
+                             detached=detached)
                     )
     return out
 
@@ -167,15 +172,15 @@ def _exogenous(model, edges, free_ids, allowed=None) -> Set[str]:
         ins.setdefault(e.receiver.id, []).append(e)
 
     def data_input(e: Edge) -> bool:
-        return _is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue"
+        # a connection read without its gradient (split_worlds' cut from a provided component) is read as data
+        return e.detached or (_is_data_sensor(e.sender, allowed) and e.output_port == "measuredValue")
 
     out: Set[str] = set()
     pending = []
     for cid, comp in model.components.items():
         if cid in free_ids:
             continue
-        if not _has_inputs(comp) or isinstance(comp, GradientBarrierSystem):
-            # a gradient barrier (split_worlds' provided components) passes a value on: its readers read it as data
+        if not _has_inputs(comp):
             out.add(cid)
         elif not isinstance(comp, SensorSystem):
             pending.append(cid)
@@ -250,9 +255,8 @@ def _classify(model, free=None, measured=None, derived=None, scored=None) -> _Cl
         if isinstance(r, SensorSystem) and e.input_port == "measuredValue":
             sinks.append((e.sender.id, r.id))  # a sink (or a pass-through) stays with its source
             continue
-        if isinstance(r, GradientBarrierSystem):
-            sinks.append((e.sender.id, r.id))  # a gradient barrier stays with what it passes on (its readers do not)
-            continue
+        if e.detached:
+            continue  # read without its gradient (split_worlds' cut from a provided component): as data, ties nothing
         if isinstance(r, SensorSystem) and r.has_data:
             continue  # a data sensor replays its series: its other inputs tie nothing
         if e.sender.id in exogenous:
@@ -399,8 +403,9 @@ class Worlds:
     #: ``{component id: the ids of its projections}``: a component with a state whose state-free outputs another world
     #: needs, computed there by the class's projection (``OUTPUT_PROJECTIONS``) from that world's members.
     projections: Dict[str, List[str]] = field(default_factory=dict)
-    #: ``{component id: the ids of its gradient barriers}``: a provided component (:func:`split_worlds`), evaluated in
-    #: its home world only; every other world that needs it reads its lagged outputs through a barrier.
+    #: ``{component id: [(output port, reader id, input port), ...]}``: a provided component (:func:`split_worlds`),
+    #: evaluated in its home world only; every other world that needs it reads its lagged outputs through these cut
+    #: connections, without their gradient (``Model.add_connection(..., detached=True)``).
     provided: Dict[str, List[str]] = field(default_factory=dict)
 
 
@@ -455,9 +460,8 @@ def split_worlds(
       ``LAGGED_OUTPUT_PORTS``: the start-of-step state a hub publishes, a building's hidden interior node) and that
       one world needs without reading anything of that world's own -- there every path upstream of its state ends at
       a measured or exogenous signal -- is provided (7 Nov 2026): it lives in that world (its home), on those
-      measurements, and every other world reads its lagged outputs through a
-      :class:`~twin4build.systems.utils.gradient_barrier_system.GradientBarrierSystem` instead of copying it
-      (:attr:`Worlds.provided`).  It is simulated once and fitted to its home's measurements; its readers' residuals
+      measurements, and every other world reads its lagged outputs through a cut connection, without their gradient
+      (``detached=True``, :attr:`Worlds.provided`), instead of copying it.  It is simulated once and fitted to its home's measurements; its readers' residuals
       move only their own parameters.  A wall or a radiator (outputs not lagged) keeps its copies.
     * A component whose class sets :attr:`~twin4build.systems.saref4syst.system.System.JOINS_WORLDS` (an opening
       between the zones of one room) joins the worlds of the scored spaces it reads or feeds: they are one world
@@ -564,7 +568,7 @@ def split_worlds(
                         continue
                     seen.add((cid, port, slot))
                     if cid in provided and provided[cid] != w:
-                        continue  # read through a gradient barrier from its home
+                        continue  # read through a cut connection from its home
                     dep = dependency(cid, port)
                     foreign = cid in seeds and find(cid) != w
                     if foreign and port != sd.STATE and measured_signal(cid, port, slot):
@@ -687,8 +691,8 @@ def split_worlds(
         leaves[leaf_id] = leaf
         return leaf
 
-    def wire(sender, receiver, e: Edge, output_port: Optional[str] = None):
-        kwargs = {}
+    def wire(sender, receiver, e: Edge, output_port: Optional[str] = None, detached: bool = False):
+        kwargs = {"detached": True} if detached else {}
         out_port = output_port or e.output_port
         if (sender.id, receiver.id, out_port, e.input_port) in wired and sender.id in family:
             base, k = family[sender.id], 1
@@ -777,28 +781,18 @@ def split_worlds(
             return None  # derived: the cut replays it
         return replay_of(sensors[0])
 
-    barriers: Dict[Tuple[str, str, Optional[int]], object] = {}
     for cid in provided:
         result.provided[cid] = []
 
-    def barrier_for(e: Edge):
-        """The gradient barrier on the provided output ``e`` reads: one per output (slot), shared by its readers."""
-        key = (e.sender.id, e.output_port, e.output_slot)
-        if key not in barriers:
-            slot = "" if e.output_slot is None else f"_{e.output_slot}"
-            b = GradientBarrierSystem(id=f"{e.sender.id}__{e.output_port}{slot}__barrier")
-            model.add_component(b)
-            kwargs = {}
-            out_spec = getattr(e.sender, "output", {}).get(e.output_port)
-            if e.output_slot is not None and getattr(out_spec, "__class__", None).__name__ == "Vector":
-                kwargs["output_port_index"] = e.output_slot
-            model.add_connection(e.sender, b, e.output_port, "value", **kwargs)
-            barriers[key] = b
-            result.provided[e.sender.id].append(b.id)
-        return barriers[key]
+    def cut_from(e: Edge, receiver):
+        """A provided component read outside its home: the same connection, cut (without its gradient)."""
+        wire(e.sender, receiver, e, detached=True)
+        entry = (e.output_port, receiver.id, e.input_port)
+        if entry not in result.provided[e.sender.id]:
+            result.provided[e.sender.id].append(entry)
 
     # wiring: every member reads its own world's members, measurements and exogenous signals; a provided component
-    # outside its home, through its barrier
+    # outside its home, through a cut connection
     for cid in sorted(members):
         comp = model.components[cid]
         for w, member in members[cid].items():
@@ -828,7 +822,7 @@ def split_worlds(
                     if source is not None:
                         wire(source, comp, e)
                     elif e.sender.id in provided:
-                        wire(barrier_for(e), comp, e, output_port="value")
+                        cut_from(e, comp)
                     elif e.input_slot is not None:
                         wire(zero_leaf(), comp, e, output_port="scheduleValue")
                 for x in keep:
@@ -847,7 +841,7 @@ def split_worlds(
                     if source is not None:
                         wire(source, member, e)
                     elif e.sender.id in provided:
-                        wire(barrier_for(e), member, e, output_port="value")
+                        cut_from(e, member)
                     elif e.input_slot is not None:
                         wire(zero_leaf(), member, e, output_port="scheduleValue")
                 else:  # measured (the cut replays it) or exogenous: as it is
@@ -873,7 +867,7 @@ def split_worlds(
                     result.shared[(cid, a)] = [(cid, a)] + [(copy_id, a) for copy_id in copies]
     result.merged = {cid: sorted(ids) for cid, ids in merged_for.items()}
     LOGGER.info("partition: %d components split into worlds (%d copies, %d projections), %d shared parameters, %d merged, "
-                "%d provided (%d barriers)",
+                "%d provided (%d cut connections)",
                 len(result.copies), sum(len(v) for v in result.copies.values()),
                 sum(len(v) for v in result.projections.values()), len(result.shared), len(result.merged),
                 len(result.provided), sum(len(v) for v in result.provided.values()))

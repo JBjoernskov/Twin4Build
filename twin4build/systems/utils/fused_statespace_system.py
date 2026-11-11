@@ -135,7 +135,7 @@ class _ConnectionPointView:
     __slots__ = (
         "input_port", "connects_system_through", "input_port_index",
         "output_port_index", "output_component_index", "input_component_index",
-        "connection_point_of",
+        "connection_point_of", "_real",
     )
 
     def __init__(self, fused, namespaced_port, real_cp, connections):
@@ -146,6 +146,11 @@ class _ConnectionPointView:
         self.output_component_index = real_cp.output_component_index
         self.input_component_index = real_cp.input_component_index
         self.connection_point_of = fused
+        self._real = real_cp
+
+    def detached_of(self, connection):
+        """The member's connection point's flag (``ConnectionPoint.detached_of``)."""
+        return self._real.detached_of(connection)
 
 
 class _ConnectionView:

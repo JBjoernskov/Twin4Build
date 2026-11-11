@@ -452,6 +452,7 @@ class Model:
         input_port_index: [int, torch.Tensor] = None,
         output_component_index: [int, torch.Tensor] = None,
         input_component_index: [int, torch.Tensor] = None,
+        detached=False,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -473,6 +474,15 @@ class Model:
                 components, the sender / receiver instance (``i_c``) of each
                 pair the connection carries, aligned element-wise with the
                 port indices when those are tensors.
+            detached: ``True``: the receiver reads the value without its
+                gradient.  The sender is still evaluated every step, but no
+                parameter upstream of it reaches the receiver through this
+                connection: the partition reads the value as data, the
+                estimator's structure walk (``index_coupling``) lets nothing
+                through, and both engines pass the value on detached.  On a
+                batched meta, one flag per pair.  ``split_worlds`` cuts a
+                provided component's connections to the other worlds'
+                readers so (``Worlds.provided``).
 
         Raises:
             AssertionError: If property names are invalid for the components.
@@ -493,6 +503,7 @@ class Model:
             input_port_index=input_port_index,
             output_component_index=output_component_index,
             input_component_index=input_component_index,
+            detached=detached,
         )
 
     def remove_connection(
@@ -1405,8 +1416,15 @@ class Model:
                             f"{comp.id}.{conn.output_port} -> {receiver.id}.{cp.input_port}: "
                             f"{len(outs)} output slots against {len(ins)} input slots"
                         )
-                        for out_v, in_v in zip(outs, ins):
-                            connection_map[key]["pairs"].append((s_ic, r_ic, out_v, in_v))
+                        cut = cp.detached_of(conn)
+                        cuts = (
+                            [bool(v) for v in cut.tolist()] if isinstance(cut, torch.Tensor)
+                            else [bool(cut)] * len(outs)
+                        )
+                        if len(cuts) == 1 and len(outs) > 1:
+                            cuts = cuts * len(outs)
+                        for out_v, in_v, d in zip(outs, ins, cuts):
+                            connection_map[key]["pairs"].append((s_ic, r_ic, out_v, in_v, d))
 
         def _index(values):
             """One int when every pair agrees on one value, else a tensor."""
@@ -1424,6 +1442,9 @@ class Model:
             in_v = _index([p[3] for p in pairs])
             s_ics = [p[0] for p in pairs]
             r_ics = [p[1] for p in pairs]
+            cuts = [p[4] for p in pairs]
+            # read without the gradient (split_worlds' cut connections): one flag for all pairs, or one per pair
+            detached = all(cuts) if all(cuts) or not any(cuts) else torch.tensor(cuts, dtype=torch.bool)
             # Instances aligned pairwise with no vector slots to carry:
             # plain broadcasting over n_c, as before.
             aligned = (
@@ -1435,10 +1456,10 @@ class Model:
                 and not isinstance(in_v, torch.Tensor)
             )
             singleton = s_n_c == 1 and r_n_c == 1 and len(pairs) == 1
-            if aligned or singleton:
+            if (aligned or singleton) and not isinstance(detached, torch.Tensor):
                 batched.add_connection(
                     info["s_meta"], info["r_meta"], info["output_port"], info["input_port"],
-                    output_port_index=out_v, input_port_index=in_v,
+                    output_port_index=out_v, input_port_index=in_v, detached=detached,
                 )
                 continue
             batched.add_connection(
@@ -1447,6 +1468,7 @@ class Model:
                 input_port_index=in_v,
                 output_component_index=torch.tensor(s_ics, dtype=torch.long),
                 input_component_index=torch.tensor(r_ics, dtype=torch.long),
+                detached=detached,
             )
 
         # -- Phase 3: the source model's cycle cuts, as pairs of metas ---------

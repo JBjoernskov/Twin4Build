@@ -758,6 +758,7 @@ class SimulationModel:
         components: Dict[str, core.System] = None,
         output_component_index: [int, torch.Tensor] = None,
         input_component_index: [int, torch.Tensor] = None,
+        detached=False,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -776,6 +777,10 @@ class SimulationModel:
                 slots adds them to the same connection.
             components (Optional[Dict[str, core.System]]): Component dictionary to operate on.
                 Defaults to the model's own component dictionary.
+            detached: ``True``: the receiver reads the value without its gradient (no parameter upstream
+                of the sender reaches the receiver through this connection; the sender is still evaluated
+                every step).  On a batched meta, one flag per pair.  ``split_worlds`` cuts a provided
+                component's connections to the other worlds' readers so.
 
         Raises:
             AssertionError: If property names are invalid for the components.
@@ -845,6 +850,12 @@ class SimulationModel:
                 # once per branch.  One Connection carries all of them as
                 # tensor indices (the Vector -> Vector form the engines
                 # already route); anything else is a genuine duplicate.
+                existing = receiver_component_connection_point.detached_of(sender_obj_connection)
+                if not (existing is True and detached is True) and not (existing is False and not detached):
+                    raise ValueError(
+                        f"{message} A connection read without its gradient (detached) on some slots and with it "
+                        "on others is given in one call, with one flag per pair."
+                    )
                 self._merge_vector_connection(
                     sender_component,
                     receiver_component,
@@ -912,6 +923,8 @@ class SimulationModel:
             receiver_component_connection_point.set_input_component_index(
                 sender_obj_connection, input_component_index
             )
+        if detached is not False and detached is not None:
+            receiver_component_connection_point.set_detached(sender_obj_connection, detached)
 
         if components == self._components:
             sender_component_uri = self._semantic_model.T4B.__getitem__(
@@ -2480,6 +2493,8 @@ class SimulationModel:
                         continue
                     if self._components.get(recv.id) is not recv:
                         continue
+                    if cp.detached_of(conn) is not False:
+                        continue  # read without its gradient (split_worlds' cut): never inside a fused block
                     arcs.append((comp, conn.output_port, recv, cp.input_port, slot_pairs(cp, conn)))
         return arcs
 
@@ -3819,6 +3834,15 @@ class SimulationModel:
                     for conn, idx in connection_point.output_port_index.items()
                 },
             }
+            detached = {
+                str(hash(conn)): (True if flag is True else [bool(v) for v in flag.tolist()])
+                for conn in connection_point.connects_system_through
+                for flag in (connection_point.detached_of(conn),)
+                if flag is not False
+            }
+            if detached:
+                # what split_worlds cut: read again as it was (only written where there is one)
+                literals_to_update["detached"] = detached
 
             for key, value in literals_to_update.items():
                 if isinstance(value, (dict, list)):
@@ -4331,6 +4355,14 @@ class SimulationModel:
                     conn_key = connection.get_short_name()
                     input_port_index = None
                     output_port_index = None
+                    detached = False
+                    if core.namespace.T4B.detached in predicate_object_pairs_connection_point:
+                        raw = predicate_object_pairs_connection_point[core.namespace.T4B.detached][0].uri.value
+                        parsed = _convert_literal_value(raw)
+                        if isinstance(parsed, dict):
+                            detached = parsed.get(conn_key, False)
+                            if isinstance(detached, list):
+                                detached = torch.tensor(detached, dtype=torch.bool)
                     if (
                         core.namespace.T4B.input_port_index
                         in predicate_object_pairs_connection_point
@@ -4368,6 +4400,7 @@ class SimulationModel:
                             "input_port": input_port,
                             "input_port_index": input_port_index,
                             "output_port_index": output_port_index,
+                            "detached": detached,
                         }
                     )
 
@@ -4401,6 +4434,7 @@ class SimulationModel:
                 input_port=data["input_port"],
                 input_port_index=data["input_port_index"],
                 output_port_index=data["output_port_index"],
+                detached=data.get("detached", False),
             )
 
         # Step 4: Forget the instances that were cached while the file was

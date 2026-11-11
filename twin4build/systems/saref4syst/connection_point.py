@@ -178,3 +178,24 @@ class ConnectionPoint:
         Set the component index on the output side (i_c dimension).
         """
         self._output_component_index[connection] = index
+
+    def set_detached(self, connection: Connection, detached) -> None:
+        """Mark the connection's value as read without its gradient: ``True``
+        for every pair it carries, or one flag per pair (a batched meta whose
+        instances read the sender in different ways).  ``False`` clears it."""
+        if isinstance(detached, torch.Tensor) and detached.numel() > 0 and bool(detached.all()):
+            detached = True
+        if isinstance(detached, torch.Tensor) and not bool(detached.any()):
+            detached = False
+        if detached is False or detached is None:
+            self.__dict__.setdefault("_detached", {}).pop(connection, None)
+            return
+        self.__dict__.setdefault("_detached", {})[connection] = (
+            True if detached is True else torch.as_tensor(detached, dtype=torch.bool).reshape(-1)
+        )
+
+    def detached_of(self, connection: Connection):
+        """``False`` (the receiver reads the value with its gradient), ``True``
+        (without it: no parameter upstream of the sender reaches the receiver
+        through this connection), or one flag per pair (a batched meta)."""
+        return self.__dict__.get("_detached", {}).get(connection, False)
