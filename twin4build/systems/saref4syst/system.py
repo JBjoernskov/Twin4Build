@@ -35,12 +35,15 @@ _VALUE_SETTINGS: dict = {}
 
 def _setting_reader(name: str):
     """A state's ``init_fn`` reading its initial value from the setting ``name``
-    (one value per copy on a batched System: ``(n_c, 1)``)."""
+    (one value per copy on a batched System: ``(n_c, 1)``).  Per copy is a
+    value setting's tensor; a structural setting's sequence holds one value
+    per state entry, whatever the number of copies."""
 
     def read(component):
-        value = torch.as_tensor(getattr(component, name), dtype=tps.float_dtype())
+        raw = getattr(component, name)
+        value = torch.as_tensor(raw, dtype=tps.float_dtype())
         n_c = int(getattr(component, "n_c", 1) or 1)
-        if value.dim() == 1 and n_c > 1 and value.numel() == n_c:
+        if isinstance(raw, torch.Tensor) and value.dim() == 1 and n_c > 1 and value.numel() == n_c:
             return value.reshape(n_c, 1)
         return value
 

@@ -116,6 +116,28 @@ passing it raises and names its replacement.
   sensor's `validate` / `validate_connections` hooks → nothing to call: a
   load checks the model and raises (below).  `Model.load(validate_model=...)`
   raises a `TypeError` saying so.
+- `DiscreteStatespaceSystem` written the old way → declarations plus
+  `forward(x, inputs, p, step_size)`, which the base calls: its own
+  `do_step`, `initialize` and `discretize_system` go.  `forward` takes the
+  state `x` (copies, n) and `inputs["u"]` (copies, m) and returns
+  `(x_next, {"y": ...})`; `p` holds no parameter (the matrices are
+  settings, never estimated).
+  - Matrices with a leading copy dimension (`A` of shape `(n_c, n, n)`:
+    several systems in one) → one System per copy, which
+    `Model.batch_components` batches (copies holding equal matrices batch).
+    Such a matrix raises at the run start, naming the shapes.
+  - `state_names=` → nothing: the state is `x`, and `System.state_names()`
+    names its entries.  `sample_time=` (1.x) and `step_size=` → the run's
+    step size.  `batch_size`, `sim_batch_size` and `system_batch_size` →
+    the copies of a batched meta.  `discretize_system` →
+    `discretize_onestep(A, B, E, F, u, step_size)`.  Each raises and names
+    its replacement.  `add_noise=`, which 1.x ignored, raises as any
+    keyword the constructor does not take.
+  - The input `u` is as wide as what is wired into it (it held `B`'s
+    columns whatever was wired): wire every column; a run start with
+    another width raises.
+  - `system.x` is the declared state (a `tps.State`, not its tensor);
+    `get_state()` / `set_state()` read and write the tensor.
 
 #### Changed
 
@@ -183,6 +205,13 @@ passing it raises and names its replacement.
   `damper_position`).
 - `ToDegCFromDegK` and `ToDegKFromDegC` are declared Systems (they could not
   be built before).
+- `DiscreteStatespaceSystem` is declared (the migration above): the
+  settings `A`, `B`, `C`, `D` (absent: zeros), `E`, `F` (absent: linear),
+  held and saved as nested lists of numbers, and `x0`; the input `u`, the
+  output `y` (one slot per row of `C`) and the state `x`.  It steps with the
+  same `bilinear_onestep` as before: against the System written the old
+  way, the same bits in object mode and the functional engine.
+  `check_system` has an example.
 - PIDs of different directions batch into one copy, each acting in its own
   direction, and the gains are no longer `abs()`-ed (#297); walls and
   thermal-mass nodes with different `T_init` start at their own values when
@@ -190,12 +219,11 @@ passing it raises and names its replacement.
 
 #### Not yet converted
 
-Three Systems still write their own `do_step` and `initialize`; a test keeps
+Two Systems still write their own `do_step` and `initialize`; a test keeps
 the list from growing and states each reason.  `ControllerIdentificationSystem`
 (and `ControllerIdentificationPISystem`) is exempt for 2.0 and converted in
 2.1: it builds its candidates and gates from its wiring.  `FusedStateSpaceSystem`
-is exempt: the loader builds it.  `DiscreteStatespaceSystem` is converted
-once the numerics work lands.  Until then the base does not raise on an
+is exempt: the loader builds it.  Until then the base does not raise on an
 override.
 
 ### Removed
