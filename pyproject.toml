@@ -76,7 +76,7 @@ dependencies = [
     "pyparsing<3.3.3",
     "typer",
     "openpyxl",
-    "psycopg2",
+    # psycopg2 (reading a PostgreSQL database) is the [database] extra
     "pyarrow",
     "beautifulsoup4",
     # python-dateutil 3.0.0 (2026-10) breaks pandas' time-zone conversion of
@@ -113,7 +113,11 @@ dev = [
     "pytest-html",
     "build",
     "twine",
+    # the database loader's tests
+    "psycopg2-binary",
 ]
+# Reading sensor and schedule series from a PostgreSQL database
+# (DatabaseSource, load_from_database).
 database = [
     "psycopg2-binary",
     "sqlalchemy",

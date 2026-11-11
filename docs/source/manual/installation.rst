@@ -98,7 +98,6 @@ Core dependencies (automatically installed):
 - pydotplus
 - typer
 - openpyxl
-- psycopg2
 - pyarrow
 - beautifulsoup4
 - python-dateutil
@@ -108,11 +107,15 @@ Core dependencies (automatically installed):
 
 Optional dependencies:
 
-- ``[database]``: psycopg2-binary, sqlalchemy
+- ``[database]``: psycopg2-binary, sqlalchemy.  Reading series from a
+  PostgreSQL database (``DatabaseSource``, ``load_from_database``) needs it;
+  without it, reading a database raises an ``ImportError`` that names the
+  extra, and everything else works.
 - ``[gpu]``: Triton on Linux. CUDA torch itself is not on PyPI; pass
   ``--extra-index-url https://download.pytorch.org/whl/cu128`` (or install
   ``torch`` from that index first). See :ref:`gpu-cuda-installation`.
-- ``[dev]``: coverage, black, flake8, isort, sphinx, sphinx-rtd-theme, sphinx-autodoc-typehints, myst-parser, twine
+- ``[dev]``: coverage, black, flake8, isort, sphinx, sphinx-rtd-theme, sphinx-autodoc-typehints, myst-parser,
+  pytest, pytest-cov, pytest-html, build, twine, psycopg2-binary (the database loader's tests)
 - ``[all]``: ``[dev]`` + ``[database]`` (not CUDA torch)
 
 .. _gpu-cuda-installation:
