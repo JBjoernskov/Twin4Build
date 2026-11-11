@@ -179,8 +179,9 @@ Optional extras:
 
 ```bat
 pip install twin4build[database]     # PostgreSQL connectivity
+pip install twin4build[notebooks]    # jupyter and nbformat, to run the example notebooks
 pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
-pip install twin4build[all]          # Dev + database (not CUDA torch)
+pip install twin4build[all]          # Dev + notebooks + database (not CUDA torch)
 ```
 
 ### GPU / CUDA installation

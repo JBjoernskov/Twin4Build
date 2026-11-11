@@ -1121,5 +1121,8 @@ Bugs of 1.1.2:
   `brickschema<0.8`, `pyparsing<3.3.3` and `python-dateutil<3`, each for a
   breaking upstream release.  `psycopg2` is no longer a dependency: reading
   a PostgreSQL database needs the `[database]` extra (`psycopg2-binary`),
-  and without it raises an `ImportError` that names the extra.
+  and without it raises an `ImportError` that names the extra.  `jupyter`
+  and `nbformat` are no longer dependencies either: running the example
+  notebooks (and `twin4build.utils.test_notebook`) needs the `[notebooks]`
+  extra, which `[dev]` and `[all]` include; twin4build imports neither.
 - The wheel ships the example data (CSV, TTL) and the ontologies.

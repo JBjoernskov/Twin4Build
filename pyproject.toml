@@ -60,8 +60,6 @@ dependencies = [
     "scipy",
     "numpy",
     "prettytable",
-    "jupyter",
-    "nbformat",
     "rdflib",
     # brickschema 0.8.0 (2026-09) dropped its importlib-resources dependency but
     # still imports it in brickify (ModuleNotFoundError on every import of
@@ -115,6 +113,15 @@ dev = [
     "twine",
     # the database loader's tests
     "psycopg2-binary",
+    # the example notebooks' tests (the [notebooks] extra)
+    "jupyter",
+    "nbformat",
+]
+# Running the example notebooks and twin4build.utils.test_notebook
+# (jupyter brings nbconvert and the kernel).
+notebooks = [
+    "jupyter",
+    "nbformat",
 ]
 # Reading sensor and schedule series from a PostgreSQL database
 # (DatabaseSource, load_from_database).
@@ -123,6 +130,8 @@ database = [
     "sqlalchemy",
 ]
 all = [
+    "jupyter",
+    "nbformat",
     "coverage",
     "black",
     "flake8",

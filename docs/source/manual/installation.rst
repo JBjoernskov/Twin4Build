@@ -25,6 +25,9 @@ For additional functionality, you can install optional dependencies:
     # For database connectivity
     pip install twin4build[database]
 
+    # To run the example notebooks
+    pip install twin4build[notebooks]
+
     # CUDA torch (PyPI's default wheel is CPU-only on Windows)
     pip install twin4build[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
 
@@ -88,8 +91,6 @@ Core dependencies (automatically installed):
 - scipy
 - numpy
 - prettytable
-- jupyter
-- nbformat
 - rdflib
 - brickschema
 - click_spinner
@@ -114,9 +115,12 @@ Optional dependencies:
 - ``[gpu]``: Triton on Linux. CUDA torch itself is not on PyPI; pass
   ``--extra-index-url https://download.pytorch.org/whl/cu128`` (or install
   ``torch`` from that index first). See :ref:`gpu-cuda-installation`.
+- ``[notebooks]``: jupyter and nbformat, to run the example notebooks and
+  ``twin4build.utils.test_notebook``; twin4build itself imports neither.
 - ``[dev]``: coverage, black, flake8, isort, sphinx, sphinx-rtd-theme, sphinx-autodoc-typehints, myst-parser,
-  pytest, pytest-cov, pytest-html, build, twine, psycopg2-binary (the database loader's tests)
-- ``[all]``: ``[dev]`` + ``[database]`` (not CUDA torch)
+  pytest, pytest-cov, pytest-html, build, twine, psycopg2-binary (the database loader's tests), and
+  ``[notebooks]`` (the example notebooks' tests)
+- ``[all]``: ``[dev]`` + ``[notebooks]`` + ``[database]`` (not CUDA torch)
 
 .. _gpu-cuda-installation:
 
