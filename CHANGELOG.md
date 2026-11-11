@@ -873,7 +873,7 @@ Unused and untested; 2.0 drops them without a deprecation period.
 - `LOGGER.is_interactive()` asks `sys.stdout.isatty()` instead of inspecting
   `__main__`; `LOGGER.interactive = True | False` overrides it.
 - Top-level `tb.types` / `Vector` / `Scalar` / `Parameter` / `State`
-- Package version `2.0.0`
+- Package version `2.0.0rc1` (the first release candidate of 2.0.0)
 - Canonical simulation, estimation, optimization, and scaling benchmarks now
   use the complete translated `full_workflow` topology; batching parity covers
   batched full-workflow controls, nested parameters, and data-source settings.
@@ -1000,7 +1000,11 @@ Unused and untested; 2.0 drops them without a deprecation period.
 ### Release metadata
 
 - `pyproject.toml` is the package-version source of truth and declares
-  `2.0.0`.
-- Release tags use the matching `vMAJOR.MINOR.PATCH` form. Pushing such a tag
-  triggers the trusted-publishing PyPI workflow for the configured maintainer;
+  `2.0.0rc1` (PEP 440); `twin4build.__version__` reads it from the installed
+  package's metadata.
+- A release tag is `v` followed by that version: `v2.0.0rc1` for this
+  release candidate, `vMAJOR.MINOR.PATCH` for a final release.  Pushing such
+  a tag triggers the trusted-publishing PyPI workflow for the configured
+  maintainer, which publishes only when the tag is the `pyproject.toml`
+  version (compared as PEP 440 versions) and CI passes on the tagged commit;
   branch pushes do not publish or auto-increment versions.
