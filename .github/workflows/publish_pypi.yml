@@ -1,12 +1,78 @@
 name: Publish to PyPI
 
-on: push
+# A pushed v* tag publishes the tagged commit, and only when the tag names
+# pyproject.toml's version and the CI workflow (ci.yml, called below on that
+# commit) has passed: check-version -> tests -> build -> publish-to-pypi.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
 
 jobs:
+  check-version:
+    name: Tag matches the package version
+    # Only run this job when pushing tags that start with 'v' (e.g., v1.0.0, v2.1.3)
+    if: startsWith(github.ref, 'refs/tags/v') && github.actor == 'JBjoernskov'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install packaging
+      run: python -m pip install packaging
+    # The tag minus its leading "v" must be pyproject.toml's version under
+    # PEP 440 normalisation: v2.0.0rc1 publishes 2.0.0rc1 (v2.0.0-rc.1 is the
+    # same version), and a v2.0.0rc1 tag on a commit that still says 2.0.0
+    # fails instead of publishing 2.0.0 final.
+    - name: Compare the tag with pyproject.toml
+      env:
+        TAG: ${{ github.ref_name }}
+      run: |
+        python - <<'EOF'
+        import os
+        import sys
+        import tomllib
+
+        from packaging.version import InvalidVersion, Version
+
+        tag = os.environ["TAG"]
+        with open("pyproject.toml", "rb") as file:
+            declared = tomllib.load(file)["project"]["version"]
+        try:
+            tagged = Version(tag.removeprefix("v"))
+        except InvalidVersion:
+            sys.exit(f"Tag {tag!r} is not 'v' followed by a PEP 440 version.")
+        if tagged != Version(declared):
+            sys.exit(
+                f"Tag {tag!r} is version {tagged}, but pyproject.toml declares "
+                f"{declared!r}.  Set [project].version to {str(tagged)!r} and "
+                "tag that commit, or tag the version pyproject.toml declares."
+            )
+        print(f"Tag {tag} matches pyproject.toml's version {declared}.")
+        EOF
+
+  tests:
+    name: Test suite
+    needs:
+    - check-version
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build:
     name: Build distribution 📦
     # Only run this job when pushing tags that start with 'v' (e.g., v1.0.0, v2.1.3)
     if: startsWith(github.ref, 'refs/tags/v') && github.actor == 'JBjoernskov'
+    needs:
+    - check-version
+    - tests
     runs-on: ubuntu-latest
 
     steps:
