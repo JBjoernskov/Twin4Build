@@ -989,7 +989,7 @@ class Estimator:
         # options leave ``options`` here and never reach a solver.
         options = dict(options or {})
         self._multiple_shooting = _initial_state_config(self._transcription, options, start_time, end_time)
-        if self._multiple_shooting and len(schedule or [{}]) > 1:
+        if self._multiple_shooting is not None and len(schedule or [{}]) > 1:
             # a later phase would start the windows from their recorded states again
             raise ValueError("multiple_shooting fits in one phase: give no schedule of several phases")
 
@@ -2368,7 +2368,7 @@ class Estimator:
             and method[2] == "ad"
         ):
             self._setup_functional_objective(validate_functional=False)
-        elif self._multiple_shooting:
+        elif self._multiple_shooting is not None:
             raise ValueError(
                 "the periods' initial states are variables of the functional objective: "
                 'Simulator(execution_mode="functional") and a method in AD mode'
@@ -3040,7 +3040,7 @@ class Estimator:
             return None
         if getattr(self, "_transcription", "single_shooting") not in SHOOTING_TRANSCRIPTIONS:
             return None
-        if self._multiple_shooting:
+        if self._multiple_shooting is not None:
             # the windows' initial states are not part of the analysis
             if mode is True:
                 LOGGER.warning("identifiability=True is not available with multiple shooting; skipped")
@@ -3135,7 +3135,7 @@ class Estimator:
         self._n_theta_base = int(len(self._x0_norm))
         if not n_init:
             return
-        if self._multiple_shooting and objective is None:
+        if self._multiple_shooting is not None and objective is None:
             LOGGER.warning("multiple shooting needs the functional objective; the initial states stay fixed")
             return
         x0 = objective.init_x0_norm.detach().cpu().numpy().astype(np.float64)
@@ -3176,7 +3176,7 @@ class Estimator:
         try:
             functional = FunctionalEstimationObjective(self)
         except Exception as exc:  # noqa: BLE001
-            if getattr(self, "_multiple_shooting", None):
+            if getattr(self, "_multiple_shooting", None) is not None:
                 # the periods' initial states are variables of the functional
                 # objective only: the object objective cannot carry them
                 raise RuntimeError(
