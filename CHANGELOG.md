@@ -795,6 +795,16 @@ Unused and untested; 2.0 drops them without a deprecation period.
   attaches it as a note to any exception raised during capture; with
   `T4B_CUDA_GRAPH_SYNC_PHASES=1` the device is synchronized after every phase
   so an asynchronous CUDA fault is attributed to the phase that launched it.
+- A CUDA graph's first replay is checked against the eager run within the
+  bound on reordered floating-point sums, `8 * n * u * scale` element-wise
+  (`n` the widest dimension of the function's tensors, `u` the dtype's unit
+  roundoff, `scale` the output tensor's largest magnitude), instead of a
+  fixed `rtol=1e-9, atol=1e-11`.  In float32 a replay that sums in another
+  order (atomic accumulation) differs by a few ulp, which the fixed
+  tolerance rejected at random; float64 stays strict (about `1e-13`
+  relative at `n = 100`).  The error names the difference observed and the
+  one allowed; a passing check logs both at debug level.  The per-step
+  graphs (`cuda_graph_scope="step"`) and `CudaGraphCallable` both use it.
 - Benchmark harness: the peak-memory sampler thread no longer calls the CUDA
   runtime (allocator bookkeeping only; device-wide memory is read on the main
   thread before/after each timed region), failed cases keep the child's
