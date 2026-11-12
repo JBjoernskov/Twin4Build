@@ -3,29 +3,29 @@
 from __future__ import annotations
 
 import inspect
-import os
 import time
 import warnings
 import weakref
 
 import torch
 
-# Set T4B_CUDA_GRAPH_SYNC_PHASES=1 to synchronize the device after every phase
-# of a capture (warmup, record, replay, parity check).  CUDA reports an
-# asynchronous fault at the next synchronizing call, so without this an
-# illegal memory access raised by, say, the replay only surfaces at the
-# caller's synchronize and the phase is lost.  Costs one extra sync per phase.
-SYNC_PHASES_ENV = "T4B_CUDA_GRAPH_SYNC_PHASES"
+from twin4build import settings as _settings
 
 
+# The ``cuda_graph_sync_phases`` setting (T4B_CUDA_GRAPH_SYNC_PHASES=1)
+# synchronizes the device after every phase of a capture (warmup, record,
+# replay, parity check).  CUDA reports an asynchronous fault at the next
+# synchronizing call, so without this an illegal memory access raised by, say,
+# the replay only surfaces at the caller's synchronize and the phase is lost.
+# Costs one extra sync per phase.
 def _sync_phases_enabled() -> bool:
-    return os.environ.get(SYNC_PHASES_ENV, "").strip().lower() in {"1", "true", "yes"}
+    return _settings.value("cuda_graph_sync_phases")
 
 
 # Most recent phase entered by any capture wrapper or bundle caller in this
 # process.  Read it after a CUDA fault to learn which step launched the
-# faulting kernel (with SYNC_PHASES_ENV on, the preceding phases completed
-# without a device error).
+# faulting kernel (with cuda_graph_sync_phases on, the preceding phases
+# completed without a device error).
 LAST_PHASE: str | None = None
 
 
@@ -75,8 +75,8 @@ def mark_phase(name: str) -> None:
 def phase_note() -> str:
     return (
         f"CUDA graph phase: {LAST_PHASE} (per-phase device sync "
-        f"{'on' if _sync_phases_enabled() else 'off'}; set {SYNC_PHASES_ENV}=1 "
-        f"to attribute asynchronous faults)"
+        f"{'on' if _sync_phases_enabled() else 'off'}; set "
+        f"T4B_CUDA_GRAPH_SYNC_PHASES=1 to attribute asynchronous faults)"
     )
 
 

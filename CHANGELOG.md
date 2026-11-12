@@ -206,6 +206,10 @@ Unused and untested; 2.0 drops them without a deprecation period.
   methods and `Estimator.estimate(n_cores=...)` (the worker pools that
   computed the Jacobian).  Every component is a torch module; use
   `method=(..., "ad")`.
+- `TWIN4BUILD_NO_DATA_WARMSTART`, which made collocation start the boundary
+  states from a rollout whatever its options said: it duplicated the
+  `boundary_state_init` option, and the variable is now ignored.  Use
+  `estimate(..., options={"boundary_state_init": "rollout"})`.
 - `FmuSystem` (and its `fmuSystem` alias): FMU components and the `fmpy`
   dependency.
 - `Model.make_pickable`, `SimulationModel.make_pickable`,
@@ -635,6 +639,28 @@ Unused and untested; 2.0 drops them without a deprecation period.
   pulls a CUDA 12.8+ build and Triton on Linux. Compiled / CUDA-graph paths
   need Linux or WSL (Triton has no Windows wheels). `model.to("cuda")`
   raises with that install line when the process has no CUDA (issue #167).
+- `twin4build.settings` (`tb.settings`): the library's knobs in one place,
+  each with its environment variable, type and default (the manual's
+  *Settings* page lists them).  A value comes from `tb.settings.set(...)`,
+  else the environment variable, else the default; `override(...)` sets
+  values for a `with` block, `reset(...)` undoes `set`, and `snapshot()`
+  gives every setting with its value and source.  The results of
+  `Estimator.estimate` (and the file it saves) and `Optimizer.optimize`
+  carry that snapshot as `result["settings"]`, and `ParetoResult` as
+  `settings`, so a result records how it was computed.
+  The settings off their defaults are logged when an estimation, a
+  simulation, an optimization or a Pareto front starts.  The library reads
+  a setting where it uses it, no longer when a module is imported, so a
+  variable set after `import twin4build` takes effect.  The environment
+  variables keep their names; their values are now checked: a boolean takes
+  `1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off`, an empty one is unset,
+  and other text raises (`TWIN4BUILD_JAC_CHECK=0` and
+  `TWIN4BUILD_BENCH_TIMESTEP=0` used to switch them on; `T4B_ZOH_EXPM`
+  other than `phi1` or `block` used to mean
+  `block`).  The module attributes that held the values read at import
+  (`discrete_statespace_system.ZOH_EXPM` and `EXPM_CHECKPOINT`,
+  `_functional.ROLLOUT_CHECKPOINT`, the translator's `_MATCH_DIAG_PATH` and
+  `_MATCH_DIAG_PATTERN_FILTER`, `_cuda_graph.SYNC_PHASES_ENV`) are gone.
 
 ### Changed
 

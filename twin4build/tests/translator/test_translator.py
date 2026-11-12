@@ -3,6 +3,7 @@ import os
 import unittest
 import importlib
 import tempfile
+from unittest import mock
 from rdflib import Literal, URIRef
 from rdflib import URIRef
 
@@ -1604,22 +1605,18 @@ class TestTranslator(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = os.path.join(tmpdir, "matcher_diag.log")
-            os.environ["TWIN4BUILD_MATCH_DIAG_FILE"] = log_path
-            os.environ["TWIN4BUILD_MATCH_DIAG_PATTERN"] = "diag_direction_label_pattern"
+            environment = {
+                "TWIN4BUILD_MATCH_DIAG_FILE": log_path,
+                "TWIN4BUILD_MATCH_DIAG_PATTERN": "diag_direction_label_pattern",
+            }
             try:
-                # Reload the module-level diag-path/filter cache (the
-                # globals are read from the environment at module
-                # import time, so the test must explicitly refresh
-                # them after setting the envs).
-                translator_mod._MATCH_DIAG_PATH = log_path
-                translator_mod._MATCH_DIAG_PATTERN_FILTER = (
-                    "diag_direction_label_pattern"
-                )
+                # The translator reads its settings when it matches, so
+                # variables set after the import take effect.
                 translator_mod._MATCH_DIAG_FH = None
-
-                Translator._match_patterns(
-                    systems_=[DummySystem], semantic_model=self.semantic_model
-                )
+                with mock.patch.dict(os.environ, environment):
+                    Translator._match_patterns(
+                        systems_=[DummySystem], semantic_model=self.semantic_model
+                    )
 
                 # Close the file handle so all writes are flushed.
                 fh = translator_mod._MATCH_DIAG_FH
@@ -1630,12 +1627,7 @@ class TestTranslator(unittest.TestCase):
                 with open(log_path, "r", encoding="utf-8") as f:
                     log_text = f.read()
             finally:
-                # Reset env + module-level state so other tests are
-                # not impacted by the diag path.
-                os.environ.pop("TWIN4BUILD_MATCH_DIAG_FILE", None)
-                os.environ.pop("TWIN4BUILD_MATCH_DIAG_PATTERN", None)
-                translator_mod._MATCH_DIAG_PATH = None
-                translator_mod._MATCH_DIAG_PATTERN_FILTER = None
+                # Close the dump so other tests are not impacted by it.
                 if translator_mod._MATCH_DIAG_FH is not None:
                     try:
                         translator_mod._MATCH_DIAG_FH.close()

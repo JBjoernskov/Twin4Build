@@ -1,7 +1,6 @@
 # import pygad
 # Standard library imports
 import datetime
-import os
 import time as time_module
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple, Union
@@ -16,6 +15,7 @@ from scipy.optimize import Bounds, least_squares, minimize
 import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.utils.types as tps
+from twin4build import settings as _settings
 from twin4build.utils.deprecation import reject_unexpected_kwargs
 from twin4build.utils.logger import LOGGER
 from twin4build.solvers.registry import find_pareto_route
@@ -752,6 +752,7 @@ class Optimizer:
                     f"These objectives conflict with each other."
                 )
 
+        _settings.log_active("optimize")
         LOGGER.task("Running optimization")
         LOGGER.add_level()
         LOGGER.config("Method: %s", method)
@@ -841,14 +842,11 @@ class Optimizer:
             # Fast-path for notebook example tests: keep the cell exercising
             # the full Optimizer API (so we still catch wiring / API
             # regressions) but stop the solver after a single iteration.
-            # Honors the env var set by ``utils.test_notebook.test_notebook``;
-            # callers in the regular test suite already pass small
-            # ``maxiter`` values explicitly, so this is a no-op for them.
-            if os.environ.get("TWIN4BUILD_TESTING", "").lower() in (
-                "1",
-                "true",
-                "yes",
-            ):
+            # Honors the ``testing`` setting, which ``utils.test_notebook``
+            # turns on (``TWIN4BUILD_TESTING=1``); callers in the regular
+            # test suite already pass small ``maxiter`` values explicitly,
+            # so this is a no-op for them.
+            if _settings.value("testing"):
                 options["maxiter"] = 1
             result = self._solve_scipy(method=method, **options)
         else:
@@ -858,7 +856,9 @@ class Optimizer:
 
         LOGGER.remove_level()
         LOGGER.ok("Running optimization", change_status=True)
-        return OptimizationResult.from_scipy(result)
+        result = OptimizationResult.from_scipy(result)
+        result["settings"] = _settings.snapshot()
+        return result
 
     def pareto_front(
         self,
@@ -954,11 +954,12 @@ class Optimizer:
 
         options = dict(options or {})
         prepass_options = dict(prepass_options or {})
-        if os.environ.get("TWIN4BUILD_TESTING", "").lower() in ("1", "true", "yes"):
+        if _settings.value("testing"):
             options["maxiter"] = 1
             n_points = min(n_points, 3)
             prepass_options.setdefault("max_iter", 3)
 
+        _settings.log_active("pareto_front")
         LOGGER.task("Generating Pareto front")
         LOGGER.add_level()
         try:
@@ -977,6 +978,7 @@ class Optimizer:
             raise
         LOGGER.remove_level()
         LOGGER.ok("Generating Pareto front", change_status=True)
+        result.settings = _settings.snapshot()
         return result
 
     # def _torch_solver(
@@ -1889,6 +1891,9 @@ class OptimizationResult(ResultDict):
 
     Wraps the SciPy ``OptimizeResult`` fields and keeps attribute access
     (``result.x``, ``result.success``, …) for compatibility with SciPy-style code.
+    :meth:`Optimizer.optimize` adds ``settings``, the library's settings the
+    optimization ran with (:func:`twin4build.settings.snapshot`,
+    ``{name: {"value": ..., "source": ...}}``).
     """
 
     def __init__(self, **kwargs):

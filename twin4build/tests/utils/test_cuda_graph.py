@@ -198,7 +198,7 @@ class TestCudaGraphWrappers(unittest.TestCase):
 
     @unittest.skipIf(not torch.cuda.is_available(), "CUDA unavailable")
     def test_capture_records_phases_and_notes_the_failing_phase(self):
-        with mock.patch.dict(os.environ, {cuda_graph.SYNC_PHASES_ENV: "1"}):
+        with mock.patch.dict(os.environ, {"T4B_CUDA_GRAPH_SYNC_PHASES": "1"}):
             wrapper = cuda_graph.CudaGraphCallable(lambda x: x * 2.0)
             x = torch.ones(4, device="cuda", dtype=torch.float64)
             wrapper(x)
