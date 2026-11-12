@@ -398,6 +398,9 @@ class DatabaseSource(Source):
     def window(self, start_time, end_time, step_size, fetch_span=None) -> pd.Series:
         if self.dbconfig is None:
             raise ValueError(f"{self.describe()}: no database configuration (set_dbconfig)")
+        # a data source's run start hands the step as a float (System.run_timestamps); the loader takes whole seconds
+        if float(step_size).is_integer():
+            step_size = int(step_size)
         return load_from_database(
             step_size=step_size, start_time=start_time, end_time=end_time, cache_root=get_main_dir(),
             cache=self.cache, sensor_id=self.uuid, fetch_span=fetch_span,
